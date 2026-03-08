@@ -16,8 +16,10 @@ import {
     mockWatchlist,
     MockTrade,
 } from '@/lib/mock-data/trades';
+import type { DashboardData } from '@/lib/actions/portfolio.actions';
 
 const TIME_RANGES = ['1D', '1W', '1M', '3M', 'YTD', 'ALL'] as const;
+type TimeRange = typeof TIME_RANGES[number];
 
 const COMPANY_NAMES: Record<string, string> = {
     NVDA: 'NVIDIA Corp',
@@ -78,11 +80,35 @@ function TradeRow({ trade, closed = false }: { trade: MockTrade; closed?: boolea
     );
 }
 
-export default function DashboardClient() {
-    const [range, setRange] = useState<string>('1M');
+interface DashboardClientProps {
+    /** Real data from the server. Falls back to mock data when omitted. */
+    data?: DashboardData;
+}
 
-    const dayPositive = mockPortfolio.dayChange >= 0;
-    const totalValue = mockPortfolio.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export default function DashboardClient({ data }: DashboardClientProps) {
+    const [range, setRange] = useState<TimeRange>('1M');
+
+    // Use real data when provided, otherwise fall back to mock
+    const openTrades = data?.openTrades ?? mockOpenTrades;
+    const closedTrades = data?.closedTrades ?? mockClosedTrades;
+    const equityData = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
+
+    const totalValue = data?.portfolio.totalValue ?? mockPortfolio.totalValue;
+    const unrealizedPnl = data?.portfolio.unrealizedPnl ?? mockPortfolio.dayChange;
+    const dayPositive = unrealizedPnl >= 0;
+    const totalValueStr = totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const unrealizedPct = totalValue > 0 ? (unrealizedPnl / (totalValue - unrealizedPnl)) * 100 : 0;
+
+    const winRateStr = data?.portfolio.winRate != null
+        ? `${(data.portfolio.winRate * 100).toFixed(0)}%`
+        : '60%';
+    const avgConfidence = openTrades.length > 0
+        ? `${Math.round(openTrades.reduce((s, t) => s + t.confidenceScore, 0) / openTrades.length)}%`
+        : '74%';
+    const totalPnlStr = data?.portfolio.realizedPnl != null
+        ? `${data.portfolio.realizedPnl >= 0 ? '+' : ''}$${Math.abs(data.portfolio.realizedPnl).toFixed(0)}`
+        : `+$${mockPortfolio.totalPnl.toFixed(0)}`;
+    const totalPnlPositive = data?.portfolio.realizedPnl != null ? data.portfolio.realizedPnl >= 0 : true;
 
     return (
         <div className="flex h-[calc(100vh-3rem)] md:h-screen overflow-hidden">
@@ -94,11 +120,11 @@ export default function DashboardClient() {
                     <div className="space-y-0.5">
                         <p className="text-sm text-muted-foreground">Portfolio Value</p>
                         <p className="text-4xl font-semibold tabular-nums tracking-tight">
-                            ${totalValue}
+                            ${totalValueStr}
                         </p>
                         <p className={`text-sm tabular-nums ${dayPositive ? 'text-emerald-500' : 'text-red-500'}`}>
-                            {dayPositive ? '+' : ''}${Math.abs(mockPortfolio.dayChange).toFixed(2)}&nbsp;
-                            ({dayPositive ? '+' : ''}{mockPortfolio.dayChangePct.toFixed(2)}%) today
+                            {dayPositive ? '+' : ''}${Math.abs(unrealizedPnl).toFixed(2)}&nbsp;
+                            ({dayPositive ? '+' : ''}{unrealizedPct.toFixed(2)}%) today
                         </p>
                     </div>
 
@@ -122,7 +148,7 @@ export default function DashboardClient() {
                     {/* Equity curve */}
                     <div className="-mx-1">
                         <ResponsiveContainer width="100%" height={160}>
-                            <AreaChart data={mockEquityCurve} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                            <AreaChart data={equityData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
                                 <defs>
                                     <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.12} />
@@ -167,10 +193,10 @@ export default function DashboardClient() {
                             {/* Active positions */}
                             <div>
                                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
-                                    Active Positions ({mockOpenTrades.length})
+                                    Active Positions ({openTrades.length})
                                 </p>
                                 <div>
-                                    {mockOpenTrades.map(t => (
+                                    {openTrades.map(t => (
                                         <TradeRow key={t.id} trade={t} />
                                     ))}
                                 </div>
@@ -181,10 +207,10 @@ export default function DashboardClient() {
                             {/* Closed trades */}
                             <div>
                                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
-                                    Recent Closed ({mockClosedTrades.length})
+                                    Recent Closed ({closedTrades.length})
                                 </p>
                                 <div>
-                                    {mockClosedTrades.slice(0, 6).map(t => (
+                                    {closedTrades.slice(0, 6).map(t => (
                                         <TradeRow key={t.id} trade={t} closed />
                                     ))}
                                 </div>
@@ -213,12 +239,12 @@ export default function DashboardClient() {
                                 Quick Stats
                             </p>
                             <div className="space-y-2.5">
-                                {([
-                                    { label: 'Open Positions', value: String(mockPortfolio.totalValue > 0 ? mockOpenTrades.length : 0) },
-                                    { label: 'Win Rate', value: '60%' },
-                                    { label: 'Avg Confidence', value: '74%' },
-                                    { label: 'Total P&L', value: `+$${mockPortfolio.totalPnl.toFixed(0)}`, positive: true },
-                                ]).map(({ label, value, positive }) => (
+                                {[
+                                    { label: 'Open Positions', value: String(data?.portfolio.openCount ?? openTrades.length) },
+                                    { label: 'Win Rate', value: winRateStr },
+                                    { label: 'Avg Confidence', value: avgConfidence },
+                                    { label: 'Total P&L', value: totalPnlStr, positive: totalPnlPositive },
+                                ].map(({ label, value, positive }) => (
                                     <div key={label} className="flex justify-between items-center">
                                         <span className="text-xs text-muted-foreground">{label}</span>
                                         <span className={`text-xs font-medium tabular-nums ${positive ? 'text-emerald-500' : ''}`}>

@@ -64,10 +64,11 @@ learns what works. Built for one user now, marketed later.
 https://github.com/dave-sucks/hindsight
 
 ## Current Status
-Milestones 1–3 complete. FinRobot FastAPI microservice built and
-ready for Railway deploy. Research pipeline (Data-CoT → Concept-CoT
-→ Thesis-CoT), SSE streaming chat, and Research Feed/Detail pages live.
-MongoDB and Better Auth fully removed.
+Milestones 1–4 complete. Full paper trading lifecycle live:
+research → thesis → place paper trade (Alpaca) → hourly price
+monitor (Inngest cron) → auto-close on exit conditions → GPT-4o
+post-trade evaluation. Dashboard and Trades pages now use real
+Prisma data with Alpaca live prices.
 
 ## Prisma Notes (v7)
 - Prisma 7 uses prisma.config.ts (not schema.prisma) for DB connection URLs
@@ -76,10 +77,22 @@ MongoDB and Better Auth fully removed.
 - Run `npx prisma generate` after schema changes
 - Run `npx prisma migrate dev` to apply migrations
 
+## M4 Key Files
+- lib/alpaca.ts — Alpaca paper trading client (getLatestPrices, closePosition, etc.)
+- lib/actions/trade.actions.ts — createTrade server action
+- lib/actions/closeTrade.actions.ts — closeTrade (P&L, WIN/LOSS, inngest event)
+- lib/actions/portfolio.actions.ts — getDashboardData (real trades + prices)
+- lib/trade-exit.ts — evaluateExitStrategy (4 strategies), checkExitConditions
+- lib/trade-exit.test.ts — 21 unit tests (run: npx jest)
+- lib/market-hours.ts — isMarketOpen() with ET timezone + holidays
+- lib/inngest/functions/price-monitor.ts — hourly Inngest cron
+- lib/inngest/functions/trade-evaluator.ts — post-close GPT-4o eval
+- python-service/routers/research.py — /research/evaluate endpoint
+
 ## Milestones
 1. ✅ Foundation — Supabase, Prisma, Auth, Vercel deploy
 2. ⬜ UI Shell — strip Signalist, rebuild pages for trading app
 3. ✅ FinRobot microservice on Railway, FastAPI wrapper
-4. ⬜ Paper trading lifecycle — create, track, evaluate trades
+4. ✅ Paper trading lifecycle — create, track, evaluate trades
 5. ⬜ Live data — Supabase Realtime, Inngest crons, Alpaca
 6. ⬜ Polish — performance dashboard, graduation logic
