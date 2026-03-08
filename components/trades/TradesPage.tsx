@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   Table,
@@ -15,10 +16,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -27,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { closeTrade } from '@/lib/actions/closeTrade.actions';
 import {
   mockOpenTrades,
   mockClosedTrades,
@@ -39,6 +44,7 @@ import {
   ChevronDown,
   Download,
   ArrowLeftRight,
+  Loader2,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -160,6 +166,7 @@ function TradesTableSkeleton() {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function TradesPage() {
+  const router = useRouter();
   const allTrades = [...mockOpenTrades, ...mockClosedTrades];
 
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('ALL');
@@ -167,6 +174,25 @@ export default function TradesPage() {
   const [sortKey, setSortKey] = useState<SortKey>('openedAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [isLoading] = useState(false);
+  const [closeTarget, setCloseTarget] = useState<string | null>(null);
+  const [closeLoading, setCloseLoading] = useState(false);
+
+  const closeTargetTrade = allTrades.find((t) => t.id === closeTarget);
+
+  async function handleCloseTrade() {
+    if (!closeTarget) return;
+    setCloseLoading(true);
+    try {
+      await closeTrade(closeTarget, 'MANUAL');
+      toast.success('Trade closed successfully');
+      setCloseTarget(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to close trade');
+    } finally {
+      setCloseLoading(false);
+    }
+  }
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -344,23 +370,14 @@ export default function TradesPage() {
                             <Link href={`/trades/${trade.id}/thesis`}>Thesis</Link>
                           </Button>
                           {isOpen && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span tabIndex={0}>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-xs px-2 opacity-40 cursor-not-allowed"
-                                    disabled
-                                  >
-                                    Close
-                                  </Button>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="text-xs">Available in M3</p>
-                              </TooltipContent>
-                            </Tooltip>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs px-2 text-red-500 hover:text-red-500 hover:bg-red-500/10"
+                              onClick={(e) => { e.stopPropagation(); setCloseTarget(trade.id); }}
+                            >
+                              Close
+                            </Button>
                           )}
                         </div>
                       </TableCell>
@@ -379,6 +396,38 @@ export default function TradesPage() {
           Showing {filtered.length} of {allTrades.length} trades
         </p>
       )}
+
+      {/* Close Trade confirmation dialog */}
+      <Dialog open={!!closeTarget} onOpenChange={(open) => { if (!open) setCloseTarget(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Close Trade — {closeTargetTrade?.ticker}</DialogTitle>
+            <DialogDescription>
+              This will manually close the position at the current market price. The realized P&amp;L will be recorded and the trade marked as closed. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCloseTarget(null)}
+              disabled={closeLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleCloseTrade}
+              disabled={closeLoading}
+              className="gap-2"
+            >
+              {closeLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {closeLoading ? 'Closing…' : 'Close Trade'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
