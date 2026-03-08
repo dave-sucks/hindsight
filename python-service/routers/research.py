@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 
 from fastapi import APIRouter
@@ -16,19 +17,41 @@ async def research_run(body: RunRequest):
     """
     Trigger a full research run for one or more tickers.
     If tickers are not specified, the market scanner picks them.
+    Runs up to 5 tickers concurrently. Times out individual tickers
+    at 60s rather than failing the whole batch.
     """
+    started = time.monotonic()
     agent_config = body.agent_config
 
     tickers = body.tickers
     if not tickers:
         tickers = await get_research_candidates(agent_config)
 
-    # Run pipeline for each ticker concurrently (up to 5 at a time)
     sem = asyncio.Semaphore(5)
 
     async def run_one(ticker: str):
         async with sem:
-            return await run_full_pipeline(ticker, agent_config)
+            try:
+                return await asyncio.wait_for(
+                    run_full_pipeline(ticker, agent_config),
+                    timeout=60.0,
+                )
+            except asyncio.TimeoutError:
+                from models import ThesisOutput
+                return (
+                    ThesisOutput(
+                        ticker=ticker,
+                        direction="PASS",
+                        hold_duration="SWING",
+                        confidence_score=0,
+                        reasoning_summary="Pipeline timed out after 60s",
+                        thesis_bullets=[],
+                        risk_flags=["Timeout — pipeline took too long"],
+                        signal_types=[],
+                        model_used="gpt-4o",
+                    ),
+                    0,
+                )
 
     results = await asyncio.gather(*[run_one(t) for t in tickers])
 
@@ -42,6 +65,8 @@ async def research_run(body: RunRequest):
         tickers_researched=len(theses),
         tickers_passed=passed,
         total_tokens=total_tokens,
+        duration_seconds=round(time.monotonic() - started, 2),
+        source=body.source,
     )
 
 

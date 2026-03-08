@@ -57,7 +57,8 @@ class ThesisOutput(BaseModel):
 
 
 class RunRequest(BaseModel):
-    tickers: Optional[List[str]] = None  # if None, scanner picks them
+    tickers: Optional[List[str]] = None          # if None, scanner picks them
+    source: Literal["AGENT", "MANUAL"] = "AGENT"
     agent_config: dict = {}
 
 
@@ -67,3 +68,5 @@ class RunResponse(BaseModel):
     tickers_researched: int
     tickers_passed: int
     total_tokens: int
+    duration_seconds: float
+    source: Literal["AGENT", "MANUAL"] = "AGENT"
