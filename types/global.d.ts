@@ -8,10 +8,6 @@ declare global {
         fullName: string;
         email: string;
         password: string;
-        country: string;
-        investmentGoals: string;
-        riskTolerance: string;
-        preferredIndustry: string;
     };
 
     type CountrySelectProps = {
@@ -168,14 +164,6 @@ declare global {
         news?: MarketNewsArticle[];
     };
 
-    type SearchCommandProps = {
-        open?: boolean;
-        setOpen?: (open: boolean) => void;
-        renderAs?: 'button' | 'text';
-        buttonLabel?: string;
-        buttonVariant?: 'primary' | 'secondary';
-        className?: string;
-    };
 
     type AlertData = {
         symbol: string;
