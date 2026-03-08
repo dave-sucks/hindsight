@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { MockThesis } from '@/lib/mock-data/research';
+import { TradeReviewSheet } from '@/components/TradeReviewSheet';
 import {
   ChevronDown,
   ChevronUp,
@@ -27,6 +28,7 @@ interface ThesisCardProps {
   thesis: MockThesis;
   compact?: boolean;
 }
+
 
 function ConfidenceRing({ score }: { score: number }) {
   const radius = 18;
@@ -82,6 +84,7 @@ function DirectionBadge({ direction }: { direction: MockThesis['direction'] }) {
 
 export default function ThesisCard({ thesis, compact = false }: ThesisCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const visibleBullets = expanded ? thesis.bullets : thesis.bullets.slice(0, 3);
 
   return (
@@ -190,25 +193,22 @@ export default function ThesisCard({ thesis, compact = false }: ThesisCardProps)
             View Full Thesis <ExternalLink className="h-3 w-3" />
           </Link>
           <div className="ml-auto">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0}>
-                  <Button
-                    size="sm"
-                    disabled
-                    className="text-xs h-8 cursor-not-allowed opacity-50"
-                  >
-                    Place Paper Trade
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">Available in M3 — AI agent integration</p>
-              </TooltipContent>
-            </Tooltip>
+            <Button
+              size="sm"
+              className="text-xs h-8"
+              onClick={() => setSheetOpen(true)}
+            >
+              Place Paper Trade
+            </Button>
           </div>
         </div>
       </CardContent>
+
+      <TradeReviewSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        thesis={thesis}
+      />
     </Card>
   );
 }

@@ -208,3 +208,62 @@ Analyst Notes: {concept.reasoning_notes}"""
 @router.post("/chat")
 async def research_chat(body: ChatRequest):
     return EventSourceResponse(_stream_chat(body.message, body.agent_config))
+
+
+# ---------------------------------------------------------------------------
+# /research/evaluate — post-trade agent self-evaluation (DAV-35)
+# ---------------------------------------------------------------------------
+
+class EvaluationRequest(BaseModel):
+    ticker: str
+    direction: str               # "LONG" | "SHORT"
+    entry_price: float
+    close_price: float
+    outcome: str                 # "WIN" | "LOSS" | "BREAKEVEN"
+    close_reason: str            # "TARGET" | "STOP" | "TIME" | "MANUAL"
+    thesis_summary: str | None = None
+    signal_types: list[str] = []
+    hold_days: int = 0
+
+
+class EvaluationResponse(BaseModel):
+    evaluation_text: str
+
+
+_EVAL_SYSTEM = (
+    "You are an AI trading agent reflecting honestly on a closed paper trade. "
+    "Be concise, specific, and direct. No filler phrases. Max 80 words."
+)
+
+
+@router.post("/evaluate", response_model=EvaluationResponse)
+async def evaluate_trade(body: EvaluationRequest):
+    import os
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+
+    signals_str = ", ".join(body.signal_types) if body.signal_types else "unspecified"
+    thesis_str = body.thesis_summary or "No thesis summary available."
+
+    user_prompt = f"""You made a {body.direction} paper trade on {body.ticker}.
+
+Entry: ${body.entry_price:.2f} | Close: ${body.close_price:.2f}
+Outcome: {body.outcome} ({body.close_reason}) | Hold: {body.hold_days} days
+Signals used: {signals_str}
+Thesis: {thesis_str}
+
+In 2-3 sentences, honestly evaluate: Was the thesis correct? What worked or failed? What is the key learning?"""
+
+    response = await client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": _EVAL_SYSTEM},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.3,
+        max_tokens=150,
+    )
+
+    evaluation_text = response.choices[0].message.content or ""
+    return EvaluationResponse(evaluation_text=evaluation_text.strip())
