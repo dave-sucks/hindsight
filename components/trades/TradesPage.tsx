@@ -340,12 +340,12 @@ export default function TradesPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="sm" className="h-7 text-xs px-2" asChild>
-                            <Link href={`/trades/${trade.id}/thesis`}>Thesis</Link>
+                          <Button variant="ghost" size="sm" className="h-7 text-xs px-2" render={<Link href={`/trades/${trade.id}/thesis`} />}>
+                            Thesis
                           </Button>
                           {isOpen && (
                             <Tooltip>
-                              <TooltipTrigger asChild>
+                              <TooltipTrigger>
                                 <span tabIndex={0}>
                                   <Button
                                     variant="ghost"

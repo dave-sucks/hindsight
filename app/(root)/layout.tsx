@@ -1,7 +1,10 @@
-import Sidebar from "@/components/Sidebar";
+import AppSidebar from "@/components/Sidebar";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { createClient } from "@/lib/supabase/server";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { redirect } from "next/navigation";
+import { BrainCircuit } from "lucide-react";
+import Link from "next/link";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const supabase = await createClient();
@@ -18,14 +21,22 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     const initialStocks = await searchStocks();
 
     return (
-        <div className="flex min-h-screen bg-background">
-            <Sidebar user={userObj} initialStocks={initialStocks} />
-
-            {/* Desktop: offset for fixed sidebar; Mobile: offset for fixed top bar */}
-            <main className="flex-1 md:ml-60 min-h-screen pt-14 md:pt-0">
-                {children}
-            </main>
-        </div>
+        <SidebarProvider>
+            <AppSidebar user={userObj} initialStocks={initialStocks} />
+            <SidebarInset>
+                {/* Mobile top bar */}
+                <header className="flex md:hidden h-12 items-center gap-2 border-b px-4 shrink-0">
+                    <SidebarTrigger />
+                    <Link href="/" className="flex items-center gap-2">
+                        <BrainCircuit className="h-4 w-4" />
+                        <span className="font-semibold text-sm">Hindsight</span>
+                    </Link>
+                </header>
+                <main className="flex-1">
+                    {children}
+                </main>
+            </SidebarInset>
+        </SidebarProvider>
     );
 };
 

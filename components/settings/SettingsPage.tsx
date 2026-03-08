@@ -207,7 +207,7 @@ function AlertConfigCard() {
         <SettingRow key={key} label={label} description={description}>
           {disabled ? (
             <Tooltip>
-              <TooltipTrigger asChild>
+              <TooltipTrigger>
                 <span tabIndex={0}>
                   <Switch checked={false} disabled className="opacity-40 cursor-not-allowed" />
                 </span>
@@ -230,7 +230,7 @@ function AlertConfigCard() {
             <Label htmlFor="delivery-email" className="text-sm">Email</Label>
           </div>
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <div className="flex items-center gap-2 opacity-40 cursor-not-allowed">
                 <Checkbox id="delivery-slack" disabled />
                 <Label htmlFor="delivery-slack" className="text-sm">Slack</Label>

@@ -191,7 +191,7 @@ export default function ThesisCard({ thesis, compact = false }: ThesisCardProps)
           </Link>
           <div className="ml-auto">
             <Tooltip>
-              <TooltipTrigger asChild>
+              <TooltipTrigger>
                 <span tabIndex={0}>
                   <Button
                     size="sm"

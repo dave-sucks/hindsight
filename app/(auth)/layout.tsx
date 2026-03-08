@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -10,35 +9,26 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
     if (user) redirect('/')
 
     return (
-        <main className="auth-layout">
-            <section className="auth-left-section scrollbar-hide-default">
-                <Link href="/" className="auth-logo">
-                    <Image src="/assets/icons/logo.svg" alt="Signalist logo" width={140} height={32} className='h-8 w-auto' />
+        <main className="flex min-h-screen bg-background">
+            <section className="flex flex-col flex-1 max-w-md mx-auto px-8 py-12 overflow-y-auto">
+                <Link href="/" className="mb-10 flex items-center gap-2">
+                    <span className="text-xl font-bold text-foreground tracking-tight">Hindsight</span>
                 </Link>
 
-                <div className="pb-6 lg:pb-8 flex-1">{children}</div>
+                <div className="flex-1">{children}</div>
             </section>
 
-            <section className="auth-right-section">
-                <div className="z-10 relative lg:mt-4 lg:mb-16">
-                    <blockquote className="auth-blockquote">
-                        Signalist turned my watchlist into a winning list. The alerts are spot-on, and I feel more confident making moves in the market
+            <section className="hidden lg:flex flex-col flex-1 bg-card border-l border-border px-12 py-12 overflow-hidden">
+                <div className="z-10 relative mt-auto mb-16">
+                    <blockquote className="text-lg font-medium text-foreground leading-relaxed mb-6">
+                        &ldquo;The AI research is genuinely impressive. It catches patterns I would have missed and explains exactly why each trade makes sense.&rdquo;
                     </blockquote>
                     <div className="flex items-center justify-between">
                         <div>
-                            <cite className="auth-testimonial-author">- Ethan R.</cite>
-                            <p className="max-md:text-xs text-gray-500">Retail Investor</p>
-                        </div>
-                        <div className="flex items-center gap-0.5">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                                <Image src="/assets/icons/star.svg" alt="Star" key={star} width={20} height={20} className="w-5 h-5" />
-                            ))}
+                            <cite className="text-sm font-semibold text-foreground not-italic">- Ethan R.</cite>
+                            <p className="text-xs text-muted-foreground mt-0.5">Retail Investor</p>
                         </div>
                     </div>
-                </div>
-
-                <div className="flex-1 relative">
-                    <Image src="/assets/images/dashboard.png" alt="Dashboard Preview" width={1440} height={1150} className="auth-dashboard-preview absolute top-0" />
                 </div>
             </section>
         </main>

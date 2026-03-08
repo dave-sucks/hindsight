@@ -53,23 +53,25 @@ const CountrySelect = ({
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <Button
-                    variant='outline'
-                    role='combobox'
-                    aria-expanded={open}
-                    className='country-select-trigger'
-                >
-                    {value ? (
-                        <span className='flex items-center gap-2'>
-              <span>{getFlagEmoji(value)}</span>
-              <span>{countries.find((c) => c.value === value)?.label}</span>
-            </span>
-                    ) : (
-                        'Select your country...'
-                    )}
-                    <ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
-                </Button>
+            <PopoverTrigger
+                render={
+                    <Button
+                        variant='outline'
+                        role='combobox'
+                        aria-expanded={open}
+                        className='country-select-trigger'
+                    />
+                }
+            >
+                {value ? (
+                    <span className='flex items-center gap-2'>
+                        <span>{getFlagEmoji(value)}</span>
+                        <span>{countries.find((c) => c.value === value)?.label}</span>
+                    </span>
+                ) : (
+                    'Select your country...'
+                )}
+                <ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
             </PopoverTrigger>
             <PopoverContent
                 className='w-full p-0 bg-gray-800 border-gray-600'

@@ -84,11 +84,9 @@ export default async function ThesisDetailPage({ params }: Props) {
             No thesis found for ID: <span className="font-mono">{id}</span>
           </p>
         </div>
-        <Button variant="outline" asChild>
-          <Link href="/research">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Research
-          </Link>
+        <Button variant="outline" render={<Link href="/research" />}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Research
         </Button>
       </div>
     );
