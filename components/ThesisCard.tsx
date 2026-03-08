@@ -184,7 +184,7 @@ export default function ThesisCard({ thesis, compact = false }: ThesisCardProps)
         {/* Actions */}
         <div className="flex items-center gap-2 pt-1">
           <Link
-            href={`/research/${thesis.id}`}
+            href={`/trades/${thesis.id}/thesis`}
             className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
           >
             View Full Thesis <ExternalLink className="h-3 w-3" />
