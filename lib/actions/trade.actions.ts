@@ -7,6 +7,8 @@ import {
   getOrder,
   getLatestPrice,
 } from "@/lib/alpaca";
+import { sendEmail } from "@/lib/email";
+import { tradePlacedHtml } from "@/lib/emails/trade-placed";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -152,6 +154,30 @@ export async function createTrade(
       priceAt: fillPrice,
     },
   });
+
+  // 7. Send trade-placed email alert (fire-and-forget)
+  if (user.email) {
+    const thesis = await prisma.thesis.findUnique({
+      where: { id: input.thesisId },
+      select: { signalTypes: true, confidenceScore: true, reasoningSummary: true },
+    });
+    sendEmail({
+      to: user.email,
+      subject: `${input.direction === "LONG" ? "📈" : "📉"} Agent placed trade: ${input.direction} ${input.ticker}`,
+      html: tradePlacedHtml({
+        ticker: input.ticker,
+        direction: input.direction as "LONG" | "SHORT",
+        entryPrice: fillPrice,
+        shares: input.shares,
+        targetPrice: input.targetPrice,
+        stopLoss: input.stopLoss,
+        signalTypes: thesis?.signalTypes ?? [],
+        confidenceScore: thesis?.confidenceScore,
+        reasoningSummary: thesis?.reasoningSummary,
+        tradeId: trade.id,
+      }),
+    });
+  }
 
   return {
     tradeId: trade.id,

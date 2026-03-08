@@ -4,6 +4,8 @@ import { getLatestPrices } from "@/lib/alpaca";
 import { isMarketOpen } from "@/lib/market-hours";
 import { checkExitConditions } from "@/lib/trade-exit";
 import type { TradeModel } from "@/lib/generated/prisma/models";
+import { sendEmail, getUserEmail } from "@/lib/email";
+import { nearTargetHtml } from "@/lib/emails/near-target";
 
 // ─── P&L helpers ─────────────────────────────────────────────────────────────
 
@@ -98,6 +100,52 @@ export const priceMonitor = inngest.createFunction(
 
           // Check exit conditions — DAV-33 implements auto-close
           await checkExitConditions(trade, currentPrice);
+
+          // Near-target alert — send once when ≥80% of the way to price target
+          if (
+            trade.targetPrice &&
+            !trade.nearTargetAlertSent
+          ) {
+            const totalMove =
+              trade.direction === "LONG"
+                ? trade.targetPrice - trade.entryPrice
+                : trade.entryPrice - trade.targetPrice;
+            const currentMove =
+              trade.direction === "LONG"
+                ? currentPrice - trade.entryPrice
+                : trade.entryPrice - currentPrice;
+            const progress = totalMove > 0 ? currentMove / totalMove : 0;
+
+            if (progress >= 0.8) {
+              // Mark flag first (idempotent) then send email
+              await prisma.trade.update({
+                where: { id: trade.id },
+                data: { nearTargetAlertSent: true },
+              });
+              getUserEmail(trade.userId).then((toEmail) => {
+                if (!toEmail) return;
+                const unrealizedPnl =
+                  trade.direction === "LONG"
+                    ? (currentPrice - trade.entryPrice) * trade.shares
+                    : (trade.entryPrice - currentPrice) * trade.shares;
+                sendEmail({
+                  to: toEmail,
+                  subject: `🎯 ${trade.ticker} is ${Math.round(progress * 100)}% to target`,
+                  html: nearTargetHtml({
+                    ticker: trade.ticker,
+                    direction: trade.direction as "LONG" | "SHORT",
+                    entryPrice: trade.entryPrice,
+                    currentPrice,
+                    targetPrice: trade.targetPrice,
+                    progressPct: progress * 100,
+                    unrealizedPnl,
+                    unrealizedPnlPct: calculatePnl(trade, currentPrice).pct,
+                    tradeId: trade.id,
+                  }),
+                });
+              });
+            }
+          }
 
           checked++;
         } catch {

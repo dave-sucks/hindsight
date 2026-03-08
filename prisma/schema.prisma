@@ -90,9 +90,10 @@ model Trade {
   closeReason     String?      // "TARGET" | "STOP" | "TIME" | "MANUAL"
   realizedPnl     Float?
   outcome         String?      // "WIN" | "LOSS" | "BREAKEVEN"
-  agentEvaluation String?
-  alpacaOrderId   String?
-  notes           String?
+  agentEvaluation      String?
+  alpacaOrderId        String?
+  notes                String?
+  nearTargetAlertSent  Boolean  @default(false)
   thesis          Thesis       @relation(fields: [thesisId], references: [id])
   events          TradeEvent[]
   openedAt        DateTime     @default(now())
