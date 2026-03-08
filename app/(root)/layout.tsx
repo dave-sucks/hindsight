@@ -2,6 +2,7 @@ import AppSidebar from "@/components/Sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import MarketPulseStrip from "@/components/MarketPulseStrip";
 import { createClient } from "@/lib/supabase/server";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { redirect } from "next/navigation";
@@ -32,6 +33,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                         <ThemeToggle />
                     </div>
                 </header>
+                <MarketPulseStrip />
                 <main className="flex-1">
                     {children}
                 </main>
