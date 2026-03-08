@@ -39,6 +39,14 @@ import {
   type TradeDirection,
   type TradeStatus,
 } from '@/lib/mock-data/trades';
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface TradesPageProps {
+  /** Real trades passed from the server component. Falls back to mock data if omitted. */
+  initialOpenTrades?: MockTrade[];
+  initialClosedTrades?: MockTrade[];
+}
 import {
   ChevronUp,
   ChevronDown,
@@ -165,9 +173,15 @@ function TradesTableSkeleton() {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function TradesPage() {
+export default function TradesPage({
+  initialOpenTrades,
+  initialClosedTrades,
+}: TradesPageProps) {
   const router = useRouter();
-  const allTrades = [...mockOpenTrades, ...mockClosedTrades];
+  // Use real data when provided by the server component; fall back to mock data
+  const openTrades = initialOpenTrades ?? mockOpenTrades;
+  const closedTrades = initialClosedTrades ?? mockClosedTrades;
+  const allTrades = [...openTrades, ...closedTrades];
 
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('ALL');
   const [dirFilter, setDirFilter] = useState<FilterDirection>('ALL');
@@ -254,7 +268,7 @@ export default function TradesPage() {
             )}
             onClick={() => setStatusFilter(f)}
           >
-            {f === 'ALL' ? `All (${allTrades.length})` : f === 'ACTIVE' ? `Active (${mockOpenTrades.length})` : `Closed (${mockClosedTrades.length})`}
+            {f === 'ALL' ? `All (${allTrades.length})` : f === 'ACTIVE' ? `Active (${openTrades.length})` : `Closed (${closedTrades.length})`}
           </Button>
         ))}
 

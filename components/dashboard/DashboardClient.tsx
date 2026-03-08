@@ -31,7 +31,8 @@ import {
   mockWatchlist,
   type MockTrade,
 } from '@/lib/mock-data/trades';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import type { DashboardData } from '@/lib/actions/portfolio.actions';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 
 const TIME_RANGES = ['1D', '1W', '1M', '3M', 'YTD', 'ALL'] as const;
 type TimeRange = (typeof TIME_RANGES)[number];
@@ -169,12 +170,23 @@ function EquityTooltip({ active, payload, label }: CustomTooltipProps) {
   );
 }
 
-export default function DashboardClient() {
-  const [activeRange, setActiveRange] = useState<TimeRange>('1M');
-  const [isLoading] = useState(false);
+interface DashboardClientProps {
+  /** Real data from the server. Falls back to mock data when omitted. */
+  data?: DashboardData;
+}
 
-  const { totalValue, dayChange, dayChangePct } = mockPortfolio;
-  const isDayPos = dayChange >= 0;
+export default function DashboardClient({ data }: DashboardClientProps) {
+  const [activeRange, setActiveRange] = useState<TimeRange>('1M');
+
+  // Use real data when provided, otherwise fall back to mock
+  const openTrades = data?.openTrades ?? mockOpenTrades;
+  const closedTrades = data?.closedTrades ?? mockClosedTrades;
+  const equityData = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
+
+  const totalValue = data?.portfolio.totalValue ?? mockPortfolio.totalValue;
+  const unrealizedPnl = data?.portfolio.unrealizedPnl ?? mockPortfolio.dayChange;
+  const isDayPos = unrealizedPnl >= 0;
+  const unrealizedPct = totalValue > 0 ? (unrealizedPnl / (totalValue - unrealizedPnl)) * 100 : 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -192,13 +204,9 @@ export default function DashboardClient() {
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
                   Portfolio Value
                 </p>
-                {isLoading ? (
-                  <Skeleton className="h-8 w-36" />
-                ) : (
-                  <p className="text-2xl font-semibold text-foreground tabular-nums">
-                    {formatCurrency(totalValue)}
-                  </p>
-                )}
+                <p className="text-2xl font-semibold text-foreground tabular-nums">
+                  {formatCurrency(totalValue)}
+                </p>
               </CardContent>
             </Card>
 
@@ -208,13 +216,9 @@ export default function DashboardClient() {
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
                   Today
                 </p>
-                {isLoading ? (
-                  <Skeleton className="h-8 w-28" />
-                ) : (
-                  <p className={cn('text-2xl font-semibold tabular-nums', isDayPos ? 'text-emerald-500' : 'text-red-500')}>
-                    {isDayPos ? '+' : ''}{formatCurrency(dayChange)}
-                  </p>
-                )}
+                <p className={cn('text-2xl font-semibold tabular-nums', isDayPos ? 'text-emerald-500' : 'text-red-500')}>
+                  {isDayPos ? '+' : ''}{formatCurrency(unrealizedPnl)}
+                </p>
               </CardContent>
             </Card>
 
@@ -224,20 +228,16 @@ export default function DashboardClient() {
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
                   Today %
                 </p>
-                {isLoading ? (
-                  <Skeleton className="h-8 w-24" />
-                ) : (
-                  <div className={cn('flex items-center gap-1.5', isDayPos ? 'text-emerald-500' : 'text-red-500')}>
-                    {isDayPos ? (
-                      <TrendingUp className="h-5 w-5" />
-                    ) : (
-                      <TrendingDown className="h-5 w-5" />
-                    )}
-                    <span className="text-2xl font-semibold tabular-nums">
-                      {formatPct(dayChangePct)}
-                    </span>
-                  </div>
-                )}
+                <div className={cn('flex items-center gap-1.5', isDayPos ? 'text-emerald-500' : 'text-red-500')}>
+                  {isDayPos ? (
+                    <TrendingUp className="h-5 w-5" />
+                  ) : (
+                    <TrendingDown className="h-5 w-5" />
+                  )}
+                  <span className="text-2xl font-semibold tabular-nums">
+                    {formatPct(unrealizedPct)}
+                  </span>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -265,11 +265,13 @@ export default function DashboardClient() {
               </div>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-52 w-full" />
+              {equityData.length === 0 ? (
+                <div className="h-52 flex items-center justify-center">
+                  <p className="text-sm text-muted-foreground">No closed trades yet — equity curve will appear after your first trade closes.</p>
+                </div>
               ) : (
                 <ResponsiveContainer width="100%" height={210}>
-                  <AreaChart data={mockEquityCurve} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                  <AreaChart data={equityData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
@@ -311,16 +313,12 @@ export default function DashboardClient() {
               <CardTitle className="text-lg font-medium">
                 Active Trades
                 <Badge variant="secondary" className="ml-2 tabular-nums text-xs">
-                  {mockOpenTrades.length}
+                  {openTrades.length}
                 </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
-              {isLoading ? (
-                <div className="p-6"><TradesTableSkeleton /></div>
-              ) : (
-                <TradesTable trades={mockOpenTrades} />
-              )}
+              <TradesTable trades={openTrades} />
             </CardContent>
           </Card>
 
@@ -330,16 +328,12 @@ export default function DashboardClient() {
               <CardTitle className="text-lg font-medium text-muted-foreground">
                 Closed Trades
                 <Badge variant="outline" className="ml-2 tabular-nums text-xs text-muted-foreground">
-                  {mockClosedTrades.length}
+                  {closedTrades.length}
                 </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
-              {isLoading ? (
-                <div className="p-6"><TradesTableSkeleton /></div>
-              ) : (
-                <TradesTable trades={mockClosedTrades} dimmed />
-              )}
+              <TradesTable trades={closedTrades} dimmed />
             </CardContent>
           </Card>
         </div>
@@ -353,10 +347,28 @@ export default function DashboardClient() {
             </CardHeader>
             <CardContent className="space-y-3">
               {[
-                { label: 'Open Positions', value: mockOpenTrades.length, unit: '' },
-                { label: 'Win Rate', value: '60', unit: '%' },
-                { label: 'Avg Confidence', value: '74', unit: '%' },
-                { label: 'Total P&L', value: '+$127', unit: '' },
+                { label: 'Open Positions', value: data?.portfolio.openCount ?? openTrades.length, unit: '' },
+                {
+                  label: 'Win Rate',
+                  value: data?.portfolio.winRate != null
+                    ? `${(data.portfolio.winRate * 100).toFixed(0)}`
+                    : '—',
+                  unit: data?.portfolio.winRate != null ? '%' : '',
+                },
+                {
+                  label: 'Avg Confidence',
+                  value: openTrades.length > 0
+                    ? Math.round(openTrades.reduce((s, t) => s + t.confidenceScore, 0) / openTrades.length)
+                    : '—',
+                  unit: openTrades.length > 0 ? '%' : '',
+                },
+                {
+                  label: 'Realized P&L',
+                  value: data?.portfolio.realizedPnl != null
+                    ? `${data.portfolio.realizedPnl >= 0 ? '+' : ''}${formatCurrency(data.portfolio.realizedPnl)}`
+                    : '$0.00',
+                  unit: '',
+                },
               ].map(({ label, value, unit }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">{label}</span>
