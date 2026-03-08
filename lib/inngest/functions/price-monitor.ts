@@ -2,6 +2,7 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices } from "@/lib/alpaca";
 import { isMarketOpen } from "@/lib/market-hours";
+import { checkExitConditions } from "@/lib/trade-exit";
 import type { TradeModel } from "@/lib/generated/prisma/models";
 
 // ─── P&L helpers ─────────────────────────────────────────────────────────────
@@ -19,19 +20,6 @@ function calculatePnl(
       ? ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100
       : ((trade.entryPrice - currentPrice) / trade.entryPrice) * 100;
   return { dollars, pct };
-}
-
-// ─── Exit condition check (stub — filled by DAV-33) ──────────────────────────
-
-/**
- * Check if a trade should be auto-closed based on exit conditions.
- * Stub: always returns false. DAV-33 will implement the full logic.
- */
-async function checkExitConditions(
-  _trade: TradeModel,
-  _currentPrice: number
-): Promise<boolean> {
-  return false;
 }
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
