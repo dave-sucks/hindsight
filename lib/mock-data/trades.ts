@@ -1,7 +1,7 @@
 // Mock data — structure matches the real Prisma schema shape for easy swap-in
 
 export type TradeDirection = 'LONG' | 'SHORT';
-export type TradeStatus = 'OPEN' | 'CLOSED_WIN' | 'CLOSED_LOSS';
+export type TradeStatus = 'OPEN' | 'CLOSED_WIN' | 'CLOSED_LOSS' | 'CLOSED_EXPIRED';
 
 export interface MockTrade {
   id: string;
@@ -148,6 +148,38 @@ export const mockClosedTrades: MockTrade[] = [
     openedAt: '2026-01-15',
     closedAt: '2026-01-30',
     thesis: 'AWS re-acceleration + retail margin expansion.',
+  },
+  {
+    id: '9',
+    ticker: 'SNAP',
+    direction: 'SHORT',
+    entryPrice: 12.50,
+    currentPrice: 14.20,
+    targetPrice: 9.00,
+    stopPrice: 14.00,
+    confidenceScore: 58,
+    status: 'CLOSED_LOSS',
+    pnl: -17.00,
+    pnlPct: -13.60,
+    openedAt: '2026-01-08',
+    closedAt: '2026-01-14',
+    thesis: 'Ad revenue decline and user growth stagnation — stop hit on short squeeze.',
+  },
+  {
+    id: '10',
+    ticker: 'NFLX',
+    direction: 'LONG',
+    entryPrice: 890.00,
+    currentPrice: 895.00,
+    targetPrice: 960.00,
+    stopPrice: 850.00,
+    confidenceScore: 64,
+    status: 'CLOSED_EXPIRED',
+    pnl: 5.00,
+    pnlPct: 0.56,
+    openedAt: '2026-01-02',
+    closedAt: '2026-01-16',
+    thesis: 'Ad-supported tier monetization — thesis expired without reaching target or stop.',
   },
 ];
 

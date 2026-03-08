@@ -71,12 +71,18 @@ function DirectionBadge({ direction }: { direction: MockTrade['direction'] }) {
 }
 
 function StatusBadge({ status }: { status: MockTrade['status'] }) {
-  const map = {
+  const map: Record<MockTrade['status'], string> = {
     OPEN: 'border-primary/40 text-primary',
     CLOSED_WIN: 'border-emerald-500/40 text-emerald-500',
     CLOSED_LOSS: 'border-red-500/40 text-red-500',
-  } as const;
-  const labels = { OPEN: 'Open', CLOSED_WIN: 'Win', CLOSED_LOSS: 'Loss' } as const;
+    CLOSED_EXPIRED: 'border-muted-foreground/40 text-muted-foreground',
+  };
+  const labels: Record<MockTrade['status'], string> = {
+    OPEN: 'Open',
+    CLOSED_WIN: 'Win',
+    CLOSED_LOSS: 'Loss',
+    CLOSED_EXPIRED: 'Expired',
+  };
   return (
     <Badge variant="outline" className={cn('text-xs', map[status])}>
       {labels[status]}
