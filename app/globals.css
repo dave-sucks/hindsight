@@ -79,37 +79,53 @@
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  /* === HINDSIGHT DARK THEME — zinc-based palette === */
+  /* Background: zinc-950 (#09090B) */
+  --background: oklch(0.145 0.004 285.750);
+  /* Text: zinc-50 (#FAFAFA) */
+  --foreground: oklch(0.985 0.002 247.839);
+  /* Surface/Card: zinc-900 (#18181B) */
+  --card: oklch(0.210 0.006 285.885);
+  --card-foreground: oklch(0.985 0.002 247.839);
+  /* Popover: zinc-900 */
+  --popover: oklch(0.210 0.006 285.885);
+  --popover-foreground: oklch(0.985 0.002 247.839);
+  /* Primary/AI Accent: blue-500 (#3B82F6) */
+  --primary: oklch(0.607 0.188 257.604);
+  --primary-foreground: oklch(0.985 0.002 247.839);
+  /* Secondary: zinc-800 (#27272A) */
+  --secondary: oklch(0.274 0.006 286.618);
+  --secondary-foreground: oklch(0.985 0.002 247.839);
+  /* Muted: zinc-800 */
+  --muted: oklch(0.274 0.006 286.618);
+  /* Muted text: zinc-500 (#71717A) */
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  /* Accent: zinc-800 */
+  --accent: oklch(0.274 0.006 286.618);
+  --accent-foreground: oklch(0.985 0.002 247.839);
+  /* Destructive: red-500 */
+  --destructive: oklch(0.637 0.237 25.331);
+  /* Border: zinc-800 (#27272A) */
+  --border: oklch(0.274 0.006 286.618);
+  /* Input: zinc-800 */
+  --input: oklch(0.274 0.006 286.618);
+  /* Ring: blue-500 */
+  --ring: oklch(0.607 0.188 257.604);
+  /* Charts */
+  --chart-1: oklch(0.607 0.188 257.604); /* blue-500 */
+  --chart-2: oklch(0.696 0.17 162.48);   /* emerald */
+  --chart-3: oklch(0.769 0.188 70.08);   /* amber */
+  --chart-4: oklch(0.627 0.265 303.9);   /* purple */
+  --chart-5: oklch(0.645 0.246 16.439);  /* red */
+  /* Sidebar: zinc-900 surface */
+  --sidebar: oklch(0.210 0.006 285.885);
+  --sidebar-foreground: oklch(0.985 0.002 247.839);
+  --sidebar-primary: oklch(0.607 0.188 257.604);
+  --sidebar-primary-foreground: oklch(0.985 0.002 247.839);
+  --sidebar-accent: oklch(0.274 0.006 286.618);
+  --sidebar-accent-foreground: oklch(0.985 0.002 247.839);
+  --sidebar-border: oklch(0.274 0.006 286.618);
+  --sidebar-ring: oklch(0.607 0.188 257.604);
 }
 
 /* === CUSTOM COLOR THEME === */
@@ -137,11 +153,30 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-gray-900 text-foreground;
+    @apply bg-background text-foreground;
   }
 }
 
 @layer utilities {
+  /* === HINDSIGHT TYPOGRAPHY SCALE ===
+   * Page titles:    text-2xl font-semibold
+   * Section headers: text-lg font-medium
+   * Body text:      text-sm text-muted-foreground
+   * Labels:         text-xs font-medium uppercase tracking-wide
+   * Numbers:        always add tabular-nums
+   *
+   * P&L colors:
+   *   Positive: text-emerald-500
+   *   Negative: text-red-500
+   *   Warning:  text-amber-500
+   *   AI/Accent: text-primary (blue-500)
+   */
+
+  /* Always use on numeric values for alignment */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
   .container {
     @apply mx-auto max-w-screen-2xl px-4 md:px-6 lg:px-8;
   }
@@ -389,32 +424,34 @@
 }
 
 /* TradingView Advanced Chart Widget Styles */
+/* Note: hex values required here — CSS vars don't work inside third-party iframes */
+/* zinc-900 = #18181B, zinc-800 = #27272A */
 .tradingview-widget-container {
   position: relative;
-  background-color: #141414 !important;
+  background-color: #18181b !important;
   border-radius: 8px !important;
   overflow: hidden !important;
 }
 
 .tv-embed-widget-wrapper__body {
-  background-color: #141414 !important;
+  background-color: #18181b !important;
 }
 
 .tradingview-widget-container__widget {
-  background-color: #141414 !important;
+  background-color: #18181b !important;
   height: 100% !important;
 
 }
 
 .widget-stock-heatmap-container .screenerMapWrapper-BBVfGP0b {
   overflow: hidden !important;
-  background: #141414 !important;
-  background-color: #141414 !important;
+  background: #18181b !important;
+  background-color: #18181b !important;
 }
 
 .canvasContainer-tyaAU8aH {
-  background: #141414 !important;
-  background-color: #141414 !important;
+  background: #18181b !important;
+  background-color: #18181b !important;
 }
 
 .tv-site-widget--bg_none {
@@ -441,17 +478,17 @@
 }
 
 .tv-embed-widget-wrapper .tv-embed-widget-wrapper__body {
-  background: #141414 !important;
-  background-color: #141414 !important;
+  background: #18181b !important; /* zinc-900 */
+  background-color: #18181b !important;
 }
 
 .tradingview-widget-container iframe {
-  background-color: #141414 !important;
+  background-color: #18181b !important; /* zinc-900 */
   width: 100% !important;
 }
 
 .custom-chart.tradingview-widget-container iframe {
-  border: 1px solid #30333A;
+  border: 1px solid #27272a; /* zinc-800 */
   border-radius: 8px !important;
   overflow: hidden !important;
 }
@@ -477,13 +514,13 @@
 }
 
 .scrollbar-hide-default:hover {
-  scrollbar-color: #30333A transparent;
+  scrollbar-color: #27272a transparent; /* zinc-800 */
 }
 
 .scrollbar-hide-default:hover::-webkit-scrollbar-thumb {
-  background-color: #30333A;
+  background-color: #27272a; /* zinc-800 */
 }
 
 .scrollbar-hide-default::-webkit-scrollbar-thumb:hover {
-  background-color: #9095A1;
+  background-color: #52525b; /* zinc-600 */
 }
