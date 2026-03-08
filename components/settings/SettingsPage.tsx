@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -22,6 +22,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  saveAgentConfig,
+  toggleAutoRun,
+  type AgentConfigInput,
+} from '@/lib/actions/settings.actions';
+import type { AgentConfig } from '@/lib/generated/prisma';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,10 +55,12 @@ function SectionCard({
   title,
   children,
   onSave,
+  saving,
 }: {
   title: string;
   children: React.ReactNode;
   onSave: () => void;
+  saving?: boolean;
 }) {
   return (
     <Card className="border-border">
@@ -61,62 +69,100 @@ function SectionCard({
       </CardHeader>
       <CardContent className="divide-y divide-border">{children}</CardContent>
       <CardFooter className="pt-4">
-        <Button size="sm" onClick={onSave} className="ml-auto">
-          Save Changes
+        <Button size="sm" onClick={onSave} disabled={saving} className="ml-auto">
+          {saving ? 'Saving…' : 'Save Changes'}
         </Button>
       </CardFooter>
     </Card>
   );
 }
 
-const saveToast = () =>
-  toast.info('Settings saved', {
-    description: 'Persistence coming in M5',
-  });
-
 // ─── Card 1: Research Schedule ────────────────────────────────────────────────
 
-function ResearchScheduleCard() {
-  const [autoRun, setAutoRun] = useState(true);
-  const [maxTrades, setMaxTrades] = useState('2');
-  const [minConfidence, setMinConfidence] = useState('70');
+function ResearchScheduleCard({
+  config,
+  onSaved,
+}: {
+  config: AgentConfig;
+  onSaved: (patch: Partial<AgentConfigInput>) => void;
+}) {
+  const [autoRun, setAutoRun] = useState(config.enabled);
+  const [maxTrades, setMaxTrades] = useState(String(config.maxOpenPositions));
+  const [minConfidence, setMinConfidence] = useState(String(config.minConfidence));
 
   const durations = [
-    { id: 'day', label: 'Day Trade' },
-    { id: 'swing', label: 'Swing' },
-    { id: 'long', label: 'Long-term' },
+    { id: 'DAY', label: 'Day Trade' },
+    { id: 'SWING', label: 'Swing' },
+    { id: 'LONG', label: 'Long-term' },
   ];
-  const [selectedDurations, setSelectedDurations] = useState<string[]>(['swing']);
+  const [selectedDurations, setSelectedDurations] = useState<string[]>(
+    config.holdDurations.length > 0 ? config.holdDurations : ['SWING']
+  );
 
   const sectors = [
-    { id: 'tech', label: 'Technology' },
-    { id: 'finance', label: 'Finance' },
-    { id: 'healthcare', label: 'Healthcare' },
-    { id: 'energy', label: 'Energy' },
-    { id: 'consumer', label: 'Consumer' },
+    { id: 'Technology', label: 'Technology' },
+    { id: 'Finance', label: 'Finance' },
+    { id: 'Healthcare', label: 'Healthcare' },
+    { id: 'Energy', label: 'Energy' },
+    { id: 'Consumer Discretionary', label: 'Consumer' },
   ];
-  const [selectedSectors, setSelectedSectors] = useState<string[]>(['tech', 'finance']);
+  const [selectedSectors, setSelectedSectors] = useState<string[]>(config.sectors);
+
+  const [isPending, startTransition] = useTransition();
 
   const toggleItem = (id: string, current: string[], setter: (v: string[]) => void) => {
     setter(current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
   };
 
+  const handleAutoRunToggle = (checked: boolean) => {
+    setAutoRun(checked);
+    startTransition(async () => {
+      const result = await toggleAutoRun(checked);
+      if (result.success) {
+        toast.success(checked ? 'Auto-run enabled' : 'Auto-run disabled');
+        onSaved({ enabled: checked });
+      } else {
+        toast.error('Failed to update auto-run');
+        setAutoRun(!checked);
+      }
+    });
+  };
+
+  const handleSave = () => {
+    startTransition(async () => {
+      const patch: Partial<AgentConfigInput> = {
+        enabled: autoRun,
+        maxOpenPositions: Number(maxTrades),
+        minConfidence: Number(minConfidence),
+        holdDurations: selectedDurations,
+        sectors: selectedSectors,
+      };
+      const result = await saveAgentConfig({ ...buildFullInput(config), ...patch });
+      if (result.success) {
+        toast.success('Settings saved');
+        onSaved(patch);
+      } else {
+        toast.error('Failed to save settings');
+      }
+    });
+  };
+
   return (
-    <SectionCard title="Research Schedule" onSave={saveToast}>
+    <SectionCard title="Research Schedule" onSave={handleSave} saving={isPending}>
       <SettingRow
         label="Auto-run Research"
         description="Run AI research at 8:00 AM ET on weekdays"
       >
-        <Switch checked={autoRun} onCheckedChange={setAutoRun} />
+        <Switch checked={autoRun} onCheckedChange={handleAutoRunToggle} disabled={isPending} />
       </SettingRow>
 
-      <SettingRow label="Max Trades per Day">
+      <SettingRow label="Max Open Positions">
         <Select value={maxTrades} onValueChange={setMaxTrades}>
           <SelectTrigger className="w-20 h-8 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {['1', '2', '3', '5'].map((v) => (
+            {['1', '2', '3', '5', '10'].map((v) => (
               <SelectItem key={v} value={v}>{v}</SelectItem>
             ))}
           </SelectContent>
@@ -177,70 +223,80 @@ function ResearchScheduleCard() {
 
 // ─── Card 2: Alert Configuration ─────────────────────────────────────────────
 
-function AlertConfigCard() {
-  const [alerts, setAlerts] = useState({
-    newTrade: true,
-    targetHit: true,
-    stopHit: true,
-    tradeClosed: true,
-    dailyDigest: false,
-    weeklyReport: true,
-    urgentSlack: false,
-  });
+function AlertConfigCard({
+  config,
+  onSaved,
+}: {
+  config: AgentConfig;
+  onSaved: (patch: Partial<AgentConfigInput>) => void;
+}) {
+  const [emailAlerts, setEmailAlerts] = useState(config.emailAlerts);
+  const [weeklyDigest, setWeeklyDigest] = useState(config.weeklyDigestEnabled);
+  const [digestEmail, setDigestEmail] = useState(config.digestEmail ?? '');
 
-  const toggle = (key: keyof typeof alerts) =>
-    setAlerts((prev) => ({ ...prev, [key]: !prev[key] }));
+  const [isPending, startTransition] = useTransition();
 
-  const alertRows: Array<{ key: keyof typeof alerts; label: string; description?: string; disabled?: boolean }> = [
-    { key: 'newTrade', label: 'New trade placed', description: 'When the agent opens a new paper trade' },
-    { key: 'targetHit', label: 'Target price hit' },
-    { key: 'stopHit', label: 'Stop loss hit' },
-    { key: 'tradeClosed', label: 'Trade closed / evaluated' },
-    { key: 'dailyDigest', label: 'Daily digest', description: '8 AM summary email' },
-    { key: 'weeklyReport', label: 'Weekly performance report', description: 'Sunday summary' },
-    { key: 'urgentSlack', label: 'Urgent alerts via Slack', description: 'Coming in M5', disabled: true },
-  ];
+  const handleSave = () => {
+    startTransition(async () => {
+      const patch: Partial<AgentConfigInput> = {
+        emailAlerts,
+        weeklyDigestEnabled: weeklyDigest,
+        digestEmail: digestEmail.trim() || null,
+      };
+      const result = await saveAgentConfig({ ...buildFullInput(config), ...patch });
+      if (result.success) {
+        toast.success('Alert settings saved');
+        onSaved(patch);
+      } else {
+        toast.error('Failed to save alert settings');
+      }
+    });
+  };
 
   return (
-    <SectionCard title="Alert Configuration" onSave={saveToast}>
-      {alertRows.map(({ key, label, description, disabled }) => (
-        <SettingRow key={key} label={label} description={description}>
-          {disabled ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0}>
-                  <Switch checked={false} disabled className="opacity-40 cursor-not-allowed" />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">Slack integration available in M5</p>
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <Switch checked={alerts[key]} onCheckedChange={() => toggle(key)} />
-          )}
-        </SettingRow>
-      ))}
+    <SectionCard title="Alert Configuration" onSave={handleSave} saving={isPending}>
+      <SettingRow
+        label="Email alerts"
+        description="Receive email when trades are placed or closed"
+      >
+        <Switch checked={emailAlerts} onCheckedChange={setEmailAlerts} />
+      </SettingRow>
+
+      <SettingRow
+        label="Weekly performance report"
+        description="Sunday summary of the past week's activity"
+      >
+        <Switch checked={weeklyDigest} onCheckedChange={setWeeklyDigest} />
+      </SettingRow>
+
+      <SettingRow
+        label="Digest email override"
+        description="Send digest to a different address (leave blank to use your account email)"
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0}>
+              <Switch checked={false} disabled className="opacity-40 cursor-not-allowed" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="text-xs">Slack integration coming in M6</p>
+          </TooltipContent>
+        </Tooltip>
+      </SettingRow>
 
       <div className="py-3">
-        <p className="text-sm font-medium text-foreground mb-3">Delivery Channel</p>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Checkbox id="delivery-email" checked />
-            <Label htmlFor="delivery-email" className="text-sm">Email</Label>
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center gap-2 opacity-40 cursor-not-allowed">
-                <Checkbox id="delivery-slack" disabled />
-                <Label htmlFor="delivery-slack" className="text-sm">Slack</Label>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="text-xs">Coming in M5</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        <p className="text-sm font-medium text-foreground mb-2">Digest email override</p>
+        <p className="text-xs text-muted-foreground mb-3">
+          Optional — leave blank to use your account email
+        </p>
+        <Input
+          type="email"
+          placeholder="you@example.com"
+          value={digestEmail}
+          onChange={(e) => setDigestEmail(e.target.value)}
+          className="max-w-sm h-8 text-sm"
+        />
       </div>
     </SectionCard>
   );
@@ -248,18 +304,45 @@ function AlertConfigCard() {
 
 // ─── Card 3: Graduation Settings ─────────────────────────────────────────────
 
-function GraduationSettingsCard() {
-  const [winRateTarget, setWinRateTarget] = useState('65');
-  const [minTrades, setMinTrades] = useState('20');
-  const [maxPositionSize, setMaxPositionSize] = useState('500');
+function GraduationSettingsCard({
+  config,
+  onSaved,
+}: {
+  config: AgentConfig;
+  onSaved: (patch: Partial<AgentConfigInput>) => void;
+}) {
+  const [winRateTarget, setWinRateTarget] = useState(
+    String(Math.round(config.graduationWinRate * 100))
+  );
+  const [minTrades, setMinTrades] = useState(String(config.graduationMinTrades));
+  const [maxPositionSize, setMaxPositionSize] = useState(String(config.realMaxPosition));
   const [graduationMode, setGraduationMode] = useState('manual');
+
+  const [isPending, startTransition] = useTransition();
 
   const handleReset = () => {
     setWinRateTarget('65');
-    setMinTrades('20');
+    setMinTrades('50');
     setMaxPositionSize('500');
     setGraduationMode('manual');
     toast.info('Reset to defaults');
+  };
+
+  const handleSave = () => {
+    startTransition(async () => {
+      const patch: Partial<AgentConfigInput> = {
+        graduationWinRate: Number(winRateTarget) / 100,
+        graduationMinTrades: Number(minTrades),
+        realMaxPosition: Number(maxPositionSize),
+      };
+      const result = await saveAgentConfig({ ...buildFullInput(config), ...patch });
+      if (result.success) {
+        toast.success('Graduation settings saved');
+        onSaved(patch);
+      } else {
+        toast.error('Failed to save graduation settings');
+      }
+    });
   };
 
   return (
@@ -270,7 +353,7 @@ function GraduationSettingsCard() {
       <CardContent className="divide-y divide-border">
         <SettingRow
           label="Win Rate Threshold"
-          description="Minimum win rate required for graduation"
+          description="Minimum win rate required to graduate to real trading"
         >
           <div className="flex items-center gap-1.5">
             <Input
@@ -287,7 +370,7 @@ function GraduationSettingsCard() {
 
         <SettingRow
           label="Min Closed Trades"
-          description="Minimum number of completed trades"
+          description="Minimum number of completed trades before graduation is possible"
         >
           <Input
             type="number"
@@ -337,27 +420,61 @@ function GraduationSettingsCard() {
           variant="destructive"
           size="sm"
           onClick={handleReset}
+          disabled={isPending}
         >
           Reset to Defaults
         </Button>
-        <Button size="sm" onClick={saveToast} className="ml-auto">
-          Save Changes
+        <Button size="sm" onClick={handleSave} disabled={isPending} className="ml-auto">
+          {isPending ? 'Saving…' : 'Save Changes'}
         </Button>
       </CardFooter>
     </Card>
   );
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Build a full AgentConfigInput from the current DB config so each card only
+ *  needs to override its own fields (avoids wiping unrelated fields on save). */
+function buildFullInput(config: AgentConfig): AgentConfigInput {
+  return {
+    enabled: config.enabled,
+    maxOpenPositions: config.maxOpenPositions,
+    minConfidence: config.minConfidence,
+    holdDurations: config.holdDurations,
+    sectors: config.sectors,
+    signalTypes: config.signalTypes,
+    weeklyDigestEnabled: config.weeklyDigestEnabled,
+    digestEmail: config.digestEmail ?? null,
+    graduationWinRate: config.graduationWinRate,
+    graduationMinTrades: config.graduationMinTrades,
+    realMaxPosition: config.realMaxPosition,
+    emailAlerts: config.emailAlerts,
+  };
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function SettingsPage() {
+export default function SettingsPage({ config: initialConfig }: { config: AgentConfig }) {
+  // Keep a client-side mirror of config so each card can pass the latest
+  // values to buildFullInput (prevents one card from clobbering another).
+  const [config, setConfig] = useState<AgentConfig>(initialConfig);
+
+  const handleSaved = (patch: Partial<AgentConfigInput>) => {
+    setConfig((prev) => ({
+      ...prev,
+      ...patch,
+      // map AgentConfigInput keys back to AgentConfig model keys
+    } as AgentConfig));
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
       <Separator />
-      <ResearchScheduleCard />
-      <AlertConfigCard />
-      <GraduationSettingsCard />
+      <ResearchScheduleCard config={config} onSaved={handleSaved} />
+      <AlertConfigCard config={config} onSaved={handleSaved} />
+      <GraduationSettingsCard config={config} onSaved={handleSaved} />
     </div>
   );
 }
