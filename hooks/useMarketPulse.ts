@@ -14,7 +14,9 @@ const BASE_TICKERS = ["SPY", "QQQ", "IWM", "BTC-USD"];
 const POLL_INTERVAL_MS = 30_000;
 const FLASH_DURATION_MS = 400;
 
-// Finnhub uses different symbol format for crypto
+// Crypto tickers delivered by Finnhub free-plan WebSocket
+const CRYPTO_TICKERS = new Set(["BTC-USD", "ETH-USD"]);
+
 function toFinnhubSymbol(symbol: string): string {
   if (symbol === "BTC-USD") return "BINANCE:BTCUSDT";
   if (symbol === "ETH-USD") return "BINANCE:ETHUSDT";
@@ -22,75 +24,76 @@ function toFinnhubSymbol(symbol: string): string {
 }
 
 /**
- * DAV-44: Live market quotes via Finnhub WebSocket.
- * Falls back to polling /api/quotes every 30s when WS unavailable.
+ * Live market quotes.
  *
- * ⚠️ Requires NEXT_PUBLIC_FINNHUB_API_KEY in .env.local
- *   (same value as your existing FINNHUB_API_KEY)
+ * Strategy:
+ * - REST polling via /api/quotes always runs on mount for ALL tickers
+ *   (SPY/QQQ/IWM data only comes from REST — Finnhub free WS doesn't stream them)
+ * - WebSocket is opened (if NEXT_PUBLIC_FINNHUB_API_KEY is set) but only
+ *   supplementsquotes for crypto symbols (BINANCE:BTCUSDT, BINANCE:ETHUSDT)
+ *   and any open-trade tickers that happen to stream on the free tier
+ * - WS updates flash the price cell; REST polling keeps equity tickers fresh
  */
 export function useMarketPulse(openTradeTickers: string[] = []) {
   const [quotes, setQuotes] = useState<Record<string, TickerQuote>>({});
   const wsRef = useRef<WebSocket | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isWsAlive = useRef(false);
 
   const allTickers = [...new Set([...BASE_TICKERS, ...openTradeTickers])];
-  const finnhubSymbols = allTickers.map(toFinnhubSymbol);
   const tickersKey = allTickers.join(",");
 
-  // Update a quote with flash animation
-  const updateQuote = useCallback(
-    (symbol: string, price: number, changePct: number, change: number) => {
-      setQuotes((prev) => {
-        const existing = prev[symbol];
-        const flash: "up" | "down" | null =
-          existing?.price != null
-            ? price > existing.price
-              ? "up"
-              : price < existing.price
-                ? "down"
-                : null
-            : null;
+  // ── Flash helper ──────────────────────────────────────────────────────────
 
-        return {
-          ...prev,
-          [symbol]: { symbol, price, changePct, change, flash },
-        };
-      });
+  const applyFlash = useCallback((symbol: string) => {
+    setTimeout(() => {
+      setQuotes((prev) =>
+        prev[symbol] ? { ...prev, [symbol]: { ...prev[symbol], flash: null } } : prev
+      );
+    }, FLASH_DURATION_MS);
+  }, []);
 
-      if (flash !== null) {
-        setTimeout(() => {
-          setQuotes((prev) =>
-            prev[symbol] ? { ...prev, [symbol]: { ...prev[symbol], flash: null } } : prev
-          );
-        }, FLASH_DURATION_MS);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
+  // ── REST polling (always on, for all tickers) ──────────────────────────────
 
-  // REST polling fallback
-  const startPolling = useCallback(() => {
-    if (pollTimerRef.current) return; // already polling
+  const startPolling = useCallback(
+    (tickers: string[]) => {
+      if (pollTimerRef.current) return;
 
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/quotes?symbols=${allTickers.join(",")}`);
-        const data = await res.json();
-        if (data.quotes) {
-          data.quotes.forEach((q: { symbol: string; price: number; changePct: number; change: number }) => {
-            updateQuote(q.symbol, q.price, q.changePct, q.change);
-          });
+      const poll = async () => {
+        try {
+          const res = await fetch(`/api/quotes?symbols=${tickers.join(",")}`);
+          const data = await res.json();
+          if (data.quotes) {
+            data.quotes.forEach(
+              (q: { symbol: string; price: number; changePct: number; change: number }) => {
+                setQuotes((prev) => {
+                  const existing = prev[q.symbol];
+                  const flash: "up" | "down" | null =
+                    existing?.price != null
+                      ? q.price > existing.price
+                        ? "up"
+                        : q.price < existing.price
+                          ? "down"
+                          : null
+                      : null;
+                  if (flash) applyFlash(q.symbol);
+                  return {
+                    ...prev,
+                    [q.symbol]: { symbol: q.symbol, price: q.price, changePct: q.changePct, change: q.change, flash },
+                  };
+                });
+              }
+            );
+          }
+        } catch {
+          // silently fail — show stale data
         }
-      } catch {
-        // silently fail — show stale data
-      }
-    };
+      };
 
-    poll(); // immediate first fetch
-    pollTimerRef.current = setInterval(poll, POLL_INTERVAL_MS);
-  }, [allTickers, updateQuote]);
+      poll(); // immediate first fetch
+      pollTimerRef.current = setInterval(poll, POLL_INTERVAL_MS);
+    },
+    [applyFlash]
+  );
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -99,22 +102,29 @@ export function useMarketPulse(openTradeTickers: string[] = []) {
     }
   }, []);
 
-  useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
+  // ── Main effect ────────────────────────────────────────────────────────────
 
+  useEffect(() => {
+    // Always start REST polling immediately — this is the primary data source
+    // for equity tickers (SPY/QQQ/IWM) which don't stream via Finnhub free WS.
+    startPolling(allTickers);
+
+    const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
     if (!apiKey) {
-      // No WS key available — fall back to polling
-      startPolling();
       return () => stopPolling();
     }
+
+    // Open WebSocket only for symbols that actually stream on the free plan
+    // (crypto). Equity subscriptions are sent but Finnhub ignores them on free.
+    const cryptoTickers = allTickers.filter((t) => CRYPTO_TICKERS.has(t));
+    const cryptoFinnhubSymbols = cryptoTickers.map(toFinnhubSymbol);
 
     const ws = new WebSocket(`wss://ws.finnhub.io?token=${apiKey}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      isWsAlive.current = true;
-      stopPolling(); // stop polling once WS is up
-      finnhubSymbols.forEach((symbol) => {
+      // Subscribe to crypto symbols only
+      cryptoFinnhubSymbols.forEach((symbol) => {
         ws.send(JSON.stringify({ type: "subscribe", symbol }));
       });
     };
@@ -130,7 +140,6 @@ export function useMarketPulse(openTradeTickers: string[] = []) {
           });
 
           Object.entries(bySymbol).forEach(([finnhubSym, price]) => {
-            // Map back to our symbol (e.g. BINANCE:BTCUSDT → BTC-USD)
             const ourSymbol =
               allTickers.find((t) => toFinnhubSymbol(t) === finnhubSym) ?? finnhubSym;
 
@@ -139,54 +148,33 @@ export function useMarketPulse(openTradeTickers: string[] = []) {
               const prevPrice = existing?.price ?? price;
               const flash: "up" | "down" | null =
                 price > prevPrice ? "up" : price < prevPrice ? "down" : null;
-              const changePct = existing
-                ? ((price - (existing.price ?? price)) / (existing.price ?? price)) * 100
-                : 0;
+              const change = price - prevPrice;
+              const changePct = prevPrice !== 0 ? (change / prevPrice) * 100 : 0;
+              if (flash) applyFlash(ourSymbol);
               return {
                 ...prev,
-                [ourSymbol]: {
-                  symbol: ourSymbol,
-                  price,
-                  change: price - prevPrice,
-                  changePct,
-                  flash,
-                },
+                [ourSymbol]: { symbol: ourSymbol, price, change, changePct, flash },
               };
             });
-
-            if (bySymbol[finnhubSym]) {
-              setTimeout(() => {
-                setQuotes((prev) =>
-                  prev[ourSymbol]
-                    ? { ...prev, [ourSymbol]: { ...prev[ourSymbol], flash: null } }
-                    : prev
-                );
-              }, FLASH_DURATION_MS);
-            }
           });
         }
       } catch {
-        // malformed message
+        // malformed message — ignore
       }
     };
 
+    // WS errors/closes don't stop REST polling; polling already running
     ws.onerror = () => {
-      isWsAlive.current = false;
-      startPolling(); // fall back to polling
+      // no-op — REST polling covers us
     };
 
     ws.onclose = () => {
-      isWsAlive.current = false;
-      // If WS closes unexpectedly, fall back to polling
-      if (wsRef.current === ws) {
-        startPolling();
-      }
+      wsRef.current = null;
     };
 
     return () => {
-      // Unsubscribe then close
       if (ws.readyState === WebSocket.OPEN) {
-        finnhubSymbols.forEach((symbol) => {
+        cryptoFinnhubSymbols.forEach((symbol) => {
           ws.send(JSON.stringify({ type: "unsubscribe", symbol }));
         });
         ws.close();
