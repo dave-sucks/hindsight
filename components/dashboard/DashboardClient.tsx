@@ -153,7 +153,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
         <div className="flex h-[calc(100vh-3rem)] md:h-screen overflow-hidden">
             {/* ── Main content ────────────────────────────────────── */}
             <div className="flex-1 overflow-y-auto">
-                <div className="px-6 pt-8 pb-6 max-w-3xl space-y-6">
+                <div className="px-4 pt-4 pb-4 max-w-3xl space-y-4">
 
                     {/* Portfolio header — Robinhood style */}
                     <div className="space-y-0.5">

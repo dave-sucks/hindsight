@@ -11,6 +11,8 @@ import {
   Settings,
   LogOut,
   BrainCircuit,
+  ChevronsUpDown,
+  Wallet,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -25,9 +27,15 @@ import {
   SidebarRail,
 } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import SearchCommand from '@/components/SearchCommand';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { signOut } from '@/lib/actions/auth.actions';
-import { Button } from '@/components/ui/button';
 
 const NAV_LINKS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -41,9 +49,11 @@ const NAV_LINKS = [
 export default function AppSidebar({
   user,
   initialStocks,
+  portfolioValue,
 }: {
   user: User;
   initialStocks: StockWithWatchlistStatus[];
+  portfolioValue: number;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -57,6 +67,12 @@ export default function AppSidebar({
     await signOut();
     router.push('/sign-in');
   };
+
+  const formattedPortfolio = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(portfolioValue);
 
   return (
     <Sidebar collapsible="icon">
@@ -73,15 +89,6 @@ export default function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Search */}
-        <div className="px-2 py-1">
-          <SearchCommand
-            renderAs="icon"
-            label="Search stocks"
-            initialStocks={initialStocks}
-          />
-        </div>
-
         {/* Nav */}
         <SidebarGroup>
           <SidebarGroupContent>
@@ -103,30 +110,55 @@ export default function AppSidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      {/* User footer */}
+      {/* User footer — clickable dropdown */}
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <div className="flex items-center gap-2 px-2 py-1.5">
-              <Avatar className="h-7 w-7 rounded-md shrink-0">
-                <AvatarFallback className="rounded-md text-xs bg-primary text-primary-foreground font-semibold">
-                  {user.name?.[0]?.toUpperCase() ?? '?'}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0 overflow-hidden">
-                <p className="text-xs font-medium truncate">{user.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSignOut}
-                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                title="Sign out"
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<SidebarMenuButton size="lg" />}
+                className="data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground"
               >
-                <LogOut className="h-3.5 w-3.5" />
-              </Button>
-            </div>
+                <Avatar className="h-7 w-7 rounded-md shrink-0">
+                  <AvatarFallback className="rounded-md text-xs bg-primary text-primary-foreground font-semibold">
+                    {user.name?.[0]?.toUpperCase() ?? '?'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0 text-left overflow-hidden">
+                  <p className="text-xs font-medium truncate">{user.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                </div>
+                <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="top"
+                align="start"
+                className="w-56"
+              >
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Wallet className="h-3.5 w-3.5" />
+                    <span>Portfolio</span>
+                    <span className="ml-auto font-semibold text-foreground tabular-nums">
+                      {formattedPortfolio}
+                    </span>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem render={<Link href="/settings" />}>
+                  <Settings className="h-3.5 w-3.5" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleSignOut}
+                  className="text-destructive focus:text-destructive cursor-pointer"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
