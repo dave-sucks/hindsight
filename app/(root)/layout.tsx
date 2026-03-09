@@ -6,6 +6,8 @@ import MarketPulseStrip from "@/components/MarketPulseStrip";
 import { createClient } from "@/lib/supabase/server";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { redirect } from "next/navigation";
+import { isMarketOpen } from "@/lib/market-hours";
+import { prisma } from "@/lib/prisma";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const supabase = await createClient();
@@ -19,7 +21,21 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
         email: user.email ?? '',
     };
 
-    const initialStocks = await searchStocks();
+    // Load open trade tickers and market status at request time (server-side)
+    const [initialStocks, openTrades] = await Promise.all([
+        searchStocks(),
+        prisma.trade.findMany({
+            where: { userId: user.id, status: "OPEN" },
+            select: { thesis: { select: { ticker: true } } },
+            take: 10,
+        }),
+    ]);
+
+    const openTradeTickers = openTrades
+        .map((t) => t.thesis?.ticker)
+        .filter((t): t is string => Boolean(t));
+
+    const marketOpen = isMarketOpen();
 
     return (
         <SidebarProvider>
@@ -33,7 +49,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                         <ThemeToggle />
                     </div>
                 </header>
-                <MarketPulseStrip />
+                <MarketPulseStrip openTradeTickers={openTradeTickers} marketOpen={marketOpen} />
                 <main className="flex-1">
                     {children}
                 </main>
