@@ -256,64 +256,70 @@ function RunCard({
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
-      {/* Run header — clickable to collapse */}
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-muted/30 transition-colors text-left"
-      >
-        {/* Analyst avatar */}
-        <div className="h-7 w-7 rounded-full bg-violet-500/10 flex items-center justify-center shrink-0">
-          <Bot className="h-3.5 w-3.5 text-violet-500" />
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium">{run.analystName}</span>
-            {isRunning && (
-              <span className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-amber-500/10 text-amber-500 uppercase tracking-wide leading-none">
-                <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                Running
-              </span>
-            )}
-            {isFailed && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-red-500/10 text-red-500 uppercase tracking-wide leading-none">
-                Failed
-              </span>
-            )}
+      {/* Run header — link area navigates to detail, chevron collapses */}
+      <div className="px-4 py-3 flex items-center gap-3 hover:bg-muted/30 transition-colors">
+        <Link
+          href={`/research/runs/${run.id}`}
+          className="flex items-center gap-3 flex-1 min-w-0"
+        >
+          {/* Analyst avatar */}
+          <div className="h-7 w-7 rounded-full bg-violet-500/10 flex items-center justify-center shrink-0">
+            <Bot className="h-3.5 w-3.5 text-violet-500" />
           </div>
-          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Clock className="h-2.5 w-2.5" />
-              {timeAgo(run.startedAt)}
-            </span>
-            {run.theses.length > 0 && (
-              <span className="text-[11px] text-muted-foreground">
-                {run.theses.length} thesis{run.theses.length !== 1 ? "es" : ""}
-              </span>
-            )}
-            {actionable > 0 && (
-              <span className="text-[11px] text-muted-foreground">
-                {actionable} actionable
-              </span>
-            )}
-            {tradesPlaced > 0 && (
-              <span className="text-[11px] font-medium text-emerald-500">
-                {tradesPlaced} trade{tradesPlaced !== 1 ? "s" : ""} placed
-              </span>
-            )}
-          </div>
-        </div>
 
-        {/* Collapse chevron */}
-        <span className="text-muted-foreground shrink-0">
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">{run.analystName}</span>
+              {isRunning && (
+                <span className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-amber-500/10 text-amber-500 uppercase tracking-wide leading-none">
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  Running
+                </span>
+              )}
+              {isFailed && (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-red-500/10 text-red-500 uppercase tracking-wide leading-none">
+                  Failed
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Clock className="h-2.5 w-2.5" />
+                {timeAgo(run.startedAt)}
+              </span>
+              {run.theses.length > 0 && (
+                <span className="text-[11px] text-muted-foreground">
+                  {run.theses.length} thesis{run.theses.length !== 1 ? "es" : ""}
+                </span>
+              )}
+              {actionable > 0 && (
+                <span className="text-[11px] text-muted-foreground">
+                  {actionable} actionable
+                </span>
+              )}
+              {tradesPlaced > 0 && (
+                <span className="text-[11px] font-medium text-emerald-500">
+                  {tradesPlaced} trade{tradesPlaced !== 1 ? "s" : ""} placed
+                </span>
+              )}
+            </div>
+          </div>
+        </Link>
+
+        {/* Collapse chevron — separate button */}
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="text-muted-foreground shrink-0 p-1 rounded hover:text-foreground transition-colors"
+          aria-label={expanded ? "Collapse" : "Expand"}
+        >
           {expanded ? (
             <ChevronUp className="h-3.5 w-3.5" />
           ) : (
             <ChevronDown className="h-3.5 w-3.5" />
           )}
-        </span>
-      </button>
+        </button>
+      </div>
 
       {/* Thesis grid */}
       {expanded && !isRunning && run.theses.length > 0 && (
