@@ -48,8 +48,10 @@ import { RunResearchButton } from "@/components/RunResearchButton";
 type StreamEvent =
   | { type: "thinking"; text: string }
   | { type: "token"; text: string }
-  | { type: "complete"; thesis: ThesisOutput }
+  | { type: "complete"; thesis: ThesisOutput | null }
   | { type: "error"; text: string };
+
+type ChatHistoryItem = { role: "user" | "assistant"; content: string };
 
 type ThesisOutput = {
   ticker: string;
@@ -65,6 +67,8 @@ type ThesisOutput = {
   signal_types: string[];
   sector: string | null;
   model_used: string;
+  recommendation_label: string;
+  risk_reward_ratio: number | null;
 };
 
 type Message =
@@ -107,6 +111,7 @@ export default function ResearchChatFull({
   hasRunning: boolean;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -231,7 +236,7 @@ export default function ResearchChatFull({
       const res = await fetch("/api/research/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: fullMessage }),
+        body: JSON.stringify({ message: fullMessage, history: chatHistory }),
       });
 
       if (!res.body) throw new Error("No response stream");
@@ -240,6 +245,7 @@ export default function ResearchChatFull({
       const decoder = new TextDecoder();
       let buf = "";
       let finalThesis: ThesisOutput | null = null;
+      let streamedTextRef = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -263,6 +269,7 @@ export default function ResearchChatFull({
                 )
               );
             } else if (event.type === "token") {
+              streamedTextRef += event.text;
               setMessages((prev) =>
                 prev.map((m, i) =>
                   i === assistantIdx
@@ -277,14 +284,34 @@ export default function ResearchChatFull({
                 )
               );
             } else if (event.type === "complete") {
-              finalThesis = event.thesis;
+              finalThesis = event.thesis ?? null;
               setMessages((prev) =>
                 prev.map((m, i) =>
                   i === assistantIdx
-                    ? ({ ...m, status: "done", thesis: event.thesis } as Message)
+                    ? ({
+                        ...m,
+                        status: "done",
+                        thesis: event.thesis ?? undefined,
+                      } as Message)
                     : m
                 )
               );
+              // Update conversation history for follow-up context
+              const assistantContent = event.thesis
+                ? `${event.thesis.ticker} — ${event.thesis.recommendation_label} (${event.thesis.direction}). ` +
+                  `Confidence: ${event.thesis.confidence_score}%. ` +
+                  (event.thesis.entry_price
+                    ? `Entry $${event.thesis.entry_price.toFixed(2)}, ` +
+                      `Target $${event.thesis.target_price?.toFixed(2) ?? "—"}, ` +
+                      `Stop $${event.thesis.stop_loss?.toFixed(2) ?? "—"}. `
+                    : "") +
+                  event.thesis.reasoning_summary
+                : streamedTextRef;
+              setChatHistory((prev) => [
+                ...prev,
+                { role: "user", content: fullMessage },
+                { role: "assistant", content: assistantContent },
+              ]);
             } else if (event.type === "error") {
               setMessages((prev) =>
                 prev.map((m, i) =>
@@ -671,6 +698,13 @@ function ThesisCard({ thesis }: { thesis: ThesisOutput }) {
       ? "text-red-500"
       : "text-muted-foreground";
 
+  const recLabelColor =
+    thesis.recommendation_label === "STRONG BUY" || thesis.recommendation_label === "BUY"
+      ? "text-emerald-500"
+      : thesis.recommendation_label === "STRONG SELL" || thesis.recommendation_label === "SELL"
+      ? "text-red-500"
+      : "text-muted-foreground";
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -681,7 +715,10 @@ function ThesisCard({ thesis }: { thesis: ThesisOutput }) {
               {thesis.direction}
             </span>
           </CardTitle>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-3 items-center">
+            <span className={`text-xs font-semibold uppercase tracking-wide ${recLabelColor}`}>
+              {thesis.recommendation_label}
+            </span>
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Confidence
             </span>
@@ -714,7 +751,7 @@ function ThesisCard({ thesis }: { thesis: ThesisOutput }) {
 
       <CardContent className="space-y-4 text-sm">
         {thesis.entry_price && (
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="grid grid-cols-4 gap-2 text-center">
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Entry
@@ -735,6 +772,22 @@ function ThesisCard({ thesis }: { thesis: ThesisOutput }) {
               </p>
               <p className="tabular-nums font-semibold text-red-500">
                 {thesis.stop_loss ? `$${thesis.stop_loss.toFixed(2)}` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                R:R
+              </p>
+              <p
+                className={`tabular-nums font-semibold ${
+                  thesis.risk_reward_ratio && thesis.risk_reward_ratio >= 2
+                    ? "text-emerald-500"
+                    : thesis.risk_reward_ratio && thesis.risk_reward_ratio >= 1
+                    ? "text-muted-foreground"
+                    : "text-red-500"
+                }`}
+              >
+                {thesis.risk_reward_ratio ? `${thesis.risk_reward_ratio.toFixed(1)}x` : "—"}
               </p>
             </div>
           </div>

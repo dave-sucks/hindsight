@@ -1,6 +1,6 @@
 """Shared Pydantic models for the research pipeline."""
 from typing import Any, List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, computed_field, field_validator
 
 
 class SourceItem(BaseModel):
@@ -107,6 +107,43 @@ class ThesisOutput(BaseModel):
         if v is None or str(v).strip().upper() not in ("DAY", "SWING", "POSITION"):
             return "SWING"
         return str(v).strip().upper()
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def recommendation_label(self) -> str:
+        """Human-readable label derived from direction + confidence."""
+        if self.direction == "PASS":
+            return "PASS"
+        if self.direction == "LONG":
+            if self.confidence_score >= 70:
+                return "STRONG BUY"
+            elif self.confidence_score >= 50:
+                return "BUY"
+            else:
+                return "WEAK BUY"
+        else:  # SHORT
+            if self.confidence_score >= 70:
+                return "STRONG SELL"
+            elif self.confidence_score >= 50:
+                return "SELL"
+            else:
+                return "WEAK SELL"
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def risk_reward_ratio(self) -> Optional[float]:
+        """R:R = reward / risk.  None when price levels are unavailable."""
+        if not (self.entry_price and self.target_price and self.stop_loss):
+            return None
+        if self.direction == "LONG":
+            reward = self.target_price - self.entry_price
+            risk = self.entry_price - self.stop_loss
+        else:  # SHORT
+            reward = self.entry_price - self.target_price
+            risk = self.stop_loss - self.entry_price
+        if risk <= 0:
+            return None
+        return round(reward / risk, 2)
 
 
 class RunRequest(BaseModel):
