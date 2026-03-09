@@ -28,6 +28,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -503,7 +504,9 @@ export default function ResearchChatFull({
                     )}
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-40">
-                    <DropdownMenuLabel className="text-xs">Options</DropdownMenuLabel>
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel className="text-xs">Options</DropdownMenuLabel>
+                    </DropdownMenuGroup>
                     <DropdownMenuSeparator />
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger className="text-xs">

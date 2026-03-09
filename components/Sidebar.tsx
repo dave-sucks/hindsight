@@ -33,6 +33,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -136,16 +137,18 @@ export default function AppSidebar({
                 <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-56">
-                {/* Portfolio value */}
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Wallet className="h-3.5 w-3.5" />
-                    <span>Portfolio</span>
-                    <span className="ml-auto font-semibold text-foreground tabular-nums">
-                      {formattedPortfolio}
-                    </span>
-                  </div>
-                </DropdownMenuLabel>
+                {/* Portfolio value — DropdownMenuLabel is Menu.GroupLabel which requires Menu.Group wrapper */}
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Wallet className="h-3.5 w-3.5" />
+                      <span>Portfolio</span>
+                      <span className="ml-auto font-semibold text-foreground tabular-nums">
+                        {formattedPortfolio}
+                      </span>
+                    </div>
+                  </DropdownMenuLabel>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
 
                 {/* Settings — onClick only, no render={<Link>} to avoid Base UI / Next router conflict */}
