@@ -1,5 +1,7 @@
 import PerformancePage from "@/components/performance/PerformancePage";
+import { getAnalyticsData } from "@/lib/actions/analytics.actions";
 
-export default function Performance() {
-  return <PerformancePage />;
+export default async function Performance() {
+  const data = await getAnalyticsData();
+  return <PerformancePage data={data} />;
 }

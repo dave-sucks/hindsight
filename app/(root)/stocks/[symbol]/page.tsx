@@ -8,8 +8,8 @@ import { Separator } from "@/components/ui/separator";
 import TradingViewWidget from "@/components/TradingViewWidget";
 import { CANDLE_CHART_WIDGET_CONFIG } from "@/lib/constants";
 import { getNews } from "@/lib/actions/finnhub.actions";
-import { mockOpenTrades, mockClosedTrades } from "@/lib/mock-data/trades";
-import { mockResearchRuns } from "@/lib/mock-data/research";
+import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -21,20 +21,12 @@ import {
   Clock,
 } from "lucide-react";
 
-// Mock key stats for M2
-const getMockStats = (symbol: string) => ({
-  price: 921.40,
-  change: +2.30,
-  changePct: +0.25,
-  marketCap: "2.27T",
-  peRatio: "54.8",
-  week52High: "974.00",
-  week52Low: "435.00",
-  volume: "45.2M",
-  avgVolume: "42.1M",
-  beta: "1.68",
-  dividendYield: "0.03%",
-});
+type MarketNewsArticle = {
+  headline: string;
+  source: string;
+  datetime: number;
+  url: string;
+};
 
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
@@ -107,18 +99,46 @@ export default async function StockDetailPage({ params }: Props) {
   const { symbol } = await params;
   const upperSymbol = symbol.toUpperCase();
 
-  const stats = getMockStats(upperSymbol);
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id ?? "";
 
-  // Hindsight history for this ticker
-  const allTrades = [...mockOpenTrades, ...mockClosedTrades];
-  const tickerTrades = allTrades.filter(
-    (t) => t.ticker.toUpperCase() === upperSymbol
-  );
-  const tickerResearch = mockResearchRuns.filter(
-    (r) => r.ticker.toUpperCase() === upperSymbol
-  );
-
-  const isPos = stats.change >= 0;
+  // Fetch real trade and thesis data for this ticker
+  const [tickerTrades, tickerTheses] = await Promise.all([
+    userId
+      ? prisma.trade.findMany({
+          where: { userId, ticker: upperSymbol },
+          orderBy: { openedAt: "desc" },
+          take: 20,
+          select: {
+            id: true,
+            direction: true,
+            status: true,
+            outcome: true,
+            entryPrice: true,
+            closePrice: true,
+            realizedPnl: true,
+            shares: true,
+            openedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+    userId
+      ? prisma.thesis.findMany({
+          where: { userId, ticker: upperSymbol },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            direction: true,
+            confidenceScore: true,
+            reasoningSummary: true,
+            createdAt: true,
+            researchRun: { select: { source: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -134,15 +154,8 @@ export default async function StockDetailPage({ params }: Props) {
       {/* Header */}
       <div className="flex flex-wrap items-start gap-4 justify-between">
         <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl font-bold font-mono text-foreground">{upperSymbol}</h1>
-            <span className={cn("text-2xl font-semibold tabular-nums", isPos ? "text-emerald-500" : "text-red-500")}>
-              {isPos ? "+" : ""}{stats.change.toFixed(2)} ({isPos ? "+" : ""}{stats.changePct.toFixed(2)}%)
-            </span>
-          </div>
-          <p className="text-sm text-muted-foreground mt-0.5">Mock Company Name</p>
+          <h1 className="text-3xl font-bold font-mono text-foreground">{upperSymbol}</h1>
         </div>
-        <p className="text-3xl font-bold tabular-nums text-foreground">${stats.price.toFixed(2)}</p>
       </div>
 
       {/* TradingView chart — full width */}
@@ -157,23 +170,6 @@ export default async function StockDetailPage({ params }: Props) {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Left (60%) */}
         <div className="lg:col-span-3 space-y-6">
-          {/* Key stats */}
-          <Card className="border-border">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-medium">Key Stats</CardTitle>
-            </CardHeader>
-            <CardContent className="divide-y divide-border">
-              <StatRow label="Market Cap" value={stats.marketCap} />
-              <StatRow label="P/E Ratio" value={stats.peRatio} />
-              <StatRow label="52W High" value={`$${stats.week52High}`} />
-              <StatRow label="52W Low" value={`$${stats.week52Low}`} />
-              <StatRow label="Volume" value={stats.volume} />
-              <StatRow label="Avg Volume" value={stats.avgVolume} />
-              <StatRow label="Beta" value={stats.beta} />
-              <StatRow label="Dividend Yield" value={stats.dividendYield} />
-            </CardContent>
-          </Card>
-
           {/* Recent news */}
           <Card className="border-border">
             <CardHeader className="pb-2">
@@ -211,11 +207,11 @@ export default async function StockDetailPage({ params }: Props) {
               <CardTitle className="text-lg font-medium">Hindsight History</CardTitle>
               <p className="text-xs text-muted-foreground">
                 {tickerTrades.length} trade{tickerTrades.length !== 1 ? "s" : ""} ·{" "}
-                {tickerResearch.length} research run{tickerResearch.length !== 1 ? "s" : ""}
+                {tickerTheses.length} research run{tickerTheses.length !== 1 ? "s" : ""}
               </p>
             </CardHeader>
             <CardContent>
-              {tickerTrades.length === 0 && tickerResearch.length === 0 ? (
+              {tickerTrades.length === 0 && tickerTheses.length === 0 ? (
                 <div className="py-8 text-center">
                   <p className="text-sm text-muted-foreground">
                     No previous research or trades for {upperSymbol}.
@@ -226,11 +222,11 @@ export default async function StockDetailPage({ params }: Props) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Research runs */}
-                  {tickerResearch.map((r) => (
+                  {/* Research theses */}
+                  {tickerTheses.map((thesis) => (
                     <Link
-                      key={r.id}
-                      href={`/trades/${r.id}/thesis`}
+                      key={thesis.id}
+                      href={`/research/${thesis.id}`}
                       className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors"
                     >
                       <FlaskConical className="h-4 w-4 text-primary mt-0.5 shrink-0" />
@@ -240,22 +236,25 @@ export default async function StockDetailPage({ params }: Props) {
                             variant="outline"
                             className={cn(
                               "text-xs",
-                              r.direction === "LONG"
+                              thesis.direction === "LONG"
                                 ? "border-primary/50 text-primary"
                                 : "border-amber-500/50 text-amber-500"
                             )}
                           >
-                            {r.direction}
+                            {thesis.direction}
                           </Badge>
                           <span className="text-xs text-muted-foreground tabular-nums">
-                            Conf: {r.confidenceScore}%
+                            Conf: {thesis.confidenceScore}%
                           </span>
+                          {thesis.researchRun?.source === "AGENT" && (
+                            <Badge variant="secondary" className="text-xs">AI</Badge>
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1 truncate">
-                          {r.summary.slice(0, 60)}...
+                          {thesis.reasoningSummary.slice(0, 80)}…
                         </p>
                         <p className="text-xs text-muted-foreground/60 mt-0.5">
-                          {new Date(r.researchedAt).toLocaleDateString("en-US", {
+                          {new Date(thesis.createdAt).toLocaleDateString("en-US", {
                             month: "short",
                             day: "numeric",
                             year: "numeric",
@@ -267,14 +266,17 @@ export default async function StockDetailPage({ params }: Props) {
 
                   {/* Past trades */}
                   {tickerTrades.map((trade) => {
-                    const isWin = trade.status === "CLOSED_WIN";
-                    const isLoss = trade.status === "CLOSED_LOSS";
                     const isOpen = trade.status === "OPEN";
-                    const pnlPos = trade.pnl >= 0;
+                    const isWin = trade.outcome === "WIN";
+                    const isLoss = trade.outcome === "LOSS";
+                    const pnl = trade.realizedPnl ?? 0;
+                    const positionCost = trade.entryPrice * trade.shares;
+                    const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
+                    const pnlPos = pnl >= 0;
                     return (
                       <Link
                         key={trade.id}
-                        href={`/trades/${trade.id}/thesis`}
+                        href={`/trades/${trade.id}`}
                         className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors"
                       >
                         {isWin ? (
@@ -297,18 +299,21 @@ export default async function StockDetailPage({ params }: Props) {
                             >
                               {trade.direction}
                             </Badge>
-                            <span className={cn("text-xs font-medium tabular-nums", pnlPos ? "text-emerald-500" : "text-red-500")}>
-                              {pnlPos ? "+" : ""}{trade.pnlPct.toFixed(2)}%
-                            </span>
+                            {!isOpen && (
+                              <span className={cn("text-xs font-medium tabular-nums", pnlPos ? "text-emerald-500" : "text-red-500")}>
+                                {pnlPos ? "+" : ""}{pnlPct.toFixed(2)}%
+                              </span>
+                            )}
                             <Badge
                               variant="outline"
                               className="text-xs text-muted-foreground border-muted-foreground/30"
                             >
-                              {isOpen ? "Open" : isWin ? "Win" : isLoss ? "Loss" : "Expired"}
+                              {isOpen ? "Open" : isWin ? "Win" : isLoss ? "Loss" : "Closed"}
                             </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                            Entry ${trade.entryPrice.toFixed(2)} → Current ${trade.currentPrice.toFixed(2)}
+                            Entry ${trade.entryPrice.toFixed(2)}
+                            {trade.closePrice && ` → Close $${trade.closePrice.toFixed(2)}`}
                           </p>
                         </div>
                       </Link>

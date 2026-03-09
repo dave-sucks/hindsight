@@ -74,7 +74,10 @@ export const morningResearch = inngest.createFunction(
     concurrency: { limit: 1 },
     retries: 1,
   },
-  { cron: "0 13 * * 1-5" }, // 8:00 AM ET = 13:00 UTC, Mon–Fri
+  [
+    { cron: "0 13 * * 1-5" }, // 8:00 AM ET = 13:00 UTC, Mon–Fri
+    { event: "app/research.run.manual" },
+  ],
   async ({ step }) => {
     const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "";
     const PYTHON_SERVICE_SECRET = process.env.PYTHON_SERVICE_SECRET ?? "";

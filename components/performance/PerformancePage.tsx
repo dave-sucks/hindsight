@@ -6,14 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import {
-  mockEquityCurve,
-  mockDirectionBreakdown,
-  mockDurationBreakdown,
-  mockSectorBreakdown,
-  mockConfidenceScatter,
-  mockStats,
-} from '@/lib/mock-data/analytics';
+import type { AnalyticsData } from '@/lib/actions/analytics.actions';
 import {
   ResponsiveContainer,
   LineChart,
@@ -98,17 +91,36 @@ function ChartSkeleton({ height = 200 }: { height?: number }) {
   return <Skeleton style={{ height }} className="w-full" />;
 }
 
+// ─── Empty chart placeholder ──────────────────────────────────────────────────
+
+function EmptyChart({ height = 220, message = 'No data yet' }: { height?: number; message?: string }) {
+  return (
+    <div
+      style={{ height }}
+      className="w-full flex items-center justify-center rounded-md bg-secondary/20 border border-dashed border-border"
+    >
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function PerformancePage() {
-  const [activeRange, setActiveRange] = useState<TimeRange>('1M');
-  const [isLoading] = useState(false);
+interface Props {
+  data: AnalyticsData;
+}
 
-  const { totalReturn, totalReturnPct, winRate, avgReturnPerTrade, openTrades, closedTrades, totalTrades, graduation } = mockStats;
+export default function PerformancePage({ data }: Props) {
+  const [activeRange, setActiveRange] = useState<TimeRange>('1M');
+
+  const { equityCurve, directionBreakdown, durationBreakdown, sectorBreakdown, confidenceScatter, stats } = data;
+  const { totalReturn, totalReturnPct, winRate, avgReturnPerTrade, openTrades, closedTrades, totalTrades, graduation } = stats;
 
   const winRatePct = Math.min((graduation.currentWinRate / graduation.winRateTarget) * 100, 100);
   const tradesPct = Math.min((graduation.currentClosedTrades / graduation.closedTradesRequired) * 100, 100);
   const graduationPct = Math.round((winRatePct + tradesPct) / 2);
+
+  const noTrades = closedTrades === 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -118,23 +130,23 @@ export default function PerformancePage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard
           label="Total Return"
-          value={`+$${totalReturn.toLocaleString()}`}
+          value={`${totalReturn >= 0 ? '+' : ''}$${Math.abs(totalReturn).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
           positive={totalReturn > 0}
         />
         <StatCard
           label="Total Return %"
-          value={`+${totalReturnPct.toFixed(2)}%`}
+          value={`${totalReturnPct >= 0 ? '+' : ''}${totalReturnPct.toFixed(2)}%`}
           positive={totalReturnPct > 0}
         />
         <StatCard
           label="Win Rate"
-          value={`${winRate}%`}
+          value={noTrades ? '—' : `${winRate.toFixed(1)}%`}
           positive={winRate >= 50}
-          sub="vs 65% target"
+          sub={`vs ${graduation.winRateTarget.toFixed(0)}% target`}
         />
         <StatCard
           label="Avg Return/Trade"
-          value={`${avgReturnPerTrade.toFixed(1)}%`}
+          value={noTrades ? '—' : `${avgReturnPerTrade.toFixed(1)}%`}
           positive={avgReturnPerTrade > 0}
         />
         <StatCard label="Open Trades" value={String(openTrades)} />
@@ -165,11 +177,11 @@ export default function PerformancePage() {
             </div>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <ChartSkeleton height={220} />
+            {equityCurve.length < 2 ? (
+              <EmptyChart height={220} message="Place trades to see your equity curve" />
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={mockEquityCurve} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <LineChart data={equityCurve} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="date"
@@ -206,11 +218,11 @@ export default function PerformancePage() {
             <CardTitle className="text-lg font-medium">Win/Loss by Direction</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <ChartSkeleton height={220} />
+            {directionBreakdown.every((d) => d.wins === 0 && d.losses === 0) ? (
+              <EmptyChart height={220} message="Close trades to see direction breakdown" />
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={mockDirectionBreakdown} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <BarChart data={directionBreakdown} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="direction"
@@ -242,11 +254,11 @@ export default function PerformancePage() {
             <CardTitle className="text-lg font-medium">Avg Return by Duration</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <ChartSkeleton height={220} />
+            {durationBreakdown.length === 0 ? (
+              <EmptyChart height={220} message="Close trades to see duration breakdown" />
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={mockDurationBreakdown} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <BarChart data={durationBreakdown} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="duration"
@@ -263,11 +275,8 @@ export default function PerformancePage() {
                   />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="avgReturn" name="Avg Return %" radius={[3, 3, 0, 0]}>
-                    {mockDurationBreakdown.map((entry, i) => (
-                      <Cell
-                        key={i}
-                        fill={entry.avgReturn >= 0 ? EMERALD : RED}
-                      />
+                    {durationBreakdown.map((entry, i) => (
+                      <Cell key={i} fill={entry.avgReturn >= 0 ? EMERALD : RED} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -282,8 +291,8 @@ export default function PerformancePage() {
             <CardTitle className="text-lg font-medium">Confidence vs Outcome</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <ChartSkeleton height={220} />
+            {confidenceScatter.length === 0 ? (
+              <EmptyChart height={220} message="Close trades to see confidence vs outcome" />
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <ScatterChart margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
@@ -331,13 +340,9 @@ export default function PerformancePage() {
                       );
                     }}
                   />
-                  <Scatter data={mockConfidenceScatter} name="Trades">
-                    {mockConfidenceScatter.map((entry, i) => (
-                      <Cell
-                        key={i}
-                        fill={entry.return >= 0 ? EMERALD : RED}
-                        fillOpacity={0.8}
-                      />
+                  <Scatter data={confidenceScatter} name="Trades">
+                    {confidenceScatter.map((entry, i) => (
+                      <Cell key={i} fill={entry.return >= 0 ? EMERALD : RED} fillOpacity={0.8} />
                     ))}
                   </Scatter>
                 </ScatterChart>
@@ -353,11 +358,11 @@ export default function PerformancePage() {
           <CardTitle className="text-lg font-medium">Return by Sector</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <ChartSkeleton height={180} />
+          {sectorBreakdown.length === 0 ? (
+            <EmptyChart height={180} message="No sector data yet" />
           ) : (
             <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={mockSectorBreakdown} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+              <BarChart data={sectorBreakdown} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="sector"
@@ -375,7 +380,7 @@ export default function PerformancePage() {
                 <ReferenceLine y={0} stroke={GRID_COLOR} strokeWidth={1.5} />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="return" name="Avg Return %" radius={[3, 3, 0, 0]}>
-                  {mockSectorBreakdown.map((entry, i) => (
+                  {sectorBreakdown.map((entry, i) => (
                     <Cell key={i} fill={entry.return >= 0 ? BLUE : RED} />
                   ))}
                 </Bar>
@@ -415,8 +420,8 @@ export default function PerformancePage() {
               {
                 icon: BarChart3,
                 label: 'Win Rate',
-                current: graduation.currentWinRate,
-                target: graduation.winRateTarget,
+                current: graduation.currentWinRate.toFixed(1),
+                target: graduation.winRateTarget.toFixed(0),
                 unit: '%',
                 pct: winRatePct,
                 positive: graduation.currentWinRate >= graduation.winRateTarget,
@@ -424,8 +429,8 @@ export default function PerformancePage() {
               {
                 icon: Target,
                 label: 'Closed Trades',
-                current: graduation.currentClosedTrades,
-                target: graduation.closedTradesRequired,
+                current: String(graduation.currentClosedTrades),
+                target: String(graduation.closedTradesRequired),
                 unit: '',
                 pct: tradesPct,
                 positive: graduation.currentClosedTrades >= graduation.closedTradesRequired,
@@ -433,11 +438,11 @@ export default function PerformancePage() {
               {
                 icon: TrendingUp,
                 label: 'Est. Remaining',
-                current: graduation.closedTradesRequired - graduation.currentClosedTrades,
+                current: String(Math.max(0, graduation.closedTradesRequired - graduation.currentClosedTrades)),
                 target: null,
                 unit: ' more trades',
                 pct: null,
-                positive: undefined,
+                positive: undefined as boolean | undefined,
               },
             ].map(({ icon: Icon, label, current, target, unit, pct, positive }) => (
               <div key={label} className="bg-secondary/30 rounded-lg p-4 space-y-2">
