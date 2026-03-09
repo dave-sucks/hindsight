@@ -30,7 +30,7 @@ class DataContext(BaseModel):
 
 class ConceptAnalysis(BaseModel):
     direction: Literal["LONG", "SHORT", "PASS"]
-    hold_duration: Literal["DAY", "SWING", "POSITION"]
+    hold_duration: Literal["DAY", "SWING", "POSITION"] = "SWING"
     signal_types: List[str]
     initial_confidence: int  # 0-100
     reasoning_notes: str
@@ -45,7 +45,7 @@ class ThesisOutput(BaseModel):
     entry_price: Optional[float] = None
     target_price: Optional[float] = None
     stop_loss: Optional[float] = None
-    hold_duration: Literal["DAY", "SWING", "POSITION"]
+    hold_duration: Literal["DAY", "SWING", "POSITION"] = "SWING"
     confidence_score: int  # 0-100
     reasoning_summary: str
     thesis_bullets: List[str]
