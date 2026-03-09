@@ -105,7 +105,7 @@ export default async function TradeDetailPage({
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
+    <div className="p-4 space-y-4 max-w-4xl">
       {/* Back nav */}
       <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground -ml-2" render={<Link href="/trades" />}>
         <ArrowLeft className="h-4 w-4" />

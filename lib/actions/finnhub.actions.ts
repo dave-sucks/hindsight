@@ -218,3 +218,66 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
   }
 });
 
+
+export type StockProfile = {
+  name: string;
+  ticker: string;
+  logo: string;
+  country: string;
+  currency: string;
+  exchange: string;
+  ipo: string;
+  marketCap: number;
+  shareOutstanding: number;
+  weburl: string;
+  phone: string;
+  finnhubIndustry: string;
+};
+
+export type StockQuote = {
+  c: number;   // current price
+  d: number;   // change
+  dp: number;  // change percent
+  h: number;   // high
+  l: number;   // low
+  o: number;   // open
+  pc: number;  // prev close
+  t: number;   // timestamp
+};
+
+
+export async function getStockProfile(symbol: string): Promise<StockProfile | null> {
+  try {
+    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    if (!token) return null;
+    const url = `${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
+    const data = await fetchJSON<StockProfile>(url, 3600);
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getStockQuote(symbol: string): Promise<StockQuote | null> {
+  try {
+    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    if (!token) return null;
+    const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
+    const data = await fetchJSON<StockQuote>(url, 30);
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getStockMetrics(symbol: string): Promise<Record<string, number> | null> {
+  try {
+    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    if (!token) return null;
+    const url = `${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol.toUpperCase())}&metric=all&token=${token}`;
+    const data = await fetchJSON<{ metric: Record<string, number> }>(url, 3600);
+    return data?.metric ?? null;
+  } catch {
+    return null;
+  }
+}

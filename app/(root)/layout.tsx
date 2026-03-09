@@ -3,6 +3,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import MarketPulseStrip from "@/components/MarketPulseStrip";
+import SearchCommand from "@/components/SearchCommand";
 import { createClient } from "@/lib/supabase/server";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { redirect } from "next/navigation";
@@ -21,13 +22,17 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
         email: user.email ?? '',
     };
 
-    // Load open trade tickers and market status at request time (server-side)
-    const [initialStocks, openTrades] = await Promise.all([
+    // Load open trade tickers, stocks list, and portfolio value at request time
+    const [initialStocks, openTrades, pnlAggregate] = await Promise.all([
         searchStocks(),
         prisma.trade.findMany({
             where: { userId: user.id, status: "OPEN" },
             select: { thesis: { select: { ticker: true } } },
             take: 10,
+        }),
+        prisma.trade.aggregate({
+            where: { userId: user.id, status: "CLOSED" },
+            _sum: { realizedPnl: true },
         }),
     ]);
 
@@ -37,17 +42,21 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
 
     const marketOpen = isMarketOpen();
 
+    // Start from a $100k paper account, add realized P&L
+    const portfolioValue = 100_000 + (pnlAggregate._sum.realizedPnl ?? 0);
+
     return (
         <SidebarProvider>
-            <AppSidebar user={userObj} initialStocks={initialStocks} />
+            <AppSidebar user={userObj} initialStocks={initialStocks} portfolioValue={portfolioValue} />
             <SidebarInset>
-                {/* Top bar — always visible, houses sidebar toggle + theme switcher */}
+                {/* Top bar — sidebar toggle + search + theme */}
                 <header className="flex h-12 items-center gap-2 border-b px-3 shrink-0">
                     <SidebarTrigger className="-ml-1" />
                     <Separator orientation="vertical" className="h-4" />
-                    <div className="ml-auto">
-                        <ThemeToggle />
+                    <div className="flex-1">
+                        <SearchCommand renderAs="icon" label="Search stocks" initialStocks={initialStocks} />
                     </div>
+                    <ThemeToggle />
                 </header>
                 <MarketPulseStrip openTradeTickers={openTradeTickers} marketOpen={marketOpen} />
                 <main className="flex-1">
