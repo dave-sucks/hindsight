@@ -32,8 +32,8 @@ import {
 import { TrendingUp, Trophy, Target, BarChart3 } from 'lucide-react';
 
 // ─── Recharts dark theme constants ────────────────────────────────────────────
-const GRID_COLOR = '#27272a';   // zinc-800
-const AXIS_COLOR = '#71717a';   // zinc-500
+const GRID_COLOR = 'var(--border)';
+const AXIS_COLOR = 'var(--muted-foreground)';
 const EMERALD = '#10b981';      // emerald-500
 const RED = '#ef4444';          // red-500
 const BLUE = '#3b82f6';         // blue-500 (primary)

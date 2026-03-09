@@ -14,14 +14,25 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { createTrade } from "@/lib/actions/trade.actions";
-import type { MockThesis } from "@/lib/mock-data/research";
 import { cn } from "@/lib/utils";
 import { Loader2, TrendingUp, TrendingDown } from "lucide-react";
+
+// Works with both real Thesis (from Prisma) and mock data
+export interface TradeSheetThesis {
+  id: string;
+  ticker: string;
+  direction: string;          // "LONG" | "SHORT"
+  entryPrice?: number | null;
+  targetPrice?: number | null;
+  stopLoss?: number | null;
+  confidenceScore: number;
+  holdDuration: string;
+}
 
 interface TradeReviewSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  thesis: MockThesis;
+  thesis: TradeSheetThesis;
 }
 
 const EXIT_STRATEGIES = [
@@ -42,21 +53,29 @@ export function TradeReviewSheet({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const entryPrice = thesis.entryPrice ?? 100;
+  const targetPrice = thesis.targetPrice ?? entryPrice * 1.08;
+  const stopPrice = thesis.stopLoss ?? entryPrice * 0.96;
+
   // Default shares: $500 position size / entry price
-  const defaultShares = Math.max(1, Math.floor(500 / thesis.entryPrice));
+  const defaultShares = Math.max(1, Math.floor(500 / entryPrice));
 
   const [shares, setShares] = useState(defaultShares);
   const [exitStrategy, setExitStrategy] = useState<ExitStrategy>("PRICE_TARGET");
   const [notes, setNotes] = useState("");
 
   const isLong = thesis.direction === "LONG";
-  const positionValue = shares * thesis.entryPrice;
+  const positionValue = shares * entryPrice;
   const potentialPnl = isLong
-    ? (thesis.targetPrice - thesis.entryPrice) * shares
-    : (thesis.entryPrice - thesis.targetPrice) * shares;
+    ? (targetPrice - entryPrice) * shares
+    : (entryPrice - targetPrice) * shares;
   const maxLoss = isLong
-    ? (thesis.entryPrice - thesis.stopPrice) * shares
-    : (thesis.stopPrice - thesis.entryPrice) * shares;
+    ? (entryPrice - stopPrice) * shares
+    : (stopPrice - entryPrice) * shares;
+
+  const targetPct = ((targetPrice - entryPrice) / entryPrice) * 100;
+  const stopPct = ((stopPrice - entryPrice) / entryPrice) * 100;
+  const rrRatio = Math.abs(potentialPnl) / Math.abs(maxLoss || 1);
 
   async function handleConfirm() {
     setError(null);
@@ -66,10 +85,10 @@ export function TradeReviewSheet({
         thesisId: thesis.id,
         ticker: thesis.ticker,
         direction: thesis.direction as "LONG" | "SHORT",
-        entryPrice: thesis.entryPrice,
+        entryPrice,
         shares,
-        targetPrice: thesis.targetPrice,
-        stopLoss: thesis.stopPrice,
+        targetPrice,
+        stopLoss: stopPrice,
         exitStrategy,
         notes: notes || undefined,
       });
@@ -122,18 +141,20 @@ export function TradeReviewSheet({
           {/* Price levels */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: "ENTRY", value: thesis.entryPrice, className: "" },
+              { label: "ENTRY", value: entryPrice, pct: null, className: "" },
               {
                 label: "TARGET",
-                value: thesis.targetPrice,
+                value: targetPrice,
+                pct: targetPct,
                 className: "text-emerald-500",
               },
               {
                 label: "STOP",
-                value: thesis.stopPrice,
+                value: stopPrice,
+                pct: stopPct,
                 className: "text-red-500",
               },
-            ].map(({ label, value, className }) => (
+            ].map(({ label, value, pct, className }) => (
               <div
                 key={label}
                 className="rounded-lg border bg-card p-3 space-y-1"
@@ -144,6 +165,11 @@ export function TradeReviewSheet({
                 <p className={cn("text-sm font-semibold tabular-nums", className)}>
                   ${value.toFixed(2)}
                 </p>
+                {pct !== null && (
+                  <p className={cn("text-xs tabular-nums", className)}>
+                    {pct >= 0 ? "+" : ""}{pct.toFixed(1)}%
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -193,6 +219,16 @@ export function TradeReviewSheet({
                 </button>
               ))}
             </div>
+            {exitStrategy === "TRAILING" && (
+              <p className="text-xs text-muted-foreground">
+                Trail 5% from peak — auto-closes if price drops 5% from highest point
+              </p>
+            )}
+            {exitStrategy === "TIME_BASED" && (
+              <p className="text-xs text-muted-foreground">
+                Closes automatically at end of hold duration
+              </p>
+            )}
           </div>
 
           {/* P&L preview */}
@@ -206,7 +242,7 @@ export function TradeReviewSheet({
                   Potential gain
                 </p>
                 <p className="text-sm font-semibold tabular-nums text-emerald-500">
-                  +${potentialPnl.toFixed(2)}
+                  +${Math.abs(potentialPnl).toFixed(2)}
                 </p>
               </div>
               <div>
@@ -219,7 +255,10 @@ export function TradeReviewSheet({
             <div className="flex items-center gap-2">
               <p className="text-xs text-muted-foreground">R:R ratio</p>
               <Badge variant="secondary" className="text-xs tabular-nums">
-                {(potentialPnl / Math.abs(maxLoss)).toFixed(2)}x
+                {rrRatio.toFixed(2)}x
+              </Badge>
+              <Badge variant="secondary" className="text-xs tabular-nums">
+                Confidence: {thesis.confidenceScore}%
               </Badge>
             </div>
           </div>

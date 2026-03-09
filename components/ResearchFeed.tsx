@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCallback } from "react";
+import { TrendingUp, TrendingDown } from "lucide-react";
+import { TradeReviewSheet } from "@/components/TradeReviewSheet";
 
 type Trade = {
   id: string;
@@ -24,6 +27,9 @@ type Thesis = {
   signalTypes: string[];
   sector: string | null;
   reasoningSummary: string;
+  entryPrice: number | null;
+  targetPrice: number | null;
+  stopLoss: number | null;
   createdAt: Date;
   trade: Trade | null;
   researchRun: { source: string } | null;
@@ -94,6 +100,8 @@ export default function ResearchFeed({ theses }: { theses: Thesis[] }) {
 }
 
 function ThesisCard({ thesis }: { thesis: Thesis }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
+
   const dirColor =
     thesis.direction === "LONG"
       ? "text-emerald-500"
@@ -103,13 +111,14 @@ function ThesisCard({ thesis }: { thesis: Thesis }) {
 
   const pnl = thesis.trade?.realizedPnl;
   const pnlColor = pnl != null ? (pnl >= 0 ? "text-emerald-500" : "text-red-500") : null;
+  const alreadyTraded = thesis.trade !== null;
 
   return (
-    <Link href={`/research/${thesis.id}`}>
-      <Card className="hover:border-foreground/30 transition-colors cursor-pointer">
+    <>
+      <Card className="hover:border-foreground/20 transition-colors">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <Link href={`/research/${thesis.id}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <span className="font-semibold">{thesis.ticker}</span>
               <span className={`text-sm font-medium tabular-nums ${dirColor}`}>
                 {thesis.direction}
@@ -117,7 +126,7 @@ function ThesisCard({ thesis }: { thesis: Thesis }) {
               {thesis.researchRun?.source === "AGENT" && (
                 <Badge variant="secondary" className="text-xs">AI</Badge>
               )}
-            </div>
+            </Link>
 
             <div className="flex items-center gap-2">
               {pnl != null && (
@@ -125,14 +134,14 @@ function ThesisCard({ thesis }: { thesis: Thesis }) {
                   {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
                 </span>
               )}
-              <span className={`text-xs font-semibold tabular-nums ${thesis.confidenceScore >= 70 ? "text-emerald-500" : "text-red-500"}`}>
+              <span className={`text-xs font-semibold tabular-nums ${thesis.confidenceScore >= 70 ? "text-emerald-500" : "text-amber-500"}`}>
                 {thesis.confidenceScore}%
               </span>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-1">
             {thesis.signalTypes.slice(0, 3).map((s) => (
               <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
@@ -147,19 +156,80 @@ function ThesisCard({ thesis }: { thesis: Thesis }) {
             {thesis.reasoningSummary}
           </p>
 
-          <p className="text-xs text-muted-foreground">
-            {new Date(thesis.createdAt).toLocaleDateString()}
-            {thesis.trade && (
-              <span className="ml-2">
-                · Trade{" "}
-                <span className={thesis.trade.status === "OPEN" ? "text-emerald-500" : "text-muted-foreground"}>
-                  {thesis.trade.status}
+          {/* Price levels row */}
+          {(thesis.entryPrice || thesis.targetPrice) && (
+            <div className="flex items-center gap-3 text-xs tabular-nums">
+              {thesis.entryPrice && (
+                <span className="text-muted-foreground">
+                  Entry: <span className="text-foreground font-medium">${thesis.entryPrice.toFixed(2)}</span>
                 </span>
-              </span>
-            )}
-          </p>
+              )}
+              {thesis.targetPrice && (
+                <span className="text-muted-foreground">
+                  Target: <span className="text-emerald-500 font-medium">${thesis.targetPrice.toFixed(2)}</span>
+                </span>
+              )}
+              {thesis.stopLoss && (
+                <span className="text-muted-foreground">
+                  Stop: <span className="text-red-500 font-medium">${thesis.stopLoss.toFixed(2)}</span>
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              {new Date(thesis.createdAt).toLocaleDateString()}
+              {thesis.trade && (
+                <span className="ml-2">
+                  · Trade{" "}
+                  <span className={thesis.trade.status === "OPEN" ? "text-emerald-500" : "text-muted-foreground"}>
+                    {thesis.trade.status}
+                  </span>
+                </span>
+              )}
+            </p>
+
+            {!alreadyTraded && thesis.direction !== "PASS" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={() => setSheetOpen(true)}
+              >
+                {thesis.direction === "LONG" ? (
+                  <TrendingUp className="h-3 w-3 text-emerald-500" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 text-red-500" />
+                )}
+                Place Trade
+              </Button>
+            ) : alreadyTraded && thesis.trade ? (
+              <Link href={`/trades/${thesis.trade.id}`}>
+                <Button size="sm" variant="ghost" className="h-7 text-xs">
+                  View Trade →
+                </Button>
+              </Link>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
-    </Link>
+
+      {/* Trade Review Sheet */}
+      <TradeReviewSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        thesis={{
+          id: thesis.id,
+          ticker: thesis.ticker,
+          direction: thesis.direction,
+          entryPrice: thesis.entryPrice,
+          targetPrice: thesis.targetPrice,
+          stopLoss: thesis.stopLoss,
+          confidenceScore: thesis.confidenceScore,
+          holdDuration: thesis.holdDuration,
+        }}
+      />
+    </>
   );
 }

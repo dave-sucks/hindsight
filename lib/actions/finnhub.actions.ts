@@ -1,8 +1,47 @@
 'use server';
 
-import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import { cache } from 'react';
+
+// ─── Local helpers (previously imported from utils) ───────────────────────────
+
+function getDateRange(days: number): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+  };
+}
+
+function validateArticle(article: RawNewsArticle): boolean {
+  return Boolean(
+    article &&
+    article.headline &&
+    article.url &&
+    article.datetime &&
+    article.source
+  );
+}
+
+function formatArticle(
+  article: RawNewsArticle,
+  isCompany: boolean,
+  sym: string | undefined,
+  idx: number
+): MarketNewsArticle {
+  return {
+    id: article.id ?? idx,
+    headline: article.headline ?? '',
+    summary: article.summary ?? '',
+    url: article.url ?? '',
+    image: article.image,
+    datetime: article.datetime ?? 0,
+    source: article.source ?? '',
+    related: sym ?? article.related ?? '',
+    category: isCompany ? 'company news' : article.category ?? 'general',
+  };
+}
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';

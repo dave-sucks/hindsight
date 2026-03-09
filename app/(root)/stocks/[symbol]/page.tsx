@@ -195,11 +195,9 @@ export default async function StockDetailPage({ params }: Props) {
         <div className="lg:col-span-2 space-y-4">
           {/* Actions */}
           <div className="flex flex-col gap-2">
-            <Button className="w-full gap-2" asChild>
-              <Link href={`/research?ticker=${upperSymbol}`}>
-                <FlaskConical className="h-4 w-4" />
-                Research This Stock
-              </Link>
+            <Button className="w-full gap-2" render={<Link href={`/research?ticker=${upperSymbol}`} />}>
+              <FlaskConical className="h-4 w-4" />
+              Research This Stock
             </Button>
             <Button variant="outline" className="w-full gap-2 text-muted-foreground">
               <BookmarkPlus className="h-4 w-4" />
