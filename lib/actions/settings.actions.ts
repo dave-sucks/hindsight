@@ -21,11 +21,13 @@ async function getServerUserId(): Promise<string> {
 
 export async function getAgentConfig(): Promise<AgentConfig> {
   const userId = await getServerUserId();
-  return prisma.agentConfig.upsert({
-    where: { userId },
-    update: {},
-    create: {
+  // userId is no longer unique — find the first (default) config, create if absent
+  const existing = await prisma.agentConfig.findFirst({ where: { userId } });
+  if (existing) return existing;
+  return prisma.agentConfig.create({
+    data: {
       userId,
+      name: "My Analyst",
       enabled: true,
       markets: ["NASDAQ", "NYSE"],
       exchanges: ["NASDAQ", "NYSE"],
@@ -79,8 +81,10 @@ export async function saveAgentConfig(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const userId = await getServerUserId();
+    const config = await prisma.agentConfig.findFirst({ where: { userId } });
+    if (!config) return { success: false, error: "No agent config found" };
     await prisma.agentConfig.update({
-      where: { userId },
+      where: { id: config.id },
       data: {
         enabled: data.enabled,
         maxOpenPositions: data.maxOpenPositions,
@@ -110,8 +114,10 @@ export async function toggleAutoRun(
 ): Promise<{ success: boolean }> {
   try {
     const userId = await getServerUserId();
+    const config = await prisma.agentConfig.findFirst({ where: { userId } });
+    if (!config) return { success: false };
     await prisma.agentConfig.update({
-      where: { userId },
+      where: { id: config.id },
       data: { enabled },
     });
     revalidatePath("/settings");

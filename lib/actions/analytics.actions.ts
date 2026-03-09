@@ -124,7 +124,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
       ? prisma.trade.count({ where: { userId, status: "OPEN" } })
       : Promise.resolve(0),
     userId
-      ? prisma.agentConfig.findUnique({ where: { userId } })
+      ? prisma.agentConfig.findFirst({ where: { userId } })
       : Promise.resolve(null),
   ]);
 
