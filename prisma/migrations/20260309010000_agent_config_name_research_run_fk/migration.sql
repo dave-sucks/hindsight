@@ -1,8 +1,11 @@
 -- ─── DAV-86: AgentConfig name + ResearchRun agentConfigId FK ─────────────────
 
--- 1. Drop the unique constraint on AgentConfig.userId
+-- 1. Drop the unique constraint + underlying index on AgentConfig.userId
 --    (users can now have multiple Analysts / AgentConfig rows)
+--    Prisma's @unique creates both a named constraint AND a unique index;
+--    we must drop both. The constraint may already be gone — IF EXISTS handles that.
 ALTER TABLE "AgentConfig" DROP CONSTRAINT IF EXISTS "AgentConfig_userId_key";
+DROP INDEX IF EXISTS "AgentConfig_userId_key";
 
 -- 2. Add display name to AgentConfig
 ALTER TABLE "AgentConfig" ADD COLUMN IF NOT EXISTS "name" TEXT NOT NULL DEFAULT 'My Analyst';
