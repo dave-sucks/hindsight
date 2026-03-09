@@ -105,10 +105,14 @@ export default function ResearchChatFull({
   userId,
   recentTheses,
   hasRunning,
+  analystId,
+  className,
 }: {
   userId: string;
   recentTheses: RecentThesis[];
   hasRunning: boolean;
+  analystId?: string;
+  className?: string;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
@@ -329,7 +333,7 @@ export default function ResearchChatFull({
 
       if (finalThesis && finalThesis.direction !== "PASS" && userId) {
         try {
-          await triggerResearchRun(userId, [finalThesis.ticker], "MANUAL");
+          await triggerResearchRun(userId, [finalThesis.ticker], "MANUAL", analystId);
         } catch {
           // non-fatal
         }
@@ -355,7 +359,7 @@ export default function ResearchChatFull({
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-5.25rem)]">
+    <div className={className ?? "flex flex-col h-[calc(100dvh-5.25rem)]"}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 h-12 border-b shrink-0">
         <h1 className="text-lg font-medium">Research</h1>

@@ -41,15 +41,20 @@ type RunResponse = {
 export async function triggerResearchRun(
   userId: string,
   tickers: string[],
-  source: "AGENT" | "MANUAL" = "AGENT"
+  source: "AGENT" | "MANUAL" = "AGENT",
+  agentConfigId?: string
 ): Promise<{ thesisIds: string[]; tradeIds: string[]; error?: string }> {
   if (!PYTHON_SERVICE_URL) {
     return { thesisIds: [], tradeIds: [], error: "PYTHON_SERVICE_URL not configured" };
   }
 
-  // Load agent config for this user (fall back to defaults if none)
+  // Load agent config for this user (prefer specific agentConfigId if provided)
   const agentConfig = await prisma.agentConfig
-    .findFirst({ where: { userId, enabled: true } })
+    .findFirst({
+      where: agentConfigId
+        ? { id: agentConfigId, userId }
+        : { userId, enabled: true },
+    })
     .catch(() => null);
 
   const agentConfigPayload = agentConfig ?? {
@@ -100,6 +105,7 @@ export async function triggerResearchRun(
       status: "COMPLETE",
       parameters: agentConfigPayload as object,
       completedAt: new Date(),
+      ...(agentConfigId ? { agentConfigId } : agentConfig ? { agentConfigId: agentConfig.id } : {}),
     },
   });
 
