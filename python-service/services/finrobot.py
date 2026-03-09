@@ -21,32 +21,52 @@ from services.finnhub import FinnhubService
 logger = logging.getLogger(__name__)
 _openai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
-_CONCEPT_SYSTEM = """You are a quantitative research analyst.
-Given market data about a stock, identify the trade signal and return a
-JSON object with these exact fields:
+_CONCEPT_SYSTEM = """You are a decisive quantitative research analyst. Your job is to
+identify the strongest available trade signal in the data and form a directional view.
+
+Return a JSON object with these exact fields:
 {
   "direction": "LONG" | "SHORT" | "PASS",
   "hold_duration": "DAY" | "SWING" | "POSITION",
   "signal_types": ["EARNINGS_BEAT","MOMENTUM","SECTOR_ROTATION","MEAN_REVERSION","BREAKOUT","NEWS_CATALYST","MACRO","OTHER"],
   "initial_confidence": <integer 0-100>,
-  "reasoning_notes": "<2-3 sentence analysis>",
-  "pass_reason": "<reason if PASS, else null>"
+  "reasoning_notes": "<3-5 sentence analysis covering price action, fundamentals, and catalysts>",
+  "pass_reason": "<specific reason if PASS, else null>"
 }
-Be conservative. Prefer PASS when signal is weak."""
 
-_THESIS_SYSTEM = """You are a senior equity analyst generating a trade thesis.
+Guidelines:
+- LONG/SHORT: commit when there is any identifiable signal or trend. Confidence 40-100.
+- PASS: only when data is genuinely unavailable, the ticker is invalid, or signals are
+  directly contradictory with no clear edge.
+- hold_duration: DAY for intraday catalysts, SWING for 2-10 day setups, POSITION for
+  multi-week fundamental themes.
+- signal_types: list ALL signals that apply (e.g. ["MOMENTUM", "EARNINGS_BEAT"]).
+- initial_confidence: your honest 0-100 score. Do not artificially deflate — 50+ means
+  a clear edge exists, 70+ means high conviction.
+- reasoning_notes: be specific. Quote price levels, % changes, P/E ratios, news events."""
+
+_THESIS_SYSTEM = """You are a senior equity analyst at a hedge fund generating a formal trade thesis.
+You write with conviction. Every recommendation includes specific price targets.
+
 Return a JSON object with these exact fields:
 {
-  "reasoning_summary": "<2-3 paragraph analysis>",
-  "thesis_bullets": ["<bullet 1>", "<bullet 2>", "<bullet 3>"],
-  "risk_flags": ["<risk 1>", "<risk 2>"],
-  "entry_price": <float or null>,
-  "target_price": <float or null>,
-  "stop_loss": <float or null>,
+  "reasoning_summary": "<3-4 paragraph analysis: (1) situation overview, (2) catalysts/signals, (3) risk/reward setup, (4) timing rationale>",
+  "thesis_bullets": ["<bullet 1>", "<bullet 2>", "<bullet 3>", "<bullet 4>", "<bullet 5>"],
+  "risk_flags": ["<risk 1>", "<risk 2>", "<risk 3>"],
+  "entry_price": <float — use current price if no better entry>,
+  "target_price": <float — required, calculate based on setup>,
+  "stop_loss": <float — required, use technical level or 3-5% below entry>,
   "confidence_score": <integer 0-100>
 }
-thesis_bullets: 3-5 items. risk_flags: 1-3 items.
-Price targets must be numbers only (no currency symbols)."""
+
+Requirements:
+- thesis_bullets: exactly 4-5 specific, actionable bullets with numbers where possible.
+- risk_flags: exactly 2-3 specific risks.
+- entry_price/target_price/stop_loss: must be floats, never null. Use current price + logical
+  offsets if needed.
+- confidence_score: calibrate against initial_confidence passed in the prompt. Adjust up if
+  thesis is clean, down if risks are elevated.
+- Price targets must be numbers only (no $ or currency symbols)."""
 
 
 async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
@@ -131,8 +151,7 @@ P/E: {data.pe_ratio}
 Upcoming earnings: {'YES (' + data.earnings_date + ')' if data.has_upcoming_earnings else 'No'}
 Recent news:
 {news_headlines or 'None'}
-Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}
-Min confidence threshold: {agent_config.get('minConfidence', 70)}"""
+Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}"""
 
     response = await _openai.chat.completions.create(
         model="gpt-4o",
@@ -219,11 +238,14 @@ async def run_full_pipeline(
 
     Returns (ThesisOutput, total_tokens_used).
     On any error, returns a PASS thesis rather than raising.
+
+    NOTE: minConfidence is NOT applied here — research always runs to completion.
+    The confidence gate lives at the trade execution layer (morning-research.ts),
+    which decides whether to place an Alpaca order based on thesis.confidence_score.
     """
     if finnhub is None:
         finnhub = FinnhubService()
 
-    min_confidence = agent_config.get("minConfidence", 70)
     total_tokens = [0]
 
     try:
@@ -235,9 +257,10 @@ async def run_full_pipeline(
             ticker, concept.direction, concept.initial_confidence,
         )
 
-        # Short-circuit: below confidence threshold → PASS without spending
-        # on Thesis-CoT
-        if concept.direction == "PASS" or concept.initial_confidence < min_confidence:
+        # Only skip Thesis-CoT if the signal is explicitly PASS (no trade to build).
+        # Low confidence alone does NOT short-circuit — let Thesis-CoT do its job
+        # and produce a full thesis; the caller decides whether to act on it.
+        if concept.direction == "PASS":
             return (
                 ThesisOutput(
                     ticker=ticker,
