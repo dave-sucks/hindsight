@@ -382,6 +382,97 @@ P/E: {data.pe_ratio} | Sector: {data.sector}"""
     )
 
 
+async def run_multi_agent_pipeline(
+    ticker: str,
+    agent_config: dict,
+    finnhub: Optional[FinnhubService] = None,
+) -> tuple[ThesisOutput, int]:
+    """
+    TradingAgents pipeline: Data-CoT → parallel Bull+Bear analysts → Fund Manager.
+
+    Architecture:
+      1. run_data_cot        — gather market data
+      2. run_bull_analysis   ─┐ parallel
+         run_bear_analysis   ─┘
+      3. run_fund_manager    — debate synthesis → final ThesisOutput
+
+    Returns (ThesisOutput, total_tokens_used).
+    Falls back to a PASS thesis on any unrecoverable error.
+    """
+    from services.agents.bull import run_bull_analysis
+    from services.agents.bear import run_bear_analysis
+    from services.agents.fund_manager import run_fund_manager
+
+    if finnhub is None:
+        finnhub = FinnhubService()
+
+    total_tokens = [0]
+
+    try:
+        # Step 1: data collection
+        data = await run_data_cot(ticker, finnhub)
+        logger.info("%s multi-agent: data collected", ticker)
+
+        # Step 2: parallel bull + bear analysis
+        bull_result, bear_result = await asyncio.gather(
+            run_bull_analysis(data),
+            run_bear_analysis(data),
+            return_exceptions=True,
+        )
+
+        # Graceful fallback if one side errors
+        if isinstance(bull_result, Exception):
+            logger.warning("%s bull analyst error: %s", ticker, bull_result)
+            bull_result = {
+                "analysis": "Data unavailable for bull analysis.",
+                "key_signals": [],
+                "price_target": data.price,
+                "suggested_entry": data.price,
+                "confidence": 50,
+            }
+        if isinstance(bear_result, Exception):
+            logger.warning("%s bear analyst error: %s", ticker, bear_result)
+            bear_result = {
+                "analysis": "Data unavailable for bear analysis.",
+                "key_risks": [],
+                "worst_case_target": data.price,
+                "stop_trigger": data.price,
+                "confidence": 50,
+            }
+
+        logger.info(
+            "%s multi-agent: bull_conf=%s bear_conf=%s",
+            ticker,
+            bull_result.get("confidence"),
+            bear_result.get("confidence"),
+        )
+
+        # Step 3: fund manager synthesis
+        thesis = await run_fund_manager(data, bull_result, bear_result, total_tokens)
+        logger.info(
+            "%s multi-agent final: direction=%s confidence=%d",
+            ticker, thesis.direction, thesis.confidence_score,
+        )
+        return thesis, total_tokens[0]
+
+    except Exception as exc:
+        logger.exception("Multi-agent pipeline error for %s: %s", ticker, exc)
+        return (
+            ThesisOutput(
+                ticker=ticker,
+                direction="PASS",
+                hold_duration="SWING",
+                confidence_score=0,
+                reasoning_summary=f"Multi-agent pipeline error: {exc}",
+                thesis_bullets=[],
+                risk_flags=["Pipeline error — review logs"],
+                signal_types=[],
+                model_used="gpt-4o (multi-agent)",
+            ),
+            total_tokens[0],
+        )
+
+
 async def run_full_pipeline(
     ticker: str,
     agent_config: dict,

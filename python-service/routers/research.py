@@ -37,13 +37,19 @@ async def research_run(body: RunRequest):
 
     sem = asyncio.Semaphore(5)
 
+    use_multi_agent = agent_config.get("pipelineMode") == "MULTI_AGENT"
+
     async def run_one(ticker: str):
         async with sem:
             try:
-                from services.finrobot import run_full_pipeline
-                return await asyncio.wait_for(
-                    run_full_pipeline(ticker, agent_config), timeout=60.0
-                )
+                if use_multi_agent:
+                    from services.finrobot import run_multi_agent_pipeline
+                    pipeline = run_multi_agent_pipeline(ticker, agent_config)
+                else:
+                    from services.finrobot import run_full_pipeline
+                    pipeline = run_full_pipeline(ticker, agent_config)
+
+                return await asyncio.wait_for(pipeline, timeout=90.0)
             except asyncio.TimeoutError:
                 return (
                     ThesisOutput(
@@ -51,7 +57,7 @@ async def research_run(body: RunRequest):
                         direction="PASS",
                         hold_duration="SWING",
                         confidence_score=0,
-                        reasoning_summary="Pipeline timed out after 60s",
+                        reasoning_summary="Pipeline timed out after 90s",
                         thesis_bullets=[],
                         risk_flags=["Timeout — pipeline took too long"],
                         signal_types=[],
@@ -138,6 +144,44 @@ async def _stream_chat(
     def event(type_: str, **kwargs) -> dict:
         return {"data": json.dumps({"type": type_, **kwargs})}
 
+    # ── Multi-agent mode: structured thinking steps, no token streaming ──
+    if agent_config.get("pipelineMode") == "MULTI_AGENT":
+        from services.finrobot import run_data_cot as _rdc
+        from services.agents.bull import run_bull_analysis
+        from services.agents.bear import run_bear_analysis
+        from services.agents.fund_manager import run_fund_manager
+
+        yield event("thinking", text=f"[Multi-Agent] Gathering market data for {ticker}...")
+        try:
+            data = await _rdc(ticker, finnhub)
+        except Exception as exc:
+            yield event("error", text=f"Data collection failed: {exc}")
+            return
+
+        yield event("thinking", text=f"[Multi-Agent] Bull analyst building LONG case for {ticker}...")
+        yield event("thinking", text=f"[Multi-Agent] Bear analyst identifying risks for {ticker}...")
+        bull_result, bear_result = await asyncio.gather(
+            run_bull_analysis(data),
+            run_bear_analysis(data),
+            return_exceptions=True,
+        )
+        if isinstance(bull_result, Exception):
+            bull_result = {"analysis": "Error", "key_signals": [], "price_target": data.price, "suggested_entry": data.price, "confidence": 50}
+        if isinstance(bear_result, Exception):
+            bear_result = {"analysis": "Error", "key_risks": [], "worst_case_target": data.price, "stop_trigger": data.price, "confidence": 50}
+
+        yield event("thinking", text=f"[Multi-Agent] Fund Manager weighing bull vs bear for {ticker}...")
+        total_tokens = [0]
+        try:
+            thesis = await run_fund_manager(data, bull_result, bear_result, total_tokens)
+        except Exception as exc:
+            yield event("error", text=f"Fund manager synthesis failed: {exc}")
+            return
+
+        yield event("complete", thesis=thesis.model_dump())
+        return
+
+    # ── Standard single-agent mode ──
     yield event("thinking", text=f"Gathering market data for {ticker}...")
     try:
         data = await run_data_cot(ticker, finnhub)
