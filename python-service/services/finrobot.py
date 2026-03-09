@@ -7,6 +7,7 @@ Three-step chain:
   Thesis-CoT  → GPT-4o structured output with full thesis
 """
 import asyncio
+import json
 import logging
 import os
 import uuid
@@ -15,8 +16,24 @@ from typing import Optional
 
 from openai import AsyncOpenAI
 
-from models import ConceptAnalysis, DataContext, SourceItem, ThesisOutput
+from models import (
+    AnalystSentiment,
+    ConceptAnalysis,
+    DataContext,
+    InsiderTransaction,
+    SourceItem,
+    TechnicalIndicators,
+    ThesisOutput,
+)
 from services.finnhub import FinnhubService
+from services.indicators import (
+    calc_bollinger_position,
+    calc_macd,
+    calc_rsi,
+    calc_sma,
+    calc_52w_position,
+    calc_volume_ratio,
+)
 
 logger = logging.getLogger(__name__)
 _openai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
@@ -28,9 +45,9 @@ Return a JSON object with these exact fields:
 {
   "direction": "LONG" | "SHORT" | "PASS",
   "hold_duration": "DAY" | "SWING" | "POSITION",
-  "signal_types": ["EARNINGS_BEAT","MOMENTUM","SECTOR_ROTATION","MEAN_REVERSION","BREAKOUT","NEWS_CATALYST","MACRO","OTHER"],
+  "signal_types": ["EARNINGS_BEAT","MOMENTUM","SECTOR_ROTATION","MEAN_REVERSION","BREAKOUT","NEWS_CATALYST","MACRO","TECHNICAL","INSIDER","OTHER"],
   "initial_confidence": <integer 0-100>,
-  "reasoning_notes": "<3-5 sentence analysis covering price action, fundamentals, and catalysts>",
+  "reasoning_notes": "<4-6 sentence analysis covering price action, technicals, fundamentals, and catalysts>",
   "pass_reason": "<specific reason if PASS, else null>"
 }
 
@@ -40,10 +57,13 @@ Guidelines:
   directly contradictory with no clear edge.
 - hold_duration: DAY for intraday catalysts, SWING for 2-10 day setups, POSITION for
   multi-week fundamental themes.
-- signal_types: list ALL signals that apply (e.g. ["MOMENTUM", "EARNINGS_BEAT"]).
-- initial_confidence: your honest 0-100 score. Do not artificially deflate — 50+ means
-  a clear edge exists, 70+ means high conviction.
-- reasoning_notes: be specific. Quote price levels, % changes, P/E ratios, news events."""
+- signal_types: list ALL applicable signals.
+- initial_confidence: your honest 0-100 score. Do not artificially deflate.
+  50+ means a clear edge exists, 70+ means high conviction.
+- Use RSI to judge momentum exhaustion/continuation. RSI < 35 = oversold bounce potential,
+  RSI > 70 = overbought caution. MACD histogram direction confirms momentum.
+- Use analyst consensus and insider activity as supporting signals.
+- reasoning_notes: be specific — quote RSI values, price vs SMA, analyst counts, news."""
 
 _THESIS_SYSTEM = """You are a senior equity analyst at a hedge fund generating a formal trade thesis.
 You write with conviction. Every recommendation includes specific price targets.
@@ -70,18 +90,24 @@ Requirements:
 
 
 async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
-    """Step 1: Parallel Finnhub data collection."""
+    """Step 1: Parallel Finnhub data collection — price, fundamentals, news,
+    candles (for technicals), analyst recommendations, and insider transactions."""
     today = date.today().isoformat()
-    from_date = (date.today() - timedelta(days=3)).isoformat()
     earnings_from = today
     earnings_to = (date.today() + timedelta(days=7)).isoformat()
 
-    quote, profile, financials, news, earnings = await asyncio.gather(
+    (
+        quote, profile, financials, news, earnings,
+        candles, rec_trends, insider_txns,
+    ) = await asyncio.gather(
         finnhub.get_quote(ticker),
         finnhub.get_company_profile(ticker),
         finnhub.get_basic_financials(ticker),
-        finnhub.get_news(ticker, days_back=3),
+        finnhub.get_news(ticker, days_back=7),
         finnhub.get_earnings_calendar(earnings_from, earnings_to),
+        finnhub.get_candles(ticker, days=60),
+        finnhub.get_recommendation_trends(ticker),
+        finnhub.get_insider_transactions(ticker),
         return_exceptions=True,
     )
 
@@ -93,7 +119,11 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
     financials = safe(financials, {})
     news = safe(news, [])
     earnings = safe(earnings, [])
+    candles = safe(candles, {})
+    rec_trends = safe(rec_trends, {})
+    insider_txns = safe(insider_txns, [])
 
+    # ── Earnings check ──────────────────────────────────────────────────────
     has_earnings = any(
         e.get("symbol", "").upper() == ticker.upper() for e in earnings
     )
@@ -102,11 +132,57 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
         None,
     )
 
+    # ── Technical indicators from candle data ────────────────────────────────
+    closes = candles.get("closes", [])
+    volumes = candles.get("volumes", [])
+    technicals: Optional[TechnicalIndicators] = None
+    if len(closes) >= 20:
+        macd_val, macd_sig, macd_hist = calc_macd(closes)
+        sma20 = calc_sma(closes, 20)
+        sma50 = calc_sma(closes, 50)
+        price = quote.get("price") or (closes[-1] if closes else None)
+        price_vs_sma20 = (
+            round((price - sma20) / sma20 * 100, 2)
+            if price and sma20
+            else None
+        )
+        high_52w = financials.get("52w_high") or (max(candles.get("highs", [])) if candles.get("highs") else None)
+        low_52w = financials.get("52w_low") or (min(candles.get("lows", [])) if candles.get("lows") else None)
+        technicals = TechnicalIndicators(
+            rsi_14=calc_rsi(closes),
+            macd=macd_val,
+            macd_signal=macd_sig,
+            macd_histogram=macd_hist,
+            sma_20=sma20,
+            sma_50=sma50,
+            price_vs_sma20_pct=price_vs_sma20,
+            bollinger_position=calc_bollinger_position(closes),
+            w52_position=(
+                calc_52w_position(price, low_52w, high_52w)
+                if price and high_52w and low_52w
+                else None
+            ),
+            volume_ratio=calc_volume_ratio(volumes) if volumes else None,
+        )
+
+    # ── Analyst sentiment ────────────────────────────────────────────────────
+    analyst_sentiment: Optional[AnalystSentiment] = None
+    if rec_trends:
+        analyst_sentiment = AnalystSentiment(**rec_trends)
+
+    # ── Insider transactions ─────────────────────────────────────────────────
+    insider_list = [InsiderTransaction(**t) for t in insider_txns] if insider_txns else []
+
+    # ── Sources list ────────────────────────────────────────────────────────
     sources = [
-        SourceItem(type="FINANCIAL", provider="FINNHUB", title=f"{ticker} quote", published_at=today),
+        SourceItem(type="FINANCIAL", provider="FINNHUB", title=f"{ticker} quote + financials", published_at=today),
         SourceItem(type="PROFILE", provider="FINNHUB", title=f"{ticker} company profile", published_at=today),
     ]
-    for item in news[:3]:
+    if technicals:
+        sources.append(SourceItem(type="TECHNICAL", provider="FINNHUB", title=f"{ticker} price candles (60d)", published_at=today))
+    if analyst_sentiment:
+        sources.append(SourceItem(type="ANALYST", provider="FINNHUB", title=f"{ticker} analyst recommendations", published_at=today))
+    for item in news[:5]:
         sources.append(
             SourceItem(
                 type="NEWS",
@@ -128,10 +204,13 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
         pe_ratio=financials.get("pe_ratio"),
         high_52w=financials.get("52w_high"),
         low_52w=financials.get("52w_low"),
-        news=news[:5],
+        news=news[:7],
         has_upcoming_earnings=has_earnings,
         earnings_date=earnings_date,
         sources=sources,
+        technicals=technicals,
+        analyst_sentiment=analyst_sentiment,
+        insider_transactions=insider_list,
     )
 
 
@@ -140,8 +219,52 @@ async def run_concept_cot(
 ) -> ConceptAnalysis:
     """Step 2: GPT-4o identifies signals and direction."""
     news_headlines = "\n".join(
-        f"- {n.get('headline','')}" for n in data.news[:3]
+        f"- {n.get('headline','')}" for n in data.news[:5]
     )
+
+    # ── Technical indicators block ──────────────────────────────────────────
+    tech = data.technicals
+    if tech:
+        rsi_str = f"{tech.rsi_14:.1f}" if tech.rsi_14 is not None else "N/A"
+        macd_str = (
+            f"MACD {tech.macd:+.3f} / Signal {tech.macd_signal:+.3f} / Hist {tech.macd_histogram:+.3f}"
+            if tech.macd is not None else "N/A"
+        )
+        sma_str = (
+            f"SMA20={tech.sma_20:.2f} ({tech.price_vs_sma20_pct:+.1f}% vs price)"
+            if tech.sma_20 is not None else "N/A"
+        )
+        boll_str = f"{tech.bollinger_position:.0f}/100" if tech.bollinger_position is not None else "N/A"
+        w52_str = f"{tech.w52_position:.0f}% of 52w range" if tech.w52_position is not None else "N/A"
+        vol_str = f"{tech.volume_ratio:.2f}x avg" if tech.volume_ratio is not None else "N/A"
+        technicals_block = f"""RSI-14: {rsi_str}
+MACD: {macd_str}
+SMA20: {sma_str}
+Bollinger position: {boll_str}
+52-week position: {w52_str}
+Volume ratio (vs 20d avg): {vol_str}"""
+    else:
+        technicals_block = "Not available"
+
+    # ── Analyst sentiment block ──────────────────────────────────────────────
+    sent = data.analyst_sentiment
+    if sent and sent.total_analysts > 0:
+        analyst_block = (
+            f"{sent.consensus} ({sent.strong_buy + sent.buy} buy / "
+            f"{sent.hold} hold / {sent.sell + sent.strong_sell} sell — "
+            f"{sent.total_analysts} analysts)"
+        )
+    else:
+        analyst_block = "No data"
+
+    # ── Insider activity block ───────────────────────────────────────────────
+    if data.insider_transactions:
+        buys = sum(1 for t in data.insider_transactions if t.type == "BUY")
+        sells = sum(1 for t in data.insider_transactions if t.type == "SELL")
+        insider_block = f"{buys} insider buys, {sells} insider sells (last 90 days)"
+    else:
+        insider_block = "No recent insider activity"
+
     prompt = f"""Stock: {data.ticker} ({data.company_name})
 Sector: {data.sector}
 Price: ${data.price} ({data.change_pct:+.2f}% today)
@@ -149,8 +272,16 @@ Market Cap: ${data.market_cap:.0f}M ({data.market_cap_tier})
 P/E: {data.pe_ratio}
 52-week range: ${data.low_52w} – ${data.high_52w}
 Upcoming earnings: {'YES (' + data.earnings_date + ')' if data.has_upcoming_earnings else 'No'}
+
+Technical Indicators:
+{technicals_block}
+
+Analyst Consensus: {analyst_block}
+Insider Activity: {insider_block}
+
 Recent news:
 {news_headlines or 'None'}
+
 Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}"""
 
     response = await _openai.chat.completions.create(
@@ -161,10 +292,9 @@ Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}"""
         ],
         response_format={"type": "json_object"},
         temperature=0.3,
-        max_tokens=512,
+        max_tokens=600,
     )
 
-    import json
     raw = json.loads(response.choices[0].message.content)
     return ConceptAnalysis(**raw)
 
@@ -175,6 +305,28 @@ async def run_thesis_cot(
     total_tokens: list,
 ) -> ThesisOutput:
     """Step 3: GPT-4o structured thesis synthesis."""
+    tech = data.technicals
+    tech_summary = ""
+    if tech:
+        parts = []
+        if tech.rsi_14 is not None:
+            parts.append(f"RSI-14={tech.rsi_14:.1f}")
+        if tech.macd_histogram is not None:
+            parts.append(f"MACD hist={tech.macd_histogram:+.3f}")
+        if tech.price_vs_sma20_pct is not None:
+            parts.append(f"{tech.price_vs_sma20_pct:+.1f}% vs SMA20")
+        if tech.w52_position is not None:
+            parts.append(f"{tech.w52_position:.0f}% of 52w range")
+        tech_summary = " | ".join(parts)
+
+    sent = data.analyst_sentiment
+    analyst_line = (
+        f"{sent.consensus} consensus ({sent.strong_buy + sent.buy} buy / "
+        f"{sent.hold} hold / {sent.sell + sent.strong_sell} sell)"
+        if sent and sent.total_analysts > 0
+        else "No analyst data"
+    )
+
     prompt = f"""Generate a full trade thesis for:
 Ticker: {data.ticker} — {data.company_name}
 Direction: {concept.direction}
@@ -182,9 +334,12 @@ Hold Duration: {concept.hold_duration}
 Signals: {', '.join(concept.signal_types)}
 Current Price: ${data.price}
 52-week High: ${data.high_52w} | Low: ${data.low_52w}
-Initial Confidence: {concept.initial_confidence}
+Initial Confidence: {concept.initial_confidence}/100
 Analyst Notes: {concept.reasoning_notes}
-Upcoming Earnings: {'YES (' + data.earnings_date + ')' if data.has_upcoming_earnings else 'No'}"""
+Upcoming Earnings: {'YES (' + data.earnings_date + ')' if data.has_upcoming_earnings else 'No'}
+Technicals: {tech_summary or 'Not available'}
+Analyst Consensus: {analyst_line}
+P/E: {data.pe_ratio} | Sector: {data.sector}"""
 
     response = await _openai.chat.completions.create(
         model="gpt-4o",
@@ -207,7 +362,6 @@ Upcoming Earnings: {'YES (' + data.earnings_date + ')' if data.has_upcoming_earn
             usage.total_tokens,
         )
 
-    import json
     raw = json.loads(response.choices[0].message.content)
 
     return ThesisOutput(

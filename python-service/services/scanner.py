@@ -2,6 +2,7 @@
 from datetime import date, timedelta
 
 from services.finnhub import FinnhubService
+from services.fmp import get_market_movers
 
 MAX_CANDIDATES = 10
 
@@ -32,13 +33,19 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
     except Exception:
         pass
 
-    # 3. Trending / high-liquidity names as a floor
+    # 3. FMP market movers (gainers + most active) — real signal vs hardcoded list
     try:
-        trending = await finnhub.scan_trending_tickers()
-        for t in trending:
+        movers = await get_market_movers(limit=12)
+        for t in movers:
             _add(t, seen, candidates)
     except Exception:
-        pass
+        # Fallback to Finnhub curated list if FMP fails
+        try:
+            trending = await finnhub.scan_trending_tickers()
+            for t in trending:
+                _add(t, seen, candidates)
+        except Exception:
+            pass
 
     # Filter by exchange and sector if specified
     exclusion_list = {t.upper() for t in agent_config.get("exclusionList", [])}
