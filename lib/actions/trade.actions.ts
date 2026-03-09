@@ -84,8 +84,8 @@ export async function createTrade(
   }
 
   // 2. Max open positions check
-  const agentConfig = await prisma.agentConfig.findUnique({
-    where: { userId: user.id },
+  const agentConfig = await prisma.agentConfig.findFirst({
+    where: { userId: user.id, enabled: true },
   });
   const maxOpenPositions = agentConfig?.maxOpenPositions ?? 5;
 

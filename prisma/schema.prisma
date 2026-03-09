@@ -34,16 +34,21 @@ model WatchlistItem {
 }
 
 model ResearchRun {
-  id          String    @id @default(cuid())
-  userId      String
-  source      String    // "AGENT" | "MANUAL"
-  status      String    // "PENDING" | "RUNNING" | "COMPLETE" | "FAILED"
-  parameters  Json      // agent config snapshot at time of run
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
-  theses      Thesis[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String       @id @default(cuid())
+  userId        String
+  agentConfigId String?      // FK to AgentConfig; null for manual/legacy runs
+  source        String       // "AGENT" | "MANUAL"
+  status        String       // "PENDING" | "RUNNING" | "COMPLETE" | "FAILED"
+  parameters    Json         // agent config snapshot at time of run
+  startedAt     DateTime     @default(now())
+  completedAt   DateTime?
+  theses        Thesis[]
+  agentConfig   AgentConfig? @relation(fields: [agentConfigId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([agentConfigId])
+  @@index([userId])
 }
 
 model Thesis {
@@ -114,9 +119,11 @@ model TradeEvent {
 }
 
 model AgentConfig {
-  id                    String   @id @default(cuid())
-  userId                String   @unique
-  enabled               Boolean  @default(false)
+  id                    String        @id @default(cuid())
+  userId                String        // NOT unique — multiple Analysts per user
+  name                  String        @default("My Analyst")
+  enabled               Boolean       @default(false)
+  researchRuns          ResearchRun[]
   markets               String[] // ["US_EQUITIES", "CRYPTO", "ETFS"]
   exchanges             String[] // ["NASDAQ", "NYSE"]
   sectors               String[] // ["TECH", "FINANCE", ...]

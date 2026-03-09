@@ -78,14 +78,23 @@ export const morningResearch = inngest.createFunction(
     { cron: "0 13 * * 1-5" }, // 8:00 AM ET = 13:00 UTC, Mon–Fri
     { event: "app/research.run.manual" },
   ],
-  async ({ step }) => {
+  async ({ event, step }) => {
     const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "";
     const PYTHON_SERVICE_SECRET = process.env.PYTHON_SERVICE_SECRET ?? "";
 
-    // ── Step 1: Load all enabled AgentConfigs ────────────────────────────────
+    // Optional: if triggered manually for a specific analyst, only run that one
+    const targetConfigId = (event as { data?: { agentConfigId?: string } })
+      ?.data?.agentConfigId ?? null;
+
+    // ── Step 1: Load enabled AgentConfigs (all, or filtered to one) ──────────
 
     const configs = await step.run("load-agent-configs", async () => {
-      return prisma.agentConfig.findMany({ where: { enabled: true } });
+      return prisma.agentConfig.findMany({
+        where: {
+          enabled: true,
+          ...(targetConfigId ? { id: targetConfigId } : {}),
+        },
+      });
     });
 
     if (configs.length === 0) {
@@ -101,7 +110,7 @@ export const morningResearch = inngest.createFunction(
     // ── Step 2: Per-user research run ────────────────────────────────────────
 
     for (const config of configs) {
-      await step.run(`research-${config.userId}`, async () => {
+      await step.run(`research-${config.id}`, async () => {
         // 2a. Check open positions cap
         const openCount = await prisma.trade.count({
           where: { userId: config.userId, status: "OPEN" },
@@ -120,6 +129,7 @@ export const morningResearch = inngest.createFunction(
         const run = await prisma.researchRun.create({
           data: {
             userId: config.userId,
+            agentConfigId: config.id,
             source: "AGENT",
             status: "RUNNING",
             parameters: {
