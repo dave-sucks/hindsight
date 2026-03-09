@@ -33,7 +33,18 @@ export default async function ResearchPage({ searchParams }: { searchParams: Pro
     where,
     orderBy: { createdAt: "desc" },
     take: 50,
-    include: { trade: true, researchRun: { select: { source: true } } },
+    include: {
+      trade: {
+        select: {
+          id: true,
+          realizedPnl: true,
+          status: true,
+          entryPrice: true,
+          closePrice: true,
+        },
+      },
+      researchRun: { select: { source: true } },
+    },
   });
 
   return (

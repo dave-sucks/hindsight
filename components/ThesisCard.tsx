@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import type { MockThesis } from '@/lib/mock-data/research';
-import { TradeReviewSheet } from '@/components/TradeReviewSheet';
+import { TradeReviewSheet, type TradeSheetThesis } from '@/components/TradeReviewSheet';
 import {
   ChevronDown,
   ChevronUp,
@@ -202,7 +202,16 @@ export default function ThesisCard({ thesis, compact = false }: ThesisCardProps)
       <TradeReviewSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        thesis={thesis}
+        thesis={{
+          id: thesis.id,
+          ticker: thesis.ticker,
+          direction: thesis.direction,
+          entryPrice: thesis.entryPrice,
+          targetPrice: thesis.targetPrice,
+          stopLoss: thesis.stopPrice,   // MockThesis uses stopPrice
+          confidenceScore: thesis.confidenceScore,
+          holdDuration: thesis.holdDuration,
+        }}
       />
     </Card>
   );

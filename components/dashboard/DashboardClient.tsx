@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import TradingViewWidget from '@/components/TradingViewWidget';
 import { MARKET_OVERVIEW_WIDGET_CONFIG } from '@/lib/constants';
 import {
@@ -13,10 +12,12 @@ import {
     mockClosedTrades,
     mockPortfolio,
     mockEquityCurve,
-    mockWatchlist,
     MockTrade,
 } from '@/lib/mock-data/trades';
 import type { DashboardData } from '@/lib/actions/portfolio.actions';
+import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
+import { AgentActivityLog } from '@/components/dashboard/AgentActivityLog';
+import { toast } from 'sonner';
 
 const TIME_RANGES = ['1D', '1W', '1M', '3M', 'YTD', 'ALL'] as const;
 type TimeRange = typeof TIME_RANGES[number];
@@ -33,11 +34,22 @@ const COMPANY_NAMES: Record<string, string> = {
     NFLX: 'Netflix',
 };
 
-function TradeRow({ trade, closed = false }: { trade: MockTrade; closed?: boolean }) {
+function TradeRow({
+    trade,
+    closed = false,
+    flash,
+}: {
+    trade: MockTrade;
+    closed?: boolean;
+    flash?: 'win' | 'loss';
+}) {
     const pnl = trade.pnl ?? 0;
     const positive = pnl >= 0;
     return (
-        <div className="flex items-center justify-between py-2.5 px-2 -mx-2 rounded-lg hover:bg-accent/50 transition-colors cursor-pointer">
+        <div className={`flex items-center justify-between py-2.5 px-2 -mx-2 rounded-lg hover:bg-accent/50 transition-all cursor-pointer ${
+            flash === 'win' ? 'bg-emerald-500/15 scale-[1.01]' :
+            flash === 'loss' ? 'bg-red-500/15 scale-[1.01]' : ''
+        }`}>
             <div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
                     <span className="text-[10px] font-bold text-muted-foreground">
@@ -83,13 +95,40 @@ function TradeRow({ trade, closed = false }: { trade: MockTrade; closed?: boolea
 interface DashboardClientProps {
     /** Real data from the server. Falls back to mock data when omitted. */
     data?: DashboardData;
+    userId?: string;
 }
 
-export default function DashboardClient({ data }: DashboardClientProps) {
+export default function DashboardClient({ data, userId }: DashboardClientProps) {
     const [range, setRange] = useState<TimeRange>('1M');
+    // Track which trade IDs have been closed in real time so we can flash them
+    const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(new Set());
+    const [flashIds, setFlashIds] = useState<Map<string, 'win' | 'loss'>>(new Map());
+
+    // ── Supabase Realtime: trade updates ──────────────────────────────────
+    const handleTradeUpdate = useCallback((trade: RealtimeTrade) => {
+        if (trade.status === 'CLOSED' || trade.status.startsWith('CLOSED_')) {
+            const result = trade.outcome === 'WIN' ? 'win' : 'loss';
+            // Flash the row before removing it
+            setFlashIds(prev => new Map(prev).set(trade.id, result));
+            toast[result === 'win' ? 'success' : 'error'](
+                `${trade.ticker} closed — ${result === 'win' ? '✅ WIN' : '❌ LOSS'}`,
+                { description: trade.realizedPnl != null ? `P&L: $${trade.realizedPnl.toFixed(2)}` : undefined }
+            );
+            // After flash animation, move to closed
+            setTimeout(() => {
+                setFlashIds(prev => { const m = new Map(prev); m.delete(trade.id); return m; });
+                setRealtimeClosedIds(prev => new Set(prev).add(trade.id));
+            }, 1200);
+        }
+    }, []);
+
+    useTradeRealtime({ userId: userId ?? '', onTradeUpdate: handleTradeUpdate });
 
     // Use real data when provided, otherwise fall back to mock
-    const openTrades = data?.openTrades ?? mockOpenTrades;
+    // Filter out trades closed in real time (they'll appear in closed list after refresh)
+    const openTrades = (data?.openTrades ?? mockOpenTrades).filter(
+        t => !realtimeClosedIds.has(t.id)
+    );
     const closedTrades = data?.closedTrades ?? mockClosedTrades;
     const equityData = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
 
@@ -197,7 +236,7 @@ export default function DashboardClient({ data }: DashboardClientProps) {
                                 </p>
                                 <div>
                                     {openTrades.map(t => (
-                                        <TradeRow key={t.id} trade={t} />
+                                        <TradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
                                     ))}
                                 </div>
                             </div>
@@ -217,7 +256,7 @@ export default function DashboardClient({ data }: DashboardClientProps) {
                             </div>
                         </TabsContent>
 
-                        {/* ── Market tab — original TradingView overview from Signalist ── */}
+                        {/* ── Market tab — TradingView market overview ── */}
                         <TabsContent value="market" className="mt-4">
                             <TradingViewWidget
                                 scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js"
@@ -229,66 +268,34 @@ export default function DashboardClient({ data }: DashboardClientProps) {
                 </div>
             </div>
 
-            {/* ── Right rail: stats + watchlist ─────────────────── */}
-            <div className="hidden lg:flex w-60 border-l flex-col shrink-0">
-                <ScrollArea className="flex-1">
-                    <div className="p-4 space-y-5">
-                        {/* Quick stats */}
-                        <div>
-                            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-                                Quick Stats
-                            </p>
-                            <div className="space-y-2.5">
-                                {[
-                                    { label: 'Open Positions', value: String(data?.portfolio.openCount ?? openTrades.length) },
-                                    { label: 'Win Rate', value: winRateStr },
-                                    { label: 'Avg Confidence', value: avgConfidence },
-                                    { label: 'Total P&L', value: totalPnlStr, positive: totalPnlPositive },
-                                ].map(({ label, value, positive }) => (
-                                    <div key={label} className="flex justify-between items-center">
-                                        <span className="text-xs text-muted-foreground">{label}</span>
-                                        <span className={`text-xs font-medium tabular-nums ${positive ? 'text-emerald-500' : ''}`}>
-                                            {value}
-                                        </span>
-                                    </div>
-                                ))}
+            {/* ── Right rail: stats + agent activity log ─────────── */}
+            <div className="hidden lg:flex w-72 border-l flex-col shrink-0 overflow-hidden">
+                {/* Quick stats — fixed height at top */}
+                <div className="p-4 space-y-3 border-b shrink-0">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Quick Stats
+                    </p>
+                    <div className="space-y-2">
+                        {[
+                            { label: 'Open Positions', value: String(data?.portfolio.openCount ?? openTrades.length) },
+                            { label: 'Win Rate', value: winRateStr },
+                            { label: 'Avg Confidence', value: avgConfidence },
+                            { label: 'Total P&L', value: totalPnlStr, positive: totalPnlPositive },
+                        ].map(({ label, value, positive }) => (
+                            <div key={label} className="flex justify-between items-center">
+                                <span className="text-xs text-muted-foreground">{label}</span>
+                                <span className={`text-xs font-medium tabular-nums ${positive ? 'text-emerald-500' : ''}`}>
+                                    {value}
+                                </span>
                             </div>
-                        </div>
-
-                        <Separator />
-
-                        {/* Watchlist */}
-                        <div>
-                            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-                                Watchlist
-                            </p>
-                            <div>
-                                {mockWatchlist.map(item => {
-                                    const pos = item.changePct >= 0;
-                                    return (
-                                        <div
-                                            key={item.ticker}
-                                            className="flex items-center justify-between py-2 px-1 -mx-1 rounded-md hover:bg-accent/50 transition-colors cursor-pointer"
-                                        >
-                                            <div>
-                                                <p className="text-sm font-medium">{item.ticker}</p>
-                                                <p className="text-xs text-muted-foreground">{item.name}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-sm tabular-nums font-medium">
-                                                    ${item.price.toFixed(2)}
-                                                </p>
-                                                <p className={`text-xs tabular-nums ${pos ? 'text-emerald-500' : 'text-red-500'}`}>
-                                                    {pos ? '+' : ''}{item.changePct.toFixed(2)}%
-                                                </p>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
+                        ))}
                     </div>
-                </ScrollArea>
+                </div>
+
+                {/* Agent activity log — fills remaining height */}
+                <div className="flex-1 min-h-0 p-3">
+                    <AgentActivityLog userId={userId ?? ''} />
+                </div>
             </div>
         </div>
     );
