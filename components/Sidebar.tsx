@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import {
   LayoutDashboard,
   FlaskConical,
@@ -12,6 +13,8 @@ import {
   LogOut,
   ChevronsUpDown,
   Wallet,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
 import {
@@ -43,7 +46,6 @@ const NAV_LINKS = [
   { href: '/trades', label: 'Trades', icon: ArrowLeftRight },
   { href: '/performance', label: 'Performance', icon: BarChart3 },
   { href: '/stocks', label: 'Stocks', icon: TrendingUp },
-  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function AppSidebar({
@@ -57,6 +59,7 @@ export default function AppSidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -73,6 +76,8 @@ export default function AppSidebar({
     currency: 'USD',
     maximumFractionDigits: 0,
   }).format(portfolioValue);
+
+  const isDark = theme === 'dark';
 
   return (
     <Sidebar collapsible="icon">
@@ -120,7 +125,7 @@ export default function AppSidebar({
                 className="data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground"
               >
                 <Avatar className="h-7 w-7 rounded-md shrink-0">
-                  <AvatarFallback className="rounded-md text-xs bg-primary text-primary-foreground font-semibold">
+                  <AvatarFallback className="rounded-md text-xs bg-brand text-brand-foreground font-semibold">
                     {user.name?.[0]?.toUpperCase() ?? '?'}
                   </AvatarFallback>
                 </Avatar>
@@ -130,11 +135,8 @@ export default function AppSidebar({
                 </div>
                 <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                align="start"
-                className="w-56"
-              >
+              <DropdownMenuContent side="top" align="start" className="w-56">
+                {/* Portfolio value */}
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Wallet className="h-3.5 w-3.5" />
@@ -145,10 +147,23 @@ export default function AppSidebar({
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem render={<Link href="/settings" />}>
+
+                {/* Settings — onClick only, no render={<Link>} to avoid Base UI / Next router conflict */}
+                <DropdownMenuItem onClick={() => router.push('/settings')}>
                   <Settings className="h-3.5 w-3.5" />
                   Settings
                 </DropdownMenuItem>
+
+                {/* Theme toggle */}
+                <DropdownMenuItem onClick={() => setTheme(isDark ? 'light' : 'dark')}>
+                  {isDark ? (
+                    <Sun className="h-3.5 w-3.5" />
+                  ) : (
+                    <Moon className="h-3.5 w-3.5" />
+                  )}
+                  {isDark ? 'Light mode' : 'Dark mode'}
+                </DropdownMenuItem>
+
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleSignOut}
