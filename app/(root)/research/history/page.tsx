@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
 import Link from "next/link";
+import { getStockProfile } from "@/lib/actions/finnhub.actions";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -60,6 +61,27 @@ export default async function ResearchHistoryPage({
 
   const hasRunning = runningCount > 0;
 
+  // Fetch company profiles for unique tickers (cached 1 hr via finnhub.actions)
+  const uniqueTickers = [...new Set(theses.map((t) => t.ticker))];
+  const profileResults = await Promise.allSettled(
+    uniqueTickers.map(async (sym) => {
+      const profile = await getStockProfile(sym);
+      return [sym, profile] as const;
+    })
+  );
+
+  const profiles: Record<string, { name: string; logo: string; exchange: string }> = {};
+  for (const result of profileResults) {
+    if (result.status === "fulfilled" && result.value[1]) {
+      const [sym, profile] = result.value;
+      profiles[sym] = {
+        name: profile.name,
+        logo: profile.logo,
+        exchange: profile.exchange,
+      };
+    }
+  }
+
   return (
     <div className="p-4 space-y-4 max-w-5xl mx-auto">
       <div className="flex items-start justify-between gap-4">
@@ -80,7 +102,7 @@ export default async function ResearchHistoryPage({
         <RunResearchButton hasRunning={hasRunning} />
       </div>
 
-      <ResearchFeed theses={theses} />
+      <ResearchFeed theses={theses} profiles={profiles} />
     </div>
   );
 }
