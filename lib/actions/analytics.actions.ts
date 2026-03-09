@@ -52,6 +52,28 @@ export interface AnalyticsStats {
   graduation: GraduationData;
 }
 
+export interface AnalystStat {
+  analystId: string;
+  name: string;
+  wins: number;
+  losses: number;
+  trades: number;
+  winRate: number;
+  totalPnl: number;
+}
+
+export interface ResearchRunSummary {
+  id: string;
+  startedAt: Date;
+  analystName: string;
+  thesesCount: number;
+  tradesPlaced: number;
+  closedTrades: number;
+  pnl: number;
+  wins: number;
+  losses: number;
+}
+
 export interface AnalyticsData {
   equityCurve: EquityPoint[];
   directionBreakdown: DirectionBreakdown[];
@@ -59,6 +81,8 @@ export interface AnalyticsData {
   sectorBreakdown: SectorBreakdown[];
   confidenceScatter: ConfidencePoint[];
   stats: AnalyticsStats;
+  analystBreakdown: AnalystStat[];
+  recentRuns: ResearchRunSummary[];
 }
 
 // ─── Helper: equity curve ─────────────────────────────────────────────────────
@@ -96,8 +120,8 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 
   const userId = user?.id;
 
-  // ── Fetch agent config for graduation targets ─────────────────────────────
-  const [closedTrades, openCount, agentConfig] = await Promise.all([
+  // ── Fetch trades, open count, agent config, and recent runs ──────────────
+  const [closedTrades, openCount, agentConfig, completedRuns] = await Promise.all([
     userId
       ? prisma.trade.findMany({
           where: { userId, status: "CLOSED" },
@@ -114,6 +138,12 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
                 sector: true,
                 holdDuration: true,
                 ticker: true,
+                researchRun: {
+                  select: {
+                    agentConfigId: true,
+                    agentConfig: { select: { name: true } },
+                  },
+                },
               },
             },
           },
@@ -126,6 +156,26 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     userId
       ? prisma.agentConfig.findFirst({ where: { userId } })
       : Promise.resolve(null),
+    userId
+      ? prisma.researchRun.findMany({
+          where: { userId, status: "COMPLETE" },
+          orderBy: { startedAt: "desc" },
+          take: 20,
+          select: {
+            id: true,
+            startedAt: true,
+            source: true,
+            agentConfig: { select: { name: true } },
+            theses: {
+              select: {
+                trade: {
+                  select: { outcome: true, realizedPnl: true, status: true },
+                },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   // ── Equity curve ──────────────────────────────────────────────────────────
@@ -231,6 +281,55 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     },
   };
 
+  // ── Per-analyst breakdown ─────────────────────────────────────────────────
+
+  interface AnalystAccum { name: string; wins: number; losses: number; totalPnl: number; }
+  const analystMap = new Map<string, AnalystAccum>();
+
+  for (const t of tradesWithOutcome) {
+    const runConfig = (t.thesis as { researchRun?: { agentConfigId: string | null; agentConfig: { name: string } | null } } | undefined)?.researchRun;
+    const analystId = runConfig?.agentConfigId ?? "__unassigned__";
+    const analystName = runConfig?.agentConfig?.name ?? "Unassigned";
+    const acc = analystMap.get(analystId) ?? { name: analystName, wins: 0, losses: 0, totalPnl: 0 };
+    if (t.outcome === "WIN") acc.wins++;
+    else if (t.outcome === "LOSS") acc.losses++;
+    acc.totalPnl += t.realizedPnl ?? 0;
+    analystMap.set(analystId, acc);
+  }
+
+  const analystBreakdown: AnalystStat[] = Array.from(analystMap.entries())
+    .map(([analystId, acc]) => ({
+      analystId,
+      name: acc.name,
+      wins: acc.wins,
+      losses: acc.losses,
+      trades: acc.wins + acc.losses,
+      winRate: acc.wins + acc.losses > 0 ? (acc.wins / (acc.wins + acc.losses)) * 100 : 0,
+      totalPnl: acc.totalPnl,
+    }))
+    .sort((a, b) => b.trades - a.trades);
+
+  // ── Research run summaries ────────────────────────────────────────────────
+
+  const recentRuns: ResearchRunSummary[] = completedRuns.map((run) => {
+    const allTrades = run.theses.flatMap((th) => (th.trade ? [th.trade] : []));
+    const closed = allTrades.filter((tr) => tr.status === "CLOSED");
+    const runWins = closed.filter((tr) => tr.outcome === "WIN").length;
+    const runLosses = closed.filter((tr) => tr.outcome === "LOSS").length;
+    const pnl = closed.reduce((s, tr) => s + (tr.realizedPnl ?? 0), 0);
+    return {
+      id: run.id,
+      startedAt: run.startedAt,
+      analystName: run.agentConfig?.name ?? (run.source === "MANUAL" ? "Manual" : "Agent"),
+      thesesCount: run.theses.length,
+      tradesPlaced: allTrades.length,
+      closedTrades: closed.length,
+      pnl,
+      wins: runWins,
+      losses: runLosses,
+    };
+  });
+
   return {
     equityCurve,
     directionBreakdown,
@@ -238,5 +337,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     sectorBreakdown,
     confidenceScatter,
     stats,
+    analystBreakdown,
+    recentRuns,
   };
 }
