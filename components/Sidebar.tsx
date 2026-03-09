@@ -10,10 +10,10 @@ import {
   TrendingUp,
   Settings,
   LogOut,
-  BrainCircuit,
   ChevronsUpDown,
   Wallet,
 } from 'lucide-react';
+import HindsightLogo from '@/components/HindsightLogo';
 import {
   Sidebar,
   SidebarContent,
@@ -81,7 +81,7 @@ export default function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/" />}>
-              <BrainCircuit className="size-5 shrink-0" />
+              <HindsightLogo className="size-5 shrink-0 text-brand" />
               <span className="font-semibold tracking-tight">Hindsight</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
