@@ -61,7 +61,7 @@ export default async function ResearchHistoryPage({
   const hasRunning = runningCount > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="p-4 space-y-4 max-w-5xl mx-auto">
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -72,7 +72,7 @@ export default async function ResearchHistoryPage({
               ← Research
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold mt-1">Research History</h1>
+          <h1 className="text-2xl font-semibold">Research History</h1>
           <p className="text-sm text-muted-foreground mt-1">
             AI-generated trade theses
           </p>

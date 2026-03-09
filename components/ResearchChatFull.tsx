@@ -329,7 +329,7 @@ export default function ResearchChatFull({
   return (
     <div className="flex flex-col h-[calc(100dvh-5.25rem)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 h-14 border-b shrink-0">
+      <div className="flex items-center justify-between px-4 h-12 border-b shrink-0">
         <h1 className="text-lg font-medium">Research</h1>
         <div className="flex items-center gap-3">
           <Link
@@ -347,7 +347,7 @@ export default function ResearchChatFull({
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full gap-6 pb-32 px-4">
             <div className="text-center">
-              <h2 className="text-2xl font-semibold">Hindsight Research</h2>
+              <h2 className="text-xl font-semibold">Hindsight Research</h2>
               <p className="text-sm text-muted-foreground mt-1">
                 Ask the AI to research any stock
               </p>
@@ -369,7 +369,7 @@ export default function ResearchChatFull({
             {messages.map((msg, i) =>
               msg.role === "user" ? (
                 <div key={i} className="flex justify-end">
-                  <div className="bg-primary text-primary-foreground rounded-2xl px-4 py-2 text-sm max-w-sm">
+                  <div className="bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm max-w-sm">
                     {msg.text}
                   </div>
                 </div>
@@ -385,7 +385,7 @@ export default function ResearchChatFull({
       {/* Input dock */}
       <div className="shrink-0 pb-6 px-4">
         <div className="max-w-2xl mx-auto w-full">
-          <Card className="rounded-2xl shadow-lg border">
+          <Card className="rounded-xl border">
             {/* Chips row */}
             {(selectedTicker || referencedThesis) && (
               <div className="flex flex-wrap gap-2 px-3 pt-3">
@@ -636,20 +636,20 @@ function AssistantMessage({
 
   if (msg.status === "streaming") {
     return (
-      <Card className="p-4 text-sm whitespace-pre-wrap">
+      <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm whitespace-pre-wrap">
         {msg.streamedText}
         <span className="animate-pulse">▌</span>
-      </Card>
+      </div>
     );
   }
 
   if (msg.status === "error") {
     return (
-      <Card className="border-destructive p-4">
+      <div className="rounded-xl border border-destructive bg-card px-4 py-3">
         <p className="text-sm text-destructive">
           Research failed — {msg.errorText ?? "unknown error"}. Please try again.
         </p>
-      </Card>
+      </div>
     );
   }
 
@@ -672,7 +672,7 @@ function ThesisCard({ thesis }: { thesis: ThesisOutput }) {
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">
+          <CardTitle className="text-base">
             {thesis.ticker}
             <span className={`ml-2 text-base font-semibold tabular-nums ${directionColor}`}>
               {thesis.direction}
