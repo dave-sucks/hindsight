@@ -43,6 +43,35 @@ class InsiderTransaction(BaseModel):
     date: str = ""
 
 
+class RedditSignal(BaseModel):
+    """Reddit mention data for a ticker across key subreddits."""
+    mention_count: int = 0
+    total_score: int = 0          # total upvotes across all mentions
+    sentiment_score: float = 0.0  # -1.0 (bearish) to 1.0 (bullish)
+    trending: bool = False
+    top_posts: List[str] = []
+
+
+class OptionsFlow(BaseModel):
+    """Unusual options activity summary."""
+    put_call_ratio: float = 1.0
+    unusual_contracts: List[dict] = []
+    call_volume: int = 0
+    put_volume: int = 0
+    total_volume: int = 0
+    has_unusual: bool = False
+
+
+class EarningsIntel(BaseModel):
+    """Earnings consensus + surprise history."""
+    next_eps_estimate: Optional[float] = None
+    next_revenue_estimate: Optional[float] = None
+    beat_rate: Optional[float] = None       # % of quarters where EPS beat
+    avg_surprise_pct: Optional[float] = None
+    quarters_analyzed: int = 0
+    iv_rank: Optional[float] = None         # 0-100
+
+
 class DataContext(BaseModel):
     ticker: str
     price: Optional[float] = None
@@ -63,6 +92,10 @@ class DataContext(BaseModel):
     # DAV-61: Analyst sentiment + insider activity
     analyst_sentiment: Optional[AnalystSentiment] = None
     insider_transactions: List[InsiderTransaction] = []
+    # Alternative data (DAV-73/74/75) — optional, populated in run_data_cot
+    reddit: Optional[RedditSignal] = None
+    options_flow: Optional[OptionsFlow] = None
+    earnings_intel: Optional[EarningsIntel] = None
 
 
 class ConceptAnalysis(BaseModel):

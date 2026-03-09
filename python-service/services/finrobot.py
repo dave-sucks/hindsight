@@ -2,7 +2,7 @@
 FinRobot thesis generation pipeline.
 
 Three-step chain:
-  Data-CoT    → parallel Finnhub data collection
+  Data-CoT    → parallel Finnhub + alt-data collection
   Concept-CoT → GPT-4o identifies signals, direction, initial confidence
   Thesis-CoT  → GPT-4o structured output with full thesis
 """
@@ -20,7 +20,10 @@ from models import (
     AnalystSentiment,
     ConceptAnalysis,
     DataContext,
+    EarningsIntel,
     InsiderTransaction,
+    OptionsFlow,
+    RedditSignal,
     SourceItem,
     TechnicalIndicators,
     ThesisOutput,
@@ -90,8 +93,13 @@ Requirements:
 
 
 async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
-    """Step 1: Parallel Finnhub data collection — price, fundamentals, news,
-    candles (for technicals), analyst recommendations, and insider transactions."""
+    """Step 1: Parallel Finnhub + alt-data collection — price, fundamentals, news,
+    candles (for technicals), analyst recommendations, insider transactions,
+    Reddit sentiment, unusual options flow, and earnings intelligence."""
+    from services.reddit import get_reddit_sentiment
+    from services.options_flow import get_unusual_options
+    from services.earnings_intel import get_earnings_intel
+
     today = date.today().isoformat()
     earnings_from = today
     earnings_to = (date.today() + timedelta(days=7)).isoformat()
@@ -99,6 +107,7 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
     (
         quote, profile, financials, news, earnings,
         candles, rec_trends, insider_txns,
+        reddit_raw, options_raw, earnings_raw,
     ) = await asyncio.gather(
         finnhub.get_quote(ticker),
         finnhub.get_company_profile(ticker),
@@ -108,6 +117,9 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
         finnhub.get_candles(ticker, days=60),
         finnhub.get_recommendation_trends(ticker),
         finnhub.get_insider_transactions(ticker),
+        get_reddit_sentiment(ticker),
+        get_unusual_options(ticker),
+        get_earnings_intel(ticker),
         return_exceptions=True,
     )
 
@@ -122,6 +134,9 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
     candles = safe(candles, {})
     rec_trends = safe(rec_trends, {})
     insider_txns = safe(insider_txns, [])
+    reddit_raw = safe(reddit_raw, {})
+    options_raw = safe(options_raw, {})
+    earnings_raw = safe(earnings_raw, {})
 
     # ── Earnings check ──────────────────────────────────────────────────────
     has_earnings = any(
@@ -173,6 +188,11 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
     # ── Insider transactions ─────────────────────────────────────────────────
     insider_list = [InsiderTransaction(**t) for t in insider_txns] if insider_txns else []
 
+    # ── Alt-data models ──────────────────────────────────────────────────────
+    reddit_signal = RedditSignal(**reddit_raw) if reddit_raw else None
+    options_flow = OptionsFlow(**options_raw) if options_raw else None
+    earnings_intel = EarningsIntel(**earnings_raw) if earnings_raw else None
+
     # ── Sources list ────────────────────────────────────────────────────────
     sources = [
         SourceItem(type="FINANCIAL", provider="FINNHUB", title=f"{ticker} quote + financials", published_at=today),
@@ -182,6 +202,8 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
         sources.append(SourceItem(type="TECHNICAL", provider="FINNHUB", title=f"{ticker} price candles (60d)", published_at=today))
     if analyst_sentiment:
         sources.append(SourceItem(type="ANALYST", provider="FINNHUB", title=f"{ticker} analyst recommendations", published_at=today))
+    if reddit_signal and reddit_signal.mention_count > 0:
+        sources.append(SourceItem(type="NEWS", provider="REDDIT", title=f"{ticker} Reddit mentions ({reddit_signal.mention_count})", published_at=today))
     for item in news[:5]:
         sources.append(
             SourceItem(
@@ -211,6 +233,9 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
         technicals=technicals,
         analyst_sentiment=analyst_sentiment,
         insider_transactions=insider_list,
+        reddit=reddit_signal,
+        options_flow=options_flow,
+        earnings_intel=earnings_intel,
     )
 
 
@@ -265,6 +290,48 @@ Volume ratio (vs 20d avg): {vol_str}"""
     else:
         insider_block = "No recent insider activity"
 
+    # ── Alt-data blocks ──────────────────────────────────────────────────────
+    reddit_block = ""
+    if data.reddit and data.reddit.mention_count > 0:
+        sentiment_label = (
+            "bullish" if data.reddit.sentiment_score > 0.1
+            else "bearish" if data.reddit.sentiment_score < -0.1
+            else "neutral"
+        )
+        reddit_block = (
+            f"\nReddit sentiment: {data.reddit.mention_count} mentions, "
+            f"score={data.reddit.total_score}, sentiment={sentiment_label} "
+            f"({data.reddit.sentiment_score:+.2f})"
+            + (", TRENDING" if data.reddit.trending else "")
+        )
+
+    options_block = ""
+    if data.options_flow and data.options_flow.total_volume > 0:
+        options_block = (
+            f"\nOptions flow: P/C ratio={data.options_flow.put_call_ratio}, "
+            f"call vol={data.options_flow.call_volume:,}, "
+            f"put vol={data.options_flow.put_volume:,}"
+        )
+        if data.options_flow.has_unusual:
+            top = data.options_flow.unusual_contracts[0]
+            options_block += (
+                f", UNUSUAL: {top.get('type')} {top.get('moneyness')} "
+                f"strike=${top.get('strike')} vol={top.get('volume'):,} "
+                f"premium=${top.get('premium_usd', 0):,.0f}"
+            )
+
+    earnings_block = ""
+    if data.earnings_intel and data.earnings_intel.quarters_analyzed > 0:
+        ei = data.earnings_intel
+        earnings_block = (
+            f"\nEarnings track record: beat rate={ei.beat_rate}% "
+            f"avg surprise={ei.avg_surprise_pct:+.1f}% "
+            f"over {ei.quarters_analyzed} quarters"
+        )
+        if ei.next_eps_estimate is not None:
+            earnings_block += f", next EPS est=${ei.next_eps_estimate:.2f}"
+    # ─────────────────────────────────────────────────────────────────────────
+
     prompt = f"""Stock: {data.ticker} ({data.company_name})
 Sector: {data.sector}
 Price: ${data.price} ({data.change_pct:+.2f}% today)
@@ -280,7 +347,7 @@ Analyst Consensus: {analyst_block}
 Insider Activity: {insider_block}
 
 Recent news:
-{news_headlines or 'None'}
+{news_headlines or 'None'}{reddit_block}{options_block}{earnings_block}
 
 Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}"""
 
