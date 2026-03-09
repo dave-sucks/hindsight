@@ -49,7 +49,7 @@ export async function triggerResearchRun(
 
   // Load agent config for this user (fall back to defaults if none)
   const agentConfig = await prisma.agentConfig
-    .findUnique({ where: { userId } })
+    .findFirst({ where: { userId, enabled: true } })
     .catch(() => null);
 
   const agentConfigPayload = agentConfig ?? {

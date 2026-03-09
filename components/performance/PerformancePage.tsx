@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { AnalyticsData } from '@/lib/actions/analytics.actions';
+import type { AnalyticsData, AnalystStat, ResearchRunSummary } from '@/lib/actions/analytics.actions';
 import {
   ResponsiveContainer,
   LineChart,
@@ -104,6 +104,119 @@ function EmptyChart({ height = 220, message = 'No data yet' }: { height?: number
   );
 }
 
+// ─── Analyst Breakdown Card ───────────────────────────────────────────────────
+
+function AnalystBreakdownCard({ analysts }: { analysts: AnalystStat[] }) {
+  if (analysts.length === 0) return null;
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg font-medium">Analyst Performance</CardTitle>
+      </CardHeader>
+      <CardContent className="divide-y divide-border">
+        {analysts.map((a) => (
+          <div key={a.analystId} className="flex items-center justify-between py-3 gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
+              <p className="text-xs text-muted-foreground tabular-nums">{a.trades} closed trades</p>
+            </div>
+            <div className="flex items-center gap-6 shrink-0">
+              <div className="text-right">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Win Rate</p>
+                <p className={cn('text-sm font-semibold tabular-nums', a.winRate >= 50 ? 'text-emerald-500' : 'text-red-500')}>
+                  {a.winRate.toFixed(1)}%
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">P&amp;L</p>
+                <p className={cn('text-sm font-semibold tabular-nums', a.totalPnl >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                  {a.totalPnl >= 0 ? '+' : ''}${Math.abs(a.totalPnl).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <div className="text-right hidden sm:block">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">W / L</p>
+                <p className="text-sm font-medium tabular-nums">
+                  <span className="text-emerald-500">{a.wins}</span>
+                  <span className="text-muted-foreground"> / </span>
+                  <span className="text-red-500">{a.losses}</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Research Runs Card ────────────────────────────────────────────────────────
+
+function formatDate(d: Date): string {
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
+function ResearchRunsCard({ runs }: { runs: ResearchRunSummary[] }) {
+  if (runs.length === 0) {
+    return (
+      <Card className="border-border">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg font-medium">Research History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmptyChart height={120} message="No completed research runs yet" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg font-medium">Research History</CardTitle>
+      </CardHeader>
+      <CardContent className="divide-y divide-border">
+        {runs.map((run) => {
+          const hasOutcome = run.closedTrades > 0;
+          return (
+            <div key={run.id} className="flex items-center justify-between py-3 gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground truncate">{run.analystName}</p>
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {formatDate(run.startedAt)} &middot; {run.thesesCount} theses &middot; {run.tradesPlaced} trades placed
+                </p>
+              </div>
+              <div className="flex items-center gap-5 shrink-0">
+                {hasOutcome ? (
+                  <>
+                    <div className="text-right hidden sm:block">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">W / L</p>
+                      <p className="text-sm tabular-nums">
+                        <span className="text-emerald-500">{run.wins}</span>
+                        <span className="text-muted-foreground"> / </span>
+                        <span className="text-red-500">{run.losses}</span>
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">P&amp;L</p>
+                      <p className={cn('text-sm font-semibold tabular-nums', run.pnl >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                        {run.pnl >= 0 ? '+' : ''}${Math.abs(run.pnl).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <Badge variant="secondary" className="text-xs font-normal">
+                    {run.tradesPlaced > 0 ? 'Open' : 'No trades'}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -113,7 +226,7 @@ interface Props {
 export default function PerformancePage({ data }: Props) {
   const [activeRange, setActiveRange] = useState<TimeRange>('1M');
 
-  const { equityCurve, directionBreakdown, durationBreakdown, sectorBreakdown, confidenceScatter, stats } = data;
+  const { equityCurve, directionBreakdown, durationBreakdown, sectorBreakdown, confidenceScatter, stats, analystBreakdown, recentRuns } = data;
   const { totalReturn, totalReturnPct, winRate, avgReturnPerTrade, openTrades, closedTrades, totalTrades, graduation } = stats;
 
   const winRatePct = Math.min((graduation.currentWinRate / graduation.winRateTarget) * 100, 100);
@@ -389,6 +502,12 @@ export default function PerformancePage({ data }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Analyst Breakdown + Research History ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <AnalystBreakdownCard analysts={analystBreakdown} />
+        <ResearchRunsCard runs={recentRuns} />
+      </div>
 
       {/* ── Graduation Tracker ── */}
       <Card className="border-border">
