@@ -83,7 +83,7 @@ export const priceMonitor = inngest.createFunction(
             return;
           }
 
-          const pnl = calculatePnl(trade, currentPrice);
+          const pnl = calculatePnl(trade as unknown as TradeModel, currentPrice);
 
           // Write PRICE_CHECK event
           await prisma.tradeEvent.create({
@@ -97,7 +97,7 @@ export const priceMonitor = inngest.createFunction(
           });
 
           // Check exit conditions — DAV-33 implements auto-close
-          await checkExitConditions(trade, currentPrice);
+          await checkExitConditions(trade as unknown as TradeModel, currentPrice);
 
           checked++;
         } catch {

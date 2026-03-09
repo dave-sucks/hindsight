@@ -31,15 +31,15 @@ const SignIn = () => {
 
     return (
         <>
-            <h1 className="form-title">Welcome back</h1>
+            <h1 className="text-2xl font-semibold mb-6">Welcome back</h1>
 
             <div className="space-y-5">
                 <GoogleSignInButton />
 
                 <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px bg-gray-700" />
-                    <span className="text-xs text-gray-500">or</span>
-                    <div className="flex-1 h-px bg-gray-700" />
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-xs text-muted-foreground">or</span>
+                    <div className="flex-1 h-px bg-border" />
                 </div>
 
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -62,7 +62,7 @@ const SignIn = () => {
                         validation={{ required: 'Password is required', minLength: 8 }}
                     />
 
-                    <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
+                    <Button type="submit" disabled={isSubmitting} variant="default" className="w-full mt-5">
                         {isSubmitting ? 'Signing In' : 'Sign In'}
                     </Button>
 

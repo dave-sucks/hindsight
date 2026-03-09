@@ -1,419 +1,295 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import TradingViewWidget from '@/components/TradingViewWidget';
+import { MARKET_OVERVIEW_WIDGET_CONFIG } from '@/lib/constants';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
-import { cn } from '@/lib/utils';
-import {
-  mockOpenTrades,
-  mockClosedTrades,
-  mockPortfolio,
-  mockEquityCurve,
-  mockWatchlist,
-  type MockTrade,
+    mockOpenTrades,
+    mockClosedTrades,
+    mockPortfolio,
+    mockEquityCurve,
+    mockWatchlist,
+    MockTrade,
 } from '@/lib/mock-data/trades';
 import type { DashboardData } from '@/lib/actions/portfolio.actions';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 
 const TIME_RANGES = ['1D', '1W', '1M', '3M', 'YTD', 'ALL'] as const;
-type TimeRange = (typeof TIME_RANGES)[number];
+type TimeRange = typeof TIME_RANGES[number];
 
-function formatCurrency(n: number) {
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
-}
+const COMPANY_NAMES: Record<string, string> = {
+    NVDA: 'NVIDIA Corp',
+    TSLA: 'Tesla Inc',
+    AAPL: 'Apple Inc',
+    META: 'Meta Platforms',
+    COIN: 'Coinbase',
+    MSFT: 'Microsoft Corp',
+    GOOGL: 'Alphabet',
+    SNAP: 'Snap Inc',
+    NFLX: 'Netflix',
+};
 
-function formatPct(n: number) {
-  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
-}
-
-function PnlCell({ pnl, pnlPct }: { pnl: number; pnlPct: number }) {
-  const isPos = pnl >= 0;
-  return (
-    <div className={cn('tabular-nums', isPos ? 'text-emerald-500' : 'text-red-500')}>
-      <div className="font-medium">{isPos ? '+' : ''}{formatCurrency(pnl)}</div>
-      <div className="text-xs opacity-75">{formatPct(pnlPct)}</div>
-    </div>
-  );
-}
-
-function DirectionBadge({ direction }: { direction: MockTrade['direction'] }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn(
-        'text-xs font-semibold tabular-nums',
-        direction === 'LONG'
-          ? 'border-primary/50 text-primary'
-          : 'border-amber-500/50 text-amber-500'
-      )}
-    >
-      {direction}
-    </Badge>
-  );
-}
-
-function StatusBadge({ status }: { status: MockTrade['status'] }) {
-  const map: Record<MockTrade['status'], string> = {
-    OPEN: 'border-primary/40 text-primary',
-    CLOSED_WIN: 'border-emerald-500/40 text-emerald-500',
-    CLOSED_LOSS: 'border-red-500/40 text-red-500',
-    CLOSED_EXPIRED: 'border-muted-foreground/40 text-muted-foreground',
-  };
-  const labels: Record<MockTrade['status'], string> = {
-    OPEN: 'Open',
-    CLOSED_WIN: 'Win',
-    CLOSED_LOSS: 'Loss',
-    CLOSED_EXPIRED: 'Expired',
-  };
-  return (
-    <Badge variant="outline" className={cn('text-xs', map[status])}>
-      {labels[status]}
-    </Badge>
-  );
-}
-
-function TradesTable({ trades, dimmed = false }: { trades: MockTrade[]; dimmed?: boolean }) {
-  if (trades.length === 0) {
+function TradeRow({ trade, closed = false }: { trade: MockTrade; closed?: boolean }) {
+    const pnl = trade.pnl ?? 0;
+    const positive = pnl >= 0;
     return (
-      <div className="py-10 text-center text-sm text-muted-foreground">
-        No trades yet — research a stock to place your first paper trade.
-      </div>
+        <div className="flex items-center justify-between py-2.5 px-2 -mx-2 rounded-lg hover:bg-accent/50 transition-colors cursor-pointer">
+            <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                    <span className="text-[10px] font-bold text-muted-foreground">
+                        {trade.ticker.slice(0, 2)}
+                    </span>
+                </div>
+                <div>
+                    <div className="flex items-center gap-1.5">
+                        <span className={`text-sm font-medium ${closed ? 'text-muted-foreground' : ''}`}>
+                            {trade.ticker}
+                        </span>
+                        {!closed && (
+                            <Badge
+                                variant={trade.direction === 'LONG' ? 'default' : 'outline'}
+                                className="text-[10px] h-4 px-1 py-0"
+                            >
+                                {trade.direction}
+                            </Badge>
+                        )}
+                        {closed && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 py-0">
+                                {trade.status.replace('CLOSED_', '')}
+                            </Badge>
+                        )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        {COMPANY_NAMES[trade.ticker] ?? trade.ticker}
+                    </p>
+                </div>
+            </div>
+            <div className="text-right">
+                <p className={`text-sm font-medium tabular-nums ${positive ? 'text-emerald-500' : 'text-red-500'}`}>
+                    {positive ? '+' : ''}${Math.abs(pnl).toFixed(2)}
+                </p>
+                <p className={`text-xs tabular-nums ${positive ? 'text-emerald-500' : 'text-red-500'}`}>
+                    {positive ? '+' : ''}{trade.pnlPct?.toFixed(2) ?? '0.00'}%
+                </p>
+            </div>
+        </div>
     );
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow className="border-border hover:bg-transparent">
-          <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ticker</TableHead>
-          <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Dir</TableHead>
-          <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground tabular-nums">Entry</TableHead>
-          <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground tabular-nums">Current</TableHead>
-          <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground tabular-nums">Target</TableHead>
-          <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground tabular-nums">Stop</TableHead>
-          <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conf</TableHead>
-          <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground tabular-nums">P&L</TableHead>
-          <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {trades.map((trade) => (
-          <TableRow
-            key={trade.id}
-            className={cn(
-              'border-border cursor-pointer transition-colors hover:bg-secondary/30',
-              dimmed && 'opacity-60'
-            )}
-          >
-            <TableCell className="font-semibold text-foreground">{trade.ticker}</TableCell>
-            <TableCell><DirectionBadge direction={trade.direction} /></TableCell>
-            <TableCell className="tabular-nums text-sm text-muted-foreground">${trade.entryPrice.toFixed(2)}</TableCell>
-            <TableCell className="tabular-nums text-sm text-foreground font-medium">${trade.currentPrice.toFixed(2)}</TableCell>
-            <TableCell className="tabular-nums text-sm text-muted-foreground">${trade.targetPrice.toFixed(2)}</TableCell>
-            <TableCell className="tabular-nums text-sm text-muted-foreground">${trade.stopPrice.toFixed(2)}</TableCell>
-            <TableCell>
-              <span className="text-xs tabular-nums text-muted-foreground">{trade.confidenceScore}%</span>
-            </TableCell>
-            <TableCell><PnlCell pnl={trade.pnl} pnlPct={trade.pnlPct} /></TableCell>
-            <TableCell><StatusBadge status={trade.status} /></TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-function TradesTableSkeleton() {
-  return (
-    <div className="space-y-3">
-      {[...Array(3)].map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full" />
-      ))}
-    </div>
-  );
-}
-
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: Array<{ value: number }>;
-  label?: string;
-}
-
-function EquityTooltip({ active, payload, label }: CustomTooltipProps) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-card border border-border rounded-md px-3 py-2 text-sm shadow-lg">
-      <p className="text-muted-foreground text-xs mb-0.5">{label}</p>
-      <p className="font-semibold text-foreground tabular-nums">
-        {formatCurrency(payload[0].value)}
-      </p>
-    </div>
-  );
 }
 
 interface DashboardClientProps {
-  /** Real data from the server. Falls back to mock data when omitted. */
-  data?: DashboardData;
+    /** Real data from the server. Falls back to mock data when omitted. */
+    data?: DashboardData;
 }
 
 export default function DashboardClient({ data }: DashboardClientProps) {
-  const [activeRange, setActiveRange] = useState<TimeRange>('1M');
+    const [range, setRange] = useState<TimeRange>('1M');
 
-  // Use real data when provided, otherwise fall back to mock
-  const openTrades = data?.openTrades ?? mockOpenTrades;
-  const closedTrades = data?.closedTrades ?? mockClosedTrades;
-  const equityData = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
+    // Use real data when provided, otherwise fall back to mock
+    const openTrades = data?.openTrades ?? mockOpenTrades;
+    const closedTrades = data?.closedTrades ?? mockClosedTrades;
+    const equityData = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
 
-  const totalValue = data?.portfolio.totalValue ?? mockPortfolio.totalValue;
-  const unrealizedPnl = data?.portfolio.unrealizedPnl ?? mockPortfolio.dayChange;
-  const isDayPos = unrealizedPnl >= 0;
-  const unrealizedPct = totalValue > 0 ? (unrealizedPnl / (totalValue - unrealizedPnl)) * 100 : 0;
+    const totalValue = data?.portfolio.totalValue ?? mockPortfolio.totalValue;
+    const unrealizedPnl = data?.portfolio.unrealizedPnl ?? mockPortfolio.dayChange;
+    const dayPositive = unrealizedPnl >= 0;
+    const totalValueStr = totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const unrealizedPct = totalValue > 0 ? (unrealizedPnl / (totalValue - unrealizedPnl)) * 100 : 0;
 
-  return (
-    <div className="p-6 space-y-6">
-      {/* Page title */}
-      <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+    const winRateStr = data?.portfolio.winRate != null
+        ? `${(data.portfolio.winRate * 100).toFixed(0)}%`
+        : '60%';
+    const avgConfidence = openTrades.length > 0
+        ? `${Math.round(openTrades.reduce((s, t) => s + t.confidenceScore, 0) / openTrades.length)}%`
+        : '74%';
+    const totalPnlStr = data?.portfolio.realizedPnl != null
+        ? `${data.portfolio.realizedPnl >= 0 ? '+' : ''}$${Math.abs(data.portfolio.realizedPnl).toFixed(0)}`
+        : `+$${mockPortfolio.totalPnl.toFixed(0)}`;
+    const totalPnlPositive = data?.portfolio.realizedPnl != null ? data.portfolio.realizedPnl >= 0 : true;
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* ── Left column (2/3) ── */}
-        <div className="xl:col-span-2 space-y-6">
-          {/* Portfolio header — 3 stat cards */}
-          <div className="grid grid-cols-3 gap-4">
-            {/* Total value */}
-            <Card className="border-border p-6 col-span-3 sm:col-span-1">
-              <CardContent className="p-0">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                  Portfolio Value
-                </p>
-                <p className="text-2xl font-semibold text-foreground tabular-nums">
-                  {formatCurrency(totalValue)}
-                </p>
-              </CardContent>
-            </Card>
+    return (
+        <div className="flex h-[calc(100vh-3rem)] md:h-screen overflow-hidden">
+            {/* ── Main content ────────────────────────────────────── */}
+            <div className="flex-1 overflow-y-auto">
+                <div className="px-6 pt-8 pb-6 max-w-3xl space-y-6">
 
-            {/* $ change today */}
-            <Card className="border-border p-6 col-span-3 sm:col-span-1">
-              <CardContent className="p-0">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                  Today
-                </p>
-                <p className={cn('text-2xl font-semibold tabular-nums', isDayPos ? 'text-emerald-500' : 'text-red-500')}>
-                  {isDayPos ? '+' : ''}{formatCurrency(unrealizedPnl)}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* % change today */}
-            <Card className="border-border p-6 col-span-3 sm:col-span-1">
-              <CardContent className="p-0">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                  Today %
-                </p>
-                <div className={cn('flex items-center gap-1.5', isDayPos ? 'text-emerald-500' : 'text-red-500')}>
-                  {isDayPos ? (
-                    <TrendingUp className="h-5 w-5" />
-                  ) : (
-                    <TrendingDown className="h-5 w-5" />
-                  )}
-                  <span className="text-2xl font-semibold tabular-nums">
-                    {formatPct(unrealizedPct)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Equity curve */}
-          <Card className="border-border">
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-lg font-medium">Equity Curve</CardTitle>
-              {/* Time range selector */}
-              <div className="flex gap-1">
-                {TIME_RANGES.map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setActiveRange(r)}
-                    className={cn(
-                      'px-2.5 py-1 text-xs font-medium rounded transition-colors',
-                      activeRange === r
-                        ? 'bg-secondary text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {equityData.length === 0 ? (
-                <div className="h-52 flex items-center justify-center">
-                  <p className="text-sm text-muted-foreground">No closed trades yet — equity curve will appear after your first trade closes.</p>
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={210}>
-                  <AreaChart data={equityData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                      axisLine={false}
-                      tickLine={false}
-                      interval={4}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-                      width={48}
-                    />
-                    <Tooltip content={<EquityTooltip />} />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      fill="url(#equityGradient)"
-                      dot={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Active Trades */}
-          <Card className="border-border">
-            <CardHeader>
-              <CardTitle className="text-lg font-medium">
-                Active Trades
-                <Badge variant="secondary" className="ml-2 tabular-nums text-xs">
-                  {openTrades.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 overflow-x-auto">
-              <TradesTable trades={openTrades} />
-            </CardContent>
-          </Card>
-
-          {/* Closed Trades */}
-          <Card className="border-border">
-            <CardHeader>
-              <CardTitle className="text-lg font-medium text-muted-foreground">
-                Closed Trades
-                <Badge variant="outline" className="ml-2 tabular-nums text-xs text-muted-foreground">
-                  {closedTrades.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 overflow-x-auto">
-              <TradesTable trades={closedTrades} dimmed />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ── Right column (1/3) ── */}
-        <div className="xl:col-span-1 space-y-6">
-          {/* Quick stats */}
-          <Card className="border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-medium">Quick Stats</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {[
-                { label: 'Open Positions', value: data?.portfolio.openCount ?? openTrades.length, unit: '' },
-                {
-                  label: 'Win Rate',
-                  value: data?.portfolio.winRate != null
-                    ? `${(data.portfolio.winRate * 100).toFixed(0)}`
-                    : '—',
-                  unit: data?.portfolio.winRate != null ? '%' : '',
-                },
-                {
-                  label: 'Avg Confidence',
-                  value: openTrades.length > 0
-                    ? Math.round(openTrades.reduce((s, t) => s + t.confidenceScore, 0) / openTrades.length)
-                    : '—',
-                  unit: openTrades.length > 0 ? '%' : '',
-                },
-                {
-                  label: 'Realized P&L',
-                  value: data?.portfolio.realizedPnl != null
-                    ? `${data.portfolio.realizedPnl >= 0 ? '+' : ''}${formatCurrency(data.portfolio.realizedPnl)}`
-                    : '$0.00',
-                  unit: '',
-                },
-              ].map(({ label, value, unit }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{label}</span>
-                  <span className="text-sm font-semibold tabular-nums text-foreground">
-                    {value}{unit}
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Watchlist */}
-          <Card className="border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-medium">Watchlist</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[340px]">
-                {mockWatchlist.map((item, i) => {
-                  const isPos = item.changePct >= 0;
-                  return (
-                    <div key={item.ticker}>
-                      <div className="flex items-center justify-between px-6 py-3 hover:bg-secondary/30 transition-colors cursor-pointer">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{item.ticker}</p>
-                          <p className="text-xs text-muted-foreground truncate">{item.name}</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-medium tabular-nums text-foreground">
-                            ${item.price.toFixed(2)}
-                          </p>
-                          <p className={cn('text-xs tabular-nums', isPos ? 'text-emerald-500' : 'text-red-500')}>
-                            {isPos ? '+' : ''}{item.changePct.toFixed(2)}%
-                          </p>
-                        </div>
-                      </div>
-                      {i < mockWatchlist.length - 1 && <Separator />}
+                    {/* Portfolio header — Robinhood style */}
+                    <div className="space-y-0.5">
+                        <p className="text-sm text-muted-foreground">Portfolio Value</p>
+                        <p className="text-4xl font-semibold tabular-nums tracking-tight">
+                            ${totalValueStr}
+                        </p>
+                        <p className={`text-sm tabular-nums ${dayPositive ? 'text-emerald-500' : 'text-red-500'}`}>
+                            {dayPositive ? '+' : ''}${Math.abs(unrealizedPnl).toFixed(2)}&nbsp;
+                            ({dayPositive ? '+' : ''}{unrealizedPct.toFixed(2)}%) today
+                        </p>
                     </div>
-                  );
-                })}
-              </ScrollArea>
-            </CardContent>
-          </Card>
+
+                    {/* Time range selector */}
+                    <div className="flex items-center gap-0.5">
+                        {TIME_RANGES.map(r => (
+                            <button
+                                key={r}
+                                onClick={() => setRange(r)}
+                                className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
+                                    range === r
+                                        ? 'bg-foreground text-background'
+                                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                                }`}
+                            >
+                                {r}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Equity curve */}
+                    <div className="-mx-1">
+                        <ResponsiveContainer width="100%" height={160}>
+                            <AreaChart data={equityData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                                <defs>
+                                    <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.12} />
+                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <XAxis dataKey="date" hide />
+                                <YAxis hide domain={['auto', 'auto']} />
+                                <Tooltip
+                                    contentStyle={{
+                                        background: 'var(--popover)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '6px',
+                                        fontSize: '12px',
+                                        color: 'var(--popover-foreground)',
+                                    }}
+                                    formatter={(v) => [`$${Number(v).toLocaleString()}`, 'Value']}
+                                    labelStyle={{ color: 'var(--muted-foreground)' }}
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="value"
+                                    stroke="#10b981"
+                                    strokeWidth={1.5}
+                                    fill="url(#equityGrad)"
+                                    dot={false}
+                                    activeDot={{ r: 3, fill: '#10b981' }}
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+
+                    {/* Portfolio / Market tabs */}
+                    <Tabs defaultValue="portfolio">
+                        <TabsList>
+                            <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
+                            <TabsTrigger value="market">Market</TabsTrigger>
+                        </TabsList>
+
+                        {/* ── Portfolio tab ── */}
+                        <TabsContent value="portfolio" className="mt-4 space-y-4">
+                            {/* Active positions */}
+                            <div>
+                                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                                    Active Positions ({openTrades.length})
+                                </p>
+                                <div>
+                                    {openTrades.map(t => (
+                                        <TradeRow key={t.id} trade={t} />
+                                    ))}
+                                </div>
+                            </div>
+
+                            <Separator />
+
+                            {/* Closed trades */}
+                            <div>
+                                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                                    Recent Closed ({closedTrades.length})
+                                </p>
+                                <div>
+                                    {closedTrades.slice(0, 6).map(t => (
+                                        <TradeRow key={t.id} trade={t} closed />
+                                    ))}
+                                </div>
+                            </div>
+                        </TabsContent>
+
+                        {/* ── Market tab — original TradingView overview from Signalist ── */}
+                        <TabsContent value="market" className="mt-4">
+                            <TradingViewWidget
+                                scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js"
+                                config={MARKET_OVERVIEW_WIDGET_CONFIG}
+                                height={560}
+                            />
+                        </TabsContent>
+                    </Tabs>
+                </div>
+            </div>
+
+            {/* ── Right rail: stats + watchlist ─────────────────── */}
+            <div className="hidden lg:flex w-60 border-l flex-col shrink-0">
+                <ScrollArea className="flex-1">
+                    <div className="p-4 space-y-5">
+                        {/* Quick stats */}
+                        <div>
+                            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+                                Quick Stats
+                            </p>
+                            <div className="space-y-2.5">
+                                {[
+                                    { label: 'Open Positions', value: String(data?.portfolio.openCount ?? openTrades.length) },
+                                    { label: 'Win Rate', value: winRateStr },
+                                    { label: 'Avg Confidence', value: avgConfidence },
+                                    { label: 'Total P&L', value: totalPnlStr, positive: totalPnlPositive },
+                                ].map(({ label, value, positive }) => (
+                                    <div key={label} className="flex justify-between items-center">
+                                        <span className="text-xs text-muted-foreground">{label}</span>
+                                        <span className={`text-xs font-medium tabular-nums ${positive ? 'text-emerald-500' : ''}`}>
+                                            {value}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <Separator />
+
+                        {/* Watchlist */}
+                        <div>
+                            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+                                Watchlist
+                            </p>
+                            <div>
+                                {mockWatchlist.map(item => {
+                                    const pos = item.changePct >= 0;
+                                    return (
+                                        <div
+                                            key={item.ticker}
+                                            className="flex items-center justify-between py-2 px-1 -mx-1 rounded-md hover:bg-accent/50 transition-colors cursor-pointer"
+                                        >
+                                            <div>
+                                                <p className="text-sm font-medium">{item.ticker}</p>
+                                                <p className="text-xs text-muted-foreground">{item.name}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm tabular-nums font-medium">
+                                                    ${item.price.toFixed(2)}
+                                                </p>
+                                                <p className={`text-xs tabular-nums ${pos ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                    {pos ? '+' : ''}{item.changePct.toFixed(2)}%
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </ScrollArea>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 }

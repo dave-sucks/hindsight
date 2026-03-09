@@ -1,7 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -207,7 +210,7 @@ function AlertConfigCard() {
         <SettingRow key={key} label={label} description={description}>
           {disabled ? (
             <Tooltip>
-              <TooltipTrigger asChild>
+              <TooltipTrigger>
                 <span tabIndex={0}>
                   <Switch checked={false} disabled className="opacity-40 cursor-not-allowed" />
                 </span>
@@ -230,7 +233,7 @@ function AlertConfigCard() {
             <Label htmlFor="delivery-email" className="text-sm">Email</Label>
           </div>
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <div className="flex items-center gap-2 opacity-40 cursor-not-allowed">
                 <Checkbox id="delivery-slack" disabled />
                 <Label htmlFor="delivery-slack" className="text-sm">Slack</Label>
@@ -350,11 +353,37 @@ function GraduationSettingsCard() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+function SettingsNav() {
+  const pathname = usePathname();
+  const links = [
+    { href: '/settings', label: 'General' },
+    { href: '/settings/agent', label: 'Agent Rules' },
+  ];
+  return (
+    <div className="flex gap-1 border-b mb-6">
+      {links.map(({ href, label }) => (
+        <Link
+          key={href}
+          href={href}
+          className={cn(
+            'px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+            pathname === href
+              ? 'border-foreground text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+        >
+          {label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
-      <Separator />
+      <SettingsNav />
       <ResearchScheduleCard />
       <AlertConfigCard />
       <GraduationSettingsCard />

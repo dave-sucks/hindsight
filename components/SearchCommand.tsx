@@ -57,7 +57,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
   return (
     <>
       {renderAs === 'text' ? (
-          <span onClick={() => setOpen(true)} className="search-text">
+          <span onClick={() => setOpen(true)} className="cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors">
             {label}
           </span>
       ) : renderAs === 'icon' ? (
@@ -65,52 +65,51 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
             variant="ghost"
             size="sm"
             onClick={() => setOpen(true)}
-            className="w-full justify-start gap-3 px-3 h-9 text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            className="w-full justify-start gap-3 px-3 h-9 hover:bg-secondary/50"
           >
             <Search className="h-4 w-4 shrink-0" />
             <span className="text-sm font-medium">{label}</span>
             <kbd className="ml-auto text-xs text-muted-foreground/50 font-mono">⌘K</kbd>
           </Button>
       ) : (
-          <Button onClick={() => setOpen(true)} className="search-btn">
+          <Button onClick={() => setOpen(true)}>
             {label}
           </Button>
       )}
-      <CommandDialog open={open} onOpenChange={setOpen} className="search-dialog">
-        <div className="search-field">
-          <CommandInput value={searchTerm} onValueChange={setSearchTerm} placeholder="Search stocks..." className="search-input" />
-          {loading && <Loader2 className="search-loader" />}
+      <CommandDialog open={open} onOpenChange={setOpen}>
+        <div className="flex items-center border-b border-border px-3">
+          <CommandInput value={searchTerm} onValueChange={setSearchTerm} placeholder="Search stocks..." className="flex-1 border-0 focus-visible:ring-0" />
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />}
         </div>
-        <CommandList className="search-list">
+        <CommandList>
           {loading ? (
-              <CommandEmpty className="search-list-empty">Loading stocks...</CommandEmpty>
+              <CommandEmpty>Loading stocks...</CommandEmpty>
           ) : displayStocks?.length === 0 ? (
-              <div className="search-list-indicator">
+              <div className="py-6 text-center text-sm text-muted-foreground">
                 {isSearchMode ? 'No results found' : 'No stocks available'}
               </div>
             ) : (
             <ul>
-              <div className="search-count">
+              <div className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {isSearchMode ? 'Search results' : 'Popular stocks'}
                 {` `}({displayStocks?.length || 0})
               </div>
               {displayStocks?.map((stock, i) => (
-                  <li key={stock.symbol} className="search-item">
+                  <li key={stock.symbol}>
                     <Link
                         href={`/stocks/${stock.symbol}`}
                         onClick={handleSelectStock}
-                        className="search-item-link"
+                        className="flex items-center gap-3 px-3 py-2 hover:bg-secondary/50 transition-colors cursor-pointer"
                     >
-                      <TrendingUp className="h-4 w-4 text-gray-500" />
-                      <div  className="flex-1">
-                        <div className="search-item-name">
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-foreground">
                           {stock.name}
                         </div>
-                        <div className="text-sm text-gray-500">
-                          {stock.symbol} | {stock.exchange } | {stock.type}
+                        <div className="text-xs text-muted-foreground">
+                          {stock.symbol} | {stock.exchange} | {stock.type}
                         </div>
                       </div>
-                    {/*<Star />*/}
                     </Link>
                   </li>
               ))}
