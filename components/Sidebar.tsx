@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import {
   LayoutDashboard,
-  FlaskConical,
+  Bot,
   ArrowLeftRight,
   BarChart3,
   TrendingUp,
@@ -43,7 +43,7 @@ import { signOut } from '@/lib/actions/auth.actions';
 
 const NAV_LINKS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/research', label: 'Research', icon: FlaskConical },
+  { href: '/analysts', label: 'Analysts', icon: Bot },
   { href: '/trades', label: 'Trades', icon: ArrowLeftRight },
   { href: '/performance', label: 'Performance', icon: BarChart3 },
   { href: '/stocks', label: 'Stocks', icon: TrendingUp },
