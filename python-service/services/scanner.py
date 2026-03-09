@@ -1,53 +1,113 @@
-"""Market scanner — builds the list of tickers to research each run."""
+"""Market scanner — discovers and ranks research candidates (DAV-80).
+
+Scoring weights per source:
+  watchlist   = 4 pts  (agent-configured, highest intent)
+  earnings    = 3 pts  (catalyst-driven)
+  movers      = 2 pts  (price action confirmation)
+  reddit      = 2 pts  (retail momentum signal)
+  stocktwits  = 1 pt   (secondary social signal)
+  finnhub     = 1 pt   (fallback trending)
+
+Tickers appearing in multiple sources accumulate score; the top-ranked
+candidates are returned after applying sector/cap filters from agent_config.
+"""
+import asyncio
+import logging
+from collections import defaultdict
 from datetime import date, timedelta
 
 from services.finnhub import FinnhubService
 from services.fmp import get_market_movers
+from services.reddit import get_trending_tickers_reddit
+from services.stocktwits import get_trending_tickers_stocktwits
+
+logger = logging.getLogger(__name__)
 
 MAX_CANDIDATES = 10
+MIN_CANDIDATES = 3
+
+_SCORES = {
+    "watchlist": 4,
+    "earnings": 3,
+    "movers": 2,
+    "reddit": 2,
+    "stocktwits": 1,
+    "finnhub": 1,
+}
+
+
+async def _safe(coro):
+    """Await a coroutine and return None on any exception."""
+    try:
+        return await coro
+    except Exception:
+        return None
 
 
 async def get_research_candidates(agent_config: dict) -> list[str]:
     """
-    Combine trending tickers + upcoming earnings + watchlist, then filter
-    by exchange / sector / market-cap rules from agent_config.
+    Discover and rank research candidates from multiple sources (DAV-80).
 
-    Returns 3–10 ticker symbols, hard-capped at 10 to control API costs.
+    Runs all discovery sources in parallel, scores each ticker by source
+    weight, deduplicates, and returns the top-5 to top-10 tickers ranked
+    by aggregate score after applying agent_config filters.
+
+    Returns 3–10 ticker symbols, hard-capped at MAX_CANDIDATES.
+    Logs per-ticker scores for debugging.
     """
     finnhub = FinnhubService()
-    seen: set[str] = set()
-    candidates: list[str] = []
+    scores: dict[str, int] = defaultdict(int)
 
-    # 1. Agent watchlist gets top priority
-    for t in agent_config.get("watchlist", []):
-        _add(t, seen, candidates)
+    # ── 1. Agent watchlist (highest priority, scored synchronously) ───────────
+    for ticker in agent_config.get("watchlist", []):
+        t = ticker.upper().strip()
+        if t:
+            scores[t] += _SCORES["watchlist"]
 
-    # 2. Upcoming earnings in the next 5 days (high-signal catalyst)
+    # ── 2. Parallel discovery: earnings, movers, reddit, stocktwits ───────────
     today = date.today()
-    from_date = today.isoformat()
-    to_date = (today + timedelta(days=5)).isoformat()
-    try:
-        earnings = await finnhub.get_earnings_calendar(from_date, to_date)
-        for item in earnings[:20]:
-            _add(item["symbol"], seen, candidates)
-    except Exception:
-        pass
+    earnings_res, movers_res, reddit_res, stocktwits_res = await asyncio.gather(
+        _safe(finnhub.get_earnings_calendar(
+            today.isoformat(),
+            (today + timedelta(days=5)).isoformat(),
+        )),
+        _safe(get_market_movers(limit=12)),
+        _safe(get_trending_tickers_reddit()),
+        _safe(get_trending_tickers_stocktwits()),
+    )
 
-    # 3. FMP market movers (gainers + most active) — real signal vs hardcoded list
-    try:
-        movers = await get_market_movers(limit=12)
-        for t in movers:
-            _add(t, seen, candidates)
-    except Exception:
-        # Fallback to Finnhub curated list if FMP fails
-        try:
-            trending = await finnhub.scan_trending_tickers()
-            for t in trending:
-                _add(t, seen, candidates)
-        except Exception:
-            pass
+    for item in (earnings_res or [])[:20]:
+        t = item.get("symbol", "").upper().strip()
+        if t:
+            scores[t] += _SCORES["earnings"]
 
-    # Filter by exchange and sector if specified
+    for t in (movers_res or []):
+        t = t.upper().strip()
+        if t:
+            scores[t] += _SCORES["movers"]
+
+    for t in (reddit_res or []):
+        scores[t] += _SCORES["reddit"]
+
+    for t in (stocktwits_res or []):
+        scores[t] += _SCORES["stocktwits"]
+
+    # ── 3. Finnhub fallback only if FMP movers returned nothing ───────────────
+    if not movers_res:
+        finnhub_trending = await _safe(finnhub.scan_trending_tickers())
+        for t in (finnhub_trending or []):
+            t = t.upper().strip()
+            if t:
+                scores[t] += _SCORES["finnhub"]
+
+    # ── 4. Log scores for debugging ───────────────────────────────────────────
+    top_debug = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:15]
+    logger.info("Scanner candidate scores: %s", top_debug)
+
+    # ── 5. Rank all candidates by aggregate score ─────────────────────────────
+    ranked = [t for t, _ in sorted(scores.items(), key=lambda x: x[1], reverse=True)]
+
+    # ── 6. Apply agent_config filters (sector, cap tier, exclusion list) ──────
     exclusion_list = {t.upper() for t in agent_config.get("exclusionList", [])}
     allowed_sectors = {s.upper() for s in agent_config.get("sectors", [])}
     min_cap_tier = agent_config.get("minMarketCapTier", "LARGE")
@@ -55,13 +115,13 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
     min_rank = cap_tier_rank.get(min_cap_tier, 3)
 
     filtered: list[str] = []
-    for ticker in candidates:
-        if ticker.upper() in exclusion_list:
+    for ticker in ranked:
+        if ticker in exclusion_list:
             continue
         if len(filtered) >= MAX_CANDIDATES:
             break
         if not allowed_sectors and min_rank <= 3:
-            # No sector/cap filter configured — include everything
+            # No sector/cap filter — include everything
             filtered.append(ticker)
             continue
         try:
@@ -77,15 +137,16 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
         except Exception:
             filtered.append(ticker)  # include on error rather than drop
 
-    # Guarantee minimum of 3
-    if len(filtered) < 3:
-        fallback = [t for t in candidates if t not in filtered]
-        filtered.extend(fallback[: 3 - len(filtered)])
+    # ── 7. Guarantee minimum of 3 ────────────────────────────────────────────
+    if len(filtered) < MIN_CANDIDATES:
+        extras = [t for t in ranked if t not in filtered]
+        filtered.extend(extras[: MIN_CANDIDATES - len(filtered)])
 
     return filtered[:MAX_CANDIDATES]
 
 
 def _add(ticker: str, seen: set[str], out: list[str]) -> None:
+    """Legacy helper — kept for any callers outside this module."""
     t = ticker.upper().strip()
     if t and t not in seen:
         seen.add(t)
