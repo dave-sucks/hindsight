@@ -11,6 +11,38 @@ class SourceItem(BaseModel):
     published_at: Optional[str] = None
 
 
+class TechnicalIndicators(BaseModel):
+    rsi_14: Optional[float] = None          # 0-100; >70 overbought, <30 oversold
+    macd: Optional[float] = None            # MACD line
+    macd_signal: Optional[float] = None     # Signal line
+    macd_histogram: Optional[float] = None  # MACD - Signal; positive = bullish
+    sma_20: Optional[float] = None
+    sma_50: Optional[float] = None
+    price_vs_sma20_pct: Optional[float] = None  # % above/below SMA20
+    bollinger_position: Optional[float] = None  # 0=lower band, 50=midline, 100=upper
+    w52_position: Optional[float] = None        # 0=52w low, 100=52w high
+    volume_ratio: Optional[float] = None        # today vol / 20d avg; >1.5 = elevated
+
+
+class AnalystSentiment(BaseModel):
+    strong_buy: int = 0
+    buy: int = 0
+    hold: int = 0
+    sell: int = 0
+    strong_sell: int = 0
+    total_analysts: int = 0
+    consensus: str = ""    # "BUY" | "HOLD" | "SELL"
+    period: str = ""
+
+
+class InsiderTransaction(BaseModel):
+    name: str = ""
+    type: str = ""   # "BUY" | "SELL"
+    shares: int = 0
+    value: Optional[float] = None
+    date: str = ""
+
+
 class DataContext(BaseModel):
     ticker: str
     price: Optional[float] = None
@@ -26,6 +58,11 @@ class DataContext(BaseModel):
     has_upcoming_earnings: bool = False
     earnings_date: Optional[str] = None
     sources: List[SourceItem] = []
+    # DAV-60: Technical indicators
+    technicals: Optional[TechnicalIndicators] = None
+    # DAV-61: Analyst sentiment + insider activity
+    analyst_sentiment: Optional[AnalystSentiment] = None
+    insider_transactions: List[InsiderTransaction] = []
 
 
 class ConceptAnalysis(BaseModel):
