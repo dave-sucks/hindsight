@@ -1,6 +1,6 @@
 """Shared Pydantic models for the research pipeline."""
-from typing import List, Literal, Optional
-from pydantic import BaseModel, ConfigDict
+from typing import Any, List, Literal, Optional
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class SourceItem(BaseModel):
@@ -36,6 +36,14 @@ class ConceptAnalysis(BaseModel):
     reasoning_notes: str
     pass_reason: Optional[str] = None
 
+    @field_validator("hold_duration", mode="before")
+    @classmethod
+    def coerce_hold_duration(cls, v: Any) -> str:
+        """GPT-4o sometimes returns None or 'N/A' — coerce to safe default."""
+        if v is None or str(v).strip().upper() not in ("DAY", "SWING", "POSITION"):
+            return "SWING"
+        return str(v).strip().upper()
+
 
 class ThesisOutput(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
@@ -54,6 +62,14 @@ class ThesisOutput(BaseModel):
     sector: Optional[str] = None
     sources_used: List[SourceItem] = []
     model_used: str = "gpt-4o"
+
+    @field_validator("hold_duration", mode="before")
+    @classmethod
+    def coerce_hold_duration(cls, v: Any) -> str:
+        """GPT-4o sometimes returns None or 'N/A' — coerce to safe default."""
+        if v is None or str(v).strip().upper() not in ("DAY", "SWING", "POSITION"):
+            return "SWING"
+        return str(v).strip().upper()
 
 
 class RunRequest(BaseModel):
