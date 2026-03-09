@@ -3,6 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import { closePosition, getLatestPrice } from "@/lib/alpaca";
 import { inngest } from "@/lib/inngest/client";
+import { sendEmail, getUserEmail } from "@/lib/email";
+import { tradeClosedHtml } from "@/lib/emails/trade-closed";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +101,37 @@ export async function closeTrade(
 
   // 7. Fire Inngest event for post-trade agent evaluation (DAV-35)
   await inngest.send({ name: "trade/closed", data: { tradeId } });
+
+  // 8. Send trade-closed email alert (fire-and-forget — never crash the action)
+  getUserEmail(trade.userId).then((toEmail) => {
+    if (!toEmail) return;
+    const positionCost = trade.entryPrice * trade.shares;
+    const pnlPct = positionCost > 0 ? (realizedPnl / positionCost) * 100 : 0;
+    const daysHeld = Math.max(
+      1,
+      Math.round((Date.now() - new Date(trade.openedAt).getTime()) / 86_400_000)
+    );
+    const isWin = outcome === "WIN";
+    const sign = realizedPnl >= 0 ? "+" : "";
+    sendEmail({
+      to: toEmail,
+      subject: isWin
+        ? `✅ ${trade.ticker} closed ${sign}${pnlPct.toFixed(1)}% — WIN`
+        : `⛔ ${trade.ticker} closed ${sign}${pnlPct.toFixed(1)}% — ${outcome}`,
+      html: tradeClosedHtml({
+        ticker: trade.ticker,
+        direction: trade.direction as "LONG" | "SHORT",
+        entryPrice: trade.entryPrice,
+        closePrice,
+        realizedPnl,
+        realizedPnlPct: pnlPct,
+        outcome,
+        closeReason: reason,
+        daysHeld,
+        tradeId,
+      }),
+    });
+  });
 
   return { tradeId, closePrice, realizedPnl, outcome };
 }

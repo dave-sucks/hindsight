@@ -90,9 +90,10 @@ model Trade {
   closeReason     String?      // "TARGET" | "STOP" | "TIME" | "MANUAL"
   realizedPnl     Float?
   outcome         String?      // "WIN" | "LOSS" | "BREAKEVEN"
-  agentEvaluation String?
-  alpacaOrderId   String?
-  notes           String?
+  agentEvaluation      String?
+  alpacaOrderId        String?
+  notes                String?
+  nearTargetAlertSent  Boolean  @default(false)
   thesis          Thesis       @relation(fields: [thesisId], references: [id])
   events          TradeEvent[]
   openedAt        DateTime     @default(now())
@@ -139,6 +140,8 @@ model AgentConfig {
   realTradingEnabled    Boolean  @default(false)
   realMaxPosition       Float    @default(500)
   emailAlerts           Boolean  @default(true)
+  weeklyDigestEnabled   Boolean  @default(true)
+  digestEmail           String?  // override email for digest; uses auth email when null
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
