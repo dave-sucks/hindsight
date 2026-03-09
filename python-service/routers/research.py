@@ -1,12 +1,14 @@
 import asyncio
 import json
+import os
 import re
 import time
 import uuid
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -14,6 +16,8 @@ from models import RunRequest, RunResponse, ThesisOutput
 from services.finrobot import run_data_cot, run_concept_cot, run_thesis_cot
 from services.finnhub import FinnhubService
 from services.scanner import get_research_candidates
+
+_openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
 router = APIRouter()
 
@@ -79,6 +83,7 @@ async def research_run(body: RunRequest):
 class ChatRequest(BaseModel):
     message: str
     agent_config: dict = {}
+    history: List[dict] = []  # [{"role": "user"|"assistant", "content": str}]
 
 
 def _extract_ticker(message: str) -> str | None:
@@ -92,8 +97,37 @@ def _extract_ticker(message: str) -> str | None:
     return candidates[0] if candidates else None
 
 
-async def _stream_chat(message: str, agent_config: dict) -> AsyncGenerator[dict, None]:
+_FOLLOWUP_SYSTEM = (
+    "You are a quantitative research assistant helping a trader follow up on trade theses. "
+    "Answer concisely and specifically, referencing the data in the conversation. "
+    "Max 150 words. No filler phrases. If you need to calculate anything (R:R, %, etc.) do it."
+)
+
+
+async def _stream_chat(
+    message: str, agent_config: dict, history: list
+) -> AsyncGenerator[dict, None]:
     ticker = _extract_ticker(message)
+
+    # ── Conversational follow-up: history exists and no new ticker identified ──
+    if history and not ticker:
+        messages = [{"role": "system", "content": _FOLLOWUP_SYSTEM}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": message})
+
+        async with _openai_client.chat.completions.stream(
+            model="gpt-4o",
+            messages=messages,
+            temperature=0.3,
+            max_tokens=300,
+        ) as stream:
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    yield {"data": json.dumps({"type": "token", "text": delta})}
+
+        yield {"data": json.dumps({"type": "complete", "thesis": None})}
+        return
 
     if not ticker:
         yield {"data": json.dumps({"type": "error", "text": "Could not identify a ticker in your message. Try: 'Research NVDA for a swing trade'"})}
@@ -141,10 +175,7 @@ async def _stream_chat(message: str, agent_config: dict) -> AsyncGenerator[dict,
     yield event("thinking", text=f"Writing thesis for {ticker} ({concept.direction})...")
 
     # Stream thesis tokens via OpenAI streaming
-    import os
-    from openai import AsyncOpenAI
     from services.finrobot import _THESIS_SYSTEM
-    _openai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
     prompt = f"""Generate a full trade thesis for:
 Ticker: {data.ticker} — {data.company_name}
@@ -156,7 +187,7 @@ Initial Confidence: {concept.initial_confidence}
 Analyst Notes: {concept.reasoning_notes}"""
 
     full_text = ""
-    async with _openai.chat.completions.stream(
+    async with _openai_client.chat.completions.stream(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": _THESIS_SYSTEM},
@@ -210,7 +241,9 @@ Analyst Notes: {concept.reasoning_notes}"""
 
 @router.post("/chat")
 async def research_chat(body: ChatRequest):
-    return EventSourceResponse(_stream_chat(body.message, body.agent_config))
+    return EventSourceResponse(
+        _stream_chat(body.message, body.agent_config, body.history)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -241,10 +274,7 @@ _EVAL_SYSTEM = (
 
 @router.post("/evaluate", response_model=EvaluationResponse)
 async def evaluate_trade(body: EvaluationRequest):
-    import os
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+    client = _openai_client
 
     signals_str = ", ".join(body.signal_types) if body.signal_types else "unspecified"
     thesis_str = body.thesis_summary or "No thesis summary available."
