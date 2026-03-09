@@ -455,7 +455,13 @@ function buildFullInput(config: AgentConfig): AgentConfigInput {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function SettingsPage({ config: initialConfig }: { config: AgentConfig }) {
+export default function SettingsPage({
+  config: initialConfig,
+  embedded = false,
+}: {
+  config: AgentConfig;
+  embedded?: boolean;
+}) {
   // Keep a client-side mirror of config so each card can pass the latest
   // values to buildFullInput (prevents one card from clobbering another).
   const [config, setConfig] = useState<AgentConfig>(initialConfig);
@@ -467,6 +473,16 @@ export default function SettingsPage({ config: initialConfig }: { config: AgentC
       // map AgentConfigInput keys back to AgentConfig model keys
     } as AgentConfig));
   };
+
+  if (embedded) {
+    return (
+      <div className="space-y-4">
+        <ResearchScheduleCard config={config} onSaved={handleSaved} />
+        <AlertConfigCard config={config} onSaved={handleSaved} />
+        <GraduationSettingsCard config={config} onSaved={handleSaved} />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4 max-w-3xl mx-auto">
