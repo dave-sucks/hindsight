@@ -118,7 +118,10 @@ async def _stream_chat(message: str, agent_config: dict) -> AsyncGenerator[dict,
         yield event("error", text=f"Analysis failed: {exc}")
         return
 
-    if concept.direction == "PASS" or concept.initial_confidence < agent_config.get("minConfidence", 70):
+    # Only bail out on an explicit PASS signal — low confidence alone does NOT
+    # short-circuit. The full thesis should always be generated; callers decide
+    # whether to act based on confidence_score.
+    if concept.direction == "PASS":
         thesis = ThesisOutput(
             ticker=ticker,
             direction="PASS",
