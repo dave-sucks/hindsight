@@ -19,6 +19,9 @@ const tuffy = Tuffy({
 export const metadata: Metadata = {
   title: "Hindsight",
   description: "AI-powered paper trading simulator. Research stocks, generate trade theses, and track performance.",
+  icons: {
+    icon: "/hindsight-logo.svg",
+  },
 };
 
 export default function RootLayout({
