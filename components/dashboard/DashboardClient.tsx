@@ -256,7 +256,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                             </div>
                         </TabsContent>
 
-                        {/* ── Market tab — original TradingView overview from Signalist ── */}
+                        {/* ── Market tab — TradingView market overview ── */}
                         <TabsContent value="market" className="mt-4">
                             <TradingViewWidget
                                 scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js"
