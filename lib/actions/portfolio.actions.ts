@@ -19,11 +19,41 @@ export interface PortfolioStats {
   openCount: number;
 }
 
+export interface AgentConfigSummary {
+  id: string;
+  name: string;
+  enabled: boolean;
+  scheduleTime: string;
+  lastRunAt: string | null; // ISO string
+  tradesPlaced: number;
+}
+
+export interface RecentRunSummary {
+  id: string;
+  agentName: string | null;
+  startedAt: string; // ISO string
+  completedAt: string | null;
+  thesisCount: number;
+  tradesPlaced: number;
+  status: string;
+}
+
+export interface TodaysPick {
+  id: string;
+  ticker: string;
+  direction: string;
+  confidenceScore: number;
+  signalTypes: string[];
+}
+
 export interface DashboardData {
   openTrades: MockTrade[];
   closedTrades: MockTrade[];
   portfolio: PortfolioStats;
   equityCurve: { date: string; value: number }[];
+  agentConfigs: AgentConfigSummary[];
+  recentRuns: RecentRunSummary[];
+  todaysPicks: TodaysPick[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -85,9 +115,8 @@ function buildEquityCurve(
 // ─── Main data loader ─────────────────────────────────────────────────────────
 
 /**
- * Fetches all trades for the current user and computes portfolio stats.
- * Returns empty data if the user is not authenticated.
- * Falls back gracefully if Alpaca price fetch fails.
+ * Fetches all trades, agent configs, recent runs, and today's picks for the
+ * current user. Returns empty data if the user is not authenticated.
  */
 export async function getDashboardData(): Promise<DashboardData> {
   const supabase = await createClient();
@@ -95,18 +124,23 @@ export async function getDashboardData(): Promise<DashboardData> {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const emptyPortfolio: PortfolioStats = {
+    totalValue: STARTING_CAPITAL,
+    unrealizedPnl: 0,
+    realizedPnl: 0,
+    winRate: null,
+    openCount: 0,
+  };
+
   if (!user) {
     return {
       openTrades: [],
       closedTrades: [],
-      portfolio: {
-        totalValue: STARTING_CAPITAL,
-        unrealizedPnl: 0,
-        realizedPnl: 0,
-        winRate: null,
-        openCount: 0,
-      },
+      portfolio: emptyPortfolio,
       equityCurve: [],
+      agentConfigs: [],
+      recentRuns: [],
+      todaysPicks: [],
     };
   }
 
@@ -123,7 +157,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       where: { userId, status: "CLOSED" },
       include: { thesis: { select: { confidenceScore: true } } },
       orderBy: { closedAt: "desc" },
-      take: 50, // cap at 50 recent closed trades for the dashboard
+      take: 50,
     }),
   ]);
 
@@ -198,6 +232,107 @@ export async function getDashboardData(): Promise<DashboardData> {
   // ── 6. Equity curve (last 30 days) ────────────────────────────────────────
   const equityCurve = buildEquityCurve(dbClosedTrades, STARTING_CAPITAL);
 
+  // ── 7. Agent configs with last-run info ───────────────────────────────────
+  const [dbAgentConfigs, tradesWithAgent] = await Promise.all([
+    prisma.agentConfig.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      include: {
+        researchRuns: {
+          orderBy: { startedAt: "desc" },
+          take: 1,
+          select: { startedAt: true },
+        },
+      },
+    }),
+    // Count trades per agent via nested relation filter
+    prisma.trade.findMany({
+      where: {
+        userId,
+        thesis: {
+          researchRun: { agentConfigId: { not: null } },
+        },
+      },
+      select: {
+        id: true,
+        thesis: {
+          select: {
+            researchRun: { select: { agentConfigId: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const tradeCountMap = new Map<string, number>();
+  for (const trade of tradesWithAgent) {
+    const agentId = trade.thesis.researchRun.agentConfigId;
+    if (agentId) {
+      tradeCountMap.set(agentId, (tradeCountMap.get(agentId) ?? 0) + 1);
+    }
+  }
+
+  const agentConfigs: AgentConfigSummary[] = dbAgentConfigs.map((a) => ({
+    id: a.id,
+    name: a.name,
+    enabled: a.enabled,
+    scheduleTime: a.scheduleTime,
+    lastRunAt: a.researchRuns[0]?.startedAt.toISOString() ?? null,
+    tradesPlaced: tradeCountMap.get(a.id) ?? 0,
+  }));
+
+  // ── 8. Recent research runs (last 10) ─────────────────────────────────────
+  const dbRecentRuns = await prisma.researchRun.findMany({
+    where: { userId },
+    orderBy: { startedAt: "desc" },
+    take: 10,
+    include: {
+      agentConfig: { select: { name: true } },
+      theses: {
+        select: { trade: { select: { id: true } } },
+      },
+    },
+  });
+
+  const recentRuns: RecentRunSummary[] = dbRecentRuns.map((r) => ({
+    id: r.id,
+    agentName: r.agentConfig?.name ?? null,
+    startedAt: r.startedAt.toISOString(),
+    completedAt: r.completedAt?.toISOString() ?? null,
+    thesisCount: r.theses.length,
+    tradesPlaced: r.theses.filter((t) => t.trade).length,
+    status: r.status,
+  }));
+
+  // ── 9. Today's picks (DAV-85) ─────────────────────────────────────────────
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+
+  const dbTodaysPicks = await prisma.thesis.findMany({
+    where: {
+      userId,
+      createdAt: { gte: todayMidnight },
+      direction: { in: ["LONG", "SHORT"] },
+    },
+    orderBy: { confidenceScore: "desc" },
+    take: 5,
+    select: {
+      id: true,
+      ticker: true,
+      direction: true,
+      confidenceScore: true,
+      signalTypes: true,
+    },
+  });
+
+  const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => ({
+    id: t.id,
+    ticker: t.ticker,
+    direction: t.direction,
+    confidenceScore: t.confidenceScore,
+    signalTypes: t.signalTypes,
+  }));
+
   return {
     openTrades,
     closedTrades,
@@ -209,5 +344,8 @@ export async function getDashboardData(): Promise<DashboardData> {
       openCount: openTrades.length,
     },
     equityCurve,
+    agentConfigs,
+    recentRuns,
+    todaysPicks,
   };
 }
