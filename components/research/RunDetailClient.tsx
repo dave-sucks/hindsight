@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { TradeReviewSheet } from "@/components/TradeReviewSheet";
 import ResearchChatFull from "@/components/ResearchChatFull";
 import {
@@ -15,10 +16,24 @@ import {
   ArrowLeft,
   CheckCircle,
   XCircle,
+  ExternalLink,
+  Newspaper,
+  BarChart2,
+  Brain,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type { CompanyProfile } from "@/components/research/ResearchPage";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type SourceItem = {
+  type: string;
+  provider: string;
+  title: string;
+  url?: string | null;
+  published_at?: string | null;
+};
 
 type TradeSummary = {
   id: string;
@@ -39,6 +54,7 @@ type ThesisDetail = {
   reasoningSummary: string;
   thesisBullets: string[];
   riskFlags: string[];
+  sourcesUsed: unknown;
   entryPrice: number | null;
   targetPrice: number | null;
   stopLoss: number | null;
@@ -55,6 +71,7 @@ type RunDetail = {
   source: string;
   startedAt: Date;
   completedAt: Date | null;
+  parameters: unknown;
   theses: ThesisDetail[];
 };
 
@@ -81,6 +98,63 @@ function timeAgo(date: Date | string): string {
   return `${days}d ago`;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseSources(raw: unknown): SourceItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (s): s is SourceItem =>
+      s !== null && typeof s === "object" && "title" in s && "type" in s
+  );
+}
+
+function sourceIcon(type: string) {
+  switch (type.toLowerCase()) {
+    case "news":
+      return <Newspaper className="h-3 w-3 shrink-0 text-muted-foreground" />;
+    case "earnings":
+    case "financials":
+      return <BarChart2 className="h-3 w-3 shrink-0 text-muted-foreground" />;
+    default:
+      return <Brain className="h-3 w-3 shrink-0 text-muted-foreground" />;
+  }
+}
+
+// ─── Run Parameters badge row ─────────────────────────────────────────────────
+
+function RunParamBadges({ params }: { params: unknown }) {
+  if (!params || typeof params !== "object") return null;
+  const p = params as Record<string, unknown>;
+
+  const items: { label: string; value: string }[] = [];
+  if (p.directionBias) items.push({ label: "Bias", value: String(p.directionBias) });
+  if (p.minConfidence != null) items.push({ label: "Min conf.", value: `${p.minConfidence}%` });
+  if (Array.isArray(p.holdDurations) && p.holdDurations.length)
+    items.push({ label: "Hold", value: p.holdDurations.join(", ") });
+  if (p.maxOpenPositions != null)
+    items.push({ label: "Max pos.", value: String(p.maxOpenPositions) });
+  if (p.maxPositionSize != null)
+    items.push({ label: "Size", value: `$${p.maxPositionSize}` });
+
+  if (!items.length) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 mt-2">
+      {items.map(({ label, value }) => (
+        <span
+          key={label}
+          className="text-[11px] text-muted-foreground border rounded-sm px-2 py-0.5"
+        >
+          <span className="font-medium uppercase tracking-wide text-[10px]">
+            {label}
+          </span>{" "}
+          {value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ─── Detail Thesis Card ───────────────────────────────────────────────────────
 
 function DetailThesisCard({
@@ -92,6 +166,7 @@ function DetailThesisCard({
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
 
   const isLong = thesis.direction === "LONG";
   const isShort = thesis.direction === "SHORT";
@@ -130,6 +205,8 @@ function DetailThesisCard({
   const exchange = profile?.exchange ?? null;
   const logoUrl = profile?.logo && !imgError ? profile.logo : null;
   const subtitle = [companyName, exchange].filter(Boolean).join(" · ");
+
+  const sources = parseSources(thesis.sourcesUsed);
 
   return (
     <>
@@ -223,6 +300,68 @@ function DetailThesisCard({
                 </Badge>
               ))}
             </div>
+          )}
+
+          {/* Sources — collapsible */}
+          {sources.length > 0 && (
+            <div>
+              <Separator className="mb-2" />
+              <button
+                onClick={() => setSourcesExpanded((v) => !v)}
+                className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors w-full"
+              >
+                <Newspaper className="h-3 w-3" />
+                <span>
+                  {sources.length} source{sources.length !== 1 ? "s" : ""} read
+                </span>
+                <span className="ml-auto">
+                  {sourcesExpanded ? (
+                    <ChevronUp className="h-3 w-3" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3" />
+                  )}
+                </span>
+              </button>
+              {sourcesExpanded && (
+                <ul className="mt-2 space-y-1.5">
+                  {sources.map((src, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      {sourceIcon(src.type)}
+                      <div className="flex-1 min-w-0">
+                        {src.url ? (
+                          <a
+                            href={src.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] text-foreground hover:underline flex items-center gap-1 leading-snug"
+                          >
+                            <span className="truncate">{src.title}</span>
+                            <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                          </a>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground leading-snug line-clamp-2">
+                            {src.title}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wide">
+                          {src.provider}
+                          {src.published_at
+                            ? ` · ${new Date(src.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                            : ""}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* Model used */}
+          {thesis.modelUsed && (
+            <p className="text-[10px] text-muted-foreground/50 font-mono">
+              {thesis.modelUsed}
+            </p>
           )}
         </div>
 
@@ -331,6 +470,10 @@ export default function RunDetailClient({
   const isFailed = run.status === "FAILED";
   const tradesPlaced = run.theses.filter((t) => t.trade !== null).length;
   const actionable = run.theses.filter((t) => t.direction !== "PASS").length;
+  const totalSources = run.theses.reduce(
+    (acc, t) => acc + parseSources(t.sourcesUsed).length,
+    0
+  );
 
   return (
     <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden">
@@ -394,7 +537,14 @@ export default function RunDetailClient({
                     {tradesPlaced} trade{tradesPlaced !== 1 ? "s" : ""} placed
                   </span>
                 )}
+                {totalSources > 0 && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Newspaper className="h-3 w-3" />
+                    {totalSources} sources read
+                  </span>
+                )}
               </div>
+              <RunParamBadges params={run.parameters} />
             </div>
           </div>
         </div>
