@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { ArrowLeft, Bot, Clock } from "lucide-react";
 import RunChatThread from "@/components/research/RunChatThread";
+import RunLiveStream from "@/components/research/RunLiveStream";
 import type { RunEventRow } from "@/components/research/RunChatThread";
 import type { ComposerRecentThesis } from "@/components/chat/ChatComposer";
 
@@ -233,17 +234,13 @@ export default async function RunPage({
 
       {/* Body */}
       <div className="flex-1 min-h-0">
-        {run.status === "RUNNING" && events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-3">
-            <div className="animate-pulse rounded-full h-3 w-3 bg-amber-500" />
-            <p className="text-sm">Run is in progress. Refresh to see updates.</p>
-            <Link
-              href={`/runs/${id}`}
-              className="text-xs underline underline-offset-4 hover:text-foreground transition-colors"
-            >
-              Refresh
-            </Link>
-          </div>
+        {run.status === "RUNNING" ? (
+          // Live stream: connect to SSE and accumulate events in real-time
+          <RunLiveStream
+            runId={id}
+            userId={userId}
+            analystId={run.agentConfig?.id}
+          />
         ) : events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2">
             <p className="text-sm">No details available for this run.</p>
