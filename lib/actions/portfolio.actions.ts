@@ -290,7 +290,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     where: { userId },
     orderBy: { startedAt: "desc" },
     take: 10,
-    include: {
+    select: {
+      id: true,
+      status: true,
+      startedAt: true,
+      completedAt: true,
       agentConfig: { select: { name: true } },
       theses: {
         select: { trade: { select: { id: true } } },
