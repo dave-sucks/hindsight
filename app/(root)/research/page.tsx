@@ -34,7 +34,13 @@ export default async function ResearchRoute() {
       where: { userId },
       orderBy: { startedAt: "desc" },
       take: 30,
-      include: {
+      select: {
+        id: true,
+        agentConfigId: true,
+        status: true,
+        source: true,
+        startedAt: true,
+        completedAt: true,
         agentConfig: { select: { name: true } },
         theses: {
           select: {

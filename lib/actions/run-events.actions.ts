@@ -18,10 +18,22 @@ export async function getOrSynthesizeRunEvents(
   // Verify ownership
   const run = await prisma.researchRun.findFirst({
     where: { id: runId, userId },
-    include: {
+    select: {
+      id: true,
+      status: true,
+      startedAt: true,
+      completedAt: true,
+      updatedAt: true,
       events: { orderBy: { createdAt: "asc" } },
       theses: {
-        include: { trade: { select: { id: true } } },
+        select: {
+          id: true,
+          ticker: true,
+          direction: true,
+          confidenceScore: true,
+          createdAt: true,
+          trade: { select: { id: true } },
+        },
         orderBy: { createdAt: "asc" },
       },
     },

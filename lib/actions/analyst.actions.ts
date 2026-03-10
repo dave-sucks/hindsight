@@ -135,6 +135,16 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
   const configs = await prisma.agentConfig.findMany({
     where: { userId },
     orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      name: true,
+      enabled: true,
+      sectors: true,
+      signalTypes: true,
+      holdDurations: true,
+      directionBias: true,
+      minConfidence: true,
+    },
   });
 
   if (configs.length === 0) return [];
@@ -212,6 +222,23 @@ export async function getAnalystDetail(
 
   const config = await prisma.agentConfig.findFirst({
     where: { id: analystId, userId },
+    select: {
+      id: true,
+      userId: true,
+      name: true,
+      enabled: true,
+      sectors: true,
+      signalTypes: true,
+      holdDurations: true,
+      directionBias: true,
+      minConfidence: true,
+      maxOpenPositions: true,
+      maxPositionSize: true,
+      maxRiskPct: true,
+      scheduleTime: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
   if (!config) return null;
 
@@ -318,10 +345,10 @@ export async function getAnalystDetail(
     scheduleTime: config.scheduleTime,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
-    description: config.description ?? null,
-    strategyType: config.strategyType ?? "DISCOVERY",
-    strategyInstructions: config.strategyInstructions ?? null,
-    tradePolicyAutoTrade: config.tradePolicyAutoTrade ?? true,
+    description: (config as Record<string, unknown>).description as string ?? null,
+    strategyType: (config as Record<string, unknown>).strategyType as string ?? "DISCOVERY",
+    strategyInstructions: (config as Record<string, unknown>).strategyInstructions as string ?? null,
+    tradePolicyAutoTrade: (config as Record<string, unknown>).tradePolicyAutoTrade as boolean ?? true,
   };
 
   return {

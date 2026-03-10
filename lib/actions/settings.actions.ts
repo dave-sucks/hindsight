@@ -19,11 +19,26 @@ async function getServerUserId(): Promise<string> {
 
 // ─── Load (or create) default AgentConfig (legacy — for old SettingsPage) ─────
 
+const PRE_M10_SELECT = {
+  id: true, userId: true, name: true, enabled: true,
+  markets: true, exchanges: true, sectors: true, watchlist: true,
+  exclusionList: true, maxPositionSize: true, maxOpenPositions: true,
+  minConfidence: true, maxRiskPct: true, dailyLossLimit: true,
+  holdDurations: true, directionBias: true, signalTypes: true,
+  minMarketCapTier: true, scheduleTime: true, priceCheckFreq: true,
+  weekendMode: true, graduationWinRate: true, graduationMinTrades: true,
+  graduationProfitFactor: true, realTradingEnabled: true, realMaxPosition: true,
+  emailAlerts: true, weeklyDigestEnabled: true, digestEmail: true,
+  createdAt: true, updatedAt: true,
+} as const;
+
 export async function getAgentConfig(): Promise<AgentConfig> {
   const userId = await getServerUserId();
-  const existing = await prisma.agentConfig.findFirst({ where: { userId } });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existing = await prisma.agentConfig.findFirst({ where: { userId }, select: PRE_M10_SELECT }) as any;
   if (existing) return existing;
-  return prisma.agentConfig.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (prisma.agentConfig.create({ select: PRE_M10_SELECT,
     data: {
       userId,
       name: "My Analyst",
@@ -53,17 +68,20 @@ export async function getAgentConfig(): Promise<AgentConfig> {
       emailAlerts: true,
       weeklyDigestEnabled: true,
     },
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  })) as any;
 }
 
 // ─── Load all analysts for current user ───────────────────────────────────────
 
 export async function getAllAgentConfigs(): Promise<AgentConfig[]> {
   const userId = await getServerUserId();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return prisma.agentConfig.findMany({
     where: { userId },
     orderBy: { createdAt: "asc" },
-  });
+    select: PRE_M10_SELECT,
+  }) as any;
 }
 
 // ─── Input types ──────────────────────────────────────────────────────────────
@@ -107,6 +125,7 @@ export async function createAnalyst(
   try {
     const userId = await getServerUserId();
     const analyst = await prisma.agentConfig.create({
+      select: { id: true },
       data: {
         userId,
         name: data.name,
@@ -154,6 +173,7 @@ export async function updateAnalyst(
     const userId = await getServerUserId();
     const existing = await prisma.agentConfig.findFirst({
       where: { id, userId },
+      select: { id: true },
     });
     if (!existing) return { success: false, error: "Not found" };
 
@@ -191,6 +211,7 @@ export async function toggleAnalystEnabled(
     const userId = await getServerUserId();
     const existing = await prisma.agentConfig.findFirst({
       where: { id, userId },
+      select: { id: true },
     });
     if (!existing) return { success: false };
     await prisma.agentConfig.update({ where: { id }, data: { enabled } });
@@ -210,6 +231,7 @@ export async function deleteAnalyst(
     const userId = await getServerUserId();
     const existing = await prisma.agentConfig.findFirst({
       where: { id, userId },
+      select: { id: true },
     });
     if (!existing) return { success: false, error: "Not found" };
     await prisma.agentConfig.delete({ where: { id } });
@@ -227,7 +249,7 @@ export async function saveAgentConfig(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const userId = await getServerUserId();
-    const config = await prisma.agentConfig.findFirst({ where: { userId } });
+    const config = await prisma.agentConfig.findFirst({ where: { userId }, select: { id: true } });
     if (!config) return { success: false, error: "No agent config found" };
     await prisma.agentConfig.update({
       where: { id: config.id },
@@ -260,7 +282,7 @@ export async function toggleAutoRun(
 ): Promise<{ success: boolean }> {
   try {
     const userId = await getServerUserId();
-    const config = await prisma.agentConfig.findFirst({ where: { userId } });
+    const config = await prisma.agentConfig.findFirst({ where: { userId }, select: { id: true } });
     if (!config) return { success: false };
     await prisma.agentConfig.update({
       where: { id: config.id },

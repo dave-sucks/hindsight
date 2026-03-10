@@ -85,7 +85,8 @@ export async function POST(
   // ── Load run with theses + recent messages ─────────────────────────────────
   const run = await prisma.researchRun.findFirst({
     where: { id: runId, userId: user.id },
-    include: {
+    select: {
+      id: true,
       theses: {
         select: {
           id: true,

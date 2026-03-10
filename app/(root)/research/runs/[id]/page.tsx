@@ -23,7 +23,13 @@ export default async function RunDetailPage({
   const [run, recentTheses, runningCount] = await Promise.all([
     prisma.researchRun.findFirst({
       where: { id, userId },
-      include: {
+      select: {
+        id: true,
+        status: true,
+        source: true,
+        startedAt: true,
+        completedAt: true,
+        parameters: true,
         agentConfig: { select: { id: true, name: true } },
         theses: {
           select: {
