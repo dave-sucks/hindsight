@@ -43,12 +43,39 @@ model ResearchRun {
   startedAt     DateTime     @default(now())
   completedAt   DateTime?
   theses        Thesis[]
+  events        RunEvent[]
+  messages      RunMessage[]
   agentConfig   AgentConfig? @relation(fields: [agentConfigId], references: [id], onDelete: SetNull)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
   @@index([agentConfigId])
   @@index([userId])
+}
+
+model RunEvent {
+  id        String      @id @default(cuid())
+  runId     String
+  type      String      // "scan_complete" | "analyzing" | "data_ready" | "concept" | "thesis_complete" | "skip" | "run_complete" | "error"
+  title     String
+  message   String?
+  payload   Json?       // structured metadata: tickers, sources, thesis data, etc.
+  createdAt DateTime    @default(now())
+  run       ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([runId, createdAt])
+}
+
+model RunMessage {
+  id        String      @id @default(cuid())
+  runId     String
+  role      String      // "user" | "assistant"
+  content   String
+  createdAt DateTime    @default(now())
+  run       ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
 }
 
 model Thesis {
@@ -71,6 +98,7 @@ model Thesis {
   sourcesUsed      Json        // [{type, provider, title, url, publishedAt}]
   modelUsed        String
   fullResearch     Json?
+  thoughtTrace     Json?       // [{type, data, timestamp_ms}] — per-ticker event log for replay
   researchRun      ResearchRun @relation(fields: [researchRunId], references: [id])
   trade            Trade?
   createdAt        DateTime    @default(now())
@@ -123,6 +151,18 @@ model AgentConfig {
   userId                String        // NOT unique — multiple Analysts per user
   name                  String        @default("My Analyst")
   enabled               Boolean       @default(false)
+  // Analyst identity
+  analystPrompt         String?       // "Find me high-risk EV day trades every morning"
+  analystVoice          String?       // "aggressive momentum day trader who focuses on catalysts"
+  description           String?       // short display description on analyst card
+  // Strategy configuration (from prior branch, already in DB)
+  strategyType          String        @default("DISCOVERY") // "DISCOVERY" | "WATCHLIST" | "DIRECTED"
+  strategyInstructions  String?       // freeform prompt injection into Concept-CoT
+  tickerUniverse        String[]      @default([]) // for DIRECTED mode: always analyze these tickers
+  tradePolicyAutoTrade  Boolean       @default(true) // true = auto-place paper trades
+  // Prompt customization
+  conceptPromptExtra    String?       // extra instructions for concept system prompt
+  thesisPromptExtra     String?       // extra instructions for thesis system prompt
   researchRuns          ResearchRun[]
   markets               String[] // ["US_EQUITIES", "CRYPTO", "ETFS"]
   exchanges             String[] // ["NASDAQ", "NYSE"]

@@ -4,17 +4,9 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -23,13 +15,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { closeTrade } from '@/lib/actions/closeTrade.actions';
 import {
@@ -39,18 +24,11 @@ import {
   type TradeDirection,
   type TradeStatus,
 } from '@/lib/mock-data/trades';
-import {
-  ChevronUp,
-  ChevronDown,
-  Download,
-  ArrowLeftRight,
-  Loader2,
-} from 'lucide-react';
+import { ArrowLeftRight, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface TradesPageProps {
-  /** Real trades passed from the server component. Falls back to mock data if omitted. */
   initialOpenTrades?: MockTrade[];
   initialClosedTrades?: MockTrade[];
 }
@@ -59,8 +37,6 @@ interface TradesPageProps {
 
 type FilterStatus = 'ALL' | 'ACTIVE' | 'CLOSED';
 type FilterDirection = 'ALL' | TradeDirection;
-type SortKey = keyof MockTrade;
-type SortDir = 'asc' | 'desc';
 
 // ─── Badge helpers ─────────────────────────────────────────────────────────────
 
@@ -80,11 +56,8 @@ function DirectionBadge({ direction }: { direction: TradeDirection }) {
   );
 }
 
-const STATUS_CONFIG: Record<
-  TradeStatus,
-  { label: string; cls: string }
-> = {
-  OPEN: { label: 'Active', cls: 'border-primary/40 text-primary' },
+const STATUS_CONFIG: Record<TradeStatus, { label: string; cls: string; live?: boolean }> = {
+  OPEN: { label: 'Open', cls: 'border-primary/40 text-primary', live: true },
   CLOSED_WIN: { label: 'Target Hit', cls: 'border-emerald-500/40 text-emerald-500' },
   CLOSED_LOSS: { label: 'Stop Hit', cls: 'border-red-500/40 text-red-500' },
   CLOSED_EXPIRED: { label: 'Expired', cls: 'border-muted-foreground/40 text-muted-foreground' },
@@ -94,80 +67,175 @@ function StatusBadge({ status }: { status: TradeStatus }) {
   const cfg = STATUS_CONFIG[status] ?? { label: status, cls: '' };
   return (
     <Badge variant="outline" className={cn('text-xs', cfg.cls)}>
+      {cfg.live && (
+        <span className="relative flex h-1.5 w-1.5 mr-1.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
+        </span>
+      )}
       {cfg.label}
     </Badge>
   );
 }
 
-// ─── Duration helper ───────────────────────────────────────────────────────────
+// ─── Trade card ───────────────────────────────────────────────────────────────
 
-function tradeDuration(openedAt: string, closedAt?: string): string {
-  const start = new Date(openedAt).getTime();
-  const end = closedAt ? new Date(closedAt).getTime() : Date.now();
-  const diffMs = end - start;
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  if (days === 0) return `${hours}h`;
-  return `${days}d ${hours}h`;
-}
-
-// ─── Sortable header ──────────────────────────────────────────────────────────
-
-function SortableHead({
-  col,
-  label,
-  sortKey,
-  sortDir,
-  onSort,
-  className,
+function TradeCard({
+  trade,
+  onClose,
 }: {
-  col: SortKey;
-  label: string;
-  sortKey: SortKey;
-  sortDir: SortDir;
-  onSort: (k: SortKey) => void;
-  className?: string;
+  trade: MockTrade;
+  onClose: (id: string) => void;
 }) {
-  const active = sortKey === col;
+  const isOpen = trade.status === 'OPEN';
+  const isPos = trade.pnl >= 0;
+
+  const gainPct =
+    trade.targetPrice && trade.entryPrice
+      ? (((trade.targetPrice - trade.entryPrice) / trade.entryPrice) * 100).toFixed(1)
+      : null;
+  const lossPct =
+    trade.stopPrice && trade.entryPrice
+      ? (((trade.entryPrice - trade.stopPrice) / trade.entryPrice) * 100).toFixed(1)
+      : null;
+
+  const openedLabel = new Date(trade.openedAt).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+
   return (
-    <TableHead
-      className={cn(
-        'text-xs font-medium uppercase tracking-wide text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors',
-        className
-      )}
-      onClick={() => onSort(col)}
-    >
-      <span className="flex items-center gap-1">
-        {label}
-        {active ? (
-          sortDir === 'asc' ? (
-            <ChevronUp className="h-3 w-3" />
-          ) : (
-            <ChevronDown className="h-3 w-3" />
-          )
-        ) : (
-          <ChevronDown className="h-3 w-3 opacity-20" />
-        )}
-      </span>
-    </TableHead>
+    <Card className="relative hover:border-foreground/25 transition-colors overflow-hidden">
+      {/* Stretched link fills the card — sits below interactive elements */}
+      <Link
+        href={`/trades/${trade.id}`}
+        className="absolute inset-0 z-0"
+        aria-label={`View ${trade.ticker} trade`}
+      />
+      <CardContent className="p-4 space-y-3 relative">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-base font-semibold font-mono">{trade.ticker}</span>
+            <DirectionBadge direction={trade.direction} />
+          </div>
+          <StatusBadge status={trade.status} />
+        </div>
+
+        {/* P&L */}
+        <div>
+          <p
+            className={cn(
+              'text-2xl font-semibold tabular-nums leading-none',
+              isPos ? 'text-emerald-500' : 'text-red-500'
+            )}
+          >
+            {isPos ? '+' : ''}${Math.abs(trade.pnl).toFixed(2)}
+          </p>
+          <p
+            className={cn(
+              'text-xs tabular-nums mt-1 flex items-center gap-1',
+              isPos ? 'text-emerald-500/70' : 'text-red-500/70'
+            )}
+          >
+            {isPos ? (
+              <TrendingUp className="h-3 w-3" />
+            ) : (
+              <TrendingDown className="h-3 w-3" />
+            )}
+            {isPos ? '+' : ''}
+            {trade.pnlPct.toFixed(2)}%
+          </p>
+        </div>
+
+        {/* 4-stat grid */}
+        <div className="grid grid-cols-4 gap-2 rounded-lg bg-muted/40 p-2.5 text-center">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              Entry
+            </p>
+            <p className="text-xs tabular-nums font-medium">
+              ${trade.entryPrice.toFixed(2)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              Target
+            </p>
+            <p className="text-xs tabular-nums font-medium text-emerald-500">
+              ${trade.targetPrice.toFixed(2)}
+              {gainPct && (
+                <span className="text-[10px] text-muted-foreground ml-0.5">
+                  +{gainPct}%
+                </span>
+              )}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              Stop
+            </p>
+            <p className="text-xs tabular-nums font-medium text-red-500">
+              ${trade.stopPrice.toFixed(2)}
+              {lossPct && (
+                <span className="text-[10px] text-muted-foreground ml-0.5">
+                  −{lossPct}%
+                </span>
+              )}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              Conf
+            </p>
+            <p
+              className={cn(
+                'text-xs tabular-nums font-medium',
+                trade.confidenceScore >= 70 ? 'text-emerald-500' : 'text-amber-500'
+              )}
+            >
+              {trade.confidenceScore}%
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">{openedLabel}</p>
+          {isOpen && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="relative z-10 h-7 text-xs px-2 text-red-500 hover:text-red-500 hover:bg-red-500/10"
+              onClick={(e) => {
+                e.preventDefault();
+                onClose(trade.id);
+              }}
+            >
+              Close
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-// ─── Loading skeleton ─────────────────────────────────────────────────────────
+// ─── Empty state ──────────────────────────────────────────────────────────────
 
-function TradesTableSkeleton() {
+function EmptyState({ filtered }: { filtered: boolean }) {
   return (
-    <>
-      {[...Array(8)].map((_, i) => (
-        <TableRow key={i} className="border-border">
-          {[...Array(11)].map((_, j) => (
-            <TableCell key={j}>
-              <Skeleton className="h-5 w-full max-w-[80px]" />
-            </TableCell>
-          ))}
-        </TableRow>
-      ))}
-    </>
+    <div className="col-span-full flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
+      <ArrowLeftRight className="h-8 w-8 mb-3 opacity-30" />
+      <p className="text-sm">
+        {filtered ? 'No trades match your filters' : 'No paper trades yet'}
+      </p>
+      {!filtered && (
+        <p className="text-xs mt-1 max-w-xs leading-relaxed">
+          Trades are placed automatically when an analyst finds a high-confidence setup.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -178,16 +246,12 @@ export default function TradesPage({
   initialClosedTrades,
 }: TradesPageProps) {
   const router = useRouter();
-  // Use real data when provided by the server component; fall back to mock data
   const openTrades = initialOpenTrades ?? mockOpenTrades;
   const closedTrades = initialClosedTrades ?? mockClosedTrades;
-  const allTrades = [...openTrades, ...closedTrades];
+  const allTrades = useMemo(() => [...openTrades, ...closedTrades], [openTrades, closedTrades]);
 
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('ALL');
   const [dirFilter, setDirFilter] = useState<FilterDirection>('ALL');
-  const [sortKey, setSortKey] = useState<SortKey>('openedAt');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
-  const [isLoading] = useState(false);
   const [closeTarget, setCloseTarget] = useState<string | null>(null);
   const [closeLoading, setCloseLoading] = useState(false);
 
@@ -208,55 +272,29 @@ export default function TradesPage({
     }
   }
 
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(key);
-      setSortDir('desc');
-    }
-  };
-
   const filtered = useMemo(() => {
     let trades = allTrades;
-
     if (statusFilter === 'ACTIVE') trades = trades.filter((t) => t.status === 'OPEN');
     else if (statusFilter === 'CLOSED') trades = trades.filter((t) => t.status !== 'OPEN');
-
     if (dirFilter !== 'ALL') trades = trades.filter((t) => t.direction === dirFilter);
-
-    trades = [...trades].sort((a, b) => {
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      if (av === undefined || bv === undefined) return 0;
-      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-
     return trades;
-  }, [allTrades, statusFilter, dirFilter, sortKey, sortDir]);
+  }, [allTrades, statusFilter, dirFilter]);
 
-  const sortProps = { sortKey, sortDir, onSort: handleSort };
+  const isFiltered = statusFilter !== 'ALL' || dirFilter !== 'ALL';
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-6 space-y-5 max-w-5xl">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <h1 className="text-2xl font-semibold text-foreground">Paper Trades</h1>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2 text-muted-foreground"
-          onClick={() => toast.info('Export available in M5')}
-        >
-          <Download className="h-4 w-4" />
-          Export CSV
-        </Button>
+      <div>
+        <h1 className="text-2xl font-semibold">Paper Trades</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {allTrades.length} trade{allTrades.length !== 1 ? 's' : ''} ·{' '}
+          <span className="text-foreground tabular-nums">{openTrades.length} open</span>
+        </p>
       </div>
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Status filters */}
         {(['ALL', 'ACTIVE', 'CLOSED'] as FilterStatus[]).map((f) => (
           <Button
             key={f}
@@ -264,17 +302,20 @@ export default function TradesPage({
             size="sm"
             className={cn(
               'h-8 text-xs',
-              statusFilter === f ? 'text-foreground' : 'text-muted-foreground'
+              statusFilter !== f && 'text-muted-foreground'
             )}
             onClick={() => setStatusFilter(f)}
           >
-            {f === 'ALL' ? `All (${allTrades.length})` : f === 'ACTIVE' ? `Active (${openTrades.length})` : `Closed (${closedTrades.length})`}
+            {f === 'ALL'
+              ? `All (${allTrades.length})`
+              : f === 'ACTIVE'
+              ? `Open (${openTrades.length})`
+              : `Closed (${closedTrades.length})`}
           </Button>
         ))}
 
         <div className="h-5 w-px bg-border mx-1" />
 
-        {/* Direction filters */}
         {(['ALL', 'LONG', 'SHORT'] as FilterDirection[]).map((d) => (
           <Button
             key={d}
@@ -282,142 +323,50 @@ export default function TradesPage({
             size="sm"
             className={cn(
               'h-8 text-xs',
-              dirFilter === d ? 'text-foreground' : 'text-muted-foreground'
+              dirFilter !== d && 'text-muted-foreground'
             )}
             onClick={() => setDirFilter(d)}
           >
             {d === 'ALL' ? 'All Directions' : d}
           </Button>
         ))}
-
-        <div className="ml-auto flex items-center gap-2">
-          <Select defaultValue="all-sectors">
-            <SelectTrigger className="h-8 w-36 text-xs text-muted-foreground">
-              <SelectValue placeholder="Sector" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all-sectors">All Sectors</SelectItem>
-              <SelectItem value="tech">Technology</SelectItem>
-              <SelectItem value="finance">Finance</SelectItem>
-              <SelectItem value="consumer">Consumer</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select defaultValue="all-time">
-            <SelectTrigger className="h-8 w-36 text-xs text-muted-foreground">
-              <SelectValue placeholder="Date range" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all-time">All Time</SelectItem>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="90d">Last 90 days</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-transparent bg-secondary/20">
-                <SortableHead col="ticker" label="Ticker" {...sortProps} />
-                <SortableHead col="direction" label="Dir" {...sortProps} />
-                <SortableHead col="entryPrice" label="Entry" {...sortProps} className="tabular-nums" />
-                <SortableHead col="currentPrice" label="Current" {...sortProps} className="tabular-nums" />
-                <SortableHead col="targetPrice" label="Target" {...sortProps} className="tabular-nums" />
-                <SortableHead col="stopPrice" label="Stop" {...sortProps} className="tabular-nums" />
-                <SortableHead col="pnl" label="P&L ($)" {...sortProps} className="tabular-nums" />
-                <SortableHead col="pnlPct" label="P&L %" {...sortProps} className="tabular-nums" />
-                <SortableHead col="confidenceScore" label="Conf" {...sortProps} />
-                <SortableHead col="status" label="Status" {...sortProps} />
-                <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Duration</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TradesTableSkeleton />
-              ) : filtered.length === 0 ? (
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableCell colSpan={12} className="py-16 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <ArrowLeftRight className="h-8 w-8 text-muted-foreground/30" />
-                      <p className="text-sm text-muted-foreground">No trades match your filters</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((trade) => {
-                  const isOpen = trade.status === 'OPEN';
-                  const isPos = trade.pnl >= 0;
-                  return (
-                    <TableRow
-                      key={trade.id}
-                      className={cn(
-                        'border-border cursor-pointer transition-colors hover:bg-secondary/30',
-                        !isOpen && 'opacity-70'
-                      )}
-                    >
-                      <TableCell className="font-semibold text-foreground">{trade.ticker}</TableCell>
-                      <TableCell><DirectionBadge direction={trade.direction} /></TableCell>
-                      <TableCell className="tabular-nums text-sm text-muted-foreground">${trade.entryPrice.toFixed(2)}</TableCell>
-                      <TableCell className="tabular-nums text-sm text-foreground font-medium">${trade.currentPrice.toFixed(2)}</TableCell>
-                      <TableCell className="tabular-nums text-sm text-muted-foreground">${trade.targetPrice.toFixed(2)}</TableCell>
-                      <TableCell className="tabular-nums text-sm text-muted-foreground">${trade.stopPrice.toFixed(2)}</TableCell>
-                      <TableCell className={cn('tabular-nums text-sm font-medium', isPos ? 'text-emerald-500' : 'text-red-500')}>
-                        {isPos ? '+' : ''}{trade.pnl.toFixed(2)}
-                      </TableCell>
-                      <TableCell className={cn('tabular-nums text-sm font-medium', isPos ? 'text-emerald-500' : 'text-red-500')}>
-                        {isPos ? '+' : ''}{trade.pnlPct.toFixed(2)}%
-                      </TableCell>
-                      <TableCell className="tabular-nums text-sm text-muted-foreground">{trade.confidenceScore}%</TableCell>
-                      <TableCell><StatusBadge status={trade.status} /></TableCell>
-                      <TableCell className="text-sm text-muted-foreground tabular-nums">
-                        {tradeDuration(trade.openedAt, trade.closedAt)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="sm" className="h-7 text-xs px-2" render={<Link href={`/trades/${trade.id}/thesis`} />}>
-                            Thesis
-                          </Button>
-                          {isOpen && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs px-2 text-red-500 hover:text-red-500 hover:bg-red-500/10"
-                              onClick={(e) => { e.stopPropagation(); setCloseTarget(trade.id); }}
-                            >
-                              Close
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
+      {/* Card grid */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {filtered.length === 0 ? (
+          <EmptyState filtered={isFiltered} />
+        ) : (
+          filtered.map((trade) => (
+            <TradeCard
+              key={trade.id}
+              trade={trade}
+              onClose={(id) => setCloseTarget(id)}
+            />
+          ))
+        )}
       </div>
 
-      {/* Row count */}
-      {!isLoading && filtered.length > 0 && (
+      {filtered.length > 0 && (
         <p className="text-xs text-muted-foreground tabular-nums">
           Showing {filtered.length} of {allTrades.length} trades
         </p>
       )}
 
-      {/* Close Trade confirmation dialog */}
-      <Dialog open={!!closeTarget} onOpenChange={(open) => { if (!open) setCloseTarget(null); }}>
+      {/* Close confirmation dialog */}
+      <Dialog
+        open={!!closeTarget}
+        onOpenChange={(open) => {
+          if (!open) setCloseTarget(null);
+        }}
+      >
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>Close Trade — {closeTargetTrade?.ticker}</DialogTitle>
             <DialogDescription>
-              This will manually close the position at the current market price. The realized P&amp;L will be recorded and the trade marked as closed. This action cannot be undone.
+              This will manually close the position at the current market price.
+              The realized P&amp;L will be recorded and the trade marked as closed.
+              This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">

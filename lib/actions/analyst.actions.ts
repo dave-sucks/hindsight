@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -10,6 +11,8 @@ export interface AnalystConfig {
   userId: string;
   name: string;
   enabled: boolean;
+  analystPrompt: string | null;
+  description: string | null;
   sectors: string[];
   signalTypes: string[];
   holdDurations: string[];
@@ -23,10 +26,20 @@ export interface AnalystConfig {
   updatedAt: Date;
 }
 
+export interface AnalystOpenTrade {
+  id: string;
+  ticker: string;
+  direction: string;
+  entryPrice: number;
+  shares: number;
+}
+
 export interface AnalystListItem {
   id: string;
   name: string;
   enabled: boolean;
+  analystPrompt: string | null;
+  description: string | null;
   sectors: string[];
   signalTypes: string[];
   holdDurations: string[];
@@ -37,6 +50,7 @@ export interface AnalystListItem {
   tradeCount: number;
   winRate: number | null;
   totalPnl: number;
+  openTrades: AnalystOpenTrade[];
 }
 
 export interface RunWithTheses {
@@ -150,6 +164,11 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       where: { userId },
       select: {
         id: true,
+        ticker: true,
+        direction: true,
+        status: true,
+        entryPrice: true,
+        shares: true,
         outcome: true,
         realizedPnl: true,
         thesis: {
@@ -179,10 +198,23 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       0
     );
 
+    const openTrades: AnalystOpenTrade[] = configTrades
+      .filter((t) => t.status === "OPEN")
+      .slice(0, 3)
+      .map((t) => ({
+        id: t.id,
+        ticker: t.ticker,
+        direction: t.direction,
+        entryPrice: t.entryPrice,
+        shares: t.shares,
+      }));
+
     return {
       id: config.id,
       name: config.name,
       enabled: config.enabled,
+      analystPrompt: config.analystPrompt,
+      description: config.description,
       sectors: config.sectors,
       signalTypes: config.signalTypes,
       holdDurations: config.holdDurations,
@@ -193,6 +225,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       tradeCount: configTrades.length,
       winRate,
       totalPnl,
+      openTrades,
     };
   });
 }
@@ -302,6 +335,8 @@ export async function getAnalystDetail(
     userId: config.userId,
     name: config.name,
     enabled: config.enabled,
+    analystPrompt: config.analystPrompt,
+    description: config.description,
     sectors: config.sectors as string[],
     signalTypes: config.signalTypes as string[],
     holdDurations: config.holdDurations as string[],
@@ -370,4 +405,74 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
     completedAt: r.completedAt,
     theses: r.theses,
   }));
+}
+
+// ── updateAnalystPrompt ───────────────────────────────────────────────────────
+
+export async function updateAnalystPrompt(
+  id: string,
+  prompt: string
+): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  await prisma.agentConfig.update({
+    where: { id, userId },
+    data: { analystPrompt: prompt },
+  });
+
+  revalidatePath(`/analysts/${id}`);
+}
+
+// ── createAnalystFromWizard ───────────────────────────────────────────────────
+
+export interface WizardConfig {
+  analystPrompt: string;
+  name: string;
+  holdDurations: ("DAY" | "SWING" | "POSITION")[];
+  directionBias: "LONG" | "SHORT" | "BOTH";
+  maxPositionSize: number;
+  minConfidence: number;
+}
+
+export async function createAnalystFromWizard(
+  data: WizardConfig
+): Promise<{ id: string }> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  const analyst = await prisma.agentConfig.create({
+    data: {
+      userId,
+      name: data.name,
+      enabled: true,
+      analystPrompt: data.analystPrompt,
+      markets: ["US_EQUITIES"],
+      exchanges: ["NASDAQ", "NYSE"],
+      sectors: [],
+      watchlist: [],
+      exclusionList: [],
+      maxPositionSize: data.maxPositionSize,
+      maxOpenPositions: 5,
+      minConfidence: data.minConfidence,
+      maxRiskPct: 2,
+      dailyLossLimit: 300,
+      holdDurations: data.holdDurations,
+      directionBias: data.directionBias,
+      signalTypes: [],
+      minMarketCapTier: "LARGE",
+      scheduleTime: "08:00",
+      priceCheckFreq: "HOURLY",
+      weekendMode: false,
+      graduationWinRate: 0.65,
+      graduationMinTrades: 50,
+      graduationProfitFactor: 1.5,
+      realTradingEnabled: false,
+      realMaxPosition: data.maxPositionSize,
+      emailAlerts: true,
+      weeklyDigestEnabled: true,
+    },
+  });
+
+  return { id: analyst.id };
 }

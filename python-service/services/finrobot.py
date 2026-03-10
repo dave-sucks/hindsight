@@ -12,7 +12,7 @@ import logging
 import os
 import uuid
 from datetime import date, timedelta
-from typing import Optional
+from typing import Callable, Optional
 
 from openai import AsyncOpenAI
 
@@ -595,6 +595,119 @@ async def run_full_pipeline(
 
     except Exception as exc:
         logger.exception("Pipeline error for %s: %s", ticker, exc)
+        return (
+            ThesisOutput(
+                ticker=ticker,
+                direction="PASS",
+                hold_duration="SWING",
+                confidence_score=0,
+                reasoning_summary=f"Pipeline error: {exc}",
+                thesis_bullets=[],
+                risk_flags=["Pipeline error — review logs"],
+                signal_types=[],
+                model_used="gpt-4o",
+            ),
+            total_tokens[0],
+        )
+
+
+async def run_full_pipeline_streaming(
+    ticker: str,
+    agent_config: dict,
+    emit_fn: Callable,  # async callable: await emit_fn({"type": ..., ...})
+    finnhub: Optional[FinnhubService] = None,
+) -> tuple:
+    """
+    Same as run_full_pipeline but emits granular events at each step.
+
+    Events emitted per ticker (in order):
+      analyzing      — data fetch starting
+      data_ready     — data collected; includes sources list + price
+      concept        — Concept-CoT done; direction + confidence
+      thesis_writing — Thesis-CoT starting
+      thesis_complete — full ThesisOutput ready
+      skip           — PASS direction; no thesis written
+      ticker_error   — unhandled pipeline exception
+    """
+    if finnhub is None:
+        finnhub = FinnhubService()
+
+    total_tokens = [0]
+
+    try:
+        await emit_fn({"type": "analyzing", "ticker": ticker, "company": ""})
+
+        data = await run_data_cot(ticker, finnhub)
+
+        sources_preview = [
+            {"type": s.type, "provider": s.provider, "title": s.title}
+            for s in data.sources
+        ]
+
+        await emit_fn({
+            "type": "data_ready",
+            "ticker": ticker,
+            "company": data.company_name,
+            "price": data.price,
+            "sector": data.sector or None,
+            "sources": sources_preview,
+            "sources_count": len(sources_preview),
+        })
+
+        concept = await run_concept_cot(data, agent_config)
+
+        await emit_fn({
+            "type": "concept",
+            "ticker": ticker,
+            "direction": concept.direction,
+            "confidence": concept.initial_confidence,
+            "reasoning": concept.reasoning_notes,
+        })
+
+        if concept.direction == "PASS":
+            thesis = ThesisOutput(
+                ticker=ticker,
+                direction="PASS",
+                hold_duration=concept.hold_duration,
+                confidence_score=concept.initial_confidence,
+                reasoning_summary=concept.pass_reason or concept.reasoning_notes,
+                thesis_bullets=[],
+                risk_flags=[],
+                signal_types=concept.signal_types,
+                sector=data.sector or None,
+                sources_used=data.sources,
+                model_used="gpt-4o",
+            )
+            await emit_fn({
+                "type": "skip",
+                "ticker": ticker,
+                "reason": concept.pass_reason or "No clear tradeable signal identified",
+                "confidence": concept.initial_confidence,
+            })
+            return thesis, total_tokens[0]
+
+        await emit_fn({
+            "type": "thesis_writing",
+            "ticker": ticker,
+            "direction": concept.direction,
+        })
+
+        thesis = await run_thesis_cot(data, concept, total_tokens)
+
+        await emit_fn({
+            "type": "thesis_complete",
+            "ticker": ticker,
+            "thesis": thesis.model_dump(),
+        })
+
+        return thesis, total_tokens[0]
+
+    except Exception as exc:
+        logger.exception("Streaming pipeline error for %s: %s", ticker, exc)
+        try:
+            await emit_fn({"type": "ticker_error", "ticker": ticker, "message": str(exc)})
+        except Exception:
+            pass
         return (
             ThesisOutput(
                 ticker=ticker,

@@ -254,10 +254,8 @@ export function ThesisCard({
                   )}
                   <span className="opacity-30">·</span>
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="cursor-default pointer-events-auto">
-                        {thesis.confidenceScore}%
-                      </span>
+                    <TooltipTrigger render={<span className="cursor-default pointer-events-auto" />}>
+                      {thesis.confidenceScore}%
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-xs text-xs">
                       Confidence reflects signal quality, data consistency, and the AI&apos;s
@@ -343,28 +341,24 @@ export function ThesisCard({
             {/* Sources ghost button → popover */}
             {sources.length > 0 && (
               <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[11px] px-1.5 gap-1.5 text-muted-foreground hover:text-foreground -ml-0.5 pointer-events-auto"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {/* Negative-margin avatar stack */}
-                    <span className="flex items-center -space-x-1.5">
-                      {sources.slice(0, 4).map((src, i) => (
-                        <span
-                          key={i}
-                          className="h-4 w-4 rounded-full bg-muted border border-background flex items-center justify-center text-[8px] font-bold text-muted-foreground shrink-0"
-                          style={{ zIndex: sources.length - i }}
-                          title={src.provider}
-                        >
-                          {providerInitials(src.provider)}
-                        </span>
-                      ))}
-                    </span>
-                    Sources
-                  </Button>
+                <PopoverTrigger
+                  className="inline-flex h-6 items-center gap-1.5 text-[11px] px-1.5 -ml-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors pointer-events-auto bg-transparent border-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Negative-margin avatar stack */}
+                  <span className="flex items-center -space-x-1.5">
+                    {sources.slice(0, 4).map((src, i) => (
+                      <span
+                        key={i}
+                        className="h-4 w-4 rounded-full bg-muted border border-background flex items-center justify-center text-[8px] font-bold text-muted-foreground shrink-0"
+                        style={{ zIndex: sources.length - i }}
+                        title={src.provider}
+                      >
+                        {providerInitials(src.provider)}
+                      </span>
+                    ))}
+                  </span>
+                  Sources
                 </PopoverTrigger>
                 <PopoverContent className="w-72 p-2" align="start">
                   <p className="text-[11px] font-medium text-muted-foreground px-1 pb-1.5 border-b mb-1.5">

@@ -44,21 +44,26 @@ export interface TodaysPick {
   direction: string;
   confidenceScore: number;
   signalTypes: string[];
-  holdDuration: string;
+}
+
+export interface RecentPick {
+  id: string;
+  ticker: string;
+  direction: string;
+  confidenceScore: number;
+  signalTypes: string[];
   reasoningSummary: string;
-  sourcesUsed?: unknown;
-  createdAt?: string;
   entryPrice: number | null;
   targetPrice: number | null;
   stopLoss: number | null;
-  currentPrice?: number | null;
+  createdAt: string; // ISO
   trade: {
     id: string;
-    realizedPnl: number | null;
     status: string;
     entryPrice: number;
-    closePrice: number | null;
+    openedAt: string; // ISO
   } | null;
+  currentPrice: number | null;
 }
 
 export interface DashboardData {
@@ -69,6 +74,7 @@ export interface DashboardData {
   agentConfigs: AgentConfigSummary[];
   recentRuns: RecentRunSummary[];
   todaysPicks: TodaysPick[];
+  recentPicks: RecentPick[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -100,7 +106,8 @@ function calcPnl(
 function buildEquityCurve(
   closedTrades: Array<{ closedAt: Date | null; realizedPnl: number | null }>,
   startCapital: number,
-  days = 30
+  currentTotalValue: number,
+  days = 365
 ): { date: string; value: number }[] {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -119,9 +126,18 @@ function buildEquityCurve(
 
   for (let d = days - 1; d >= 0; d--) {
     const date = new Date(Date.now() - d * 24 * 60 * 60 * 1000);
-    const iso = date.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const iso = date.toISOString().slice(0, 10); // "YYYY-MM-DD" — full date for client filtering
     balance += byDay.get(iso) ?? 0;
-    points.push({ date: iso.slice(5), value: balance }); // "MM-DD" for chart x-axis
+    points.push({ date: iso, value: balance });
+  }
+
+  // Override today's endpoint with the actual current value (incl. unrealized P&L)
+  // so the chart always terminates at the number shown in the header.
+  if (points.length > 0) {
+    points[points.length - 1] = {
+      ...points[points.length - 1],
+      value: currentTotalValue,
+    };
   }
 
   return points;
@@ -156,6 +172,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       agentConfigs: [],
       recentRuns: [],
       todaysPicks: [],
+      recentPicks: [],
     };
   }
 
@@ -176,18 +193,51 @@ export async function getDashboardData(): Promise<DashboardData> {
     }),
   ]);
 
-  // ── 2. Batch-fetch current prices for open trades ─────────────────────────
+  // ── 2. Fetch recent picks (last 20 actionable theses) ────────────────────
+  const dbRecentPicks = await prisma.thesis.findMany({
+    where: {
+      userId,
+      direction: { in: ["LONG", "SHORT"] },
+      createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    select: {
+      id: true,
+      ticker: true,
+      direction: true,
+      confidenceScore: true,
+      signalTypes: true,
+      reasoningSummary: true,
+      entryPrice: true,
+      targetPrice: true,
+      stopLoss: true,
+      createdAt: true,
+      trade: {
+        select: {
+          id: true,
+          status: true,
+          entryPrice: true,
+          openedAt: true,
+        },
+      },
+    },
+  });
+
+  // ── 3. Batch-fetch current prices (open trades + recent pick tickers) ─────
   const openTickers = [...new Set(dbOpenTrades.map((t) => t.ticker))];
+  const pickTickers = [...new Set(dbRecentPicks.map((p) => p.ticker))];
+  const allTickers = [...new Set([...openTickers, ...pickTickers])];
   let priceMap: Record<string, number> = {};
-  if (openTickers.length > 0) {
+  if (allTickers.length > 0) {
     try {
-      priceMap = await getLatestPrices(openTickers);
+      priceMap = await getLatestPrices(allTickers);
     } catch {
       // Fall back to entry price — pnl will be 0 but trade still renders
     }
   }
 
-  // ── 3. Map open trades → MockTrade shape ──────────────────────────────────
+  // ── 4. Map open trades → MockTrade shape ──────────────────────────────────
   const openTrades: MockTrade[] = dbOpenTrades.map((t) => {
     const currentPrice = priceMap[t.ticker] ?? t.entryPrice;
     const { dollars, pct } = calcPnl(t.direction, t.entryPrice, currentPrice, t.shares);
@@ -209,7 +259,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     };
   });
 
-  // ── 4. Map closed trades → MockTrade shape ────────────────────────────────
+  // ── 5. Map closed trades → MockTrade shape ────────────────────────────────
   const closedTrades: MockTrade[] = dbClosedTrades.map((t) => {
     const closePrice = t.closePrice ?? t.entryPrice;
     const positionCost = t.entryPrice * t.shares;
@@ -232,7 +282,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     };
   });
 
-  // ── 5. Portfolio stats ─────────────────────────────────────────────────────
+  // ── 6. Portfolio stats ─────────────────────────────────────────────────────
   const realizedPnl = dbClosedTrades.reduce((sum, t) => sum + (t.realizedPnl ?? 0), 0);
   const unrealizedPnl = openTrades.reduce((sum, t) => sum + t.pnl, 0);
   const totalValue = STARTING_CAPITAL + realizedPnl + unrealizedPnl;
@@ -244,10 +294,10 @@ export async function getDashboardData(): Promise<DashboardData> {
         closedWithOutcome.length
       : null;
 
-  // ── 6. Equity curve (last 30 days) ────────────────────────────────────────
-  const equityCurve = buildEquityCurve(dbClosedTrades, STARTING_CAPITAL);
+  // ── 7. Equity curve (last 365 days, endpoint = current total value) ──────
+  const equityCurve = buildEquityCurve(dbClosedTrades, STARTING_CAPITAL, totalValue);
 
-  // ── 7. Agent configs with last-run info ───────────────────────────────────
+  // ── 8. Agent configs with last-run info ───────────────────────────────────
   const [dbAgentConfigs, tradesWithAgent] = await Promise.all([
     prisma.agentConfig.findMany({
       where: { userId },
@@ -296,7 +346,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     tradesPlaced: tradeCountMap.get(a.id) ?? 0,
   }));
 
-  // ── 8. Recent research runs (last 10) ─────────────────────────────────────
+  // ── 9. Recent research runs (last 10) ─────────────────────────────────────
   const dbRecentRuns = await prisma.researchRun.findMany({
     where: { userId },
     orderBy: { startedAt: "desc" },
@@ -319,90 +369,57 @@ export async function getDashboardData(): Promise<DashboardData> {
     status: r.status,
   }));
 
-  // ── 9. Recent picks — last 10 theses regardless of day ───────────────────
+  // ── 10. Today's picks (DAV-85) ────────────────────────────────────────────
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+
   const dbTodaysPicks = await prisma.thesis.findMany({
     where: {
       userId,
+      createdAt: { gte: todayMidnight },
+      direction: { in: ["LONG", "SHORT"] },
     },
-    orderBy: { createdAt: "desc" },
-    take: 10,
+    orderBy: { confidenceScore: "desc" },
+    take: 5,
     select: {
       id: true,
       ticker: true,
       direction: true,
       confidenceScore: true,
       signalTypes: true,
-      holdDuration: true,
-      reasoningSummary: true,
-      sourcesUsed: true,
-      createdAt: true,
-      entryPrice: true,
-      targetPrice: true,
-      stopLoss: true,
-      trade: {
-        select: {
-          id: true,
-          realizedPnl: true,
-          status: true,
-          entryPrice: true,
-          closePrice: true,
-        },
-      },
     },
   });
 
-  // ── 9b. Fetch live prices for pick tickers not already in priceMap ─────────
-  const pickOpenTickers = [
-    ...new Set(
-      dbTodaysPicks
-        .filter((t) => t.trade?.status === "OPEN")
-        .map((t) => t.ticker)
-        .filter((ticker) => !(ticker in priceMap))
-    ),
-  ];
-  if (pickOpenTickers.length > 0) {
-    try {
-      const extraPrices = await getLatestPrices(pickOpenTickers);
-      Object.assign(priceMap, extraPrices);
-    } catch {
-      // fall back to entry price — delta won't show but card still renders
-    }
-  }
+  const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => ({
+    id: t.id,
+    ticker: t.ticker,
+    direction: t.direction,
+    confidenceScore: t.confidenceScore,
+    signalTypes: t.signalTypes,
+  }));
 
-  const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => {
-    // currentPrice: live price for open trades, closePrice for closed trades
-    let currentPrice: number | null = null;
-    if (t.trade?.status === "OPEN") {
-      currentPrice = priceMap[t.ticker] ?? null;
-    } else if (t.trade?.closePrice != null) {
-      currentPrice = t.trade.closePrice;
-    }
-
-    return {
-      id: t.id,
-      ticker: t.ticker,
-      direction: t.direction,
-      confidenceScore: t.confidenceScore,
-      signalTypes: t.signalTypes,
-      holdDuration: t.holdDuration,
-      reasoningSummary: t.reasoningSummary,
-      sourcesUsed: t.sourcesUsed,
-      createdAt: t.createdAt.toISOString(),
-      entryPrice: t.entryPrice,
-      targetPrice: t.targetPrice,
-      stopLoss: t.stopLoss,
-      currentPrice,
-      trade: t.trade
-        ? {
-            id: t.trade.id,
-            realizedPnl: t.trade.realizedPnl,
-            status: t.trade.status,
-            entryPrice: t.trade.entryPrice,
-            closePrice: t.trade.closePrice,
-          }
-        : null,
-    };
-  });
+  // ── 11. Map recentPicks ───────────────────────────────────────────────────
+  const recentPicks: RecentPick[] = dbRecentPicks.map((p) => ({
+    id: p.id,
+    ticker: p.ticker,
+    direction: p.direction,
+    confidenceScore: p.confidenceScore,
+    signalTypes: p.signalTypes,
+    reasoningSummary: p.reasoningSummary,
+    entryPrice: p.entryPrice,
+    targetPrice: p.targetPrice,
+    stopLoss: p.stopLoss,
+    createdAt: p.createdAt.toISOString(),
+    trade: p.trade
+      ? {
+          id: p.trade.id,
+          status: p.trade.status,
+          entryPrice: p.trade.entryPrice,
+          openedAt: p.trade.openedAt.toISOString(),
+        }
+      : null,
+    currentPrice: priceMap[p.ticker] ?? null,
+  }));
 
   return {
     openTrades,
@@ -418,5 +435,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     agentConfigs,
     recentRuns,
     todaysPicks,
+    recentPicks,
   };
 }

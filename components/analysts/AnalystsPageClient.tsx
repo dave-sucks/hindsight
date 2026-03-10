@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Plus, Play } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { RunResearchButton } from "@/components/RunResearchButton";
-import { Bot, Settings } from "lucide-react";
+import { StockLogo } from "@/components/StockLogo";
+import { cn } from "@/lib/utils";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
 
 // ── Relative time helper ──────────────────────────────────────────────────────
@@ -22,119 +22,181 @@ function formatRelativeTime(date: Date): string {
   return `${diffDays}d ago`;
 }
 
+// ── Gain badge ────────────────────────────────────────────────────────────────
+
+function GainBadge({ totalPnl, tradeCount }: { totalPnl: number; tradeCount: number }) {
+  if (tradeCount === 0) return null;
+  const pos = totalPnl >= 0;
+  const label = pos
+    ? `+$${totalPnl.toFixed(0)}`
+    : `-$${Math.abs(totalPnl).toFixed(0)}`;
+  return (
+    <span
+      className={cn(
+        "text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded shrink-0",
+        pos
+          ? "bg-emerald-500/15 text-emerald-500"
+          : "bg-red-500/15 text-red-500"
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ── Win-rate bar ──────────────────────────────────────────────────────────────
+
+function WinRateBar({ winRate }: { winRate: number | null }) {
+  const filled = winRate != null ? Math.round(winRate * 10) : 0;
+  const positive = winRate != null && winRate >= 0.5;
+
+  return (
+    <div className="flex gap-0.5">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div
+          key={i}
+          className={cn(
+            "h-1.5 flex-1 rounded-sm",
+            i < filled
+              ? positive
+                ? "bg-emerald-500"
+                : "bg-red-500"
+              : "bg-muted"
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ── AnalystCard ───────────────────────────────────────────────────────────────
 
 function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
-  const winRatePct =
-    analyst.winRate != null ? `${Math.round(analyst.winRate * 100)}%` : "—";
-  const winRateColor =
-    analyst.winRate != null
-      ? analyst.winRate >= 0.5
-        ? "text-emerald-500"
-        : "text-red-500"
-      : "text-muted-foreground";
-  const pnlColor = analyst.totalPnl >= 0 ? "text-emerald-500" : "text-red-500";
-  const pnlStr =
-    analyst.totalPnl >= 0
-      ? `+$${analyst.totalPnl.toFixed(2)}`
-      : `-$${Math.abs(analyst.totalPnl).toFixed(2)}`;
+  const configSubhead = [
+    analyst.directionBias,
+    analyst.holdDurations.length > 0 ? analyst.holdDurations.join("/") : null,
+    `${analyst.minConfidence}%+`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-  const visibleSignals = analyst.signalTypes.slice(0, 3);
+  const promptText =
+    analyst.analystPrompt ||
+    analyst.description ||
+    null;
+
+  const statusDot = analyst.enabled
+    ? "bg-emerald-500"
+    : "bg-muted-foreground/40";
 
   return (
-    <Card className="flex flex-col">
-      <CardContent className="p-6 flex flex-col flex-1 gap-4">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-              <Bot className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold leading-tight">{analyst.name}</h2>
-              <p className="text-xs text-muted-foreground">
-                {analyst.directionBias} · {analyst.holdDurations.join("/")}
-              </p>
-            </div>
-          </div>
-          <Badge
-            variant={analyst.enabled ? "default" : "secondary"}
-            className="text-xs shrink-0"
-          >
-            {analyst.enabled ? "Active" : "Paused"}
-          </Badge>
-        </div>
+    // Stretched-link pattern: invisible full-cover anchor at z-0, buttons at z-10
+    <div className="relative group">
+      <Link
+        href={`/analysts/${analyst.id}`}
+        className="absolute inset-0 z-0 rounded-[inherit]"
+        aria-label={`Open ${analyst.name}`}
+      />
+      <Card className="group-hover:bg-muted/20 transition-colors h-full">
+        <CardContent className="p-5 flex flex-col gap-3">
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-              Win Rate
-            </p>
-            <p className={`text-sm font-semibold tabular-nums ${winRateColor}`}>
-              {winRatePct}
-            </p>
+          {/* Header row: status + name | gain badge + run button */}
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
+            <h2 className="text-sm font-semibold leading-tight truncate flex-1 min-w-0">
+              {analyst.name}
+            </h2>
+            <div className="flex items-center gap-1.5 shrink-0 relative z-10">
+              <GainBadge totalPnl={analyst.totalPnl} tradeCount={analyst.tradeCount} />
+              <RunResearchButton
+                hasRunning={analyst.lastRunStatus === "RUNNING"}
+                analystId={analyst.id}
+              />
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-              Trades
-            </p>
-            <p className="text-sm font-semibold tabular-nums text-foreground">
-              {analyst.tradeCount}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-              P&L
-            </p>
-            <p className={`text-sm font-semibold tabular-nums ${pnlColor}`}>
-              {analyst.tradeCount > 0 ? pnlStr : "—"}
-            </p>
-          </div>
-        </div>
 
-        {/* Signal badges */}
-        {visibleSignals.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {visibleSignals.map((s) => (
-              <Badge key={s} variant="outline" className="text-[10px] px-1.5 py-0">
-                {s.replace(/_/g, " ")}
-              </Badge>
-            ))}
-            {analyst.signalTypes.length > 3 && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                +{analyst.signalTypes.length - 3}
-              </Badge>
+          {/* Config subhead — mono small muted */}
+          <p className="text-[10px] font-mono text-muted-foreground/70 -mt-1">
+            {configSubhead}
+          </p>
+
+          {/* Prompt */}
+          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 min-h-[2rem]">
+            {promptText ?? (
+              <span className="text-muted-foreground/40 italic">No prompt set</span>
             )}
-          </div>
-        )}
+          </p>
 
-        {/* Last run */}
-        <p className="text-xs text-muted-foreground mt-auto">
-          {analyst.lastRunAt
-            ? `Last run: ${formatRelativeTime(analyst.lastRunAt)}`
-            : "Never run"}
-          {analyst.lastRunStatus === "RUNNING" && (
-            <span className="ml-1.5 text-amber-500">● Running</span>
+          {/* Win-rate bar */}
+          <WinRateBar winRate={analyst.winRate} />
+
+          {/* Active trades — up to 3 */}
+          {analyst.openTrades.length > 0 && (
+            <div className="space-y-1 relative z-10">
+              {analyst.openTrades.map((trade) => {
+                const cost = trade.entryPrice * trade.shares;
+                return (
+                  <Link
+                    key={trade.id}
+                    href={`/trades/${trade.id}`}
+                    className="flex items-center gap-2 py-1 rounded hover:bg-accent/50 transition-colors px-0.5"
+                  >
+                    <StockLogo ticker={trade.ticker} size="sm" />
+                    <span className="text-xs font-mono font-medium">{trade.ticker}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {trade.direction === "LONG" ? "↑" : "↓"}
+                    </span>
+                    <span className="text-xs tabular-nums text-muted-foreground ml-auto">
+                      ${cost.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                    </span>
+                  </Link>
+                );
+              })}
+              <Link
+                href={`/analysts/${analyst.id}`}
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors block pt-0.5"
+              >
+                View all trades →
+              </Link>
+            </div>
           )}
-        </p>
 
-        {/* Actions */}
-        <div className="flex gap-2">
-          <Button
-            render={<Link href={`/analysts/${analyst.id}`} />}
-            size="sm"
-            className="flex-1"
-          >
-            Open →
-          </Button>
-          <RunResearchButton
-            hasRunning={analyst.lastRunStatus === "RUNNING"}
-            analystId={analyst.id}
-          />
-        </div>
-      </CardContent>
-    </Card>
+          {/* Footer: last run time */}
+          <div className="flex items-center justify-between mt-auto pt-1 border-t">
+            <p className="text-xs text-muted-foreground">
+              {analyst.lastRunAt
+                ? formatRelativeTime(analyst.lastRunAt)
+                : "Never run"}
+              {analyst.lastRunStatus === "RUNNING" && (
+                <span className="ml-1.5 text-amber-500">● Running</span>
+              )}
+            </p>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {analyst.tradeCount} trade{analyst.tradeCount !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── New Analyst card ──────────────────────────────────────────────────────────
+
+function NewAnalystCard() {
+  return (
+    <Link href="/analysts/new">
+      <Card className="h-full border-dashed hover:bg-muted/20 transition-colors cursor-pointer">
+        <CardContent className="p-5 flex flex-col items-center justify-center gap-2 h-full min-h-[180px] text-muted-foreground">
+          <div className="h-8 w-8 rounded-full border-2 border-dashed border-current flex items-center justify-center">
+            <Plus className="h-4 w-4" />
+          </div>
+          <p className="text-sm font-medium text-foreground">New Analyst</p>
+          <p className="text-xs text-center">Describe what you want to find</p>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
@@ -142,24 +204,8 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
 
 function AnalystsEmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
-      <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-        <Bot className="h-6 w-6 text-muted-foreground" />
-      </div>
-      <div>
-        <p className="text-sm font-medium">No analysts yet</p>
-        <p className="text-sm text-muted-foreground mt-1">
-          Create your first AI analyst in Settings
-        </p>
-      </div>
-      <Button
-        render={<Link href="/settings?tab=analysts" />}
-        variant="outline"
-        size="sm"
-      >
-        <Settings className="h-3.5 w-3.5 mr-1.5" />
-        Go to Settings
-      </Button>
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <NewAnalystCard />
     </div>
   );
 }
@@ -173,20 +219,8 @@ export default function AnalystsPageClient({
 }) {
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Analysts</h1>
-        <Button
-          render={<Link href="/settings?tab=analysts" />}
-          size="sm"
-          variant="outline"
-        >
-          <Settings className="h-3.5 w-3.5 mr-1.5" />
-          Manage
-        </Button>
-      </div>
+      <h1 className="text-2xl font-semibold">Analysts</h1>
 
-      {/* Content */}
       {analysts.length === 0 ? (
         <AnalystsEmptyState />
       ) : (
@@ -194,6 +228,7 @@ export default function AnalystsPageClient({
           {analysts.map((analyst) => (
             <AnalystCard key={analyst.id} analyst={analyst} />
           ))}
+          <NewAnalystCard />
         </div>
       )}
     </div>

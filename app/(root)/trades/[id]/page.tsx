@@ -20,32 +20,33 @@ import {
   Target,
   ShieldAlert,
   ArrowDownUp,
+  AlertCircle,
+  Brain,
+  ExternalLink,
 } from 'lucide-react';
 
-// ─── Event icon map ────────────────────────────────────────────────────────────
-
-type EventIconKey = 'PLACED' | 'PRICE_CHECK' | 'NEAR_TARGET' | 'CLOSED' | 'EVALUATED' | string;
+// ─── Event icon map ─────────────────────────────────────────────────────────
 
 function EventIcon({ type }: { type: string }) {
   switch (type) {
-    case 'PLACED':       return <ArrowDownUp className="h-3.5 w-3.5" />;
-    case 'NEAR_TARGET':  return <Target className="h-3.5 w-3.5 text-amber-500" />;
-    case 'CLOSED':       return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />;
-    case 'EVALUATED':    return <TrendingUp className="h-3.5 w-3.5 text-primary" />;
-    default:             return <Clock className="h-3.5 w-3.5 text-muted-foreground" />;
+    case 'PLACED':      return <ArrowDownUp className="h-3.5 w-3.5" />;
+    case 'NEAR_TARGET': return <Target className="h-3.5 w-3.5 text-amber-500" />;
+    case 'CLOSED':      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />;
+    case 'EVALUATED':   return <Brain className="h-3.5 w-3.5 text-primary" />;
+    default:            return <Clock className="h-3.5 w-3.5 text-muted-foreground" />;
   }
 }
 
-// ─── Status helpers ───────────────────────────────────────────────────────────
+// ─── Status helpers ──────────────────────────────────────────────────────────
 
 function getStatusDisplay(status: string, outcome: string | null) {
-  if (status === 'OPEN') return { label: 'Open', cls: 'border-primary/40 text-primary' };
+  if (status === 'OPEN') return { label: 'Open',       cls: 'border-primary/40 text-primary' };
   if (outcome === 'WIN')  return { label: 'Target Hit', cls: 'border-emerald-500/40 text-emerald-500' };
-  if (outcome === 'LOSS') return { label: 'Stop Hit', cls: 'border-red-500/40 text-red-500' };
+  if (outcome === 'LOSS') return { label: 'Stop Hit',   cls: 'border-red-500/40 text-red-500' };
   return { label: 'Closed', cls: 'border-muted-foreground/40 text-muted-foreground' };
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default async function TradeDetailPage({
   params,
@@ -60,44 +61,63 @@ export default async function TradeDetailPage({
     where: { id },
     include: {
       events: { orderBy: { createdAt: 'asc' } },
-      thesis: true,
+      thesis: {
+        include: {
+          researchRun: {
+            select: {
+              id: true,
+              agentConfig: { select: { id: true, name: true } },
+            },
+          },
+        },
+      },
     },
   });
 
   if (!trade || trade.userId !== user?.id) notFound();
 
-  const isOpen = trade.status === 'OPEN';
+  const isOpen    = trade.status === 'OPEN';
   const currentPrice = trade.closePrice ?? trade.entryPrice;
 
   // P&L
-  const realizedPnl = trade.realizedPnl ?? 0;
+  const realizedPnl  = trade.realizedPnl ?? 0;
   const unrealizedDollars = isOpen
     ? trade.direction === 'LONG'
       ? (currentPrice - trade.entryPrice) * trade.shares
       : (trade.entryPrice - currentPrice) * trade.shares
     : realizedPnl;
   const positionCost = trade.entryPrice * trade.shares;
-  const pnl = isOpen ? unrealizedDollars : realizedPnl;
-  const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
-  const isPos = pnl >= 0;
+  const pnl          = isOpen ? unrealizedDollars : realizedPnl;
+  const pnlPct       = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
+  const isPos        = pnl >= 0;
 
-  const status = getStatusDisplay(trade.status, trade.outcome ?? null);
+  const status      = getStatusDisplay(trade.status, trade.outcome ?? null);
   const targetPrice = trade.targetPrice ?? trade.entryPrice * 1.1;
-  const stopPrice = trade.stopLoss ?? trade.entryPrice * 0.9;
+  const stopPrice   = trade.stopLoss    ?? trade.entryPrice * 0.9;
 
   // Progress to target
-  const totalMove = Math.abs(
+  const totalMove  = Math.abs(
     trade.direction === 'LONG' ? targetPrice - trade.entryPrice : trade.entryPrice - targetPrice
   );
   const actualMove = Math.abs(
     trade.direction === 'LONG' ? currentPrice - trade.entryPrice : trade.entryPrice - currentPrice
   );
-  const progressPct = totalMove > 0 ? Math.min(100, Math.max(0, Math.round((actualMove / totalMove) * 100))) : 0;
+  const progressPct = totalMove > 0
+    ? Math.min(100, Math.max(0, Math.round((actualMove / totalMove) * 100)))
+    : 0;
 
-  const riskMove = Math.abs(
+  const riskMove   = Math.abs(
     trade.direction === 'LONG' ? trade.entryPrice - stopPrice : stopPrice - trade.entryPrice
   );
   const riskReward = riskMove > 0 ? totalMove / riskMove : 0;
+
+  // Analyst + run info from thesis
+  const analystName = trade.thesis?.researchRun?.agentConfig?.name ?? null;
+  const analystId   = trade.thesis?.researchRun?.agentConfig?.id   ?? null;
+  const runId       = trade.thesis?.researchRun?.id                 ?? null;
+
+  // Post-mortem eval event
+  const evalEvent = trade.events.find((e) => e.eventType === 'EVALUATED');
 
   const chartConfig = {
     ...CANDLE_CHART_WIDGET_CONFIG,
@@ -107,7 +127,12 @@ export default async function TradeDetailPage({
   return (
     <div className="p-4 space-y-4 max-w-4xl">
       {/* Back nav */}
-      <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground -ml-2" render={<Link href="/trades" />}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="gap-1.5 text-muted-foreground -ml-2"
+        render={<Link href="/trades" />}
+      >
         <ArrowLeft className="h-4 w-4" />
         Paper Trades
       </Button>
@@ -120,7 +145,9 @@ export default async function TradeDetailPage({
             variant="outline"
             className={cn(
               'text-xs font-semibold',
-              trade.direction === 'LONG' ? 'border-primary/50 text-primary' : 'border-amber-500/50 text-amber-500'
+              trade.direction === 'LONG'
+                ? 'border-primary/50 text-primary'
+                : 'border-amber-500/50 text-amber-500'
             )}
           >
             {trade.direction}
@@ -135,33 +162,66 @@ export default async function TradeDetailPage({
             {status.label}
           </Badge>
         </div>
+
         <div className="flex items-baseline gap-3 pt-1">
           <span className="text-4xl font-semibold tabular-nums">${currentPrice.toFixed(2)}</span>
-          <span className={cn('text-lg tabular-nums font-medium', isPos ? 'text-emerald-500' : 'text-red-500')}>
-            {isPos ? <TrendingUp className="inline h-4 w-4 mr-1" /> : <TrendingDown className="inline h-4 w-4 mr-1" />}
+          <span className={cn('text-lg tabular-nums font-medium flex items-center gap-1', isPos ? 'text-emerald-500' : 'text-red-500')}>
+            {isPos ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
             {isPos ? '+' : ''}${Math.abs(pnl).toFixed(2)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
           </span>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Opened {new Date(trade.openedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-          {' · '}Conf: {trade.thesis?.confidenceScore ?? '—'}%
-          {' · '}Hold: {trade.thesis?.holdDuration ?? 'Swing'}
-          {trade.closedAt && ` · Closed ${new Date(trade.closedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
-        </p>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground pt-0.5">
+          <span>
+            Opened {new Date(trade.openedAt).toLocaleDateString('en-US', {
+              month: 'short', day: 'numeric', year: 'numeric',
+            })}
+          </span>
+          <span>·</span>
+          <span>Conf: {trade.thesis?.confidenceScore ?? '—'}%</span>
+          <span>·</span>
+          <span>Hold: {trade.thesis?.holdDuration ?? 'Swing'}</span>
+          {trade.closedAt && (
+            <>
+              <span>·</span>
+              <span>Closed {new Date(trade.closedAt).toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric',
+              })}</span>
+            </>
+          )}
+          {analystName && analystId && (
+            <>
+              <span>·</span>
+              <Link href={`/analysts/${analystId}`} className="hover:text-foreground transition-colors">
+                {analystName}
+              </Link>
+            </>
+          )}
+          {runId && (
+            <>
+              <span>·</span>
+              <Link href={`/runs/${runId}`} className="hover:text-foreground transition-colors inline-flex items-center gap-0.5">
+                View run <ExternalLink className="h-3 w-3" />
+              </Link>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* ── Closed banner ── */}
+      {/* ── Closed result banner ── */}
       {!isOpen && (
         <div className={cn(
-          'rounded-lg border px-4 py-3 text-sm font-medium',
+          'rounded-lg border px-4 py-3 text-sm font-medium flex items-center gap-2',
           trade.outcome === 'WIN'
             ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-500'
             : 'border-red-500/30 bg-red-500/5 text-red-500'
         )}>
-          {trade.outcome === 'WIN' && <CheckCircle2 className="inline h-4 w-4 mr-2" />}
-          {trade.outcome === 'LOSS' && <XCircle className="inline h-4 w-4 mr-2" />}
-          {(!trade.outcome || trade.outcome === 'BREAKEVEN') && <Clock className="inline h-4 w-4 mr-2" />}
-          {status.label} · Realized P&L: {isPos ? '+' : ''}${Math.abs(realizedPnl).toFixed(2)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
+          {trade.outcome === 'WIN'  && <CheckCircle2 className="h-4 w-4 shrink-0" />}
+          {trade.outcome === 'LOSS' && <XCircle       className="h-4 w-4 shrink-0" />}
+          {(!trade.outcome || trade.outcome === 'BREAKEVEN') && <Clock className="h-4 w-4 shrink-0" />}
+          {status.label} · Realized P&amp;L:{' '}
+          {isPos ? '+' : ''}${Math.abs(realizedPnl).toFixed(2)}{' '}
+          ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
         </div>
       )}
 
@@ -176,7 +236,7 @@ export default async function TradeDetailPage({
         </CardContent>
       </Card>
 
-      {/* ── Progress to target ── */}
+      {/* ── Progress to target (open trades only) ── */}
       {isOpen && (
         <Card className="border-border">
           <CardContent className="p-4 space-y-2">
@@ -193,7 +253,7 @@ export default async function TradeDetailPage({
         </Card>
       )}
 
-      {/* ── Trade Parameters + Thesis side by side ── */}
+      {/* ── Trade Parameters + Thesis ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Parameters */}
         <Card className="border-border">
@@ -202,7 +262,7 @@ export default async function TradeDetailPage({
           </CardHeader>
           <CardContent className="space-y-3">
             {[
-              { icon: ArrowDownUp, label: 'Entry', value: `$${trade.entryPrice.toFixed(2)}` },
+              { icon: ArrowDownUp, label: 'Entry',  value: `$${trade.entryPrice.toFixed(2)}` },
               {
                 icon: Target,
                 label: 'Target',
@@ -224,10 +284,10 @@ export default async function TradeDetailPage({
             ))}
             <Separator />
             {[
-              { label: 'R:R Ratio', value: `${riskReward.toFixed(2)}:1` },
-              { label: 'Shares', value: String(trade.shares) },
+              { label: 'R:R Ratio',      value: `${riskReward.toFixed(2)}:1` },
+              { label: 'Shares',         value: String(trade.shares) },
               { label: 'Position Value', value: `$${(currentPrice * trade.shares).toLocaleString(undefined, { maximumFractionDigits: 0 })}` },
-              { label: 'Exit Strategy', value: trade.exitStrategy },
+              { label: 'Exit Strategy',  value: trade.exitStrategy },
             ].map(({ label, value }) => (
               <div key={label} className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{label}</span>
@@ -237,7 +297,7 @@ export default async function TradeDetailPage({
           </CardContent>
         </Card>
 
-        {/* Thesis excerpt */}
+        {/* Full thesis */}
         <Card className="border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-medium">Thesis</CardTitle>
@@ -248,23 +308,34 @@ export default async function TradeDetailPage({
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   {trade.thesis.reasoningSummary}
                 </p>
-                {trade.thesis.thesisBullets.length > 0 && (
+
+                {/* All bullish/bearish bullets */}
+                {(trade.thesis.thesisBullets as string[]).length > 0 && (
                   <div className="space-y-1.5">
-                    {trade.thesis.thesisBullets.slice(0, 3).map((b, i) => (
+                    {(trade.thesis.thesisBullets as string[]).map((b, i) => (
                       <div key={i} className="flex items-start gap-2 text-sm">
-                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
                         <span className="text-foreground/80 leading-snug">{b}</span>
                       </div>
                     ))}
                   </div>
                 )}
-                <Separator />
-                <Link
-                  href={`/research/${trade.thesis.id}`}
-                  className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
-                >
-                  View Full Thesis →
-                </Link>
+
+                {/* All risk flags */}
+                {(trade.thesis.riskFlags as string[]).length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Risks</p>
+                      {(trade.thesis.riskFlags as string[]).map((r, i) => (
+                        <div key={i} className="flex items-start gap-2 text-sm">
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                          <span className="text-foreground/70 leading-snug">{r}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <p className="text-sm text-muted-foreground">No thesis attached to this trade.</p>
@@ -272,6 +343,29 @@ export default async function TradeDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Post-mortem evaluation ── */}
+      {evalEvent && (
+        <Card className="border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-medium flex items-center gap-2">
+              <Brain className="h-4 w-4 text-primary" />
+              Post-Mortem Evaluation
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+              {evalEvent.description}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground tabular-nums">
+              Evaluated {new Date(evalEvent.createdAt).toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+              })}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Trade Event Log ── */}
       <Card className="border-border">
@@ -282,7 +376,7 @@ export default async function TradeDetailPage({
           {trade.events.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">No events recorded yet.</p>
           ) : (
-            <div className="relative space-y-0">
+            <div className="space-y-0">
               {trade.events.map((event, i) => (
                 <div key={event.id} className="flex gap-3 pb-4 last:pb-0">
                   <div className="flex flex-col items-center">
