@@ -537,7 +537,11 @@ function FollowupChat({
       const res = await fetch("/api/research/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: fullMsg, history: [] }),
+        body: JSON.stringify({
+          message: fullMsg,
+          history: [],
+          model: ctx.model ?? "gpt-4o",
+        }),
       });
       if (!res.body) throw new Error("No response body");
 

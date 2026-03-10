@@ -138,7 +138,11 @@ export default function ResearchChatFull({
       const res = await fetch("/api/research/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: fullMessage, history: chatHistory }),
+        body: JSON.stringify({
+          message: fullMessage,
+          history: chatHistory,
+          model: ctx.model ?? "gpt-4o",
+        }),
       });
 
       if (!res.body) throw new Error("No response stream");
@@ -272,6 +276,7 @@ export default function ResearchChatFull({
     referencedThesis: null,
     tradeType: "SWING",
     direction: "EITHER",
+    model: "gpt-4o",
   };
 
   const isEmpty = messages.length === 0;
