@@ -36,6 +36,7 @@ export default async function RunDetailPage({
             reasoningSummary: true,
             thesisBullets: true,
             riskFlags: true,
+            sourcesUsed: true,
             entryPrice: true,
             targetPrice: true,
             stopLoss: true,
@@ -110,6 +111,7 @@ export default async function RunDetailPage({
         source: run.source,
         startedAt: run.startedAt,
         completedAt: run.completedAt,
+        parameters: run.parameters,
         theses: run.theses,
       }}
       profiles={profiles}
