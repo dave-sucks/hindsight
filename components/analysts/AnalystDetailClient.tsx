@@ -12,9 +12,6 @@ import { StockLogo } from "@/components/StockLogo";
 import {
   ArrowLeft,
   Pencil,
-  Settings,
-  TrendingUp,
-  TrendingDown,
 } from "lucide-react";
 import {
   LineChart,
@@ -286,14 +283,6 @@ export default function AnalystDetailClient({
       ? (stats.totalPnl >= 0 ? "+" : "") + formatCurrency(stats.totalPnl)
       : "—";
 
-  // Config pills
-  const configPills = [
-    config.directionBias,
-    ...config.holdDurations,
-    `${config.minConfidence}%+ conf`,
-    config.sectors.length > 0 ? config.sectors.slice(0, 2).join(", ") : null,
-  ].filter(Boolean) as string[];
-
   return (
     <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden">
 
@@ -386,24 +375,7 @@ export default function AnalystDetailClient({
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <RunResearchButton analystId={config.id} hasRunning={hasRunning} />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              render={<Link href="/settings" title="Settings" />}
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Button>
           </div>
-        </div>
-
-        {/* Config pills — always visible */}
-        <div className="flex flex-wrap gap-1.5 -mt-2">
-          {configPills.map((pill) => (
-            <Badge key={pill} variant="secondary" className="text-[10px] px-1.5 py-0.5 font-mono">
-              {pill}
-            </Badge>
-          ))}
         </div>
 
         {/* Stats row */}
@@ -423,6 +395,71 @@ export default function AnalystDetailClient({
               </p>
             </div>
           ))}
+        </div>
+
+        <div className="h-px bg-border" />
+
+        {/* Inline config — full readable breakdown */}
+        <div className="space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Configuration
+          </p>
+
+          {/* Key settings grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3">
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Direction</p>
+              <p className="text-sm font-medium">{config.directionBias}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Hold Duration</p>
+              <p className="text-sm font-medium">{config.holdDurations.join(", ") || "—"}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Min Confidence</p>
+              <p className="text-sm font-medium tabular-nums">{config.minConfidence}%</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Schedule</p>
+              <p className="text-sm font-medium">{config.scheduleTime}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Max Positions</p>
+              <p className="text-sm font-medium tabular-nums">{config.maxOpenPositions}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Max Position Size</p>
+              <p className="text-sm font-medium tabular-nums">${config.maxPositionSize.toLocaleString()}</p>
+            </div>
+          </div>
+
+          {/* Sectors */}
+          {config.sectors.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Sectors</p>
+              <div className="flex flex-wrap gap-1">
+                {config.sectors.map((s) => (
+                  <Badge key={s} variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                    {s}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Signals */}
+          {config.signalTypes.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Signals</p>
+              <div className="flex flex-wrap gap-1">
+                {config.signalTypes.map((s) => (
+                  <Badge key={s} variant="outline" className="text-[10px] px-1.5 py-0.5 font-mono">
+                    {s}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="h-px bg-border" />
