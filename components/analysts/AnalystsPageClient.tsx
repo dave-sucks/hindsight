@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
@@ -36,8 +37,14 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
       ? `+$${analyst.totalPnl.toFixed(2)}`
       : `-$${Math.abs(analyst.totalPnl).toFixed(2)}`;
 
-  const visibleSignals = analyst.signalTypes.slice(0, 4);
   const statusDot = analyst.enabled ? "bg-emerald-500" : "bg-muted-foreground/40";
+
+  // Natural language prompt is the primary description; fall back to
+  // direction+hold-duration summary if no prompt has been set yet.
+  const promptText =
+    analyst.analystPrompt ||
+    analyst.description ||
+    `${analyst.directionBias} · ${analyst.holdDurations.join("/")} · ${analyst.minConfidence}%+ confidence`;
 
   return (
     // Stretched-link pattern: invisible full-cover anchor at z-0, buttons at z-10
@@ -48,21 +55,19 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
         aria-label={`Open ${analyst.name}`}
       />
       <Card className="group-hover:bg-muted/20 transition-colors h-full">
-        <CardContent className="p-5 flex flex-col gap-4">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold leading-tight truncate">
-                  {analyst.name}
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {analyst.directionBias} · {analyst.holdDurations.join("/")}
-                </p>
-              </div>
-            </div>
+        <CardContent className="p-5 flex flex-col gap-3">
+          {/* Header: status dot + name */}
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
+            <h2 className="text-sm font-semibold leading-tight truncate">
+              {analyst.name}
+            </h2>
           </div>
+
+          {/* Analyst prompt — the NL description, 2 lines clamped */}
+          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+            {promptText}
+          </p>
 
           {/* Stats */}
           <div className="flex gap-5">
@@ -70,7 +75,7 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 Win Rate
               </p>
-              <p className={`text-lg font-semibold tabular-nums ${winRateColor}`}>
+              <p className={`text-base font-semibold tabular-nums ${winRateColor}`}>
                 {winRatePct}
               </p>
             </div>
@@ -78,16 +83,16 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 Trades
               </p>
-              <p className="text-lg font-semibold tabular-nums text-foreground">
+              <p className="text-base font-semibold tabular-nums text-foreground">
                 {analyst.tradeCount}
               </p>
             </div>
             <div>
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                P&amp;L
+                P&L
               </p>
               <p
-                className={`text-lg font-semibold tabular-nums ${
+                className={`text-base font-semibold tabular-nums ${
                   analyst.tradeCount > 0 ? pnlColor : "text-muted-foreground"
                 }`}
               >
@@ -95,25 +100,6 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
               </p>
             </div>
           </div>
-
-          {/* Signal chips */}
-          {visibleSignals.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {visibleSignals.map((s) => (
-                <span
-                  key={s}
-                  className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground"
-                >
-                  {s.replace(/_/g, " ")}
-                </span>
-              ))}
-              {analyst.signalTypes.length > 4 && (
-                <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
-                  +{analyst.signalTypes.length - 4}
-                </span>
-              )}
-            </div>
-          )}
 
           {/* Footer: last run + run button */}
           <div className="flex items-center justify-between mt-auto relative z-10">
@@ -136,20 +122,32 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
   );
 }
 
+// ── New Analyst card ──────────────────────────────────────────────────────────
+
+function NewAnalystCard() {
+  return (
+    <Link href="/analysts/new">
+      <Card className="h-full border-dashed hover:bg-muted/20 transition-colors cursor-pointer">
+        <CardContent className="p-5 flex flex-col items-center justify-center gap-2 h-full min-h-[160px] text-muted-foreground">
+          <div className="h-8 w-8 rounded-full border-2 border-dashed border-current flex items-center justify-center">
+            <Plus className="h-4 w-4" />
+          </div>
+          <p className="text-sm font-medium text-foreground">New Analyst</p>
+          <p className="text-xs text-center">
+            Describe what you want to find
+          </p>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 function AnalystsEmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center py-24 text-center gap-3 text-muted-foreground">
-      <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-        <span className="text-xl">🤖</span>
-      </div>
-      <div>
-        <p className="text-sm font-medium text-foreground">No analysts yet</p>
-        <p className="text-sm mt-1">
-          Create your first AI analyst to start automated research
-        </p>
-      </div>
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <NewAnalystCard />
     </div>
   );
 }
@@ -172,6 +170,7 @@ export default function AnalystsPageClient({
           {analysts.map((analyst) => (
             <AnalystCard key={analyst.id} analyst={analyst} />
           ))}
+          <NewAnalystCard />
         </div>
       )}
     </div>

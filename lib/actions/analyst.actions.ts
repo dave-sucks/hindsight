@@ -29,6 +29,8 @@ export interface AnalystListItem {
   id: string;
   name: string;
   enabled: boolean;
+  analystPrompt: string | null;
+  description: string | null;
   sectors: string[];
   signalTypes: string[];
   holdDurations: string[];
@@ -185,6 +187,8 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       id: config.id,
       name: config.name,
       enabled: config.enabled,
+      analystPrompt: config.analystPrompt,
+      description: config.description,
       sectors: config.sectors,
       signalTypes: config.signalTypes,
       holdDurations: config.holdDurations,
