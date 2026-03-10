@@ -165,6 +165,12 @@ export async function POST(req: NextRequest) {
       const minConfidence = (agentConfig?.minConfidence ?? 70) as number;
       const maxPositionSize = (agentConfig?.maxPositionSize ?? 500) as number;
 
+      // Per-ticker thought trace accumulator — stored on each Thesis.thoughtTrace
+      const tickerTrace: Record<
+        string,
+        { type: string; data: object; timestamp_ms: number }[]
+      > = {};
+
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -187,6 +193,17 @@ export async function POST(req: NextRequest) {
             }
 
             const type = event.type as string;
+
+            // Accumulate per-ticker events for thoughtTrace
+            const evTicker = event.ticker as string | undefined;
+            if (evTicker) {
+              if (!tickerTrace[evTicker]) tickerTrace[evTicker] = [];
+              tickerTrace[evTicker].push({
+                type,
+                data: event as object,
+                timestamp_ms: Date.now(),
+              });
+            }
 
             // Persist as RunEvent
             const title = eventTitle(type, event);
@@ -223,6 +240,7 @@ export async function POST(req: NextRequest) {
                     sector: thesis.sector,
                     sourcesUsed: thesis.sources_used as object,
                     modelUsed: thesis.model_used,
+                    thoughtTrace: (tickerTrace[thesis.ticker] ?? []) as object,
                   },
                 });
 
