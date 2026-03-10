@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useRef, useTransition } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Tabs,
   TabsContent,
@@ -15,7 +16,9 @@ import {
 } from "@/components/ui/tabs";
 import ResearchChatFull from "@/components/ResearchChatFull";
 import { RunResearchButton } from "@/components/RunResearchButton";
-import { ChevronDown, ChevronRight, Settings, TrendingUp, TrendingDown, Minus, BookOpen } from "lucide-react";
+import { updateAnalyst } from "@/lib/actions/settings.actions";
+import { toast } from "sonner";
+import { ChevronDown, ChevronRight, Settings, TrendingUp, TrendingDown, Minus, Pencil, Check, X } from "lucide-react";
 import type {
   AnalystDetail,
   AnalystConfig,
@@ -83,24 +86,124 @@ function DirectionBadge({ direction }: { direction: string }) {
   );
 }
 
-// ── Strategy Instructions collapsible ─────────────────────────────────────────
+// ── Strategy Instructions inline editor ───────────────────────────────────────
 
-function StrategyInstructionsCollapsible({ instructions }: { instructions: string }) {
-  const [open, setOpen] = useState(false);
+function StrategyInstructionsEditor({
+  config,
+  initialInstructions,
+}: {
+  config: AnalystConfig;
+  initialInstructions: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(initialInstructions);
+  const [saved, setSaved] = useState(initialInstructions);
+  const [isPending, startTransition] = useTransition();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function handleEdit() {
+    setEditing(true);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
+  function handleCancel() {
+    setValue(saved);
+    setEditing(false);
+  }
+
+  function handleSave() {
+    startTransition(async () => {
+      const result = await updateAnalyst(config.id, {
+        name: config.name,
+        enabled: config.enabled,
+        sectors: config.sectors,
+        signalTypes: config.signalTypes,
+        holdDurations: config.holdDurations,
+        directionBias: config.directionBias,
+        minConfidence: config.minConfidence,
+        maxOpenPositions: config.maxOpenPositions,
+        description: config.description,
+        strategyType: config.strategyType,
+        strategyInstructions: value.trim() || null,
+        tradePolicyAutoTrade: config.tradePolicyAutoTrade,
+      });
+      if (result.success) {
+        setSaved(value);
+        setEditing(false);
+        toast.success("Strategy instructions saved");
+      } else {
+        toast.error(result.error ?? "Failed to save");
+      }
+    });
+  }
+
   return (
-    <div>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <BookOpen className="h-3 w-3" />
-        Strategy Instructions
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-      </button>
-      {open && (
-        <p className="mt-2 text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap border rounded p-3 bg-muted/30">
-          {instructions}
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Strategy Instructions
         </p>
+        {!editing && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-[11px] text-muted-foreground"
+            onClick={handleEdit}
+          >
+            <Pencil className="h-3 w-3 mr-1" />
+            Edit
+          </Button>
+        )}
+        {editing && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-muted-foreground"
+              onClick={handleCancel}
+              disabled={isPending}
+            >
+              <X className="h-3 w-3 mr-1" />
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="h-6 px-2 text-[11px]"
+              onClick={handleSave}
+              disabled={isPending}
+            >
+              <Check className="h-3 w-3 mr-1" />
+              Save
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {editing ? (
+        <Textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setValue(e.target.value)}
+          rows={8}
+          className="text-sm leading-relaxed font-mono resize-y"
+          placeholder="Write the strategy prompt that guides this analyst's research and decision-making…"
+          disabled={isPending}
+        />
+      ) : saved ? (
+        <p
+          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap border rounded-md p-3 bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors"
+          onClick={handleEdit}
+          title="Click to edit"
+        >
+          {saved}
+        </p>
+      ) : (
+        <button
+          onClick={handleEdit}
+          className="w-full text-left text-sm text-muted-foreground/60 border border-dashed rounded-md p-3 hover:border-muted-foreground/40 hover:text-muted-foreground transition-colors"
+        >
+          + Add strategy instructions to guide this analyst's research…
+        </button>
       )}
     </div>
   );
@@ -126,7 +229,13 @@ function AnalystOverviewTab({
   const pnlColor = stats.totalPnl >= 0 ? "text-emerald-500" : "text-red-500";
 
   return (
-    <div className="max-w-2xl space-y-4">
+    <div className="max-w-2xl space-y-6">
+      {/* ── Strategy Instructions — prompt-first hero ── */}
+      <StrategyInstructionsEditor
+        config={config}
+        initialInstructions={config.strategyInstructions ?? ""}
+      />
+
       {/* 4 stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -220,10 +329,6 @@ function AnalystOverviewTab({
             </div>
           )}
 
-          {/* Strategy instructions collapsible */}
-          {config.strategyInstructions && (
-            <StrategyInstructionsCollapsible instructions={config.strategyInstructions} />
-          )}
         </CardContent>
       </Card>
 

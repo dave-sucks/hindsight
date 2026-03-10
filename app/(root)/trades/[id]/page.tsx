@@ -20,6 +20,7 @@ import {
   Target,
   ShieldAlert,
   ArrowDownUp,
+  FlaskConical,
 } from 'lucide-react';
 
 // ─── Event icon map ────────────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ export default async function TradeDetailPage({
     where: { id },
     include: {
       events: { orderBy: { createdAt: 'asc' } },
-      thesis: true,
+      thesis: { select: { id: true, reasoningSummary: true, thesisBullets: true, holdDuration: true, confidenceScore: true, researchRunId: true } },
     },
   });
 
@@ -259,12 +260,23 @@ export default async function TradeDetailPage({
                   </div>
                 )}
                 <Separator />
-                <Link
-                  href={`/research/${trade.thesis.id}`}
-                  className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
-                >
-                  View Full Thesis →
-                </Link>
+                <div className="flex flex-col gap-1.5">
+                  <Link
+                    href={`/research/${trade.thesis.id}`}
+                    className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+                  >
+                    View Full Thesis →
+                  </Link>
+                  {trade.thesis.researchRunId && (
+                    <Link
+                      href={`/research/runs/${trade.thesis.researchRunId}`}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <FlaskConical className="h-3 w-3" />
+                      View Research Run →
+                    </Link>
+                  )}
+                </div>
               </>
             ) : (
               <p className="text-sm text-muted-foreground">No thesis attached to this trade.</p>

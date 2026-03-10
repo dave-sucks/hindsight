@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { TradeReviewSheet } from "@/components/TradeReviewSheet";
-import RunTimeline, { type RunEventItem } from "@/components/research/RunTimeline";
+import RunConversation from "@/components/research/RunConversation";
+import RunComposer from "@/components/research/RunComposer";
 import RunSidebar from "@/components/research/RunSidebar";
-import RunChatBar, { type RunMessage } from "@/components/research/RunChatBar";
+import type { RunEventItem } from "@/components/research/RunTimeline";
+import type { RunMessage } from "@/components/research/RunChatBar";
 import {
   Bot,
   Clock,
@@ -458,7 +460,6 @@ function DetailThesisCard({
 export default function RunDetailClient({
   run,
   profiles,
-  userId,
   recentTheses,
   hasRunning,
   initialEvents,
@@ -483,6 +484,10 @@ export default function RunDetailClient({
     (acc, t) => acc + parseSources(t.sourcesUsed).length,
     0
   );
+
+  // suppress unused prop warnings
+  void recentTheses;
+  void hasRunning;
 
   // ── Live event subscription (running runs only) ──────────────────────────
   const [liveEvents, setLiveEvents] = useState<RunEventItem[]>([]);
@@ -525,8 +530,6 @@ export default function RunDetailClient({
               return;
             }
 
-            console.log("Run event:", ev);
-
             setLiveEvents((prev) => [
               ...prev,
               {
@@ -552,14 +555,34 @@ export default function RunDetailClient({
   const displayEvents = isRunning ? liveEvents : initialEvents;
   const timelineComplete = isRunning ? liveComplete : isComplete;
 
-  // suppress unused variable warnings for props still accepted but not rendered
-  void userId;
-  void recentTheses;
-  void hasRunning;
+  // ── Chat message state (merged into conversation) ────────────────────────
+  const [messages, setMessages] = useState<RunMessage[]>(initialMessages);
+
+  const handleUserMessage = useCallback((msg: RunMessage) => {
+    setMessages((prev) => [...prev, msg]);
+  }, []);
+
+  // Add or update an assistant message (for streaming)
+  const handleAssistantMessage = useCallback((msg: RunMessage) => {
+    setMessages((prev) => {
+      // Replace existing placeholder if present
+      const existing = prev.find((m) => m.id === msg.id);
+      if (existing) return prev;
+      return [...prev, msg];
+    });
+  }, []);
+
+  const handleAssistantToken = useCallback((id: string, token: string) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === id ? { ...m, content: m.content + token } : m
+      )
+    );
+  }, []);
 
   return (
     <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden">
-      {/* ── LEFT: Run header + timeline + chat bar ─────────────────────────── */}
+      {/* ── LEFT: Run header + conversation + composer ───────────────────────── */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Run header */}
         <div className="px-6 pt-6 pb-4 border-b shrink-0">
@@ -631,22 +654,29 @@ export default function RunDetailClient({
           </div>
         </div>
 
-        {/* Timeline — fills remaining space */}
+        {/* Conversation — fills remaining space */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <RunTimeline
+          <RunConversation
             events={displayEvents}
+            messages={messages}
             isLive={isRunning}
             isComplete={timelineComplete}
             isSynthetic={isSynthetic && !isRunning}
           />
         </div>
 
-        {/* Chat bar — fixed at bottom */}
-        <RunChatBar runId={run.id} initialMessages={initialMessages} />
+        {/* Composer — fixed at bottom */}
+        <RunComposer
+          runId={run.id}
+          disabled={isRunning}
+          onUserMessage={handleUserMessage}
+          onAssistantMessage={handleAssistantMessage}
+          onAssistantToken={handleAssistantToken}
+        />
       </div>
 
-      {/* ── RIGHT: Sidebar (candidates + theses + decisions) ──────────────── */}
-      <div className="hidden lg:flex w-[420px] border-l flex-col overflow-y-auto shrink-0">
+      {/* ── RIGHT: Context rail (candidates + theses + decisions) ─────────── */}
+      <div className="hidden lg:flex w-[400px] border-l flex-col overflow-y-auto shrink-0">
         <RunSidebar
           events={displayEvents}
           theses={run.theses.map((t) => ({
