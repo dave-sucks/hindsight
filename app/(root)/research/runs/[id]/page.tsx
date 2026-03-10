@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getStockProfile } from "@/lib/actions/finnhub.actions";
+import { getLatestPrices } from "@/lib/alpaca";
 import RunDetailClient from "@/components/research/RunDetailClient";
 import type { CompanyProfile } from "@/components/research/ResearchPage";
 
@@ -97,6 +98,31 @@ export default async function RunDetailPage({
     }
   }
 
+  // Fetch live prices for tickers with open trades so the delta row renders
+  const openTickers = [
+    ...new Set(
+      run.theses
+        .filter((t) => t.trade?.status === "OPEN")
+        .map((t) => t.ticker)
+    ),
+  ];
+  let priceMap: Record<string, number> = {};
+  if (openTickers.length > 0) {
+    try {
+      priceMap = await getLatestPrices(openTickers);
+    } catch {
+      // non-fatal — cards will fall back to entryPrice / closePrice
+    }
+  }
+
+  const thesesWithPrices = run.theses.map((t) => ({
+    ...t,
+    currentPrice:
+      t.trade?.status === "OPEN"
+        ? (priceMap[t.ticker] ?? null)
+        : t.trade?.closePrice ?? null,
+  }));
+
   const analystName =
     run.agentConfig?.name ??
     (run.source === "MANUAL" ? "Manual Research" : "Agent");
@@ -112,7 +138,7 @@ export default async function RunDetailPage({
         startedAt: run.startedAt,
         completedAt: run.completedAt,
         parameters: run.parameters,
-        theses: run.theses,
+        theses: thesesWithPrices,
       }}
       profiles={profiles}
       userId={userId}

@@ -14,17 +14,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, TrendingUp } from 'lucide-react';
+import { Bot, Sparkles, TrendingUp } from 'lucide-react';
 import {
   mockOpenTrades,
   mockEquityCurve,
   mockPortfolio,
   type MockTrade,
 } from '@/lib/mock-data/trades';
-import type { DashboardData } from '@/lib/actions/portfolio.actions';
+import type { DashboardData, TodaysPick } from '@/lib/actions/portfolio.actions';
 import type { DashboardRun } from '@/lib/actions/analyst.actions';
 import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
+import { ThesisCard, type ThesisCardProfile } from '@/components/ThesisCard';
 
 // ─── Relative time helper ────────────────────────────────────────────────────
 
@@ -272,6 +273,65 @@ function RightRailTabs({
   );
 }
 
+// ─── TodaysPicksSection ───────────────────────────────────────────────────────
+
+type PickFilter = 'all' | 'open' | 'passed';
+
+function RecentPicksSection({ picks, profiles }: { picks: TodaysPick[]; profiles?: Record<string, ThesisCardProfile> }) {
+  const [filter, setFilter] = useState<PickFilter>('all');
+
+  const filtered = picks.filter((p) => {
+    if (filter === 'open') return p.trade?.status === 'OPEN';
+    if (filter === 'passed') return p.direction === 'PASS' || p.trade === null;
+    return true;
+  });
+
+  const chipClass = (active: boolean) =>
+    `text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+      active
+        ? 'bg-foreground text-background border-foreground'
+        : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
+    }`;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Recent Picks
+        </p>
+        <Link
+          href="/research"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          All research →
+        </Link>
+      </div>
+      <div className="flex items-center gap-2">
+        {(['all', 'open', 'passed'] as const).map((f) => (
+          <button key={f} onClick={() => setFilter(f)} className={chipClass(filter === f)}>
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+          {filtered.length} pick{filtered.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 gap-2">
+          <Sparkles className="h-6 w-6 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">No {filter} picks today</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {filtered.map((pick) => (
+            <ThesisCard key={pick.id} thesis={pick} profile={profiles?.[pick.ticker]} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── DashboardRunCard ─────────────────────────────────────────────────────────
 
 function DashboardRunCard({ run }: { run: DashboardRun }) {
@@ -340,12 +400,14 @@ interface DashboardClientProps {
   data?: DashboardData;
   recentRuns?: DashboardRun[];
   userId?: string;
+  profiles?: Record<string, ThesisCardProfile>;
 }
 
 export default function DashboardClient({
   data,
   recentRuns = [],
   userId,
+  profiles,
 }: DashboardClientProps) {
   const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(
     new Set()
@@ -504,47 +566,8 @@ export default function DashboardClient({
             </CardContent>
           </Card>
 
-          {/* Recent Research feed */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Recent Research
-              </p>
-              <Link
-                href="/analysts"
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                All analysts →
-              </Link>
-            </div>
-
-            {recentRuns.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center p-10 gap-2">
-                  <Bot className="h-8 w-8 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground text-center">
-                    No research runs yet
-                  </p>
-                  <p className="text-xs text-muted-foreground/60 text-center">
-                    Create an analyst in{' '}
-                    <Link
-                      href="/settings?tab=analysts"
-                      className="underline underline-offset-2"
-                    >
-                      Settings
-                    </Link>{' '}
-                    and run your first research session.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-2">
-                {recentRuns.map((run) => (
-                  <DashboardRunCard key={run.id} run={run} />
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Today's Picks */}
+          <RecentPicksSection picks={data?.todaysPicks ?? []} profiles={profiles} />
         </div>
       </div>
 
