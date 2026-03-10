@@ -237,7 +237,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     prisma.agentConfig.findMany({
       where: { userId },
       orderBy: { createdAt: "asc" },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        enabled: true,
+        scheduleTime: true,
         researchRuns: {
           orderBy: { startedAt: "desc" },
           take: 1,
