@@ -1,52 +1,27 @@
 "use client";
 
-import { Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import ResearchChatFull from "@/components/ResearchChatFull";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import {
   TrendingUp,
   TrendingDown,
   Minus,
-  Settings,
-  ExternalLink,
+  ChevronDown,
+  ArrowLeft,
 } from "lucide-react";
 import type {
   AnalystDetail,
-  AnalystConfig,
   RunWithTheses,
   TradeWithThesis,
-  AnalystStats,
 } from "@/lib/actions/analyst.actions";
-
-// ── Types (local) ─────────────────────────────────────────────────────────────
-
-type RecentThesis = {
-  id: string;
-  ticker: string;
-  direction: string;
-  confidenceScore: number;
-  reasoningSummary: string;
-  createdAt: Date;
-};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,8 +33,7 @@ function formatRelativeTime(date: Date): string {
   if (diffMin < 60) return `${diffMin}m ago`;
   const diffHr = Math.floor(diffMin / 60);
   if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDays = Math.floor(diffHr / 24);
-  return `${diffDays}d ago`;
+  return `${Math.floor(diffHr / 24)}d ago`;
 }
 
 function formatCurrency(val: number): string {
@@ -69,6 +43,31 @@ function formatCurrency(val: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(val);
+}
+
+// ── Stat card ─────────────────────────────────────────────────────────────────
+
+function StatCard({
+  label,
+  value,
+  className = "text-foreground",
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
+          {label}
+        </p>
+        <p className={`text-lg font-semibold tabular-nums ${className}`}>
+          {value}
+        </p>
+      </CardContent>
+    </Card>
+  );
 }
 
 // ── Direction badge ───────────────────────────────────────────────────────────
@@ -102,83 +101,21 @@ function DirectionBadge({ direction }: { direction: string }) {
   );
 }
 
-// ── Config Sheet ──────────────────────────────────────────────────────────────
+// ── Inline collapsible config ─────────────────────────────────────────────────
 
-function ConfigSheet({
-  config,
-  stats,
-}: {
-  config: AnalystConfig;
-  stats: AnalystStats;
-}) {
+function InlineConfig({ config }: { config: AnalystDetail["config"] }) {
   return (
-    <Sheet>
-      <SheetTrigger
-        render={
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" />
-        }
-      >
-        <Settings className="h-4 w-4" />
-        <span className="sr-only">Analyst config</span>
-      </SheetTrigger>
-      <SheetContent className="w-[360px] overflow-y-auto">
-        <SheetHeader className="mb-6">
-          <SheetTitle>Analyst Config</SheetTitle>
-        </SheetHeader>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          {[
-            { label: "Total Runs", value: String(stats.totalRuns) },
-            { label: "Theses", value: String(stats.totalTheses) },
-            {
-              label: "Win Rate",
-              value:
-                stats.winRate != null
-                  ? `${Math.round(stats.winRate * 100)}%`
-                  : "—",
-              className:
-                stats.winRate != null
-                  ? stats.winRate >= 0.5
-                    ? "text-emerald-500"
-                    : "text-red-500"
-                  : "text-muted-foreground",
-            },
-            {
-              label: "Total P&L",
-              value:
-                stats.totalTrades > 0 ? formatCurrency(stats.totalPnl) : "—",
-              className:
-                stats.totalTrades > 0
-                  ? stats.totalPnl >= 0
-                    ? "text-emerald-500"
-                    : "text-red-500"
-                  : "text-muted-foreground",
-            },
-          ].map(({ label, value, className }) => (
-            <Card key={label}>
-              <CardContent className="p-3">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                  {label}
-                </p>
-                <p
-                  className={`text-lg font-semibold tabular-nums ${
-                    className ?? "text-foreground"
-                  }`}
-                >
-                  {value}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Strategy params */}
-        <div className="space-y-3 text-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Strategy
-          </p>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+    <Collapsible>
+      <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium hover:text-foreground text-muted-foreground transition-colors group">
+        <span className="text-xs font-medium uppercase tracking-wide">
+          Strategy Config
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pt-2 pb-4 space-y-4">
+          {/* Params grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
             {[
               { label: "Direction", value: config.directionBias },
               {
@@ -191,19 +128,26 @@ function ConfigSheet({
                 label: "Max Position Size",
                 value: formatCurrency(config.maxPositionSize),
               },
-              { label: "Max Risk %", value: `${config.maxRiskPct}%` },
+              {
+                label: "Max Risk %",
+                value: config.maxRiskPct != null ? `${config.maxRiskPct}%` : "—",
+              },
               { label: "Schedule", value: config.scheduleTime },
             ].map(({ label, value }) => (
               <div key={label}>
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="font-medium tabular-nums text-sm">{value}</p>
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+                  {label}
+                </p>
+                <p className="text-sm tabular-nums">{value}</p>
               </div>
             ))}
           </div>
 
           {config.sectors.length > 0 && (
-            <div className="pt-2">
-              <p className="text-xs text-muted-foreground mb-2">Sectors</p>
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+                Sectors
+              </p>
               <div className="flex flex-wrap gap-1.5">
                 {config.sectors.map((s) => (
                   <Badge key={s} variant="secondary" className="text-xs">
@@ -215,8 +159,10 @@ function ConfigSheet({
           )}
 
           {config.signalTypes.length > 0 && (
-            <div className="pt-2">
-              <p className="text-xs text-muted-foreground mb-2">Signal Types</p>
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+                Signal Types
+              </p>
               <div className="flex flex-wrap gap-1.5">
                 {config.signalTypes.map((s) => (
                   <Badge key={s} variant="outline" className="text-xs">
@@ -226,55 +172,32 @@ function ConfigSheet({
               </div>
             </div>
           )}
-
-          {config.analystPrompt && (
-            <div className="pt-2">
-              <p className="text-xs text-muted-foreground mb-1.5">
-                Analyst Prompt
-              </p>
-              <p className="text-xs text-foreground/80 italic leading-relaxed">
-                &ldquo;{config.analystPrompt}&rdquo;
-              </p>
-            </div>
-          )}
-
-          {/* Edit link */}
-          <div className="pt-4 mt-2 border-t">
-            <p className="text-xs text-muted-foreground mb-2">
-              These settings are read-only here.
-            </p>
-            <Link
-              href="/settings"
-              className="inline-flex items-center gap-1.5 text-xs text-foreground hover:text-foreground/70 transition-colors"
-            >
-              <ExternalLink className="h-3 w-3" />
-              Edit configuration in Settings
-            </Link>
-          </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
-// ── Runs Tab ──────────────────────────────────────────────────────────────────
+// ── Run history ───────────────────────────────────────────────────────────────
 
-function AnalystRunsTab({ runs }: { runs: RunWithTheses[] }) {
+function RunHistory({ runs }: { runs: RunWithTheses[] }) {
   if (runs.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center gap-3 text-muted-foreground">
+      <div className="py-12 text-center text-muted-foreground">
         <p className="text-sm font-medium text-foreground">No runs yet</p>
-        <p className="text-sm">
-          Click &ldquo;Run Research Now&rdquo; above to start a research run
+        <p className="text-sm mt-1">
+          Click &ldquo;Run Research Now&rdquo; to start your first run
         </p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl border rounded-lg divide-y overflow-hidden">
+    <div className="border rounded-lg divide-y overflow-hidden">
       {runs.map((run) => {
-        const actionableCount = run.theses.filter((t) => t.direction !== "PASS").length;
+        const actionableCount = run.theses.filter(
+          (t) => t.direction !== "PASS"
+        ).length;
         const tradeCount = run.theses.filter((t) => t.trade).length;
         const statusDot =
           run.status === "COMPLETE"
@@ -292,7 +215,7 @@ function AnalystRunsTab({ runs }: { runs: RunWithTheses[] }) {
             <div className="flex items-center gap-3 min-w-0">
               <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
               <div className="min-w-0">
-                <p className="text-sm font-medium truncate">
+                <p className="text-sm font-medium">
                   {formatRelativeTime(run.startedAt)}
                   {run.status === "RUNNING" && (
                     <span className="ml-2 text-xs text-amber-500 font-normal">
@@ -320,23 +243,14 @@ function AnalystRunsTab({ runs }: { runs: RunWithTheses[] }) {
   );
 }
 
-// ── Trades Tab ────────────────────────────────────────────────────────────────
+// ── Trades list ───────────────────────────────────────────────────────────────
 
-function AnalystTradesTab({ trades }: { trades: TradeWithThesis[] }) {
-  if (trades.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center gap-3 text-muted-foreground">
-        <p className="text-sm font-medium text-foreground">No trades yet</p>
-        <p className="text-sm">
-          Trades will appear here once this analyst generates actionable theses
-        </p>
-      </div>
-    );
-  }
+function TradesList({ trades }: { trades: TradeWithThesis[] }) {
+  if (trades.length === 0) return null;
 
   return (
-    <div className="max-w-2xl space-y-1">
-      {trades.map((trade) => {
+    <div className="space-y-1">
+      {trades.slice(0, 8).map((trade) => {
         const pnl = trade.realizedPnl ?? 0;
         const pnlColor =
           trade.status === "OPEN"
@@ -372,7 +286,9 @@ function AnalystTradesTab({ trades }: { trades: TradeWithThesis[] }) {
                   {trade.status === "OPEN"
                     ? `Opened ${formatRelativeTime(trade.openedAt)}`
                     : `Closed ${
-                        trade.closedAt ? formatRelativeTime(trade.closedAt) : ""
+                        trade.closedAt
+                          ? formatRelativeTime(trade.closedAt)
+                          : ""
                       }`}
                 </p>
               </div>
@@ -403,165 +319,118 @@ function AnalystTradesTab({ trades }: { trades: TradeWithThesis[] }) {
   );
 }
 
-// ── Tab param reader ──────────────────────────────────────────────────────────
-
-function TabParamReader({
-  children,
-}: {
-  children: (defaultTab: string) => React.ReactNode;
-}) {
-  const searchParams = useSearchParams();
-  const defaultTab = searchParams.get("tab") ?? "chat";
-  return <>{children(defaultTab)}</>;
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AnalystDetailClient({
   detail,
-  userId,
-  recentTheses,
   hasRunning,
 }: {
   detail: AnalystDetail;
   userId: string;
-  recentTheses: RecentThesis[];
+  recentTheses: { id: string; ticker: string; direction: string; confidenceScore: number; reasoningSummary: string; createdAt: Date }[];
   hasRunning: boolean;
 }) {
+  const { config, stats, recentRuns, recentTrades } = detail;
+
   const winRatePct =
-    detail.stats.winRate != null
-      ? `${Math.round(detail.stats.winRate * 100)}%`
-      : null;
+    stats.winRate != null ? `${Math.round(stats.winRate * 100)}%` : "—";
+  const winRateColor =
+    stats.winRate != null
+      ? stats.winRate >= 0.5
+        ? "text-emerald-500"
+        : "text-red-500"
+      : "text-muted-foreground";
+  const pnlColor =
+    stats.totalTrades > 0
+      ? stats.totalPnl >= 0
+        ? "text-emerald-500"
+        : "text-red-500"
+      : "text-muted-foreground";
+  const pnlStr =
+    stats.totalTrades > 0
+      ? (stats.totalPnl >= 0 ? "+" : "") + formatCurrency(stats.totalPnl)
+      : "—";
 
   return (
-    <div className="h-[calc(100dvh-5.25rem)] flex flex-col">
-      {/* Header */}
-      <div className="px-6 py-3 border-b shrink-0">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link
-              href="/analysts"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            >
-              ← Analysts
-            </Link>
-            <span className="text-muted-foreground/40 shrink-0">/</span>
-            <div className="flex items-center gap-2 min-w-0">
+    <div className="overflow-y-auto h-[calc(100dvh-5.25rem)]">
+      <div className="max-w-3xl mx-auto px-6 py-6 space-y-6">
+        {/* Back link + header */}
+        <div className="space-y-2">
+          <Link
+            href="/analysts"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Analysts
+          </Link>
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div
-                className={`h-2 w-2 rounded-full shrink-0 ${
-                  detail.config.enabled
-                    ? "bg-emerald-500"
-                    : "bg-muted-foreground/40"
+                className={`h-2.5 w-2.5 rounded-full shrink-0 mt-0.5 ${
+                  config.enabled ? "bg-emerald-500" : "bg-muted-foreground/40"
                 }`}
               />
-              <h1 className="text-base font-semibold truncate">
-                {detail.config.name}
+              <h1 className="text-2xl font-semibold leading-tight">
+                {config.name}
               </h1>
             </div>
+            <RunResearchButton analystId={config.id} hasRunning={hasRunning} />
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Mini stats */}
-            {detail.stats.totalTrades > 0 && (
-              <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground tabular-nums border-r pr-3 mr-1">
-                {winRatePct && (
-                  <span
-                    className={
-                      detail.stats.winRate! >= 0.5
-                        ? "text-emerald-500"
-                        : "text-red-500"
-                    }
-                  >
-                    {winRatePct} WR
-                  </span>
-                )}
-                <span>{detail.stats.totalTrades} trades</span>
-                <span
-                  className={
-                    detail.stats.totalPnl >= 0
-                      ? "text-emerald-500"
-                      : "text-red-500"
-                  }
-                >
-                  {detail.stats.totalPnl >= 0 ? "+" : ""}
-                  {formatCurrency(detail.stats.totalPnl)}
-                </span>
-              </div>
-            )}
-
-            <ConfigSheet config={detail.config} stats={detail.stats} />
-            <RunResearchButton
-              analystId={detail.config.id}
-              hasRunning={hasRunning}
-            />
-          </div>
+          {(config.analystPrompt || config.description) && (
+            <p className="text-sm text-muted-foreground leading-relaxed pl-[1.25rem]">
+              {config.analystPrompt || config.description}
+            </p>
+          )}
         </div>
 
-        {detail.config.analystPrompt && (
-          <p className="text-xs text-muted-foreground mt-1.5 italic pl-[calc(1.25rem+2ch+0.75rem)]">
-            {detail.config.analystPrompt}
-          </p>
+        {/* Stats row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard label="Total Runs" value={String(stats.totalRuns)} />
+          <StatCard
+            label="Win Rate"
+            value={winRatePct}
+            className={winRateColor}
+          />
+          <StatCard label="Trades" value={String(stats.totalTrades)} />
+          <StatCard label="P&L" value={pnlStr} className={pnlColor} />
+        </div>
+
+        {/* Inline collapsible config */}
+        <div className="border-t pt-4">
+          <InlineConfig config={config} />
+        </div>
+
+        {/* Run history */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium">Recent Runs</h2>
+            {recentRuns.length > 0 && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {recentRuns.length} total
+              </span>
+            )}
+          </div>
+          <RunHistory runs={recentRuns} />
+        </div>
+
+        {/* Recent trades */}
+        {recentTrades.length > 0 && (
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-medium">Recent Trades</h2>
+              <Link
+                href="/trades"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                View all →
+              </Link>
+            </div>
+            <TradesList trades={recentTrades} />
+          </div>
         )}
       </div>
-
-      {/* Tabs — Chat | Runs | Trades */}
-      <Suspense
-        fallback={
-          <div className="px-6 mt-3">
-            <Skeleton className="h-9 w-56" />
-          </div>
-        }
-      >
-        <TabParamReader>
-          {(defaultTab) => (
-            <Tabs
-              defaultValue={defaultTab}
-              className="flex-1 flex flex-col overflow-hidden"
-            >
-              <TabsList className="mx-6 mt-3 w-fit shrink-0">
-                <TabsTrigger value="chat">Chat</TabsTrigger>
-                <TabsTrigger value="runs">
-                  Runs ({detail.recentRuns.length})
-                </TabsTrigger>
-                <TabsTrigger value="trades">
-                  Trades ({detail.stats.totalTrades})
-                </TabsTrigger>
-              </TabsList>
-
-              {/* Chat — ResearchChatFull fills height, header hidden (analyst page already has one) */}
-              <TabsContent
-                value="chat"
-                className="flex-1 overflow-hidden mt-0 data-[state=inactive]:hidden"
-              >
-                <ResearchChatFull
-                  userId={userId}
-                  recentTheses={recentTheses}
-                  hasRunning={hasRunning}
-                  analystId={detail.config.id}
-                  className="flex flex-col h-full"
-                  hideHeader
-                />
-              </TabsContent>
-
-              {/* Runs */}
-              <TabsContent
-                value="runs"
-                className="flex-1 overflow-y-auto px-6 py-4 mt-0"
-              >
-                <AnalystRunsTab runs={detail.recentRuns} />
-              </TabsContent>
-
-              {/* Trades */}
-              <TabsContent
-                value="trades"
-                className="flex-1 overflow-y-auto px-6 py-4 mt-0"
-              >
-                <AnalystTradesTab trades={detail.recentTrades} />
-              </TabsContent>
-            </Tabs>
-          )}
-        </TabParamReader>
-      </Suspense>
     </div>
   );
 }
