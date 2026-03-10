@@ -85,7 +85,7 @@ function calcPnl(
 function buildEquityCurve(
   closedTrades: Array<{ closedAt: Date | null; realizedPnl: number | null }>,
   startCapital: number,
-  days = 30
+  days = 365
 ): { date: string; value: number }[] {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -104,9 +104,9 @@ function buildEquityCurve(
 
   for (let d = days - 1; d >= 0; d--) {
     const date = new Date(Date.now() - d * 24 * 60 * 60 * 1000);
-    const iso = date.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const iso = date.toISOString().slice(0, 10); // "YYYY-MM-DD" — full date for client filtering
     balance += byDay.get(iso) ?? 0;
-    points.push({ date: iso.slice(5), value: balance }); // "MM-DD" for chart x-axis
+    points.push({ date: iso, value: balance });
   }
 
   return points;
