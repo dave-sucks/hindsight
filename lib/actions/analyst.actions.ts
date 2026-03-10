@@ -379,3 +379,56 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
     theses: r.theses,
   }));
 }
+
+// ── createAnalystFromWizard ───────────────────────────────────────────────────
+
+export interface WizardConfig {
+  analystPrompt: string;
+  name: string;
+  holdDurations: ("DAY" | "SWING" | "POSITION")[];
+  directionBias: "LONG" | "SHORT" | "BOTH";
+  maxPositionSize: number;
+  minConfidence: number;
+}
+
+export async function createAnalystFromWizard(
+  data: WizardConfig
+): Promise<{ id: string }> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  const analyst = await prisma.agentConfig.create({
+    data: {
+      userId,
+      name: data.name,
+      enabled: true,
+      analystPrompt: data.analystPrompt,
+      markets: ["US_EQUITIES"],
+      exchanges: ["NASDAQ", "NYSE"],
+      sectors: [],
+      watchlist: [],
+      exclusionList: [],
+      maxPositionSize: data.maxPositionSize,
+      maxOpenPositions: 5,
+      minConfidence: data.minConfidence,
+      maxRiskPct: 2,
+      dailyLossLimit: 300,
+      holdDurations: data.holdDurations,
+      directionBias: data.directionBias,
+      signalTypes: [],
+      minMarketCapTier: "LARGE",
+      scheduleTime: "08:00",
+      priceCheckFreq: "HOURLY",
+      weekendMode: false,
+      graduationWinRate: 0.65,
+      graduationMinTrades: 50,
+      graduationProfitFactor: 1.5,
+      realTradingEnabled: false,
+      realMaxPosition: data.maxPositionSize,
+      emailAlerts: true,
+      weeklyDigestEnabled: true,
+    },
+  });
+
+  return { id: analyst.id };
+}
