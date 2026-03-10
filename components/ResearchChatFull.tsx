@@ -107,12 +107,15 @@ export default function ResearchChatFull({
   hasRunning,
   analystId,
   className,
+  hideHeader = false,
 }: {
   userId: string;
   recentTheses: RecentThesis[];
   hasRunning: boolean;
   analystId?: string;
   className?: string;
+  /** Hide the internal header when this component is embedded in a page that already has one */
+  hideHeader?: boolean;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
@@ -360,30 +363,26 @@ export default function ResearchChatFull({
 
   return (
     <div className={className ?? "flex flex-col h-[calc(100dvh-5.25rem)]"}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 h-12 border-b shrink-0">
-        <h1 className="text-lg font-medium">Research</h1>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/research/history"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            View History →
-          </Link>
+      {/* Header — omitted when embedded inside a page that already provides one */}
+      {!hideHeader && (
+        <div className="flex items-center justify-between px-4 h-12 border-b shrink-0">
+          <h1 className="text-lg font-medium">Research</h1>
           <RunResearchButton hasRunning={hasRunning} />
         </div>
-      </div>
+      )}
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto">
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full gap-6 pb-32 px-4">
-            <div className="text-center">
-              <h2 className="text-xl font-semibold">Hindsight Research</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Ask the AI to research any stock
-              </p>
-            </div>
+            {!hideHeader && (
+              <div className="text-center">
+                <h2 className="text-xl font-semibold">Hindsight Research</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Ask the AI to research any stock
+                </p>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 justify-center">
               {SUGGESTIONS.map((s) => (
                 <button

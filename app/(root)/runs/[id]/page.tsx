@@ -236,7 +236,12 @@ export default async function RunPage({
             <p className="text-sm">No details available for this run.</p>
           </div>
         ) : (
-          <RunChatThread events={events} />
+          <RunChatThread
+            events={events}
+            showFollowup={run.status === "COMPLETE"}
+            userId={userId}
+            analystId={run.agentConfig?.id}
+          />
         )}
       </div>
     </div>

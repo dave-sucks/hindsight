@@ -23,11 +23,11 @@ import {
 import ResearchChatFull from "@/components/ResearchChatFull";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import {
-  ChevronRight,
   TrendingUp,
   TrendingDown,
   Minus,
   Settings,
+  ExternalLink,
 } from "lucide-react";
 import type {
   AnalystDetail,
@@ -237,6 +237,20 @@ function ConfigSheet({
               </p>
             </div>
           )}
+
+          {/* Edit link */}
+          <div className="pt-4 mt-2 border-t">
+            <p className="text-xs text-muted-foreground mb-2">
+              These settings are read-only here.
+            </p>
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-1.5 text-xs text-foreground hover:text-foreground/70 transition-colors"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Edit configuration in Settings
+            </Link>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -245,66 +259,63 @@ function ConfigSheet({
 
 // ── Runs Tab ──────────────────────────────────────────────────────────────────
 
-function RunCard({ run }: { run: RunWithTheses }) {
-  const tradeCount = run.theses.filter((t) => t.trade).length;
-  const actionableCount = run.theses.filter((t) => t.direction !== "PASS").length;
-
-  return (
-    <Link href={`/runs/${run.id}`} className="block">
-      <Card className="hover:bg-muted/30 transition-colors">
-        <CardContent className="flex items-center justify-between p-4">
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={run.source === "AGENT" ? "default" : "secondary"}
-                className="text-[10px]"
-              >
-                {run.source}
-              </Badge>
-              {run.status === "RUNNING" && (
-                <Badge
-                  variant="outline"
-                  className="text-amber-500 border-amber-500/30 text-[10px]"
-                >
-                  Running
-                </Badge>
-              )}
-              {run.status === "FAILED" && (
-                <Badge variant="destructive" className="text-[10px]">
-                  Failed
-                </Badge>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {formatRelativeTime(run.startedAt)} &middot;{" "}
-              {run.theses.length} analyzed &middot; {actionableCount} recommended
-              {tradeCount > 0 && ` · ${tradeCount} trades`}
-            </p>
-          </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-        </CardContent>
-      </Card>
-    </Link>
-  );
-}
-
 function AnalystRunsTab({ runs }: { runs: RunWithTheses[] }) {
   if (runs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center gap-3 text-muted-foreground">
         <p className="text-sm font-medium text-foreground">No runs yet</p>
         <p className="text-sm">
-          Click &ldquo;Run Now&rdquo; above to start a research run
+          Click &ldquo;Run Research Now&rdquo; above to start a research run
         </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2 max-w-2xl">
-      {runs.map((run) => (
-        <RunCard key={run.id} run={run} />
-      ))}
+    <div className="max-w-2xl border rounded-lg divide-y overflow-hidden">
+      {runs.map((run) => {
+        const actionableCount = run.theses.filter((t) => t.direction !== "PASS").length;
+        const tradeCount = run.theses.filter((t) => t.trade).length;
+        const statusDot =
+          run.status === "COMPLETE"
+            ? "bg-emerald-500"
+            : run.status === "RUNNING"
+            ? "bg-amber-500 animate-pulse"
+            : "bg-red-400";
+
+        return (
+          <Link
+            key={run.id}
+            href={`/runs/${run.id}`}
+            className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {formatRelativeTime(run.startedAt)}
+                  {run.status === "RUNNING" && (
+                    <span className="ml-2 text-xs text-amber-500 font-normal">
+                      Running
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {run.theses.length} analyzed
+                  {actionableCount > 0 && ` · ${actionableCount} recommended`}
+                  {tradeCount > 0 && ` · ${tradeCount} trades`}
+                </p>
+              </div>
+            </div>
+            <Badge
+              variant={run.source === "AGENT" ? "default" : "secondary"}
+              className="text-[10px] shrink-0 ml-3"
+            >
+              {run.source}
+            </Badge>
+          </Link>
+        );
+      })}
     </div>
   );
 }
@@ -517,7 +528,7 @@ export default function AnalystDetailClient({
                 </TabsTrigger>
               </TabsList>
 
-              {/* Chat — ResearchChatFull fills height */}
+              {/* Chat — ResearchChatFull fills height, header hidden (analyst page already has one) */}
               <TabsContent
                 value="chat"
                 className="flex-1 overflow-hidden mt-0 data-[state=inactive]:hidden"
@@ -528,6 +539,7 @@ export default function AnalystDetailClient({
                   hasRunning={hasRunning}
                   analystId={detail.config.id}
                   className="flex flex-col h-full"
+                  hideHeader
                 />
               </TabsContent>
 

@@ -1,23 +1,20 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   TrendingUp,
   TrendingDown,
-  Minus,
   CheckCircle2,
   XCircle,
   Loader2,
-  Search,
   ListChecks,
-  Brain,
-  PenLine,
-  FileText,
   SkipForward,
   AlertCircle,
   Link as LinkIcon,
+  ArrowUp,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -54,36 +51,54 @@ type ThesisPayload = {
 function asRecord(v: unknown): Record<string, unknown> {
   return (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
 }
-
 function asString(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
-
 function asNumber(v: unknown): number | null {
   return typeof v === "number" ? v : null;
 }
-
 function asArray<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
+// ─── Events shown in the main feed ────────────────────────────────────────────
+// Filtering out low-level process events (analyzing, data_ready, concept,
+// thesis_writing, thesis_start, thesis_token) — those are background work.
+// The feed shows only meaningful research output.
+
+const MAIN_FEED_TYPES = new Set([
+  "scan_start",
+  "scanning",
+  "candidates",
+  "thesis_complete",
+  "skip",
+  "trade_placed",
+  "run_complete",
+  "error",
+  "ticker_error",
+]);
+
 // ─── Per-event renderers ───────────────────────────────────────────────────────
 
-function ScanningMsg({ event }: { event: Record<string, unknown> }) {
+function ScanningMsg({ payload }: { payload: Record<string, unknown> }) {
+  const sectors = asArray<string>(payload.sectors);
   return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Search className="h-3.5 w-3.5 shrink-0" />
-      <span>{asString(event.message) || "Scanning market for opportunities..."}</span>
-    </div>
+    <p className="text-sm text-muted-foreground italic">
+      {sectors.length > 0
+        ? `Scanning ${sectors.join(", ")} for opportunities…`
+        : asString(payload.message) || "Scanning market for opportunities…"}
+    </p>
   );
 }
 
-function CandidatesMsg({ event }: { event: Record<string, unknown> }) {
-  const tickers = asArray<string>(event.tickers);
+function CandidatesMsg({ payload }: { payload: Record<string, unknown> }) {
+  const tickers = asArray<string>(payload.tickers);
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <ListChecks className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className="text-muted-foreground">Found {tickers.length} candidates:</span>
+      <span className="text-muted-foreground">
+        Found {tickers.length} candidate{tickers.length !== 1 ? "s" : ""}:
+      </span>
       {tickers.map((t) => (
         <Badge key={t} variant="outline" className="font-mono text-xs">
           {t}
@@ -93,109 +108,10 @@ function CandidatesMsg({ event }: { event: Record<string, unknown> }) {
   );
 }
 
-function AnalyzingMsg({ event }: { event: Record<string, unknown> }) {
-  const ticker = asString(event.ticker);
-  const company = asString(event.company);
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand" />
-      <span>
-        Analyzing <span className="font-mono font-semibold">{ticker}</span>
-        {company ? <span className="text-muted-foreground"> — {company}</span> : null}
-      </span>
-    </div>
-  );
-}
-
-function DataReadyMsg({ event }: { event: Record<string, unknown> }) {
-  const ticker = asString(event.ticker);
-  const price = asNumber(event.price);
-  const count = asNumber(event.sources_count);
-  return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-      <span>
-        <span className="font-mono font-medium text-foreground">{ticker}</span>
-        {price != null ? (
-          <span className="tabular-nums"> @ ${price.toFixed(2)}</span>
-        ) : null}
-        {count != null ? <span> — {count} sources collected</span> : null}
-      </span>
-    </div>
-  );
-}
-
-function ConceptMsg({ event }: { event: Record<string, unknown> }) {
-  const ticker = asString(event.ticker);
-  const dir = asString(event.direction);
-  const confidence = asNumber(event.confidence);
-  const icon =
-    dir === "LONG" ? (
-      <TrendingUp className="h-4 w-4 text-emerald-500" />
-    ) : dir === "SHORT" ? (
-      <TrendingDown className="h-4 w-4 text-red-500" />
-    ) : (
-      <Minus className="h-4 w-4 text-muted-foreground" />
-    );
-  return (
-    <div className="flex items-start gap-2 text-sm">
-      <Brain className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
-      <div>
-        <span>
-          <span className="font-mono font-semibold">{ticker}</span>:{" "}
-          <span className="flex-inline items-center gap-1">
-            {icon}
-          </span>{" "}
-          <span
-            className={
-              dir === "LONG"
-                ? "text-emerald-500 font-medium"
-                : dir === "SHORT"
-                ? "text-red-500 font-medium"
-                : "text-muted-foreground"
-            }
-          >
-            {dir}
-          </span>
-          {confidence != null ? (
-            <span className="text-muted-foreground tabular-nums"> — {confidence}% confidence</span>
-          ) : null}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function ThesisWritingMsg({ event }: { event: Record<string, unknown> }) {
-  const ticker = asString(event.ticker);
-  const dir = asString(event.direction);
-  return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <PenLine className="h-3.5 w-3.5 shrink-0" />
-      <span>
-        Writing{" "}
-        <span
-          className={
-            dir === "LONG"
-              ? "text-emerald-500 font-medium"
-              : dir === "SHORT"
-              ? "text-red-500 font-medium"
-              : ""
-          }
-        >
-          {dir}
-        </span>{" "}
-        thesis for <span className="font-mono font-medium text-foreground">{ticker}</span>
-        ...
-      </span>
-    </div>
-  );
-}
-
-function ThesisCompleteMsg({ event }: { event: Record<string, unknown> }) {
-  const raw = asRecord(event.thesis);
+function ThesisCompleteMsg({ payload }: { payload: Record<string, unknown> }) {
+  const raw = asRecord(payload.thesis ?? payload);
   const thesis: ThesisPayload = {
-    ticker: asString(raw.ticker || event.ticker),
+    ticker: asString(raw.ticker || payload.ticker),
     direction: (asString(raw.direction) || "PASS") as "LONG" | "SHORT" | "PASS",
     confidence_score: asNumber(raw.confidence_score) ?? 0,
     reasoning_summary: asString(raw.reasoning_summary),
@@ -210,69 +126,141 @@ function ThesisCompleteMsg({ event }: { event: Record<string, unknown> }) {
 
   const isLong = thesis.direction === "LONG";
   const isShort = thesis.direction === "SHORT";
+  const dirColor = isLong
+    ? "text-emerald-500"
+    : isShort
+    ? "text-red-500"
+    : "text-muted-foreground";
+
+  const gainPct =
+    thesis.entry_price && thesis.target_price
+      ? (
+          ((thesis.target_price - thesis.entry_price) / thesis.entry_price) *
+          100
+        ).toFixed(1)
+      : null;
+  const lossPct =
+    thesis.entry_price && thesis.stop_loss
+      ? (
+          ((thesis.entry_price - thesis.stop_loss) / thesis.entry_price) *
+          100
+        ).toFixed(1)
+      : null;
+  const rrRatio =
+    thesis.entry_price && thesis.target_price && thesis.stop_loss
+      ? (
+          (thesis.target_price - thesis.entry_price) /
+          (thesis.entry_price - thesis.stop_loss)
+        ).toFixed(1)
+      : null;
 
   return (
-    <Card className="border">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-base font-semibold">
-              {thesis.ticker} — Trade Thesis
-            </CardTitle>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge
-              variant={isLong ? "default" : isShort ? "destructive" : "secondary"}
-              className="font-mono"
-            >
-              {thesis.direction}
-            </Badge>
-            <Badge variant="outline" className="tabular-nums">
-              {thesis.confidence_score}% confidence
-            </Badge>
-            <Badge variant="outline">{thesis.hold_duration}</Badge>
-          </div>
+    <div className="rounded-xl border bg-card overflow-hidden">
+      {/* Header row */}
+      <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/20">
+        <div className="flex items-center gap-3">
+          <span className="text-base font-semibold font-mono">{thesis.ticker}</span>
+          <span className={`text-sm font-semibold ${dirColor}`}>
+            {thesis.direction}
+          </span>
+          {thesis.hold_duration && (
+            <span className="text-xs text-muted-foreground">
+              {thesis.hold_duration}
+            </span>
+          )}
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Price plan */}
+        <div className="flex items-center gap-2">
+          {thesis.signal_types.slice(0, 2).map((s) => (
+            <span
+              key={s}
+              className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground"
+            >
+              {s.replace(/_/g, " ")}
+            </span>
+          ))}
+          <span
+            className={`text-sm font-semibold tabular-nums ${
+              thesis.confidence_score >= 70 ? "text-emerald-500" : "text-amber-500"
+            }`}
+          >
+            {thesis.confidence_score}%
+          </span>
+        </div>
+      </div>
+
+      <div className="px-4 py-4 space-y-4">
+        {/* Trade plan */}
         {thesis.entry_price != null && (
-          <div className="grid grid-cols-3 gap-4 rounded-lg bg-muted/50 p-3">
+          <div className="grid grid-cols-4 gap-3 rounded-lg bg-muted/40 p-3 text-center">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Entry</p>
-              <p className="tabular-nums font-semibold">${thesis.entry_price.toFixed(2)}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+                Entry
+              </p>
+              <p className="text-sm tabular-nums font-semibold">
+                ${thesis.entry_price.toFixed(2)}
+              </p>
             </div>
             {thesis.target_price != null && (
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Target</p>
-                <p className="tabular-nums font-semibold text-emerald-500">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+                  Target
+                </p>
+                <p className="text-sm tabular-nums font-semibold text-emerald-500">
                   ${thesis.target_price.toFixed(2)}
+                  {gainPct && (
+                    <span className="text-[10px] text-muted-foreground ml-1">
+                      +{gainPct}%
+                    </span>
+                  )}
                 </p>
               </div>
             )}
             {thesis.stop_loss != null && (
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Stop</p>
-                <p className="tabular-nums font-semibold text-red-500">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+                  Stop
+                </p>
+                <p className="text-sm tabular-nums font-semibold text-red-500">
                   ${thesis.stop_loss.toFixed(2)}
+                  {lossPct && (
+                    <span className="text-[10px] text-muted-foreground ml-1">
+                      −{lossPct}%
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+            {rrRatio != null && (
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+                  R:R
+                </p>
+                <p
+                  className={`text-sm tabular-nums font-semibold ${
+                    parseFloat(rrRatio) >= 2
+                      ? "text-emerald-500"
+                      : parseFloat(rrRatio) >= 1
+                      ? "text-muted-foreground"
+                      : "text-red-500"
+                  }`}
+                >
+                  {rrRatio}×
                 </p>
               </div>
             )}
           </div>
         )}
 
-        {/* Reasoning summary */}
+        {/* Reasoning */}
         {thesis.reasoning_summary && (
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {thesis.reasoning_summary.slice(0, 300)}
-            {thesis.reasoning_summary.length > 300 ? "…" : ""}
+          <p className="text-sm text-foreground/80 leading-relaxed">
+            {thesis.reasoning_summary}
           </p>
         )}
 
-        {/* Thesis bullets */}
+        {/* Bullish bullets */}
         {thesis.thesis_bullets.length > 0 && (
-          <ul className="space-y-1">
+          <ul className="space-y-1.5">
             {thesis.thesis_bullets.map((b, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
                 <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-emerald-500" />
@@ -284,48 +272,59 @@ function ThesisCompleteMsg({ event }: { event: Record<string, unknown> }) {
 
         {/* Risk flags */}
         {thesis.risk_flags.length > 0 && (
-          <ul className="space-y-1">
+          <ul className="space-y-1.5">
             {thesis.risk_flags.map((r, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-red-500" />
+                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
                 <span>{r}</span>
               </li>
             ))}
           </ul>
         )}
-
-        {/* Signal types */}
-        {thesis.signal_types.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {thesis.signal_types.map((s) => (
-              <Badge key={s} variant="secondary" className="text-xs">
-                {s.replace(/_/g, " ")}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
-function SkipMsg({ event }: { event: Record<string, unknown> }) {
-  const ticker = asString(event.ticker);
-  const reason = asString(event.reason);
+function SkipMsg({ payload }: { payload: Record<string, unknown> }) {
+  const ticker = asString(payload.ticker);
+  const reason = asString(payload.reason);
+  const confidence = asNumber(payload.confidence);
   return (
     <div className="flex items-start gap-2 text-sm text-muted-foreground">
       <SkipForward className="h-3.5 w-3.5 mt-0.5 shrink-0" />
       <span>
-        Passing on <span className="font-mono font-medium text-foreground">{ticker}</span>
-        {reason ? <span> — {reason}</span> : null}
+        Passed on{" "}
+        <span className="font-mono font-medium text-foreground">{ticker}</span>
+        {confidence != null ? (
+          <span className="tabular-nums"> — {confidence}% confidence</span>
+        ) : null}
+        {reason ? <span> · {reason}</span> : null}
       </span>
     </div>
   );
 }
 
-function ErrorMsg({ event }: { event: Record<string, unknown> }) {
-  const ticker = asString(event.ticker);
-  const msg = asString(event.message || event.text);
+function TradePlacedMsg({ payload }: { payload: Record<string, unknown> }) {
+  const ticker = asString(payload.ticker);
+  const entry = asNumber(payload.entry);
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <TrendingUp className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+      <span className="text-muted-foreground">
+        Paper trade placed:{" "}
+        <span className="font-mono font-medium text-foreground">{ticker}</span>
+        {entry != null ? (
+          <span className="tabular-nums"> @ ${entry.toFixed(2)}</span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+function ErrorMsg({ payload }: { payload: Record<string, unknown> }) {
+  const ticker = asString(payload.ticker);
+  const msg = asString(payload.message || payload.text);
   return (
     <div className="flex items-start gap-2 text-sm text-red-500">
       <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -341,9 +340,10 @@ function ErrorMsg({ event }: { event: Record<string, unknown> }) {
   );
 }
 
-function RunCompleteMsg({ event }: { event: Record<string, unknown> }) {
-  const analyzed = asNumber(event.analyzed) ?? 0;
-  const recommended = asNumber(event.recommended) ?? 0;
+function RunCompleteMsg({ payload }: { payload: Record<string, unknown> }) {
+  const analyzed = asNumber(payload.analyzed) ?? 0;
+  const recommended = asNumber(payload.recommended) ?? 0;
+  const placed = asNumber(payload.placed);
   return (
     <div className="rounded-lg border bg-muted/40 p-4">
       <div className="flex items-center gap-2 text-sm font-medium">
@@ -352,11 +352,45 @@ function RunCompleteMsg({ event }: { event: Record<string, unknown> }) {
       </div>
       <div className="mt-2 flex gap-4 text-sm text-muted-foreground">
         <span className="tabular-nums">{analyzed} analyzed</span>
-        <Separator orientation="vertical" className="h-4" />
-        <span className="tabular-nums text-emerald-500">{recommended} recommended</span>
+        <Separator orientation="vertical" className="h-4 self-center" />
+        <span className="tabular-nums text-emerald-500">
+          {recommended} recommended
+        </span>
+        {placed != null && placed > 0 && (
+          <>
+            <Separator orientation="vertical" className="h-4 self-center" />
+            <span className="tabular-nums">{placed} trades placed</span>
+          </>
+        )}
       </div>
     </div>
   );
+}
+
+// ─── Event dispatcher ──────────────────────────────────────────────────────────
+
+function renderEvent(event: RunEventRow) {
+  const payload = asRecord(event.payload);
+  switch (event.type) {
+    case "scanning":
+    case "scan_start":
+      return <ScanningMsg payload={payload} />;
+    case "candidates":
+      return <CandidatesMsg payload={payload} />;
+    case "thesis_complete":
+      return <ThesisCompleteMsg payload={payload} />;
+    case "skip":
+      return <SkipMsg payload={payload} />;
+    case "trade_placed":
+      return <TradePlacedMsg payload={payload} />;
+    case "ticker_error":
+    case "error":
+      return <ErrorMsg payload={payload} />;
+    case "run_complete":
+      return <RunCompleteMsg payload={payload} />;
+    default:
+      return null;
+  }
 }
 
 // ─── Sources Panel ─────────────────────────────────────────────────────────────
@@ -372,16 +406,28 @@ function SourcesPanel({ events }: { events: RunEventRow[] }) {
   const byTicker: Record<string, TickerSources> = {};
 
   for (const ev of events) {
-    if (ev.type !== "data_ready") continue;
+    if (ev.type !== "data_ready" && ev.type !== "data_fetch") continue;
     const payload = asRecord(ev.payload);
     const ticker = asString(payload.ticker);
     if (!ticker) continue;
-    byTicker[ticker] = {
-      ticker,
-      company: asString(payload.company),
-      price: asNumber(payload.price),
-      sources: asArray<SourceInfo>(payload.sources),
-    };
+    if (!byTicker[ticker]) {
+      byTicker[ticker] = {
+        ticker,
+        company: asString(payload.company),
+        price: asNumber(payload.price),
+        sources: [],
+      };
+    }
+    if (ev.type === "data_ready") {
+      byTicker[ticker].price = asNumber(payload.price) ?? byTicker[ticker].price;
+      byTicker[ticker].sources.push(...asArray<SourceInfo>(payload.sources));
+    } else if (ev.type === "data_fetch") {
+      byTicker[ticker].sources.push({
+        type: "fetch",
+        provider: asString(payload.source),
+        title: asString(payload.source),
+      });
+    }
   }
 
   const items = Object.values(byTicker);
@@ -390,7 +436,7 @@ function SourcesPanel({ events }: { events: RunEventRow[] }) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8 text-muted-foreground">
         <LinkIcon className="h-8 w-8 mb-3 opacity-30" />
-        <p className="text-sm">Sources will appear here as stocks are analyzed</p>
+        <p className="text-sm">Sources appear here as stocks are analyzed</p>
       </div>
     );
   }
@@ -413,15 +459,22 @@ function SourcesPanel({ events }: { events: RunEventRow[] }) {
           {company && (
             <p className="text-xs text-muted-foreground -mt-1">{company}</p>
           )}
-          <ul className="space-y-1">
-            {sources.map((s, i) => (
-              <li key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 shrink-0" />
-                <span className="font-medium text-foreground/70">{s.provider}</span>
-                <span className="truncate">{s.title}</span>
-              </li>
-            ))}
-          </ul>
+          {sources.length > 0 && (
+            <ul className="space-y-1">
+              {sources.map((s, i) => (
+                <li
+                  key={i}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 shrink-0" />
+                  <span className="font-medium text-foreground/70">{s.provider}</span>
+                  {s.title !== s.provider && (
+                    <span className="truncate">{s.title}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
           <Separator />
         </div>
       ))}
@@ -429,65 +482,211 @@ function SourcesPanel({ events }: { events: RunEventRow[] }) {
   );
 }
 
-// ─── Event renderer ───────────────────────────────────────────────────────────
+// ─── Follow-up chat ────────────────────────────────────────────────────────────
 
-function renderEvent(event: RunEventRow) {
-  const payload = asRecord(event.payload);
+type FollowupMsg = {
+  role: "user" | "assistant";
+  text: string;
+  status?: "streaming" | "done" | "error";
+};
 
-  switch (event.type) {
-    case "scanning":
-      return <ScanningMsg event={payload} />;
-    case "candidates":
-      return <CandidatesMsg event={payload} />;
-    case "analyzing":
-      return <AnalyzingMsg event={payload} />;
-    case "data_ready":
-      return <DataReadyMsg event={payload} />;
-    case "concept":
-      return <ConceptMsg event={payload} />;
-    case "thesis_writing":
-      return <ThesisWritingMsg event={payload} />;
-    case "thesis_complete":
-      return <ThesisCompleteMsg event={payload} />;
-    case "skip":
-      return <SkipMsg event={payload} />;
-    case "ticker_error":
-    case "error":
-      return <ErrorMsg event={payload} />;
-    case "run_complete":
-      return <RunCompleteMsg event={payload} />;
-    default:
-      return (
-        <p className="text-sm text-muted-foreground">{event.title}</p>
+function FollowupChat({ analystId }: { analystId?: string }) {
+  const [messages, setMessages] = useState<FollowupMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  async function submit() {
+    const question = input.trim();
+    if (!question || busy) return;
+    setInput("");
+    setBusy(true);
+
+    const userIdx = messages.length;
+    const assistantIdx = messages.length + 1;
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", text: question },
+      { role: "assistant", text: "", status: "streaming" },
+    ]);
+
+    try {
+      const res = await fetch("/api/research/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: question, history: [] }),
+      });
+      if (!res.body) throw new Error("No response body");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          try {
+            const evt = JSON.parse(line.slice(5).trim());
+            if (evt.type === "token") {
+              accumulated += evt.text;
+              setMessages((prev) =>
+                prev.map((m, i) =>
+                  i === assistantIdx ? { ...m, text: accumulated } : m
+                )
+              );
+            } else if (evt.type === "complete") {
+              setMessages((prev) =>
+                prev.map((m, i) =>
+                  i === assistantIdx ? { ...m, status: "done" } : m
+                )
+              );
+            }
+          } catch {
+            // malformed line
+          }
+        }
+      }
+    } catch {
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === assistantIdx
+            ? { ...m, status: "error", text: "Request failed. Please try again." }
+            : m
+        )
       );
+    } finally {
+      setBusy(false);
+    }
   }
+
+  return (
+    <div className="border-t shrink-0">
+      {/* Follow-up thread */}
+      {messages.length > 0 && (
+        <div className="max-w-2xl mx-auto px-6 pt-4 space-y-4">
+          {messages.map((msg, i) =>
+            msg.role === "user" ? (
+              <div key={i} className="flex justify-end">
+                <div className="bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm max-w-sm">
+                  {msg.text}
+                </div>
+              </div>
+            ) : (
+              <div
+                key={i}
+                className={`text-sm leading-relaxed ${
+                  msg.status === "error"
+                    ? "text-red-500"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {msg.text || (
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Thinking…
+                  </span>
+                )}
+                {msg.status === "streaming" && msg.text && (
+                  <span className="animate-pulse">▌</span>
+                )}
+              </div>
+            )
+          )}
+          <div ref={bottomRef} />
+        </div>
+      )}
+
+      {/* Composer */}
+      <div className="max-w-2xl mx-auto px-6 py-3 flex items-center gap-3">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="Ask a follow-up question about this run…"
+          disabled={busy}
+          className="flex-1 text-sm bg-transparent focus:outline-none placeholder:text-muted-foreground disabled:opacity-50 py-1"
+        />
+        <Button
+          size="sm"
+          className="h-7 w-7 rounded-full p-0 shrink-0"
+          disabled={busy || !input.trim()}
+          onClick={submit}
+        >
+          {busy ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <ArrowUp className="h-3 w-3" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
 
-export default function RunChatThread({ events }: { events: RunEventRow[] }) {
+export default function RunChatThread({
+  events,
+  showFollowup = false,
+  userId,
+  analystId,
+}: {
+  events: RunEventRow[];
+  showFollowup?: boolean;
+  userId?: string;
+  analystId?: string;
+}) {
+  // Only render meaningful events in the main feed
+  const mainEvents = events.filter((ev) => MAIN_FEED_TYPES.has(ev.type));
+
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Left: chat thread */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-4 px-6 py-6">
-          {events.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
-              <Loader2 className="h-8 w-8 mb-3 animate-spin opacity-40" />
-              <p className="text-sm">Waiting for run to start...</p>
-            </div>
-          ) : (
-            events.map((ev) => (
-              <div key={ev.id} className="space-y-1">
-                {renderEvent(ev)}
+      {/* Left: research output + follow-up */}
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        {/* Event feed */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-2xl space-y-5 px-6 py-6">
+            {mainEvents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
+                <Loader2 className="h-8 w-8 mb-3 animate-spin opacity-40" />
+                <p className="text-sm">Waiting for run to start…</p>
               </div>
-            ))
-          )}
+            ) : (
+              mainEvents.map((ev) => {
+                const rendered = renderEvent(ev);
+                if (!rendered) return null;
+                return (
+                  <div key={ev.id} className="space-y-1">
+                    {rendered}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
+
+        {/* Follow-up chat */}
+        {showFollowup && <FollowupChat analystId={analystId} />}
       </div>
 
       {/* Right: sources panel */}
-      <div className="hidden lg:flex w-[300px] border-l overflow-y-auto">
+      <div className="hidden lg:flex w-[300px] border-l overflow-y-auto flex-col">
         <SourcesPanel events={events} />
       </div>
     </div>
