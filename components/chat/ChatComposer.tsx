@@ -248,9 +248,9 @@ export function ChatComposer({
                     </CommandEmpty>
                     {tickerResults.length > 0 && (
                       <CommandGroup>
-                        {tickerResults.map((r) => (
+                        {tickerResults.map((r, i) => (
                           <CommandItem
-                            key={r.symbol}
+                            key={`${r.symbol}-${i}`}
                             value={r.symbol}
                             onSelect={() => selectTicker(r.symbol)}
                           >

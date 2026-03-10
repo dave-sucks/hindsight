@@ -183,6 +183,13 @@ export default async function RunPage({
       ? "bg-amber-500"
       : "bg-red-400";
 
+  // A run stuck in RUNNING with no events and started > 15 min ago is stale
+  // (Python service likely crashed before writing any RunEvent rows).
+  const isStaleRun =
+    run.status === "RUNNING" &&
+    run.events.length === 0 &&
+    Date.now() - new Date(run.startedAt).getTime() > 15 * 60 * 1_000;
+
   // Use stored events; fall back to synthesized for legacy runs
   const events: RunEventRow[] =
     run.events.length > 0
@@ -234,7 +241,16 @@ export default async function RunPage({
 
       {/* Body */}
       <div className="flex-1 min-h-0">
-        {run.status === "RUNNING" ? (
+        {isStaleRun ? (
+          <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
+            <div className="h-2.5 w-2.5 rounded-full bg-red-400" />
+            <p className="text-sm font-medium text-foreground">Run appears to have stalled</p>
+            <p className="text-xs max-w-xs">
+              This run started over 15 minutes ago but no events were recorded. The research
+              service may have crashed before completing. You can try triggering a new run.
+            </p>
+          </div>
+        ) : run.status === "RUNNING" ? (
           // Live stream: connect to SSE and accumulate events in real-time
           <RunLiveStream
             runId={id}
