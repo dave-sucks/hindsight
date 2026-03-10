@@ -46,6 +46,26 @@ export interface TodaysPick {
   signalTypes: string[];
 }
 
+export interface RecentPick {
+  id: string;
+  ticker: string;
+  direction: string;
+  confidenceScore: number;
+  signalTypes: string[];
+  reasoningSummary: string;
+  entryPrice: number | null;
+  targetPrice: number | null;
+  stopLoss: number | null;
+  createdAt: string; // ISO
+  trade: {
+    id: string;
+    status: string;
+    entryPrice: number;
+    openedAt: string; // ISO
+  } | null;
+  currentPrice: number | null;
+}
+
 export interface DashboardData {
   openTrades: MockTrade[];
   closedTrades: MockTrade[];
@@ -54,6 +74,7 @@ export interface DashboardData {
   agentConfigs: AgentConfigSummary[];
   recentRuns: RecentRunSummary[];
   todaysPicks: TodaysPick[];
+  recentPicks: RecentPick[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -85,6 +106,7 @@ function calcPnl(
 function buildEquityCurve(
   closedTrades: Array<{ closedAt: Date | null; realizedPnl: number | null }>,
   startCapital: number,
+  currentTotalValue: number,
   days = 365
 ): { date: string; value: number }[] {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -107,6 +129,15 @@ function buildEquityCurve(
     const iso = date.toISOString().slice(0, 10); // "YYYY-MM-DD" — full date for client filtering
     balance += byDay.get(iso) ?? 0;
     points.push({ date: iso, value: balance });
+  }
+
+  // Override today's endpoint with the actual current value (incl. unrealized P&L)
+  // so the chart always terminates at the number shown in the header.
+  if (points.length > 0) {
+    points[points.length - 1] = {
+      ...points[points.length - 1],
+      value: currentTotalValue,
+    };
   }
 
   return points;
@@ -141,6 +172,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       agentConfigs: [],
       recentRuns: [],
       todaysPicks: [],
+      recentPicks: [],
     };
   }
 
@@ -161,18 +193,51 @@ export async function getDashboardData(): Promise<DashboardData> {
     }),
   ]);
 
-  // ── 2. Batch-fetch current prices for open trades ─────────────────────────
+  // ── 2. Fetch recent picks (last 20 actionable theses) ────────────────────
+  const dbRecentPicks = await prisma.thesis.findMany({
+    where: {
+      userId,
+      direction: { in: ["LONG", "SHORT"] },
+      createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    select: {
+      id: true,
+      ticker: true,
+      direction: true,
+      confidenceScore: true,
+      signalTypes: true,
+      reasoningSummary: true,
+      entryPrice: true,
+      targetPrice: true,
+      stopLoss: true,
+      createdAt: true,
+      trade: {
+        select: {
+          id: true,
+          status: true,
+          entryPrice: true,
+          openedAt: true,
+        },
+      },
+    },
+  });
+
+  // ── 3. Batch-fetch current prices (open trades + recent pick tickers) ─────
   const openTickers = [...new Set(dbOpenTrades.map((t) => t.ticker))];
+  const pickTickers = [...new Set(dbRecentPicks.map((p) => p.ticker))];
+  const allTickers = [...new Set([...openTickers, ...pickTickers])];
   let priceMap: Record<string, number> = {};
-  if (openTickers.length > 0) {
+  if (allTickers.length > 0) {
     try {
-      priceMap = await getLatestPrices(openTickers);
+      priceMap = await getLatestPrices(allTickers);
     } catch {
       // Fall back to entry price — pnl will be 0 but trade still renders
     }
   }
 
-  // ── 3. Map open trades → MockTrade shape ──────────────────────────────────
+  // ── 4. Map open trades → MockTrade shape ──────────────────────────────────
   const openTrades: MockTrade[] = dbOpenTrades.map((t) => {
     const currentPrice = priceMap[t.ticker] ?? t.entryPrice;
     const { dollars, pct } = calcPnl(t.direction, t.entryPrice, currentPrice, t.shares);
@@ -194,7 +259,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     };
   });
 
-  // ── 4. Map closed trades → MockTrade shape ────────────────────────────────
+  // ── 5. Map closed trades → MockTrade shape ────────────────────────────────
   const closedTrades: MockTrade[] = dbClosedTrades.map((t) => {
     const closePrice = t.closePrice ?? t.entryPrice;
     const positionCost = t.entryPrice * t.shares;
@@ -217,7 +282,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     };
   });
 
-  // ── 5. Portfolio stats ─────────────────────────────────────────────────────
+  // ── 6. Portfolio stats ─────────────────────────────────────────────────────
   const realizedPnl = dbClosedTrades.reduce((sum, t) => sum + (t.realizedPnl ?? 0), 0);
   const unrealizedPnl = openTrades.reduce((sum, t) => sum + t.pnl, 0);
   const totalValue = STARTING_CAPITAL + realizedPnl + unrealizedPnl;
@@ -229,10 +294,10 @@ export async function getDashboardData(): Promise<DashboardData> {
         closedWithOutcome.length
       : null;
 
-  // ── 6. Equity curve (last 30 days) ────────────────────────────────────────
-  const equityCurve = buildEquityCurve(dbClosedTrades, STARTING_CAPITAL);
+  // ── 7. Equity curve (last 365 days, endpoint = current total value) ──────
+  const equityCurve = buildEquityCurve(dbClosedTrades, STARTING_CAPITAL, totalValue);
 
-  // ── 7. Agent configs with last-run info ───────────────────────────────────
+  // ── 8. Agent configs with last-run info ───────────────────────────────────
   const [dbAgentConfigs, tradesWithAgent] = await Promise.all([
     prisma.agentConfig.findMany({
       where: { userId },
@@ -281,7 +346,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     tradesPlaced: tradeCountMap.get(a.id) ?? 0,
   }));
 
-  // ── 8. Recent research runs (last 10) ─────────────────────────────────────
+  // ── 9. Recent research runs (last 10) ─────────────────────────────────────
   const dbRecentRuns = await prisma.researchRun.findMany({
     where: { userId },
     orderBy: { startedAt: "desc" },
@@ -304,7 +369,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     status: r.status,
   }));
 
-  // ── 9. Today's picks (DAV-85) ─────────────────────────────────────────────
+  // ── 10. Today's picks (DAV-85) ────────────────────────────────────────────
   const todayMidnight = new Date();
   todayMidnight.setHours(0, 0, 0, 0);
 
@@ -333,6 +398,29 @@ export async function getDashboardData(): Promise<DashboardData> {
     signalTypes: t.signalTypes,
   }));
 
+  // ── 11. Map recentPicks ───────────────────────────────────────────────────
+  const recentPicks: RecentPick[] = dbRecentPicks.map((p) => ({
+    id: p.id,
+    ticker: p.ticker,
+    direction: p.direction,
+    confidenceScore: p.confidenceScore,
+    signalTypes: p.signalTypes,
+    reasoningSummary: p.reasoningSummary,
+    entryPrice: p.entryPrice,
+    targetPrice: p.targetPrice,
+    stopLoss: p.stopLoss,
+    createdAt: p.createdAt.toISOString(),
+    trade: p.trade
+      ? {
+          id: p.trade.id,
+          status: p.trade.status,
+          entryPrice: p.trade.entryPrice,
+          openedAt: p.trade.openedAt.toISOString(),
+        }
+      : null,
+    currentPrice: priceMap[p.ticker] ?? null,
+  }));
+
   return {
     openTrades,
     closedTrades,
@@ -347,5 +435,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     agentConfigs,
     recentRuns,
     todaysPicks,
+    recentPicks,
   };
 }

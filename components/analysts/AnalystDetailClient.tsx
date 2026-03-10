@@ -1,27 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
+import { StockLogo } from "@/components/StockLogo";
 import {
+  ArrowLeft,
+  Pencil,
+  Settings,
   TrendingUp,
   TrendingDown,
-  Minus,
-  ChevronDown,
-  ArrowLeft,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  ResponsiveContainer,
+} from "recharts";
 import type {
   AnalystDetail,
   RunWithTheses,
   TradeWithThesis,
 } from "@/lib/actions/analyst.actions";
+import { updateAnalystPrompt } from "@/lib/actions/analyst.actions";
+import { cn } from "@/lib/utils";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,274 +51,173 @@ function formatCurrency(val: number): string {
   }).format(val);
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
+// ── Mini sparkline ────────────────────────────────────────────────────────────
 
-function StatCard({
-  label,
-  value,
-  className = "text-foreground",
-}: {
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-          {label}
-        </p>
-        <p className={`text-lg font-semibold tabular-nums ${className}`}>
-          {value}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
+function MiniSparkline({ trades }: { trades: TradeWithThesis[] }) {
+  const data = useMemo(() => {
+    const closed = trades
+      .filter((t) => t.closedAt && t.realizedPnl != null)
+      .sort(
+        (a, b) =>
+          new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime()
+      );
+    if (closed.length < 2) return [];
+    let cum = 0;
+    return closed.map((t) => {
+      cum += t.realizedPnl!;
+      return { v: cum };
+    });
+  }, [trades]);
 
-// ── Direction badge ───────────────────────────────────────────────────────────
-
-function DirectionBadge({ direction }: { direction: string }) {
-  if (direction === "LONG")
+  if (data.length < 2) {
     return (
-      <Badge
-        variant="outline"
-        className="text-emerald-500 border-emerald-500/30 text-[10px] py-0 px-1.5"
-      >
-        <TrendingUp className="h-2.5 w-2.5 mr-0.5" />
-        LONG
-      </Badge>
-    );
-  if (direction === "SHORT")
-    return (
-      <Badge
-        variant="outline"
-        className="text-red-500 border-red-500/30 text-[10px] py-0 px-1.5"
-      >
-        <TrendingDown className="h-2.5 w-2.5 mr-0.5" />
-        SHORT
-      </Badge>
-    );
-  return (
-    <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
-      <Minus className="h-2.5 w-2.5 mr-0.5" />
-      PASS
-    </Badge>
-  );
-}
-
-// ── Inline collapsible config ─────────────────────────────────────────────────
-
-function InlineConfig({ config }: { config: AnalystDetail["config"] }) {
-  return (
-    <Collapsible>
-      <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium hover:text-foreground text-muted-foreground transition-colors group">
-        <span className="text-xs font-medium uppercase tracking-wide">
-          Strategy Config
-        </span>
-        <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[open]:rotate-180" />
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="pt-2 pb-4 space-y-4">
-          {/* Params grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
-            {[
-              { label: "Direction", value: config.directionBias },
-              {
-                label: "Hold Durations",
-                value: config.holdDurations.join(", ") || "—",
-              },
-              { label: "Min Confidence", value: `${config.minConfidence}%` },
-              { label: "Max Positions", value: String(config.maxOpenPositions) },
-              {
-                label: "Max Position Size",
-                value: formatCurrency(config.maxPositionSize),
-              },
-              {
-                label: "Max Risk %",
-                value: config.maxRiskPct != null ? `${config.maxRiskPct}%` : "—",
-              },
-              { label: "Schedule", value: config.scheduleTime },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                  {label}
-                </p>
-                <p className="text-sm tabular-nums">{value}</p>
-              </div>
-            ))}
-          </div>
-
-          {config.sectors.length > 0 && (
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
-                Sectors
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {config.sectors.map((s) => (
-                  <Badge key={s} variant="secondary" className="text-xs">
-                    {s}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {config.signalTypes.length > 0 && (
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
-                Signal Types
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {config.signalTypes.map((s) => (
-                  <Badge key={s} variant="outline" className="text-xs">
-                    {s.replace(/_/g, " ")}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-// ── Run history ───────────────────────────────────────────────────────────────
-
-function RunHistory({ runs }: { runs: RunWithTheses[] }) {
-  if (runs.length === 0) {
-    return (
-      <div className="py-12 text-center text-muted-foreground">
-        <p className="text-sm font-medium text-foreground">No runs yet</p>
-        <p className="text-sm mt-1">
-          Click &ldquo;Run Research Now&rdquo; to start your first run
+      <div className="h-14 flex items-center justify-center">
+        <p className="text-[10px] text-muted-foreground text-center px-2">
+          No closed trades yet
         </p>
       </div>
     );
   }
 
-  return (
-    <div className="border rounded-lg divide-y overflow-hidden">
-      {runs.map((run) => {
-        const actionableCount = run.theses.filter(
-          (t) => t.direction !== "PASS"
-        ).length;
-        const tradeCount = run.theses.filter((t) => t.trade).length;
-        const statusDot =
-          run.status === "COMPLETE"
-            ? "bg-emerald-500"
-            : run.status === "RUNNING"
-            ? "bg-amber-500 animate-pulse"
-            : "bg-red-400";
+  const isPositive = data[data.length - 1].v >= 0;
+  const strokeColor = isPositive ? "#10b981" : "#ef4444";
 
-        return (
-          <Link
-            key={run.id}
-            href={`/runs/${run.id}`}
-            className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {formatRelativeTime(run.startedAt)}
-                  {run.status === "RUNNING" && (
-                    <span className="ml-2 text-xs text-amber-500 font-normal">
-                      Running
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  {run.theses.length} analyzed
-                  {actionableCount > 0 && ` · ${actionableCount} recommended`}
-                  {tradeCount > 0 && ` · ${tradeCount} trades`}
-                </p>
-              </div>
-            </div>
-            <Badge
-              variant={run.source === "AGENT" ? "default" : "secondary"}
-              className="text-[10px] shrink-0 ml-3"
-            >
-              {run.source}
-            </Badge>
-          </Link>
-        );
-      })}
-    </div>
+  return (
+    <ResponsiveContainer width="100%" height={56}>
+      <LineChart data={data} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+        <Line
+          type="monotone"
+          dataKey="v"
+          stroke={strokeColor}
+          strokeWidth={1.5}
+          dot={false}
+          isAnimationActive={false}
+        />
+      </LineChart>
+    </ResponsiveContainer>
   );
 }
 
-// ── Trades list ───────────────────────────────────────────────────────────────
+// ── Sidebar: trade row ────────────────────────────────────────────────────────
 
-function TradesList({ trades }: { trades: TradeWithThesis[] }) {
-  if (trades.length === 0) return null;
+function SidebarTradeRow({ trade }: { trade: TradeWithThesis }) {
+  const pnl = trade.realizedPnl ?? 0;
+  const isOpen = trade.status === "OPEN";
 
   return (
-    <div className="space-y-1">
-      {trades.slice(0, 8).map((trade) => {
-        const pnl = trade.realizedPnl ?? 0;
-        const pnlColor =
-          trade.status === "OPEN"
-            ? "text-muted-foreground"
-            : pnl >= 0
-            ? "text-emerald-500"
-            : "text-red-500";
-        const pnlStr =
-          trade.status === "OPEN"
-            ? "Open"
-            : pnl >= 0
-            ? `+${formatCurrency(pnl)}`
-            : formatCurrency(pnl);
-
-        return (
-          <Link
-            key={trade.id}
-            href={`/trades/${trade.id}`}
-            className="flex items-center justify-between py-3 px-3 -mx-1 rounded-lg hover:bg-accent/50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                <span className="text-[9px] font-bold text-muted-foreground">
-                  {trade.ticker.slice(0, 2)}
-                </span>
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-medium">{trade.ticker}</span>
-                  <DirectionBadge direction={trade.direction} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {trade.status === "OPEN"
-                    ? `Opened ${formatRelativeTime(trade.openedAt)}`
-                    : `Closed ${
-                        trade.closedAt
-                          ? formatRelativeTime(trade.closedAt)
-                          : ""
-                      }`}
-                </p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className={`text-sm font-medium tabular-nums ${pnlColor}`}>
-                {pnlStr}
-              </p>
-              {trade.outcome && (
-                <Badge
-                  variant={
-                    trade.outcome === "WIN"
-                      ? "default"
-                      : trade.outcome === "LOSS"
-                      ? "destructive"
-                      : "secondary"
-                  }
-                  className="text-[10px]"
-                >
-                  {trade.outcome}
-                </Badge>
+    <Link
+      href={`/trades/${trade.id}`}
+      className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent/50 transition-colors"
+    >
+      <StockLogo ticker={trade.ticker} size="sm" />
+      <div className="flex-1 min-w-0">
+        <span className="text-xs font-mono font-medium">{trade.ticker}</span>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {trade.outcome ? (
+          <>
+            <span
+              className={cn(
+                "text-[10px] font-semibold",
+                trade.outcome === "WIN" ? "text-emerald-500" : "text-red-500"
               )}
-            </div>
-          </Link>
+            >
+              {trade.outcome === "WIN" ? "W" : "L"}
+            </span>
+            <span
+              className={cn(
+                "text-[10px] tabular-nums",
+                pnl >= 0 ? "text-emerald-500" : "text-red-500"
+              )}
+            >
+              {pnl >= 0 ? "+" : ""}${Math.abs(pnl).toFixed(0)}
+            </span>
+          </>
+        ) : isOpen ? (
+          <span className="text-[10px] text-amber-500 font-medium">Open</span>
+        ) : null}
+      </div>
+    </Link>
+  );
+}
+
+// ── Sidebar: run row ──────────────────────────────────────────────────────────
+
+function SidebarRunRow({ run }: { run: RunWithTheses }) {
+  const tickerPills = run.theses.slice(0, 4);
+  const overflow = run.theses.length - 4;
+  const tradeCount = run.theses.filter((t) => t.trade).length;
+
+  const statusColor =
+    run.status === "COMPLETE"
+      ? "bg-emerald-500"
+      : run.status === "RUNNING"
+      ? "bg-amber-500 animate-pulse"
+      : "bg-red-400";
+
+  return (
+    <Link
+      href={`/runs/${run.id}`}
+      className="block px-2 py-1.5 rounded hover:bg-accent/50 transition-colors"
+    >
+      <div className="flex items-center gap-1.5 mb-1">
+        <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${statusColor}`} />
+        <span className="text-[10px] text-muted-foreground">
+          {formatRelativeTime(run.startedAt)}
+        </span>
+        {tradeCount > 0 && (
+          <span className="text-[10px] text-muted-foreground ml-auto">
+            {tradeCount}t
+          </span>
+        )}
+      </div>
+      {tickerPills.length > 0 && (
+        <div className="flex items-center gap-1 flex-wrap">
+          {tickerPills.map((t) => (
+            <span
+              key={t.id}
+              className="text-[9px] font-mono bg-muted px-1 py-0.5 rounded"
+            >
+              {t.ticker}
+            </span>
+          ))}
+          {overflow > 0 && (
+            <span className="text-[9px] text-muted-foreground">+{overflow}</span>
+          )}
+        </div>
+      )}
+    </Link>
+  );
+}
+
+// ── Prompt renderer (minimal markdown: # headers, ## subheaders) ──────────────
+
+function PromptRenderer({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="space-y-0.5">
+      {lines.map((line, i) => {
+        if (line.startsWith("## ")) {
+          return (
+            <p key={i} className="text-sm font-semibold mt-3 first:mt-0">
+              {line.slice(3)}
+            </p>
+          );
+        }
+        if (line.startsWith("# ")) {
+          return (
+            <p key={i} className="text-base font-semibold mt-3 first:mt-0">
+              {line.slice(2)}
+            </p>
+          );
+        }
+        if (line === "") {
+          return <div key={i} className="h-2" />;
+        }
+        return (
+          <p key={i} className="text-sm leading-relaxed text-foreground/90">
+            {line}
+          </p>
         );
       })}
     </div>
@@ -327,11 +232,41 @@ export default function AnalystDetailClient({
 }: {
   detail: AnalystDetail;
   userId: string;
-  recentTheses: { id: string; ticker: string; direction: string; confidenceScore: number; reasoningSummary: string; createdAt: Date }[];
+  recentTheses: {
+    id: string;
+    ticker: string;
+    direction: string;
+    confidenceScore: number;
+    reasoningSummary: string;
+    createdAt: Date;
+  }[];
   hasRunning: boolean;
 }) {
+  const router = useRouter();
   const { config, stats, recentRuns, recentTrades } = detail;
 
+  // Prompt editing state
+  const [editing, setEditing] = useState(false);
+  const [promptDraft, setPromptDraft] = useState(config.analystPrompt ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await updateAnalystPrompt(config.id, promptDraft);
+      setEditing(false);
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel() {
+    setEditing(false);
+    setPromptDraft(config.analystPrompt ?? "");
+  }
+
+  // Derived display values
   const winRatePct =
     stats.winRate != null ? `${Math.round(stats.winRate * 100)}%` : "—";
   const winRateColor =
@@ -351,86 +286,209 @@ export default function AnalystDetailClient({
       ? (stats.totalPnl >= 0 ? "+" : "") + formatCurrency(stats.totalPnl)
       : "—";
 
+  // Config pills
+  const configPills = [
+    config.directionBias,
+    ...config.holdDurations,
+    `${config.minConfidence}%+ conf`,
+    config.sectors.length > 0 ? config.sectors.slice(0, 2).join(", ") : null,
+  ].filter(Boolean) as string[];
+
   return (
-    <div className="overflow-y-auto h-[calc(100dvh-5.25rem)]">
-      <div className="max-w-3xl mx-auto px-6 py-6 space-y-6">
-        {/* Back link + header */}
-        <div className="space-y-2">
-          <Link
-            href="/analysts"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-3 w-3" />
-            Analysts
-          </Link>
+    <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden">
 
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div
-                className={`h-2.5 w-2.5 rounded-full shrink-0 mt-0.5 ${
-                  config.enabled ? "bg-emerald-500" : "bg-muted-foreground/40"
-                }`}
-              />
-              <h1 className="text-2xl font-semibold leading-tight">
-                {config.name}
-              </h1>
+      {/* ── Left sidebar: sparkline + trades/runs tabs ─────────────────────── */}
+      <div className="hidden md:flex w-60 shrink-0 border-r flex-col overflow-hidden">
+
+        {/* Sparkline */}
+        <div className="px-2 pt-4 pb-2 shrink-0">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground px-2 mb-1">
+            Lifetime P&amp;L
+          </p>
+          <MiniSparkline trades={recentTrades} />
+          {stats.totalTrades > 0 && (
+            <div className="flex items-center justify-between px-2 mt-1">
+              <span className={cn("text-[10px] tabular-nums font-semibold", pnlColor)}>
+                {pnlStr}
+              </span>
+              <span className={cn("text-[10px] tabular-nums", winRateColor)}>
+                {winRatePct} win
+              </span>
             </div>
-            <RunResearchButton analystId={config.id} hasRunning={hasRunning} />
-          </div>
-
-          {(config.analystPrompt || config.description) && (
-            <p className="text-sm text-muted-foreground leading-relaxed pl-[1.25rem]">
-              {config.analystPrompt || config.description}
-            </p>
           )}
         </div>
 
+        <div className="h-px bg-border shrink-0" />
+
+        {/* Trades / Runs tabs */}
+        <Tabs defaultValue="trades" className="flex-1 flex flex-col overflow-hidden">
+          <TabsList className="mx-2 mt-2 shrink-0 w-auto self-start h-7">
+            <TabsTrigger value="trades" className="text-xs h-6 px-2">
+              Trades
+            </TabsTrigger>
+            <TabsTrigger value="runs" className="text-xs h-6 px-2">
+              Runs
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent
+            value="trades"
+            className="flex-1 overflow-y-auto mt-1 px-1 pb-2 data-[state=inactive]:hidden"
+          >
+            {recentTrades.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground text-center py-6 px-2">
+                No trades yet
+              </p>
+            ) : (
+              recentTrades.map((trade) => (
+                <SidebarTradeRow key={trade.id} trade={trade} />
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent
+            value="runs"
+            className="flex-1 overflow-y-auto mt-1 px-1 pb-2 data-[state=inactive]:hidden"
+          >
+            {recentRuns.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground text-center py-6 px-2">
+                No runs yet
+              </p>
+            ) : (
+              recentRuns.map((run) => (
+                <SidebarRunRow key={run.id} run={run} />
+              ))
+            )}
+          </TabsContent>
+        </Tabs>
+
+      </div>
+
+      {/* ── Right: main content ─────────────────────────────────────────────── */}
+      <div className="flex-1 min-w-0 overflow-y-auto px-6 py-5 space-y-5">
+
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <Link
+              href="/analysts"
+              className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <div
+              className={cn(
+                "h-2 w-2 rounded-full shrink-0",
+                config.enabled ? "bg-emerald-500" : "bg-muted-foreground/40"
+              )}
+            />
+            <h1 className="text-xl font-semibold truncate">{config.name}</h1>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <RunResearchButton analystId={config.id} hasRunning={hasRunning} />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              render={<Link href="/settings" title="Settings" />}
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Config pills — always visible */}
+        <div className="flex flex-wrap gap-1.5 -mt-2">
+          {configPills.map((pill) => (
+            <Badge key={pill} variant="secondary" className="text-[10px] px-1.5 py-0.5 font-mono">
+              {pill}
+            </Badge>
+          ))}
+        </div>
+
         {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Total Runs" value={String(stats.totalRuns)} />
-          <StatCard
-            label="Win Rate"
-            value={winRatePct}
-            className={winRateColor}
-          />
-          <StatCard label="Trades" value={String(stats.totalTrades)} />
-          <StatCard label="P&L" value={pnlStr} className={pnlColor} />
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: "Runs", value: String(stats.totalRuns) },
+            { label: "Theses", value: String(stats.totalTheses) },
+            { label: "Win Rate", value: winRatePct, cls: winRateColor },
+            { label: "P&L", value: pnlStr, cls: pnlColor },
+          ].map(({ label, value, cls }) => (
+            <div key={label} className="space-y-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                {label}
+              </p>
+              <p className={cn("text-sm font-semibold tabular-nums", cls ?? "text-foreground")}>
+                {value}
+              </p>
+            </div>
+          ))}
         </div>
 
-        {/* Inline collapsible config */}
-        <div className="border-t pt-4">
-          <InlineConfig config={config} />
-        </div>
+        <div className="h-px bg-border" />
 
-        {/* Run history */}
-        <div className="space-y-3">
+        {/* Strategy prompt — hero section */}
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium">Recent Runs</h2>
-            {recentRuns.length > 0 && (
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {recentRuns.length} total
-              </span>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Strategy Prompt
+            </p>
+            {!editing && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs gap-1 text-muted-foreground"
+                onClick={() => setEditing(true)}
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </Button>
             )}
           </div>
-          <RunHistory runs={recentRuns} />
+
+          {editing ? (
+            <div className="space-y-2">
+              <Textarea
+                value={promptDraft}
+                onChange={(e) => setPromptDraft(e.target.value)}
+                placeholder="Describe what this analyst should look for...&#10;&#10;Use # headers to organize sections.&#10;Example:&#10;# Focus&#10;High momentum EV stocks with unusual options activity."
+                className="min-h-[240px] text-sm font-mono resize-y"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs">
+                  {saving ? "Saving…" : "Save"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleCancel}
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : promptDraft ? (
+            <div
+              className="cursor-pointer rounded-lg p-4 border hover:border-border/80 hover:bg-muted/20 transition-colors"
+              onClick={() => setEditing(true)}
+            >
+              <PromptRenderer text={promptDraft} />
+            </div>
+          ) : (
+            <button
+              className="w-full text-left px-4 py-8 rounded-lg border border-dashed text-sm text-muted-foreground/50 hover:text-muted-foreground hover:border-border transition-colors"
+              onClick={() => setEditing(true)}
+            >
+              Click to add a strategy prompt for this analyst…
+            </button>
+          )}
         </div>
 
-        {/* Recent trades */}
-        {recentTrades.length > 0 && (
-          <div className="space-y-3 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Recent Trades</h2>
-              <Link
-                href="/trades"
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                View all →
-              </Link>
-            </div>
-            <TradesList trades={recentTrades} />
-          </div>
-        )}
       </div>
+
     </div>
   );
 }

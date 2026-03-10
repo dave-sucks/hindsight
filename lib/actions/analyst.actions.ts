@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -25,6 +26,14 @@ export interface AnalystConfig {
   updatedAt: Date;
 }
 
+export interface AnalystOpenTrade {
+  id: string;
+  ticker: string;
+  direction: string;
+  entryPrice: number;
+  shares: number;
+}
+
 export interface AnalystListItem {
   id: string;
   name: string;
@@ -41,6 +50,7 @@ export interface AnalystListItem {
   tradeCount: number;
   winRate: number | null;
   totalPnl: number;
+  openTrades: AnalystOpenTrade[];
 }
 
 export interface RunWithTheses {
@@ -154,6 +164,11 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       where: { userId },
       select: {
         id: true,
+        ticker: true,
+        direction: true,
+        status: true,
+        entryPrice: true,
+        shares: true,
         outcome: true,
         realizedPnl: true,
         thesis: {
@@ -183,6 +198,17 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       0
     );
 
+    const openTrades: AnalystOpenTrade[] = configTrades
+      .filter((t) => t.status === "OPEN")
+      .slice(0, 3)
+      .map((t) => ({
+        id: t.id,
+        ticker: t.ticker,
+        direction: t.direction,
+        entryPrice: t.entryPrice,
+        shares: t.shares,
+      }));
+
     return {
       id: config.id,
       name: config.name,
@@ -199,6 +225,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       tradeCount: configTrades.length,
       winRate,
       totalPnl,
+      openTrades,
     };
   });
 }
@@ -378,6 +405,23 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
     completedAt: r.completedAt,
     theses: r.theses,
   }));
+}
+
+// ── updateAnalystPrompt ───────────────────────────────────────────────────────
+
+export async function updateAnalystPrompt(
+  id: string,
+  prompt: string
+): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  await prisma.agentConfig.update({
+    where: { id, userId },
+    data: { analystPrompt: prompt },
+  });
+
+  revalidatePath(`/analysts/${id}`);
 }
 
 // ── createAnalystFromWizard ───────────────────────────────────────────────────

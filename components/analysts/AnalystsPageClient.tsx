@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Play } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { RunResearchButton } from "@/components/RunResearchButton";
+import { StockLogo } from "@/components/StockLogo";
+import { cn } from "@/lib/utils";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
 
 // ── Relative time helper ──────────────────────────────────────────────────────
@@ -20,31 +22,72 @@ function formatRelativeTime(date: Date): string {
   return `${diffDays}d ago`;
 }
 
+// ── Gain badge ────────────────────────────────────────────────────────────────
+
+function GainBadge({ totalPnl, tradeCount }: { totalPnl: number; tradeCount: number }) {
+  if (tradeCount === 0) return null;
+  const pos = totalPnl >= 0;
+  const label = pos
+    ? `+$${totalPnl.toFixed(0)}`
+    : `-$${Math.abs(totalPnl).toFixed(0)}`;
+  return (
+    <span
+      className={cn(
+        "text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded shrink-0",
+        pos
+          ? "bg-emerald-500/15 text-emerald-500"
+          : "bg-red-500/15 text-red-500"
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ── Win-rate bar ──────────────────────────────────────────────────────────────
+
+function WinRateBar({ winRate }: { winRate: number | null }) {
+  const filled = winRate != null ? Math.round(winRate * 10) : 0;
+  const positive = winRate != null && winRate >= 0.5;
+
+  return (
+    <div className="flex gap-0.5">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div
+          key={i}
+          className={cn(
+            "h-1.5 flex-1 rounded-sm",
+            i < filled
+              ? positive
+                ? "bg-emerald-500"
+                : "bg-red-500"
+              : "bg-muted"
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ── AnalystCard ───────────────────────────────────────────────────────────────
 
 function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
-  const winRatePct =
-    analyst.winRate != null ? `${Math.round(analyst.winRate * 100)}%` : "—";
-  const winRateColor =
-    analyst.winRate != null
-      ? analyst.winRate >= 0.5
-        ? "text-emerald-500"
-        : "text-red-500"
-      : "text-muted-foreground";
-  const pnlColor = analyst.totalPnl >= 0 ? "text-emerald-500" : "text-red-500";
-  const pnlStr =
-    analyst.totalPnl >= 0
-      ? `+$${analyst.totalPnl.toFixed(2)}`
-      : `-$${Math.abs(analyst.totalPnl).toFixed(2)}`;
+  const configSubhead = [
+    analyst.directionBias,
+    analyst.holdDurations.length > 0 ? analyst.holdDurations.join("/") : null,
+    `${analyst.minConfidence}%+`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-  const statusDot = analyst.enabled ? "bg-emerald-500" : "bg-muted-foreground/40";
-
-  // Natural language prompt is the primary description; fall back to
-  // direction+hold-duration summary if no prompt has been set yet.
   const promptText =
     analyst.analystPrompt ||
     analyst.description ||
-    `${analyst.directionBias} · ${analyst.holdDurations.join("/")} · ${analyst.minConfidence}%+ confidence`;
+    null;
+
+  const statusDot = analyst.enabled
+    ? "bg-emerald-500"
+    : "bg-muted-foreground/40";
 
   return (
     // Stretched-link pattern: invisible full-cover anchor at z-0, buttons at z-10
@@ -56,53 +99,70 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
       />
       <Card className="group-hover:bg-muted/20 transition-colors h-full">
         <CardContent className="p-5 flex flex-col gap-3">
-          {/* Header: status dot + name */}
+
+          {/* Header row: status + name | gain badge + run button */}
           <div className="flex items-center gap-2 min-w-0">
             <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
-            <h2 className="text-sm font-semibold leading-tight truncate">
+            <h2 className="text-sm font-semibold leading-tight truncate flex-1 min-w-0">
               {analyst.name}
             </h2>
+            <div className="flex items-center gap-1.5 shrink-0 relative z-10">
+              <GainBadge totalPnl={analyst.totalPnl} tradeCount={analyst.tradeCount} />
+              <RunResearchButton
+                hasRunning={analyst.lastRunStatus === "RUNNING"}
+                analystId={analyst.id}
+              />
+            </div>
           </div>
 
-          {/* Analyst prompt — the NL description, 2 lines clamped */}
-          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-            {promptText}
+          {/* Config subhead — mono small muted */}
+          <p className="text-[10px] font-mono text-muted-foreground/70 -mt-1">
+            {configSubhead}
           </p>
 
-          {/* Stats */}
-          <div className="flex gap-5">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Win Rate
-              </p>
-              <p className={`text-base font-semibold tabular-nums ${winRateColor}`}>
-                {winRatePct}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Trades
-              </p>
-              <p className="text-base font-semibold tabular-nums text-foreground">
-                {analyst.tradeCount}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                P&L
-              </p>
-              <p
-                className={`text-base font-semibold tabular-nums ${
-                  analyst.tradeCount > 0 ? pnlColor : "text-muted-foreground"
-                }`}
-              >
-                {analyst.tradeCount > 0 ? pnlStr : "—"}
-              </p>
-            </div>
-          </div>
+          {/* Prompt */}
+          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 min-h-[2rem]">
+            {promptText ?? (
+              <span className="text-muted-foreground/40 italic">No prompt set</span>
+            )}
+          </p>
 
-          {/* Footer: last run + run button */}
-          <div className="flex items-center justify-between mt-auto relative z-10">
+          {/* Win-rate bar */}
+          <WinRateBar winRate={analyst.winRate} />
+
+          {/* Active trades — up to 3 */}
+          {analyst.openTrades.length > 0 && (
+            <div className="space-y-1 relative z-10">
+              {analyst.openTrades.map((trade) => {
+                const cost = trade.entryPrice * trade.shares;
+                return (
+                  <Link
+                    key={trade.id}
+                    href={`/trades/${trade.id}`}
+                    className="flex items-center gap-2 py-1 rounded hover:bg-accent/50 transition-colors px-0.5"
+                  >
+                    <StockLogo ticker={trade.ticker} size="sm" />
+                    <span className="text-xs font-mono font-medium">{trade.ticker}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {trade.direction === "LONG" ? "↑" : "↓"}
+                    </span>
+                    <span className="text-xs tabular-nums text-muted-foreground ml-auto">
+                      ${cost.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                    </span>
+                  </Link>
+                );
+              })}
+              <Link
+                href={`/analysts/${analyst.id}`}
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors block pt-0.5"
+              >
+                View all trades →
+              </Link>
+            </div>
+          )}
+
+          {/* Footer: last run time */}
+          <div className="flex items-center justify-between mt-auto pt-1 border-t">
             <p className="text-xs text-muted-foreground">
               {analyst.lastRunAt
                 ? formatRelativeTime(analyst.lastRunAt)
@@ -111,11 +171,11 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
                 <span className="ml-1.5 text-amber-500">● Running</span>
               )}
             </p>
-            <RunResearchButton
-              hasRunning={analyst.lastRunStatus === "RUNNING"}
-              analystId={analyst.id}
-            />
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {analyst.tradeCount} trade{analyst.tradeCount !== 1 ? "s" : ""}
+            </span>
           </div>
+
         </CardContent>
       </Card>
     </div>
@@ -128,14 +188,12 @@ function NewAnalystCard() {
   return (
     <Link href="/analysts/new">
       <Card className="h-full border-dashed hover:bg-muted/20 transition-colors cursor-pointer">
-        <CardContent className="p-5 flex flex-col items-center justify-center gap-2 h-full min-h-[160px] text-muted-foreground">
+        <CardContent className="p-5 flex flex-col items-center justify-center gap-2 h-full min-h-[180px] text-muted-foreground">
           <div className="h-8 w-8 rounded-full border-2 border-dashed border-current flex items-center justify-center">
             <Plus className="h-4 w-4" />
           </div>
           <p className="text-sm font-medium text-foreground">New Analyst</p>
-          <p className="text-xs text-center">
-            Describe what you want to find
-          </p>
+          <p className="text-xs text-center">Describe what you want to find</p>
         </CardContent>
       </Card>
     </Link>
