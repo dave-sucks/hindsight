@@ -4,6 +4,11 @@ import { useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   TrendingUp,
   CheckCircle2,
   SkipForward,
@@ -11,12 +16,14 @@ import {
   Link as LinkIcon,
   Loader2,
   ListChecks,
+  ChevronRight,
 } from "lucide-react";
 import {
   ChatComposer,
   type ComposerContext,
   type ComposerRecentThesis,
 } from "@/components/chat/ChatComposer";
+import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,13 +70,16 @@ function asArray<T>(v: unknown): T[] {
 }
 
 // ─── Events shown in the main feed ────────────────────────────────────────────
-// Low-level process events (analyzing, data_ready, concept, thesis_writing,
-// thesis_start, thesis_token) are hidden — only meaningful output is shown.
+// analyzing + concept are shown as lightweight collapsible chips.
+// Low-level process events (data_ready, data_fetch, thesis_writing,
+// thesis_start, thesis_token) are hidden — sourced into the right panel only.
 
 const MAIN_FEED_TYPES = new Set([
   "scan_start",
   "scanning",
   "candidates",
+  "analyzing",
+  "concept",
   "thesis_complete",
   "skip",
   "trade_placed",
@@ -83,7 +93,7 @@ const MAIN_FEED_TYPES = new Set([
 function ScanningMsg({ payload }: { payload: Record<string, unknown> }) {
   const sectors = asArray<string>(payload.sectors);
   return (
-    <p className="text-sm text-muted-foreground italic">
+    <p className="text-sm text-muted-foreground">
       {sectors.length > 0
         ? `Scanning ${sectors.join(", ")} for opportunities…`
         : asString(payload.message) || "Scanning market for opportunities…"}
@@ -105,6 +115,76 @@ function CandidatesMsg({ payload }: { payload: Record<string, unknown> }) {
         </Badge>
       ))}
     </div>
+  );
+}
+
+// ── Collapsible "thinking" chip shown while the agent analyzes a ticker ───────
+
+function AnalyzingMsg({ payload }: { payload: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false);
+  const ticker = asString(payload.ticker);
+  const company = asString(payload.company);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-muted-foreground transition-colors cursor-pointer select-none">
+        <ChevronRight
+          className={cn(
+            "h-3 w-3 transition-transform duration-150",
+            open && "rotate-90"
+          )}
+        />
+        <span>
+          Analyzing{" "}
+          <span className="font-mono font-medium text-muted-foreground">
+            {ticker}
+          </span>
+          {"…"}
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-none">
+        <p className="mt-1 pl-4 text-xs text-muted-foreground/60 leading-relaxed">
+          {company
+            ? company
+            : "Fetching price data, news, and market signals…"}
+        </p>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ── Inline direction signal shown after concept CoT, before thesis card ───────
+
+function ConceptMsg({ payload }: { payload: Record<string, unknown> }) {
+  const ticker = asString(payload.ticker);
+  const direction = asString(payload.direction).toUpperCase();
+  const confidence = asNumber(payload.confidence);
+  const isLong = direction === "LONG";
+  const isShort = direction === "SHORT";
+
+  return (
+    <p className="text-xs text-muted-foreground/70 pl-4">
+      Initial signal for{" "}
+      <span className="font-mono font-medium text-muted-foreground">
+        {ticker}
+      </span>
+      {": "}
+      <span
+        className={cn(
+          "font-semibold",
+          isLong
+            ? "text-emerald-500"
+            : isShort
+            ? "text-red-500"
+            : "text-muted-foreground"
+        )}
+      >
+        {direction}
+      </span>
+      {confidence != null && (
+        <span className="tabular-nums"> · {confidence}%</span>
+      )}
+    </p>
   );
 }
 
@@ -384,6 +464,10 @@ function renderEvent(event: RunEventRow) {
       return <ScanningMsg payload={payload} />;
     case "candidates":
       return <CandidatesMsg payload={payload} />;
+    case "analyzing":
+      return <AnalyzingMsg payload={payload} />;
+    case "concept":
+      return <ConceptMsg payload={payload} />;
     case "thesis_complete":
       return <ThesisCompleteMsg payload={payload} />;
     case "skip":
@@ -398,6 +482,21 @@ function renderEvent(event: RunEventRow) {
     default:
       return null;
   }
+}
+
+// ─── Spacing helper — tighten gap between analyzing/concept/thesis groups ─────
+
+function getEventSpacing(
+  events: RunEventRow[],
+  index: number
+): string {
+  const curr = events[index];
+  const prev = index > 0 ? events[index - 1] : null;
+  const TIGHT_TYPES = new Set(["analyzing", "concept", "thesis_complete"]);
+  if (prev && TIGHT_TYPES.has(prev.type) && TIGHT_TYPES.has(curr.type)) {
+    return "mt-1.5"; // tight spacing within a ticker group
+  }
+  return "mt-5"; // normal spacing between different topics
 }
 
 // ─── Sources Panel ─────────────────────────────────────────────────────────────
@@ -673,22 +772,28 @@ export default function RunChatThread({
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Event feed */}
         <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-2xl space-y-5 px-6 py-6">
+          <div className="mx-auto max-w-2xl px-6 py-6">
             {mainEvents.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
                 <Loader2 className="h-8 w-8 mb-3 animate-spin opacity-40" />
                 <p className="text-sm">Waiting for run to start…</p>
               </div>
             ) : (
-              mainEvents.map((ev) => {
-                const rendered = renderEvent(ev);
-                if (!rendered) return null;
-                return (
-                  <div key={ev.id} className="space-y-1">
-                    {rendered}
-                  </div>
-                );
-              })
+              <div>
+                {mainEvents.map((ev, idx) => {
+                  const rendered = renderEvent(ev);
+                  if (!rendered) return null;
+                  const spacing = getEventSpacing(mainEvents, idx);
+                  return (
+                    <div
+                      key={ev.id}
+                      className={idx === 0 ? "" : spacing}
+                    >
+                      {rendered}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
