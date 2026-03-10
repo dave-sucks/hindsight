@@ -26,6 +26,7 @@ type ThesisDetail = {
   stopLoss: number | null;
   modelUsed: string | null;
   createdAt: Date;
+  currentPrice?: number | null;
   trade: {
     id: string;
     realizedPnl: number | null;
@@ -224,9 +225,8 @@ export default function RunDetailClient({
               {run.theses.map((thesis) => (
                 <ThesisCard
                   key={thesis.id}
-                  thesis={thesis}
+                  thesis={{ ...thesis, createdAt: thesis.createdAt.toISOString() }}
                   profile={profiles[thesis.ticker]}
-                  variant="full"
                 />
               ))}
             </div>

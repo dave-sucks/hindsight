@@ -46,9 +46,12 @@ export interface TodaysPick {
   signalTypes: string[];
   holdDuration: string;
   reasoningSummary: string;
+  sourcesUsed?: unknown;
+  createdAt?: string;
   entryPrice: number | null;
   targetPrice: number | null;
   stopLoss: number | null;
+  currentPrice?: number | null;
   trade: {
     id: string;
     realizedPnl: number | null;
@@ -316,17 +319,12 @@ export async function getDashboardData(): Promise<DashboardData> {
     status: r.status,
   }));
 
-  // ── 9. Today's picks (DAV-85) ─────────────────────────────────────────────
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
-
+  // ── 9. Recent picks — last 10 theses regardless of day ───────────────────
   const dbTodaysPicks = await prisma.thesis.findMany({
     where: {
       userId,
-      createdAt: { gte: todayMidnight },
-      direction: { in: ["LONG", "SHORT"] },
     },
-    orderBy: { confidenceScore: "desc" },
+    orderBy: { createdAt: "desc" },
     take: 10,
     select: {
       id: true,
@@ -336,6 +334,8 @@ export async function getDashboardData(): Promise<DashboardData> {
       signalTypes: true,
       holdDuration: true,
       reasoningSummary: true,
+      sourcesUsed: true,
+      createdAt: true,
       entryPrice: true,
       targetPrice: true,
       stopLoss: true,
@@ -351,27 +351,58 @@ export async function getDashboardData(): Promise<DashboardData> {
     },
   });
 
-  const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => ({
-    id: t.id,
-    ticker: t.ticker,
-    direction: t.direction,
-    confidenceScore: t.confidenceScore,
-    signalTypes: t.signalTypes,
-    holdDuration: t.holdDuration,
-    reasoningSummary: t.reasoningSummary,
-    entryPrice: t.entryPrice,
-    targetPrice: t.targetPrice,
-    stopLoss: t.stopLoss,
-    trade: t.trade
-      ? {
-          id: t.trade.id,
-          realizedPnl: t.trade.realizedPnl,
-          status: t.trade.status,
-          entryPrice: t.trade.entryPrice,
-          closePrice: t.trade.closePrice,
-        }
-      : null,
-  }));
+  // ── 9b. Fetch live prices for pick tickers not already in priceMap ─────────
+  const pickOpenTickers = [
+    ...new Set(
+      dbTodaysPicks
+        .filter((t) => t.trade?.status === "OPEN")
+        .map((t) => t.ticker)
+        .filter((ticker) => !(ticker in priceMap))
+    ),
+  ];
+  if (pickOpenTickers.length > 0) {
+    try {
+      const extraPrices = await getLatestPrices(pickOpenTickers);
+      Object.assign(priceMap, extraPrices);
+    } catch {
+      // fall back to entry price — delta won't show but card still renders
+    }
+  }
+
+  const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => {
+    // currentPrice: live price for open trades, closePrice for closed trades
+    let currentPrice: number | null = null;
+    if (t.trade?.status === "OPEN") {
+      currentPrice = priceMap[t.ticker] ?? null;
+    } else if (t.trade?.closePrice != null) {
+      currentPrice = t.trade.closePrice;
+    }
+
+    return {
+      id: t.id,
+      ticker: t.ticker,
+      direction: t.direction,
+      confidenceScore: t.confidenceScore,
+      signalTypes: t.signalTypes,
+      holdDuration: t.holdDuration,
+      reasoningSummary: t.reasoningSummary,
+      sourcesUsed: t.sourcesUsed,
+      createdAt: t.createdAt.toISOString(),
+      entryPrice: t.entryPrice,
+      targetPrice: t.targetPrice,
+      stopLoss: t.stopLoss,
+      currentPrice,
+      trade: t.trade
+        ? {
+            id: t.trade.id,
+            realizedPnl: t.trade.realizedPnl,
+            status: t.trade.status,
+            entryPrice: t.trade.entryPrice,
+            closePrice: t.trade.closePrice,
+          }
+        : null,
+    };
+  });
 
   return {
     openTrades,

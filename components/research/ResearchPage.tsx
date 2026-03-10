@@ -319,7 +319,7 @@ function RunCard({
             {run.theses.map((thesis) => (
               <ThesisCard
                 key={thesis.id}
-                thesis={thesis}
+                thesis={{ ...thesis, createdAt: thesis.createdAt.toISOString() }}
                 profile={profiles[thesis.ticker]}
               />
             ))}
