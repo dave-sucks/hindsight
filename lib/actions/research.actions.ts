@@ -1,32 +1,10 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { persistThesesAndTrades, type ThesisOutput } from "@/lib/actions/run-persistence";
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "";
 const PYTHON_SERVICE_SECRET = process.env.PYTHON_SERVICE_SECRET ?? "";
-
-type ThesisOutput = {
-  ticker: string;
-  direction: "LONG" | "SHORT" | "PASS";
-  entry_price: number | null;
-  target_price: number | null;
-  stop_loss: number | null;
-  hold_duration: "DAY" | "SWING" | "POSITION";
-  confidence_score: number;
-  reasoning_summary: string;
-  thesis_bullets: string[];
-  risk_flags: string[];
-  signal_types: string[];
-  sector: string | null;
-  sources_used: {
-    type: string;
-    provider: string;
-    title: string;
-    url?: string | null;
-    published_at?: string | null;
-  }[];
-  model_used: string;
-};
 
 type RunResponse = {
   run_id: string;
@@ -92,9 +70,6 @@ export async function triggerResearchRun(
     return { thesisIds: [], tradeIds: [], error: `Network error: ${message}` };
   }
 
-  // Persist results
-  const thesisIds: string[] = [];
-  const tradeIds: string[] = [];
   const minConfidence = (agentConfig?.minConfidence ?? 70) as number;
 
   // Create one ResearchRun for the whole batch
@@ -109,62 +84,14 @@ export async function triggerResearchRun(
     },
   });
 
-  for (const thesis of data.theses) {
-    const row = await prisma.thesis.create({
-      data: {
-        researchRunId: researchRun.id,
-        userId,
-        ticker: thesis.ticker,
-        source,
-        direction: thesis.direction,
-        entryPrice: thesis.entry_price,
-        targetPrice: thesis.target_price,
-        stopLoss: thesis.stop_loss,
-        holdDuration: thesis.hold_duration,
-        confidenceScore: thesis.confidence_score,
-        reasoningSummary: thesis.reasoning_summary,
-        thesisBullets: thesis.thesis_bullets,
-        riskFlags: thesis.risk_flags,
-        signalTypes: thesis.signal_types,
-        sector: thesis.sector,
-        sourcesUsed: thesis.sources_used as object,
-        modelUsed: thesis.model_used,
-      },
-    });
-    thesisIds.push(row.id);
-
-    // Create a Trade for non-PASS theses above the confidence threshold
-    if (thesis.direction !== "PASS" && thesis.confidence_score >= minConfidence) {
-      if (thesis.entry_price != null) {
-        const trade = await prisma.trade.create({
-          data: {
-            thesisId: row.id,
-            userId,
-            ticker: thesis.ticker,
-            direction: thesis.direction as "LONG" | "SHORT",
-            status: "OPEN",
-            entryPrice: thesis.entry_price,
-            shares: Math.floor(
-              ((agentConfig?.maxPositionSize ?? 500) as number) / thesis.entry_price
-            ),
-            targetPrice: thesis.target_price,
-            stopLoss: thesis.stop_loss,
-            exitStrategy: "PRICE_TARGET",
-          },
-        });
-        tradeIds.push(trade.id);
-
-        await prisma.tradeEvent.create({
-          data: {
-            tradeId: trade.id,
-            eventType: "PLACED",
-            description: `Trade placed via ${source.toLowerCase()} research run`,
-            priceAt: thesis.entry_price,
-          },
-        });
-      }
-    }
-  }
+  const { thesisIds, tradeIds } = await persistThesesAndTrades(
+    researchRun.id,
+    userId,
+    data.theses,
+    minConfidence,
+    agentConfig,
+    true, // autoTrade: AGENT runs always auto-trade
+  );
 
   return { thesisIds, tradeIds };
 }

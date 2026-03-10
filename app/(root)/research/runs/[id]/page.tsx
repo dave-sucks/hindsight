@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getStockProfile } from "@/lib/actions/finnhub.actions";
 import RunDetailClient from "@/components/research/RunDetailClient";
 import type { CompanyProfile } from "@/components/research/ResearchPage";
+import { getOrSynthesizeRunEvents, getRunMessages } from "@/lib/actions/run-events.actions";
 
 export default async function RunDetailPage({
   params,
@@ -74,6 +75,21 @@ export default async function RunDetailPage({
 
   if (!run) notFound();
 
+  // Fetch events, messages, and profiles in parallel (run ownership already verified above)
+  const [events, messages] = await Promise.all([
+    getOrSynthesizeRunEvents(run.id, userId),
+    getRunMessages(run.id, userId),
+  ]);
+
+  // Synthesized timelines have synthetic:true in any event payload
+  const isSynthetic = events.some(
+    (ev) =>
+      ev.payload !== null &&
+      typeof ev.payload === "object" &&
+      "synthetic" in (ev.payload as Record<string, unknown>) &&
+      (ev.payload as Record<string, unknown>).synthetic === true
+  );
+
   // Fetch company profiles for all tickers in this run
   const uniqueTickers = [...new Set(run.theses.map((t) => t.ticker))];
   const profileResults = await Promise.allSettled(
@@ -118,6 +134,13 @@ export default async function RunDetailPage({
       userId={userId}
       recentTheses={recentTheses}
       hasRunning={runningCount > 0}
+      initialEvents={events}
+      initialMessages={messages.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }))}
+      isSynthetic={isSynthetic}
     />
   );
 }

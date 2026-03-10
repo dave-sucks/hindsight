@@ -4,7 +4,7 @@ import os
 import re
 import time
 import uuid
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Literal, Optional
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -344,3 +344,292 @@ In 2-3 sentences, honestly evaluate: Was the thesis correct? What worked or fail
 
     evaluation_text = response.choices[0].message.content or ""
     return EvaluationResponse(evaluation_text=evaluation_text.strip())
+
+
+# ---------------------------------------------------------------------------
+# /research/run/stream — SSE streaming with per-ticker events (M10)
+# ---------------------------------------------------------------------------
+
+class StreamRunRequest(BaseModel):
+    tickers: Optional[List[str]] = None
+    source: Literal["AGENT", "MANUAL"] = "AGENT"
+    agent_config: dict = {}
+
+
+def _build_source_categories(data) -> list:
+    """Build structured source category list from a DataContext."""
+    cats = [
+        {
+            "category": "price",
+            "provider": "Finnhub",
+            "available": data.price is not None,
+        },
+        {
+            "category": "news",
+            "provider": "Finnhub",
+            "available": bool(data.news),
+            "count": len(data.news),
+        },
+        {
+            "category": "technicals",
+            "provider": "Finnhub/computed",
+            "available": data.technicals is not None,
+        },
+        {
+            "category": "reddit",
+            "provider": "PRAW",
+            "available": bool(data.reddit and data.reddit.mention_count > 0),
+            "sentiment": (
+                round(data.reddit.sentiment_score, 3)
+                if data.reddit and data.reddit.mention_count > 0
+                else None
+            ),
+        },
+        {
+            "category": "options_flow",
+            "provider": "internal",
+            "available": bool(
+                data.options_flow and data.options_flow.total_volume > 0
+            ),
+        },
+        {
+            "category": "earnings",
+            "provider": "Finnhub",
+            "available": bool(
+                data.earnings_intel and data.earnings_intel.quarters_analyzed > 0
+            ),
+        },
+        {
+            "category": "analyst_consensus",
+            "provider": "Finnhub",
+            "available": bool(
+                data.analyst_sentiment and data.analyst_sentiment.total_analysts > 0
+            ),
+        },
+    ]
+    return cats
+
+
+async def _stream_research_run(
+    body: StreamRunRequest,
+) -> AsyncGenerator[dict, None]:
+    """
+    Stream research events in real-time using an asyncio.Queue.
+
+    Each ticker task pushes events to the queue as they are produced.
+    The main generator drains the queue and yields events immediately —
+    no buffering until all tickers finish.
+    """
+    finnhub = FinnhubService()
+    agent_config = body.agent_config
+
+    def event(type_: str, title: str, message: str = None, payload: dict = None) -> dict:
+        data = {"type": type_, "title": title}
+        if message:
+            data["message"] = message
+        if payload:
+            data["payload"] = payload
+        return {"data": json.dumps(data)}
+
+    # ── 1. run.started ────────────────────────────────────────────────────────
+    strategy_type = agent_config.get("strategyType", "DISCOVERY")
+    strategy_instructions = agent_config.get("strategyInstructions")
+    print("EVENT: run.started")
+    yield event(
+        "run.started",
+        "Research run started",
+        payload={
+            "source": body.source,
+            "strategyType": strategy_type,
+            "strategyInstructions": strategy_instructions,
+        },
+    )
+
+    # ── 2. Discovery (if no tickers supplied) ─────────────────────────────────
+    tickers = body.tickers
+    candidates_info: list[dict] = []
+
+    if not tickers:
+        yield event("discovery.started", "Scanning for candidates...")
+        print("EVENT: discovery.started")
+        try:
+            raw = await get_research_candidates(agent_config, with_reasons=True)
+            if raw and isinstance(raw[0], dict):
+                candidates_info = raw  # type: ignore[assignment]
+                tickers = [c["ticker"] for c in candidates_info]
+            else:
+                tickers = [str(r) for r in raw]
+                candidates_info = [{"ticker": t} for t in tickers]
+        except Exception as exc:
+            print(f"Discovery failed: {exc}")
+            tickers = []
+            candidates_info = []
+
+        yield event(
+            "discovery.completed",
+            f"Found {len(tickers)} candidates",
+            payload={
+                "candidates": candidates_info,
+                "strategyInstructions": strategy_instructions,
+            },
+        )
+        print(f"EVENT: discovery.completed — {len(tickers)} candidates")
+
+    if not tickers:
+        yield event("run.error", "No tickers to research", message="Discovery returned no candidates")
+        return
+
+    # ── 3. Per-ticker research — live event streaming via asyncio.Queue ────────
+    #
+    # Each task pushes events directly to `queue` as steps complete.
+    # The drain loop below yields them immediately — no waiting for all tickers.
+    #
+    queue: asyncio.Queue[dict | None] = asyncio.Queue()
+    sem = asyncio.Semaphore(3)
+
+    async def _research_ticker(ticker: str) -> ThesisOutput:
+        """Research one ticker and push SSE events to the shared queue."""
+        try:
+            print(f"EVENT: ticker.research.started — {ticker}")
+            await queue.put(event(
+                "ticker.research.started",
+                f"Researching {ticker}",
+                payload={"ticker": ticker},
+            ))
+
+            data = await run_data_cot(ticker, finnhub)
+            source_cats = _build_source_categories(data)
+            print(f"EVENT: data_gathering.completed — {ticker}")
+            await queue.put(event(
+                "data_gathering.completed",
+                f"Data gathered for {ticker}",
+                payload={"ticker": ticker, "sources": source_cats},
+            ))
+
+            concept = await run_concept_cot(data, agent_config)
+
+            if concept.direction == "PASS":
+                thesis = ThesisOutput(
+                    ticker=ticker,
+                    direction="PASS",
+                    hold_duration=concept.hold_duration,
+                    confidence_score=concept.initial_confidence,
+                    reasoning_summary=concept.pass_reason or concept.reasoning_notes,
+                    thesis_bullets=[],
+                    risk_flags=[],
+                    signal_types=concept.signal_types,
+                    sector=data.sector or None,
+                    sources_used=data.sources,
+                    model_used="gpt-4o",
+                )
+            else:
+                thesis = await run_thesis_cot(data, concept, [0])
+
+            print(f"EVENT: thesis.generated — {ticker} {thesis.direction} {thesis.confidence_score}%")
+            await queue.put(event(
+                "thesis.generated",
+                f"{ticker}: {thesis.direction} @ {thesis.confidence_score}% confidence",
+                payload={
+                    "ticker": ticker,
+                    "direction": thesis.direction,
+                    "confidence": thesis.confidence_score,
+                    "entry_price": thesis.entry_price,
+                    "target_price": thesis.target_price,
+                    "stop_loss": thesis.stop_loss,
+                    "signal_types": thesis.signal_types,
+                },
+            ))
+
+            if thesis.direction != "PASS" and thesis.confidence_score >= 60:
+                await queue.put(event(
+                    "trade_plan.generated",
+                    f"Trade plan ready: {ticker} {thesis.direction}",
+                    payload={
+                        "ticker": ticker,
+                        "direction": thesis.direction,
+                        "entry_price": thesis.entry_price,
+                        "target_price": thesis.target_price,
+                        "stop_loss": thesis.stop_loss,
+                    },
+                ))
+
+            return thesis
+
+        except Exception as exc:
+            print(f"EVENT: ticker error — {ticker}: {exc}")
+            await queue.put(event(
+                "thesis.generated",
+                f"{ticker}: PASS (error)",
+                payload={"ticker": ticker, "direction": "PASS", "confidence": 0},
+            ))
+            return ThesisOutput(
+                ticker=ticker,
+                direction="PASS",
+                hold_duration="SWING",
+                confidence_score=0,
+                reasoning_summary=f"Research failed: {exc}",
+                thesis_bullets=[],
+                risk_flags=["Pipeline error"],
+                signal_types=[],
+                model_used="gpt-4o",
+            )
+
+    async def _run_with_sem_and_timeout(ticker: str) -> ThesisOutput:
+        """Acquire semaphore, enforce 90s timeout, always post sentinel."""
+        async with sem:
+            try:
+                return await asyncio.wait_for(_research_ticker(ticker), timeout=90.0)
+            except asyncio.TimeoutError:
+                print(f"EVENT: ticker timeout — {ticker}")
+                await queue.put(event(
+                    "thesis.generated",
+                    f"{ticker}: PASS (timeout)",
+                    payload={"ticker": ticker, "direction": "PASS", "confidence": 0},
+                ))
+                return ThesisOutput(
+                    ticker=ticker,
+                    direction="PASS",
+                    hold_duration="SWING",
+                    confidence_score=0,
+                    reasoning_summary="Pipeline timed out after 90s",
+                    thesis_bullets=[],
+                    risk_flags=["Timeout"],
+                    signal_types=[],
+                    model_used="gpt-4o",
+                )
+            finally:
+                # Sentinel: always signals to the drain loop that this task is done
+                await queue.put(None)
+
+    # Launch all tickers concurrently (semaphore limits to 3 at a time)
+    tasks = [asyncio.create_task(_run_with_sem_and_timeout(t)) for t in tickers]
+    pending = len(tasks)
+
+    # Drain queue — yield events in real-time as each ticker step completes.
+    # None sentinel = one ticker task finished; decrement counter.
+    while pending > 0:
+        item = await queue.get()
+        if item is None:
+            pending -= 1
+        else:
+            yield item
+
+    # All tasks are complete by the time we exit the loop above.
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    all_theses: list[dict] = []
+    for r in results:
+        if isinstance(r, ThesisOutput):
+            all_theses.append(r.model_dump())
+
+    # ── 4. run.completed — include full theses for Next.js DB persistence ─────
+    print(f"EVENT: run.completed — {len(all_theses)} theses")
+    yield event(
+        "run.completed",
+        f"Run complete — {len(all_theses)} theses generated",
+        payload={"theses": all_theses},
+    )
+
+
+@router.post("/run/stream")
+async def research_run_stream(body: StreamRunRequest):
+    return EventSourceResponse(_stream_research_run(body))

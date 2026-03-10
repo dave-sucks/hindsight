@@ -44,7 +44,10 @@ async def _safe(coro):
         return None
 
 
-async def get_research_candidates(agent_config: dict) -> list[str]:
+async def get_research_candidates(
+    agent_config: dict,
+    with_reasons: bool = False,
+) -> list:
     """
     Discover and rank research candidates from multiple sources (DAV-80).
 
@@ -53,16 +56,23 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
     by aggregate score after applying agent_config filters.
 
     Returns 3–10 ticker symbols, hard-capped at MAX_CANDIDATES.
+    When with_reasons=True, returns list[dict] with {ticker, score, sources}
+    instead of list[str]. Existing callers pass no argument → list[str].
     Logs per-ticker scores for debugging.
     """
     finnhub = FinnhubService()
     scores: dict[str, int] = defaultdict(int)
+    source_map: dict[str, list[str]] = {}
+
+    def _score(ticker: str, source: str) -> None:
+        scores[ticker] += _SCORES[source]
+        source_map.setdefault(ticker, []).append(source)
 
     # ── 1. Agent watchlist (highest priority, scored synchronously) ───────────
     for ticker in agent_config.get("watchlist", []):
         t = ticker.upper().strip()
         if t:
-            scores[t] += _SCORES["watchlist"]
+            _score(t, "watchlist")
 
     # ── 2. Parallel discovery: earnings, movers, reddit, stocktwits ───────────
     today = date.today()
@@ -79,18 +89,18 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
     for item in (earnings_res or [])[:20]:
         t = item.get("symbol", "").upper().strip()
         if t:
-            scores[t] += _SCORES["earnings"]
+            _score(t, "earnings")
 
     for t in (movers_res or []):
         t = t.upper().strip()
         if t:
-            scores[t] += _SCORES["movers"]
+            _score(t, "movers")
 
     for t in (reddit_res or []):
-        scores[t] += _SCORES["reddit"]
+        _score(t, "reddit")
 
     for t in (stocktwits_res or []):
-        scores[t] += _SCORES["stocktwits"]
+        _score(t, "stocktwits")
 
     # ── 3. Finnhub fallback only if FMP movers returned nothing ───────────────
     if not movers_res:
@@ -98,7 +108,7 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
         for t in (finnhub_trending or []):
             t = t.upper().strip()
             if t:
-                scores[t] += _SCORES["finnhub"]
+                _score(t, "finnhub")
 
     # ── 4. Log scores for debugging ───────────────────────────────────────────
     top_debug = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:15]
@@ -142,7 +152,14 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
         extras = [t for t in ranked if t not in filtered]
         filtered.extend(extras[: MIN_CANDIDATES - len(filtered)])
 
-    return filtered[:MAX_CANDIDATES]
+    result = filtered[:MAX_CANDIDATES]
+
+    if with_reasons:
+        return [
+            {"ticker": t, "score": scores[t], "sources": source_map.get(t, [])}
+            for t in result
+        ]
+    return result
 
 
 def _add(ticker: str, seen: set[str], out: list[str]) -> None:

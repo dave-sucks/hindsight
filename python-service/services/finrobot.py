@@ -351,6 +351,10 @@ Recent news:
 
 Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}"""
 
+    strategy_instructions = agent_config.get("strategyInstructions")
+    if strategy_instructions:
+        prompt += f"\n\nAnalyst Strategy Instructions:\n{strategy_instructions}"
+
     response = await _openai.chat.completions.create(
         model="gpt-4o",
         messages=[

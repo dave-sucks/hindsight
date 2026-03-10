@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/tabs";
 import ResearchChatFull from "@/components/ResearchChatFull";
 import { RunResearchButton } from "@/components/RunResearchButton";
-import { ChevronDown, ChevronRight, Settings, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings, TrendingUp, TrendingDown, Minus, BookOpen } from "lucide-react";
 import type {
   AnalystDetail,
   AnalystConfig,
@@ -80,6 +80,29 @@ function DirectionBadge({ direction }: { direction: string }) {
       <Minus className="h-2.5 w-2.5 mr-0.5" />
       PASS
     </Badge>
+  );
+}
+
+// ── Strategy Instructions collapsible ─────────────────────────────────────────
+
+function StrategyInstructionsCollapsible({ instructions }: { instructions: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <BookOpen className="h-3 w-3" />
+        Strategy Instructions
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+      {open && (
+        <p className="mt-2 text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap border rounded p-3 bg-muted/30">
+          {instructions}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -185,6 +208,21 @@ function AnalystOverviewTab({
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Strategy type badge */}
+          {config.strategyType && config.strategyType !== "DISCOVERY" && (
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">Strategy Type</p>
+              <Badge variant="secondary" className="text-xs">
+                {config.strategyType}
+              </Badge>
+            </div>
+          )}
+
+          {/* Strategy instructions collapsible */}
+          {config.strategyInstructions && (
+            <StrategyInstructionsCollapsible instructions={config.strategyInstructions} />
           )}
         </CardContent>
       </Card>

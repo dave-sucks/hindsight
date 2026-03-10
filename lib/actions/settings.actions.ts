@@ -92,6 +92,11 @@ export type AnalystFormInput = {
   sectors: string[];
   signalTypes: string[];
   directionBias: string;
+  // M10 strategy fields
+  description?: string | null;
+  strategyType?: string;
+  strategyInstructions?: string | null;
+  tradePolicyAutoTrade?: boolean;
 };
 
 // ─── Create a new analyst ─────────────────────────────────────────────────────
@@ -163,6 +168,10 @@ export async function updateAnalyst(
         holdDurations: data.holdDurations,
         directionBias: data.directionBias,
         signalTypes: data.signalTypes,
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.strategyType !== undefined && { strategyType: data.strategyType }),
+        ...(data.strategyInstructions !== undefined && { strategyInstructions: data.strategyInstructions }),
+        ...(data.tradePolicyAutoTrade !== undefined && { tradePolicyAutoTrade: data.tradePolicyAutoTrade }),
       },
     });
     revalidatePath("/settings");

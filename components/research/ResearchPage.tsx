@@ -2,7 +2,24 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Bot,
   FlaskConical,
@@ -12,6 +29,7 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TradeReviewSheet } from "@/components/TradeReviewSheet";
@@ -79,6 +97,158 @@ function timeAgo(date: Date | string): string {
   return `${days}d ago`;
 }
 
+// ─── New Run Sheet ─────────────────────────────────────────────────────────────
+
+function NewRunSheet({
+  analysts,
+  open,
+  onOpenChange,
+}: {
+  analysts: Analyst[];
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const router = useRouter();
+  const [tickers, setTickers] = useState("");
+  const [analystId, setAnalystId] = useState<string>("none");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleStart = async () => {
+    setSubmitting(true);
+    try {
+      const tickerList = tickers
+        .split(/[\s,]+/)
+        .map((t) => t.trim().toUpperCase())
+        .filter(Boolean);
+
+      const res = await fetch("/api/research/run/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "MANUAL",
+          tickers: tickerList.length > 0 ? tickerList : undefined,
+          agentConfigId: analystId !== "none" ? analystId : undefined,
+        }),
+      });
+
+      if (!res.body) throw new Error("No stream body");
+
+      // Read just enough to get the run.created event
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let runId: string | null = null;
+
+      while (!runId) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          try {
+            const ev = JSON.parse(line.slice(5).trim()) as Record<string, unknown>;
+            if (ev.type === "run.created" && typeof ev.runId === "string") {
+              runId = ev.runId;
+            }
+          } catch {
+            // continue
+          }
+        }
+      }
+
+      reader.cancel().catch(() => undefined);
+
+      if (runId) {
+        onOpenChange(false);
+        router.push(`/research/runs/${runId}`);
+      } else {
+        throw new Error("Did not receive run ID");
+      }
+    } catch {
+      toast.error("Failed to start run. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="flex flex-col sm:max-w-[420px]">
+        <SheetHeader>
+          <SheetTitle>New Research Run</SheetTitle>
+        </SheetHeader>
+
+        <div className="flex-1 space-y-5 px-1 py-4">
+          {/* Tickers */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Tickers{" "}
+              <span className="normal-case font-normal text-muted-foreground/60">(optional)</span>
+            </Label>
+            <Input
+              placeholder="AAPL, TSLA, NVDA"
+              value={tickers}
+              onChange={(e) => setTickers(e.target.value)}
+              className="h-9"
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave blank to let the scanner discover candidates automatically.
+            </p>
+          </div>
+
+          {/* Analyst */}
+          {analysts.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Analyst{" "}
+                <span className="normal-case font-normal text-muted-foreground/60">(optional)</span>
+              </Label>
+              <Select value={analystId} onValueChange={setAnalystId}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="No analyst" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No analyst (default settings)</SelectItem>
+                  {analysts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        <SheetFooter className="flex-row gap-2 border-t pt-4">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
+            Cancel
+          </Button>
+          <Button onClick={handleStart} disabled={submitting} className="flex-1 gap-2">
+            {submitting ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Starting…
+              </>
+            ) : (
+              <>
+                <FlaskConical className="h-3.5 w-3.5" />
+                Start Run
+              </>
+            )}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function ResearchPage({
@@ -97,6 +267,7 @@ export default function ResearchPage({
   );
   const [loading, setLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(hasRunning);
+  const [newRunOpen, setNewRunOpen] = useState(false);
 
   const selectedAnalyst = analysts.find((a) => a.id === selectedAnalystId);
 
@@ -143,19 +314,30 @@ export default function ResearchPage({
             AI analysts research markets and generate trade theses
           </p>
         </div>
-        <Button
-          size="sm"
-          onClick={handleRunNow}
-          disabled={buttonDisabled}
-          className="gap-2 shrink-0"
-        >
-          {buttonDisabled ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <FlaskConical className="h-3.5 w-3.5" />
-          )}
-          {buttonLabel}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setNewRunOpen(true)}
+            className="gap-2"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New Run
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleRunNow}
+            disabled={buttonDisabled}
+            className="gap-2"
+          >
+            {buttonDisabled ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FlaskConical className="h-3.5 w-3.5" />
+            )}
+            {buttonLabel}
+          </Button>
+        </div>
       </div>
 
       {/* ── Analyst pill bar ───────────────────────────────────────────────── */}
@@ -234,6 +416,12 @@ export default function ResearchPage({
           <RunCard key={run.id} run={run} profiles={profiles} />
         ))}
       </div>
+
+      <NewRunSheet
+        analysts={analysts}
+        open={newRunOpen}
+        onOpenChange={setNewRunOpen}
+      />
     </div>
   );
 }

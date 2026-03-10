@@ -40,9 +40,13 @@ model ResearchRun {
   source        String       // "AGENT" | "MANUAL"
   status        String       // "PENDING" | "RUNNING" | "COMPLETE" | "FAILED"
   parameters    Json         // agent config snapshot at time of run
+  title         String?      // display title, e.g. "Research AAPL" for manual runs
+  inputText     String?      // raw user prompt for manual/free-form runs
   startedAt     DateTime     @default(now())
   completedAt   DateTime?
   theses        Thesis[]
+  events        RunEvent[]
+  messages      RunMessage[]
   agentConfig   AgentConfig? @relation(fields: [agentConfigId], references: [id], onDelete: SetNull)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -118,10 +122,40 @@ model TradeEvent {
   createdAt   DateTime @default(now())
 }
 
+model RunEvent {
+  id        String      @id @default(cuid())
+  runId     String
+  type      String      // "run.started" | "discovery.completed" | "thesis.generated" | etc.
+  title     String
+  message   String?
+  payload   Json?       // structured metadata: candidates list, sources, thesis snippet, etc.
+  createdAt DateTime    @default(now())
+  run       ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([runId, createdAt])
+}
+
+model RunMessage {
+  id        String      @id @default(cuid())
+  runId     String
+  role      String      // "user" | "assistant"
+  content   String
+  createdAt DateTime    @default(now())
+  run       ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+}
+
 model AgentConfig {
   id                    String        @id @default(cuid())
   userId                String        // NOT unique — multiple Analysts per user
   name                  String        @default("My Analyst")
+  description           String?       // short description shown on analyst card
+  strategyType          String        @default("DISCOVERY") // "DISCOVERY" | "WATCHLIST" | "DIRECTED"
+  strategyInstructions  String?       // freeform prompt injection; appended to Concept-CoT
+  tickerUniverse        String[]      @default([]) // for DIRECTED mode: tickers to always analyze
+  tradePolicyAutoTrade  Boolean       @default(true) // true = auto-place paper trades; MANUAL runs default to false
   enabled               Boolean       @default(false)
   researchRuns          ResearchRun[]
   markets               String[] // ["US_EQUITIES", "CRYPTO", "ETFS"]

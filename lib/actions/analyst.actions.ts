@@ -21,6 +21,11 @@ export interface AnalystConfig {
   scheduleTime: string;
   createdAt: Date;
   updatedAt: Date;
+  // M10 strategy fields
+  description: string | null;
+  strategyType: string;
+  strategyInstructions: string | null;
+  tradePolicyAutoTrade: boolean;
 }
 
 export interface AnalystListItem {
@@ -313,6 +318,10 @@ export async function getAnalystDetail(
     scheduleTime: config.scheduleTime,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
+    description: config.description ?? null,
+    strategyType: config.strategyType ?? "DISCOVERY",
+    strategyInstructions: config.strategyInstructions ?? null,
+    tradePolicyAutoTrade: config.tradePolicyAutoTrade ?? true,
   };
 
   return {

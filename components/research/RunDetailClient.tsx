@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { TradeReviewSheet } from "@/components/TradeReviewSheet";
-import ResearchChatFull from "@/components/ResearchChatFull";
+import RunTimeline, { type RunEventItem } from "@/components/research/RunTimeline";
+import RunSidebar from "@/components/research/RunSidebar";
+import RunChatBar, { type RunMessage } from "@/components/research/RunChatBar";
 import {
   Bot,
   Clock,
@@ -98,8 +100,6 @@ function timeAgo(date: Date | string): string {
   return `${days}d ago`;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function parseSources(raw: unknown): SourceItem[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
@@ -135,6 +135,8 @@ function RunParamBadges({ params }: { params: unknown }) {
     items.push({ label: "Max pos.", value: String(p.maxOpenPositions) });
   if (p.maxPositionSize != null)
     items.push({ label: "Size", value: `$${p.maxPositionSize}` });
+  if (p.strategyType)
+    items.push({ label: "Strategy", value: String(p.strategyType) });
 
   if (!items.length) return null;
 
@@ -459,15 +461,22 @@ export default function RunDetailClient({
   userId,
   recentTheses,
   hasRunning,
+  initialEvents,
+  initialMessages,
+  isSynthetic,
 }: {
   run: RunDetail;
   profiles: Record<string, CompanyProfile>;
   userId: string;
   recentTheses: RecentThesis[];
   hasRunning: boolean;
+  initialEvents: RunEventItem[];
+  initialMessages: RunMessage[];
+  isSynthetic?: boolean;
 }) {
   const isRunning = run.status === "RUNNING";
   const isFailed = run.status === "FAILED";
+  const isComplete = run.status === "COMPLETE";
   const tradesPlaced = run.theses.filter((t) => t.trade !== null).length;
   const actionable = run.theses.filter((t) => t.direction !== "PASS").length;
   const totalSources = run.theses.reduce(
@@ -475,12 +484,85 @@ export default function RunDetailClient({
     0
   );
 
+  // ── Live event subscription (running runs only) ──────────────────────────
+  const [liveEvents, setLiveEvents] = useState<RunEventItem[]>([]);
+  const [liveComplete, setLiveComplete] = useState(false);
+
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const controller = new AbortController();
+
+    async function subscribeEvents() {
+      try {
+        const res = await fetch(`/api/research/runs/${run.id}/events`, {
+          signal: controller.signal,
+        });
+        if (!res.body) return;
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data:")) continue;
+            let ev: Record<string, unknown>;
+            try {
+              ev = JSON.parse(line.slice(5).trim());
+            } catch {
+              continue;
+            }
+
+            if (ev.type === "stream.done") {
+              setLiveComplete(true);
+              return;
+            }
+
+            console.log("Run event:", ev);
+
+            setLiveEvents((prev) => [
+              ...prev,
+              {
+                id: `live-${Date.now()}-${Math.random()}`,
+                type: String(ev.type ?? ""),
+                title: String(ev.title ?? ""),
+                message: ev.message ? String(ev.message) : undefined,
+                payload: ev.payload,
+                createdAt: String(ev.createdAt ?? new Date().toISOString()),
+              },
+            ]);
+          }
+        }
+      } catch {
+        // Aborted or connection lost — normal
+      }
+    }
+
+    subscribeEvents();
+    return () => controller.abort();
+  }, [isRunning, run.id]);
+
+  const displayEvents = isRunning ? liveEvents : initialEvents;
+  const timelineComplete = isRunning ? liveComplete : isComplete;
+
+  // suppress unused variable warnings for props still accepted but not rendered
+  void userId;
+  void recentTheses;
+  void hasRunning;
+
   return (
     <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden">
-      {/* ── LEFT: Run info + thesis grid ──────────────────────────────────── */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
+      {/* ── LEFT: Run header + timeline + chat bar ─────────────────────────── */}
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Run header */}
-        <div className="px-6 pt-6 pb-4 border-b">
+        <div className="px-6 pt-6 pb-4 border-b shrink-0">
           <div className="flex items-center gap-2 mb-3">
             <Link
               href="/research"
@@ -549,23 +631,39 @@ export default function RunDetailClient({
           </div>
         </div>
 
-        {/* Thesis grid */}
-        <div className="p-6">
-          {isRunning ? (
-            <div className="py-16 text-center">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Research in progress…</p>
-            </div>
-          ) : run.theses.length === 0 ? (
-            <div className="py-16 text-center">
-              <p className="text-sm text-muted-foreground">
-                {isFailed
-                  ? "This run failed to produce results."
-                  : "No theses were generated in this run."}
+        {/* Timeline — fills remaining space */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <RunTimeline
+            events={displayEvents}
+            isLive={isRunning}
+            isComplete={timelineComplete}
+            isSynthetic={isSynthetic && !isRunning}
+          />
+        </div>
+
+        {/* Chat bar — fixed at bottom */}
+        <RunChatBar runId={run.id} initialMessages={initialMessages} />
+      </div>
+
+      {/* ── RIGHT: Sidebar (candidates + theses + decisions) ──────────────── */}
+      <div className="hidden lg:flex w-[420px] border-l flex-col overflow-y-auto shrink-0">
+        <RunSidebar
+          events={displayEvents}
+          theses={run.theses.map((t) => ({
+            id: t.id,
+            ticker: t.ticker,
+            direction: t.direction,
+            confidenceScore: t.confidenceScore,
+          }))}
+        />
+
+        {run.theses.length > 0 && (
+          <>
+            <Separator />
+            <div className="p-4 space-y-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Full Theses
               </p>
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
               {run.theses.map((thesis) => (
                 <DetailThesisCard
                   key={thesis.id}
@@ -574,19 +672,8 @@ export default function RunDetailClient({
                 />
               ))}
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── RIGHT: Chat panel ─────────────────────────────────────────────── */}
-      <div className="hidden lg:flex w-[420px] border-l flex-col overflow-hidden shrink-0">
-        <ResearchChatFull
-          userId={userId}
-          recentTheses={recentTheses}
-          hasRunning={hasRunning}
-          analystId={run.analystId ?? undefined}
-          className="flex flex-col h-full"
-        />
+          </>
+        )}
       </div>
     </div>
   );

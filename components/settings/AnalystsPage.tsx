@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
@@ -81,6 +82,10 @@ const DEFAULT_FORM: AnalystFormInput = {
   sectors: ['Technology', 'Healthcare', 'Financials'],
   signalTypes: ['EARNINGS_BEAT', 'TECHNICAL_BREAKOUT'],
   directionBias: 'BOTH',
+  description: null,
+  strategyType: 'DISCOVERY',
+  strategyInstructions: null,
+  tradePolicyAutoTrade: true,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -121,6 +126,10 @@ function AnalystFormSheet({
           sectors: editing.sectors,
           signalTypes: editing.signalTypes,
           directionBias: editing.directionBias,
+          description: (editing as { description?: string | null }).description ?? null,
+          strategyType: (editing as { strategyType?: string }).strategyType ?? 'DISCOVERY',
+          strategyInstructions: (editing as { strategyInstructions?: string | null }).strategyInstructions ?? null,
+          tradePolicyAutoTrade: (editing as { tradePolicyAutoTrade?: boolean }).tradePolicyAutoTrade ?? true,
         }
       : { ...DEFAULT_FORM }
   );
@@ -166,6 +175,10 @@ function AnalystFormSheet({
             sectors: form.sectors,
             signalTypes: form.signalTypes,
             directionBias: form.directionBias,
+            description: form.description ?? null,
+            strategyType: form.strategyType ?? 'DISCOVERY',
+            strategyInstructions: form.strategyInstructions ?? null,
+            tradePolicyAutoTrade: form.tradePolicyAutoTrade ?? true,
             markets: ['NASDAQ', 'NYSE'],
             exchanges: ['NASDAQ', 'NYSE'],
             watchlist: [],
@@ -345,6 +358,65 @@ function AnalystFormSheet({
               ))}
             </div>
           </div>
+
+          {/* Strategy Type + Auto-Trade */}
+          <Separator />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Strategy Type
+              </Label>
+              <Select
+                value={form.strategyType ?? 'DISCOVERY'}
+                onValueChange={(v) => setForm((f) => ({ ...f, strategyType: v }))}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DISCOVERY">Discovery</SelectItem>
+                  <SelectItem value="WATCHLIST">Watchlist</SelectItem>
+                  <SelectItem value="DIRECTED">Directed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between pt-6">
+              <div>
+                <p className="text-sm font-medium">Auto-Trade</p>
+                <p className="text-xs text-muted-foreground">Place trades automatically</p>
+              </div>
+              <Switch
+                checked={form.tradePolicyAutoTrade ?? true}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, tradePolicyAutoTrade: v }))}
+              />
+            </div>
+          </div>
+
+          {/* Strategy Instructions */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Strategy Instructions{' '}
+              <span className="normal-case font-normal text-muted-foreground/60">(optional)</span>
+            </Label>
+            <Textarea
+              placeholder="e.g. Focus on EV stocks with upcoming earnings. Prefer day trades with clear catalysts."
+              value={form.strategyInstructions ?? ''}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  strategyInstructions: e.target.value || null,
+                }))
+              }
+              rows={3}
+              className="resize-none text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Injected into the AI analysis prompt. Guides sector focus, trade style, and thesis generation.
+            </p>
+          </div>
+
+          <Separator />
 
           {/* Sectors */}
           <div className="space-y-2">
