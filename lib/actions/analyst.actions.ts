@@ -10,6 +10,8 @@ export interface AnalystConfig {
   userId: string;
   name: string;
   enabled: boolean;
+  analystPrompt: string | null;
+  description: string | null;
   sectors: string[];
   signalTypes: string[];
   holdDurations: string[];
@@ -302,6 +304,8 @@ export async function getAnalystDetail(
     userId: config.userId,
     name: config.name,
     enabled: config.enabled,
+    analystPrompt: config.analystPrompt,
+    description: config.description,
     sectors: config.sectors as string[],
     signalTypes: config.signalTypes as string[],
     holdDurations: config.holdDurations as string[],

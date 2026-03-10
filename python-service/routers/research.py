@@ -1,10 +1,13 @@
 import asyncio
 import json
+import logging
 import os
 import re
 import time
 import uuid
 from typing import AsyncGenerator, List
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -344,3 +347,96 @@ In 2-3 sentences, honestly evaluate: Was the thesis correct? What worked or fail
 
     evaluation_text = response.choices[0].message.content or ""
     return EvaluationResponse(evaluation_text=evaluation_text.strip())
+
+
+# ---------------------------------------------------------------------------
+# /research/run-stream — SSE, sequential per-ticker streaming
+# ---------------------------------------------------------------------------
+
+_STREAM_DONE = object()  # sentinel for asyncio.Queue draining
+
+
+class RunStreamRequest(BaseModel):
+    tickers: List[str] = []
+    source: str = "AGENT"
+    agent_config: dict = {}
+
+
+async def _stream_run(
+    tickers: List[str],
+    source: str,
+    agent_config: dict,
+) -> AsyncGenerator[dict, None]:
+    """
+    Sequential per-ticker streaming: emit events as each stock is analyzed.
+    Tickers run one at a time to produce a clean, readable narrative.
+    """
+    from services.finrobot import run_full_pipeline_streaming
+
+    def event(type_: str, **kwargs) -> dict:
+        return {"data": json.dumps({"type": type_, **kwargs})}
+
+    # Scanner discovery when no tickers provided
+    if not tickers:
+        yield event("scanning", message="Scanning market for research opportunities...")
+        try:
+            tickers = await get_research_candidates(agent_config)
+        except Exception as exc:
+            yield event("error", message=f"Scanner error: {exc}")
+            return
+
+    if not tickers:
+        yield event("run_complete", theses=[], analyzed=0, recommended=0, source=source)
+        return
+
+    yield event("candidates", tickers=tickers, count=len(tickers))
+
+    finnhub = FinnhubService()
+    all_theses: List[ThesisOutput] = []
+
+    for ticker in tickers:
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def _emit(data: dict, _q: asyncio.Queue = queue) -> None:
+            _q.put_nowait(data)
+
+        async def _run_ticker(
+            _ticker: str = ticker,
+            _q: asyncio.Queue = queue,
+            _efn=_emit,
+        ) -> tuple:
+            try:
+                return await run_full_pipeline_streaming(_ticker, agent_config, _efn, finnhub)
+            finally:
+                _q.put_nowait(_STREAM_DONE)
+
+        task = asyncio.create_task(_run_ticker())
+
+        # Drain queue until sentinel — yields events as they arrive
+        while True:
+            item = await queue.get()
+            if item is _STREAM_DONE:
+                break
+            yield {"data": json.dumps(item)}
+
+        try:
+            thesis, _ = task.result()
+            all_theses.append(thesis)
+        except Exception as exc:
+            logger.warning("Ticker task failed for %s: %s", ticker, exc)
+
+    recommended = sum(1 for t in all_theses if t.direction != "PASS")
+    yield event(
+        "run_complete",
+        theses=[t.model_dump() for t in all_theses],
+        analyzed=len(all_theses),
+        recommended=recommended,
+        source=source,
+    )
+
+
+@router.post("/run-stream")
+async def research_run_stream(body: RunStreamRequest):
+    return EventSourceResponse(
+        _stream_run(body.tickers, body.source, body.agent_config)
+    )
