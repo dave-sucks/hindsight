@@ -44,6 +44,18 @@ export interface TodaysPick {
   direction: string;
   confidenceScore: number;
   signalTypes: string[];
+  holdDuration: string;
+  reasoningSummary: string;
+  entryPrice: number | null;
+  targetPrice: number | null;
+  stopLoss: number | null;
+  trade: {
+    id: string;
+    realizedPnl: number | null;
+    status: string;
+    entryPrice: number;
+    closePrice: number | null;
+  } | null;
 }
 
 export interface DashboardData {
@@ -315,13 +327,27 @@ export async function getDashboardData(): Promise<DashboardData> {
       direction: { in: ["LONG", "SHORT"] },
     },
     orderBy: { confidenceScore: "desc" },
-    take: 5,
+    take: 10,
     select: {
       id: true,
       ticker: true,
       direction: true,
       confidenceScore: true,
       signalTypes: true,
+      holdDuration: true,
+      reasoningSummary: true,
+      entryPrice: true,
+      targetPrice: true,
+      stopLoss: true,
+      trade: {
+        select: {
+          id: true,
+          realizedPnl: true,
+          status: true,
+          entryPrice: true,
+          closePrice: true,
+        },
+      },
     },
   });
 
@@ -331,6 +357,20 @@ export async function getDashboardData(): Promise<DashboardData> {
     direction: t.direction,
     confidenceScore: t.confidenceScore,
     signalTypes: t.signalTypes,
+    holdDuration: t.holdDuration,
+    reasoningSummary: t.reasoningSummary,
+    entryPrice: t.entryPrice,
+    targetPrice: t.targetPrice,
+    stopLoss: t.stopLoss,
+    trade: t.trade
+      ? {
+          id: t.trade.id,
+          realizedPnl: t.trade.realizedPnl,
+          status: t.trade.status,
+          entryPrice: t.trade.entryPrice,
+          closePrice: t.trade.closePrice,
+        }
+      : null,
   }));
 
   return {

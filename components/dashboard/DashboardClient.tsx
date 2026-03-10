@@ -14,17 +14,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, TrendingUp } from 'lucide-react';
+import { Bot, Sparkles, TrendingUp } from 'lucide-react';
 import {
   mockOpenTrades,
   mockEquityCurve,
   mockPortfolio,
   type MockTrade,
 } from '@/lib/mock-data/trades';
-import type { DashboardData } from '@/lib/actions/portfolio.actions';
+import type { DashboardData, TodaysPick } from '@/lib/actions/portfolio.actions';
 import type { DashboardRun } from '@/lib/actions/analyst.actions';
 import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
+import { ThesisCard } from '@/components/ThesisCard';
 
 // ─── Relative time helper ────────────────────────────────────────────────────
 
@@ -272,6 +273,70 @@ function RightRailTabs({
   );
 }
 
+// ─── TodaysPicksSection ───────────────────────────────────────────────────────
+
+type PickFilter = "ALL" | "LONG" | "SHORT";
+
+function TodaysPicksSection({ picks }: { picks: TodaysPick[] }) {
+  const [filter, setFilter] = useState<PickFilter>("ALL");
+
+  const filtered =
+    filter === "ALL" ? picks : picks.filter((p) => p.direction === filter);
+
+  const chipClass = (active: boolean) =>
+    `text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+      active
+        ? "bg-foreground text-background border-foreground"
+        : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
+    }`;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Today&apos;s Picks
+        </p>
+        <Link
+          href="/research"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          All research →
+        </Link>
+      </div>
+
+      {/* Direction filter chips */}
+      <div className="flex items-center gap-2">
+        {(["ALL", "LONG", "SHORT"] as const).map((f) => (
+          <button key={f} onClick={() => setFilter(f)} className={chipClass(filter === f)}>
+            {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
+          </button>
+        ))}
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+          {filtered.length} pick{filtered.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {/* Card grid */}
+      {filtered.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center p-8 gap-2">
+            <Sparkles className="h-6 w-6 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">
+              No {filter !== "ALL" ? filter.toLowerCase() + " " : ""}picks today
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {filtered.map((pick) => (
+            <ThesisCard key={pick.id} thesis={pick} variant="compact" />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── DashboardRunCard ─────────────────────────────────────────────────────────
 
 function DashboardRunCard({ run }: { run: DashboardRun }) {
@@ -503,6 +568,11 @@ export default function DashboardClient({
               </ResponsiveContainer>
             </CardContent>
           </Card>
+
+          {/* Today's Picks */}
+          {(data?.todaysPicks?.length ?? 0) > 0 && (
+            <TodaysPicksSection picks={data?.todaysPicks ?? []} />
+          )}
 
           {/* Recent Research feed */}
           <div className="space-y-2">
