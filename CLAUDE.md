@@ -17,12 +17,45 @@ learns what works. Built for one user now, marketed later.
 - Recharts for performance/analytics charts
 
 ## Architecture
-- Next.js frontend calls Python FastAPI microservice
-- FastAPI wraps FinRobot agents (Data-CoT, Concept-CoT, Thesis-CoT)
-- FinRobot returns trade thesis JSON
-- Stored in Supabase Postgres via Prisma
+- Next.js frontend calls Python FastAPI microservice on Railway
+- FastAPI runs FinRobot 3-step pipeline: Data-CoT → Concept-CoT → Thesis-CoT
+- Data-CoT: parallel Finnhub + FMP + Reddit + options flow + earnings intel fetch
+- Concept-CoT: GPT-4o picks direction (LONG/SHORT/PASS) + confidence score
+- Thesis-CoT: GPT-4o writes full thesis with bullets, risks, entry/target/stop
+- Theses stored in Supabase Postgres via Prisma
 - Supabase Realtime pushes live price updates to UI
-- Inngest crons trigger research runs and trade evaluations
+- Inngest crons: morning research (8 AM ET), hourly price monitor,
+  EOD evaluation, weekly digest, accuracy scoring
+
+## Data Model (Prisma)
+- AgentConfig — analyst config (sectors, signals, confidence threshold,
+  direction bias, hold durations, position sizing, schedule)
+- ResearchRun — one execution of the pipeline; links to AgentConfig;
+  contains parameters snapshot at run time
+- Thesis — one stock analysis from a run (direction, confidence,
+  reasoning, bullets, risk flags, signal types, sourcesUsed JSON,
+  entry/target/stop prices, modelUsed)
+- Trade — paper order placed for a high-confidence thesis; tracked
+  via Alpaca; has TradeEvents log (PLACED, PRICE_CHECK, NEAR_TARGET,
+  CLOSED, EVALUATED)
+- AccuracyReport — weekly calibration report (win rate, signal accuracy,
+  direction stats, GPT-4o narrative)
+
+## Pages
+- / (Dashboard) — Fey-inspired layout: MarketPulseStrip (live
+  Finnhub WebSocket), portfolio summary, Today's Picks, AgentActivityLog
+- /analysts — analyst cards with track records + on/off toggle
+- /analysts/[id] — Perplexity 2-col layout: Overview (stats + strategy
+  config) | Chat (ResearchChatFull); tabs for Runs and Trades
+- /research — run feed with analyst pills, collapsible RunCards
+- /research/runs/[id] — run detail: 2-col layout left=thesis grid
+  (with collapsible sources per thesis + agent config param badges),
+  right=ResearchChatFull scoped to that analyst
+- /chat — general research chat (no analyst scope)
+- /trades — full paper trade history with live P&L
+- /performance — accuracy reports, win rate charts
+- /stocks — TradingView chart + stock research
+- /settings — AgentConfig management
 
 ## Design Rules — READ BEFORE ANY UI WORK
 - ONLY use ShadCN components from /components/ui
@@ -39,12 +72,27 @@ learns what works. Built for one user now, marketed later.
 - Empty states: every page needs one
 - Loading states: every data fetch needs one
 - Error states: every API call needs one
+- Perplexity 2-col layout: flex h-[calc(100dvh-5.25rem)] overflow-hidden,
+  left flex-1 min-w-0 overflow-y-auto, right hidden lg:flex w-[420px] border-l
 
 ## Before ANY UI ticket
 - Check /components/ui before building anything new
 - If you've written same JSX pattern twice, extract a component
 - Every screen should look identical in spacing to adjacent screens
 - Same border radius, same shadow, same padding everywhere
+
+## Key Technical Notes
+- Base UI Button uses render prop: render={<Link href="..." />}
+  NOT Radix asChild
+- Prisma Json fields (sourcesUsed, parameters, fullResearch) are
+  typed as unknown in TS — always cast with a type guard helper
+- GitHub squash-merge conflict trap: never cherry-pick onto a branch
+  that diverged from a squash-merged ancestor — create fresh branch
+  from main instead
+- gh auth switch --user dave-sucks required before pushing
+  (active account may default to db-lev)
+- async params in Next.js App Router: params: Promise<{ id: string }>
+  must be awaited
 
 ## API Keys Available (in .env.local)
 - NEXT_PUBLIC_SUPABASE_URL
@@ -57,42 +105,98 @@ learns what works. Built for one user now, marketed later.
 - FMP_API_KEY
 - OPENAI_API_KEY
 - INNGEST_EVENT_KEY + INNGEST_SIGNING_KEY
-- PYTHON_SERVICE_URL (Railway URL — set after Railway deploy)
+- PYTHON_SERVICE_URL (Railway — Python FastAPI microservice)
 - PYTHON_SERVICE_SECRET (shared secret for X-Service-Secret header)
 
 ## Repo
 https://github.com/dave-sucks/hindsight
 
-## Current Status
-Milestones 1–4 complete. Full paper trading lifecycle live:
-research → thesis → place paper trade (Alpaca) → hourly price
-monitor (Inngest cron) → auto-close on exit conditions → GPT-4o
-post-trade evaluation. Dashboard and Trades pages now use real
-Prisma data with Alpaca live prices.
+## Current Status — M1 through M9 complete (32 PRs merged)
+Full pipeline live end-to-end:
+- Multi-analyst setup: each AgentConfig is an "Analyst" with its own
+  sectors, signals, confidence threshold, direction bias, schedule
+- Research pipeline: scanner finds candidates → Data-CoT (Finnhub,
+  FMP, Reddit PRAW, unusual options flow, earnings intel, technical
+  indicators) → Concept-CoT → Thesis-CoT → stored as ResearchRun +
+  Theses in DB
+- Paper trading: high-confidence theses auto-placed as Alpaca paper
+  trades; hourly Inngest price monitor; auto-close on exit conditions;
+  GPT-4o post-trade evaluation
+- Accuracy/calibration: AccuracyReport generated weekly per analyst;
+  win rate, calibration buckets, signal accuracy, GPT-4o narrative
+- Chat: ResearchChatFull on analyst detail + run detail + /chat page;
+  scoped to analyst or general; has memory of recent theses
+
+## Key Files
+### Backend / Python
+- python-service/routers/research.py — /research/run (batch) endpoint
+- python-service/services/finrobot.py — 3-step CoT pipeline + system prompts
+- python-service/services/scanner.py — real market candidate scanner
+- python-service/services/indicators.py — RSI, MACD, Bollinger, SMA, 52W
+- python-service/services/reddit.py — PRAW Reddit sentiment (WSB, r/investing)
+- python-service/services/options_flow.py — unusual options flow
+- python-service/services/earnings_intel.py — earnings calendar + intel
+- python-service/services/stocktwits.py — StockTwits trending discovery
+- python-service/services/finnhub.py — Finnhub data client
+
+### Inngest Crons
+- lib/inngest/functions/morning-research.ts — 8 AM ET daily agent run
+- lib/inngest/functions/price-monitor.ts — hourly price check + exit eval
+- lib/inngest/functions/trade-evaluator.ts — post-close GPT-4o eval
+- lib/inngest/functions/weekly-digest.ts — Sunday 9 AM ET digest email
+- lib/inngest/functions/accuracy-scorer.ts — weekly AccuracyReport gen
+- lib/inngest/functions/eod-evaluation.ts — end-of-day evaluation
+
+### Server Actions
+- lib/actions/trade.actions.ts — createTrade
+- lib/actions/closeTrade.actions.ts — closeTrade (P&L, WIN/LOSS)
+- lib/actions/portfolio.actions.ts — getDashboardData
+- lib/actions/analyst.actions.ts — analyst CRUD
+- lib/actions/research.actions.ts — research run actions
+- lib/actions/accuracy.actions.ts — accuracy report actions
+- lib/actions/analytics.actions.ts — analytics queries
+
+### Core Lib
+- lib/alpaca.ts — Alpaca paper trading client
+- lib/trade-exit.ts — evaluateExitStrategy (4 strategies)
+- lib/market-hours.ts — isMarketOpen() with ET + holidays
+- lib/prisma.ts — Prisma client (adapter-pg)
+- prisma.config.ts — DB connection URLs (Prisma v7)
+
+### Key Components
+- components/research/RunDetailClient.tsx — run detail 2-col layout
+  with thesis grid, collapsible sources, agent param badges
+- components/analysts/AnalystDetailClient.tsx — analyst detail 2-col
+- components/analysts/AnalystsPageClient.tsx — analyst card grid
+- components/ResearchChatFull.tsx — full-bleed chat (analyst or general)
+- components/dashboard/DashboardClient.tsx — Fey-style dashboard
+- components/MarketPulseStrip.tsx — live Finnhub WebSocket ticker strip
 
 ## Prisma Notes (v7)
-- Prisma 7 uses prisma.config.ts (not schema.prisma) for DB connection URLs
+- Prisma 7 uses prisma.config.ts (not schema.prisma) for DB URLs
 - Client uses @prisma/adapter-pg — see lib/prisma.ts
-- Migration adapter configured in prisma.config.ts
 - Run `npx prisma generate` after schema changes
 - Run `npx prisma migrate dev` to apply migrations
 
-## M4 Key Files
-- lib/alpaca.ts — Alpaca paper trading client (getLatestPrices, closePosition, etc.)
-- lib/actions/trade.actions.ts — createTrade server action
-- lib/actions/closeTrade.actions.ts — closeTrade (P&L, WIN/LOSS, inngest event)
-- lib/actions/portfolio.actions.ts — getDashboardData (real trades + prices)
-- lib/trade-exit.ts — evaluateExitStrategy (4 strategies), checkExitConditions
-- lib/trade-exit.test.ts — 21 unit tests (run: npx jest)
-- lib/market-hours.ts — isMarketOpen() with ET timezone + holidays
-- lib/inngest/functions/price-monitor.ts — hourly Inngest cron
-- lib/inngest/functions/trade-evaluator.ts — post-close GPT-4o eval
-- python-service/routers/research.py — /research/evaluate endpoint
-
 ## Milestones
 1. ✅ Foundation — Supabase, Prisma, Auth, Vercel deploy
-2. ⬜ UI Shell — strip Signalist, rebuild pages for trading app
+2. ✅ UI Shell — Perplexity-inspired redesign, all pages scaffolded
 3. ✅ FinRobot microservice on Railway, FastAPI wrapper
 4. ✅ Paper trading lifecycle — create, track, evaluate trades
-5. ⬜ Live data — Supabase Realtime, Inngest crons, Alpaca
-6. ⬜ Polish — performance dashboard, graduation logic
+5. ✅ Live data — Supabase Realtime, Inngest crons, Alpaca integration
+6. ✅ Polish — real data wiring, performance dashboard
+7. ✅ Research Intelligence Overhaul — real market scanner, technical
+   indicators (RSI/MACD/Bollinger/SMA/52W), analyst consensus data,
+   TradingAgents multi-agent pipeline, R:R ratio, chat memory,
+   Fey-style dashboard redesign, research feed with analyst pills
+8. ✅ Analyst Platform — multi-analyst model (AgentConfig), 5 seeded
+   personas, /analysts page + cards, /analysts/[id] detail + config,
+   per-analyst performance tracking, analyst creation wizard
+9. ✅ Advanced Data Sources + Agent Tuning — Reddit PRAW sentiment,
+   unusual options flow, earnings intelligence, agent confidence
+   calibration from WIN/LOSS history, weekly accuracy benchmarking
+   NOTE: DAV-74 (options flow source) + DAV-75 (earnings whispers)
+   still in backlog — data exists but not surfaced in UI
+10. ⬜ Streaming + Agent Observability — live run thought-trace UI
+    (SSE from Python → frontend), custom analyst system prompts,
+    analyst→trader handoff, watch the agent think in real-time
