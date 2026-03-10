@@ -111,21 +111,28 @@ learns what works. Built for one user now, marketed later.
 ## Repo
 https://github.com/dave-sucks/hindsight
 
-## Current Status — M1 through M9 complete (32 PRs merged)
+## Current Status — M1 through M10 complete
 Full pipeline live end-to-end:
 - Multi-analyst setup: each AgentConfig is an "Analyst" with its own
-  sectors, signals, confidence threshold, direction bias, schedule
+  sectors, signals, confidence threshold, direction bias, schedule,
+  strategyInstructions (inline-editable prompt-first in analyst detail)
 - Research pipeline: scanner finds candidates → Data-CoT (Finnhub,
   FMP, Reddit PRAW, unusual options flow, earnings intel, technical
   indicators) → Concept-CoT → Thesis-CoT → stored as ResearchRun +
-  Theses in DB
+  Theses in DB; streaming SSE endpoint emits RunEvents per step
 - Paper trading: high-confidence theses auto-placed as Alpaca paper
   trades; hourly Inngest price monitor; auto-close on exit conditions;
-  GPT-4o post-trade evaluation
+  GPT-4o post-trade evaluation; trade detail links back to originating
+  research run
 - Accuracy/calibration: AccuracyReport generated weekly per analyst;
   win rate, calibration buckets, signal accuracy, GPT-4o narrative
-- Chat: ResearchChatFull on analyst detail + run detail + /chat page;
-  scoped to analyst or general; has memory of recent theses
+- Run detail page: chat conversation layout — SSE events stream as bot
+  messages, user/assistant chat merges into same feed (RunConversation
+  + RunComposer); context rail shows candidates + theses + decisions
+- Run-scoped chat: /api/runs/[id]/chat with slash commands
+  (/cancel /size /stop /target /limit /market); streamed tokens
+- RunEvent + RunMessage persisted to DB; pre-streaming runs get
+  synthesized events so timeline always renders something
 
 ## Key Files
 ### Backend / Python
@@ -153,6 +160,8 @@ Full pipeline live end-to-end:
 - lib/actions/portfolio.actions.ts — getDashboardData
 - lib/actions/analyst.actions.ts — analyst CRUD
 - lib/actions/research.actions.ts — research run actions
+- lib/actions/run-events.actions.ts — getOrSynthesizeRunEvents, getRunMessages
+- lib/actions/run-persistence.ts — shared persistThesesAndTrades helper
 - lib/actions/accuracy.actions.ts — accuracy report actions
 - lib/actions/analytics.actions.ts — analytics queries
 
@@ -161,16 +170,34 @@ Full pipeline live end-to-end:
 - lib/trade-exit.ts — evaluateExitStrategy (4 strategies)
 - lib/market-hours.ts — isMarketOpen() with ET + holidays
 - lib/prisma.ts — Prisma client (adapter-pg)
+- lib/run-event-types.ts — RunEventType const map
 - prisma.config.ts — DB connection URLs (Prisma v7)
 
 ### Key Components
-- components/research/RunDetailClient.tsx — run detail 2-col layout
-  with thesis grid, collapsible sources, agent param badges
-- components/analysts/AnalystDetailClient.tsx — analyst detail 2-col
+- components/research/RunDetailClient.tsx — 3-region run detail layout
+  (conversation center, context rail right, composer bottom)
+- components/research/RunConversation.tsx — unified events+chat feed
+  (events as bot messages, user/assistant chat bubbles, auto-scroll)
+- components/research/RunComposer.tsx — full-width chat composer
+  (streaming tokens, slash command hints, disabled during live runs)
+- components/research/RunSidebar.tsx — context rail (candidates,
+  theses, trade decisions extracted from run events)
+- components/research/RunTimeline.tsx — legacy timeline (kept)
+- components/research/RunChatBar.tsx — legacy chat bar (kept)
+- components/research/ResearchPage.tsx — run feed + NewRunSheet
+- components/analysts/AnalystDetailClient.tsx — prompt-first layout;
+  StrategyInstructionsEditor inline-editable at top of Overview tab
 - components/analysts/AnalystsPageClient.tsx — analyst card grid
 - components/ResearchChatFull.tsx — full-bleed chat (analyst or general)
 - components/dashboard/DashboardClient.tsx — Fey-style dashboard
 - components/MarketPulseStrip.tsx — live Finnhub WebSocket ticker strip
+
+### API Routes (M10)
+- app/api/research/run/stream/route.ts — relay-and-persist SSE proxy
+  to Python streaming endpoint; persists RunEvents to DB
+- app/api/research/runs/[id]/events/route.ts — polling SSE for live
+  run page; reconnects on disconnect
+- app/api/runs/[id]/chat/route.ts — run-scoped chat with slash commands
 
 ## Prisma Notes (v7)
 - Prisma 7 uses prisma.config.ts (not schema.prisma) for DB URLs
@@ -197,6 +224,10 @@ Full pipeline live end-to-end:
    calibration from WIN/LOSS history, weekly accuracy benchmarking
    NOTE: DAV-74 (options flow source) + DAV-75 (earnings whispers)
    still in backlog — data exists but not surfaced in UI
-10. ⬜ Streaming + Agent Observability — live run thought-trace UI
-    (SSE from Python → frontend), custom analyst system prompts,
-    analyst→trader handoff, watch the agent think in real-time
+10. ✅ Streaming + Agent Observability — SSE streaming pipeline
+    (Python asyncio.Queue → Next.js relay-and-persist → client);
+    RunEvent + RunMessage schema; run detail as chat conversation
+    (RunConversation + RunComposer); run-scoped chat with slash
+    commands; analyst prompt-first layout with inline instruction
+    editor; trade detail links back to originating run
+11. ⬜ Next milestone TBD
