@@ -2,20 +2,21 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   TrendingUp,
-  TrendingDown,
   CheckCircle2,
-  XCircle,
-  Loader2,
-  ListChecks,
   SkipForward,
   AlertCircle,
   Link as LinkIcon,
-  ArrowUp,
+  Loader2,
+  ListChecks,
 } from "lucide-react";
+import {
+  ChatComposer,
+  type ComposerContext,
+  type ComposerRecentThesis,
+} from "@/components/chat/ChatComposer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,9 +63,8 @@ function asArray<T>(v: unknown): T[] {
 }
 
 // ─── Events shown in the main feed ────────────────────────────────────────────
-// Filtering out low-level process events (analyzing, data_ready, concept,
-// thesis_writing, thesis_start, thesis_token) — those are background work.
-// The feed shows only meaningful research output.
+// Low-level process events (analyzing, data_ready, concept, thesis_writing,
+// thesis_start, thesis_token) are hidden — only meaningful output is shown.
 
 const MAIN_FEED_TYPES = new Set([
   "scan_start",
@@ -159,7 +159,9 @@ function ThesisCompleteMsg({ payload }: { payload: Record<string, unknown> }) {
       {/* Header row */}
       <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/20">
         <div className="flex items-center gap-3">
-          <span className="text-base font-semibold font-mono">{thesis.ticker}</span>
+          <span className="text-base font-semibold font-mono">
+            {thesis.ticker}
+          </span>
           <span className={`text-sm font-semibold ${dirColor}`}>
             {thesis.direction}
           </span>
@@ -180,7 +182,9 @@ function ThesisCompleteMsg({ payload }: { payload: Record<string, unknown> }) {
           ))}
           <span
             className={`text-sm font-semibold tabular-nums ${
-              thesis.confidence_score >= 70 ? "text-emerald-500" : "text-amber-500"
+              thesis.confidence_score >= 70
+                ? "text-emerald-500"
+                : "text-amber-500"
             }`}
           >
             {thesis.confidence_score}%
@@ -274,7 +278,10 @@ function ThesisCompleteMsg({ payload }: { payload: Record<string, unknown> }) {
         {thesis.risk_flags.length > 0 && (
           <ul className="space-y-1.5">
             {thesis.risk_flags.map((r, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+              <li
+                key={i}
+                className="flex items-start gap-2 text-sm text-muted-foreground"
+              >
                 <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
                 <span>{r}</span>
               </li>
@@ -419,7 +426,8 @@ function SourcesPanel({ events }: { events: RunEventRow[] }) {
       };
     }
     if (ev.type === "data_ready") {
-      byTicker[ticker].price = asNumber(payload.price) ?? byTicker[ticker].price;
+      byTicker[ticker].price =
+        asNumber(payload.price) ?? byTicker[ticker].price;
       byTicker[ticker].sources.push(...asArray<SourceInfo>(payload.sources));
     } else if (ev.type === "data_fetch") {
       byTicker[ticker].sources.push({
@@ -467,7 +475,9 @@ function SourcesPanel({ events }: { events: RunEventRow[] }) {
                   className="flex items-center gap-1.5 text-xs text-muted-foreground"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 shrink-0" />
-                  <span className="font-medium text-foreground/70">{s.provider}</span>
+                  <span className="font-medium text-foreground/70">
+                    {s.provider}
+                  </span>
                   {s.title !== s.provider && (
                     <span className="truncate">{s.title}</span>
                   )}
@@ -490,9 +500,14 @@ type FollowupMsg = {
   status?: "streaming" | "done" | "error";
 };
 
-function FollowupChat({ analystId }: { analystId?: string }) {
+function FollowupChat({
+  analystId,
+  recentTheses,
+}: {
+  analystId?: string;
+  recentTheses?: ComposerRecentThesis[];
+}) {
   const [messages, setMessages] = useState<FollowupMsg[]>([]);
-  const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -500,14 +515,18 @@ function FollowupChat({ analystId }: { analystId?: string }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function submit() {
-    const question = input.trim();
+  async function submit(rawMsg: string, ctx: ComposerContext) {
+    const question = rawMsg.trim();
     if (!question || busy) return;
-    setInput("");
-    setBusy(true);
 
-    const userIdx = messages.length;
+    // Build message with optional ticker context
+    const fullMsg = ctx.ticker
+      ? `[Context: $${ctx.ticker.symbol}] ${question}`
+      : question;
+
+    setBusy(true);
     const assistantIdx = messages.length + 1;
+
     setMessages((prev) => [
       ...prev,
       { role: "user", text: question },
@@ -518,7 +537,7 @@ function FollowupChat({ analystId }: { analystId?: string }) {
       const res = await fetch("/api/research/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: question, history: [] }),
+        body: JSON.stringify({ message: fullMsg, history: [] }),
       });
       if (!res.body) throw new Error("No response body");
 
@@ -561,7 +580,11 @@ function FollowupChat({ analystId }: { analystId?: string }) {
       setMessages((prev) =>
         prev.map((m, i) =>
           i === assistantIdx
-            ? { ...m, status: "error", text: "Request failed. Please try again." }
+            ? {
+                ...m,
+                status: "error",
+                text: "Request failed. Please try again.",
+              }
             : m
         )
       );
@@ -574,7 +597,7 @@ function FollowupChat({ analystId }: { analystId?: string }) {
     <div className="border-t shrink-0">
       {/* Follow-up thread */}
       {messages.length > 0 && (
-        <div className="max-w-2xl mx-auto px-6 pt-4 space-y-4">
+        <div className="max-w-2xl mx-auto px-6 pt-4 pb-2 space-y-4">
           {messages.map((msg, i) =>
             msg.role === "user" ? (
               <div key={i} className="flex justify-end">
@@ -608,32 +631,14 @@ function FollowupChat({ analystId }: { analystId?: string }) {
       )}
 
       {/* Composer */}
-      <div className="max-w-2xl mx-auto px-6 py-3 flex items-center gap-3">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
+      <div className="px-6 py-3">
+        <ChatComposer
+          onSubmit={submit}
+          recentTheses={recentTheses}
+          loading={busy}
           placeholder="Ask a follow-up question about this run…"
-          disabled={busy}
-          className="flex-1 text-sm bg-transparent focus:outline-none placeholder:text-muted-foreground disabled:opacity-50 py-1"
+          className="max-w-2xl mx-auto"
         />
-        <Button
-          size="sm"
-          className="h-7 w-7 rounded-full p-0 shrink-0"
-          disabled={busy || !input.trim()}
-          onClick={submit}
-        >
-          {busy ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <ArrowUp className="h-3 w-3" />
-          )}
-        </Button>
       </div>
     </div>
   );
@@ -646,11 +651,14 @@ export default function RunChatThread({
   showFollowup = false,
   userId,
   analystId,
+  recentTheses,
 }: {
   events: RunEventRow[];
   showFollowup?: boolean;
   userId?: string;
   analystId?: string;
+  /** Past theses for @-reference in the follow-up composer */
+  recentTheses?: ComposerRecentThesis[];
 }) {
   // Only render meaningful events in the main feed
   const mainEvents = events.filter((ev) => MAIN_FEED_TYPES.has(ev.type));
@@ -681,8 +689,10 @@ export default function RunChatThread({
           </div>
         </div>
 
-        {/* Follow-up chat */}
-        {showFollowup && <FollowupChat analystId={analystId} />}
+        {/* Follow-up chat with proper ChatComposer */}
+        {showFollowup && (
+          <FollowupChat analystId={analystId} recentTheses={recentTheses} />
+        )}
       </div>
 
       {/* Right: sources panel */}

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ArrowLeft, Bot, Clock } from "lucide-react";
 import RunChatThread from "@/components/research/RunChatThread";
 import type { RunEventRow } from "@/components/research/RunChatThread";
+import type { ComposerRecentThesis } from "@/components/chat/ChatComposer";
 
 // ── Synthesize events from thesis rows for legacy runs ────────────────────────
 
@@ -194,6 +195,18 @@ export default async function RunPage({
         }))
       : synthesizeEventsFromTheses(run.theses);
 
+  // Derive recentTheses from the run's own theses for @-reference in follow-up
+  const recentTheses: ComposerRecentThesis[] = run.theses
+    .filter((t) => t.direction !== "PASS")
+    .map((t, i) => ({
+      id: `${t.ticker}-${i}`,
+      ticker: t.ticker,
+      direction: t.direction,
+      confidenceScore: t.confidenceScore,
+      reasoningSummary: t.reasoningSummary ?? "",
+      createdAt: t.createdAt,
+    }));
+
   return (
     <div className="flex flex-col h-[calc(100dvh-5.25rem)] overflow-hidden">
       {/* Header */}
@@ -241,6 +254,7 @@ export default async function RunPage({
             showFollowup={run.status === "COMPLETE"}
             userId={userId}
             analystId={run.agentConfig?.id}
+            recentTheses={recentTheses}
           />
         )}
       </div>
