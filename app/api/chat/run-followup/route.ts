@@ -1,10 +1,26 @@
-import { streamText, convertToModelMessages } from "ai";
+import { streamText, convertToModelMessages, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { createClient } from "@/lib/supabase/server";
+import { createTradingTools } from "@/lib/chat/tools/trading-tools";
+import { createResearchTools } from "@/lib/chat/tools/research-tools";
+import { createPortfolioTools } from "@/lib/chat/tools/portfolio-tools";
 
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
+    // ── Auth ────────────────────────────────────────────────────────────────
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const { messages, runContext } = await req.json();
 
     // Convert UIMessage[] (from useChat/DefaultChatTransport) → ModelMessage[] (for streamText)
@@ -12,10 +28,19 @@ export async function POST(req: Request) {
 
     const systemPrompt = buildSystemPrompt(runContext);
 
+    // ── Tools (all bound to authenticated user) ─────────────────────────
+    const tools = {
+      ...createTradingTools(user.id),
+      ...createResearchTools(user.id),
+      ...createPortfolioTools(user.id),
+    };
+
     const result = streamText({
       model: openai("gpt-4o"),
       system: systemPrompt,
       messages: modelMessages,
+      tools,
+      stopWhen: stepCountIs(5),
     });
 
     return result.toUIMessageStreamResponse();
@@ -59,6 +84,34 @@ function buildSystemPrompt(
     "Be concise, direct, and use specific data from the run context below when answering.",
     "Format numbers properly — use $ for prices, % for percentages, and tabular alignment where helpful.",
     "When referencing theses, mention the ticker, direction, and confidence score.",
+    "",
+    "## Available Tools",
+    "You have access to powerful tools. Use them proactively when relevant:",
+    "",
+    "### Trading Tools",
+    "- **place_trade**: Place a new paper trade (buy or short). Always confirm details with the user first.",
+    "- **close_position**: Close an open position. Returns realized P&L.",
+    "- **modify_position**: Change stop loss or target price on an open trade.",
+    "- **add_to_position**: Add more shares to an existing position.",
+    "",
+    "### Research Tools",
+    "- **research_ticker**: Run full research pipeline on a ticker. Returns a complete thesis.",
+    "- **get_thesis**: Look up a previously generated thesis by ticker or ID.",
+    "- **compare_tickers**: Compare 2-3 tickers side-by-side with a recommendation.",
+    "- **explain_decision**: Explain why a trade was or wasn't placed for a ticker.",
+    "",
+    "### Portfolio Tools",
+    "- **portfolio_status**: Get current portfolio: open positions, P&L, sector breakdown.",
+    "- **run_summary**: Get details of a specific or most recent research run.",
+    "- **performance_report**: Get accuracy stats, win rate, and performance analysis.",
+    "",
+    "## Tool Usage Guidelines",
+    '- When the user says "buy NVDA" or "go long on AAPL", use place_trade.',
+    '- When the user asks "how am I doing", use portfolio_status.',
+    '- When the user says "research TSLA" or "what do you think about MSFT", use research_ticker.',
+    '- When the user asks "why didn\'t we trade X", use explain_decision.',
+    "- Always confirm trade actions (place/close/modify) before executing.",
+    "- For research requests, go ahead and call the tool without asking — the user expects action.",
   ];
 
   if (!runContext) return parts.join("\n");
