@@ -1,4 +1,4 @@
-import { streamText, tool, stepCountIs } from "ai";
+import { streamText, tool, stepCountIs, convertToModelMessages } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 
@@ -97,6 +97,9 @@ export async function POST(req: Request) {
   try {
     const { messages, currentConfig } = await req.json();
 
+    // Convert UIMessage[] (from useChat/DefaultChatTransport) → ModelMessage[] (for streamText)
+    const modelMessages = await convertToModelMessages(messages);
+
     // If editing an existing analyst, include current config in context
     let systemPrompt = SYSTEM_PROMPT;
     if (currentConfig) {
@@ -106,7 +109,7 @@ export async function POST(req: Request) {
     const result = streamText({
       model: openai("gpt-4o"),
       system: systemPrompt,
-      messages,
+      messages: modelMessages,
       tools: {
         suggest_config: tool({
           description:
