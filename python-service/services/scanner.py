@@ -44,7 +44,11 @@ async def _safe(coro):
         return None
 
 
-async def get_research_candidates(agent_config: dict) -> list[str]:
+async def get_research_candidates(
+    agent_config: dict,
+    market_context=None,
+    emit_fn=None,
+) -> list[str]:
     """
     Discover and rank research candidates from multiple sources (DAV-80).
 
@@ -52,17 +56,33 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
     weight, deduplicates, and returns the top-5 to top-10 tickers ranked
     by aggregate score after applying agent_config filters.
 
+    Args:
+        agent_config: Agent configuration dict.
+        market_context: Optional MarketContext from Phase 1 (DAV-121).
+            Used for sector ETF momentum boost and portfolio gap awareness.
+        emit_fn: Optional async callable to emit per-source SSE events (DAV-123).
+
     Returns 3–10 ticker symbols, hard-capped at MAX_CANDIDATES.
     Logs per-ticker scores for debugging.
     """
     finnhub = FinnhubService()
     scores: dict[str, int] = defaultdict(int)
+    source_details: dict[str, list[str]] = defaultdict(list)  # ticker → source labels
 
     # ── 1. Agent watchlist (highest priority, scored synchronously) ───────────
     for ticker in agent_config.get("watchlist", []):
         t = ticker.upper().strip()
         if t:
             scores[t] += _SCORES["watchlist"]
+            source_details[t].append("watchlist")
+    if emit_fn:
+        watchlist = agent_config.get("watchlist", [])
+        await emit_fn({
+            "type": "scanner_source",
+            "source": "watchlist",
+            "summary": f"{len(watchlist)} watchlist ticker{'s' if len(watchlist) != 1 else ''}"
+            if watchlist else "No watchlist configured",
+        })
 
     # ── 2. Parallel discovery: earnings, movers, reddit, stocktwits ───────────
     today = date.today()
@@ -76,21 +96,59 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
         _safe(get_trending_tickers_stocktwits()),
     )
 
+    # Earnings
+    earnings_tickers = []
     for item in (earnings_res or [])[:20]:
         t = item.get("symbol", "").upper().strip()
         if t:
             scores[t] += _SCORES["earnings"]
+            source_details[t].append("earnings")
+            earnings_tickers.append(f"{t} ({item.get('date', '?')})")
+    if emit_fn:
+        await emit_fn({
+            "type": "scanner_source",
+            "source": "earnings",
+            "summary": f"Earnings calendar: {', '.join(earnings_tickers[:5])}"
+            if earnings_tickers else "No upcoming earnings found",
+        })
 
+    # Market movers
     for t in (movers_res or []):
         t = t.upper().strip()
         if t:
             scores[t] += _SCORES["movers"]
+            source_details[t].append("movers")
+    if emit_fn:
+        await emit_fn({
+            "type": "scanner_source",
+            "source": "movers",
+            "summary": f"Market movers: {', '.join((movers_res or [])[:5])}"
+            if movers_res else "No movers data",
+        })
 
+    # Reddit
     for t in (reddit_res or []):
         scores[t] += _SCORES["reddit"]
+        source_details[t].append("reddit")
+    if emit_fn:
+        await emit_fn({
+            "type": "scanner_source",
+            "source": "reddit",
+            "summary": f"Reddit trending: {', '.join((reddit_res or [])[:5])}"
+            if reddit_res else "No Reddit trending",
+        })
 
+    # StockTwits
     for t in (stocktwits_res or []):
         scores[t] += _SCORES["stocktwits"]
+        source_details[t].append("stocktwits")
+    if emit_fn:
+        await emit_fn({
+            "type": "scanner_source",
+            "source": "stocktwits",
+            "summary": f"StockTwits trending: {', '.join((stocktwits_res or [])[:5])}"
+            if stocktwits_res else "No StockTwits trending",
+        })
 
     # ── 3. Finnhub fallback only if FMP movers returned nothing ───────────────
     if not movers_res:
@@ -99,6 +157,35 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
             t = t.upper().strip()
             if t:
                 scores[t] += _SCORES["finnhub"]
+                source_details[t].append("finnhub")
+
+    # ── 3b. Sector ETF momentum boost (DAV-123) ──────────────────────────────
+    # If a sector ETF is up 2%+, boost tech candidates from that sector
+    if market_context and market_context.sector_performance:
+        hot_sectors = [
+            s.name for s in market_context.sector_performance
+            if s.change_pct >= 2.0
+        ]
+        if hot_sectors:
+            logger.info("Hot sectors (2%%+ today): %s", hot_sectors)
+            if emit_fn:
+                await emit_fn({
+                    "type": "scanner_source",
+                    "source": "sector_momentum",
+                    "summary": f"Hot sectors: {', '.join(hot_sectors)} (2%+ today)",
+                })
+
+    # ── 3c. Portfolio gap awareness (DAV-123) ─────────────────────────────────
+    # If portfolio is concentrated in certain sectors, note it for downstream
+    portfolio_sectors = set()
+    if market_context and market_context.portfolio:
+        portfolio_sectors = set(s.upper() for s in market_context.portfolio.sectors_held)
+        if portfolio_sectors and emit_fn:
+            await emit_fn({
+                "type": "scanner_source",
+                "source": "portfolio_awareness",
+                "summary": f"Current portfolio sectors: {', '.join(portfolio_sectors)}. Diversification encouraged.",
+            })
 
     # ── 4. Log scores for debugging ───────────────────────────────────────────
     top_debug = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:15]
@@ -142,7 +229,26 @@ async def get_research_candidates(agent_config: dict) -> list[str]:
         extras = [t for t in ranked if t not in filtered]
         filtered.extend(extras[: MIN_CANDIDATES - len(filtered)])
 
-    return filtered[:MAX_CANDIDATES]
+    final = filtered[:MAX_CANDIDATES]
+
+    # ── 8. Emit candidates_selected event with reasoning (DAV-123) ────────────
+    if emit_fn:
+        selection_details = []
+        for t in final:
+            detail = {
+                "ticker": t,
+                "score": scores.get(t, 0),
+                "sources": source_details.get(t, []),
+            }
+            selection_details.append(detail)
+        await emit_fn({
+            "type": "candidates_selected",
+            "tickers": final,
+            "count": len(final),
+            "selection": selection_details,
+        })
+
+    return final
 
 
 def _add(ticker: str, seen: set[str], out: list[str]) -> None:

@@ -15,9 +15,11 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from models import RunRequest, RunResponse, ThesisOutput
+from models import MarketContext, PortfolioState, RunRequest, RunResponse, ThesisOutput
 from services.finrobot import run_data_cot, run_concept_cot, run_thesis_cot
 from services.finnhub import FinnhubService
+from services.market_context import generate_market_context
+from services.portfolio_synthesis import generate_portfolio_synthesis
 from services.scanner import get_research_candidates
 
 _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
@@ -74,6 +76,19 @@ async def research_run(body: RunRequest):
     total_tokens = sum(r[1] for r in results)
     passed = sum(1 for t in theses if t.direction == "PASS")
 
+    # Phase 5: Portfolio Synthesis (DAV-122)
+    synthesis = None
+    actionable = [t for t in theses if t.direction != "PASS"]
+    if actionable:
+        try:
+            synthesis = await generate_portfolio_synthesis(
+                theses=theses,
+                market_context=None,  # batch endpoint doesn't run market context
+                agent_config=agent_config,
+            )
+        except Exception as exc:
+            logger.warning("Portfolio synthesis failed in batch run: %s", exc)
+
     return RunResponse(
         run_id=str(uuid.uuid4()),
         theses=theses,
@@ -82,6 +97,7 @@ async def research_run(body: RunRequest):
         total_tokens=total_tokens,
         duration_seconds=round(time.monotonic() - started, 2),
         source=body.source,
+        portfolio_synthesis=synthesis,
     )
 
 
@@ -360,23 +376,64 @@ class RunStreamRequest(BaseModel):
     tickers: List[str] = []
     source: str = "AGENT"
     agent_config: dict = {}
+    portfolio_state: dict | None = None  # DAV-121: {open_positions, total_exposure, ...}
 
 
 async def _stream_run(
     tickers: List[str],
     source: str,
     agent_config: dict,
+    portfolio_state: dict | None = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Sequential per-ticker streaming: emit events as each stock is analyzed.
-    Tickers run one at a time to produce a clean, readable narrative.
+
+    Pipeline phases:
+      Phase 1: Market Context (DAV-121) — SPX, VIX, sector ETFs, regime
+      Phase 2: Scanner discovery (if no tickers provided)
+      Phase 3-4: Per-ticker research (Data-CoT → Combined Concept+Thesis)
+      Phase 5: Portfolio Synthesis (DAV-122) — cross-pick ranking + sizing
     """
     from services.finrobot import run_full_pipeline_streaming
 
     def event(type_: str, **kwargs) -> dict:
         return {"data": json.dumps({"type": type_, **kwargs})}
 
-    # Scanner discovery when no tickers provided
+    # ── Phase 1: Market Context (DAV-121) ─────────────────────────────────
+    market_ctx = None
+    try:
+        ps = PortfolioState(**portfolio_state) if portfolio_state else None
+
+        queue_ctx: asyncio.Queue = asyncio.Queue()
+
+        async def _emit_ctx(data: dict) -> None:
+            queue_ctx.put_nowait(data)
+
+        ctx_task = asyncio.create_task(
+            generate_market_context(portfolio_state=ps, emit_fn=_emit_ctx)
+        )
+
+        # Drain context events (should be just one market_context event)
+        done = False
+        while not done:
+            try:
+                item = await asyncio.wait_for(queue_ctx.get(), timeout=0.1)
+                yield {"data": json.dumps(item)}
+            except asyncio.TimeoutError:
+                if ctx_task.done():
+                    done = True
+
+        # Drain any remaining events
+        while not queue_ctx.empty():
+            item = queue_ctx.get_nowait()
+            yield {"data": json.dumps(item)}
+
+        market_ctx = ctx_task.result()
+    except Exception as exc:
+        logger.warning("Market context phase failed: %s", exc)
+        yield event("market_context_error", message=str(exc))
+
+    # ── Phase 2: Scanner discovery ────────────────────────────────────────
     if not tickers:
         sectors = agent_config.get("sectors", [])
         yield event(
@@ -384,8 +441,35 @@ async def _stream_run(
             message="Scanning market for research opportunities...",
             sectors=sectors,
         )
+
+        scanner_queue: asyncio.Queue = asyncio.Queue()
+
+        async def _emit_scanner(data: dict) -> None:
+            scanner_queue.put_nowait(data)
+
         try:
-            tickers = await get_research_candidates(agent_config)
+            scanner_task = asyncio.create_task(
+                get_research_candidates(
+                    agent_config,
+                    market_context=market_ctx,
+                    emit_fn=_emit_scanner,
+                )
+            )
+
+            # Drain scanner events as they arrive
+            scanner_done = False
+            while not scanner_done:
+                try:
+                    item = await asyncio.wait_for(scanner_queue.get(), timeout=0.1)
+                    yield {"data": json.dumps(item)}
+                except asyncio.TimeoutError:
+                    if scanner_task.done():
+                        scanner_done = True
+            while not scanner_queue.empty():
+                item = scanner_queue.get_nowait()
+                yield {"data": json.dumps(item)}
+
+            tickers = scanner_task.result()
         except Exception as exc:
             yield event("error", message=f"Scanner error: {exc}")
             return
@@ -396,6 +480,7 @@ async def _stream_run(
 
     yield event("candidates", tickers=tickers, count=len(tickers))
 
+    # ── Phase 3-4: Per-ticker research ────────────────────────────────────
     finnhub = FinnhubService()
     all_theses: List[ThesisOutput] = []
 
@@ -411,7 +496,10 @@ async def _stream_run(
             _efn=_emit,
         ) -> tuple:
             try:
-                return await run_full_pipeline_streaming(_ticker, agent_config, _efn, finnhub)
+                return await run_full_pipeline_streaming(
+                    _ticker, agent_config, _efn, finnhub,
+                    market_context=market_ctx,
+                )
             finally:
                 _q.put_nowait(_STREAM_DONE)
 
@@ -430,6 +518,42 @@ async def _stream_run(
         except Exception as exc:
             logger.warning("Ticker task failed for %s: %s", ticker, exc)
 
+    # ── Phase 5: Portfolio Synthesis (DAV-122) ────────────────────────────
+    synthesis = None
+    actionable = [t for t in all_theses if t.direction != "PASS"]
+    if actionable:
+        try:
+            synth_queue: asyncio.Queue = asyncio.Queue()
+
+            async def _emit_synth(data: dict) -> None:
+                synth_queue.put_nowait(data)
+
+            synth_task = asyncio.create_task(
+                generate_portfolio_synthesis(
+                    theses=all_theses,
+                    market_context=market_ctx,
+                    agent_config=agent_config,
+                    emit_fn=_emit_synth,
+                )
+            )
+
+            # Drain synthesis events (run_summary)
+            synth_done = False
+            while not synth_done:
+                try:
+                    item = await asyncio.wait_for(synth_queue.get(), timeout=0.1)
+                    yield {"data": json.dumps(item)}
+                except asyncio.TimeoutError:
+                    if synth_task.done():
+                        synth_done = True
+            while not synth_queue.empty():
+                item = synth_queue.get_nowait()
+                yield {"data": json.dumps(item)}
+
+            synthesis = synth_task.result()
+        except Exception as exc:
+            logger.warning("Portfolio synthesis failed: %s", exc)
+
     recommended = sum(1 for t in all_theses if t.direction != "PASS")
     yield event(
         "run_complete",
@@ -437,11 +561,13 @@ async def _stream_run(
         analyzed=len(all_theses),
         recommended=recommended,
         source=source,
+        market_context=market_ctx.model_dump() if market_ctx else None,
+        portfolio_synthesis=synthesis.model_dump() if synthesis else None,
     )
 
 
 @router.post("/run-stream")
 async def research_run_stream(body: RunStreamRequest):
     return EventSourceResponse(
-        _stream_run(body.tickers, body.source, body.agent_config)
+        _stream_run(body.tickers, body.source, body.agent_config, body.portfolio_state)
     )
