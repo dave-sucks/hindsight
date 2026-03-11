@@ -4,9 +4,8 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -15,16 +14,32 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table';
+import { StockLogo } from '@/components/StockLogo';
+import { PnlBadge } from '@/components/ui/pnl-badge';
+import { PnlArrow } from '@/components/ui/pnl-arrow';
 import { cn } from '@/lib/utils';
 import { closeTrade } from '@/lib/actions/closeTrade.actions';
 import {
   mockOpenTrades,
   mockClosedTrades,
   type MockTrade,
-  type TradeDirection,
   type TradeStatus,
 } from '@/lib/mock-data/trades';
-import { ArrowLeftRight, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
+import { ArrowLeftRight, Loader2, MoreHorizontal } from 'lucide-react';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -35,189 +50,73 @@ interface TradesPageProps {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FilterStatus = 'ALL' | 'ACTIVE' | 'CLOSED';
-type FilterDirection = 'ALL' | TradeDirection;
+type FilterTab = 'ALL' | 'OPEN' | 'CLOSED' | 'WON' | 'LOST';
 
-// ─── Badge helpers ─────────────────────────────────────────────────────────────
+// ─── Status helpers ──────────────────────────────────────────────────────────
 
-function DirectionBadge({ direction }: { direction: TradeDirection }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn(
-        'text-xs font-semibold tabular-nums',
-        direction === 'LONG'
-          ? 'border-primary/50 text-primary'
-          : 'border-amber-500/50 text-amber-500'
-      )}
-    >
-      {direction}
-    </Badge>
-  );
-}
-
-const STATUS_CONFIG: Record<TradeStatus, { label: string; cls: string; live?: boolean }> = {
-  OPEN: { label: 'Open', cls: 'border-primary/40 text-primary', live: true },
-  CLOSED_WIN: { label: 'Target Hit', cls: 'border-emerald-500/40 text-emerald-500' },
-  CLOSED_LOSS: { label: 'Stop Hit', cls: 'border-red-500/40 text-red-500' },
-  CLOSED_EXPIRED: { label: 'Expired', cls: 'border-muted-foreground/40 text-muted-foreground' },
+const STATUS_CONFIG: Record<TradeStatus, { label: string; dotClass: string }> = {
+  OPEN: { label: 'Open', dotClass: 'bg-emerald-500 animate-pulse' },
+  CLOSED_WIN: { label: 'Won', dotClass: 'bg-emerald-500' },
+  CLOSED_LOSS: { label: 'Loss', dotClass: 'bg-red-500' },
+  CLOSED_EXPIRED: { label: 'Expired', dotClass: 'bg-muted-foreground/40' },
 };
 
-function StatusBadge({ status }: { status: TradeStatus }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, cls: '' };
-  return (
-    <Badge variant="outline" className={cn('text-xs', cfg.cls)}>
-      {cfg.live && (
-        <span className="relative flex h-1.5 w-1.5 mr-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
-        </span>
-      )}
-      {cfg.label}
-    </Badge>
-  );
+function formatRelativeTime(dateStr: string): string {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return 'just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// ─── Trade card ───────────────────────────────────────────────────────────────
+// ─── Target progress dots (10 flat dots) ─────────────────────────────────────
 
-function TradeCard({
-  trade,
-  onClose,
+function TargetDots({
+  entry,
+  current,
+  target,
+  stop,
+  direction,
 }: {
-  trade: MockTrade;
-  onClose: (id: string) => void;
+  entry: number;
+  current: number;
+  target: number;
+  stop: number;
+  direction: string;
 }) {
-  const isOpen = trade.status === 'OPEN';
-  const isPos = trade.pnl >= 0;
+  const range = target - stop;
+  if (range === 0) return null;
 
-  const gainPct =
-    trade.targetPrice && trade.entryPrice
-      ? (((trade.targetPrice - trade.entryPrice) / trade.entryPrice) * 100).toFixed(1)
-      : null;
-  const lossPct =
-    trade.stopPrice && trade.entryPrice
-      ? (((trade.entryPrice - trade.stopPrice) / trade.entryPrice) * 100).toFixed(1)
-      : null;
-
-  const openedLabel = new Date(trade.openedAt).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
+  let progress: number;
+  if (direction === 'LONG') {
+    progress = (current - stop) / range;
+  } else {
+    progress = (stop - current) / range;
+  }
+  const filled = Math.max(0, Math.min(10, Math.round(progress * 10)));
+  const isPositive = direction === 'LONG' ? current >= entry : current <= entry;
 
   return (
-    <Card className="relative hover:border-foreground/25 transition-colors overflow-hidden">
-      {/* Stretched link fills the card — sits below interactive elements */}
-      <Link
-        href={`/trades/${trade.id}`}
-        className="absolute inset-0 z-0"
-        aria-label={`View ${trade.ticker} trade`}
-      />
-      <CardContent className="p-4 space-y-3 relative">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-base font-semibold font-mono">{trade.ticker}</span>
-            <DirectionBadge direction={trade.direction} />
-          </div>
-          <StatusBadge status={trade.status} />
-        </div>
-
-        {/* P&L */}
-        <div>
-          <p
-            className={cn(
-              'text-2xl font-semibold tabular-nums leading-none',
-              isPos ? 'text-emerald-500' : 'text-red-500'
-            )}
-          >
-            {isPos ? '+' : ''}${Math.abs(trade.pnl).toFixed(2)}
-          </p>
-          <p
-            className={cn(
-              'text-xs tabular-nums mt-1 flex items-center gap-1',
-              isPos ? 'text-emerald-500/70' : 'text-red-500/70'
-            )}
-          >
-            {isPos ? (
-              <TrendingUp className="h-3 w-3" />
-            ) : (
-              <TrendingDown className="h-3 w-3" />
-            )}
-            {isPos ? '+' : ''}
-            {trade.pnlPct.toFixed(2)}%
-          </p>
-        </div>
-
-        {/* 4-stat grid */}
-        <div className="grid grid-cols-4 gap-2 rounded-lg bg-muted/40 p-2.5 text-center">
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-              Entry
-            </p>
-            <p className="text-xs tabular-nums font-medium">
-              ${trade.entryPrice.toFixed(2)}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-              Target
-            </p>
-            <p className="text-xs tabular-nums font-medium text-emerald-500">
-              ${trade.targetPrice.toFixed(2)}
-              {gainPct && (
-                <span className="text-[10px] text-muted-foreground ml-0.5">
-                  +{gainPct}%
-                </span>
-              )}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-              Stop
-            </p>
-            <p className="text-xs tabular-nums font-medium text-red-500">
-              ${trade.stopPrice.toFixed(2)}
-              {lossPct && (
-                <span className="text-[10px] text-muted-foreground ml-0.5">
-                  −{lossPct}%
-                </span>
-              )}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-              Conf
-            </p>
-            <p
-              className={cn(
-                'text-xs tabular-nums font-medium',
-                trade.confidenceScore >= 70 ? 'text-emerald-500' : 'text-amber-500'
-              )}
-            >
-              {trade.confidenceScore}%
-            </p>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">{openedLabel}</p>
-          {isOpen && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="relative z-10 h-7 text-xs px-2 text-red-500 hover:text-red-500 hover:bg-red-500/10"
-              onClick={(e) => {
-                e.preventDefault();
-                onClose(trade.id);
-              }}
-            >
-              Close
-            </Button>
+    <div className="flex gap-[3px] items-center">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div
+          key={i}
+          className={cn(
+            'h-1.5 w-1.5 rounded-full',
+            i < filled
+              ? isPositive
+                ? 'bg-emerald-500'
+                : 'bg-red-500'
+              : 'bg-muted',
           )}
-        </div>
-      </CardContent>
-    </Card>
+        />
+      ))}
+    </div>
   );
 }
 
@@ -225,7 +124,7 @@ function TradeCard({
 
 function EmptyState({ filtered }: { filtered: boolean }) {
   return (
-    <div className="col-span-full flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
+    <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
       <ArrowLeftRight className="h-8 w-8 mb-3 opacity-30" />
       <p className="text-sm">
         {filtered ? 'No trades match your filters' : 'No paper trades yet'}
@@ -250,8 +149,7 @@ export default function TradesPage({
   const closedTrades = initialClosedTrades ?? mockClosedTrades;
   const allTrades = useMemo(() => [...openTrades, ...closedTrades], [openTrades, closedTrades]);
 
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('ALL');
-  const [dirFilter, setDirFilter] = useState<FilterDirection>('ALL');
+  const [tab, setTab] = useState<FilterTab>('ALL');
   const [closeTarget, setCloseTarget] = useState<string | null>(null);
   const [closeLoading, setCloseLoading] = useState(false);
 
@@ -273,82 +171,213 @@ export default function TradesPage({
   }
 
   const filtered = useMemo(() => {
-    let trades = allTrades;
-    if (statusFilter === 'ACTIVE') trades = trades.filter((t) => t.status === 'OPEN');
-    else if (statusFilter === 'CLOSED') trades = trades.filter((t) => t.status !== 'OPEN');
-    if (dirFilter !== 'ALL') trades = trades.filter((t) => t.direction === dirFilter);
-    return trades;
-  }, [allTrades, statusFilter, dirFilter]);
+    switch (tab) {
+      case 'OPEN':
+        return allTrades.filter((t) => t.status === 'OPEN');
+      case 'CLOSED':
+        return allTrades.filter((t) => t.status !== 'OPEN');
+      case 'WON':
+        return allTrades.filter((t) => t.status === 'CLOSED_WIN');
+      case 'LOST':
+        return allTrades.filter((t) => t.status === 'CLOSED_LOSS' || t.status === 'CLOSED_EXPIRED');
+      default:
+        return allTrades;
+    }
+  }, [allTrades, tab]);
 
-  const isFiltered = statusFilter !== 'ALL' || dirFilter !== 'ALL';
+  const isFiltered = tab !== 'ALL';
+
+  const tabs: { key: FilterTab; label: string }[] = [
+    { key: 'ALL', label: 'All' },
+    { key: 'OPEN', label: 'Open' },
+    { key: 'CLOSED', label: 'Closed' },
+    { key: 'WON', label: 'Won' },
+    { key: 'LOST', label: 'Lost' },
+  ];
 
   return (
-    <div className="p-6 space-y-5 max-w-5xl">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold">Paper Trades</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          {allTrades.length} trade{allTrades.length !== 1 ? 's' : ''} ·{' '}
-          <span className="text-foreground tabular-nums">{openTrades.length} open</span>
-        </p>
+    <div className="space-y-0">
+      {/* Header + filter tabs */}
+      <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Trades</h1>
+        <div className="flex items-center gap-0.5 bg-muted/50 rounded-md border px-1 py-0.5">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={cn(
+                'px-2.5 py-1 text-xs rounded transition-colors',
+                tab === t.key
+                  ? 'bg-background text-foreground font-medium shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        {(['ALL', 'ACTIVE', 'CLOSED'] as FilterStatus[]).map((f) => (
-          <Button
-            key={f}
-            variant={statusFilter === f ? 'secondary' : 'outline'}
-            size="sm"
-            className={cn(
-              'h-8 text-xs',
-              statusFilter !== f && 'text-muted-foreground'
-            )}
-            onClick={() => setStatusFilter(f)}
-          >
-            {f === 'ALL'
-              ? `All (${allTrades.length})`
-              : f === 'ACTIVE'
-              ? `Open (${openTrades.length})`
-              : `Closed (${closedTrades.length})`}
-          </Button>
-        ))}
+      {/* Table */}
+      {filtered.length === 0 ? (
+        <EmptyState filtered={isFiltered} />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="pl-6">Name</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Price</TableHead>
+              <TableHead className="text-right">Value</TableHead>
+              <TableHead className="text-right">Qty</TableHead>
+              <TableHead className="text-right">Entry</TableHead>
+              <TableHead className="text-right">Day Gain</TableHead>
+              <TableHead className="text-right">Total Gain</TableHead>
+              <TableHead>Target</TableHead>
+              <TableHead>Direction</TableHead>
+              <TableHead>Placed</TableHead>
+              <TableHead className="text-right">Stop</TableHead>
+              <TableHead className="pr-6"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map((trade) => {
+              const cfg = STATUS_CONFIG[trade.status] ?? { label: trade.status, dotClass: 'bg-muted-foreground/40' };
+              const isOpen = trade.status === 'OPEN';
+              const shares = trade.shares ?? 1;
+              const totalValue = trade.currentPrice * shares;
+              const totalGain = trade.pnl;
+              const totalGainPct = trade.pnlPct;
+              const isUp = totalGain >= 0;
 
-        <div className="h-5 w-px bg-border mx-1" />
+              return (
+                <TableRow key={trade.id} className="cursor-pointer">
+                  {/* Name: logo + company name + ticker/confidence subhead */}
+                  <TableCell className="pl-6">
+                    <Link href={`/trades/${trade.id}`} className="flex items-center gap-2.5">
+                      <StockLogo ticker={trade.ticker} size="sm" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-tight">{trade.companyName ?? trade.ticker}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono leading-tight">
+                          {trade.ticker} <span className="opacity-30">·</span> {trade.confidenceScore}%
+                        </p>
+                      </div>
+                    </Link>
+                  </TableCell>
 
-        {(['ALL', 'LONG', 'SHORT'] as FilterDirection[]).map((d) => (
-          <Button
-            key={d}
-            variant={dirFilter === d ? 'secondary' : 'outline'}
-            size="sm"
-            className={cn(
-              'h-8 text-xs',
-              dirFilter !== d && 'text-muted-foreground'
-            )}
-            onClick={() => setDirFilter(d)}
-          >
-            {d === 'ALL' ? 'All Directions' : d}
-          </Button>
-        ))}
-      </div>
+                  {/* Status */}
+                  <TableCell>
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground">
+                      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${cfg.dotClass}`} />
+                      {cfg.label}
+                    </span>
+                  </TableCell>
 
-      {/* Card grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.length === 0 ? (
-          <EmptyState filtered={isFiltered} />
-        ) : (
-          filtered.map((trade) => (
-            <TradeCard
-              key={trade.id}
-              trade={trade}
-              onClose={(id) => setCloseTarget(id)}
-            />
-          ))
-        )}
-      </div>
+                  {/* Current Price */}
+                  <TableCell className="text-right tabular-nums text-sm">
+                    ${trade.currentPrice.toFixed(2)}
+                  </TableCell>
 
-      {filtered.length > 0 && (
-        <p className="text-xs text-muted-foreground tabular-nums">
+                  {/* Total Value */}
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    ${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  </TableCell>
+
+                  {/* Quantity */}
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    {shares}
+                  </TableCell>
+
+                  {/* Entry Price */}
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    ${trade.entryPrice.toFixed(2)}
+                  </TableCell>
+
+                  {/* Day Gain — icon + foreground text */}
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
+                      <span className="text-sm tabular-nums">
+                        {isUp ? '+' : ''}${totalGain.toFixed(2)}
+                      </span>
+                    </div>
+                  </TableCell>
+
+                  {/* Total Gain — icon + foreground text + badge */}
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
+                      <span className="text-sm tabular-nums">
+                        {isUp ? '+' : ''}${totalGain.toFixed(2)}
+                      </span>
+                      <PnlBadge value={totalGainPct} />
+                    </div>
+                  </TableCell>
+
+                  {/* Target dots */}
+                  <TableCell>
+                    <TargetDots
+                      entry={trade.entryPrice}
+                      current={trade.currentPrice}
+                      target={trade.targetPrice}
+                      stop={trade.stopPrice}
+                      direction={trade.direction}
+                    />
+                  </TableCell>
+
+                  {/* Direction — plain Badge component */}
+                  <TableCell>
+                    <Badge variant="secondary">{trade.direction}</Badge>
+                  </TableCell>
+
+                  {/* Time placed — regular text */}
+                  <TableCell className="text-sm text-muted-foreground">
+                    {formatRelativeTime(trade.openedAt)}
+                  </TableCell>
+
+                  {/* Stop — muted foreground */}
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    ${trade.stopPrice.toFixed(2)}
+                  </TableCell>
+
+                  {/* 3-dot menu */}
+                  <TableCell className="pr-6">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                          <Link href={`/trades/${trade.id}`} className="w-full">
+                            View details
+                          </Link>
+                        </DropdownMenuItem>
+                        {isOpen && (
+                          <DropdownMenuItem
+                            className="text-red-500 focus:text-red-500"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCloseTarget(trade.id);
+                            }}
+                          >
+                            Close trade
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
+
+      {filtered.length > 0 && isFiltered && (
+        <p className="text-xs text-muted-foreground tabular-nums px-6 py-3">
           Showing {filtered.length} of {allTrades.length} trades
         </p>
       )}

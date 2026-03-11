@@ -64,6 +64,8 @@ export interface RecentPick {
     openedAt: string; // ISO
   } | null;
   currentPrice: number | null;
+  analystName: string | null;
+  sourcesUsed: unknown;
 }
 
 export interface DashboardData {
@@ -213,6 +215,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       targetPrice: true,
       stopLoss: true,
       createdAt: true,
+      sourcesUsed: true,
+      researchRun: {
+        select: { agentConfig: { select: { name: true } } },
+      },
       trade: {
         select: {
           id: true,
@@ -256,6 +262,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       openedAt: t.openedAt.toISOString(),
       closedAt: undefined,
       thesis: "",
+      shares: t.shares,
     };
   });
 
@@ -279,6 +286,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       openedAt: t.openedAt.toISOString(),
       closedAt: t.closedAt?.toISOString(),
       thesis: "",
+      shares: t.shares,
     };
   });
 
@@ -419,6 +427,8 @@ export async function getDashboardData(): Promise<DashboardData> {
         }
       : null,
     currentPrice: priceMap[p.ticker] ?? null,
+    analystName: p.researchRun?.agentConfig?.name ?? null,
+    sourcesUsed: p.sourcesUsed,
   }));
 
   return {

@@ -50,10 +50,10 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             <AppSidebar user={userObj} initialStocks={initialStocks} portfolioValue={portfolioValue} />
             <SidebarInset>
                 {/* Top bar — sidebar toggle + search + theme */}
-                <header className="flex h-12 items-center gap-2 border-b px-3 shrink-0">
+                <header className="flex w-full h-12 items-center gap-2 border-b px-4 shrink-0">
                     <SidebarTrigger className="-ml-1" />
-                    <Separator orientation="vertical" className="h-4" />
-                    <div className="flex-1">
+                    <Separator orientation="vertical" className="h-8" />
+                    <div className="flex-1 flex items-center justify-center">
                         <SearchCommand renderAs="icon" label="Search stocks" initialStocks={initialStocks} />
                     </div>
                     <ThemeToggle />

@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -14,14 +12,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { TradeReviewSheet } from "@/components/TradeReviewSheet";
+import { PnlBadge } from "@/components/ui/pnl-badge";
 import {
   ExternalLink,
   Newspaper,
   BarChart2,
   Brain,
-  TrendingUp,
-  TrendingDown,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -138,20 +134,22 @@ export function ThesisCard({
   thesis: ThesisCardData;
   profile?: ThesisCardProfile;
 }) {
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [imgError, setImgError] = useState(false);
 
   const isLong = thesis.direction === "LONG";
   const isPass = thesis.direction === "PASS";
   const trade = thesis.trade;
-  const alreadyTraded = trade !== null;
-
-  const pnl = trade?.realizedPnl ?? null;
-  const pnlColor = pnl != null ? (pnl >= 0 ? "text-emerald-500" : "text-red-500") : "";
 
   // ── Status badge (outline only, colored dot inside) ──
   const tradeStatus = trade?.status;
-  const statusLabel = tradeStatus ?? (isPass ? "PASS" : "PENDING");
+  const statusLabel =
+    tradeStatus === "OPEN" ? "Open"
+    : tradeStatus === "WIN" ? "Won"
+    : tradeStatus === "LOSS" ? "Lost"
+    : tradeStatus === "CLOSED" ? "Closed"
+    : tradeStatus === "EVALUATED" ? "Evaluated"
+    : isPass ? "Pass"
+    : "Pending";
 
   const dotClass =
     tradeStatus === "OPEN"
@@ -160,7 +158,9 @@ export function ThesisCard({
         ? "bg-emerald-500"
         : tradeStatus === "LOSS"
           ? "bg-red-500"
-          : "bg-muted-foreground/40";
+          : tradeStatus === "CLOSED" || tradeStatus === "EVALUATED"
+            ? "bg-muted-foreground"
+            : "bg-muted-foreground/40";
 
   // ── Profile ──
   const companyName =
@@ -196,12 +196,6 @@ export function ThesisCard({
       ? thesis.reasoningSummary.slice(0, 647) + "…"
       : thesis.reasoningSummary;
 
-  // ── Market value ──
-  const marketValue =
-    thesis.sharesHeld != null && displayPrice != null
-      ? thesis.sharesHeld * displayPrice
-      : null;
-
   const entryTime = formatEntryTime(thesis.createdAt);
   const targetLine = formatTarget(thesis.targetPrice, thesis.stopLoss, thesis.holdDuration);
 
@@ -221,124 +215,110 @@ export function ThesisCard({
 
         <div className="relative z-10 pointer-events-none">
 
-          {/* ── TOP: logo · name · price ── */}
-          <div className="p-3 border-b flex items-start justify-between gap-4">
+          {/* ── TOP: logo · name · status · price ── */}
+          <div className="p-3 border-b">
+            <div className="flex items-start justify-between gap-4">
 
-            {/* Left: logo + company + ticker subhead */}
-            <div className="flex items-center gap-2.5 min-w-0">
-              {logoUrl ? (
-                <img
-                  src={logoUrl}
-                  alt={thesis.ticker}
-                  onError={() => setImgError(true)}
-                  className="h-9 w-9 rounded-md object-contain bg-muted shrink-0 border border-border"
-                />
-              ) : (
-                <div className="h-9 w-9 rounded-md bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0 border border-border">
-                  {thesis.ticker.slice(0, 2)}
-                </div>
-              )}
+              {/* Left: logo + company name + status badge + ticker subhead */}
+              <div className="flex items-center gap-2.5 min-w-0">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={thesis.ticker}
+                    onError={() => setImgError(true)}
+                    className="h-9 w-9 rounded-md object-contain bg-muted shrink-0 border border-border"
+                  />
+                ) : (
+                  <div className="h-9 w-9 rounded-md bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0 border border-border">
+                    {thesis.ticker.slice(0, 2)}
+                  </div>
+                )}
 
-              <div className="min-w-0">
-                <p className="text-xl font-semibold text-foreground truncate leading-tight">
-                  {companyName}
-                </p>
-                {/* Ticker · Exchange · Confidence */}
-                <div className="font-mono text-[11px] text-muted-foreground leading-tight mt-0.5 flex items-center gap-1 flex-wrap">
-                  <span>{thesis.ticker}</span>
-                  {exchange && (
-                    <>
-                      <span className="opacity-30">·</span>
-                      <span>{exchange}</span>
-                    </>
-                  )}
-                  <span className="opacity-30">·</span>
-                  <Tooltip>
-                    <TooltipTrigger render={<span className="cursor-default pointer-events-auto" />}>
-                      {thesis.confidenceScore}%
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-xs text-xs">
-                      Confidence reflects signal quality, data consistency, and the AI&apos;s
-                      directional conviction — higher means stronger evidence for this thesis.
-                    </TooltipContent>
-                  </Tooltip>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-lg font-brand font-semibold text-foreground truncate leading-tight">
+                      {companyName}
+                    </p>
+                    {/* Status badge inline */}
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground bg-transparent shrink-0">
+                      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotClass}`} />
+                      {statusLabel}
+                    </span>
+                  </div>
+                  {/* Ticker · Exchange · Confidence */}
+                  <div className="font-mono text-[11px] text-muted-foreground leading-tight mt-0.5 flex items-center gap-1 flex-wrap">
+                    <span>{thesis.ticker}</span>
+                    {exchange && (
+                      <>
+                        <span className="opacity-30">·</span>
+                        <span>{exchange}</span>
+                      </>
+                    )}
+                    <span className="opacity-30">·</span>
+                    <Tooltip>
+                      <TooltipTrigger render={<span className="cursor-default pointer-events-auto" />}>
+                        {thesis.confidenceScore}%
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-xs text-xs">
+                        Confidence reflects signal quality, data consistency, and the AI&apos;s
+                        directional conviction — higher means stronger evidence for this thesis.
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Right: price + delta on ONE row, target below */}
-            <div className="text-right shrink-0">
-              {/* Single horizontal row: big price + delta inline */}
-              <div className="flex items-baseline justify-end gap-2">
-                <p className="text-xl font-semibold tabular-nums text-foreground leading-none">
-                  {displayPrice != null ? `$${displayPrice.toFixed(2)}` : "—"}
-                </p>
-                {deltaAmount != null && deltaPct != null && (
-                  <div className="flex items-center gap-1.5">
+              {/* Right: price + $delta + %badge — ALL ONE ROW, target below */}
+              <div className="shrink-0 text-right">
+                <div className="flex items-center gap-2">
+                  <p className="text-lg font-medium tabular-nums text-foreground leading-none">
+                    {displayPrice != null ? `$${displayPrice.toFixed(2)}` : "—"}
+                  </p>
+                  {deltaAmount != null && (
                     <span
-                      className={`text-xl tabular-nums font-semibold ${
+                      className={`text-lg tabular-nums font-light ${
                         deltaPositive ? "text-emerald-500" : "text-red-500"
                       }`}
                     >
                       {deltaPositive ? "+" : "−"}${Math.abs(deltaAmount).toFixed(2)}
                     </span>
-                    <span
-                      className={`text-base font-semibold px-1.5 py-0.5 rounded-sm tabular-nums ${
-                        deltaPositive
-                          ? "bg-emerald-500/15 text-emerald-500"
-                          : "bg-red-500/15 text-red-500"
-                      }`}
-                    >
-                      {deltaPositive ? "+" : "−"}{Math.abs(deltaPct).toFixed(2)}%
-                    </span>
-                  </div>
+                  )}
+                  {deltaPct != null && <PnlBadge value={deltaPct} />}
+                </div>
+                {targetLine && (
+                  <p className="text-xs text-muted-foreground mt-1 text-right">
+                    {targetLine}
+                  </p>
                 )}
               </div>
-
-              {/* Target / stop line */}
-              {targetLine && (
-                <p className="text-xs text-muted-foreground mt-1 leading-tight">
-                  {targetLine}
-                </p>
-              )}
             </div>
           </div>
 
-          {/* ── SECOND: status + entry sentence + reasoning ── */}
-          <div className="p-3 border-b space-y-2">
-            {/* Status row */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Outline badge with colored dot — NO colored border/text */}
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground bg-transparent">
-                <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotClass}`} />
-                {statusLabel}
-              </span>
-
-              {/* Entry sentence */}
-              <span className="text-[11px] text-muted-foreground leading-tight">
-                {trade?.entryPrice != null
-                  ? <><span className="tabular-nums">${trade.entryPrice.toFixed(2)}</span> entry</>
-                  : thesis.entryPrice != null
-                    ? <><span className="tabular-nums">${thesis.entryPrice.toFixed(2)}</span> entry</>
-                    : null
-                }
-                {entryTime && <> at {entryTime}</>}
-                {thesis.analystName && (
-                  <> via <span className="text-foreground">{thesis.analystName}</span></>
-                )}
-              </span>
-            </div>
+          {/* ── SECOND: entry sentence + reasoning ── */}
+          <div className="p-3 border-b space-y-1">
+            {/* Entry sentence — bigger, foreground */}
+            {(() => {
+              const ep = trade?.entryPrice ?? thesis.entryPrice;
+              if (ep == null) return null;
+              const verb = isLong ? "Bought" : "Sold short";
+              const sharesText = thesis.sharesHeld != null ? `${thesis.sharesHeld} shares` : "shares";
+              return (
+                <p className="text-sm text-foreground font-medium">
+                  {verb} {sharesText} at <span className="tabular-nums">${ep.toFixed(2)}</span> entry{entryTime && <> at {entryTime}</>}
+                </p>
+              );
+            })()}
 
             {/* Reasoning */}
-            <p className="text-xs text-muted-foreground leading-relaxed">
+            <p className="text-sm font-light text-muted-foreground leading-relaxed">
               {reasoning}
             </p>
           </div>
 
-          {/* ── BOTTOM: sources · signal badges · value / actions ── */}
-          <div className="p-3 flex items-center gap-2 flex-wrap min-h-[40px]">
+          {/* ── BOTTOM: sources left · analyst name right ── */}
+          <div className="p-3 flex items-center gap-2 min-h-[40px]">
 
-            {/* Sources ghost button → popover */}
+            {/* Sources provider logos → popover */}
             {sources.length > 0 && (
               <Popover>
                 <PopoverTrigger
@@ -404,77 +384,16 @@ export function ThesisCard({
               </Popover>
             )}
 
-            {/* Signal type badges (first 3) */}
-            {thesis.signalTypes.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {thesis.signalTypes.slice(0, 3).map((s) => (
-                  <Badge
-                    key={s}
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 h-4"
-                  >
-                    {s.replace(/_/g, " ")}
-                  </Badge>
-                ))}
-              </div>
+            {/* Right: analyst name only */}
+            {thesis.analystName && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                {thesis.analystName}
+              </span>
             )}
-
-            {/* Right: P&L / market value + Trade / View actions */}
-            <div className="ml-auto flex items-center gap-2">
-              {pnl != null && (
-                <span className={`text-xs font-semibold tabular-nums ${pnlColor}`}>
-                  {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} P&L
-                </span>
-              )}
-
-              {marketValue != null && (
-                <span className="text-[11px] tabular-nums text-muted-foreground">
-                  ${marketValue.toFixed(2)}
-                  {thesis.sharesHeld != null && (
-                    <span className="opacity-60 ml-1">· {thesis.sharesHeld} sh</span>
-                  )}
-                </span>
-              )}
-
-              {!alreadyTraded && !isPass && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-6 text-[11px] gap-1 px-2 pointer-events-auto"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setSheetOpen(true);
-                  }}
-                >
-                  {isLong ? (
-                    <TrendingUp className="h-3 w-3 text-emerald-500" />
-                  ) : (
-                    <TrendingDown className="h-3 w-3 text-red-500" />
-                  )}
-                  Trade
-                </Button>
-              )}
-
-            </div>
           </div>
         </div>
       </div>
 
-      <TradeReviewSheet
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        thesis={{
-          id: thesis.id,
-          ticker: thesis.ticker,
-          direction: thesis.direction,
-          entryPrice: thesis.entryPrice,
-          targetPrice: thesis.targetPrice,
-          stopLoss: thesis.stopLoss,
-          confidenceScore: thesis.confidenceScore,
-          holdDuration: thesis.holdDuration,
-        }}
-      />
     </>
   );
 }

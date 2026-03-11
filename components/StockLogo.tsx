@@ -23,7 +23,7 @@ const LABEL_CLS = {
 
 export function StockLogo({ ticker, size = 'md', className }: StockLogoProps) {
   const [err, setErr] = useState(false);
-  const base = cn('rounded-full shrink-0 object-cover', SIZE_CLS[size], className);
+  const base = cn('rounded-md shrink-0 object-cover', SIZE_CLS[size], className);
 
   if (err) {
     return (
