@@ -6,6 +6,7 @@ import { ArrowLeft, Bot, Clock } from "lucide-react";
 import RunChatThread from "@/components/research/RunChatThread";
 import RunLiveStream from "@/components/research/RunLiveStream";
 import { RunFollowupChat } from "@/components/research/RunFollowupChat";
+import type { ComposerRecentThesis } from "@/components/chat/ChatComposer";
 import type { RunEventRow } from "@/components/research/RunChatThread";
 
 // ── Synthesize events from thesis rows for legacy runs ────────────────────────
@@ -137,6 +138,7 @@ export default async function RunPage({
       events: { orderBy: { createdAt: "asc" } },
       theses: {
         select: {
+          id: true,
           ticker: true,
           direction: true,
           confidenceScore: true,
@@ -207,6 +209,18 @@ export default async function RunPage({
     run.parameters && typeof run.parameters === "object"
       ? (run.parameters as Record<string, unknown>)
       : {};
+
+  // Build recent theses for ChatComposer @ references
+  const recentTheses: ComposerRecentThesis[] = run.theses
+    .filter((t) => t.direction !== "PASS")
+    .map((t) => ({
+      id: t.id,
+      ticker: t.ticker,
+      direction: t.direction,
+      confidenceScore: t.confidenceScore,
+      reasoningSummary: t.reasoningSummary ?? "",
+      createdAt: t.createdAt,
+    }));
 
   return (
     <div className="flex flex-col h-[calc(100dvh-5.25rem)] overflow-hidden">
@@ -281,6 +295,7 @@ export default async function RunPage({
                       signal_types: t.signalTypes ?? [],
                     })),
                   }}
+                  recentTheses={recentTheses}
                 />
               ) : undefined
             }

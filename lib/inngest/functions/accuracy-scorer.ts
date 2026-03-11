@@ -11,7 +11,7 @@
 import OpenAI from "openai";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { getAccuracyStats, type AccuracyStats } from "@/lib/actions/accuracy.actions";
+import { getAccuracyStats, type AccuracyStats } from "@/lib/accuracy-stats";
 
 function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });

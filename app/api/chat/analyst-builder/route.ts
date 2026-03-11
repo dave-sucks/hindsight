@@ -94,31 +94,41 @@ Create short, descriptive names that capture the analyst's personality:
 // ── Route ───────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
-  const { messages, currentConfig } = await req.json();
+  try {
+    const { messages, currentConfig } = await req.json();
 
-  // If editing an existing analyst, include current config in context
-  let systemPrompt = SYSTEM_PROMPT;
-  if (currentConfig) {
-    systemPrompt += `\n\n## Current Configuration (user is editing an existing analyst)\n\`\`\`json\n${JSON.stringify(currentConfig, null, 2)}\n\`\`\`\nThe user wants to modify this analyst. Only change what they ask for. Call suggest_config with the full updated config.`;
-  }
+    // If editing an existing analyst, include current config in context
+    let systemPrompt = SYSTEM_PROMPT;
+    if (currentConfig) {
+      systemPrompt += `\n\n## Current Configuration (user is editing an existing analyst)\n\`\`\`json\n${JSON.stringify(currentConfig, null, 2)}\n\`\`\`\nThe user wants to modify this analyst. Only change what they ask for. Call suggest_config with the full updated config.`;
+    }
 
-  const result = streamText({
-    model: openai("gpt-4o"),
-    system: systemPrompt,
-    messages,
-    tools: {
-      suggest_config: tool({
-        description:
-          "Suggest a complete analyst configuration based on the conversation. Call this when you have enough information to build a config, or when the user requests changes.",
-        inputSchema: configSchema,
-        execute: async (config) => {
-          // Echo back — the frontend renders this as a ConfigPreviewCard
-          return config;
-        },
+    const result = streamText({
+      model: openai("gpt-4o"),
+      system: systemPrompt,
+      messages,
+      tools: {
+        suggest_config: tool({
+          description:
+            "Suggest a complete analyst configuration based on the conversation. Call this when you have enough information to build a config, or when the user requests changes.",
+          inputSchema: configSchema,
+          execute: async (config) => {
+            // Echo back — the frontend renders this as a ConfigPreviewCard
+            return config;
+          },
+        }),
+      },
+      stopWhen: stepCountIs(3),
+    });
+
+    return result.toUIMessageStreamResponse();
+  } catch (error) {
+    console.error("[analyst-builder] Error:", error);
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Internal error",
       }),
-    },
-    stopWhen: stepCountIs(3),
-  });
-
-  return result.toUIMessageStreamResponse();
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }
