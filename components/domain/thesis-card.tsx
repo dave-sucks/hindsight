@@ -8,12 +8,19 @@ import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
   Minus,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
 
-import { SourceChipRow, type SourceChipData } from "../chat/SourceChip";
+import { CitedText } from "../chat/CitedText";
+import type { SourceChipData } from "../chat/SourceChip";
+import {
+  Sources,
+  SourcesTrigger,
+  SourcesContent,
+} from "../ai-elements/sources";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -226,11 +233,13 @@ export function ThesisCard({
           </div>
         )}
 
-        {/* Reasoning */}
+        {/* Reasoning (with inline citation support) */}
         {reasoning_summary && (
-          <p className="text-sm text-foreground/80 leading-relaxed">
-            {reasoning_summary}
-          </p>
+          <CitedText
+            text={reasoning_summary}
+            sources={sources}
+            className="text-sm text-foreground/80 leading-relaxed"
+          />
         )}
 
         {/* Thesis bullets */}
@@ -260,9 +269,33 @@ export function ThesisCard({
           </ul>
         )}
 
-        {/* Sources */}
+        {/* Sources — collapsible numbered list */}
         {sources.length > 0 && (
-          <SourceChipRow sources={sources} className="pt-1" />
+          <Sources className="pt-1">
+            <SourcesTrigger count={sources.length} />
+            <SourcesContent>
+              {sources.map((s, i) => (
+                <div key={`${s.provider}-${i}`} className="flex items-center gap-2 text-xs">
+                  <span className="tabular-nums text-muted-foreground w-4 text-right shrink-0">
+                    {i + 1}.
+                  </span>
+                  <span className="font-medium truncate max-w-[240px]">
+                    {s.title || s.provider}
+                  </span>
+                  {s.url && (
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline shrink-0"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </SourcesContent>
+          </Sources>
         )}
       </div>
     </Card>
