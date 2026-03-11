@@ -34,18 +34,19 @@ const SUGGESTIONS = [
 ];
 
 // Extract the last suggest_config tool result from a message
+// AI SDK v6: static tools have type "tool-{toolName}", input at part.input, state "output-available"
 function extractToolConfig(
-  msg: { parts: Array<{ type: string; toolInvocation?: { toolName: string; state: string; args?: Record<string, unknown> } }> }
+  msg: { parts: Array<Record<string, unknown>> }
 ): SuggestedConfig | null {
   for (let i = msg.parts.length - 1; i >= 0; i--) {
     const part = msg.parts[i];
+    // v6 static tool: type === "tool-suggest_config"
     if (
-      part.type === "tool-invocation" &&
-      part.toolInvocation?.toolName === "suggest_config" &&
-      part.toolInvocation?.state === "result" &&
-      part.toolInvocation?.args
+      part.type === "tool-suggest_config" &&
+      (part.state === "output-available" || part.state === "input-available") &&
+      part.input
     ) {
-      return part.toolInvocation.args as unknown as SuggestedConfig;
+      return part.input as unknown as SuggestedConfig;
     }
   }
   return null;
