@@ -92,10 +92,18 @@ Requirements:
 - Price targets must be numbers only (no $ or currency symbols)."""
 
 
-async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
+async def run_data_cot(
+    ticker: str,
+    finnhub: FinnhubService,
+    emit_fn: Optional[Callable] = None,
+) -> DataContext:
     """Step 1: Parallel Finnhub + alt-data collection — price, fundamentals, news,
     candles (for technicals), analyst recommendations, insider transactions,
-    Reddit sentiment, unusual options flow, and earnings intelligence."""
+    Reddit sentiment, unusual options flow, and earnings intelligence.
+
+    When emit_fn is provided (streaming mode), emits a `source_fetched` event
+    as each data source completes, giving the UI live tool-call feedback.
+    """
     from services.reddit import get_reddit_sentiment
     from services.options_flow import get_unusual_options
     from services.earnings_intel import get_earnings_intel
@@ -104,39 +112,87 @@ async def run_data_cot(ticker: str, finnhub: FinnhubService) -> DataContext:
     earnings_from = today
     earnings_to = (date.today() + timedelta(days=7)).isoformat()
 
+    # ── Per-source fetch wrapper — emits SSE event on completion ──────────
+    async def _fetch(label: str, provider: str, coro, default, summary_fn=None):
+        try:
+            result = await coro
+        except Exception:
+            result = default
+        if emit_fn:
+            summary = ""
+            if summary_fn and result and result != default:
+                try:
+                    summary = summary_fn(result)
+                except Exception:
+                    summary = ""
+            await emit_fn({
+                "type": "source_fetched",
+                "ticker": ticker,
+                "provider": provider,
+                "label": label,
+                "summary": summary or "",
+            })
+        return result
+
     (
         quote, profile, financials, news, earnings,
         candles, rec_trends, insider_txns,
         reddit_raw, options_raw, earnings_raw,
     ) = await asyncio.gather(
-        finnhub.get_quote(ticker),
-        finnhub.get_company_profile(ticker),
-        finnhub.get_basic_financials(ticker),
-        finnhub.get_news(ticker, days_back=7),
-        finnhub.get_earnings_calendar(earnings_from, earnings_to),
-        finnhub.get_candles(ticker, days=60),
-        finnhub.get_recommendation_trends(ticker),
-        finnhub.get_insider_transactions(ticker),
-        get_reddit_sentiment(ticker),
-        get_unusual_options(ticker),
-        get_earnings_intel(ticker),
-        return_exceptions=True,
+        _fetch(
+            "Fetching price quote", "Finnhub",
+            finnhub.get_quote(ticker), {},
+            lambda r: f"${r.get('price', '?')} ({r.get('change_pct', 0):+.1f}%)" if r.get("price") else "",
+        ),
+        _fetch(
+            "Fetching company profile", "Finnhub",
+            finnhub.get_company_profile(ticker), {},
+            lambda r: r.get("name", "") or "",
+        ),
+        _fetch(
+            "Fetching financials", "Finnhub",
+            finnhub.get_basic_financials(ticker), {},
+            lambda r: f"P/E {r.get('pe_ratio', 'N/A')}, Cap: {r.get('market_cap_tier', 'N/A')}",
+        ),
+        _fetch(
+            "Fetching news", "Finnhub",
+            finnhub.get_news(ticker, days_back=7), [],
+            lambda r: f"{len(r)} article{'s' if len(r) != 1 else ''}" if r else "No news",
+        ),
+        _fetch(
+            "Checking earnings calendar", "Finnhub",
+            finnhub.get_earnings_calendar(earnings_from, earnings_to), [],
+        ),
+        _fetch(
+            "Fetching price candles (60d)", "Finnhub",
+            finnhub.get_candles(ticker, days=60), {},
+        ),
+        _fetch(
+            "Fetching analyst recommendations", "Finnhub",
+            finnhub.get_recommendation_trends(ticker), {},
+            lambda r: f"{r.get('total_analysts', 0)} analysts" if r.get("total_analysts") else "",
+        ),
+        _fetch(
+            "Checking insider transactions", "Finnhub",
+            finnhub.get_insider_transactions(ticker), [],
+            lambda r: f"{len(r)} transaction{'s' if len(r) != 1 else ''}" if r else "",
+        ),
+        _fetch(
+            "Checking Reddit sentiment", "Reddit",
+            get_reddit_sentiment(ticker), {},
+            lambda r: f"{r.get('mention_count', 0)} mentions, sentiment {r.get('sentiment_score', 0):.2f}" if r.get("mention_count") else "",
+        ),
+        _fetch(
+            "Checking options flow", "Options",
+            get_unusual_options(ticker), {},
+            lambda r: f"P/C ratio {r.get('put_call_ratio', 'N/A')}" if r.get("put_call_ratio") else "",
+        ),
+        _fetch(
+            "Checking earnings intel", "Earnings",
+            get_earnings_intel(ticker), {},
+            lambda r: f"Beat rate {r.get('beat_rate_pct', 'N/A')}%" if r.get("beat_rate_pct") else "",
+        ),
     )
-
-    def safe(v, default):
-        return default if isinstance(v, Exception) else v
-
-    quote = safe(quote, {})
-    profile = safe(profile, {})
-    financials = safe(financials, {})
-    news = safe(news, [])
-    earnings = safe(earnings, [])
-    candles = safe(candles, {})
-    rec_trends = safe(rec_trends, {})
-    insider_txns = safe(insider_txns, [])
-    reddit_raw = safe(reddit_raw, {})
-    options_raw = safe(options_raw, {})
-    earnings_raw = safe(earnings_raw, {})
 
     # ── Earnings check ──────────────────────────────────────────────────────
     has_earnings = any(
@@ -637,7 +693,7 @@ async def run_full_pipeline_streaming(
     try:
         await emit_fn({"type": "analyzing", "ticker": ticker, "company": ""})
 
-        data = await run_data_cot(ticker, finnhub)
+        data = await run_data_cot(ticker, finnhub, emit_fn=emit_fn)
 
         sources_preview = [
             {"type": s.type, "provider": s.provider, "title": s.title}
@@ -661,7 +717,7 @@ async def run_full_pipeline_streaming(
             "ticker": ticker,
             "direction": concept.direction,
             "confidence": concept.initial_confidence,
-            "reasoning": concept.reasoning_notes,
+            "reasoning_notes": concept.reasoning_notes,
         })
 
         if concept.direction == "PASS":

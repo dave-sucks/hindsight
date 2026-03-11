@@ -5,8 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { ArrowLeft, Bot, Clock } from "lucide-react";
 import RunChatThread from "@/components/research/RunChatThread";
 import RunLiveStream from "@/components/research/RunLiveStream";
+import { RunFollowupChat } from "@/components/research/RunFollowupChat";
 import type { RunEventRow } from "@/components/research/RunChatThread";
-import type { ComposerRecentThesis } from "@/components/chat/ChatComposer";
 
 // ── Synthesize events from thesis rows for legacy runs ────────────────────────
 
@@ -184,7 +184,6 @@ export default async function RunPage({
       : "bg-red-400";
 
   // A run stuck in RUNNING with no events and started > 15 min ago is stale
-  // (Python service likely crashed before writing any RunEvent rows).
   const isStaleRun =
     run.status === "RUNNING" &&
     run.events.length === 0 &&
@@ -193,7 +192,7 @@ export default async function RunPage({
   // Use stored events; fall back to synthesized for legacy runs
   const events: RunEventRow[] =
     run.events.length > 0
-      ? run.events.map((ev) => ({
+      ? run.events.map((ev: { id: string; type: string; title: string; message: string | null; payload: unknown; createdAt: Date }) => ({
           id: ev.id,
           type: ev.type,
           title: ev.title,
@@ -203,17 +202,11 @@ export default async function RunPage({
         }))
       : synthesizeEventsFromTheses(run.theses);
 
-  // Derive recentTheses from the run's own theses for @-reference in follow-up
-  const recentTheses: ComposerRecentThesis[] = run.theses
-    .filter((t) => t.direction !== "PASS")
-    .map((t, i) => ({
-      id: `${t.ticker}-${i}`,
-      ticker: t.ticker,
-      direction: t.direction,
-      confidenceScore: t.confidenceScore,
-      reasoningSummary: t.reasoningSummary ?? "",
-      createdAt: t.createdAt,
-    }));
+  // Extract config snapshot from the run parameters
+  const config =
+    run.parameters && typeof run.parameters === "object"
+      ? (run.parameters as Record<string, unknown>)
+      : {};
 
   return (
     <div className="flex flex-col h-[calc(100dvh-5.25rem)] overflow-hidden">
@@ -239,23 +232,26 @@ export default async function RunPage({
         </div>
       </div>
 
-      {/* Body */}
+      {/* Body — single-column chat */}
       <div className="flex-1 min-h-0">
         {isStaleRun ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
             <div className="h-2.5 w-2.5 rounded-full bg-red-400" />
-            <p className="text-sm font-medium text-foreground">Run appears to have stalled</p>
+            <p className="text-sm font-medium text-foreground">
+              Run appears to have stalled
+            </p>
             <p className="text-xs max-w-xs">
-              This run started over 15 minutes ago but no events were recorded. The research
-              service may have crashed before completing. You can try triggering a new run.
+              This run started over 15 minutes ago but no events were recorded.
+              The research service may have crashed before completing. You can
+              try triggering a new run.
             </p>
           </div>
         ) : run.status === "RUNNING" ? (
-          // Live stream: connect to SSE and accumulate events in real-time
           <RunLiveStream
             runId={id}
             userId={userId}
-            analystId={run.agentConfig?.id}
+            analystName={analystName}
+            config={config}
           />
         ) : events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2">
@@ -264,10 +260,30 @@ export default async function RunPage({
         ) : (
           <RunChatThread
             events={events}
-            showFollowup={run.status === "COMPLETE"}
-            userId={userId}
-            analystId={run.agentConfig?.id}
-            recentTheses={recentTheses}
+            analystName={analystName}
+            config={config}
+            composerSlot={
+              run.status === "COMPLETE" ? (
+                <RunFollowupChat
+                  runContext={{
+                    analystName,
+                    config,
+                    theses: run.theses.map((t: typeof run.theses[number]) => ({
+                      ticker: t.ticker,
+                      direction: t.direction,
+                      confidence_score: t.confidenceScore,
+                      reasoning_summary: t.reasoningSummary ?? undefined,
+                      thesis_bullets: t.thesisBullets ?? [],
+                      risk_flags: t.riskFlags ?? [],
+                      entry_price: t.entryPrice,
+                      target_price: t.targetPrice,
+                      stop_loss: t.stopLoss,
+                      signal_types: t.signalTypes ?? [],
+                    })),
+                  }}
+                />
+              ) : undefined
+            }
           />
         )}
       </div>
