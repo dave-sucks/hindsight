@@ -2,18 +2,20 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import {
-  useRef,
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  useTransition,
-} from "react";
+import { useState, useCallback, useMemo, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check } from "lucide-react";
-import { AssistantMessage } from "@/components/chat/AssistantMessage";
-import { UserMessage } from "@/components/chat/UserMessage";
+import { Sparkles, Check } from "lucide-react";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from "@/components/ai-elements/message";
 import {
   ChatComposer,
   type ComposerContext,
@@ -31,7 +33,6 @@ function extractToolConfig(
 ): SuggestedConfig | null {
   for (let i = msg.parts.length - 1; i >= 0; i--) {
     const part = msg.parts[i];
-    // v6 static tool: type === "tool-suggest_config", or dynamic-tool fallback
     const isConfigTool =
       part.type === "tool-suggest_config" ||
       (part.type === "dynamic-tool" && part.toolName === "suggest_config");
@@ -67,7 +68,6 @@ export function AnalystEditorChat({
   const router = useRouter();
   const [isApplying, startApplying] = useTransition();
   const [applied, setApplied] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
   const transport = useMemo(
     () =>
@@ -81,10 +81,6 @@ export function AnalystEditorChat({
   const { messages, sendMessage, status } = useChat({ transport });
   const isLoading = status === "streaming" || status === "submitted";
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
   const handleComposerSubmit = useCallback(
     (message: string, _ctx: ComposerContext) => {
       const text = message.trim();
@@ -95,7 +91,6 @@ export function AnalystEditorChat({
     [isLoading, sendMessage]
   );
 
-  // Find the last suggested config
   const lastConfig = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const cfg = extractToolConfig(messages[i]);
@@ -132,65 +127,78 @@ export function AnalystEditorChat({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
-        {messages.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-4">
-            Tell me how you want to change this analyst...
-          </p>
-        )}
-        {messages.map((msg) => {
-          if (msg.role === "user") {
+      <Conversation className="flex-1 min-h-0">
+        <ConversationContent className="gap-3 px-4 py-3">
+          {messages.length === 0 && (
+            <ConversationEmptyState
+              description="Tell me how you want to change this analyst..."
+              className="py-4"
+            />
+          )}
+          {messages.map((msg) => {
+            if (msg.role === "user") {
+              return (
+                <Message key={msg.id} from="user">
+                  <MessageContent>{getMessageText(msg)}</MessageContent>
+                </Message>
+              );
+            }
+
+            const text = getMessageText(msg);
+            const config = extractToolConfig(msg);
+            const isStreaming =
+              status === "streaming" &&
+              msg.id === messages[messages.length - 1].id;
+
             return (
-              <UserMessage key={msg.id}>
-                {getMessageText(msg)}
-              </UserMessage>
-            );
-          }
-
-          const text = getMessageText(msg);
-          const config = extractToolConfig(msg);
-
-          return (
-            <div key={msg.id} className="space-y-2">
-              {text && (
-                <AssistantMessage
-                  content={text}
-                  isStreaming={
-                    status === "streaming" &&
-                    msg.id === messages[messages.length - 1].id
-                  }
-                />
-              )}
-              {config && (
-                <ConfigPreviewCard
-                  config={config}
-                  onConfirm={handleApply}
-                  isCreating={isApplying}
-                  showConfirmButton={!applied}
-                  confirmLabel="Apply Changes"
-                  confirmingLabel="Applying..."
-                />
-              )}
-              {config && applied && (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-500 pl-1">
-                  <Check className="h-3 w-3" />
-                  Changes applied
+              <Message key={msg.id} from="assistant">
+                <div className="flex gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
+                    <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <MessageContent>
+                    {text && (
+                      <>
+                        <MessageResponse>{text}</MessageResponse>
+                        {isStreaming && (
+                          <span className="inline-block w-0.5 h-4 bg-foreground/70 animate-pulse ml-0.5 align-text-bottom" />
+                        )}
+                      </>
+                    )}
+                  </MessageContent>
                 </div>
-              )}
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
-      </div>
+                {config && (
+                  <div className="pl-10 space-y-1.5">
+                    <ConfigPreviewCard
+                      config={config}
+                      onConfirm={handleApply}
+                      isCreating={isApplying}
+                      showConfirmButton={!applied}
+                      confirmLabel="Apply Changes"
+                      confirmingLabel="Applying..."
+                    />
+                    {applied && (
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-500">
+                        <Check className="h-3 w-3" />
+                        Changes applied
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Message>
+            );
+          })}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
 
       {/* Composer */}
       <div className="shrink-0 px-4 pb-3 pt-2">
         <ChatComposer
           onSubmit={handleComposerSubmit}
           recentTheses={recentTheses}
-          placeholder="Describe how to change this analyst…"
-          loading={isLoading}
+          placeholder="Describe how to change this analyst\u2026"
+          status={status}
         />
       </div>
     </div>
