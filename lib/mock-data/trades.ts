@@ -6,6 +6,7 @@ export type TradeStatus = 'OPEN' | 'CLOSED_WIN' | 'CLOSED_LOSS' | 'CLOSED_EXPIRE
 export interface MockTrade {
   id: string;
   ticker: string;
+  companyName?: string;
   direction: TradeDirection;
   entryPrice: number;
   currentPrice: number;
@@ -18,12 +19,14 @@ export interface MockTrade {
   openedAt: string;
   closedAt?: string;
   thesis: string;
+  shares?: number;
 }
 
 export const mockOpenTrades: MockTrade[] = [
   {
     id: '1',
     ticker: 'NVDA',
+    companyName: 'NVIDIA Corp',
     direction: 'LONG',
     entryPrice: 875.00,
     currentPrice: 921.00,
@@ -39,6 +42,7 @@ export const mockOpenTrades: MockTrade[] = [
   {
     id: '2',
     ticker: 'TSLA',
+    companyName: 'Tesla Inc',
     direction: 'SHORT',
     entryPrice: 245.00,
     currentPrice: 231.00,
@@ -54,6 +58,7 @@ export const mockOpenTrades: MockTrade[] = [
   {
     id: '3',
     ticker: 'AAPL',
+    companyName: 'Apple Inc',
     direction: 'LONG',
     entryPrice: 195.00,
     currentPrice: 198.00,
@@ -72,6 +77,7 @@ export const mockClosedTrades: MockTrade[] = [
   {
     id: '4',
     ticker: 'META',
+    companyName: 'Meta Platforms',
     direction: 'LONG',
     entryPrice: 510.00,
     currentPrice: 562.00,
@@ -88,6 +94,7 @@ export const mockClosedTrades: MockTrade[] = [
   {
     id: '5',
     ticker: 'COIN',
+    companyName: 'Coinbase Global',
     direction: 'LONG',
     entryPrice: 280.00,
     currentPrice: 251.00,
@@ -104,6 +111,7 @@ export const mockClosedTrades: MockTrade[] = [
   {
     id: '6',
     ticker: 'MSFT',
+    companyName: 'Microsoft Corp',
     direction: 'LONG',
     entryPrice: 420.00,
     currentPrice: 448.00,
@@ -120,6 +128,7 @@ export const mockClosedTrades: MockTrade[] = [
   {
     id: '7',
     ticker: 'AMD',
+    companyName: 'Advanced Micro Devices',
     direction: 'LONG',
     entryPrice: 175.00,
     currentPrice: 162.00,
@@ -136,6 +145,7 @@ export const mockClosedTrades: MockTrade[] = [
   {
     id: '8',
     ticker: 'AMZN',
+    companyName: 'Amazon.com',
     direction: 'LONG',
     entryPrice: 208.00,
     currentPrice: 229.00,
@@ -152,6 +162,7 @@ export const mockClosedTrades: MockTrade[] = [
   {
     id: '9',
     ticker: 'SNAP',
+    companyName: 'Snap Inc',
     direction: 'SHORT',
     entryPrice: 12.50,
     currentPrice: 14.20,
@@ -168,6 +179,7 @@ export const mockClosedTrades: MockTrade[] = [
   {
     id: '10',
     ticker: 'NFLX',
+    companyName: 'Netflix Inc',
     direction: 'LONG',
     entryPrice: 890.00,
     currentPrice: 895.00,

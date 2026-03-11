@@ -10,13 +10,14 @@ import {
   YAxis,
   Tooltip,
 } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { StockLogo } from '@/components/StockLogo';
 import { ThesisCard } from '@/components/ThesisCard';
 import type { ThesisCardData, ThesisCardProfile } from '@/components/ThesisCard';
+import { PnlBadge } from '@/components/ui/pnl-badge';
 import { Bot } from 'lucide-react';
 import {
   mockOpenTrades,
@@ -33,6 +34,11 @@ import { cn } from '@/lib/utils';
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtIsoLabel(d: string): string {
+  // Intraday synthetic points: "YYYY-MM-DDTHH:MM"
+  if (d.includes('T')) {
+    const dt = new Date(d);
+    return dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  }
   if (d.length === 10 && d.includes('-')) {
     const dt = new Date(d + 'T12:00:00');
     return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -73,6 +79,18 @@ const RANGE_DAYS: Record<Range, number> = {
 };
 
 function sliceEquity(data: { date: string; value: number }[], range: Range) {
+  if (range === '1D' && data.length > 0) {
+    // Synthesize intraday points across trading hours (9:30 AM – 4 PM ET)
+    const last = data[data.length - 1];
+    const prev = data.length > 1 ? data[data.length - 2] : last;
+    const hours = ['9:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00'];
+    const today = last.date;
+    const diff = last.value - prev.value;
+    return hours.map((h, i) => ({
+      date: `${today}T${h}`,
+      value: prev.value + (diff * (i / (hours.length - 1))),
+    }));
+  }
   const cutoffMs = Date.now() - RANGE_DAYS[range] * 86_400_000;
   if (data.length > 0 && data[0].date.length === 10 && data[0].date.includes('-')) {
     const filtered = data.filter((d) => new Date(d.date + 'T12:00:00').getTime() >= cutoffMs);
@@ -109,6 +127,8 @@ function pickToThesisCardData(pick: RecentPick): ThesisCardData {
     // Use trade entry time when available so the card shows "entry at 9:02 AM"
     createdAt: pick.trade?.openedAt ?? pick.createdAt,
     currentPrice: pick.currentPrice,
+    analystName: pick.analystName,
+    sourcesUsed: pick.sourcesUsed,
   };
 }
 
@@ -139,39 +159,22 @@ function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
 
   return (
     <div className="space-y-3">
-      {/* Section header */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Recent Picks
-        </p>
-        <div className="flex items-center gap-3">
-          {/* Filter pills */}
-          <div className="flex items-center gap-1.5">
-            {pills.map((pill) => (
-              <button
-                key={pill.key}
-                onClick={() => setFilter(pill.key)}
-                className={cn(
-                  'px-3 py-1 rounded-full text-xs font-medium transition-colors',
-                  filter === pill.key
-                    ? 'bg-foreground text-background'
-                    : 'border text-muted-foreground hover:text-foreground hover:border-foreground/40',
-                )}
-              >
-                {pill.label}
-              </button>
-            ))}
-          </div>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {filtered.length} pick{filtered.length !== 1 ? 's' : ''}
-          </span>
-          <Link
-            href="/analysts"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+      {/* Filter tabs — no section header, tabs ARE the header */}
+      <div className="flex items-center gap-1.5">
+        {pills.map((pill) => (
+          <button
+            key={pill.key}
+            onClick={() => setFilter(pill.key)}
+            className={cn(
+              'px-3 py-1 rounded-full text-xs font-medium transition-colors border',
+              filter === pill.key
+                ? 'bg-secondary text-secondary-foreground border-secondary'
+                : 'text-muted-foreground opacity-60 hover:opacity-100 hover:text-foreground',
+            )}
           >
-            All research →
-          </Link>
-        </div>
+            {pill.label}
+          </button>
+        ))}
       </div>
 
       {/* Cards */}
@@ -215,29 +218,34 @@ function TradeRow({
   const pnl = trade.pnl ?? 0;
   const pct = trade.pnlPct ?? 0;
   const pos = pnl >= 0;
+  const shares = trade.shares ?? 1;
+  const totalWorth = trade.currentPrice * shares;
 
   return (
     <Link
       href={`/trades/${trade.id}`}
       className={cn(
-        'flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors border-b border-border/40 last:border-0',
+        'flex items-center gap-3 px-3 py-2.5 hover:bg-accent/40 transition-colors border-b border-border/40 last:border-0',
         flash === 'win' && 'bg-emerald-500/5',
         flash === 'loss' && 'bg-red-500/5',
       )}
     >
-      <StockLogo ticker={trade.ticker} size="sm" />
-      <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <span className="text-sm font-medium leading-tight">{trade.ticker}</span>
-          <span className="text-xs text-muted-foreground">
-            ${trade.entryPrice.toFixed(2)} entry
-          </span>
+      <StockLogo ticker={trade.ticker} size="md" className="rounded-md" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">{trade.ticker}</span>
+          <span className="text-sm tabular-nums font-light">${trade.currentPrice.toFixed(2)}</span>
         </div>
-        <div className="flex flex-col items-end gap-0.5 shrink-0">
-          <span className="text-sm tabular-nums">${trade.currentPrice.toFixed(2)}</span>
-          <span className={cn('text-xs tabular-nums', pos ? 'text-emerald-500' : 'text-red-500')}>
-            {pos ? '+' : ''}{pct.toFixed(2)}%
+        <div className="flex items-center justify-between mt-0.5">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            ${fmtUsd(totalWorth)} — {shares} share{shares !== 1 ? 's' : ''}
           </span>
+          <div className="flex items-center gap-1.5">
+            <span className={cn('text-sm tabular-nums', pos ? 'text-emerald-500' : 'text-red-500')}>
+              {pos ? '+' : ''}${Math.abs(pnl).toFixed(2)}
+            </span>
+            <PnlBadge value={pct} format="percent" className="text-xs" />
+          </div>
         </div>
       </div>
     </Link>
@@ -447,7 +455,7 @@ export default function DashboardClient({
                     className={cn(
                       'px-2 py-0.5 text-xs rounded transition-colors',
                       range === r
-                        ? 'bg-foreground text-background font-medium'
+                        ? 'bg-muted text-foreground font-medium'
                         : 'text-muted-foreground hover:text-foreground',
                     )}
                   >
@@ -465,8 +473,8 @@ export default function DashboardClient({
                   <p className="text-xs text-muted-foreground">No trade history yet</p>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={equityData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart data={equityData} margin={{ top: 40, right: 0, bottom: 0, left: 0 }}>
                     <defs>
                       <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor={strokeColor} stopOpacity={0.2} />
@@ -475,14 +483,14 @@ export default function DashboardClient({
                     </defs>
                     <XAxis
                       dataKey="date"
-                      tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
+                      tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
                       tickLine={false}
                       axisLine={false}
-                      tickFormatter={fmtIsoLabel}
-                      interval="preserveStartEnd"
+                      tickFormatter={(v) => fmtIsoLabel(v).toUpperCase()}
+                      interval={Math.max(1, Math.floor(equityData.length / 6))}
                       padding={{ left: 0, right: 0 }}
                     />
-                    <YAxis hide domain={['auto', 'auto']} />
+                    <YAxis hide domain={['dataMin - 500', 'dataMax + 500']} />
                     <Tooltip
                       contentStyle={{
                         background: 'var(--popover)',
@@ -536,37 +544,28 @@ export default function DashboardClient({
 
           {/* ══ RIGHT column — normal Card (NOT a sidebar) ══════════════════ */}
           <div className="hidden lg:block w-80 shrink-0">
-            <Card>
-              <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <CardTitle className="text-base font-medium">Positions</CardTitle>
-                <Link
-                  href="/trades"
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  View all →
-                </Link>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Tabs defaultValue="open">
-                  <TabsList className="mx-4 mb-2 w-auto self-start">
-                    <TabsTrigger value="open">
-                      Open
-                      {openTrades.length > 0 && (
-                        <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
-                          {openTrades.length}
-                        </span>
-                      )}
-                    </TabsTrigger>
-                    <TabsTrigger value="closed">
-                      Closed
-                      {closedTrades.length > 0 && (
-                        <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
-                          {closedTrades.length}
-                        </span>
-                      )}
-                    </TabsTrigger>
-                  </TabsList>
+            <Tabs defaultValue="open" className="gap-0">
+              <TabsList variant="line" className="w-auto self-start px-0">
+                <TabsTrigger value="open" className="px-0 mr-4">
+                  Open
+                  {openTrades.length > 0 && (
+                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
+                      {openTrades.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="closed" className="px-0">
+                  Closed
+                  {closedTrades.length > 0 && (
+                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
+                      {closedTrades.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
 
+              <Card className="shadow-none p-0">
+                <CardContent className="p-0">
                   <TabsContent value="open" className="mt-0">
                     {loading ? (
                       <div className="space-y-1 px-4 pt-1 pb-2">
@@ -594,9 +593,9 @@ export default function DashboardClient({
                       </div>
                     )}
                   </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </Tabs>
           </div>
 
         </div>

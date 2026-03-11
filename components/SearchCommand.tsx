@@ -63,13 +63,12 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
       ) : renderAs === 'icon' ? (
           <Button
             variant="ghost"
-            size="sm"
             onClick={() => setOpen(true)}
-            className="w-full justify-start gap-3 px-3 h-9 hover:bg-secondary/50"
+            className="h-9 w-full max-w-xs gap-2 rounded-md bg-muted/50 px-3 text-sm text-muted-foreground hover:bg-muted"
           >
             <Search className="h-4 w-4 shrink-0" />
-            <span className="text-sm font-medium">{label}</span>
-            <kbd className="ml-auto text-xs text-muted-foreground/50 font-mono">⌘K</kbd>
+            <span className="flex-1 text-left">Search stocks</span>
+            <kbd className="pointer-events-none shrink-0 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
           </Button>
       ) : (
           <Button onClick={() => setOpen(true)}>
