@@ -40,9 +40,12 @@ function extractToolConfig(
 ): SuggestedConfig | null {
   for (let i = msg.parts.length - 1; i >= 0; i--) {
     const part = msg.parts[i];
-    // v6 static tool: type === "tool-suggest_config"
+    // v6 static tool: type === "tool-suggest_config", or dynamic-tool fallback
+    const isConfigTool =
+      part.type === "tool-suggest_config" ||
+      (part.type === "dynamic-tool" && part.toolName === "suggest_config");
     if (
-      part.type === "tool-suggest_config" &&
+      isConfigTool &&
       (part.state === "output-available" || part.state === "input-available") &&
       part.input
     ) {
@@ -82,7 +85,7 @@ export function AnalystBuilderChat({
     [currentConfig]
   );
 
-  const { messages, sendMessage, status } = useChat({ transport });
+  const { messages, sendMessage, status, error } = useChat({ transport });
   const isLoading = status === "streaming" || status === "submitted";
 
   useEffect(() => {
@@ -217,6 +220,15 @@ export function AnalystBuilderChat({
                 </div>
               );
             })}
+            {status === "error" && error && (
+              <div className="max-w-2xl mx-auto px-4 sm:px-6">
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3">
+                  <p className="text-sm text-destructive">
+                    Something went wrong. Please try again.
+                  </p>
+                </div>
+              </div>
+            )}
           </ChatThread>
         )}
         <div ref={bottomRef} />

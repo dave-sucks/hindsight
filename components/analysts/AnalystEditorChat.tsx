@@ -31,9 +31,12 @@ function extractToolConfig(
 ): SuggestedConfig | null {
   for (let i = msg.parts.length - 1; i >= 0; i--) {
     const part = msg.parts[i];
-    // v6 static tool: type === "tool-suggest_config"
+    // v6 static tool: type === "tool-suggest_config", or dynamic-tool fallback
+    const isConfigTool =
+      part.type === "tool-suggest_config" ||
+      (part.type === "dynamic-tool" && part.toolName === "suggest_config");
     if (
-      part.type === "tool-suggest_config" &&
+      isConfigTool &&
       (part.state === "output-available" || part.state === "input-available") &&
       part.input
     ) {
