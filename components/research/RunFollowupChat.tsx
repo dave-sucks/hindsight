@@ -2,11 +2,14 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useRef, useEffect, useState, useCallback, useMemo, type FormEvent } from "react";
-import { Send, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useRef, useEffect, useCallback, useMemo } from "react";
 import { AssistantMessage } from "@/components/chat/AssistantMessage";
 import { UserMessage } from "@/components/chat/UserMessage";
+import {
+  ChatComposer,
+  type ComposerContext,
+  type ComposerRecentThesis,
+} from "@/components/chat/ChatComposer";
 import { cn } from "@/lib/utils";
 
 export type RunFollowupContext = {
@@ -41,13 +44,13 @@ function getMessageText(msg: { parts: Array<{ type: string; text?: string }> }):
 
 export function RunFollowupChat({
   runContext,
+  recentTheses = [],
   className,
 }: {
   runContext: RunFollowupContext;
+  recentTheses?: ComposerRecentThesis[];
   className?: string;
 }) {
-  const [input, setInput] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const transport = useMemo(
@@ -68,15 +71,12 @@ export function RunFollowupChat({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSubmit = useCallback(
-    (e: FormEvent) => {
-      e.preventDefault();
-      const text = input.trim();
-      if (!text || isLoading) return;
-      setInput("");
-      sendMessage({ text });
+  const handleComposerSubmit = useCallback(
+    async (message: string, _context: ComposerContext) => {
+      if (!message.trim() || isLoading) return;
+      sendMessage({ text: message });
     },
-    [input, isLoading, sendMessage]
+    [isLoading, sendMessage]
   );
 
   return (
@@ -105,37 +105,14 @@ export function RunFollowupChat({
 
       {/* Composer */}
       <div className="px-4 sm:px-6 py-3">
-        <form
-          onSubmit={handleSubmit}
-          className="max-w-2xl mx-auto flex items-center gap-2"
-        >
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+        <div className="max-w-2xl mx-auto">
+          <ChatComposer
+            onSubmit={handleComposerSubmit}
+            recentTheses={recentTheses}
             placeholder="Ask about this run..."
-            disabled={isLoading}
-            className={cn(
-              "flex-1 rounded-lg border bg-background px-3 py-2 text-sm",
-              "placeholder:text-muted-foreground/60",
-              "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1",
-              "disabled:opacity-50"
-            )}
+            loading={isLoading}
           />
-          <Button
-            type="submit"
-            size="icon"
-            variant="ghost"
-            disabled={isLoading || !input.trim()}
-            className="h-9 w-9 shrink-0"
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
-        </form>
+        </div>
       </div>
     </div>
   );

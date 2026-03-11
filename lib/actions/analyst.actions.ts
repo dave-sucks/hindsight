@@ -21,6 +21,7 @@ export interface AnalystConfig {
   maxOpenPositions: number;
   maxPositionSize: number;
   maxRiskPct: number | null;
+  minMarketCapTier: string | null;
   scheduleTime: string;
   createdAt: Date;
   updatedAt: Date;
@@ -372,6 +373,7 @@ export async function getAnalystDetail(
     maxOpenPositions: config.maxOpenPositions,
     maxPositionSize: config.maxPositionSize,
     maxRiskPct: config.maxRiskPct,
+    minMarketCapTier: config.minMarketCapTier,
     scheduleTime: config.scheduleTime,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -511,7 +513,7 @@ export async function createAnalystFromWizard(
 
 // ── createAnalystFromBuilder (AI chat builder — richer config) ──────────────
 
-export interface BuilderConfig {
+interface BuilderConfig {
   name: string;
   analystPrompt: string;
   description?: string;
@@ -537,6 +539,7 @@ export async function createAnalystFromBuilder(
     data: {
       userId,
       name: data.name,
+      description: data.description ?? "",
       enabled: true,
       analystPrompt: data.analystPrompt,
       markets: ["US_EQUITIES"],
@@ -581,6 +584,7 @@ export async function updateAnalystFromBuilder(
 
   const updateData: Record<string, unknown> = {};
   if (data.name !== undefined) updateData.name = data.name;
+  if (data.description !== undefined) updateData.description = data.description;
   if (data.analystPrompt !== undefined) updateData.analystPrompt = data.analystPrompt;
   if (data.directionBias !== undefined) updateData.directionBias = data.directionBias;
   if (data.holdDurations !== undefined) updateData.holdDurations = data.holdDurations;

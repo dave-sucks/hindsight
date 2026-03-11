@@ -595,6 +595,7 @@ export default function AnalystDetailClient({
                 minConfidence: config.minConfidence,
                 maxPositionSize: config.maxPositionSize,
                 maxOpenPositions: config.maxOpenPositions,
+                minMarketCapTier: config.minMarketCapTier ?? "LARGE",
               }}
               recentTheses={recentThesesFlat}
             />

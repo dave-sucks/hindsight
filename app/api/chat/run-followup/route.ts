@@ -4,17 +4,27 @@ import { openai } from "@ai-sdk/openai";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  const { messages, runContext } = await req.json();
+  try {
+    const { messages, runContext } = await req.json();
 
-  const systemPrompt = buildSystemPrompt(runContext);
+    const systemPrompt = buildSystemPrompt(runContext);
 
-  const result = streamText({
-    model: openai("gpt-4o"),
-    system: systemPrompt,
-    messages,
-  });
+    const result = streamText({
+      model: openai("gpt-4o"),
+      system: systemPrompt,
+      messages,
+    });
 
-  return result.toUIMessageStreamResponse();
+    return result.toUIMessageStreamResponse();
+  } catch (error) {
+    console.error("[run-followup] Error:", error);
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Internal error",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }
 
 function buildSystemPrompt(
