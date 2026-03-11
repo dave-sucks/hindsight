@@ -132,6 +132,13 @@ class ThesisOutput(BaseModel):
     sector: Optional[str] = None
     sources_used: List[SourceItem] = []
     model_used: str = "gpt-4o"
+    # DAV-124: Enhanced thesis fields
+    invalidation: Optional[str] = None          # what would make this thesis wrong
+    sector_alternative: Optional[str] = None    # comparison to sector peer
+    catalyst: Optional[str] = None              # specific catalyst with date
+    order_type: Optional[str] = None            # "LIMIT" | "MARKET"
+    suggested_shares: Optional[int] = None      # share count for $10K position
+    thesis_sources: List[dict] = []             # [{type, provider, title, relevance, sentiment}]
 
     @field_validator("hold_duration", mode="before")
     @classmethod
@@ -179,10 +186,53 @@ class ThesisOutput(BaseModel):
         return round(reward / risk, 2)
 
 
+class SectorPerformance(BaseModel):
+    """Single sector ETF performance snapshot."""
+    symbol: str          # e.g. "XLK"
+    name: str            # e.g. "Technology"
+    change_pct: float    # daily % change
+    price: Optional[float] = None
+
+
+class PortfolioState(BaseModel):
+    """Current portfolio snapshot passed from Next.js caller."""
+    open_positions: List[dict] = []     # [{ticker, direction, entry_price, current_price, pnl_pct, days_held, sector}]
+    total_exposure: float = 0.0         # total $ deployed
+    available_capital: float = 0.0      # cash available
+    position_count: int = 0
+    sectors_held: List[str] = []        # sectors currently in portfolio
+
+
+class MarketContext(BaseModel):
+    """Market-wide context generated at start of each research run."""
+    spx_price: Optional[float] = None
+    spx_change_pct: Optional[float] = None
+    vix_level: Optional[float] = None
+    vix_change_pct: Optional[float] = None
+    regime: str = "unknown"             # "trending_up" | "trending_down" | "range_bound" | "volatile"
+    sector_performance: List[SectorPerformance] = []
+    top_sectors: List[str] = []         # top 3 gaining sectors
+    bottom_sectors: List[str] = []      # top 3 losing sectors
+    portfolio: Optional[PortfolioState] = None
+    approach_summary: str = ""          # 1-2 sentence run strategy from GPT-4o
+    key_levels: str = ""                # support/resistance if relevant
+    sector_rotation_notes: str = ""     # what's moving and why
+
+
+class PortfolioSynthesis(BaseModel):
+    """Post-thesis portfolio-level synthesis from GPT-4o."""
+    summary: str = ""                   # morning research summary
+    ranked_picks: List[dict] = []       # [{ticker, rank, action, sizing_dollars, reasoning}]
+    existing_position_actions: List[dict] = []  # [{ticker, action, reasoning}]
+    new_exposure: float = 0.0
+    top_pick: Optional[str] = None      # #1 highest-conviction ticker
+
+
 class RunRequest(BaseModel):
     tickers: Optional[List[str]] = None          # if None, scanner picks them
     source: Literal["AGENT", "MANUAL"] = "AGENT"
     agent_config: dict = {}
+    portfolio_state: Optional[PortfolioState] = None  # DAV-121: current portfolio
 
 
 class RunResponse(BaseModel):
@@ -193,3 +243,5 @@ class RunResponse(BaseModel):
     total_tokens: int
     duration_seconds: float
     source: Literal["AGENT", "MANUAL"] = "AGENT"
+    market_context: Optional[MarketContext] = None       # DAV-121
+    portfolio_synthesis: Optional[PortfolioSynthesis] = None  # DAV-122
