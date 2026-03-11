@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { streamText, convertToModelMessages } from "ai";
 import { openai } from "@ai-sdk/openai";
 
 export const maxDuration = 60;
@@ -7,12 +7,15 @@ export async function POST(req: Request) {
   try {
     const { messages, runContext } = await req.json();
 
+    // Convert UIMessage[] (from useChat/DefaultChatTransport) → ModelMessage[] (for streamText)
+    const modelMessages = await convertToModelMessages(messages);
+
     const systemPrompt = buildSystemPrompt(runContext);
 
     const result = streamText({
       model: openai("gpt-4o"),
       system: systemPrompt,
-      messages,
+      messages: modelMessages,
     });
 
     return result.toUIMessageStreamResponse();
