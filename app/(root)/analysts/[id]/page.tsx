@@ -19,23 +19,8 @@ export default async function AnalystDetailPage({
 
   const userId = user?.id ?? "";
 
-  const [detail, recentTheses, runningCount] = await Promise.all([
+  const [detail, runningCount] = await Promise.all([
     getAnalystDetail(id),
-    userId
-      ? prisma.thesis.findMany({
-          where: { userId },
-          orderBy: { createdAt: "desc" },
-          take: 20,
-          select: {
-            id: true,
-            ticker: true,
-            direction: true,
-            confidenceScore: true,
-            reasoningSummary: true,
-            createdAt: true,
-          },
-        })
-      : Promise.resolve([]),
     userId
       ? prisma.researchRun.count({
           where: { userId, agentConfigId: id, status: "RUNNING" },
@@ -48,8 +33,6 @@ export default async function AnalystDetailPage({
   return (
     <AnalystDetailClient
       detail={detail}
-      userId={userId}
-      recentTheses={recentTheses}
       hasRunning={runningCount > 0}
     />
   );

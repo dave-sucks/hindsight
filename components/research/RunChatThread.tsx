@@ -1,28 +1,25 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   TrendingUp,
+  TrendingDown,
   CheckCircle2,
   SkipForward,
   AlertCircle,
-  Link as LinkIcon,
   Loader2,
   ListChecks,
-  ChevronRight,
+  ShoppingCart,
 } from "lucide-react";
+import { ChatThread } from "@/components/chat/ChatThread";
+import { AssistantMessage } from "@/components/chat/AssistantMessage";
+import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
+import { ToolCallGroup, type ToolCallItem } from "@/components/chat/ToolCall";
+import { SourceChipRow, type SourceChipData } from "@/components/chat/SourceChip";
 import {
-  ChatComposer,
-  type ComposerContext,
-  type ComposerRecentThesis,
-} from "@/components/chat/ChatComposer";
+  InlineThesisCard,
+  type InlineThesisData,
+} from "@/components/chat/InlineThesisCard";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,25 +33,7 @@ export type RunEventRow = {
   createdAt: Date | string;
 };
 
-type SourceInfo = {
-  type: string;
-  provider: string;
-  title: string;
-};
-
-type ThesisPayload = {
-  ticker: string;
-  direction: "LONG" | "SHORT" | "PASS";
-  confidence_score: number;
-  reasoning_summary: string;
-  thesis_bullets: string[];
-  risk_flags: string[];
-  entry_price: number | null;
-  target_price: number | null;
-  stop_loss: number | null;
-  hold_duration: string;
-  signal_types: string[];
-};
+// ─── Safe casters ─────────────────────────────────────────────────────────────
 
 function asRecord(v: unknown): Record<string, unknown> {
   return (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
@@ -69,681 +48,537 @@ function asArray<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
-// ─── Events shown in the main feed ────────────────────────────────────────────
-// analyzing + concept are shown as lightweight collapsible chips.
-// Low-level process events (data_ready, data_fetch, thesis_writing,
-// thesis_start, thesis_token) are hidden — sourced into the right panel only.
+// ─── Chat message model ──────────────────────────────────────────────────────
+// SSE events are grouped into logical "messages" for the chat thread.
 
-const MAIN_FEED_TYPES = new Set([
-  "scan_start",
-  "scanning",
-  "candidates",
-  "analyzing",
-  "concept",
-  "thesis_complete",
-  "skip",
-  "trade_placed",
-  "run_complete",
-  "error",
-  "ticker_error",
-]);
+type ChatMsg =
+  | { kind: "kickoff"; analystName: string; config: Record<string, unknown> }
+  | { kind: "scanning"; sectors: string[]; text: string }
+  | { kind: "candidates"; tickers: string[] }
+  | {
+      kind: "ticker_group";
+      ticker: string;
+      company: string;
+      toolCalls: ToolCallItem[];
+      sources: SourceChipData[];
+      concept: { direction: string; confidence: number | null; notes: string } | null;
+      thesis: InlineThesisData | null;
+      isPass: boolean;
+      passReason: string;
+    }
+  | { kind: "trade_placed"; ticker: string; direction: string; entry: number | null }
+  | { kind: "run_complete"; analyzed: number; recommended: number; placed: number | null }
+  | { kind: "error"; ticker: string; message: string }
+  | { kind: "thinking"; ticker: string };
 
-// ─── Per-event renderers ───────────────────────────────────────────────────────
+// ─── Transform events → chat messages ─────────────────────────────────────────
 
-function ScanningMsg({ payload }: { payload: Record<string, unknown> }) {
-  const sectors = asArray<string>(payload.sectors);
-  return (
-    <p className="text-sm text-muted-foreground">
-      {sectors.length > 0
-        ? `Scanning ${sectors.join(", ")} for opportunities…`
-        : asString(payload.message) || "Scanning market for opportunities…"}
-    </p>
-  );
+function eventsToMessages(
+  events: RunEventRow[],
+  analystName: string,
+  config: Record<string, unknown>,
+  isLive: boolean
+): ChatMsg[] {
+  const msgs: ChatMsg[] = [];
+
+  // Always start with the kickoff message
+  msgs.push({ kind: "kickoff", analystName, config });
+
+  // Group per-ticker events
+  const tickerGroups: Record<
+    string,
+    {
+      company: string;
+      toolCalls: ToolCallItem[];
+      sources: SourceChipData[];
+      concept: { direction: string; confidence: number | null; notes: string } | null;
+      thesis: InlineThesisData | null;
+      isPass: boolean;
+      passReason: string;
+    }
+  > = {};
+
+  function ensureGroup(ticker: string) {
+    if (!tickerGroups[ticker]) {
+      tickerGroups[ticker] = {
+        company: "",
+        toolCalls: [],
+        sources: [],
+        concept: null,
+        thesis: null,
+        isPass: false,
+        passReason: "",
+      };
+    }
+    return tickerGroups[ticker];
+  }
+
+  // Track which tickers we've seen so we can emit groups in order
+  const tickerOrder: string[] = [];
+  let scanSeen = false;
+  let candidatesSeen = false;
+  let completeSeen = false;
+
+  for (const ev of events) {
+    const payload = asRecord(ev.payload);
+
+    switch (ev.type) {
+      case "scan_start":
+      case "scanning": {
+        if (!scanSeen) {
+          const sectors = asArray<string>(payload.sectors);
+          msgs.push({
+            kind: "scanning",
+            sectors,
+            text:
+              sectors.length > 0
+                ? `Scanning **${sectors.join(", ")}** for opportunities...`
+                : asString(payload.message) || "Scanning market for opportunities...",
+          });
+          scanSeen = true;
+        }
+        break;
+      }
+
+      case "candidates": {
+        if (!candidatesSeen) {
+          const tickers = asArray<string>(payload.tickers);
+          msgs.push({ kind: "candidates", tickers });
+          candidatesSeen = true;
+        }
+        break;
+      }
+
+      case "analyzing": {
+        const ticker = asString(payload.ticker);
+        if (ticker) {
+          const g = ensureGroup(ticker);
+          g.company = asString(payload.company);
+          if (!tickerOrder.includes(ticker)) tickerOrder.push(ticker);
+        }
+        break;
+      }
+
+      case "data_fetch":
+      case "source_fetched": {
+        const ticker = asString(payload.ticker);
+        if (ticker) {
+          const g = ensureGroup(ticker);
+          const source = asString(payload.source || payload.provider);
+          const label = asString(payload.label || payload.message) || `Fetching ${source}`;
+          g.toolCalls.push({
+            id: ev.id,
+            label,
+            status: "done",
+            details: asString(payload.details || payload.summary),
+          });
+          if (source) {
+            g.sources.push({
+              provider: source,
+              title: asString(payload.title) || source,
+              url: asString(payload.url) || undefined,
+              excerpt: asString(payload.excerpt || payload.summary) || undefined,
+            });
+          }
+          if (!tickerOrder.includes(ticker)) tickerOrder.push(ticker);
+        }
+        break;
+      }
+
+      case "data_ready": {
+        const ticker = asString(payload.ticker);
+        if (ticker) {
+          const g = ensureGroup(ticker);
+          const sourcesArr = asArray<Record<string, unknown>>(payload.sources);
+          for (const s of sourcesArr) {
+            g.sources.push({
+              provider: asString(s.provider),
+              title: asString(s.title) || asString(s.provider),
+              url: asString(s.url) || undefined,
+            });
+          }
+          if (!tickerOrder.includes(ticker)) tickerOrder.push(ticker);
+        }
+        break;
+      }
+
+      case "concept": {
+        const ticker = asString(payload.ticker);
+        if (ticker) {
+          const g = ensureGroup(ticker);
+          g.concept = {
+            direction: asString(payload.direction).toUpperCase(),
+            confidence: asNumber(payload.confidence),
+            notes: asString(payload.reasoning_notes || payload.reasoning || payload.notes),
+          };
+          if (!tickerOrder.includes(ticker)) tickerOrder.push(ticker);
+        }
+        break;
+      }
+
+      case "thesis_complete": {
+        const raw = asRecord(payload.thesis ?? payload);
+        const ticker = asString(raw.ticker || payload.ticker);
+        if (ticker) {
+          const g = ensureGroup(ticker);
+          const direction = (asString(raw.direction) || "PASS") as
+            | "LONG"
+            | "SHORT"
+            | "PASS";
+          if (direction === "PASS") {
+            g.isPass = true;
+            g.passReason =
+              asString(raw.pass_reason || raw.reasoning_summary) ||
+              "No clear tradeable signal";
+          }
+          g.thesis = {
+            ticker,
+            direction,
+            confidence_score: asNumber(raw.confidence_score) ?? 0,
+            reasoning_summary: asString(raw.reasoning_summary),
+            thesis_bullets: asArray<string>(raw.thesis_bullets),
+            risk_flags: asArray<string>(raw.risk_flags),
+            entry_price: asNumber(raw.entry_price),
+            target_price: asNumber(raw.target_price),
+            stop_loss: asNumber(raw.stop_loss),
+            hold_duration: asString(raw.hold_duration) || "SWING",
+            signal_types: asArray<string>(raw.signal_types),
+            sources: g.sources,
+            pass_reason: asString(raw.pass_reason),
+          };
+          if (!tickerOrder.includes(ticker)) tickerOrder.push(ticker);
+        }
+        break;
+      }
+
+      case "skip": {
+        const ticker = asString(payload.ticker);
+        if (ticker) {
+          const g = ensureGroup(ticker);
+          g.isPass = true;
+          g.passReason =
+            asString(payload.reason) || "Below confidence threshold";
+          if (!g.thesis) {
+            g.thesis = {
+              ticker,
+              direction: "PASS",
+              confidence_score: asNumber(payload.confidence) ?? 0,
+              pass_reason: g.passReason,
+            };
+          }
+          if (!tickerOrder.includes(ticker)) tickerOrder.push(ticker);
+        }
+        break;
+      }
+
+      case "trade_placed": {
+        msgs.push({
+          kind: "trade_placed",
+          ticker: asString(payload.ticker),
+          direction: asString(payload.direction).toUpperCase() || "LONG",
+          entry: asNumber(payload.entry),
+        });
+        break;
+      }
+
+      case "run_complete": {
+        completeSeen = true;
+        msgs.push({
+          kind: "run_complete",
+          analyzed: asNumber(payload.analyzed) ?? 0,
+          recommended: asNumber(payload.recommended) ?? 0,
+          placed: asNumber(payload.placed),
+        });
+        break;
+      }
+
+      case "ticker_error":
+      case "error": {
+        const ticker = asString(payload.ticker);
+        msgs.push({
+          kind: "error",
+          ticker,
+          message: asString(payload.message || payload.text),
+        });
+        break;
+      }
+    }
+  }
+
+  // Insert ticker group messages in order (after candidates, before trades)
+  // Find position after candidates message
+  const insertIdx = msgs.findIndex((m) => m.kind === "candidates");
+  const insertAt = insertIdx >= 0 ? insertIdx + 1 : msgs.length;
+
+  const groupMsgs: ChatMsg[] = tickerOrder.map((ticker) => {
+    const g = tickerGroups[ticker];
+    return {
+      kind: "ticker_group" as const,
+      ticker,
+      company: g.company,
+      toolCalls: g.toolCalls,
+      sources: g.sources,
+      concept: g.concept,
+      thesis: g.thesis,
+      isPass: g.isPass,
+      passReason: g.passReason,
+    };
+  });
+
+  msgs.splice(insertAt, 0, ...groupMsgs);
+
+  // If live and we have a ticker currently being analyzed (no thesis yet),
+  // add a thinking indicator
+  if (isLive && !completeSeen) {
+    const activeTickerIdx = tickerOrder.findIndex((t) => !tickerGroups[t].thesis);
+    if (activeTickerIdx >= 0) {
+      // The thinking is already implied by the ticker group with no thesis
+    }
+  }
+
+  return msgs;
 }
 
-function CandidatesMsg({ payload }: { payload: Record<string, unknown> }) {
-  const tickers = asArray<string>(payload.tickers);
+// ─── Config badges ──────────────────────────────────────────────────────────
+
+function ConfigBadges({ config }: { config: Record<string, unknown> }) {
+  const direction = asString(config.directionBias || config.direction_bias);
+  const holdDurations = asArray<string>(
+    config.holdDurations || config.hold_durations
+  );
+  const minConf = asNumber(config.minConfidence || config.min_confidence);
+  const sectors = asArray<string>(config.sectors);
+
+  const items: { label: string; value: string }[] = [];
+  if (direction) items.push({ label: "Direction", value: direction });
+  if (holdDurations.length > 0)
+    items.push({ label: "Hold", value: holdDurations.join(", ") });
+  if (minConf != null) items.push({ label: "Min Conf", value: `${minConf}%` });
+  if (sectors.length > 0)
+    items.push({ label: "Sectors", value: sectors.slice(0, 3).join(", ") });
+
+  if (items.length === 0) return null;
+
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
-      <ListChecks className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className="text-muted-foreground">
-        Found {tickers.length} candidate{tickers.length !== 1 ? "s" : ""}:
-      </span>
-      {tickers.map((t) => (
-        <Badge key={t} variant="outline" className="font-mono text-xs">
-          {t}
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {items.map((item) => (
+        <Badge key={item.label} variant="outline" className="text-[10px] gap-1">
+          <span className="text-muted-foreground">{item.label}:</span>
+          <span>{item.value}</span>
         </Badge>
       ))}
     </div>
   );
 }
 
-// ── Collapsible "thinking" chip shown while the agent analyzes a ticker ───────
+// ─── Per-message renderers ────────────────────────────────────────────────────
 
-function AnalyzingMsg({ payload }: { payload: Record<string, unknown> }) {
-  const [open, setOpen] = useState(false);
-  const ticker = asString(payload.ticker);
-  const company = asString(payload.company);
-
+function KickoffMessage({
+  analystName,
+  config,
+}: {
+  analystName: string;
+  config: Record<string, unknown>;
+}) {
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-muted-foreground transition-colors cursor-pointer select-none">
-        <ChevronRight
-          className={cn(
-            "h-3 w-3 transition-transform duration-150",
-            open && "rotate-90"
-          )}
-        />
-        <span>
-          Analyzing{" "}
-          <span className="font-mono font-medium text-muted-foreground">
-            {ticker}
-          </span>
-          {"…"}
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-none">
-        <p className="mt-1 pl-4 text-xs text-muted-foreground/60 leading-relaxed">
-          {company
-            ? company
-            : "Fetching price data, news, and market signals…"}
-        </p>
-      </CollapsibleContent>
-    </Collapsible>
+    <AssistantMessage
+      content={`Starting research run for **${analystName}**`}
+    >
+      <ConfigBadges config={config} />
+    </AssistantMessage>
   );
 }
 
-// ── Inline direction signal shown after concept CoT, before thesis card ───────
-
-function ConceptMsg({ payload }: { payload: Record<string, unknown> }) {
-  const ticker = asString(payload.ticker);
-  const direction = asString(payload.direction).toUpperCase();
-  const confidence = asNumber(payload.confidence);
-  const isLong = direction === "LONG";
-  const isShort = direction === "SHORT";
-
+function ScanningMessage({ text }: { text: string }) {
   return (
-    <p className="text-xs text-muted-foreground/70 pl-4">
-      Initial signal for{" "}
-      <span className="font-mono font-medium text-muted-foreground">
-        {ticker}
-      </span>
-      {": "}
-      <span
-        className={cn(
-          "font-semibold",
-          isLong
-            ? "text-emerald-500"
-            : isShort
-            ? "text-red-500"
-            : "text-muted-foreground"
-        )}
-      >
-        {direction}
-      </span>
-      {confidence != null && (
-        <span className="tabular-nums"> · {confidence}%</span>
-      )}
-    </p>
+    <AssistantMessage content={text}>
+      <ThinkingIndicator label="Discovering candidates" />
+    </AssistantMessage>
   );
 }
 
-function ThesisCompleteMsg({ payload }: { payload: Record<string, unknown> }) {
-  const raw = asRecord(payload.thesis ?? payload);
-  const thesis: ThesisPayload = {
-    ticker: asString(raw.ticker || payload.ticker),
-    direction: (asString(raw.direction) || "PASS") as "LONG" | "SHORT" | "PASS",
-    confidence_score: asNumber(raw.confidence_score) ?? 0,
-    reasoning_summary: asString(raw.reasoning_summary),
-    thesis_bullets: asArray<string>(raw.thesis_bullets),
-    risk_flags: asArray<string>(raw.risk_flags),
-    entry_price: asNumber(raw.entry_price),
-    target_price: asNumber(raw.target_price),
-    stop_loss: asNumber(raw.stop_loss),
-    hold_duration: asString(raw.hold_duration) || "SWING",
-    signal_types: asArray<string>(raw.signal_types),
-  };
-
-  const isLong = thesis.direction === "LONG";
-  const isShort = thesis.direction === "SHORT";
-  const dirColor = isLong
-    ? "text-emerald-500"
-    : isShort
-    ? "text-red-500"
-    : "text-muted-foreground";
-
-  const gainPct =
-    thesis.entry_price && thesis.target_price
-      ? (
-          ((thesis.target_price - thesis.entry_price) / thesis.entry_price) *
-          100
-        ).toFixed(1)
-      : null;
-  const lossPct =
-    thesis.entry_price && thesis.stop_loss
-      ? (
-          ((thesis.entry_price - thesis.stop_loss) / thesis.entry_price) *
-          100
-        ).toFixed(1)
-      : null;
-  const rrRatio =
-    thesis.entry_price && thesis.target_price && thesis.stop_loss
-      ? (
-          (thesis.target_price - thesis.entry_price) /
-          (thesis.entry_price - thesis.stop_loss)
-        ).toFixed(1)
-      : null;
-
+function CandidatesMessage({ tickers }: { tickers: string[] }) {
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
-      {/* Header row */}
-      <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/20">
-        <div className="flex items-center gap-3">
-          <span className="text-base font-semibold font-mono">
-            {thesis.ticker}
-          </span>
-          <span className={`text-sm font-semibold ${dirColor}`}>
-            {thesis.direction}
-          </span>
-          {thesis.hold_duration && (
-            <span className="text-xs text-muted-foreground">
-              {thesis.hold_duration}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {thesis.signal_types.slice(0, 2).map((s) => (
-            <span
-              key={s}
-              className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground"
-            >
-              {s.replace(/_/g, " ")}
-            </span>
-          ))}
-          <span
-            className={`text-sm font-semibold tabular-nums ${
-              thesis.confidence_score >= 70
-                ? "text-emerald-500"
-                : "text-amber-500"
-            }`}
-          >
-            {thesis.confidence_score}%
-          </span>
-        </div>
+    <AssistantMessage
+      content={`Found **${tickers.length}** candidate${tickers.length !== 1 ? "s" : ""} to analyze:`}
+    >
+      <div className="flex flex-wrap gap-1.5">
+        {tickers.map((t) => (
+          <Badge key={t} variant="outline" className="font-mono text-xs">
+            {t}
+          </Badge>
+        ))}
       </div>
-
-      <div className="px-4 py-4 space-y-4">
-        {/* Trade plan */}
-        {thesis.entry_price != null && (
-          <div className="grid grid-cols-4 gap-3 rounded-lg bg-muted/40 p-3 text-center">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                Entry
-              </p>
-              <p className="text-sm tabular-nums font-semibold">
-                ${thesis.entry_price.toFixed(2)}
-              </p>
-            </div>
-            {thesis.target_price != null && (
-              <div>
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                  Target
-                </p>
-                <p className="text-sm tabular-nums font-semibold text-emerald-500">
-                  ${thesis.target_price.toFixed(2)}
-                  {gainPct && (
-                    <span className="text-[10px] text-muted-foreground ml-1">
-                      +{gainPct}%
-                    </span>
-                  )}
-                </p>
-              </div>
-            )}
-            {thesis.stop_loss != null && (
-              <div>
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                  Stop
-                </p>
-                <p className="text-sm tabular-nums font-semibold text-red-500">
-                  ${thesis.stop_loss.toFixed(2)}
-                  {lossPct && (
-                    <span className="text-[10px] text-muted-foreground ml-1">
-                      −{lossPct}%
-                    </span>
-                  )}
-                </p>
-              </div>
-            )}
-            {rrRatio != null && (
-              <div>
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                  R:R
-                </p>
-                <p
-                  className={`text-sm tabular-nums font-semibold ${
-                    parseFloat(rrRatio) >= 2
-                      ? "text-emerald-500"
-                      : parseFloat(rrRatio) >= 1
-                      ? "text-muted-foreground"
-                      : "text-red-500"
-                  }`}
-                >
-                  {rrRatio}×
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Reasoning */}
-        {thesis.reasoning_summary && (
-          <p className="text-sm text-foreground/80 leading-relaxed">
-            {thesis.reasoning_summary}
-          </p>
-        )}
-
-        {/* Bullish bullets */}
-        {thesis.thesis_bullets.length > 0 && (
-          <ul className="space-y-1.5">
-            {thesis.thesis_bullets.map((b, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-emerald-500" />
-                <span>{b}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* Risk flags */}
-        {thesis.risk_flags.length > 0 && (
-          <ul className="space-y-1.5">
-            {thesis.risk_flags.map((r, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-2 text-sm text-muted-foreground"
-              >
-                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
-                <span>{r}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+    </AssistantMessage>
   );
 }
 
-function SkipMsg({ payload }: { payload: Record<string, unknown> }) {
-  const ticker = asString(payload.ticker);
-  const reason = asString(payload.reason);
-  const confidence = asNumber(payload.confidence);
-  return (
-    <div className="flex items-start gap-2 text-sm text-muted-foreground">
-      <SkipForward className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-      <span>
-        Passed on{" "}
-        <span className="font-mono font-medium text-foreground">{ticker}</span>
-        {confidence != null ? (
-          <span className="tabular-nums"> — {confidence}% confidence</span>
-        ) : null}
-        {reason ? <span> · {reason}</span> : null}
-      </span>
-    </div>
-  );
-}
-
-function TradePlacedMsg({ payload }: { payload: Record<string, unknown> }) {
-  const ticker = asString(payload.ticker);
-  const entry = asNumber(payload.entry);
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      <TrendingUp className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-      <span className="text-muted-foreground">
-        Paper trade placed:{" "}
-        <span className="font-mono font-medium text-foreground">{ticker}</span>
-        {entry != null ? (
-          <span className="tabular-nums"> @ ${entry.toFixed(2)}</span>
-        ) : null}
-      </span>
-    </div>
-  );
-}
-
-function ErrorMsg({ payload }: { payload: Record<string, unknown> }) {
-  const ticker = asString(payload.ticker);
-  const msg = asString(payload.message || payload.text);
-  return (
-    <div className="flex items-start gap-2 text-sm text-red-500">
-      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-      <span>
-        {ticker ? (
-          <>
-            Error on <span className="font-mono font-semibold">{ticker}</span>:{" "}
-          </>
-        ) : null}
-        {msg}
-      </span>
-    </div>
-  );
-}
-
-function RunCompleteMsg({ payload }: { payload: Record<string, unknown> }) {
-  const analyzed = asNumber(payload.analyzed) ?? 0;
-  const recommended = asNumber(payload.recommended) ?? 0;
-  const placed = asNumber(payload.placed);
-  return (
-    <div className="rounded-lg border bg-muted/40 p-4">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-        Run complete
-      </div>
-      <div className="mt-2 flex gap-4 text-sm text-muted-foreground">
-        <span className="tabular-nums">{analyzed} analyzed</span>
-        <Separator orientation="vertical" className="h-4 self-center" />
-        <span className="tabular-nums text-emerald-500">
-          {recommended} recommended
-        </span>
-        {placed != null && placed > 0 && (
-          <>
-            <Separator orientation="vertical" className="h-4 self-center" />
-            <span className="tabular-nums">{placed} trades placed</span>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Event dispatcher ──────────────────────────────────────────────────────────
-
-function renderEvent(event: RunEventRow) {
-  const payload = asRecord(event.payload);
-  switch (event.type) {
-    case "scanning":
-    case "scan_start":
-      return <ScanningMsg payload={payload} />;
-    case "candidates":
-      return <CandidatesMsg payload={payload} />;
-    case "analyzing":
-      return <AnalyzingMsg payload={payload} />;
-    case "concept":
-      return <ConceptMsg payload={payload} />;
-    case "thesis_complete":
-      return <ThesisCompleteMsg payload={payload} />;
-    case "skip":
-      return <SkipMsg payload={payload} />;
-    case "trade_placed":
-      return <TradePlacedMsg payload={payload} />;
-    case "ticker_error":
-    case "error":
-      return <ErrorMsg payload={payload} />;
-    case "run_complete":
-      return <RunCompleteMsg payload={payload} />;
-    default:
-      return null;
-  }
-}
-
-// ─── Spacing helper — tighten gap between analyzing/concept/thesis groups ─────
-
-function getEventSpacing(
-  events: RunEventRow[],
-  index: number
-): string {
-  const curr = events[index];
-  const prev = index > 0 ? events[index - 1] : null;
-  const TIGHT_TYPES = new Set(["analyzing", "concept", "thesis_complete"]);
-  if (prev && TIGHT_TYPES.has(prev.type) && TIGHT_TYPES.has(curr.type)) {
-    return "mt-1.5"; // tight spacing within a ticker group
-  }
-  return "mt-5"; // normal spacing between different topics
-}
-
-// ─── Sources Panel ─────────────────────────────────────────────────────────────
-
-type TickerSources = {
+function TickerGroupMessage({
+  ticker,
+  company,
+  toolCalls,
+  sources,
+  concept,
+  thesis,
+  isPass,
+  passReason,
+  isLive,
+}: {
   ticker: string;
   company: string;
-  price: number | null;
-  sources: SourceInfo[];
-};
-
-function SourcesPanel({ events }: { events: RunEventRow[] }) {
-  const byTicker: Record<string, TickerSources> = {};
-
-  for (const ev of events) {
-    if (ev.type !== "data_ready" && ev.type !== "data_fetch") continue;
-    const payload = asRecord(ev.payload);
-    const ticker = asString(payload.ticker);
-    if (!ticker) continue;
-    if (!byTicker[ticker]) {
-      byTicker[ticker] = {
-        ticker,
-        company: asString(payload.company),
-        price: asNumber(payload.price),
-        sources: [],
-      };
-    }
-    if (ev.type === "data_ready") {
-      byTicker[ticker].price =
-        asNumber(payload.price) ?? byTicker[ticker].price;
-      byTicker[ticker].sources.push(...asArray<SourceInfo>(payload.sources));
-    } else if (ev.type === "data_fetch") {
-      byTicker[ticker].sources.push({
-        type: "fetch",
-        provider: asString(payload.source),
-        title: asString(payload.source),
-      });
-    }
-  }
-
-  const items = Object.values(byTicker);
-
-  if (items.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center p-8 text-muted-foreground">
-        <LinkIcon className="h-8 w-8 mb-3 opacity-30" />
-        <p className="text-sm">Sources appear here as stocks are analyzed</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4 p-4">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Sources
-      </h3>
-      {items.map(({ ticker, company, price, sources }) => (
-        <div key={ticker} className="space-y-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="text-sm font-semibold font-mono">{ticker}</p>
-            {price != null && (
-              <p className="text-xs text-muted-foreground tabular-nums">
-                ${price.toFixed(2)}
-              </p>
-            )}
-          </div>
-          {company && (
-            <p className="text-xs text-muted-foreground -mt-1">{company}</p>
-          )}
-          {sources.length > 0 && (
-            <ul className="space-y-1">
-              {sources.map((s, i) => (
-                <li
-                  key={i}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 shrink-0" />
-                  <span className="font-medium text-foreground/70">
-                    {s.provider}
-                  </span>
-                  {s.title !== s.provider && (
-                    <span className="truncate">{s.title}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          <Separator />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Follow-up chat ────────────────────────────────────────────────────────────
-
-type FollowupMsg = {
-  role: "user" | "assistant";
-  text: string;
-  status?: "streaming" | "done" | "error";
-};
-
-function FollowupChat({
-  analystId,
-  recentTheses,
-}: {
-  analystId?: string;
-  recentTheses?: ComposerRecentThesis[];
+  toolCalls: ToolCallItem[];
+  sources: SourceChipData[];
+  concept: { direction: string; confidence: number | null; notes: string } | null;
+  thesis: InlineThesisData | null;
+  isPass: boolean;
+  passReason: string;
+  isLive: boolean;
 }) {
-  const [messages, setMessages] = useState<FollowupMsg[]>([]);
-  const [busy, setBusy] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  async function submit(rawMsg: string, ctx: ComposerContext) {
-    const question = rawMsg.trim();
-    if (!question || busy) return;
-
-    // Build message with optional ticker context
-    const fullMsg = ctx.ticker
-      ? `[Context: $${ctx.ticker.symbol}] ${question}`
-      : question;
-
-    setBusy(true);
-    const assistantIdx = messages.length + 1;
-
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", text: question },
-      { role: "assistant", text: "", status: "streaming" },
-    ]);
-
-    try {
-      const res = await fetch("/api/research/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: fullMsg,
-          history: [],
-          model: ctx.model ?? "gpt-4o",
-        }),
-      });
-      if (!res.body) throw new Error("No response body");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          try {
-            const evt = JSON.parse(line.slice(5).trim());
-            if (evt.type === "token") {
-              accumulated += evt.text;
-              setMessages((prev) =>
-                prev.map((m, i) =>
-                  i === assistantIdx ? { ...m, text: accumulated } : m
-                )
-              );
-            } else if (evt.type === "complete") {
-              setMessages((prev) =>
-                prev.map((m, i) =>
-                  i === assistantIdx ? { ...m, status: "done" } : m
-                )
-              );
-            }
-          } catch {
-            // malformed line
-          }
-        }
-      }
-    } catch {
-      setMessages((prev) =>
-        prev.map((m, i) =>
-          i === assistantIdx
-            ? {
-                ...m,
-                status: "error",
-                text: "Request failed. Please try again.",
-              }
-            : m
-        )
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
+  const isAnalyzing = !thesis && !isPass;
+  const conceptDir = concept?.direction;
+  const conceptConf = concept?.confidence;
 
   return (
-    <div className="border-t shrink-0">
-      {/* Follow-up thread */}
-      {messages.length > 0 && (
-        <div className="max-w-2xl mx-auto px-6 pt-4 pb-2 space-y-4">
-          {messages.map((msg, i) =>
-            msg.role === "user" ? (
-              <div key={i} className="flex justify-end">
-                <div className="bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm max-w-sm">
-                  {msg.text}
-                </div>
-              </div>
-            ) : (
-              <div
-                key={i}
-                className={`text-sm leading-relaxed ${
-                  msg.status === "error"
-                    ? "text-red-500"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {msg.text || (
-                  <span className="flex items-center gap-1.5">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Thinking…
-                  </span>
-                )}
-                {msg.status === "streaming" && msg.text && (
-                  <span className="animate-pulse">▌</span>
-                )}
-              </div>
-            )
+    <AssistantMessage
+      content={`Analyzing **${ticker}**${company ? ` (${company})` : ""}...`}
+    >
+      {/* Tool calls — data fetching */}
+      {toolCalls.length > 0 && <ToolCallGroup items={toolCalls} />}
+
+      {/* Source chips */}
+      {sources.length > 0 && <SourceChipRow sources={sources} />}
+
+      {/* Concept signal */}
+      {concept && (
+        <p className="text-xs text-muted-foreground">
+          Initial signal:{" "}
+          <span
+            className={cn(
+              "font-semibold",
+              conceptDir === "LONG"
+                ? "text-emerald-500"
+                : conceptDir === "SHORT"
+                  ? "text-red-500"
+                  : "text-muted-foreground"
+            )}
+          >
+            {conceptDir}
+          </span>
+          {conceptConf != null && (
+            <span className="tabular-nums"> at {conceptConf}% confidence</span>
           )}
-          <div ref={bottomRef} />
+        </p>
+      )}
+
+      {/* Thesis card */}
+      {thesis && thesis.direction !== "PASS" && <InlineThesisCard {...thesis} />}
+
+      {/* Pass message */}
+      {(isPass || thesis?.direction === "PASS") && (
+        <div className="flex items-start gap-2 text-sm text-muted-foreground">
+          <SkipForward className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>
+            Passed on{" "}
+            <span className="font-mono font-medium text-foreground">
+              {ticker}
+            </span>
+            {conceptConf != null && (
+              <span className="tabular-nums"> — {conceptConf}% confidence</span>
+            )}
+            {passReason && <span> · {passReason}</span>}
+          </span>
         </div>
       )}
 
-      {/* Composer */}
-      <div className="px-6 py-3">
-        <ChatComposer
-          onSubmit={submit}
-          recentTheses={recentTheses}
-          loading={busy}
-          placeholder="Ask a follow-up question about this run…"
-          className="max-w-2xl mx-auto"
-        />
+      {/* Still analyzing (live) */}
+      {isAnalyzing && isLive && (
+        <ThinkingIndicator label="Generating thesis..." />
+      )}
+    </AssistantMessage>
+  );
+}
+
+function TradePlacedMessage({
+  ticker,
+  direction,
+  entry,
+}: {
+  ticker: string;
+  direction: string;
+  entry: number | null;
+}) {
+  const isLong = direction === "LONG";
+  const Icon = isLong ? TrendingUp : TrendingDown;
+  const color = isLong ? "text-emerald-500" : "text-red-500";
+
+  return (
+    <AssistantMessage>
+      <div className="flex items-center gap-2 text-sm">
+        <ShoppingCart className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="text-muted-foreground">
+          Paper trade placed:{" "}
+          <span className="font-mono font-medium text-foreground">{ticker}</span>{" "}
+          <span className={cn("font-semibold", color)}>
+            <Icon className="inline h-3 w-3 mr-0.5" />
+            {direction}
+          </span>
+          {entry != null && (
+            <span className="tabular-nums"> @ ${entry.toFixed(2)}</span>
+          )}
+        </span>
       </div>
-    </div>
+    </AssistantMessage>
+  );
+}
+
+function RunCompleteMessage({
+  analyzed,
+  recommended,
+  placed,
+}: {
+  analyzed: number;
+  recommended: number;
+  placed: number | null;
+}) {
+  return (
+    <AssistantMessage>
+      <div className="rounded-lg border bg-muted/40 p-4">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          Run complete
+        </div>
+        <div className="mt-2 flex gap-4 text-sm text-muted-foreground tabular-nums">
+          <span>{analyzed} analyzed</span>
+          <span className="text-border">|</span>
+          <span className="text-emerald-500">{recommended} recommended</span>
+          {placed != null && placed > 0 && (
+            <>
+              <span className="text-border">|</span>
+              <span>{placed} trades placed</span>
+            </>
+          )}
+        </div>
+      </div>
+    </AssistantMessage>
+  );
+}
+
+function ErrorMessage({ ticker, message }: { ticker: string; message: string }) {
+  return (
+    <AssistantMessage>
+      <div className="flex items-start gap-2 text-sm text-red-500">
+        <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        <span>
+          {ticker ? (
+            <>
+              Error on{" "}
+              <span className="font-mono font-semibold">{ticker}</span>:{" "}
+            </>
+          ) : null}
+          {message}
+        </span>
+      </div>
+    </AssistantMessage>
   );
 }
 
@@ -751,63 +586,102 @@ function FollowupChat({
 
 export default function RunChatThread({
   events,
-  showFollowup = false,
-  userId,
-  analystId,
-  recentTheses,
+  analystName = "Agent",
+  config = {},
+  isLive = false,
+  composerSlot,
 }: {
   events: RunEventRow[];
-  showFollowup?: boolean;
-  userId?: string;
-  analystId?: string;
-  /** Past theses for @-reference in the follow-up composer */
-  recentTheses?: ComposerRecentThesis[];
+  analystName?: string;
+  config?: Record<string, unknown>;
+  isLive?: boolean;
+  /** Optional composer/follow-up chat rendered below the thread */
+  composerSlot?: React.ReactNode;
 }) {
-  // Only render meaningful events in the main feed
-  const mainEvents = events.filter((ev) => MAIN_FEED_TYPES.has(ev.type));
+  const messages = eventsToMessages(events, analystName, config, isLive);
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Left: research output + follow-up */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        {/* Event feed */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-2xl px-6 py-6">
-            {mainEvents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
-                <Loader2 className="h-8 w-8 mb-3 animate-spin opacity-40" />
-                <p className="text-sm">Waiting for run to start…</p>
-              </div>
-            ) : (
-              <div>
-                {mainEvents.map((ev, idx) => {
-                  const rendered = renderEvent(ev);
-                  if (!rendered) return null;
-                  const spacing = getEventSpacing(mainEvents, idx);
-                  return (
-                    <div
-                      key={ev.id}
-                      className={idx === 0 ? "" : spacing}
-                    >
-                      {rendered}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+    <div className="flex h-full flex-col overflow-hidden">
+      <ChatThread>
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
+            <Loader2 className="h-8 w-8 mb-3 animate-spin opacity-40" />
+            <p className="text-sm">Waiting for run to start...</p>
           </div>
-        </div>
-
-        {/* Follow-up chat with proper ChatComposer */}
-        {showFollowup && (
-          <FollowupChat analystId={analystId} recentTheses={recentTheses} />
+        ) : (
+          messages.map((msg, i) => {
+            switch (msg.kind) {
+              case "kickoff":
+                return (
+                  <KickoffMessage
+                    key={i}
+                    analystName={msg.analystName}
+                    config={msg.config}
+                  />
+                );
+              case "scanning":
+                return <ScanningMessage key={i} text={msg.text} />;
+              case "candidates":
+                return <CandidatesMessage key={i} tickers={msg.tickers} />;
+              case "ticker_group":
+                return (
+                  <TickerGroupMessage
+                    key={`ticker-${msg.ticker}`}
+                    ticker={msg.ticker}
+                    company={msg.company}
+                    toolCalls={msg.toolCalls}
+                    sources={msg.sources}
+                    concept={msg.concept}
+                    thesis={msg.thesis}
+                    isPass={msg.isPass}
+                    passReason={msg.passReason}
+                    isLive={isLive}
+                  />
+                );
+              case "trade_placed":
+                return (
+                  <TradePlacedMessage
+                    key={i}
+                    ticker={msg.ticker}
+                    direction={msg.direction}
+                    entry={msg.entry}
+                  />
+                );
+              case "run_complete":
+                return (
+                  <RunCompleteMessage
+                    key={i}
+                    analyzed={msg.analyzed}
+                    recommended={msg.recommended}
+                    placed={msg.placed}
+                  />
+                );
+              case "error":
+                return (
+                  <ErrorMessage
+                    key={i}
+                    ticker={msg.ticker}
+                    message={msg.message}
+                  />
+                );
+              default:
+                return null;
+            }
+          })
         )}
-      </div>
 
-      {/* Right: sources panel */}
-      <div className="hidden lg:flex w-[300px] border-l overflow-y-auto flex-col">
-        <SourcesPanel events={events} />
-      </div>
+        {/* Live streaming indicator at the bottom */}
+        {isLive &&
+          !messages.some((m) => m.kind === "run_complete") && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+              <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              <span>Research in progress...</span>
+            </div>
+          )}
+      </ChatThread>
+
+      {/* Composer slot (follow-up chat) */}
+      {composerSlot}
     </div>
   );
 }

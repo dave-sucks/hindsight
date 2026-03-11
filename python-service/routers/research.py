@@ -378,7 +378,12 @@ async def _stream_run(
 
     # Scanner discovery when no tickers provided
     if not tickers:
-        yield event("scanning", message="Scanning market for research opportunities...")
+        sectors = agent_config.get("sectors", [])
+        yield event(
+            "scanning",
+            message="Scanning market for research opportunities...",
+            sectors=sectors,
+        )
         try:
             tickers = await get_research_candidates(agent_config)
         except Exception as exc:

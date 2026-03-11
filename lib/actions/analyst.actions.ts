@@ -101,6 +101,11 @@ export interface AnalystStats {
   totalTrades: number;
   winRate: number | null;
   totalPnl: number;
+  wins: number;
+  losses: number;
+  bestWin: number | null;
+  worstLoss: number | null;
+  avgConfidence: number | null;
 }
 
 export interface AnalystDetail {
@@ -312,22 +317,44 @@ export async function getAnalystDetail(
     }),
   ]);
 
-  // Compute stats from recentTrades (approximate for display)
-  const allTrades = await prisma.trade.findMany({
-    where: {
-      userId,
-      thesis: { researchRun: { agentConfigId: analystId } },
-    },
-    select: { outcome: true, realizedPnl: true },
-  });
+  // Compute stats from all trades
+  const [allTrades, avgConfAgg] = await Promise.all([
+    prisma.trade.findMany({
+      where: {
+        userId,
+        thesis: { researchRun: { agentConfigId: analystId } },
+      },
+      select: { outcome: true, realizedPnl: true },
+    }),
+    prisma.thesis.aggregate({
+      where: { researchRun: { agentConfigId: analystId }, userId },
+      _avg: { confidenceScore: true },
+    }),
+  ]);
 
   const closedTrades = allTrades.filter((t) => t.outcome != null);
   const wins = closedTrades.filter((t) => t.outcome === "WIN").length;
+  const losses = closedTrades.filter((t) => t.outcome === "LOSS").length;
   const winRate = closedTrades.length > 0 ? wins / closedTrades.length : null;
   const totalPnl = closedTrades.reduce(
     (sum, t) => sum + (t.realizedPnl ?? 0),
     0
   );
+  const winTrades = closedTrades.filter(
+    (t) => t.outcome === "WIN" && t.realizedPnl != null
+  );
+  const lossTrades = closedTrades.filter(
+    (t) => t.outcome === "LOSS" && t.realizedPnl != null
+  );
+  const bestWin =
+    winTrades.length > 0
+      ? Math.max(...winTrades.map((t) => t.realizedPnl!))
+      : null;
+  const worstLoss =
+    lossTrades.length > 0
+      ? Math.min(...lossTrades.map((t) => t.realizedPnl!))
+      : null;
+  const avgConfidence = avgConfAgg._avg.confidenceScore ?? null;
 
   // Map Prisma config (Json fields) → typed AnalystConfig
   const mappedConfig: AnalystConfig = {
@@ -360,6 +387,11 @@ export async function getAnalystDetail(
       totalTrades: allTrades.length,
       winRate,
       totalPnl,
+      wins,
+      losses,
+      bestWin,
+      worstLoss,
+      avgConfidence,
     },
   };
 }
@@ -475,4 +507,97 @@ export async function createAnalystFromWizard(
   });
 
   return { id: analyst.id };
+}
+
+// ── createAnalystFromBuilder (AI chat builder — richer config) ──────────────
+
+export interface BuilderConfig {
+  name: string;
+  analystPrompt: string;
+  description?: string;
+  directionBias: "LONG" | "SHORT" | "BOTH";
+  holdDurations: ("DAY" | "SWING" | "POSITION")[];
+  sectors: string[];
+  signalTypes: string[];
+  minConfidence: number;
+  maxPositionSize: number;
+  maxOpenPositions: number;
+  minMarketCapTier: "LARGE" | "MID" | "SMALL";
+  watchlist?: string[];
+  exclusionList?: string[];
+}
+
+export async function createAnalystFromBuilder(
+  data: BuilderConfig
+): Promise<{ id: string }> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  const analyst = await prisma.agentConfig.create({
+    data: {
+      userId,
+      name: data.name,
+      enabled: true,
+      analystPrompt: data.analystPrompt,
+      markets: ["US_EQUITIES"],
+      exchanges: ["NASDAQ", "NYSE"],
+      sectors: data.sectors,
+      watchlist: data.watchlist ?? [],
+      exclusionList: data.exclusionList ?? [],
+      maxPositionSize: data.maxPositionSize,
+      maxOpenPositions: data.maxOpenPositions,
+      minConfidence: data.minConfidence,
+      maxRiskPct: 2,
+      dailyLossLimit: 300,
+      holdDurations: data.holdDurations,
+      directionBias: data.directionBias,
+      signalTypes: data.signalTypes,
+      minMarketCapTier: data.minMarketCapTier,
+      scheduleTime: "08:00",
+      priceCheckFreq: "HOURLY",
+      weekendMode: false,
+      graduationWinRate: 0.65,
+      graduationMinTrades: 50,
+      graduationProfitFactor: 1.5,
+      realTradingEnabled: false,
+      realMaxPosition: data.maxPositionSize,
+      emailAlerts: true,
+      weeklyDigestEnabled: true,
+    },
+  });
+
+  revalidatePath("/analysts");
+  return { id: analyst.id };
+}
+
+// ── updateAnalystFromBuilder (apply AI-suggested config to existing analyst) ──
+
+export async function updateAnalystFromBuilder(
+  id: string,
+  data: Partial<BuilderConfig>
+): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  const updateData: Record<string, unknown> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.analystPrompt !== undefined) updateData.analystPrompt = data.analystPrompt;
+  if (data.directionBias !== undefined) updateData.directionBias = data.directionBias;
+  if (data.holdDurations !== undefined) updateData.holdDurations = data.holdDurations;
+  if (data.sectors !== undefined) updateData.sectors = data.sectors;
+  if (data.signalTypes !== undefined) updateData.signalTypes = data.signalTypes;
+  if (data.minConfidence !== undefined) updateData.minConfidence = data.minConfidence;
+  if (data.maxPositionSize !== undefined) updateData.maxPositionSize = data.maxPositionSize;
+  if (data.maxOpenPositions !== undefined) updateData.maxOpenPositions = data.maxOpenPositions;
+  if (data.minMarketCapTier !== undefined) updateData.minMarketCapTier = data.minMarketCapTier;
+  if (data.watchlist !== undefined) updateData.watchlist = data.watchlist;
+  if (data.exclusionList !== undefined) updateData.exclusionList = data.exclusionList;
+
+  await prisma.agentConfig.update({
+    where: { id, userId },
+    data: updateData,
+  });
+
+  revalidatePath(`/analysts/${id}`);
+  revalidatePath("/analysts");
 }

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import RunChatThread from "@/components/research/RunChatThread";
 import type { RunEventRow } from "@/components/research/RunChatThread";
-import type { ComposerRecentThesis } from "@/components/chat/ChatComposer";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -29,11 +28,13 @@ function payloadToRow(payload: Record<string, unknown>): RunEventRow {
 export default function RunLiveStream({
   runId,
   userId,
-  analystId,
+  analystName = "Agent",
+  config = {},
 }: {
   runId: string;
   userId: string;
-  analystId?: string;
+  analystName?: string;
+  config?: Record<string, unknown>;
 }) {
   const router = useRouter();
   const abortRef = useRef<AbortController | null>(null);
@@ -74,7 +75,6 @@ export default function RunLiveStream({
             setEvents((prev) => [...prev, payloadToRow(payload)]);
             if (payload.type === "run_complete" || payload.type === "error") {
               setStreamDone(true);
-              // Refresh server component data (run.status etc) once complete
               router.refresh();
             }
           }
@@ -91,32 +91,11 @@ export default function RunLiveStream({
     return () => controller.abort();
   }, [runId, router]);
 
-  // Derive recentTheses from thesis_complete events for follow-up chat
-  const recentTheses: ComposerRecentThesis[] = events
-    .filter(
-      (e) =>
-        e.type === "thesis_complete" &&
-        e.payload != null &&
-        typeof e.payload === "object" &&
-        "thesis" in e.payload
-    )
-    .map((e, i) => {
-      const thesis = (e.payload as Record<string, unknown>).thesis as Record<string, unknown>;
-      return {
-        id: `${thesis.ticker as string}-${i}`,
-        ticker: thesis.ticker as string,
-        direction: thesis.direction as string,
-        confidenceScore: thesis.confidence_score as number,
-        reasoningSummary: (thesis.reasoning_summary as string) ?? "",
-        createdAt: new Date(),
-      };
-    });
-
   if (events.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
         <div className="animate-pulse rounded-full h-3 w-3 bg-amber-500" />
-        <p className="text-sm">Connecting to live research stream…</p>
+        <p className="text-sm">Connecting to live research stream...</p>
       </div>
     );
   }
@@ -124,10 +103,9 @@ export default function RunLiveStream({
   return (
     <RunChatThread
       events={events}
-      showFollowup={streamDone}
-      userId={userId}
-      analystId={analystId}
-      recentTheses={recentTheses}
+      analystName={analystName}
+      config={config}
+      isLive={!streamDone}
     />
   );
 }
