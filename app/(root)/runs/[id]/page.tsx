@@ -25,6 +25,7 @@ function synthesizeEventsFromTheses(
     holdDuration: string;
     signalTypes: string[];
     createdAt: Date;
+    trade: { direction: string; entryPrice: number } | null;
   }[]
 ): RunEventRow[] {
   if (theses.length === 0) return [];
@@ -100,16 +101,33 @@ function synthesizeEventsFromTheses(
         },
         createdAt: ts,
       });
+
+      // Emit trade_placed if a trade was opened for this thesis
+      if (thesis.trade) {
+        events.push({
+          id: nextId(),
+          type: "trade_placed",
+          title: "Trade Placed",
+          message: null,
+          payload: {
+            ticker: thesis.ticker,
+            direction: thesis.trade.direction,
+            entry: thesis.trade.entryPrice,
+          },
+          createdAt: ts,
+        });
+      }
     }
   }
 
   const recommended = theses.filter((t) => t.direction !== "PASS").length;
+  const placed = theses.filter((t) => t.trade !== null).length;
   events.push({
     id: nextId(),
     type: "run_complete",
     title: "Run Complete",
     message: null,
-    payload: { analyzed: theses.length, recommended },
+    payload: { analyzed: theses.length, recommended, placed },
     createdAt: new Date().toISOString(),
   });
 
@@ -151,6 +169,7 @@ export default async function RunPage({
           holdDuration: true,
           signalTypes: true,
           createdAt: true,
+          trade: { select: { direction: true, entryPrice: true } },
         },
         orderBy: { createdAt: "asc" },
       },
