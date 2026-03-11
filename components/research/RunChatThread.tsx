@@ -8,18 +8,24 @@ import {
   SkipForward,
   AlertCircle,
   Loader2,
-  ListChecks,
   ShoppingCart,
 } from "lucide-react";
-import { ChatThread } from "@/components/chat/ChatThread";
-import { AssistantMessage } from "@/components/chat/AssistantMessage";
-import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
-import { ToolCallGroup, type ToolCallItem } from "@/components/chat/ToolCall";
-import { SourceChipRow, type SourceChipData } from "@/components/chat/SourceChip";
 import {
-  InlineThesisCard,
-  type InlineThesisData,
-} from "@/components/chat/InlineThesisCard";
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import {
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtContent,
+  ChainOfThoughtStep,
+} from "@/components/ai-elements/chain-of-thought";
+import { Shimmer } from "@/components/ai-elements/shimmer";
+import { AssistantMessage } from "@/components/chat/AssistantMessage";
+import { SourceChipRow, type SourceChipData } from "@/components/chat/SourceChip";
+import { ThesisCard, type ThesisCardData } from "@/components/domain";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -31,6 +37,13 @@ export type RunEventRow = {
   message: string | null;
   payload: unknown;
   createdAt: Date | string;
+};
+
+type DataFetchStep = {
+  id: string;
+  label: string;
+  status: "loading" | "done" | "error";
+  details?: string;
 };
 
 // ─── Safe casters ─────────────────────────────────────────────────────────────
@@ -59,10 +72,10 @@ type ChatMsg =
       kind: "ticker_group";
       ticker: string;
       company: string;
-      toolCalls: ToolCallItem[];
+      toolCalls: DataFetchStep[];
       sources: SourceChipData[];
       concept: { direction: string; confidence: number | null; notes: string } | null;
-      thesis: InlineThesisData | null;
+      thesis: ThesisCardData | null;
       isPass: boolean;
       passReason: string;
     }
@@ -89,10 +102,10 @@ function eventsToMessages(
     string,
     {
       company: string;
-      toolCalls: ToolCallItem[];
+      toolCalls: DataFetchStep[];
       sources: SourceChipData[];
       concept: { direction: string; confidence: number | null; notes: string } | null;
-      thesis: InlineThesisData | null;
+      thesis: ThesisCardData | null;
       isPass: boolean;
       passReason: string;
     }
@@ -371,6 +384,20 @@ function ConfigBadges({ config }: { config: Record<string, unknown> }) {
   );
 }
 
+// ─── Step status mapping ─────────────────────────────────────────────────────
+
+function mapStepStatus(s: DataFetchStep["status"]): "complete" | "active" | "pending" {
+  if (s === "done") return "complete";
+  if (s === "loading") return "active";
+  return "complete"; // error steps are "complete" (finished, just with error icon)
+}
+
+function stepIcon(s: DataFetchStep["status"]) {
+  if (s === "loading") return Loader2;
+  if (s === "error") return AlertCircle;
+  return CheckCircle2;
+}
+
 // ─── Per-message renderers ────────────────────────────────────────────────────
 
 function KickoffMessage({
@@ -392,7 +419,9 @@ function KickoffMessage({
 function ScanningMessage({ text }: { text: string }) {
   return (
     <AssistantMessage content={text}>
-      <ThinkingIndicator label="Discovering candidates" />
+      <div className="text-xs text-muted-foreground">
+        <Shimmer duration={1.5}>Discovering candidates...</Shimmer>
+      </div>
     </AssistantMessage>
   );
 }
@@ -426,10 +455,10 @@ function TickerGroupMessage({
 }: {
   ticker: string;
   company: string;
-  toolCalls: ToolCallItem[];
+  toolCalls: DataFetchStep[];
   sources: SourceChipData[];
   concept: { direction: string; confidence: number | null; notes: string } | null;
-  thesis: InlineThesisData | null;
+  thesis: ThesisCardData | null;
   isPass: boolean;
   passReason: string;
   isLive: boolean;
@@ -442,8 +471,28 @@ function TickerGroupMessage({
     <AssistantMessage
       content={`Analyzing **${ticker}**${company ? ` (${company})` : ""}...`}
     >
-      {/* Tool calls — data fetching */}
-      {toolCalls.length > 0 && <ToolCallGroup items={toolCalls} />}
+      {/* Data fetch steps — ChainOfThought timeline */}
+      {toolCalls.length > 0 && (
+        <ChainOfThought defaultOpen={false}>
+          <ChainOfThoughtHeader>
+            {toolCalls.length} data source{toolCalls.length !== 1 ? "s" : ""} fetched
+          </ChainOfThoughtHeader>
+          <ChainOfThoughtContent>
+            {toolCalls.map((tc, i) => (
+              <ChainOfThoughtStep
+                key={tc.id}
+                label={tc.label}
+                status={mapStepStatus(tc.status)}
+                description={tc.details}
+                icon={stepIcon(tc.status)}
+                className={cn(
+                  i === toolCalls.length - 1 && "[&_div.absolute]:hidden"
+                )}
+              />
+            ))}
+          </ChainOfThoughtContent>
+        </ChainOfThought>
+      )}
 
       {/* Source chips */}
       {sources.length > 0 && <SourceChipRow sources={sources} />}
@@ -470,8 +519,8 @@ function TickerGroupMessage({
         </p>
       )}
 
-      {/* Thesis card */}
-      {thesis && thesis.direction !== "PASS" && <InlineThesisCard {...thesis} />}
+      {/* Thesis card — domain ThesisCard */}
+      {thesis && thesis.direction !== "PASS" && <ThesisCard {...thesis} />}
 
       {/* Pass message */}
       {(isPass || thesis?.direction === "PASS") && (
@@ -492,7 +541,9 @@ function TickerGroupMessage({
 
       {/* Still analyzing (live) */}
       {isAnalyzing && isLive && (
-        <ThinkingIndicator label="Generating thesis..." />
+        <div className="text-xs text-muted-foreground">
+          <Shimmer duration={1.5}>Generating thesis...</Shimmer>
+        </div>
       )}
     </AssistantMessage>
   );
@@ -602,83 +653,86 @@ export default function RunChatThread({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <ChatThread>
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
-            <Loader2 className="h-8 w-8 mb-3 animate-spin opacity-40" />
-            <p className="text-sm">Waiting for run to start...</p>
-          </div>
-        ) : (
-          messages.map((msg, i) => {
-            switch (msg.kind) {
-              case "kickoff":
-                return (
-                  <KickoffMessage
-                    key={i}
-                    analystName={msg.analystName}
-                    config={msg.config}
-                  />
-                );
-              case "scanning":
-                return <ScanningMessage key={i} text={msg.text} />;
-              case "candidates":
-                return <CandidatesMessage key={i} tickers={msg.tickers} />;
-              case "ticker_group":
-                return (
-                  <TickerGroupMessage
-                    key={`ticker-${msg.ticker}`}
-                    ticker={msg.ticker}
-                    company={msg.company}
-                    toolCalls={msg.toolCalls}
-                    sources={msg.sources}
-                    concept={msg.concept}
-                    thesis={msg.thesis}
-                    isPass={msg.isPass}
-                    passReason={msg.passReason}
-                    isLive={isLive}
-                  />
-                );
-              case "trade_placed":
-                return (
-                  <TradePlacedMessage
-                    key={i}
-                    ticker={msg.ticker}
-                    direction={msg.direction}
-                    entry={msg.entry}
-                  />
-                );
-              case "run_complete":
-                return (
-                  <RunCompleteMessage
-                    key={i}
-                    analyzed={msg.analyzed}
-                    recommended={msg.recommended}
-                    placed={msg.placed}
-                  />
-                );
-              case "error":
-                return (
-                  <ErrorMessage
-                    key={i}
-                    ticker={msg.ticker}
-                    message={msg.message}
-                  />
-                );
-              default:
-                return null;
-            }
-          })
-        )}
-
-        {/* Live streaming indicator at the bottom */}
-        {isLive &&
-          !messages.some((m) => m.kind === "run_complete") && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-              <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-              <span>Research in progress...</span>
-            </div>
+      <Conversation>
+        <ConversationContent className="mx-auto max-w-2xl px-4 sm:px-6 py-6 gap-5">
+          {messages.length === 0 ? (
+            <ConversationEmptyState
+              icon={<Loader2 className="h-8 w-8 animate-spin opacity-40" />}
+              title="Waiting for run to start..."
+            />
+          ) : (
+            messages.map((msg, i) => {
+              switch (msg.kind) {
+                case "kickoff":
+                  return (
+                    <KickoffMessage
+                      key={i}
+                      analystName={msg.analystName}
+                      config={msg.config}
+                    />
+                  );
+                case "scanning":
+                  return <ScanningMessage key={i} text={msg.text} />;
+                case "candidates":
+                  return <CandidatesMessage key={i} tickers={msg.tickers} />;
+                case "ticker_group":
+                  return (
+                    <TickerGroupMessage
+                      key={`ticker-${msg.ticker}`}
+                      ticker={msg.ticker}
+                      company={msg.company}
+                      toolCalls={msg.toolCalls}
+                      sources={msg.sources}
+                      concept={msg.concept}
+                      thesis={msg.thesis}
+                      isPass={msg.isPass}
+                      passReason={msg.passReason}
+                      isLive={isLive}
+                    />
+                  );
+                case "trade_placed":
+                  return (
+                    <TradePlacedMessage
+                      key={i}
+                      ticker={msg.ticker}
+                      direction={msg.direction}
+                      entry={msg.entry}
+                    />
+                  );
+                case "run_complete":
+                  return (
+                    <RunCompleteMessage
+                      key={i}
+                      analyzed={msg.analyzed}
+                      recommended={msg.recommended}
+                      placed={msg.placed}
+                    />
+                  );
+                case "error":
+                  return (
+                    <ErrorMessage
+                      key={i}
+                      ticker={msg.ticker}
+                      message={msg.message}
+                    />
+                  );
+                default:
+                  return null;
+              }
+            })
           )}
-      </ChatThread>
+
+          {/* Live streaming indicator at the bottom */}
+          {isLive &&
+            !messages.some((m) => m.kind === "run_complete") && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                <span>Research in progress...</span>
+              </div>
+            )}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
 
       {/* Composer slot (follow-up chat) */}
       {composerSlot}
