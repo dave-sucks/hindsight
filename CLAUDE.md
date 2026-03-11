@@ -94,6 +94,20 @@ learns what works. Built for one user now, marketed later.
 - async params in Next.js App Router: params: Promise<{ id: string }>
   must be awaited
 
+## AI SDK v6 Notes — READ BEFORE TOUCHING CHAT CODE
+- useChat sends UIMessage[] (parts array), streamText needs
+  ModelMessage[] (content string) — ALWAYS convert with
+  convertToModelMessages() in API routes
+- Tool parts in v6: part.type === "tool-{toolName}" (e.g.
+  "tool-suggest_config"), part.input for args, part.state ===
+  "output-available" when done. Also handle "dynamic-tool" type
+  with part.toolName as fallback.
+- Old v3/v4 format (part.type === "tool-invocation" with
+  part.toolInvocation.args) is DEAD — do not use
+- toUIMessageStreamResponse() pipes streamText results back to
+  useChat on the frontend
+- DefaultChatTransport({ api, body }) is the transport for useChat
+
 ## API Keys Available (in .env.local)
 - NEXT_PUBLIC_SUPABASE_URL
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -111,7 +125,7 @@ learns what works. Built for one user now, marketed later.
 ## Repo
 https://github.com/dave-sucks/hindsight
 
-## Current Status — M1 through M9 complete (32 PRs merged)
+## Current Status — M1 through M10 (partial), 43 PRs merged
 Full pipeline live end-to-end:
 - Multi-analyst setup: each AgentConfig is an "Analyst" with its own
   sectors, signals, confidence threshold, direction bias, schedule
@@ -124,8 +138,24 @@ Full pipeline live end-to-end:
   GPT-4o post-trade evaluation
 - Accuracy/calibration: AccuracyReport generated weekly per analyst;
   win rate, calibration buckets, signal accuracy, GPT-4o narrative
-- Chat: ResearchChatFull on analyst detail + run detail + /chat page;
-  scoped to analyst or general; has memory of recent theses
+- Chat: Vercel AI SDK v6 useChat on analyst builder, analyst editor,
+  run follow-up; ResearchChatFull (custom SSE) on analyst detail +
+  /chat page
+- Run page: chat-based UI (RunChatThread) transforms SSE events into
+  conversation messages with inline thesis cards, source chips,
+  trade placed messages
+- Analyst builder: conversational AI creates AgentConfig via
+  suggest_config tool call → ConfigPreviewCard
+
+## Known Issues / Tech Debt
+- synthesizeEventsFromTheses() does NOT generate trade_placed events
+  so trades are invisible on run pages for legacy/cron runs
+- ResearchChatFull uses custom SSE streaming (NOT useChat/AI SDK) —
+  needs migration to AI SDK for consistency
+- RunDetailClient.tsx (old 2-col thesis grid) is dead code — the run
+  page is now chat-based at runs/[id]/page.tsx
+- No cross-trade analysis or run-wide summary at end of runs
+- No source elaboration or citation system in chat messages
 
 ## Key Files
 ### Backend / Python
@@ -164,11 +194,25 @@ Full pipeline live end-to-end:
 - prisma.config.ts — DB connection URLs (Prisma v7)
 
 ### Key Components
-- components/research/RunDetailClient.tsx — run detail 2-col layout
-  with thesis grid, collapsible sources, agent param badges
+- components/research/RunChatThread.tsx — run events→chat messages
+  transformer (eventsToMessages) with TickerGroupMessage,
+  TradePlacedMessage, RunCompleteMessage renderers
+- components/research/RunFollowupChat.tsx — run follow-up chat using
+  useChat + DefaultChatTransport, passes runContext to API
+- components/research/RunDetailClient.tsx — OLD 2-col layout (dead
+  code, replaced by runs/[id]/page.tsx chat-based view)
+- components/analysts/AnalystBuilderChat.tsx — chat-driven analyst
+  creation using useChat + suggest_config tool
+- components/analysts/AnalystEditorChat.tsx — chat-driven analyst
+  editing using same pattern
 - components/analysts/AnalystDetailClient.tsx — analyst detail 2-col
 - components/analysts/AnalystsPageClient.tsx — analyst card grid
-- components/ResearchChatFull.tsx — full-bleed chat (analyst or general)
+- components/chat/ChatComposer.tsx — shared chat input (textarea +
+  context chips + recent theses)
+- components/chat/AssistantMessage.tsx — shared assistant bubble with
+  Sparkles avatar + MarkdownRenderer
+- components/ResearchChatFull.tsx — old custom SSE chat (analyst
+  detail + /chat page), uses its own streaming, NOT useChat
 - components/dashboard/DashboardClient.tsx — Fey-style dashboard
 - components/MarketPulseStrip.tsx — live Finnhub WebSocket ticker strip
 
@@ -197,6 +241,13 @@ Full pipeline live end-to-end:
    calibration from WIN/LOSS history, weekly accuracy benchmarking
    NOTE: DAV-74 (options flow source) + DAV-75 (earnings whispers)
    still in backlog — data exists but not surfaced in UI
-10. ⬜ Streaming + Agent Observability — live run thought-trace UI
-    (SSE from Python → frontend), custom analyst system prompts,
-    analyst→trader handoff, watch the agent think in real-time
+10. 🔄 Streaming + Agent Observability — SSE streaming infra done,
+    run page chat UI done, analyst builder/editor done, follow-up
+    chat done. REMAINING: Vercel AI Elements adoption, custom
+    domain components (ThesisCard, TradeCard), trade visibility
+    fix, cross-trade analysis, run-wide summaries, source/citation
+    system, ChatComposer rewrite with AI Elements PromptInput
+11. ⬜ AI Elements + Product Polish — adopt Vercel AI Elements
+    component library (Conversation, Message, Reasoning,
+    ChainOfThought, Sources, InlineCitation, Tool, PromptInput),
+    build custom domain components, fix all known UX issues
