@@ -1,8 +1,8 @@
 "use client";
 
+import type { ChatStatus } from "ai";
 import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Popover,
   PopoverContent,
@@ -16,16 +16,22 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { ArrowUp, X, AtSign, Loader2 } from "lucide-react";
+import { X, AtSign } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputFooter,
+  PromptInputTools,
+  PromptInputSubmit,
+  PromptInputHeader,
+  PromptInputSelect,
+  PromptInputSelectTrigger,
+  PromptInputSelectContent,
+  PromptInputSelectItem,
+  PromptInputSelectValue,
+  type PromptInputMessage,
+} from "@/components/ai-elements/prompt-input";
 
 // ── Shared types ───────────────────────────────────────────────────────────────
 
@@ -54,17 +60,22 @@ export interface ChatComposerProps {
   onSubmit: (message: string, context: ComposerContext) => void | Promise<void>;
   recentTheses?: ComposerRecentThesis[];
   placeholder?: string;
+  /** @deprecated Prefer `status` for richer state. Falls back to "submitted" when true. */
   loading?: boolean;
+  status?: ChatStatus;
   className?: string;
 }
 
 export function ChatComposer({
   onSubmit,
   recentTheses = [],
-  placeholder = "Research any stock…",
+  placeholder = "Research any stock\u2026",
   loading = false,
+  status: statusProp,
   className,
 }: ChatComposerProps) {
+  // Shadow state — tracks textarea value for disabled-submit check.
+  // Textarea is uncontrolled (PromptInput owns it via form.reset()).
   const [input, setInput] = useState("");
 
   // Ticker state
@@ -76,12 +87,12 @@ export function ChatComposer({
     price: number | null;
   } | null>(null);
 
-  // @Reference state — uses Popover, not Dialog
+  // @Reference state
   const [refOpen, setRefOpen] = useState(false);
   const [referencedThesis, setReferencedThesis] =
     useState<ComposerRecentThesis | null>(null);
 
-  // Config state — wired to real Select controls
+  // Config state
   const [model, setModel] = useState<"gpt-4o" | "gpt-4o-mini" | "o3-mini">(
     "gpt-4o"
   );
@@ -91,6 +102,9 @@ export function ChatComposer({
   const [tradeType, setTradeType] = useState<"DAY" | "SWING" | "POSITION">(
     "SWING"
   );
+
+  const chatStatus: ChatStatus | undefined =
+    statusProp ?? (loading ? "submitted" : undefined);
 
   // Ticker search with debounce
   useEffect(() => {
@@ -129,34 +143,37 @@ export function ChatComposer({
     }
   }, []);
 
-  async function handleSubmit() {
-    const msg = input.trim();
-    if (!msg || loading) return;
+  const handlePromptInputSubmit = useCallback(
+    async (msg: PromptInputMessage) => {
+      const text = msg.text.trim();
+      if (!text || loading) return;
 
-    const ctx: ComposerContext = {
-      ticker: selectedTicker,
-      referencedThesis,
-      tradeType,
-      direction,
-      model,
-    };
+      const ctx: ComposerContext = {
+        ticker: selectedTicker,
+        referencedThesis,
+        tradeType,
+        direction,
+        model,
+      };
 
-    setInput("");
-    setSelectedTicker(null);
-    setReferencedThesis(null);
+      // Clear context chips optimistically (PromptInput clears textarea via form.reset)
+      setInput("");
+      setSelectedTicker(null);
+      setReferencedThesis(null);
 
-    await onSubmit(msg, ctx);
-  }
+      await onSubmit(text, ctx);
+    },
+    [selectedTicker, referencedThesis, tradeType, direction, model, loading, onSubmit]
+  );
 
   const hasChips = selectedTicker !== null || referencedThesis !== null;
 
   return (
     <div className={cn("space-y-2", className)}>
-      {/* Main composer box */}
-      <div className="rounded-lg border bg-background">
-        {/* Context chips — appear inside box when ticker or thesis is selected */}
+      <PromptInput onSubmit={handlePromptInputSubmit}>
+        {/* Context chips — ticker and thesis reference badges */}
         {hasChips && (
-          <div className="flex flex-wrap gap-1.5 px-3 pt-3">
+          <PromptInputHeader>
             {selectedTicker && (
               <Badge
                 variant="secondary"
@@ -169,6 +186,7 @@ export function ChatComposer({
                   </span>
                 )}
                 <button
+                  type="button"
                   onClick={() => setSelectedTicker(null)}
                   className="ml-0.5 text-muted-foreground hover:text-foreground leading-none"
                   aria-label="Remove ticker"
@@ -178,7 +196,10 @@ export function ChatComposer({
               </Badge>
             )}
             {referencedThesis && (
-              <Badge variant="secondary" className="gap-1 font-mono text-xs h-6">
+              <Badge
+                variant="secondary"
+                className="gap-1 font-mono text-xs h-6"
+              >
                 @{referencedThesis.ticker}
                 <span
                   className={cn(
@@ -186,13 +207,14 @@ export function ChatComposer({
                     referencedThesis.direction === "LONG"
                       ? "text-emerald-500"
                       : referencedThesis.direction === "SHORT"
-                      ? "text-red-500"
-                      : "text-muted-foreground"
+                        ? "text-red-500"
+                        : "text-muted-foreground"
                   )}
                 >
                   {referencedThesis.direction}
                 </span>
                 <button
+                  type="button"
                   onClick={() => setReferencedThesis(null)}
                   className="ml-0.5 text-muted-foreground hover:text-foreground leading-none"
                   aria-label="Remove reference"
@@ -201,27 +223,17 @@ export function ChatComposer({
                 </button>
               </Badge>
             )}
-          </div>
+          </PromptInputHeader>
         )}
 
-        {/* Textarea — stock shadcn component, no custom overrides */}
-        <Textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSubmit();
-            }
-          }}
+        <PromptInputTextarea
           placeholder={placeholder}
           disabled={loading}
-          className="min-h-[72px] max-h-[200px] resize-none border-0 shadow-none focus-visible:ring-0 bg-transparent text-sm"
+          onChange={(e) => setInput(e.target.value)}
         />
 
-        {/* Bottom toolbar */}
-        <div className="flex items-center justify-between px-3 pb-3">
-          <div className="flex items-center gap-1">
+        <PromptInputFooter>
+          <PromptInputTools>
             {/* $Ticker — Popover with live combobox */}
             <Popover open={tickerOpen} onOpenChange={setTickerOpen}>
               <PopoverTrigger
@@ -238,7 +250,7 @@ export function ChatComposer({
               <PopoverContent className="w-64 p-0" side="top" align="start">
                 <Command>
                   <CommandInput
-                    placeholder="Search ticker…"
+                    placeholder="Search ticker\u2026"
                     value={tickerSearch}
                     onValueChange={setTickerSearch}
                   />
@@ -269,7 +281,7 @@ export function ChatComposer({
               </PopoverContent>
             </Popover>
 
-            {/* @Reference — Popover (not Dialog) with thesis combobox */}
+            {/* @Reference — Popover with thesis combobox */}
             <Popover open={refOpen} onOpenChange={setRefOpen}>
               <PopoverTrigger
                 className={cn(
@@ -283,7 +295,7 @@ export function ChatComposer({
               </PopoverTrigger>
               <PopoverContent className="w-72 p-0" side="top" align="start">
                 <Command>
-                  <CommandInput placeholder="Search past theses…" />
+                  <CommandInput placeholder="Search past theses\u2026" />
                   <CommandList className="max-h-64">
                     <CommandEmpty>No theses found</CommandEmpty>
                     <CommandGroup>
@@ -305,8 +317,8 @@ export function ChatComposer({
                               t.direction === "LONG"
                                 ? "text-emerald-500"
                                 : t.direction === "SHORT"
-                                ? "text-red-500"
-                                : "text-muted-foreground"
+                                  ? "text-red-500"
+                                  : "text-muted-foreground"
                             )}
                           >
                             {t.direction}
@@ -322,86 +334,76 @@ export function ChatComposer({
                 </Command>
               </PopoverContent>
             </Popover>
-          </div>
+          </PromptInputTools>
 
-          {/* Send */}
-          <Button
-            size="icon"
-            className="h-8 w-8 rounded-full"
+          <PromptInputSubmit
+            status={chatStatus}
             disabled={loading || !input.trim()}
-            onClick={handleSubmit}
-            aria-label="Send"
-          >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <ArrowUp className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-      </div>
+          />
+        </PromptInputFooter>
+      </PromptInput>
 
-      {/* Secondary config row — real Select controls below the box */}
+      {/* Secondary config row — PromptInputSelect controls below the box */}
       <div className="flex items-center gap-1 px-1">
-        <Select
+        <PromptInputSelect
           value={model}
           onValueChange={(v) => setModel(v as typeof model)}
         >
-          <SelectTrigger className="h-7 text-xs border-0 shadow-none bg-transparent text-muted-foreground hover:text-foreground px-2 min-w-0 w-auto gap-1 focus:ring-0 [&>svg]:opacity-50">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="gpt-4o" className="text-xs">
+          <PromptInputSelectTrigger className="h-7 text-xs px-2 min-w-0 w-auto gap-1 [&>svg]:opacity-50">
+            <PromptInputSelectValue />
+          </PromptInputSelectTrigger>
+          <PromptInputSelectContent>
+            <PromptInputSelectItem value="gpt-4o" className="text-xs">
               GPT-4o
-            </SelectItem>
-            <SelectItem value="gpt-4o-mini" className="text-xs">
+            </PromptInputSelectItem>
+            <PromptInputSelectItem value="gpt-4o-mini" className="text-xs">
               GPT-4o mini
-            </SelectItem>
-            <SelectItem value="o3-mini" className="text-xs">
+            </PromptInputSelectItem>
+            <PromptInputSelectItem value="o3-mini" className="text-xs">
               o3-mini
-            </SelectItem>
-          </SelectContent>
-        </Select>
+            </PromptInputSelectItem>
+          </PromptInputSelectContent>
+        </PromptInputSelect>
 
-        <Select
+        <PromptInputSelect
           value={direction}
           onValueChange={(v) => setDirection(v as typeof direction)}
         >
-          <SelectTrigger className="h-7 text-xs border-0 shadow-none bg-transparent text-muted-foreground hover:text-foreground px-2 min-w-0 w-auto gap-1 focus:ring-0 [&>svg]:opacity-50">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="EITHER" className="text-xs">
+          <PromptInputSelectTrigger className="h-7 text-xs px-2 min-w-0 w-auto gap-1 [&>svg]:opacity-50">
+            <PromptInputSelectValue />
+          </PromptInputSelectTrigger>
+          <PromptInputSelectContent>
+            <PromptInputSelectItem value="EITHER" className="text-xs">
               Any direction
-            </SelectItem>
-            <SelectItem value="LONG" className="text-xs">
+            </PromptInputSelectItem>
+            <PromptInputSelectItem value="LONG" className="text-xs">
               Long only
-            </SelectItem>
-            <SelectItem value="SHORT" className="text-xs">
+            </PromptInputSelectItem>
+            <PromptInputSelectItem value="SHORT" className="text-xs">
               Short only
-            </SelectItem>
-          </SelectContent>
-        </Select>
+            </PromptInputSelectItem>
+          </PromptInputSelectContent>
+        </PromptInputSelect>
 
-        <Select
+        <PromptInputSelect
           value={tradeType}
           onValueChange={(v) => setTradeType(v as typeof tradeType)}
         >
-          <SelectTrigger className="h-7 text-xs border-0 shadow-none bg-transparent text-muted-foreground hover:text-foreground px-2 min-w-0 w-auto gap-1 focus:ring-0 [&>svg]:opacity-50">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="DAY" className="text-xs">
+          <PromptInputSelectTrigger className="h-7 text-xs px-2 min-w-0 w-auto gap-1 [&>svg]:opacity-50">
+            <PromptInputSelectValue />
+          </PromptInputSelectTrigger>
+          <PromptInputSelectContent>
+            <PromptInputSelectItem value="DAY" className="text-xs">
               Day trade
-            </SelectItem>
-            <SelectItem value="SWING" className="text-xs">
+            </PromptInputSelectItem>
+            <PromptInputSelectItem value="SWING" className="text-xs">
               Swing trade
-            </SelectItem>
-            <SelectItem value="POSITION" className="text-xs">
+            </PromptInputSelectItem>
+            <PromptInputSelectItem value="POSITION" className="text-xs">
               Position
-            </SelectItem>
-          </SelectContent>
-        </Select>
+            </PromptInputSelectItem>
+          </PromptInputSelectContent>
+        </PromptInputSelect>
       </div>
     </div>
   );
