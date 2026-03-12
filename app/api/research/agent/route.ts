@@ -2,7 +2,7 @@ import { streamText, convertToModelMessages, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { researchAgentTools } from "@/lib/agent/tools";
+import { createResearchTools } from "@/lib/agent/tools";
 import { buildSystemPrompt } from "@/lib/agent/system-prompt";
 
 export const maxDuration = 120; // 2 min for multi-step agent
@@ -76,11 +76,19 @@ export async function POST(req: Request) {
   const systemPrompt = buildSystemPrompt(agentConfig);
   const modelMessages = await convertToModelMessages(messages);
 
+  // Create context-aware tools so show_thesis persists and summarize_run completes
+  const tools = createResearchTools({
+    runId: runId || "",
+    userId: user.id,
+    watchlist: (agentConfig.watchlist as string[]) ?? [],
+    exclusionList: (agentConfig.exclusionList as string[]) ?? [],
+  });
+
   const result = streamText({
     model: openai("gpt-4o"),
     system: systemPrompt,
     messages: modelMessages,
-    tools: researchAgentTools,
+    tools,
     stopWhen: stepCountIs(25),
   });
 
