@@ -744,6 +744,11 @@ export function createResearchTools(ctx: ToolContext) {
                       score: p.score,
                     })),
                     data_source: "python_praw",
+                    _sources: posts.slice(0, 5).map((p) => ({
+                      provider: `Reddit r/${p.subreddit}`,
+                      title: p.title,
+                      url: p.url,
+                    })),
                   };
                 }
               } else {
@@ -761,6 +766,7 @@ export function createResearchTools(ctx: ToolContext) {
             available: false,
             reason: "blocked",
             note: `Reddit API returned 403/429 for all subreddits (likely IP-based rate limiting). No Reddit sentiment data available for ${ticker}. Continue analysis with other data sources.`,
+            _sources: [{ provider: "Reddit", title: `${ticker} Reddit Sentiment (Blocked)` }],
           };
         }
 
@@ -863,6 +869,9 @@ export function createResearchTools(ctx: ToolContext) {
                   ? "bearish (high put/call ratio)"
                   : "neutral",
             data_source: "fmp",
+            _sources: [
+              { provider: "FMP", title: `${ticker} Options Chain` },
+            ],
           };
         }
 
