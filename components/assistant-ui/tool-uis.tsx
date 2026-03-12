@@ -127,39 +127,41 @@ const SuggestConfigEditorRender: ToolCallMessagePartComponent<
 
   return (
     <div className="my-2 space-y-3">
-      <Card className="p-4 space-y-3">
-        <div className="flex items-center justify-between">
+      <Card className="overflow-hidden p-0">
+        <div className="px-5 py-3 border-b flex items-center justify-between">
           <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Proposed Changes
           </h4>
-          <Badge variant="secondary" className="text-[11px]">
+          <Badge variant="secondary" className="text-xs">
             {diffs.length} {diffs.length === 1 ? "change" : "changes"}
           </Badge>
         </div>
-        <div className="space-y-2">
+        <div className="px-5 py-4 space-y-3">
           {diffs.map((d) => (
-            <div key={d.label} className="text-xs">
-              <span className="font-medium text-muted-foreground">
+            <div key={d.label} className="text-sm">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {d.label}
               </span>
-              <div className="flex items-start gap-2 mt-0.5">
-                <span className="text-red-500 line-through min-w-0 break-words">
+              <div className="flex items-start gap-2.5 mt-1">
+                <span className="text-red-500 line-through min-w-0 break-words text-sm">
                   {d.before}
                 </span>
-                <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
-                <span className="text-emerald-500 font-medium min-w-0 break-words">
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                <span className="text-emerald-500 font-medium min-w-0 break-words text-sm">
                   {d.after}
                 </span>
               </div>
             </div>
           ))}
         </div>
-        <button
-          onClick={() => setShowFull(!showFull)}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {showFull ? "Hide full config" : "Show full config"}
-        </button>
+        <div className="px-5 pb-4">
+          <button
+            onClick={() => setShowFull(!showFull)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+          >
+            {showFull ? "Hide full config" : "Show full config"}
+          </button>
+        </div>
       </Card>
 
       {showFull && (
@@ -171,19 +173,21 @@ const SuggestConfigEditorRender: ToolCallMessagePartComponent<
       )}
 
       {applied ? (
-        <div className="flex items-center gap-1.5 text-xs text-emerald-500">
-          <Check className="h-3 w-3" />
-          Changes applied
-        </div>
+        <Card className="p-4 border-emerald-500/30 bg-emerald-500/5">
+          <div className="flex items-center gap-2 text-sm text-emerald-500 font-medium">
+            <Check className="h-4 w-4" />
+            Changes applied successfully
+          </div>
+        </Card>
       ) : (
         onApplyConfig && (
           <Button
             onClick={() => onApplyConfig(args)}
             disabled={isApplying}
-            className="w-full"
-            size="sm"
+            className="w-full h-10"
+            size="default"
           >
-            <Check className="h-3.5 w-3.5 mr-1.5" />
+            <Check className="h-4 w-4 mr-2" />
             {isApplying ? "Applying…" : "Apply Changes"}
           </Button>
         )
@@ -221,11 +225,15 @@ export const useRegisterToolUIs = useRegisterBuilderToolUIs;
 
 // ─── Trading / Research / Portfolio tool UIs (run-followup chat) ────────────
 
-import { ThesisCard, type ThesisCardData } from "@/components/domain";
+import {
+  ThesisCard,
+  type ThesisCardData,
+  TradeCard,
+  TradeConfirmation,
+} from "@/components/domain";
 import {
   TrendingUp,
   TrendingDown,
-  ShoppingCart,
   Briefcase,
   BarChart3,
   GitCompare,
@@ -278,9 +286,36 @@ const ResearchTickerRender: ToolCallMessagePartComponent = ({ result }) => {
 };
 ResearchTickerRender.displayName = "ResearchTickerRender";
 
-// ── place_trade ─────────────────────────────────────────────────────────────
+// ── place_trade → TradeConfirmation (pending) / TradeCard (result) ───────────
 
-const PlaceTradeRender: ToolCallMessagePartComponent = ({ result }) => {
+const PlaceTradeRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
+  // Pending state — show confirmation preview
+  if (!result && args && typeof args === "object") {
+    const a = args as Record<string, unknown>;
+    const dir = String(a.direction ?? "LONG").toUpperCase();
+    return (
+      <div className="my-2">
+        <TradeConfirmation
+          ticker={String(a.ticker ?? "")}
+          direction={dir === "SHORT" ? "SHORT" : "LONG"}
+          shares={typeof a.shares === "number" ? a.shares : undefined}
+          estimatedPrice={typeof a.price === "number" ? a.price : null}
+          estimatedCost={
+            typeof a.price === "number" && typeof a.shares === "number"
+              ? a.price * a.shares
+              : null
+          }
+          action="BUY"
+          onConfirm={() => {}}
+          onCancel={() => {}}
+          isExecuting
+          resolved="confirmed"
+          className="max-w-md"
+        />
+      </div>
+    );
+  }
+
   if (!result || typeof result !== "object") return null;
   const r = result as Record<string, unknown>;
   if (r.error) {
@@ -290,56 +325,53 @@ const PlaceTradeRender: ToolCallMessagePartComponent = ({ result }) => {
       </div>
     );
   }
-  const isLong = String(r.direction ?? "").toUpperCase() === "LONG";
+  const dir = String(r.direction ?? "LONG").toUpperCase();
   return (
-    <div className="my-2 flex items-center gap-2 text-sm rounded-lg border bg-emerald-500/5 border-emerald-500/20 px-4 py-3">
-      <ShoppingCart className="h-4 w-4 text-emerald-500" />
-      <span>
-        Trade placed:{" "}
-        <span className="font-mono font-semibold">{String(r.ticker)}</span>{" "}
-        <span className={isLong ? "text-emerald-500" : "text-red-500"}>
-          {isLong ? (
-            <TrendingUp className="inline h-3 w-3 mr-0.5" />
-          ) : (
-            <TrendingDown className="inline h-3 w-3 mr-0.5" />
-          )}
-          {String(r.direction).toUpperCase()}
-        </span>
-        {typeof r.fillPrice === "number" && (
-          <span className="tabular-nums text-muted-foreground">
-            {" "}
-            @ ${Number(r.fillPrice).toFixed(2)}
-          </span>
-        )}
-      </span>
+    <div className="my-2">
+      <TradeCard
+        ticker={String(r.ticker ?? "")}
+        direction={dir === "SHORT" ? "SHORT" : "LONG"}
+        entryPrice={typeof r.fillPrice === "number" ? r.fillPrice : 0}
+        shares={typeof r.shares === "number" ? r.shares : undefined}
+        status="OPEN"
+        className="max-w-md"
+      />
     </div>
   );
 };
 PlaceTradeRender.displayName = "PlaceTradeRender";
 
-// ── close_position ──────────────────────────────────────────────────────────
+// ── close_position → TradeCard (closed state) ──────────────────────────────
 
 const ClosePositionRender: ToolCallMessagePartComponent = ({ result }) => {
   if (!result || typeof result !== "object") return null;
   const r = result as Record<string, unknown>;
-  const pnl = typeof r.realizedPnl === "number" ? r.realizedPnl : null;
-  return (
-    <div className="my-2 rounded-lg border p-4 space-y-2">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-        Position closed:{" "}
-        <span className="font-mono">{String(r.ticker)}</span>
+  if (r.error) {
+    return (
+      <div className="text-sm text-red-500 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
+        {String(r.error)}
       </div>
-      {pnl != null && (
-        <p
-          className={cn(
-            "text-sm tabular-nums font-semibold",
-            pnl >= 0 ? "text-emerald-500" : "text-red-500"
-          )}
-        >
-          P&L: {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} ({String(r.outcome)})
-        </p>
-      )}
+    );
+  }
+  const dir = String(r.direction ?? "LONG").toUpperCase();
+  const pnl = typeof r.realizedPnl === "number" ? r.realizedPnl : null;
+  const outcome = String(r.outcome ?? "").toUpperCase();
+  return (
+    <div className="my-2">
+      <TradeCard
+        ticker={String(r.ticker ?? "")}
+        direction={dir === "SHORT" ? "SHORT" : "LONG"}
+        entryPrice={typeof r.entryPrice === "number" ? r.entryPrice : 0}
+        closePrice={typeof r.closePrice === "number" ? r.closePrice : null}
+        realizedPnl={pnl}
+        outcome={
+          outcome === "WIN" || outcome === "LOSS" || outcome === "BREAKEVEN"
+            ? outcome
+            : null
+        }
+        status="CLOSED"
+        className="max-w-md"
+      />
     </div>
   );
 };

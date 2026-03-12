@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import { DefaultChatTransport } from "ai";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import { Thread } from "@/components/assistant-ui/thread";
+import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
+import { MessageCircle } from "lucide-react";
 import {
   useRegisterFollowupToolUIs,
   ToolUICallbacksProvider,
@@ -35,6 +36,16 @@ export type RunFollowupContext = {
   }>;
 };
 
+const FOLLOWUP_WELCOME: WelcomeConfig = {
+  title: "Follow-up chat",
+  subtitle: "Ask questions about this run's theses, trades, or strategy.",
+  icon: (
+    <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <MessageCircle className="size-5" />
+    </div>
+  ),
+};
+
 // ─── Inner component (needs to be inside AssistantRuntimeProvider) ───────────
 
 function FollowupThread() {
@@ -42,7 +53,7 @@ function FollowupThread() {
 
   return (
     <ToolUICallbacksProvider value={{}}>
-      <Thread />
+      <Thread welcomeConfig={FOLLOWUP_WELCOME} />
     </ToolUICallbacksProvider>
   );
 }

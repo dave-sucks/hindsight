@@ -98,19 +98,19 @@ export function ThesisCard({
         className={cn("overflow-hidden p-0", className)}
         {...cardProps}
       >
-        <div className="px-4 py-3 flex items-center justify-between">
+        <div className="px-5 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-base font-semibold font-mono">{ticker}</span>
-            <Badge variant="secondary" className="text-[10px]">
+            <span className="text-lg font-semibold font-mono">{ticker}</span>
+            <Badge variant="secondary" className="text-xs">
               PASS
             </Badge>
           </div>
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="text-sm text-muted-foreground tabular-nums font-medium">
             {confidence_score}%
           </span>
         </div>
         {(pass_reason || reasoning_summary) && (
-          <div className="px-4 pb-3">
+          <div className="px-5 pb-4">
             <p className="text-sm text-muted-foreground leading-relaxed">
               {pass_reason || reasoning_summary}
             </p>
@@ -125,19 +125,28 @@ export function ThesisCard({
       className={cn("overflow-hidden p-0", className)}
       {...cardProps}
     >
-      {/* Header */}
-      <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/20">
+      {/* ── Sources row at top (Perplexity style) ─────────────────────── */}
+      {sources.length > 0 && (
+        <div className="px-5 pt-4 pb-0">
+          <SourceChipRow sources={sources} />
+        </div>
+      )}
+
+      {/* ── Header ───────────────────────────────────────────────────── */}
+      <div className="px-5 pt-4 pb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-base font-semibold font-mono">{ticker}</span>
-          <span
+          <span className="text-lg font-semibold font-mono">{ticker}</span>
+          <Badge
+            variant="secondary"
             className={cn(
-              "flex items-center gap-1 text-sm font-semibold",
-              dirColor
+              "gap-1 text-xs font-semibold",
+              dirColor,
+              isLong ? "bg-emerald-500/10" : "bg-red-500/10"
             )}
           >
             <DirIcon className="h-3.5 w-3.5" />
             {direction}
-          </span>
+          </Badge>
           {hold_duration && (
             <span className="text-xs text-muted-foreground">
               {hold_duration}
@@ -146,78 +155,83 @@ export function ThesisCard({
         </div>
         <div className="flex items-center gap-2">
           {signal_types.slice(0, 2).map((s) => (
-            <span
+            <Badge
               key={s}
-              className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground"
+              variant="outline"
+              className="text-[10px] text-muted-foreground"
             >
               {s.replace(/_/g, " ")}
-            </span>
+            </Badge>
           ))}
-          <span
+          <div
             className={cn(
-              "text-sm font-semibold tabular-nums",
-              confidence_score >= 70 ? "text-emerald-500" : "text-amber-500"
+              "flex items-center justify-center rounded-full size-10 text-sm font-bold tabular-nums",
+              confidence_score >= 80
+                ? "bg-emerald-500/15 text-emerald-500"
+                : confidence_score >= 60
+                  ? "bg-amber-500/15 text-amber-500"
+                  : "bg-muted text-muted-foreground"
             )}
           >
-            {confidence_score}%
-          </span>
+            {confidence_score}
+          </div>
         </div>
       </div>
 
-      <div className="px-4 py-4 space-y-4">
-        {/* Price grid */}
+      <div className="px-5 pb-5 space-y-4">
+        {/* ── Price grid ──────────────────────────────────────────────── */}
         {hasEntry && (
-          <div className="grid grid-cols-4 gap-3 rounded-lg bg-muted/40 p-3 text-center">
+          <div className="grid grid-cols-4 gap-3 rounded-xl bg-muted/40 p-4 text-center">
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                 Entry
               </p>
-              <p className="text-sm tabular-nums font-semibold">
+              <p className="text-base tabular-nums font-bold">
                 ${entry_price!.toFixed(2)}
               </p>
             </div>
             {hasTarget && (
               <div>
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                   Target
                 </p>
-                <p className="text-sm tabular-nums font-semibold text-emerald-500">
+                <p className="text-base tabular-nums font-bold text-emerald-500">
                   ${target_price!.toFixed(2)}
-                  {gainPct && (
-                    <span className="text-[10px] text-muted-foreground ml-1">
-                      +{gainPct}%
-                    </span>
-                  )}
                 </p>
+                {gainPct && (
+                  <p className="text-[10px] text-emerald-500/70 tabular-nums">
+                    +{gainPct}%
+                  </p>
+                )}
               </div>
             )}
             {hasStop && (
               <div>
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                   Stop
                 </p>
-                <p className="text-sm tabular-nums font-semibold text-red-500">
+                <p className="text-base tabular-nums font-bold text-red-500">
                   ${stop_loss!.toFixed(2)}
-                  {lossPct && (
-                    <span className="text-[10px] text-muted-foreground ml-1">
-                      &minus;{lossPct}%
-                    </span>
-                  )}
                 </p>
+                {lossPct && (
+                  <p className="text-[10px] text-red-500/70 tabular-nums">
+                    &minus;{lossPct}%
+                  </p>
+                )}
               </div>
             )}
             {rr != null && (
               <div>
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                   R:R
                 </p>
                 <p
                   className={cn(
-                    "text-sm tabular-nums font-semibold",
+                    "text-base tabular-nums font-bold",
                     parseFloat(rr) >= 2
                       ? "text-emerald-500"
                       : parseFloat(rr) >= 1
-                        ? "text-muted-foreground"
+                        ? "text-foreground"
                         : "text-red-500"
                   )}
                 >
@@ -228,7 +242,7 @@ export function ThesisCard({
           </div>
         )}
 
-        {/* Reasoning (with inline citation support) */}
+        {/* ── Reasoning (with inline citation support) ────────────────── */}
         {reasoning_summary && (
           <CitedText
             text={reasoning_summary}
@@ -237,36 +251,31 @@ export function ThesisCard({
           />
         )}
 
-        {/* Thesis bullets */}
+        {/* ── Thesis bullets ──────────────────────────────────────────── */}
         {thesis_bullets.length > 0 && (
-          <ul className="space-y-1.5">
+          <div className="space-y-2">
             {thesis_bullets.map((b, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-emerald-500" />
-                <span>{b}</span>
-              </li>
+              <div key={i} className="flex items-start gap-2.5 text-sm">
+                <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-emerald-500" />
+                <span className="leading-relaxed">{b}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
 
-        {/* Risk flags */}
+        {/* ── Risk flags ──────────────────────────────────────────────── */}
         {risk_flags.length > 0 && (
-          <ul className="space-y-1.5">
+          <div className="space-y-2">
             {risk_flags.map((r, i) => (
-              <li
+              <div
                 key={i}
-                className="flex items-start gap-2 text-sm text-muted-foreground"
+                className="flex items-start gap-2.5 text-sm text-muted-foreground"
               >
-                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
-                <span>{r}</span>
-              </li>
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                <span className="leading-relaxed">{r}</span>
+              </div>
             ))}
-          </ul>
-        )}
-
-        {/* Sources — inline chip row */}
-        {sources.length > 0 && (
-          <SourceChipRow sources={sources} className="pt-1" />
+          </div>
         )}
       </div>
     </Card>

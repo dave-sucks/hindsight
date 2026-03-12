@@ -21,3 +21,8 @@ export {
   type AgentConfigData,
   type AgentConfigCardProps,
 } from "./agent-config-card";
+export {
+  TradeConfirmation,
+  type TradeConfirmationData,
+  type TradeConfirmationProps,
+} from "./trade-confirmation";

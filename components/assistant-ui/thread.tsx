@@ -39,6 +39,15 @@ import {
   type RichComposerFeatures,
 } from "@/components/assistant-ui/rich-composer";
 
+export interface WelcomeConfig {
+  /** Main heading */
+  title: string;
+  /** Subtitle / description */
+  subtitle: string;
+  /** Optional icon to render above the title */
+  icon?: React.ReactNode;
+}
+
 export interface ThreadProps {
   /** Render a custom composer instead of the default one */
   composerSlot?: React.ReactNode;
@@ -48,6 +57,8 @@ export interface ThreadProps {
   richComposer?: boolean;
   /** Hide the welcome message */
   hideWelcome?: boolean;
+  /** Customize the welcome message (title, subtitle, icon) */
+  welcomeConfig?: WelcomeConfig;
 }
 
 export const Thread: FC<ThreadProps> = ({
@@ -55,6 +66,7 @@ export const Thread: FC<ThreadProps> = ({
   composerFeatures,
   richComposer = false,
   hideWelcome = false,
+  welcomeConfig,
 }) => {
   const ComposerComponent = composerSlot ?? (
     richComposer ? <RichComposer features={composerFeatures} /> : <Composer />
@@ -73,7 +85,7 @@ export const Thread: FC<ThreadProps> = ({
       >
         {!hideWelcome && (
           <AuiIf condition={(s) => s.thread.isEmpty}>
-            <ThreadWelcome />
+            <ThreadWelcome config={welcomeConfig} />
           </AuiIf>
         )}
 
@@ -100,16 +112,21 @@ const ThreadScrollToBottom: FC = () => {
   );
 };
 
-const ThreadWelcome: FC = () => {
+const ThreadWelcome: FC<{ config?: WelcomeConfig }> = ({ config }) => {
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
+          {config?.icon && (
+            <div className="fade-in slide-in-from-bottom-1 animate-in fill-mode-both mb-3 duration-200">
+              {config.icon}
+            </div>
+          )}
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-2xl duration-200">
-            Hello there!
+            {config?.title ?? "Hello there!"}
           </h1>
           <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-xl delay-75 duration-200">
-            How can I help you today?
+            {config?.subtitle ?? "How can I help you today?"}
           </p>
         </div>
       </div>
