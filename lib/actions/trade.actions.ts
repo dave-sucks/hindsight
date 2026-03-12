@@ -24,6 +24,7 @@ export interface CreateTradeInput {
   exitDate?: string; // ISO date string, only for TIME_BASED
   trailingStopPct?: number; // only for TRAILING
   notes?: string;
+  researchRunId?: string; // When set, writes a RunEvent so trade appears on run page reload
 }
 
 export interface CreateTradeResult {
@@ -155,7 +156,28 @@ export async function createTrade(
     },
   });
 
-  // 7. Send trade-placed email alert (fire-and-forget)
+  // 7. Write RunEvent so trade persists on run page reload
+  if (input.researchRunId) {
+    await prisma.runEvent.create({
+      data: {
+        runId: input.researchRunId,
+        type: "trade_placed",
+        title: `Trade placed: ${input.direction} ${input.ticker}`,
+        message: `${input.direction} ${input.shares} shares of ${input.ticker} at $${fillPrice.toFixed(2)}`,
+        payload: {
+          ticker: input.ticker,
+          direction: input.direction,
+          entry: fillPrice,
+          target_price: input.targetPrice ?? null,
+          stop_loss: input.stopLoss ?? null,
+          shares: input.shares,
+          trade_id: trade.id,
+        } as object,
+      },
+    });
+  }
+
+  // 8. Send trade-placed email alert (fire-and-forget)
   if (user.email) {
     const thesis = await prisma.thesis.findUnique({
       where: { id: input.thesisId },

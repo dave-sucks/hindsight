@@ -1128,6 +1128,42 @@ export function createResearchTools(ctx: ToolContext) {
               modelUsed: "gpt-4o",
             },
           });
+
+          // Persist RunEvent so thesis is visible on page reload
+          if (ctx.runId) {
+            const evType = args.direction === "PASS" ? "skip" : "thesis_complete";
+            await prisma.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: evType,
+                title:
+                  evType === "skip"
+                    ? `Passing on ${args.ticker}`
+                    : `Thesis complete for ${args.ticker}`,
+                message: args.reasoning_summary,
+                payload: {
+                  ticker: args.ticker,
+                  thesis: {
+                    ticker: args.ticker,
+                    direction: args.direction,
+                    confidence_score: args.confidence_score,
+                    reasoning_summary: args.reasoning_summary,
+                    thesis_bullets: args.thesis_bullets,
+                    risk_flags: args.risk_flags,
+                    entry_price: args.entry_price,
+                    target_price: args.target_price,
+                    stop_loss: args.stop_loss,
+                    hold_duration: args.hold_duration,
+                    signal_types: args.signal_types,
+                  },
+                  ...(evType === "skip"
+                    ? { reason: args.reasoning_summary, confidence: args.confidence_score }
+                    : {}),
+                } as object,
+              },
+            });
+          }
+
           return { ...args, thesis_id: thesis.id };
         } catch {
           return args;
@@ -1199,7 +1235,9 @@ export function createResearchTools(ctx: ToolContext) {
           ),
       }),
       execute: async (args) => {
+        // Mark the run as complete + persist summary as RunEvent
         try {
+          const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
           await prisma.researchRun.update({
             where: { id: ctx.runId },
             data: {
@@ -1207,6 +1245,37 @@ export function createResearchTools(ctx: ToolContext) {
               completedAt: new Date(),
             },
           });
+
+          // Write run_summary + run_complete events for reload persistence
+          if (ctx.runId) {
+            await prisma.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: "run_summary",
+                title: "Run Summary",
+                message: args.overall_assessment,
+                payload: {
+                  summary: args.market_summary,
+                  ranked_picks: args.ranked_picks,
+                  risk_notes: args.risk_notes,
+                  overall_assessment: args.overall_assessment,
+                } as object,
+              },
+            });
+            await prisma.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: "run_complete",
+                title: `Run complete — ${args.ranked_picks.length} analyzed, ${traded} traded`,
+                message: null,
+                payload: {
+                  analyzed: args.ranked_picks.length,
+                  recommended: args.ranked_picks.filter((p) => p.action !== "PASS").length,
+                  placed: traded,
+                } as object,
+              },
+            });
+          }
         } catch {
           // Non-fatal
         }

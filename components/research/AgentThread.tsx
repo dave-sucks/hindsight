@@ -775,6 +775,7 @@ function useRegisterAgentToolUIs(runId: string) {
             targetPrice: result.target_price as number | undefined,
             stopLoss: result.stop_loss as number | undefined,
             exitStrategy: "PRICE_TARGET",
+            researchRunId: runId,
           });
 
           if (res.error) {

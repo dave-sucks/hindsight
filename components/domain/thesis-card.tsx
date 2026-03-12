@@ -257,7 +257,11 @@ export function ThesisCard({
             {thesis_bullets.map((b, i) => (
               <div key={i} className="flex items-start gap-2.5 text-sm">
                 <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-emerald-500" />
-                <span className="leading-relaxed">{b}</span>
+                <CitedText
+                  text={b}
+                  sources={sources}
+                  className="leading-relaxed"
+                />
               </div>
             ))}
           </div>

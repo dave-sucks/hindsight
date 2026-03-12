@@ -82,7 +82,7 @@ export function AnalystEditorChat({
     transport: useMemo(
       () =>
         new DefaultChatTransport({
-          api: "/api/chat/analyst-builder",
+          api: "/api/chat/analyst-editor",
           body: { currentConfig },
         }),
       [currentConfig]

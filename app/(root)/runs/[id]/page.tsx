@@ -211,7 +211,9 @@ export default async function RunPage({
 
   // Agent mode: all new runs use the real LLM agent.
   // Legacy runs (no agentMode flag) fall back to the old event view.
-  const useAgent = config.agentMode === true;
+  // COMPLETED agent runs fall back to event view so results persist on reload.
+  const isAgentMode = config.agentMode === true;
+  const useAgent = isAgentMode && run.status === "RUNNING";
 
   // Legacy-only: stale detection + event synthesis
   const isStaleRun =
@@ -235,18 +237,23 @@ export default async function RunPage({
       })()
     : undefined;
 
-  const events: RunEventRow[] = useAgent
-    ? []
-    : run.events.length > 0
-      ? run.events.map((ev: { id: string; type: string; title: string; message: string | null; payload: unknown; createdAt: Date }) => ({
-          id: ev.id,
-          type: ev.type,
-          title: ev.title,
-          message: ev.message,
-          payload: ev.payload,
-          createdAt: ev.createdAt.toISOString(),
-        }))
-      : synthesizeEventsFromTheses(run.theses);
+  let events: RunEventRow[];
+  if (useAgent) {
+    events = [];
+  } else if (run.events.length > 0) {
+    events = run.events.map((ev: { id: string; type: string; title: string; message: string | null; payload: unknown; createdAt: Date }) => ({
+      id: ev.id,
+      type: ev.type,
+      title: ev.title,
+      message: ev.message,
+      payload: ev.payload,
+      createdAt: ev.createdAt.toISOString(),
+    }));
+  } else {
+    // Fallback: synthesize events from thesis rows (covers legacy runs
+    // and completed agent runs that didn't write RunEvent rows)
+    events = synthesizeEventsFromTheses(run.theses);
+  }
 
 
   return (
