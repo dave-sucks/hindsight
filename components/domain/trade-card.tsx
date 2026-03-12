@@ -11,7 +11,6 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock,
-  ShoppingCart,
   XCircle,
 } from "lucide-react";
 
@@ -80,35 +79,39 @@ export function TradeCard({
 
   return (
     <Card className={cn("overflow-hidden p-0", className)} {...cardProps}>
-      {/* Header */}
-      <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/20">
+      {/* ── Header ───────────────────────────────────────────────────── */}
+      <div className="px-5 py-4 flex items-center justify-between border-b">
         <div className="flex items-center gap-3">
-          <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-          <span className="text-base font-semibold font-mono">{ticker}</span>
-          <span
+          <span className="text-lg font-semibold font-mono">{ticker}</span>
+          <Badge
+            variant="secondary"
             className={cn(
-              "flex items-center gap-1 text-sm font-semibold",
-              dirColor
+              "gap-1 text-xs font-semibold",
+              dirColor,
+              isLong ? "bg-emerald-500/10" : "bg-red-500/10"
             )}
           >
             <DirIcon className="h-3.5 w-3.5" />
             {direction}
-          </span>
+          </Badge>
         </div>
-        <div className="flex items-center gap-2">
-          <div
-            className={cn("h-1.5 w-1.5 rounded-full", statusCfg.dotClass)}
-          />
-          <span className="text-xs text-muted-foreground">
-            {statusCfg.label}
-          </span>
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5">
+            <div
+              className={cn("h-2 w-2 rounded-full", statusCfg.dotClass)}
+            />
+            <span className="text-xs text-muted-foreground font-medium">
+              {statusCfg.label}
+            </span>
+          </div>
           {outcome && (
             <Badge
-              variant={outcome === "WIN" ? "default" : "secondary"}
+              variant="secondary"
               className={cn(
-                "text-[10px]",
+                "text-xs font-semibold",
                 outcome === "WIN" && "bg-emerald-500/15 text-emerald-500",
-                outcome === "LOSS" && "bg-red-500/15 text-red-500"
+                outcome === "LOSS" && "bg-red-500/15 text-red-500",
+                outcome === "BREAKEVEN" && "text-muted-foreground"
               )}
             >
               {outcome}
@@ -117,38 +120,38 @@ export function TradeCard({
         </div>
       </div>
 
-      {/* Body */}
-      <div className="px-4 py-3">
+      {/* ── Price grid ───────────────────────────────────────────────── */}
+      <div className="px-5 py-4">
         <div
           className={cn(
-            "grid gap-3 rounded-lg bg-muted/40 p-3 text-center",
+            "grid gap-3 rounded-xl bg-muted/40 p-4 text-center",
             isClosed ? "grid-cols-4" : "grid-cols-3"
           )}
         >
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
               Entry
             </p>
-            <p className="text-sm tabular-nums font-semibold">
+            <p className="text-base tabular-nums font-bold">
               ${entryPrice.toFixed(2)}
             </p>
           </div>
 
           {shares != null && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                 Shares
               </p>
-              <p className="text-sm tabular-nums font-semibold">{shares}</p>
+              <p className="text-base tabular-nums font-bold">{shares}</p>
             </div>
           )}
 
           {targetPrice != null && !isClosed && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                 Target
               </p>
-              <p className="text-sm tabular-nums font-semibold text-emerald-500">
+              <p className="text-base tabular-nums font-bold text-emerald-500">
                 ${targetPrice.toFixed(2)}
               </p>
             </div>
@@ -156,10 +159,10 @@ export function TradeCard({
 
           {stopLoss != null && !isClosed && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                 Stop
               </p>
-              <p className="text-sm tabular-nums font-semibold text-red-500">
+              <p className="text-base tabular-nums font-bold text-red-500">
                 ${stopLoss.toFixed(2)}
               </p>
             </div>
@@ -167,10 +170,10 @@ export function TradeCard({
 
           {isClosed && closePrice != null && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                 Exit
               </p>
-              <p className="text-sm tabular-nums font-semibold">
+              <p className="text-base tabular-nums font-bold">
                 ${closePrice.toFixed(2)}
               </p>
             </div>
@@ -178,13 +181,13 @@ export function TradeCard({
 
           {isClosed && realizedPnl != null && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                 P&L
               </p>
-              <div className="flex items-center justify-center gap-1">
+              <div className="flex items-center justify-center gap-1.5">
                 <span
                   className={cn(
-                    "text-sm tabular-nums font-semibold",
+                    "text-base tabular-nums font-bold",
                     realizedPnl >= 0 ? "text-emerald-500" : "text-red-500"
                   )}
                 >
