@@ -78,11 +78,9 @@ function BuilderThread({
       <Thread
         welcomeConfig={BUILDER_WELCOME}
         composerFeatures={{
-          slashCommands: false,
           tickerSearch: true,
           placeholder: "Describe your ideal trading analyst…",
         }}
-        richComposer
       />
     </ToolUICallbacksProvider>
   );

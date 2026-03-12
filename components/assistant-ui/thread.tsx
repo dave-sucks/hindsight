@@ -1,6 +1,4 @@
 import {
-  ComposerAddAttachment,
-  ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
@@ -27,7 +25,6 @@ import {
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
-  ArrowUpIcon,
   BotIcon,
   CheckIcon,
   ChevronLeftIcon,
@@ -37,14 +34,13 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
-  SquareIcon,
 } from "lucide-react";
 import { type FC, useMemo } from "react";
 
 import {
-  RichComposer,
-  type RichComposerFeatures,
-} from "@/components/assistant-ui/rich-composer";
+  HindsightComposer,
+  type HindsightComposerFeatures,
+} from "@/components/assistant-ui/hindsight-composer";
 
 export interface WelcomeConfig {
   /** Main heading */
@@ -58,9 +54,9 @@ export interface WelcomeConfig {
 export interface ThreadProps {
   /** Render a custom composer instead of the default one */
   composerSlot?: React.ReactNode;
-  /** Configure the rich composer (ignored when composerSlot is provided) */
-  composerFeatures?: RichComposerFeatures;
-  /** Use the rich composer with slash commands & ticker search */
+  /** Configure the HindsightComposer features */
+  composerFeatures?: HindsightComposerFeatures;
+  /** @deprecated Use composerFeatures instead. Enables slash commands + ticker search. */
   richComposer?: boolean;
   /** Hide the welcome message */
   hideWelcome?: boolean;
@@ -75,8 +71,13 @@ export const Thread: FC<ThreadProps> = ({
   hideWelcome = false,
   welcomeConfig,
 }) => {
+  // Merge richComposer flag into features for backwards compat
+  const mergedFeatures: HindsightComposerFeatures = richComposer
+    ? { slashCommands: true, tickerSearch: true, ...composerFeatures }
+    : { ...composerFeatures };
+
   const ComposerComponent = composerSlot ?? (
-    richComposer ? <RichComposer features={composerFeatures} /> : <Composer />
+    <HindsightComposer features={mergedFeatures} />
   );
 
   return (
@@ -182,59 +183,7 @@ const ThreadSuggestionItem: FC = () => {
   );
 };
 
-const Composer: FC = () => {
-  return (
-    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <ComposerPrimitive.AttachmentDropzone className="aui-composer-attachment-dropzone flex w-full flex-col rounded-2xl border border-input bg-background px-1 pt-2 outline-none transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50">
-        <ComposerAttachments />
-        <ComposerPrimitive.Input
-          placeholder="Send a message..."
-          className="aui-composer-input mb-1 max-h-32 min-h-14 w-full resize-none bg-transparent px-4 pt-2 pb-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-0"
-          rows={1}
-          autoFocus
-          aria-label="Message input"
-        />
-        <ComposerAction />
-      </ComposerPrimitive.AttachmentDropzone>
-    </ComposerPrimitive.Root>
-  );
-};
-
-const ComposerAction: FC = () => {
-  return (
-    <div className="aui-composer-action-wrapper relative mx-2 mb-2 flex items-center justify-between">
-      <ComposerAddAttachment />
-      <AuiIf condition={(s) => !s.thread.isRunning}>
-        <ComposerPrimitive.Send asChild>
-          <TooltipIconButton
-            tooltip="Send message"
-            side="bottom"
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-send size-8 rounded-full"
-            aria-label="Send message"
-          >
-            <ArrowUpIcon className="aui-composer-send-icon size-4" />
-          </TooltipIconButton>
-        </ComposerPrimitive.Send>
-      </AuiIf>
-      <AuiIf condition={(s) => s.thread.isRunning}>
-        <ComposerPrimitive.Cancel asChild>
-          <Button
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-cancel size-8 rounded-full"
-            aria-label="Stop generating"
-          >
-            <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-          </Button>
-        </ComposerPrimitive.Cancel>
-      </AuiIf>
-    </div>
-  );
-};
+// Old Composer and ComposerAction removed — replaced by HindsightComposer
 
 const MessageError: FC = () => {
   return (

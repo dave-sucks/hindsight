@@ -477,10 +477,24 @@ Recent news:
 
 Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}"""
 
+    # ── Inject analyst strategy prompt if available ──
+    analyst_prompt = agent_config.get("analystPrompt") or agent_config.get("analyst_prompt")
+    system_content = _CONCEPT_SYSTEM
+    if analyst_prompt:
+        analyst_name = agent_config.get("analystName", agent_config.get("analyst_name", "Analyst"))
+        system_content = f"""{_CONCEPT_SYSTEM}
+
+--- ANALYST STRATEGY INSTRUCTIONS ({analyst_name}) ---
+The following is the analyst's strategy document. Use it to guide your signal selection,
+direction bias, confidence calibration, and what patterns/setups to prioritize:
+
+{analyst_prompt}
+--- END STRATEGY INSTRUCTIONS ---"""
+
     response = await _openai.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": _CONCEPT_SYSTEM},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
@@ -497,6 +511,7 @@ async def run_thesis_cot(
     concept: ConceptAnalysis,
     total_tokens: list,
     market_context=None,  # DAV-121/124
+    agent_config: dict | None = None,
 ) -> ThesisOutput:
     """Step 3: GPT-4o structured thesis synthesis."""
     tech = data.technicals
@@ -564,10 +579,25 @@ Remember: You must include invalidation conditions, a sector alternative compari
 a dated catalyst, exact execution details (share count for $10K, order type),
 and a sources array with relevance scores."""
 
+    # ── Inject analyst strategy prompt if available ──
+    thesis_system = _THESIS_SYSTEM
+    if agent_config:
+        analyst_prompt = agent_config.get("analystPrompt") or agent_config.get("analyst_prompt")
+        if analyst_prompt:
+            analyst_name = agent_config.get("analystName", agent_config.get("analyst_name", "Analyst"))
+            thesis_system = f"""{_THESIS_SYSTEM}
+
+--- ANALYST STRATEGY INSTRUCTIONS ({analyst_name}) ---
+Use the analyst's strategy to inform thesis quality, risk framing, entry/exit levels,
+and which catalysts to emphasize:
+
+{analyst_prompt}
+--- END STRATEGY INSTRUCTIONS ---"""
+
     response = await _openai.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": _THESIS_SYSTEM},
+            {"role": "system", "content": thesis_system},
             {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
@@ -754,6 +784,20 @@ Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}
 
 Think through the analysis step by step, then provide the structured JSON output."""
 
+    # ── Inject analyst strategy prompt if available ──
+    combined_system = _COMBINED_SYSTEM
+    analyst_prompt = agent_config.get("analystPrompt") or agent_config.get("analyst_prompt")
+    if analyst_prompt:
+        analyst_name = agent_config.get("analystName", agent_config.get("analyst_name", "Analyst"))
+        combined_system = f"""{_COMBINED_SYSTEM}
+
+--- ANALYST STRATEGY INSTRUCTIONS ({analyst_name}) ---
+Use the analyst's strategy to guide your signal selection, direction bias, confidence
+calibration, risk framing, and which catalysts to emphasize:
+
+{analyst_prompt}
+--- END STRATEGY INSTRUCTIONS ---"""
+
     # Stream the response — emit reasoning tokens, then parse JSON
     reasoning_text = ""
     full_text = ""
@@ -763,7 +807,7 @@ Think through the analysis step by step, then provide the structured JSON output
     async with _openai.chat.completions.stream(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": _COMBINED_SYSTEM},
+            {"role": "system", "content": combined_system},
             {"role": "user", "content": prompt},
         ],
         temperature=0.4,
@@ -1006,7 +1050,7 @@ async def run_full_pipeline(
                 total_tokens[0],
             )
 
-        thesis = await run_thesis_cot(data, concept, total_tokens, market_context=market_context)
+        thesis = await run_thesis_cot(data, concept, total_tokens, market_context=market_context, agent_config=agent_config)
         return thesis, total_tokens[0]
 
     except Exception as exc:

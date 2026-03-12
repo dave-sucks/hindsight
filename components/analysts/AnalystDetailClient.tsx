@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   Sheet,
   SheetContent,
@@ -23,12 +23,22 @@ import {
 import { RunResearchButton } from "@/components/RunResearchButton";
 import { StockLogo } from "@/components/StockLogo";
 import { AnalystEditorChat } from "@/components/analysts/AnalystEditorChat";
-import { ArrowLeft, Settings2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Settings2,
+  MessageSquare,
+  X,
+  ChevronDown,
+  FileText,
+  Sparkles,
+} from "lucide-react";
 import type {
   AnalystDetail,
   TradeWithThesis,
 } from "@/lib/actions/analyst.actions";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -62,11 +72,11 @@ const RANGE_DAYS: Record<Range, number> = {
 
 function sliceByRange(
   data: { date: string; value: number }[],
-  range: Range
+  range: Range,
 ) {
   const cutoffMs = Date.now() - RANGE_DAYS[range] * 86_400_000;
   const filtered = data.filter(
-    (d) => new Date(d.date + "T12:00:00").getTime() >= cutoffMs
+    (d) => new Date(d.date + "T12:00:00").getTime() >= cutoffMs,
   );
   return filtered.length > 1 ? filtered : data.slice(-2);
 }
@@ -92,7 +102,7 @@ function SidebarTradeRow({ trade }: { trade: TradeWithThesis }) {
             <span
               className={cn(
                 "text-[10px] font-semibold",
-                trade.outcome === "WIN" ? "text-emerald-500" : "text-red-500"
+                trade.outcome === "WIN" ? "text-emerald-500" : "text-red-500",
               )}
             >
               {trade.outcome === "WIN" ? "W" : "L"}
@@ -100,114 +110,270 @@ function SidebarTradeRow({ trade }: { trade: TradeWithThesis }) {
             <span
               className={cn(
                 "text-[10px] tabular-nums",
-                pnl >= 0 ? "text-emerald-500" : "text-red-500"
+                pnl >= 0 ? "text-emerald-500" : "text-red-500",
               )}
             >
               {pnl >= 0 ? "+" : ""}${Math.abs(pnl).toFixed(0)}
             </span>
           </>
         ) : isOpen ? (
-          <span className="text-[10px] text-emerald-500 font-medium">Open</span>
+          <span className="text-[10px] text-emerald-500 font-medium">
+            Open
+          </span>
         ) : null}
       </div>
     </Link>
   );
 }
 
-// ── Strategy Banner (collapsible config summary) ────────────────────────────
+// ── Strategy Document (the hero prompt) ──────────────────────────────────────
 
-function StrategyBanner({ config }: { config: AnalystDetail["config"] }) {
-  const [expanded, setExpanded] = useState(false);
+function StrategyDocument({
+  config,
+}: {
+  config: AnalystDetail["config"];
+}) {
   const prompt = config.analystPrompt;
   const hasPrompt = !!prompt && prompt.trim().length > 0;
 
-  const badges = [
-    config.directionBias,
-    ...config.holdDurations,
-    ...(config.sectors.length > 0 ? config.sectors.slice(0, 3) : []),
-    ...(config.signalTypes.length > 0 ? config.signalTypes.slice(0, 2) : []),
-    config.minConfidence ? `${config.minConfidence}% min` : null,
-  ].filter(Boolean) as string[];
-
   return (
-    <div className="border-b shrink-0">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-5 py-2.5 text-left hover:bg-muted/30 transition-colors"
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground shrink-0">
-            Strategy
-          </span>
-          <div className="flex flex-wrap gap-1 min-w-0">
-            {badges.slice(0, expanded ? badges.length : 5).map((b) => (
-              <Badge
-                key={b}
-                variant="outline"
-                className="text-[10px] h-5 px-1.5 shrink-0"
-              >
-                {b}
-              </Badge>
-            ))}
-            {!expanded && badges.length > 5 && (
-              <span className="text-[10px] text-muted-foreground">
-                +{badges.length - 5}
-              </span>
-            )}
-          </div>
-        </div>
-        <svg
-          className={cn(
-            "h-3 w-3 text-muted-foreground shrink-0 transition-transform",
-            expanded && "rotate-180"
-          )}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </button>
-
-      {expanded && (
-        <div className="px-5 pb-3 space-y-2">
-          {hasPrompt && (
-            <div className="rounded-lg bg-muted/40 p-3">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
-                Master Prompt
-              </p>
-              <p className="text-xs text-foreground/80 whitespace-pre-wrap leading-relaxed">
-                {prompt}
-              </p>
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-2xl mx-auto px-8 py-8 space-y-6">
+        {/* Document header */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/20 to-blue-500/20 ring-1 ring-violet-500/30">
+              <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />
             </div>
-          )}
-          <div className="flex flex-wrap gap-1">
-            {badges.map((b) => (
-              <Badge
-                key={b}
-                variant="outline"
-                className="text-[10px] h-5 px-1.5"
-              >
-                {b}
-              </Badge>
-            ))}
+            <div>
+              <h2 className="text-lg font-semibold">{config.name}</h2>
+              {config.description && (
+                <p className="text-xs text-muted-foreground">
+                  {config.description}
+                </p>
+              )}
+            </div>
           </div>
-          {config.sectors.length > 0 && (
-            <p className="text-[10px] text-muted-foreground">
-              <span className="font-medium">Sectors:</span>{" "}
-              {config.sectors.join(", ")}
-            </p>
+        </div>
+
+        {/* Strategy badges */}
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant="outline" className="text-xs h-6 px-2">
+            {config.directionBias}
+          </Badge>
+          {config.holdDurations.map((d) => (
+            <Badge key={d} variant="outline" className="text-xs h-6 px-2">
+              {d}
+            </Badge>
+          ))}
+          {config.sectors.slice(0, 5).map((s) => (
+            <Badge key={s} variant="secondary" className="text-xs h-6 px-2">
+              {s}
+            </Badge>
+          ))}
+          {config.sectors.length > 5 && (
+            <Badge variant="secondary" className="text-xs h-6 px-2">
+              +{config.sectors.length - 5} more
+            </Badge>
           )}
-          {config.signalTypes.length > 0 && (
-            <p className="text-[10px] text-muted-foreground">
-              <span className="font-medium">Signals:</span>{" "}
-              {config.signalTypes.join(", ")}
+          <Badge
+            variant="outline"
+            className="text-xs h-6 px-2 font-mono tabular-nums"
+          >
+            {config.minConfidence}% min confidence
+          </Badge>
+          <Badge
+            variant="outline"
+            className="text-xs h-6 px-2 font-mono tabular-nums"
+          >
+            ${config.maxPositionSize.toLocaleString()} max
+          </Badge>
+        </div>
+
+        {/* Signal types */}
+        {config.signalTypes.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Signal Types
             </p>
+            <div className="flex flex-wrap gap-1">
+              {config.signalTypes.map((s) => (
+                <Badge
+                  key={s}
+                  variant="outline"
+                  className="text-[10px] px-2 py-0.5 font-mono"
+                >
+                  {s}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Watchlist */}
+        {config.watchlist.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Watchlist
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {config.watchlist.map((t) => (
+                <Badge
+                  key={t}
+                  variant="secondary"
+                  className="text-xs h-6 px-2 font-mono"
+                >
+                  {t}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* The main strategy prompt */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Strategy Prompt
+            </p>
+          </div>
+
+          {hasPrompt ? (
+            <Card className="p-0 overflow-hidden">
+              <div className="bg-muted/20 border-b px-4 py-2">
+                <p className="text-[10px] font-medium text-muted-foreground">
+                  This prompt is sent to the agent at the start of every research
+                  run.
+                </p>
+              </div>
+              <div className="p-5">
+                <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed text-foreground/90">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({ children }) => (
+                        <h1 className="mb-2 scroll-m-20 font-semibold text-base first:mt-0 last:mb-0">
+                          {children}
+                        </h1>
+                      ),
+                      h2: ({ children }) => (
+                        <h2 className="mt-4 mb-2 scroll-m-20 font-semibold text-sm first:mt-0 last:mb-0">
+                          {children}
+                        </h2>
+                      ),
+                      h3: ({ children }) => (
+                        <h3 className="mt-3 mb-1 scroll-m-20 font-semibold text-sm first:mt-0 last:mb-0">
+                          {children}
+                        </h3>
+                      ),
+                      p: ({ children }) => (
+                        <p className="my-2 leading-relaxed first:mt-0 last:mb-0">
+                          {children}
+                        </p>
+                      ),
+                      ul: ({ children }) => (
+                        <ul className="my-2 ml-4 list-disc marker:text-muted-foreground [&>li]:mt-1">
+                          {children}
+                        </ul>
+                      ),
+                      ol: ({ children }) => (
+                        <ol className="my-2 ml-4 list-decimal marker:text-muted-foreground [&>li]:mt-1">
+                          {children}
+                        </ol>
+                      ),
+                      li: ({ children }) => (
+                        <li className="leading-relaxed">{children}</li>
+                      ),
+                      strong: ({ children }) => (
+                        <strong className="font-semibold text-foreground">
+                          {children}
+                        </strong>
+                      ),
+                      em: ({ children }) => (
+                        <em className="italic">{children}</em>
+                      ),
+                      blockquote: ({ children }) => (
+                        <blockquote className="my-2 border-muted-foreground/30 border-l-2 pl-3 text-muted-foreground italic">
+                          {children}
+                        </blockquote>
+                      ),
+                      hr: () => (
+                        <hr className="my-3 border-muted-foreground/20" />
+                      ),
+                      code: ({ children }) => (
+                        <code className="rounded-md border border-border/50 bg-muted/50 px-1.5 py-0.5 font-mono text-[0.85em]">
+                          {children}
+                        </code>
+                      ),
+                    }}
+                  >
+                    {prompt}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <Card className="p-6 border-dashed">
+              <div className="text-center space-y-2">
+                <FileText className="h-8 w-8 mx-auto text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">
+                  No strategy prompt yet
+                </p>
+                <p className="text-xs text-muted-foreground/70">
+                  Use the chat below to brainstorm and create a detailed strategy
+                  prompt that will guide this analyst&apos;s research runs.
+                </p>
+              </div>
+            </Card>
           )}
         </div>
-      )}
+
+        {/* Config details */}
+        <div className="space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Risk & Position Rules
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              {
+                label: "Max Positions",
+                value: String(config.maxOpenPositions),
+              },
+              {
+                label: "Max Risk",
+                value: `${config.maxRiskPct}%`,
+              },
+              {
+                label: "Min Market Cap",
+                value: config.minMarketCapTier ?? "LARGE",
+              },
+              {
+                label: "Schedule",
+                value: config.scheduleTime,
+              },
+              {
+                label: "Daily Loss Limit",
+                value: `$${config.dailyLossLimit.toLocaleString()}`,
+              },
+              {
+                label: "Direction",
+                value: config.directionBias,
+              },
+            ].map(({ label, value }) => (
+              <div
+                key={label}
+                className="rounded-lg border bg-muted/20 px-3 py-2"
+              >
+                <p className="text-[10px] text-muted-foreground mb-0.5">
+                  {label}
+                </p>
+                <p className="text-xs font-medium tabular-nums">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -255,7 +421,6 @@ function ConfigSheet({
         </SheetHeader>
 
         <div className="px-4 pb-6 space-y-5">
-          {/* Key-value pairs */}
           <div className="space-y-0.5">
             {configRows.map(({ label, value }) => (
               <div
@@ -268,7 +433,6 @@ function ConfigSheet({
             ))}
           </div>
 
-          {/* Sectors */}
           {config.sectors.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -288,7 +452,6 @@ function ConfigSheet({
             </div>
           )}
 
-          {/* Signals */}
           {config.signalTypes.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -308,27 +471,11 @@ function ConfigSheet({
             </div>
           )}
 
-          {/* Strategy Prompt */}
-          {config.analystPrompt && (
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Strategy Prompt
-              </p>
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap">
-                  {config.analystPrompt}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Guidance */}
           <div className="rounded-lg border border-dashed p-3">
             <p className="text-xs text-muted-foreground leading-relaxed">
               To edit any configuration, describe the changes you want in the AI
               chat. For example: &ldquo;Make this analyst focus on small-cap
-              biotech with higher confidence&rdquo; or &ldquo;Switch to short
-              bias with day-trade holding period.&rdquo;
+              biotech with higher confidence&rdquo;
             </p>
           </div>
         </div>
@@ -348,6 +495,7 @@ export default function AnalystDetailClient({
 }) {
   const { config, stats, recentRuns, recentTrades } = detail;
   const [configOpen, setConfigOpen] = useState(false);
+  const [chatExpanded, setChatExpanded] = useState(false);
   const [range, setRange] = useState<Range>("Max");
 
   // ── Chart data ──────────────────────────────────────────────────────────
@@ -356,7 +504,7 @@ export default function AnalystDetailClient({
       .filter((t) => t.closedAt && t.realizedPnl != null)
       .sort(
         (a, b) =>
-          new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime()
+          new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime(),
       );
     if (closed.length < 2) return [];
     let cum = 0;
@@ -371,7 +519,7 @@ export default function AnalystDetailClient({
 
   const filteredEquity = useMemo(
     () => sliceByRange(equityData, range),
-    [equityData, range]
+    [equityData, range],
   );
 
   const equityStroke =
@@ -398,13 +546,6 @@ export default function AnalystDetailClient({
         ? "text-emerald-500"
         : "text-red-500"
       : "text-muted-foreground";
-
-  // ── Flattened theses for context summary + composer ─────────────────────
-  const recentThesesCount = recentRuns.reduce(
-    (sum, r) => sum + r.theses.length,
-    0
-  );
-
 
   return (
     <>
@@ -433,7 +574,6 @@ export default function AnalystDetailClient({
                   backgroundColor: "hsl(var(--muted)/0.3)",
                 }}
               >
-                {/* Range tabs */}
                 <div className="absolute top-2 left-2 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-0.5 py-0.5">
                   {RANGES.map((r) => (
                     <button
@@ -443,7 +583,7 @@ export default function AnalystDetailClient({
                         "px-1.5 py-0.5 text-[9px] rounded transition-colors",
                         range === r
                           ? "bg-muted text-foreground font-medium"
-                          : "text-muted-foreground hover:text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
                       )}
                     >
                       {r}
@@ -518,7 +658,7 @@ export default function AnalystDetailClient({
                 <p
                   className={cn(
                     "text-lg font-semibold tabular-nums",
-                    pnlColor
+                    pnlColor,
                   )}
                 >
                   {pnlStr}
@@ -529,7 +669,7 @@ export default function AnalystDetailClient({
                 <p
                   className={cn(
                     "text-lg font-semibold tabular-nums",
-                    winRateColor
+                    winRateColor,
                   )}
                 >
                   {winRatePct}
@@ -572,8 +712,8 @@ export default function AnalystDetailClient({
           </div>
         </div>
 
-        {/* ── Right: Header + full-height AI chat ──────────────────────── */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        {/* ── Right: Strategy prompt hero + floating chat ──────────────── */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
           {/* Header */}
           <div className="flex items-center justify-between gap-4 px-5 py-3 border-b shrink-0">
             <div className="flex items-center gap-2 min-w-0">
@@ -588,12 +728,10 @@ export default function AnalystDetailClient({
                   "h-2 w-2 rounded-full shrink-0",
                   config.enabled
                     ? "bg-emerald-500"
-                    : "bg-muted-foreground/40"
+                    : "bg-muted-foreground/40",
                 )}
               />
-              <h1 className="text-sm font-semibold truncate">
-                {config.name}
-              </h1>
+              <h1 className="text-sm font-semibold truncate">{config.name}</h1>
               {hasRunning && (
                 <Badge
                   variant="secondary"
@@ -619,8 +757,8 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
-          {/* Context banner */}
-          <div className="px-5 py-3 border-b shrink-0 bg-muted/20">
+          {/* Context stats banner */}
+          <div className="px-5 py-2.5 border-b shrink-0 bg-muted/20">
             <div className="flex items-center gap-4 text-xs text-muted-foreground">
               <span className="tabular-nums">
                 <span className="font-medium text-foreground">
@@ -630,16 +768,7 @@ export default function AnalystDetailClient({
               </span>
               <span className="text-border">·</span>
               <span className="tabular-nums">
-                <span className="font-medium text-foreground">
-                  {recentThesesCount}
-                </span>{" "}
-                theses
-              </span>
-              <span className="text-border">·</span>
-              <span className="tabular-nums">
-                <span className={cn("font-medium", pnlColor)}>
-                  {pnlStr}
-                </span>{" "}
+                <span className={cn("font-medium", pnlColor)}>{pnlStr}</span>{" "}
                 P&L
               </span>
               <span className="text-border">·</span>
@@ -663,28 +792,65 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
-          {/* Strategy / config summary (collapsible) */}
-          <StrategyBanner config={config} />
+          {/* ── Content area: Strategy doc OR full chat ─────────────────── */}
+          {chatExpanded ? (
+            /* Full-page chat mode */
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex items-center justify-between px-5 py-2 border-b bg-muted/10 shrink-0">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium">
+                    Chat with {config.name}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-muted-foreground"
+                  onClick={() => setChatExpanded(false)}
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Close Chat
+                </Button>
+              </div>
+              <div className="flex-1 min-h-0">
+                <AnalystEditorChat
+                  analystId={config.id}
+                  currentConfig={{
+                    name: config.name,
+                    analystPrompt: config.analystPrompt ?? "",
+                    description: config.description ?? "",
+                    directionBias: config.directionBias,
+                    holdDurations: config.holdDurations,
+                    sectors: config.sectors,
+                    signalTypes: config.signalTypes,
+                    minConfidence: config.minConfidence,
+                    maxPositionSize: config.maxPositionSize,
+                    maxOpenPositions: config.maxOpenPositions,
+                    minMarketCapTier: config.minMarketCapTier ?? "LARGE",
+                  }}
+                />
+              </div>
+            </div>
+          ) : (
+            /* Strategy document view with floating chat trigger */
+            <>
+              <StrategyDocument config={config} />
 
-          {/* Full-height AI chat */}
-          <div className="flex-1 min-h-0">
-            <AnalystEditorChat
-              analystId={config.id}
-              currentConfig={{
-                name: config.name,
-                analystPrompt: config.analystPrompt ?? "",
-                description: config.description ?? "",
-                directionBias: config.directionBias,
-                holdDurations: config.holdDurations,
-                sectors: config.sectors,
-                signalTypes: config.signalTypes,
-                minConfidence: config.minConfidence,
-                maxPositionSize: config.maxPositionSize,
-                maxOpenPositions: config.maxOpenPositions,
-                minMarketCapTier: config.minMarketCapTier ?? "LARGE",
-              }}
-            />
-          </div>
+              {/* Floating chat trigger */}
+              <div className="absolute bottom-6 right-6 z-10">
+                <Button
+                  onClick={() => setChatExpanded(true)}
+                  className="h-12 rounded-full px-5 shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    Edit with AI
+                  </span>
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

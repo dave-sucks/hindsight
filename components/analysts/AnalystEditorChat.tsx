@@ -54,9 +54,7 @@ function EditorThread({
     <ToolUICallbacksProvider value={callbacks}>
       <Thread
         welcomeConfig={EDITOR_WELCOME}
-        richComposer
         composerFeatures={{
-          slashCommands: false,
           tickerSearch: true,
           placeholder: "Ask a question or suggest strategy changes…",
         }}
