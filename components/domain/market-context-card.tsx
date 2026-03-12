@@ -61,7 +61,9 @@ export function MarketContextCard({
 }: MarketContextCardProps) {
   const regimeCfg = REGIME_CONFIG[regime];
   const RegimeIcon = regimeCfg.icon;
-  const hasData = spxChange != null || vixLevel != null;
+  // Treat VIX of 0 as missing (bad upstream data)
+  const effectiveVix = vixLevel && vixLevel > 0.1 ? vixLevel : null;
+  const hasData = spxChange != null || effectiveVix != null;
 
   return (
     <Card className={cn("overflow-hidden p-0", className)} {...cardProps}>
@@ -92,16 +94,16 @@ export function MarketContextCard({
                 </span>
               </span>
             )}
-            {vixLevel != null && (
+            {effectiveVix != null && (
               <span className="flex items-center gap-1">
                 <span className="text-muted-foreground">VIX</span>
                 <span
                   className={cn(
                     "tabular-nums font-semibold",
-                    vixLevel > 25 ? "text-red-500" : vixLevel > 18 ? "text-amber-500" : "text-muted-foreground",
+                    effectiveVix > 25 ? "text-red-500" : effectiveVix > 18 ? "text-amber-500" : "text-muted-foreground",
                   )}
                 >
-                  {vixLevel.toFixed(1)}
+                  {effectiveVix.toFixed(1)}
                 </span>
               </span>
             )}

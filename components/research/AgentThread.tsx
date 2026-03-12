@@ -176,10 +176,12 @@ function useRegisterAgentToolUIs(runId: string) {
         day_high: number;
         day_low: number;
       } | null;
-      const vix = result.vix as {
+      const rawVix = result.vix as {
         level: number;
         change_pct: number;
       } | null;
+      // Treat VIX of 0 or near-zero as missing data
+      const vix = rawVix && rawVix.level > 0.1 ? rawVix : null;
       const sectors = (result.sectors ?? []) as {
         symbol: string;
         price: number;
@@ -469,7 +471,7 @@ function useRegisterAgentToolUIs(runId: string) {
     },
   });
 
-  // ── Reddit sentiment → collapsible reasoning block ────────────────
+  // ── Reddit sentiment → rich social card ────────────────────────────
   useAssistantToolUI({
     toolName: "get_reddit_sentiment",
     render: ({ args, result }) => {
@@ -480,10 +482,14 @@ function useRegisterAgentToolUIs(runId: string) {
       }
 
       if (!result.available) {
+        const reason = result.reason as string | undefined;
+        const isBlocked = reason === "blocked";
         return (
           <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
             <MessageSquare className="inline h-3 w-3 mr-1 text-orange-500" />
-            Reddit unavailable for {ticker}.
+            {isBlocked
+              ? `Reddit API rate-limited — no sentiment data for ${ticker}.`
+              : `No recent Reddit mentions for ${ticker}.`}
           </div>
         );
       }
@@ -492,22 +498,80 @@ function useRegisterAgentToolUIs(runId: string) {
         provider: string;
         title?: string;
         url?: string;
+        score?: number;
       }[];
+      const sentiment = result.sentiment as string | undefined;
+      const mentionCount = result.mention_count as number | undefined;
+      const trending = result.trending as boolean | undefined;
 
       return (
-        <ReasoningBlock title={`Reddit sentiment · ${ticker} · ${sources.length} sources`}>
-          <div className="flex flex-wrap gap-1">
-            {sources.map((s, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-orange-500 shrink-0" />
-                {s.title || s.provider}
-              </span>
-            ))}
-          </div>
-        </ReasoningBlock>
+        <div className="my-2">
+          <Card className="overflow-hidden p-0">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-3.5 w-3.5 text-orange-500" />
+                <span className="text-xs font-medium">Reddit</span>
+                <span className="text-xs font-semibold font-mono">{ticker}</span>
+                {mentionCount != null && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {mentionCount} mentions
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                {trending && (
+                  <Badge variant="secondary" className="text-[10px] py-0 bg-orange-500/10 text-orange-500 font-semibold">
+                    TRENDING
+                  </Badge>
+                )}
+                {sentiment && (
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "text-[10px] py-0 font-semibold",
+                      sentiment === "bullish" && "bg-emerald-500/10 text-emerald-500",
+                      sentiment === "bearish" && "bg-red-500/10 text-red-500",
+                      sentiment === "neutral" && "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {sentiment.toUpperCase()}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            {/* Posts */}
+            {sources.length > 0 && (
+              <div className="divide-y">
+                {sources.slice(0, 5).map((s, i) => (
+                  <div key={i} className="flex items-start gap-2.5 px-4 py-2">
+                    <span className="text-[10px] text-muted-foreground font-mono tabular-nums shrink-0 mt-0.5 w-8 text-right">
+                      {s.score != null ? (s.score >= 1000 ? `${(s.score / 1000).toFixed(1)}k` : s.score) : "—"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      {s.url ? (
+                        <a
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-foreground hover:underline line-clamp-2 leading-snug"
+                        >
+                          {s.title || "Untitled post"}
+                        </a>
+                      ) : (
+                        <span className="text-xs text-foreground line-clamp-2 leading-snug">
+                          {s.title || "Untitled post"}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-muted-foreground">{s.provider}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          <SourceChips sources={["Reddit"]} />
+        </div>
       );
     },
   });
