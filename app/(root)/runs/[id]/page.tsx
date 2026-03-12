@@ -220,6 +220,21 @@ export default async function RunPage({
     run.events.length === 0 &&
     Date.now() - new Date(run.startedAt).getTime() > 15 * 60 * 1_000;
 
+  // Load saved agent messages for completed runs
+  const savedMessages = useAgent && run.status === "COMPLETE"
+    ? await prisma.runMessage.findFirst({
+        where: { runId: id, role: "thread" },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+
+  const initialMessages = savedMessages?.content
+    ? (() => {
+        try { return JSON.parse(savedMessages.content); }
+        catch { return undefined; }
+      })()
+    : undefined;
+
   const events: RunEventRow[] = useAgent
     ? []
     : run.events.length > 0
@@ -267,7 +282,8 @@ export default async function RunPage({
             analystName={analystName}
             analystId={run.agentConfig?.id}
             config={config}
-            autoStart
+            autoStart={run.status !== "COMPLETE" && !initialMessages}
+            initialMessages={initialMessages}
           />
         ) : isStaleRun ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
