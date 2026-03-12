@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import RunChatThread from "@/components/research/RunChatThread";
-import type { RunEventRow } from "@/components/research/RunChatThread";
+import { RunUnifiedChat } from "@/components/research/RunUnifiedChat";
+import type { RunEventRow } from "@/components/research/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -100,11 +100,23 @@ export default function RunLiveStream({
     );
   }
 
+  // Build minimal runContext from available data
+  const runContext = {
+    analystName,
+    config,
+    theses: [] as Array<{
+      ticker: string;
+      direction: string;
+      confidence_score: number;
+    }>,
+  };
+
   return (
-    <RunChatThread
+    <RunUnifiedChat
       events={events}
       analystName={analystName}
       config={config}
+      runContext={runContext}
       isLive={!streamDone}
     />
   );
