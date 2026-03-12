@@ -22,6 +22,7 @@ import {
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  BotIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -245,19 +246,28 @@ const AssistantMessage: FC = () => {
       className="aui-assistant-message-root fade-in slide-in-from-bottom-1 relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
       data-role="assistant"
     >
-      <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
-        <MessagePrimitive.Parts
-          components={{
-            Text: MarkdownText,
-            tools: { Fallback: ToolFallback },
-          }}
-        />
-        <MessageError />
-      </div>
+      <div className="flex gap-3">
+        {/* Avatar */}
+        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-gradient-to-br from-violet-500/10 to-blue-500/10">
+          <BotIcon className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+        </div>
 
-      <div className="aui-assistant-message-footer mt-1 ml-2 flex min-h-6 items-center">
-        <BranchPicker />
-        <AssistantActionBar />
+        <div className="min-w-0 flex-1">
+          <div className="aui-assistant-message-content wrap-break-word text-foreground leading-relaxed">
+            <MessagePrimitive.Parts
+              components={{
+                Text: MarkdownText,
+                tools: { Fallback: ToolFallback },
+              }}
+            />
+            <MessageError />
+          </div>
+
+          <div className="aui-assistant-message-footer mt-1 flex min-h-6 items-center">
+            <BranchPicker />
+            <AssistantActionBar />
+          </div>
+        </div>
       </div>
     </MessagePrimitive.Root>
   );
