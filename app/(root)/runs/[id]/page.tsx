@@ -137,14 +137,10 @@ function synthesizeEventsFromTheses(
 
 export default async function RunPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ agent?: string }>;
 }) {
   const { id } = await params;
-  const { agent: agentMode } = await searchParams;
-  const useAgent = agentMode === "true";
 
   const supabase = await createClient();
   const {
@@ -207,16 +203,26 @@ export default async function RunPage({
       ? "bg-amber-500"
       : "bg-red-400";
 
-  // A run stuck in RUNNING with no events and started > 15 min ago is stale
-  // (runs WITH events that are stuck are handled by RunLiveStream timing out)
+  // Extract config snapshot from the run parameters
+  const config =
+    run.parameters && typeof run.parameters === "object"
+      ? (run.parameters as Record<string, unknown>)
+      : {};
+
+  // Agent mode: all new runs use the real LLM agent.
+  // Legacy runs (no agentMode flag) fall back to the old event view.
+  const useAgent = config.agentMode === true;
+
+  // Legacy-only: stale detection + event synthesis
   const isStaleRun =
+    !useAgent &&
     run.status === "RUNNING" &&
     run.events.length === 0 &&
     Date.now() - new Date(run.startedAt).getTime() > 15 * 60 * 1_000;
 
-  // Use stored events; fall back to synthesized for legacy runs
-  const events: RunEventRow[] =
-    run.events.length > 0
+  const events: RunEventRow[] = useAgent
+    ? []
+    : run.events.length > 0
       ? run.events.map((ev: { id: string; type: string; title: string; message: string | null; payload: unknown; createdAt: Date }) => ({
           id: ev.id,
           type: ev.type,
@@ -226,12 +232,6 @@ export default async function RunPage({
           createdAt: ev.createdAt.toISOString(),
         }))
       : synthesizeEventsFromTheses(run.theses);
-
-  // Extract config snapshot from the run parameters
-  const config =
-    run.parameters && typeof run.parameters === "object"
-      ? (run.parameters as Record<string, unknown>)
-      : {};
 
 
   return (

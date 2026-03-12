@@ -29,7 +29,7 @@ export function RunResearchButton({
       if (!res.ok) throw new Error("Failed to create run");
 
       const { runId } = (await res.json()) as { runId: string };
-      router.push(`/runs/${runId}?agent=true`);
+      router.push(`/runs/${runId}`);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to start research run",
