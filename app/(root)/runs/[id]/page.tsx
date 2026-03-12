@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ArrowLeft, Bot, Clock } from "lucide-react";
 import RunLiveStream from "@/components/research/RunLiveStream";
 import { RunUnifiedChat } from "@/components/research/RunUnifiedChat";
+import { AgentThread } from "@/components/research/AgentThread";
 import type { RunEventRow } from "@/components/research/types";
 
 // ── Synthesize events from thesis rows for legacy runs ────────────────────────
@@ -136,10 +137,14 @@ function synthesizeEventsFromTheses(
 
 export default async function RunPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ agent?: string }>;
 }) {
   const { id } = await params;
+  const { agent: agentMode } = await searchParams;
+  const useAgent = agentMode === "true";
 
   const supabase = await createClient();
   const {
@@ -255,7 +260,15 @@ export default async function RunPage({
 
       {/* Body — single-column chat */}
       <div className="flex-1 min-h-0">
-        {isStaleRun ? (
+        {useAgent ? (
+          /* Real agent mode — LLM orchestrates research via tools */
+          <AgentThread
+            runId={id}
+            analystName={analystName}
+            config={config}
+            autoStart
+          />
+        ) : isStaleRun ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
             <div className="h-2.5 w-2.5 rounded-full bg-red-400" />
             <p className="text-sm font-medium text-foreground">
