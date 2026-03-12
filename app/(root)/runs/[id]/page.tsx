@@ -203,6 +203,7 @@ export default async function RunPage({
       : "bg-red-400";
 
   // A run stuck in RUNNING with no events and started > 15 min ago is stale
+  // (runs WITH events that are stuck are handled by RunLiveStream timing out)
   const isStaleRun =
     run.status === "RUNNING" &&
     run.events.length === 0 &&
