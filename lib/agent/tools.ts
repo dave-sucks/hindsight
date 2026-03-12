@@ -36,38 +36,86 @@ async function fmp(path: string) {
 
 const REDDIT_SUBREDDITS = ["wallstreetbets", "stocks", "options", "investing"];
 
+async function fetchRedditSubreddit(
+  sub: string,
+  ticker: string,
+  maxRetries = 2,
+): Promise<{ title: string; score: number; subreddit: string; url: string }[]> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(
+        `https://www.reddit.com/r/${sub}/search.json?q=${ticker}&sort=new&t=week&limit=10&restrict_sr=on`,
+        {
+          headers: {
+            "User-Agent": "hindsight-research/1.0 (by /u/hindsight-bot)",
+            Accept: "application/json",
+          },
+          signal: AbortSignal.timeout(8000),
+        },
+      );
+      if (res.status === 429 || res.status === 403) {
+        // Rate-limited or blocked — wait and retry
+        console.warn(
+          `[reddit] r/${sub} returned ${res.status} for ${ticker} (attempt ${attempt + 1}/${maxRetries + 1})`,
+        );
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        return [];
+      }
+      if (!res.ok) {
+        console.warn(`[reddit] r/${sub} returned ${res.status} for ${ticker}`);
+        return [];
+      }
+      const data = await res.json();
+      const posts = data?.data?.children ?? [];
+      const results: { title: string; score: number; subreddit: string; url: string }[] = [];
+      for (const post of posts) {
+        const d = post.data;
+        if (d?.title) {
+          results.push({
+            title: d.title,
+            score: d.score ?? 0,
+            subreddit: sub,
+            url: `https://reddit.com${d.permalink}`,
+          });
+        }
+      }
+      return results;
+    } catch (err) {
+      console.warn(
+        `[reddit] r/${sub} fetch error for ${ticker} (attempt ${attempt + 1}/${maxRetries + 1}):`,
+        err instanceof Error ? err.message : err,
+      );
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      return [];
+    }
+  }
+  return [];
+}
+
 async function redditSentiment(ticker: string) {
   const results: { title: string; score: number; subreddit: string; url: string }[] = [];
+  let failedCount = 0;
+  let blockedCount = 0;
 
-  await Promise.all(
-    REDDIT_SUBREDDITS.map(async (sub) => {
-      try {
-        const res = await fetch(
-          `https://www.reddit.com/r/${sub}/search.json?q=${ticker}&sort=new&t=week&limit=10&restrict_sr=on`,
-          {
-            headers: { "User-Agent": "hindsight-research/1.0" },
-            signal: AbortSignal.timeout(5000),
-          },
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        const posts = data?.data?.children ?? [];
-        for (const post of posts) {
-          const d = post.data;
-          if (d?.title) {
-            results.push({
-              title: d.title,
-              score: d.score ?? 0,
-              subreddit: sub,
-              url: `https://reddit.com${d.permalink}`,
-            });
-          }
-        }
-      } catch {
-        // timeout or network error — skip this subreddit
-      }
-    }),
+  const subResults = await Promise.all(
+    REDDIT_SUBREDDITS.map((sub) => fetchRedditSubreddit(sub, ticker)),
   );
+  for (const subPosts of subResults) {
+    if (subPosts.length === 0) failedCount++;
+    results.push(...subPosts);
+  }
+
+  // If all subreddits returned empty, it's likely a block/rate-limit issue.
+  // Track this separately from "no mentions found".
+  if (failedCount === REDDIT_SUBREDDITS.length) {
+    blockedCount = failedCount;
+  }
 
   // Deduplicate by URL
   const seen = new Set<string>();
@@ -96,6 +144,10 @@ async function redditSentiment(ticker: string) {
     sentiment: sentimentScore > 2 ? "bullish" : sentimentScore < -2 ? "bearish" : "neutral",
     trending: unique.length >= 5,
     top_posts: unique.slice(0, 5),
+    // Diagnostic info: did all subreddits fail (likely blocked) vs just no mentions?
+    all_blocked: blockedCount === REDDIT_SUBREDDITS.length,
+    failed_subreddits: failedCount,
+    total_subreddits: REDDIT_SUBREDDITS.length,
   };
 }
 
@@ -214,16 +266,31 @@ export function createResearchTools(ctx: ToolContext) {
         "Get current market conditions: S&P 500, VIX, and sector ETF performance. Call this first to understand the market environment.",
       inputSchema: emptyParams,
       execute: async () => {
-        // FIX: no manual apikey in paths — fmp() helper adds it
-        const [spyQuote, vixQuote, sectors] = await Promise.all([
+        const [spyQuote, sectors] = await Promise.all([
           fmp("/quote/SPY"),
-          finnhub("/quote?symbol=SPY"),
           fmp("/quote/XLK,XLF,XLV,XLY,XLP,XLE,XLI,XLB,XLRE,XLU,XLC"),
         ]);
 
         const spy = spyQuote?.[0];
-        // Use Finnhub for VIX (more reliable than FMP for indices)
-        const vixData = await finnhub("/quote?symbol=VIX");
+
+        // VIX: Finnhub needs ^VIX (not plain VIX which returns 0).
+        // Try ^VIX first, fall back to FMP /quote/%5EVIX.
+        let vixLevel: number | null = null;
+        let vixChangePct: number | null = null;
+
+        const vixFinnhub = await finnhub("/quote?symbol=%5EVIX");
+        if (vixFinnhub && typeof vixFinnhub.c === "number" && vixFinnhub.c > 0) {
+          vixLevel = vixFinnhub.c;
+          vixChangePct = vixFinnhub.dp ?? null;
+        } else {
+          // Fallback: FMP VIX quote
+          const vixFmp = await fmp("/quote/%5EVIX");
+          const vixItem = Array.isArray(vixFmp) ? vixFmp[0] : null;
+          if (vixItem && typeof vixItem.price === "number" && vixItem.price > 0) {
+            vixLevel = vixItem.price;
+            vixChangePct = vixItem.changesPercentage ?? null;
+          }
+        }
 
         return {
           spy: spy
@@ -234,10 +301,10 @@ export function createResearchTools(ctx: ToolContext) {
                 day_low: spy.dayLow as number,
               }
             : null,
-          vix: vixData
+          vix: vixLevel !== null
             ? {
-                level: vixData.c as number,
-                change_pct: vixData.dp as number,
+                level: vixLevel,
+                change_pct: vixChangePct,
               }
             : null,
           sectors: Array.isArray(sectors)
@@ -258,6 +325,11 @@ export function createResearchTools(ctx: ToolContext) {
                     b.change_pct - a.change_pct,
                 )
             : [],
+          _sources: [
+            { provider: "FMP", title: "SPY Real-Time Quote" },
+            { provider: "Finnhub", title: "CBOE VIX Index" },
+            { provider: "FMP", title: "S&P 500 Sector ETF Performance" },
+          ],
         };
       },
     }),
@@ -425,6 +497,14 @@ export function createResearchTools(ctx: ToolContext) {
           note: sectors?.length
             ? `Filtered for sectors: ${sectors.join(", ")}. Review these candidates and decide which to research.`
             : "Review these candidates and decide which ones to research in depth.",
+          _sources: [
+            { provider: "Finnhub", title: "Earnings Calendar (Next 7 Days)" },
+            { provider: "FMP", title: "Top Gainers & Losers" },
+            { provider: "StockTwits", title: "Trending Symbols" },
+            ...(ctx.watchlist?.length
+              ? [{ provider: "Watchlist", title: "Custom Watchlist" }]
+              : []),
+          ],
         };
       },
     }),
@@ -512,6 +592,20 @@ export function createResearchTools(ctx: ToolContext) {
               }
             : null,
           news: recentNews,
+          _sources: [
+            { provider: "Finnhub", title: `${ticker} Real-Time Quote` },
+            { provider: "Finnhub", title: `${ticker} Company Profile` },
+            { provider: "Finnhub", title: `${ticker} Key Financials` },
+            ...(latestRec
+              ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus` }]
+              : []),
+            ...recentNews.map((n: { source: string; headline: string; url: string; summary: string }) => ({
+              provider: n.source,
+              title: n.headline,
+              url: n.url,
+              excerpt: n.summary,
+            })),
+          ],
         };
       },
     }),
@@ -525,12 +619,14 @@ export function createResearchTools(ctx: ToolContext) {
         const from = now - 90 * 86400;
 
         // Try Finnhub first, fall back to FMP for historical prices
+        let priceProvider = "Finnhub";
         let candles = await finnhub(
           `/stock/candle?symbol=${ticker}&resolution=D&from=${from}&to=${now}`,
         );
 
         if (!candles || candles.s !== "ok" || !candles.c?.length) {
           // Fallback: try FMP historical prices
+          priceProvider = "FMP";
           const fmpHistory = await fmp(
             `/historical-price-full/${ticker}?timeseries=90`,
           );
@@ -598,6 +694,9 @@ export function createResearchTools(ctx: ToolContext) {
                 ? "bullish (SMA20 > SMA50)"
                 : "bearish (SMA20 < SMA50)"
               : "unknown",
+          _sources: [
+            { provider: priceProvider, title: `${ticker} 90-Day Price History` },
+          ],
         };
       },
     }),
@@ -609,12 +708,82 @@ export function createResearchTools(ctx: ToolContext) {
       execute: async ({ ticker }: TickerInput) => {
         const data = await redditSentiment(ticker);
 
+        // If public Reddit API was fully blocked, try Python service (PRAW) as fallback
+        if (data.mention_count === 0 && data.all_blocked) {
+          const pythonUrl = process.env.PYTHON_SERVICE_URL;
+          const pythonSecret = process.env.PYTHON_SERVICE_SECRET;
+          if (pythonUrl) {
+            try {
+              console.log(`[reddit] Public API blocked, trying Python PRAW fallback for ${ticker}`);
+              const res = await fetch(`${pythonUrl}/research/reddit-sentiment?ticker=${ticker}`, {
+                headers: {
+                  "X-Service-Secret": pythonSecret ?? "",
+                  Accept: "application/json",
+                },
+                signal: AbortSignal.timeout(15000),
+              });
+              if (res.ok) {
+                const pyData = await res.json();
+                if (pyData && (pyData.mention_count > 0 || pyData.posts?.length > 0)) {
+                  const posts = (pyData.posts ?? pyData.top_posts ?? []) as {
+                    title: string;
+                    score: number;
+                    subreddit: string;
+                    url: string;
+                  }[];
+                  return {
+                    available: true,
+                    mention_count: pyData.mention_count ?? posts.length,
+                    sentiment: pyData.sentiment ?? "neutral",
+                    sentiment_score: pyData.sentiment_score ?? 0,
+                    trending: pyData.trending ?? posts.length >= 5,
+                    sources: posts.slice(0, 5).map((p) => ({
+                      provider: `r/${p.subreddit}`,
+                      title: p.title,
+                      url: p.url,
+                      score: p.score,
+                    })),
+                    data_source: "python_praw",
+                    _sources: posts.slice(0, 5).map((p) => ({
+                      provider: `Reddit r/${p.subreddit}`,
+                      title: p.title,
+                      url: p.url,
+                    })),
+                  };
+                }
+              } else {
+                console.warn(`[reddit] Python PRAW fallback returned ${res.status} for ${ticker}`);
+              }
+            } catch (err) {
+              console.warn(
+                `[reddit] Python PRAW fallback failed for ${ticker}:`,
+                err instanceof Error ? err.message : err,
+              );
+            }
+          }
+
+          return {
+            available: false,
+            reason: "blocked",
+            note: `Reddit API returned 403/429 for all subreddits (likely IP-based rate limiting). No Reddit sentiment data available for ${ticker}. Continue analysis with other data sources.`,
+            _sources: [{ provider: "Reddit", title: `${ticker} Reddit Sentiment (Blocked)` }],
+          };
+        }
+
         if (data.mention_count === 0) {
           return {
             available: false,
+            reason: "no_mentions",
             note: `No recent Reddit mentions found for ${ticker}. This doesn't necessarily mean anything negative — some stocks simply aren't discussed on Reddit.`,
+            _sources: [{ provider: "Reddit", title: `${ticker} Reddit Search (No Results)` }],
           };
         }
+
+        const redditSources = data.top_posts.map((p) => ({
+          provider: `Reddit r/${p.subreddit}`,
+          title: p.title,
+          url: p.url,
+        }));
 
         return {
           available: true,
@@ -628,6 +797,7 @@ export function createResearchTools(ctx: ToolContext) {
             url: p.url,
             score: p.score,
           })),
+          _sources: redditSources,
         };
       },
     }),
@@ -637,44 +807,122 @@ export function createResearchTools(ctx: ToolContext) {
         "Get unusual options activity for a stock: put/call ratio, unusual volume contracts, and implied volatility signals.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
-        const data = await finnhub(
-          `/stock/option-chain?symbol=${ticker}&expiration=${new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10)}`,
-        );
+        // Primary: FMP options chain (no expiration needed, returns all contracts)
+        // This matches the Python service approach and is more reliable.
+        const fmpData = await fmp(`/options/chain/${ticker.toUpperCase()}`);
 
-        if (!data?.data?.length) {
+        if (Array.isArray(fmpData) && fmpData.length > 0) {
+          let totalCallVol = 0;
+          let totalPutVol = 0;
+          const unusualContracts: {
+            type: string;
+            strike: number;
+            expiration: string;
+            volume: number;
+            openInterest: number;
+            premium: number;
+          }[] = [];
+
+          const stockPrice = fmpData[0]?.underlyingPrice ?? 0;
+
+          for (const contract of fmpData) {
+            const ctype = (contract.type ?? "").toUpperCase();
+            const vol = Number(contract.volume ?? 0);
+            const oi = Number(contract.openInterest ?? 0);
+            const lastPrice = Number(contract.lastPrice ?? 0);
+
+            if (ctype === "CALL") totalCallVol += vol;
+            else if (ctype === "PUT") totalPutVol += vol;
+
+            // Flag unusual: volume >5x open interest or large premium
+            const volOiRatio = oi > 0 ? vol / oi : vol;
+            const premium = lastPrice * vol * 100;
+            if (vol > 0 && (volOiRatio >= 5 || premium >= 500_000)) {
+              unusualContracts.push({
+                type: ctype,
+                strike: Number(contract.strike ?? 0),
+                expiration: contract.expirationDate ?? "",
+                volume: vol,
+                openInterest: oi,
+                premium: Math.round(premium),
+              });
+            }
+          }
+
+          // Sort unusual by premium desc, cap at 5
+          unusualContracts.sort((a, b) => b.premium - a.premium);
+
           return {
-            available: false,
-            note: "No options data available for this ticker. This may be a smaller-cap stock without liquid options.",
+            available: true,
+            put_call_ratio:
+              totalCallVol > 0
+                ? Math.round((totalPutVol / totalCallVol) * 100) / 100
+                : null,
+            total_call_volume: totalCallVol,
+            total_put_volume: totalPutVol,
+            contracts_available: fmpData.length,
+            unusual_contracts: unusualContracts.slice(0, 5),
+            signal:
+              totalCallVol > 0 && totalPutVol / totalCallVol < 0.7
+                ? "bullish (low put/call ratio)"
+                : totalCallVol > 0 && totalPutVol / totalCallVol > 1.3
+                  ? "bearish (high put/call ratio)"
+                  : "neutral",
+            data_source: "fmp",
+            _sources: [
+              { provider: "FMP", title: `${ticker} Options Chain` },
+            ],
           };
         }
 
-        const options = data.data[0];
-        const calls = options?.options?.CALL ?? [];
-        const puts = options?.options?.PUT ?? [];
-        const totalCallVol = calls.reduce(
-          (sum: number, o: { volume: number }) => sum + (o.volume || 0),
-          0,
-        );
-        const totalPutVol = puts.reduce(
-          (sum: number, o: { volume: number }) => sum + (o.volume || 0),
-          0,
+        // Fallback: Finnhub option chain (requires expiration date guess)
+        const expDate = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+        const finnhubData = await finnhub(
+          `/stock/option-chain?symbol=${ticker}&expiration=${expDate}`,
         );
 
+        if (finnhubData?.data?.length) {
+          const options = finnhubData.data[0];
+          const calls = options?.options?.CALL ?? [];
+          const puts = options?.options?.PUT ?? [];
+          const totalCallVol = calls.reduce(
+            (sum: number, o: { volume: number }) => sum + (o.volume || 0),
+            0,
+          );
+          const totalPutVol = puts.reduce(
+            (sum: number, o: { volume: number }) => sum + (o.volume || 0),
+            0,
+          );
+
+          return {
+            available: true,
+            put_call_ratio:
+              totalCallVol > 0
+                ? Math.round((totalPutVol / totalCallVol) * 100) / 100
+                : null,
+            total_call_volume: totalCallVol,
+            total_put_volume: totalPutVol,
+            expiration: options?.expirationDate as string | undefined,
+            contracts_available: calls.length + puts.length,
+            signal:
+              totalCallVol > 0 && totalPutVol / totalCallVol < 0.7
+                ? "bullish (low put/call ratio)"
+                : totalCallVol > 0 && totalPutVol / totalCallVol > 1.3
+                  ? "bearish (high put/call ratio)"
+                  : "neutral",
+            data_source: "finnhub",
+            _sources: [
+              { provider: "Finnhub", title: `${ticker} Options Chain` },
+            ],
+          };
+        }
+
         return {
-          put_call_ratio:
-            totalCallVol > 0
-              ? Math.round((totalPutVol / totalCallVol) * 100) / 100
-              : null,
-          total_call_volume: totalCallVol,
-          total_put_volume: totalPutVol,
-          expiration: options?.expirationDate as string | undefined,
-          contracts_available: calls.length + puts.length,
-          signal:
-            totalCallVol > 0 && totalPutVol / totalCallVol < 0.7
-              ? "bullish (low put/call ratio)"
-              : totalCallVol > 0 && totalPutVol / totalCallVol > 1.3
-                ? "bearish (high put/call ratio)"
-                : "neutral",
+          available: false,
+          note: `No options data available for ${ticker}. This may be a smaller-cap stock without liquid options, or the options data providers may be temporarily unavailable.`,
+          _sources: [
+            { provider: "Finnhub", title: `${ticker} Options Chain (No Data)` },
+          ],
         };
       },
     }),
@@ -722,6 +970,10 @@ export function createResearchTools(ctx: ToolContext) {
               surprise_pct: e.surprisePercent,
             }),
           ),
+          _sources: [
+            { provider: "Finnhub", title: `${ticker} Earnings Calendar` },
+            { provider: "Finnhub", title: `${ticker} Earnings History` },
+          ],
         };
       },
     }),

@@ -36,8 +36,6 @@ import {
   TrendingUp,
   TrendingDown,
   FileText,
-  ChevronDown,
-  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -98,7 +96,7 @@ function ToolSpinner({
   );
 }
 
-// ─── Shared: collapsible reasoning block ────────────────────────────────────
+// ─── Shared: reasoning block (uses ai-elements Reasoning) ──────────────────
 
 function ReasoningBlock({
   title,
@@ -109,55 +107,107 @@ function ReasoningBlock({
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="my-2 rounded-lg border border-border/50 bg-muted/20">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {open ? (
-          <ChevronDown className="h-3 w-3" />
-        ) : (
-          <ChevronRight className="h-3 w-3" />
-        )}
-        <span className="font-medium">{title}</span>
-      </button>
-      {open && <div className="px-3 pb-2.5">{children}</div>}
-    </div>
+    <Reasoning defaultOpen={defaultOpen} className="my-2">
+      <ReasoningTrigger
+        getThinkingMessage={() => <span>{title}</span>}
+      />
+      <ReasoningContent className="px-1">
+        {children}
+      </ReasoningContent>
+    </Reasoning>
   );
 }
 
-// ─── Shared: source chip row ────────────────────────────────────────────────
+// ─── Shared: source chips (ai-elements Sources) ────────────────────────────
 
-const SOURCE_COLORS: Record<string, string> = {
-  finnhub: "bg-blue-500",
-  fmp: "bg-indigo-500",
-  reddit: "bg-orange-500",
-  options: "bg-purple-500",
-  earnings: "bg-amber-500",
-  technical: "bg-cyan-500",
-  stocktwits: "bg-green-500",
+import {
+  Sources,
+  SourcesTrigger,
+  SourcesContent,
+  Source,
+  Reasoning,
+  ReasoningTrigger,
+  ReasoningContent,
+} from "@/components/ai-elements";
+import { Citation } from "@/components/tool-ui/citation";
+import type { CitationType } from "@/components/tool-ui/citation";
+
+// ─── Source data shape (matches _sources from tool results) ─────────────────
+
+interface SourceData {
+  provider: string;
+  title: string;
+  url?: string;
+  excerpt?: string;
+}
+
+const PROVIDER_DOMAINS: Record<string, string> = {
+  finnhub: "finnhub.io",
+  fmp: "financialmodelingprep.com",
+  reddit: "reddit.com",
+  stocktwits: "stocktwits.com",
+  technical: "finnhub.io",
+  earnings: "finnhub.io",
+  options: "financialmodelingprep.com",
 };
 
-function SourceChips({ sources }: { sources: string[] }) {
+const PROVIDER_TYPES: Record<string, CitationType> = {
+  finnhub: "api",
+  fmp: "api",
+  reddit: "webpage",
+  stocktwits: "webpage",
+  technical: "api",
+  earnings: "api",
+  options: "api",
+};
+
+function faviconUrl(domain: string): string {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+}
+
+/** Extract _sources from a tool result, falling back to provider-only strings */
+function extractToolSources(result: Record<string, unknown>): SourceData[] {
+  const raw = result._sources;
+  if (Array.isArray(raw)) {
+    return raw.filter(
+      (s): s is SourceData =>
+        typeof s === "object" && s !== null && "provider" in s && "title" in s,
+    );
+  }
+  return [];
+}
+
+function SourceChips({ sources }: { sources: SourceData[] }) {
   if (!sources.length) return null;
   return (
-    <div className="flex flex-wrap gap-1 mt-1.5">
-      {sources.map((s) => {
-        const dot = SOURCE_COLORS[s.toLowerCase()] ?? "bg-muted-foreground";
-        return (
-          <span
-            key={s}
-            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground"
-          >
-            <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dot)} />
-            {s}
-          </span>
-        );
-      })}
-    </div>
+    <Sources className="mt-1.5">
+      <SourcesTrigger count={sources.length} className="text-[10px]" />
+      <SourcesContent>
+        {sources.map((s, i) => {
+          const key = s.provider.toLowerCase().replace(/[^a-z]/g, "");
+          const domain =
+            s.url
+              ? (() => { try { return new URL(s.url).hostname.replace(/^www\./, ""); } catch { return PROVIDER_DOMAINS[key]; } })()
+              : PROVIDER_DOMAINS[key];
+          const type = PROVIDER_TYPES[key] ?? "webpage";
+
+          return (
+            <Source key={`${s.provider}-${i}`} provider={s.provider}>
+              <Citation
+                href={s.url ?? `https://${domain ?? s.provider.toLowerCase() + ".com"}`}
+                title={s.title}
+                snippet={s.excerpt}
+                domain={domain ?? s.provider}
+                favicon={domain ? faviconUrl(domain) : undefined}
+                type={type}
+                variant="inline"
+              />
+            </Source>
+          );
+        })}
+      </SourcesContent>
+    </Sources>
   );
 }
 
@@ -176,10 +226,12 @@ function useRegisterAgentToolUIs(runId: string) {
         day_high: number;
         day_low: number;
       } | null;
-      const vix = result.vix as {
+      const rawVix = result.vix as {
         level: number;
         change_pct: number;
       } | null;
+      // Treat VIX of 0 or near-zero as missing data
+      const vix = rawVix && rawVix.level > 0.1 ? rawVix : null;
       const sectors = (result.sectors ?? []) as {
         symbol: string;
         price: number;
@@ -215,7 +267,7 @@ function useRegisterAgentToolUIs(runId: string) {
             bottomSectors={bottomSectors}
             todaysApproach=""
           />
-          <SourceChips sources={["Finnhub", "FMP"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
@@ -343,7 +395,7 @@ function useRegisterAgentToolUIs(runId: string) {
             }
           />
           {news.length > 0 && <NewsCard articles={news} ticker={ticker} />}
-          <SourceChips sources={["Finnhub", "FMP"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
@@ -381,7 +433,7 @@ function useRegisterAgentToolUIs(runId: string) {
             volumeRatio={result.volume_ratio as string | null}
             trend={result.trend as string | null}
           />
-          <SourceChips sources={["Technical"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
@@ -427,7 +479,7 @@ function useRegisterAgentToolUIs(runId: string) {
               surprisePct: q.surprise_pct,
             }))}
           />
-          <SourceChips sources={["Earnings"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
@@ -463,13 +515,13 @@ function useRegisterAgentToolUIs(runId: string) {
             contractsAvailable={result.contracts_available as number}
             signal={result.signal as string}
           />
-          <SourceChips sources={["Options"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
   });
 
-  // ── Reddit sentiment → collapsible reasoning block ────────────────
+  // ── Reddit sentiment → rich social card ────────────────────────────
   useAssistantToolUI({
     toolName: "get_reddit_sentiment",
     render: ({ args, result }) => {
@@ -480,10 +532,14 @@ function useRegisterAgentToolUIs(runId: string) {
       }
 
       if (!result.available) {
+        const reason = result.reason as string | undefined;
+        const isBlocked = reason === "blocked";
         return (
           <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
             <MessageSquare className="inline h-3 w-3 mr-1 text-orange-500" />
-            Reddit unavailable for {ticker}.
+            {isBlocked
+              ? `Reddit API rate-limited — no sentiment data for ${ticker}.`
+              : `No recent Reddit mentions for ${ticker}.`}
           </div>
         );
       }
@@ -492,22 +548,80 @@ function useRegisterAgentToolUIs(runId: string) {
         provider: string;
         title?: string;
         url?: string;
+        score?: number;
       }[];
+      const sentiment = result.sentiment as string | undefined;
+      const mentionCount = result.mention_count as number | undefined;
+      const trending = result.trending as boolean | undefined;
 
       return (
-        <ReasoningBlock title={`Reddit sentiment · ${ticker} · ${sources.length} sources`}>
-          <div className="flex flex-wrap gap-1">
-            {sources.map((s, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-orange-500 shrink-0" />
-                {s.title || s.provider}
-              </span>
-            ))}
-          </div>
-        </ReasoningBlock>
+        <div className="my-2">
+          <Card className="overflow-hidden p-0">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-3.5 w-3.5 text-orange-500" />
+                <span className="text-xs font-medium">Reddit</span>
+                <span className="text-xs font-semibold font-mono">{ticker}</span>
+                {mentionCount != null && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {mentionCount} mentions
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                {trending && (
+                  <Badge variant="secondary" className="text-[10px] py-0 bg-orange-500/10 text-orange-500 font-semibold">
+                    TRENDING
+                  </Badge>
+                )}
+                {sentiment && (
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "text-[10px] py-0 font-semibold",
+                      sentiment === "bullish" && "bg-emerald-500/10 text-emerald-500",
+                      sentiment === "bearish" && "bg-red-500/10 text-red-500",
+                      sentiment === "neutral" && "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {sentiment.toUpperCase()}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            {/* Posts */}
+            {sources.length > 0 && (
+              <div className="divide-y">
+                {sources.slice(0, 5).map((s, i) => (
+                  <div key={i} className="flex items-start gap-2.5 px-4 py-2">
+                    <span className="text-[10px] text-muted-foreground font-mono tabular-nums shrink-0 mt-0.5 w-8 text-right">
+                      {s.score != null ? (s.score >= 1000 ? `${(s.score / 1000).toFixed(1)}k` : s.score) : "—"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      {s.url ? (
+                        <a
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-foreground hover:underline line-clamp-2 leading-snug"
+                        >
+                          {s.title || "Untitled post"}
+                        </a>
+                      ) : (
+                        <span className="text-xs text-foreground line-clamp-2 leading-snug">
+                          {s.title || "Untitled post"}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-muted-foreground">{s.provider}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
       );
     },
   });

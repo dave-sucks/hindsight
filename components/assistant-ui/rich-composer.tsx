@@ -400,19 +400,31 @@ export const RichComposer: FC<{ features?: RichComposerFeatures }> = ({
           {/* Right side: send / cancel */}
           <div className="flex items-center gap-1">
             <AuiIf condition={(s) => !s.thread.isRunning}>
-              <ComposerPrimitive.Send
-                className="aui-composer-send inline-flex items-center justify-center size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                aria-label="Send message"
-              >
-                <ArrowUpIcon className="aui-composer-send-icon size-4" />
+              <ComposerPrimitive.Send asChild>
+                <TooltipIconButton
+                  tooltip="Send message"
+                  side="bottom"
+                  type="button"
+                  variant="default"
+                  size="icon"
+                  className="aui-composer-send size-8 rounded-full"
+                  aria-label="Send message"
+                >
+                  <ArrowUpIcon className="aui-composer-send-icon size-4" />
+                </TooltipIconButton>
               </ComposerPrimitive.Send>
             </AuiIf>
             <AuiIf condition={(s) => s.thread.isRunning}>
-              <ComposerPrimitive.Cancel
-                className="aui-composer-cancel inline-flex items-center justify-center size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                aria-label="Stop generating"
-              >
-                <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+              <ComposerPrimitive.Cancel asChild>
+                <Button
+                  type="button"
+                  variant="default"
+                  size="icon"
+                  className="aui-composer-cancel size-8 rounded-full"
+                  aria-label="Stop generating"
+                >
+                  <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+                </Button>
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </div>
