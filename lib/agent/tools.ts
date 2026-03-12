@@ -325,6 +325,11 @@ export function createResearchTools(ctx: ToolContext) {
                     b.change_pct - a.change_pct,
                 )
             : [],
+          _sources: [
+            { provider: "FMP", title: "SPY Real-Time Quote" },
+            { provider: "Finnhub", title: "CBOE VIX Index" },
+            { provider: "FMP", title: "S&P 500 Sector ETF Performance" },
+          ],
         };
       },
     }),
@@ -492,6 +497,14 @@ export function createResearchTools(ctx: ToolContext) {
           note: sectors?.length
             ? `Filtered for sectors: ${sectors.join(", ")}. Review these candidates and decide which to research.`
             : "Review these candidates and decide which ones to research in depth.",
+          _sources: [
+            { provider: "Finnhub", title: "Earnings Calendar (Next 7 Days)" },
+            { provider: "FMP", title: "Top Gainers & Losers" },
+            { provider: "StockTwits", title: "Trending Symbols" },
+            ...(ctx.watchlist?.length
+              ? [{ provider: "Watchlist", title: "Custom Watchlist" }]
+              : []),
+          ],
         };
       },
     }),
@@ -579,6 +592,20 @@ export function createResearchTools(ctx: ToolContext) {
               }
             : null,
           news: recentNews,
+          _sources: [
+            { provider: "Finnhub", title: `${ticker} Real-Time Quote` },
+            { provider: "Finnhub", title: `${ticker} Company Profile` },
+            { provider: "Finnhub", title: `${ticker} Key Financials` },
+            ...(latestRec
+              ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus` }]
+              : []),
+            ...recentNews.map((n: { source: string; headline: string; url: string; summary: string }) => ({
+              provider: n.source,
+              title: n.headline,
+              url: n.url,
+              excerpt: n.summary,
+            })),
+          ],
         };
       },
     }),
@@ -592,12 +619,14 @@ export function createResearchTools(ctx: ToolContext) {
         const from = now - 90 * 86400;
 
         // Try Finnhub first, fall back to FMP for historical prices
+        let priceProvider = "Finnhub";
         let candles = await finnhub(
           `/stock/candle?symbol=${ticker}&resolution=D&from=${from}&to=${now}`,
         );
 
         if (!candles || candles.s !== "ok" || !candles.c?.length) {
           // Fallback: try FMP historical prices
+          priceProvider = "FMP";
           const fmpHistory = await fmp(
             `/historical-price-full/${ticker}?timeseries=90`,
           );
@@ -665,6 +694,9 @@ export function createResearchTools(ctx: ToolContext) {
                 ? "bullish (SMA20 > SMA50)"
                 : "bearish (SMA20 < SMA50)"
               : "unknown",
+          _sources: [
+            { provider: priceProvider, title: `${ticker} 90-Day Price History` },
+          ],
         };
       },
     }),
@@ -737,8 +769,15 @@ export function createResearchTools(ctx: ToolContext) {
             available: false,
             reason: "no_mentions",
             note: `No recent Reddit mentions found for ${ticker}. This doesn't necessarily mean anything negative — some stocks simply aren't discussed on Reddit.`,
+            _sources: [{ provider: "Reddit", title: `${ticker} Reddit Search (No Results)` }],
           };
         }
+
+        const redditSources = data.top_posts.map((p) => ({
+          provider: `Reddit r/${p.subreddit}`,
+          title: p.title,
+          url: p.url,
+        }));
 
         return {
           available: true,
@@ -752,6 +791,7 @@ export function createResearchTools(ctx: ToolContext) {
             url: p.url,
             score: p.score,
           })),
+          _sources: redditSources,
         };
       },
     }),
@@ -862,12 +902,18 @@ export function createResearchTools(ctx: ToolContext) {
                   ? "bearish (high put/call ratio)"
                   : "neutral",
             data_source: "finnhub",
+            _sources: [
+              { provider: "Finnhub", title: `${ticker} Options Chain` },
+            ],
           };
         }
 
         return {
           available: false,
           note: `No options data available for ${ticker}. This may be a smaller-cap stock without liquid options, or the options data providers may be temporarily unavailable.`,
+          _sources: [
+            { provider: "Finnhub", title: `${ticker} Options Chain (No Data)` },
+          ],
         };
       },
     }),
@@ -915,6 +961,10 @@ export function createResearchTools(ctx: ToolContext) {
               surprise_pct: e.surprisePercent,
             }),
           ),
+          _sources: [
+            { provider: "Finnhub", title: `${ticker} Earnings Calendar` },
+            { provider: "Finnhub", title: `${ticker} Earnings History` },
+          ],
         };
       },
     }),

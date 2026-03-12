@@ -4,8 +4,13 @@ import {
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { CitedMarkdownText } from "@/components/assistant-ui/cited-markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import {
+  SourcesProvider,
+  extractSourcesFromParts,
+} from "@/components/assistant-ui/message-sources-context";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +23,7 @@ import {
   MessagePrimitive,
   SuggestionPrimitive,
   ThreadPrimitive,
+  useMessage,
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
@@ -33,7 +39,7 @@ import {
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react";
-import type { FC } from "react";
+import { type FC, useMemo } from "react";
 
 import {
   RichComposer,
@@ -241,6 +247,16 @@ const MessageError: FC = () => {
 };
 
 const AssistantMessage: FC = () => {
+  // Extract _sources from all tool-call results in this message
+  const content = useMessage((m) => m.content);
+  const sources = useMemo(
+    () =>
+      extractSourcesFromParts(
+        (content ?? []) as unknown as Array<{ type: string; result?: unknown }>,
+      ),
+    [content],
+  );
+
   return (
     <MessagePrimitive.Root
       className="aui-assistant-message-root fade-in slide-in-from-bottom-1 relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
@@ -254,12 +270,14 @@ const AssistantMessage: FC = () => {
 
         <div className="min-w-0 flex-1">
           <div className="aui-assistant-message-content wrap-break-word text-foreground leading-relaxed">
-            <MessagePrimitive.Parts
-              components={{
-                Text: MarkdownText,
-                tools: { Fallback: ToolFallback },
-              }}
-            />
+            <SourcesProvider sources={sources}>
+              <MessagePrimitive.Parts
+                components={{
+                  Text: sources.length > 0 ? CitedMarkdownText : MarkdownText,
+                  tools: { Fallback: ToolFallback },
+                }}
+              />
+            </SourcesProvider>
             <MessageError />
           </div>
 

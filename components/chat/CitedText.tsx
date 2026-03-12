@@ -33,11 +33,11 @@ function providerDotColor(provider: string): string {
 
 // ─── Parser ──────────────────────────────────────────────────────────────────
 
-type Segment =
+export type Segment =
   | { type: "text"; value: string }
   | { type: "citation"; index: number };
 
-function parseMarkers(text: string): Segment[] {
+export function parseMarkers(text: string): Segment[] {
   const pattern = /\[(\d+)\]/g;
   const segments: Segment[] = [];
   let lastEnd = 0;
@@ -60,7 +60,7 @@ function parseMarkers(text: string): Segment[] {
 
 // ─── Citation badge with hover popover ───────────────────────────────────────
 
-function CitationBadge({
+export function CitationBadge({
   index,
   source,
 }: {
