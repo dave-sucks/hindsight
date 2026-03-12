@@ -29,18 +29,23 @@ import {
   RunSummaryCard,
   type RunSummaryData,
   type PickRanking,
+  TradeCard,
 } from "@/components/domain";
 import { SourceChipRow, type SourceChipData } from "@/components/chat/SourceChip";
-import { TradeCard } from "@/components/domain";
+import { ReasoningBlock, ResearchStep } from "@/components/research/ReasoningBlock";
+import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
 import {
-  TrendingUp,
-  TrendingDown,
   CheckCircle2,
   SkipForward,
-
-  Search,
+  Bot,
   AlertCircle,
-  ExternalLink,
+  Sparkles,
+  Radar,
+  Zap,
+  ArrowUpRight,
+  ArrowDownRight,
+  Target,
+  Brain,
 } from "lucide-react";
 
 // ─── Safe casters (reused from RunChatThread) ──────────────────────────────
@@ -59,8 +64,6 @@ function asArray<T>(v: unknown): T[] {
 }
 
 // ─── Convert run events to ThreadMessageLike[] ─────────────────────────────
-// Each event type becomes an assistant message with a virtual tool-call part
-// that maps to a registered tool UI renderer. Text-only events use text parts.
 
 interface ConvertedMessage {
   id: string;
@@ -109,7 +112,6 @@ function eventsToThreadMessages(
     return tickerGroups[ticker];
   }
 
-  // First pass: accumulate all event data
   for (const ev of events) {
     const payload = asRecord(ev.payload);
 
@@ -289,7 +291,14 @@ function eventsToThreadMessages(
             type: "tool-call",
             toolCallId: `trade-${ev.id}`,
             toolName: "run_trade_placed",
-            args: { ticker: asString(payload.ticker), direction: asString(payload.direction).toUpperCase() || "LONG", entry: asNumber(payload.entry) },
+            args: {
+              ticker: asString(payload.ticker),
+              direction: asString(payload.direction).toUpperCase() || "LONG",
+              entry: asNumber(payload.entry),
+              target: asNumber(payload.target_price),
+              stop: asNumber(payload.stop_loss),
+              shares: asNumber(payload.shares),
+            },
           }],
           createdAt: new Date(ev.createdAt),
         });
@@ -353,7 +362,7 @@ function eventsToThreadMessages(
     createdAt: baseDate,
   });
 
-  // 2. Market context (insert after kickoff)
+  // 2. Market context
   if (marketContextData) {
     msgs.splice(1, 0, {
       id: `run-market-${msgIdx++}`,
@@ -379,11 +388,6 @@ function eventsToThreadMessages(
       id: `run-scan-${msgIdx++}`,
       role: "assistant",
       content: [{
-        type: "text",
-        text: sectors.length > 0
-          ? `Scanning **${sectors.join(", ")}** for opportunities...`
-          : "Scanning market for opportunities...",
-      }, {
         type: "tool-call",
         toolCallId: `scan-0`,
         toolName: "run_scanning",
@@ -476,7 +480,7 @@ function eventsToThreadMessages(
 // ─── Tool UI renderers for run events ──────────────────────────────────────
 
 function useRegisterRunEventToolUIs() {
-  // Kickoff
+  // ── Kickoff ─────────────────────────────────────────────────────────────
   useAssistantToolUI({
     toolName: "run_kickoff",
     render: ({ args }) => {
@@ -487,85 +491,125 @@ function useRegisterRunEventToolUIs() {
       const sectors = asArray<string>(a.config?.sectors);
 
       return (
-        <div className="space-y-2">
-          <p className="text-sm">
-            Starting research run for <span className="font-semibold">{a.analystName}</span>
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {direction && (
-              <Badge variant="outline" className="text-[10px] gap-1">
-                <span className="text-muted-foreground">Direction:</span> {direction}
-              </Badge>
-            )}
-            {holdDurations.length > 0 && (
-              <Badge variant="outline" className="text-[10px] gap-1">
-                <span className="text-muted-foreground">Hold:</span> {holdDurations.join(", ")}
-              </Badge>
-            )}
-            {minConf != null && (
-              <Badge variant="outline" className="text-[10px] gap-1">
-                <span className="text-muted-foreground">Min Conf:</span> {minConf}%
-              </Badge>
-            )}
-            {sectors.length > 0 && (
-              <Badge variant="outline" className="text-[10px] gap-1">
-                <span className="text-muted-foreground">Sectors:</span> {sectors.slice(0, 3).join(", ")}
-              </Badge>
-            )}
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 shrink-0">
+              <Bot className="h-4 w-4 text-primary" />
+            </div>
+            <div className="space-y-1.5 pt-0.5">
+              <p className="text-sm leading-relaxed">
+                Starting research run. I&apos;ll scan the market, analyze candidates across multiple data sources, and build thesis reports for the most promising opportunities.
+              </p>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {direction && (
+                  <Badge variant="outline" className="text-[10px] gap-1 font-normal">
+                    <Target className="h-2.5 w-2.5 text-muted-foreground" />
+                    {direction}
+                  </Badge>
+                )}
+                {holdDurations.length > 0 && (
+                  <Badge variant="outline" className="text-[10px] gap-1 font-normal">
+                    Hold: {holdDurations.join(", ")}
+                  </Badge>
+                )}
+                {minConf != null && (
+                  <Badge variant="outline" className="text-[10px] gap-1 font-normal tabular-nums">
+                    Min {minConf}% confidence
+                  </Badge>
+                )}
+                {sectors.length > 0 && (
+                  <Badge variant="outline" className="text-[10px] gap-1 font-normal">
+                    {sectors.slice(0, 3).join(", ")}{sectors.length > 3 ? ` +${sectors.length - 3}` : ""}
+                  </Badge>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       );
     },
   });
 
-  // Market context
+  // ── Market Context ──────────────────────────────────────────────────────
   useAssistantToolUI({
     toolName: "run_market_context",
-    render: ({ args }) => <MarketContextCard {...(args as unknown as MarketContextData)} />,
+    render: ({ args }) => (
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
+          Let me pull up today&apos;s market environment before diving in.
+        </p>
+        <MarketContextCard {...(args as unknown as MarketContextData)} />
+      </div>
+    ),
   });
 
-  // Scanning
+  // ── Scanning ────────────────────────────────────────────────────────────
   useAssistantToolUI({
     toolName: "run_scanning",
     render: ({ args }) => {
       const a = args as { steps: { label: string; details?: string }[]; sectors: string[] };
-      if (!a.steps || a.steps.length === 0) return null;
       return (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer hover:text-foreground transition-colors">
-            {a.steps.length} source{a.steps.length !== 1 ? "s" : ""} scanned
-          </summary>
-          <div className="mt-2 space-y-1 pl-3 border-l-2 border-muted">
-            {a.steps.map((step, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
-                <span>{step.label}</span>
-              </div>
-            ))}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Radar className="h-4 w-4 text-muted-foreground" />
+            <p className="text-sm">
+              Scanning {a.sectors?.length > 0 ? (
+                <span className="font-medium">{a.sectors.join(", ")}</span>
+              ) : "the market"} for opportunities...
+            </p>
           </div>
-        </details>
+          {a.steps && a.steps.length > 0 && (
+            <ReasoningBlock label={`${a.steps.length} sources checked`} defaultOpen={false}>
+              <div className="space-y-2 pt-1">
+                {a.steps.map((step, i) => (
+                  <ResearchStep key={i} label={step.label} done details={step.details} />
+                ))}
+              </div>
+            </ReasoningBlock>
+          )}
+        </div>
       );
     },
   });
 
-  // Candidates
+  // ── Candidates ──────────────────────────────────────────────────────────
   useAssistantToolUI({
     toolName: "run_candidates",
     render: ({ args }) => {
       const a = args as { tickers: string[]; selection: { ticker: string; score: number; sources: string[] }[] };
+      const hasScores = a.selection?.some(s => s.score > 0);
+
       return (
-        <div className="space-y-2">
-          <p className="text-sm">
-            Found <span className="font-semibold">{a.tickers.length}</span> candidate{a.tickers.length !== 1 ? "s" : ""} to analyze:
-          </p>
-          <div className="flex flex-wrap gap-1.5">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Zap className="h-4 w-4 text-amber-500" />
+            <p className="text-sm">
+              Found <span className="font-semibold tabular-nums">{a.tickers.length}</span> candidate{a.tickers.length !== 1 ? "s" : ""} worth investigating:
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
             {(a.selection?.length > 0 ? a.selection : a.tickers.map(t => ({ ticker: t, score: 0, sources: [] }))).map((s) => (
-              <Badge key={s.ticker} variant="outline" className="font-mono text-xs gap-1.5">
-                {s.ticker}
-                {s.score > 0 && (
-                  <span className="text-muted-foreground tabular-nums text-[10px]">{s.score}pt</span>
+              <div
+                key={s.ticker}
+                className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2"
+              >
+                <span className="font-mono text-sm font-semibold">{s.ticker}</span>
+                {hasScores && s.score > 0 && (
+                  <span className={cn(
+                    "text-[10px] tabular-nums font-medium px-1.5 py-0.5 rounded-full",
+                    s.score >= 70 ? "bg-emerald-500/10 text-emerald-500" :
+                    s.score >= 50 ? "bg-amber-500/10 text-amber-500" :
+                    "bg-muted text-muted-foreground",
+                  )}>
+                    {s.score}pt
+                  </span>
                 )}
-              </Badge>
+                {s.sources.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {s.sources.length} source{s.sources.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -573,7 +617,7 @@ function useRegisterRunEventToolUIs() {
     },
   });
 
-  // Ticker group (the big one — research per ticker)
+  // ── Ticker Group (full per-ticker research) ────────────────────────────
   useAssistantToolUI({
     toolName: "run_ticker_group",
     render: ({ args }) => {
@@ -591,169 +635,231 @@ function useRegisterRunEventToolUIs() {
 
       const conceptDir = a.concept?.direction;
       const conceptConf = a.concept?.confidence;
+      const isPass = a.isPass || a.thesis?.direction === "PASS";
+      const hasThesis = a.thesis && a.thesis.direction !== "PASS";
 
       return (
         <div className="space-y-3">
-          {/* Ticker header */}
-          <div className="flex items-center gap-2">
-            <Search className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm font-medium">
-              Researching <span className="font-mono font-semibold">{a.ticker}</span>
-              {a.company && <span className="text-muted-foreground font-normal"> ({a.company})</span>}
-            </span>
+          {/* ── Ticker header ──────────────────────────────────────── */}
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-lg font-mono text-xs font-bold shrink-0",
+              hasThesis ? "bg-primary/10 text-primary" :
+              isPass ? "bg-muted text-muted-foreground" :
+              "bg-muted text-foreground",
+            )}>
+              {a.ticker.slice(0, 2)}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm font-semibold">{a.ticker}</span>
+                {a.company && <span className="text-xs text-muted-foreground">({a.company})</span>}
+              </div>
+              {a.sources.length > 0 && (
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {a.sources.length} source{a.sources.length !== 1 ? "s" : ""} analyzed
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Source chips with tooltips */}
+          {/* ── Source chips ──────────────────────────────────────── */}
           {a.sources.length > 0 && (
-            <SourceChipRow sources={a.sources} className="mt-1" />
+            <SourceChipRow sources={a.sources} />
           )}
 
-          {/* Data fetch steps (collapsible detail) */}
-          {a.toolCalls.length > 0 && a.toolCalls.length > a.sources.length && (
-            <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer hover:text-foreground transition-colors">
-                {a.toolCalls.length} data source{a.toolCalls.length !== 1 ? "s" : ""} fetched
-              </summary>
-              <div className="mt-2 space-y-1 pl-3 border-l-2 border-muted">
+          {/* ── Research steps (collapsible reasoning block) ──────── */}
+          {a.toolCalls.length > 0 && (
+            <ReasoningBlock
+              label={`Data collection — ${a.toolCalls.length} source${a.toolCalls.length !== 1 ? "s" : ""}`}
+              defaultOpen={false}
+            >
+              <div className="space-y-2 pt-1">
                 {a.toolCalls.map((tc) => (
-                  <div key={tc.id} className="flex items-center gap-2">
-                    <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
-                    <span>{tc.label}</span>
-                  </div>
+                  <ResearchStep key={tc.id} label={tc.label} done details={tc.details} />
                 ))}
               </div>
-            </details>
+            </ReasoningBlock>
           )}
 
-          {/* Concept signal */}
+          {/* ── Concept signal ────────────────────────────────────── */}
           {a.concept && (
-            <p className="text-xs text-muted-foreground">
-              Initial signal:{" "}
-              <span className={cn(
-                "font-semibold",
-                conceptDir === "LONG" ? "text-emerald-500" : conceptDir === "SHORT" ? "text-red-500" : "text-muted-foreground"
-              )}>
-                {conceptDir}
-              </span>
-              {conceptConf != null && <span className="tabular-nums"> at {conceptConf}% confidence</span>}
-            </p>
-          )}
-
-          {/* Reasoning */}
-          {a.reasoning && a.reasoning.length > 0 && (
-            <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer hover:text-foreground transition-colors">Thesis reasoning</summary>
-              <p className="mt-1 whitespace-pre-wrap">{a.reasoning}</p>
-            </details>
-          )}
-
-          {/* Thesis card */}
-          {a.thesis && a.thesis.direction !== "PASS" && <ThesisCard {...a.thesis} />}
-
-          {/* Pass message */}
-          {(a.isPass || a.thesis?.direction === "PASS") && (
-            <>
-              <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                <SkipForward className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                <span>
-                  Passed on <span className="font-mono font-medium text-foreground">{a.ticker}</span>
-                  {conceptConf != null && <span className="tabular-nums"> — {conceptConf}% confidence</span>}
-                  {a.passReason && <span> · {a.passReason}</span>}
-                </span>
+            <div className="flex items-center gap-3 rounded-lg border bg-muted/20 px-4 py-3">
+              <Brain className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Initial signal:</span>
+                  <span className={cn(
+                    "font-semibold",
+                    conceptDir === "LONG" ? "text-emerald-500" :
+                    conceptDir === "SHORT" ? "text-red-500" :
+                    "text-muted-foreground",
+                  )}>
+                    {conceptDir}
+                  </span>
+                  {conceptConf != null && (
+                    <span className={cn(
+                      "text-xs tabular-nums font-medium px-1.5 py-0.5 rounded-full",
+                      conceptConf >= 70 ? "bg-emerald-500/10 text-emerald-500" :
+                      conceptConf >= 50 ? "bg-amber-500/10 text-amber-500" :
+                      "bg-muted text-muted-foreground",
+                    )}>
+                      {conceptConf}%
+                    </span>
+                  )}
+                </div>
+                {a.concept.notes && (
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{a.concept.notes}</p>
+                )}
               </div>
-              {/* Sources for passed tickers */}
-              {a.sources.length > 0 && (
-                <details className="text-xs text-muted-foreground">
-                  <summary className="cursor-pointer hover:text-foreground transition-colors">
-                    {a.sources.length} source{a.sources.length !== 1 ? "s" : ""}
-                  </summary>
-                  <div className="mt-1 space-y-1 pl-3 border-l-2 border-muted">
-                    {a.sources.map((s, i) => (
-                      <div key={`${s.provider}-${i}`} className="flex items-center gap-2">
-                        <span className="tabular-nums text-muted-foreground w-4 text-right shrink-0">{i + 1}.</span>
-                        <span className="font-medium truncate max-w-[240px]">{s.title || s.provider}</span>
-                        {s.url && (
-                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline shrink-0">
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </>
+            </div>
+          )}
+
+          {/* ── Reasoning block (collapsible thinking) ───────────── */}
+          {a.reasoning && a.reasoning.length > 0 && (
+            <ReasoningBlock label="Thesis reasoning" defaultOpen={false}>
+              {a.reasoning}
+            </ReasoningBlock>
+          )}
+
+          {/* ── Thesis card + artifact sheet ──────────────────────── */}
+          {hasThesis && a.thesis && (
+            <div className="space-y-2">
+              <ThesisCard {...a.thesis} />
+              <ThesisArtifactSheet thesis={a.thesis} />
+            </div>
+          )}
+
+          {/* ── Pass message ──────────────────────────────────────── */}
+          {isPass && (
+            <div className="flex items-start gap-3 rounded-lg border border-dashed bg-muted/10 px-4 py-3">
+              <SkipForward className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Passed on </span>
+                  <span className="font-mono font-medium">{a.ticker}</span>
+                  {conceptConf != null && (
+                    <span className="text-muted-foreground tabular-nums"> — {conceptConf}% confidence</span>
+                  )}
+                </p>
+                {a.passReason && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">{a.passReason}</p>
+                )}
+              </div>
+            </div>
           )}
         </div>
       );
     },
   });
 
-  // Trade placed
+  // ── Trade Placed ────────────────────────────────────────────────────────
   useAssistantToolUI({
     toolName: "run_trade_placed",
     render: ({ args }) => {
-      const a = args as { ticker: string; direction: string; entry: number | null; target?: number | null; stop?: number | null; shares?: number };
+      const a = args as {
+        ticker: string;
+        direction: string;
+        entry: number | null;
+        target?: number | null;
+        stop?: number | null;
+        shares?: number | null;
+      };
+      const isLong = a.direction === "LONG";
+      const DirIcon = isLong ? ArrowUpRight : ArrowDownRight;
+
       return (
-        <TradeCard
-          ticker={a.ticker}
-          direction={(a.direction === "LONG" || a.direction === "SHORT") ? a.direction : "LONG"}
-          entryPrice={a.entry ?? 0}
-          status="OPEN"
-          targetPrice={a.target}
-          stopLoss={a.stop}
-          shares={a.shares}
-          className="max-w-sm"
-        />
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              "flex h-6 w-6 items-center justify-center rounded-full shrink-0",
+              isLong ? "bg-emerald-500/15" : "bg-red-500/15",
+            )}>
+              <DirIcon className={cn("h-3.5 w-3.5", isLong ? "text-emerald-500" : "text-red-500")} />
+            </div>
+            <p className="text-sm">
+              Placing <span className={cn("font-semibold", isLong ? "text-emerald-500" : "text-red-500")}>{a.direction}</span>{" "}
+              trade on <span className="font-mono font-semibold">{a.ticker}</span>
+            </p>
+          </div>
+          <TradeCard
+            ticker={a.ticker}
+            direction={(a.direction === "LONG" || a.direction === "SHORT") ? a.direction : "LONG"}
+            entryPrice={a.entry ?? 0}
+            status="OPEN"
+            targetPrice={a.target}
+            stopLoss={a.stop}
+            shares={a.shares ?? undefined}
+            className="max-w-sm"
+          />
+        </div>
       );
     },
   });
 
-  // Run summary card
+  // ── Run Summary ─────────────────────────────────────────────────────────
   useAssistantToolUI({
     toolName: "run_summary_card",
-    render: ({ args }) => <RunSummaryCard {...(args as unknown as RunSummaryData)} />,
+    render: ({ args }) => (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <p className="text-sm font-medium">Portfolio Synthesis</p>
+        </div>
+        <RunSummaryCard {...(args as unknown as RunSummaryData)} />
+      </div>
+    ),
   });
 
-  // Run complete
+  // ── Run Complete ────────────────────────────────────────────────────────
   useAssistantToolUI({
     toolName: "run_complete",
     render: ({ args }) => {
       const a = args as { analyzed: number; recommended: number; placed: number | null };
       return (
-        <div className="rounded-lg border bg-muted/40 p-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            Run complete
+        <div className="rounded-xl border bg-gradient-to-br from-emerald-500/5 via-background to-primary/5 p-5">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Research Complete</p>
+              <p className="text-xs text-muted-foreground">All candidates analyzed and scored</p>
+            </div>
           </div>
-          <div className="mt-2 flex gap-4 text-sm text-muted-foreground tabular-nums">
-            <span>{a.analyzed} analyzed</span>
-            <span className="text-border">|</span>
-            <span className="text-emerald-500">{a.recommended} recommended</span>
-            {a.placed != null && a.placed > 0 && (
-              <>
-                <span className="text-border">|</span>
-                <span>{a.placed} trades placed</span>
-              </>
-            )}
+          <div className="grid grid-cols-3 gap-4 rounded-lg bg-muted/30 p-4 text-center">
+            <div>
+              <p className="text-2xl font-bold tabular-nums">{a.analyzed}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mt-1">Analyzed</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold tabular-nums text-emerald-500">{a.recommended}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mt-1">Recommended</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold tabular-nums">{a.placed ?? 0}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mt-1">Trades Placed</p>
+            </div>
           </div>
         </div>
       );
     },
   });
 
-  // Error
+  // ── Error ───────────────────────────────────────────────────────────────
   useAssistantToolUI({
     toolName: "run_error",
     render: ({ args }) => {
       const a = args as { ticker: string; message: string };
       return (
-        <div className="flex items-start gap-2 text-sm text-red-500">
-          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span>
-            {a.ticker ? (<>Error on <span className="font-mono font-semibold">{a.ticker}</span>: </>) : null}
-            {a.message}
-          </span>
+        <div className="flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-red-500" />
+          <div className="min-w-0">
+            <p className="text-sm text-red-500 font-medium">
+              {a.ticker ? (<>Error analyzing <span className="font-mono">{a.ticker}</span></>) : "Error during research"}
+            </p>
+            <p className="text-xs text-red-500/70 mt-0.5">{a.message}</p>
+          </div>
         </div>
       );
     },
@@ -796,17 +902,14 @@ export function RunUnifiedChat({
   isLive?: boolean;
   className?: string;
 }) {
-  // Convert run events to ThreadMessageLike format
   const runMessages = useMemo(
     () => eventsToThreadMessages(events, analystName, config),
     [events, analystName, config]
   );
 
-  // Follow-up chat messages (appended after run events)
   const [chatMessages, setChatMessages] = useState<ConvertedMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
 
-  // All messages: run events (read-only history) + chat messages
   const allMessages = useMemo(
     () => [...runMessages, ...chatMessages],
     [runMessages, chatMessages]
@@ -823,7 +926,6 @@ export function RunUnifiedChat({
     []
   );
 
-  // Ref for abort controller
   const abortRef = useRef<AbortController | null>(null);
 
   const onNew = useCallback(
@@ -832,7 +934,6 @@ export function RunUnifiedChat({
       if (!textPart || textPart.type !== "text") return;
       const input = textPart.text;
 
-      // Add user message
       const userMsg: ConvertedMessage = {
         id: `user-${Date.now()}`,
         role: "user",
@@ -844,17 +945,6 @@ export function RunUnifiedChat({
 
       try {
         abortRef.current = new AbortController();
-
-        // Build the messages array for the API (in UIMessage format)
-        const apiMessages = [
-          ...allMessages.map((m) => ({
-            role: m.role,
-            content: m.content.map((c) =>
-              c.type === "text" ? c.text : `[Tool: ${c.toolName}]`
-            ).join("\n"),
-          })),
-          { role: "user" as const, content: input },
-        ];
 
         const response = await fetch("/api/chat/run-followup", {
           method: "POST",
@@ -870,8 +960,6 @@ export function RunUnifiedChat({
           throw new Error(`API error: ${response.status}`);
         }
 
-        // For now, collect the streamed response as text
-        // The API returns toUIMessageStreamResponse() format
         const reader = response.body?.getReader();
         if (!reader) throw new Error("No response body");
 
@@ -882,11 +970,9 @@ export function RunUnifiedChat({
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
-          // Parse SSE-like format from toUIMessageStreamResponse
           const lines = chunk.split("\n");
           for (const line of lines) {
             if (line.startsWith("0:")) {
-              // Text delta — the format is `0:"text content"\n`
               try {
                 const text = JSON.parse(line.slice(2));
                 if (typeof text === "string") fullText += text;

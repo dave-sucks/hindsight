@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ArrowLeft, Bot, Clock } from "lucide-react";
 import RunLiveStream from "@/components/research/RunLiveStream";
 import { RunUnifiedChat } from "@/components/research/RunUnifiedChat";
+import { AgentThread } from "@/components/research/AgentThread";
 import type { RunEventRow } from "@/components/research/types";
 
 // ── Synthesize events from thesis rows for legacy runs ────────────────────────
@@ -202,15 +203,26 @@ export default async function RunPage({
       ? "bg-amber-500"
       : "bg-red-400";
 
-  // A run stuck in RUNNING with no events and started > 15 min ago is stale
+  // Extract config snapshot from the run parameters
+  const config =
+    run.parameters && typeof run.parameters === "object"
+      ? (run.parameters as Record<string, unknown>)
+      : {};
+
+  // Agent mode: all new runs use the real LLM agent.
+  // Legacy runs (no agentMode flag) fall back to the old event view.
+  const useAgent = config.agentMode === true;
+
+  // Legacy-only: stale detection + event synthesis
   const isStaleRun =
+    !useAgent &&
     run.status === "RUNNING" &&
     run.events.length === 0 &&
     Date.now() - new Date(run.startedAt).getTime() > 15 * 60 * 1_000;
 
-  // Use stored events; fall back to synthesized for legacy runs
-  const events: RunEventRow[] =
-    run.events.length > 0
+  const events: RunEventRow[] = useAgent
+    ? []
+    : run.events.length > 0
       ? run.events.map((ev: { id: string; type: string; title: string; message: string | null; payload: unknown; createdAt: Date }) => ({
           id: ev.id,
           type: ev.type,
@@ -220,12 +232,6 @@ export default async function RunPage({
           createdAt: ev.createdAt.toISOString(),
         }))
       : synthesizeEventsFromTheses(run.theses);
-
-  // Extract config snapshot from the run parameters
-  const config =
-    run.parameters && typeof run.parameters === "object"
-      ? (run.parameters as Record<string, unknown>)
-      : {};
 
 
   return (
@@ -254,7 +260,15 @@ export default async function RunPage({
 
       {/* Body — single-column chat */}
       <div className="flex-1 min-h-0">
-        {isStaleRun ? (
+        {useAgent ? (
+          /* Real agent mode — LLM orchestrates research via tools */
+          <AgentThread
+            runId={id}
+            analystName={analystName}
+            config={config}
+            autoStart
+          />
+        ) : isStaleRun ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
             <div className="h-2.5 w-2.5 rounded-full bg-red-400" />
             <p className="text-sm font-medium text-foreground">
