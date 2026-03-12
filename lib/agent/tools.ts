@@ -536,4 +536,55 @@ export const researchAgentTools = {
       };
     },
   }),
+
+  summarize_run: tool({
+    description:
+      "Present a final portfolio synthesis at the end of your research session. Call this LAST, after all theses and trades. Summarize market context, rank all picks, show exposure breakdown, and highlight risks.",
+    inputSchema: z.object({
+      market_summary: z
+        .string()
+        .describe(
+          "Brief market context summary (2-3 sentences about today's conditions)"
+        ),
+      ranked_picks: z
+        .array(
+          z.object({
+            rank: z.number(),
+            ticker: z.string(),
+            direction: z.enum(["LONG", "SHORT"]),
+            confidence: z.number(),
+            reasoning: z.string().describe("One-line rationale for the ranking"),
+            action: z.enum(["TRADE", "WATCH", "PASS"]),
+          })
+        )
+        .describe(
+          "All tickers researched, ranked by conviction. Mark TRADE for traded, WATCH for interesting but not traded, PASS for rejected."
+        ),
+      exposure_breakdown: z
+        .object({
+          long_exposure: z.number().describe("Total $ in long trades"),
+          short_exposure: z.number().describe("Total $ in short trades"),
+          net_exposure: z.number().describe("Net $ exposure (long - short)"),
+          sector_concentration: z
+            .string()
+            .optional()
+            .describe("Note if concentrated in one sector"),
+        })
+        .optional(),
+      risk_notes: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Portfolio-level risk observations (correlation, concentration, macro headwinds)"
+        ),
+      overall_assessment: z
+        .string()
+        .describe(
+          "Final assessment of the session — what went well, what to watch tomorrow"
+        ),
+    }),
+    execute: async (args) => {
+      return args;
+    },
+  }),
 };

@@ -81,7 +81,7 @@ export async function POST(req: Request) {
     system: systemPrompt,
     messages: modelMessages,
     tools: researchAgentTools,
-    stopWhen: stepCountIs(15),
+    stopWhen: stepCountIs(25),
   });
 
   return result.toUIMessageStreamResponse();
