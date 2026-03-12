@@ -36,8 +36,6 @@ import {
   TrendingUp,
   TrendingDown,
   FileText,
-  ChevronDown,
-  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -98,7 +96,7 @@ function ToolSpinner({
   );
 }
 
-// ─── Shared: collapsible reasoning block ────────────────────────────────────
+// ─── Shared: reasoning block (uses ai-elements Reasoning) ──────────────────
 
 function ReasoningBlock({
   title,
@@ -109,23 +107,15 @@ function ReasoningBlock({
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="my-2 rounded-lg border border-border/50 bg-muted/20">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {open ? (
-          <ChevronDown className="h-3 w-3" />
-        ) : (
-          <ChevronRight className="h-3 w-3" />
-        )}
-        <span className="font-medium">{title}</span>
-      </button>
-      {open && <div className="px-3 pb-2.5">{children}</div>}
-    </div>
+    <Reasoning defaultOpen={defaultOpen} className="my-2">
+      <ReasoningTrigger
+        getThinkingMessage={() => <span>{title}</span>}
+      />
+      <ReasoningContent className="px-1">
+        {children}
+      </ReasoningContent>
+    </Reasoning>
   );
 }
 
@@ -136,6 +126,9 @@ import {
   SourcesTrigger,
   SourcesContent,
   Source,
+  Reasoning,
+  ReasoningTrigger,
+  ReasoningContent,
 } from "@/components/ai-elements";
 
 const SOURCE_COLORS: Record<string, string> = {
