@@ -15,11 +15,35 @@ export async function POST(req: Request) {
   } = await supabase.auth.getUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
 
-  const { messages, runId, config } = await req.json();
+  const { messages, runId, analystId, config } = await req.json();
 
-  // Load agent config from run if we have a runId
-  let agentConfig = config || {};
-  if (runId) {
+  // Load agent config — try analystId first, then from the run's linked config
+  let agentConfig: Record<string, unknown> = config || {};
+
+  // Direct analystId takes priority
+  if (analystId) {
+    const ac = await prisma.agentConfig.findFirst({
+      where: { id: analystId, userId: user.id },
+    });
+    if (ac) {
+      agentConfig = {
+        name: ac.name,
+        analystPrompt: ac.analystPrompt,
+        directionBias: ac.directionBias,
+        holdDurations: ac.holdDurations,
+        sectors: ac.sectors,
+        signalTypes: ac.signalTypes,
+        minConfidence: ac.minConfidence,
+        maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : undefined,
+        maxOpenPositions: ac.maxOpenPositions,
+        watchlist: ac.watchlist,
+        exclusionList: ac.exclusionList,
+      };
+    }
+  }
+
+  // Fall back to loading from the run's linked agentConfig
+  if (!agentConfig.name && runId) {
     const run = await prisma.researchRun.findFirst({
       where: { id: runId, userId: user.id },
       include: { agentConfig: true },
@@ -41,7 +65,6 @@ export async function POST(req: Request) {
         exclusionList: run.agentConfig.exclusionList,
       };
     }
-    // If run has stored parameters with config, merge
     if (run?.parameters && typeof run.parameters === "object") {
       const params = run.parameters as Record<string, unknown>;
       if (!agentConfig.name && params.analystName) {
