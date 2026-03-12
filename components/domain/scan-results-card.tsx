@@ -5,13 +5,7 @@ import type { ComponentProps } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import {
-  ArrowUpRight,
-  ArrowDownRight,
-  Calendar,
-  Radar,
-  TrendingUp,
-} from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Calendar } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,7 +27,7 @@ export type ScanResultsData = {
 
 export type ScanResultsCardProps = ComponentProps<typeof Card> & ScanResultsData;
 
-// ─── ScanResultsCard ──────────────────────────────────────────────────────────
+// ─── ScanResultsCard — compact ticker chip grid ──────────────────────────────
 
 export function ScanResultsCard({
   earnings = [],
@@ -44,92 +38,73 @@ export function ScanResultsCard({
 }: ScanResultsCardProps) {
   return (
     <Card className={cn("overflow-hidden p-0", className)} {...cardProps}>
-      <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/20">
-        <div className="flex items-center gap-2">
-          <Radar className="h-4 w-4 text-blue-500" />
-          <span className="text-sm font-semibold">Market Scan</span>
-        </div>
+      <div className="px-4 py-2.5 flex items-center gap-2 border-b border-border/40">
+        <span className="text-xs font-medium text-muted-foreground">Scan</span>
         {totalFound != null && (
-          <Badge variant="secondary" className="text-[10px] tabular-nums">
-            {totalFound} candidates
-          </Badge>
+          <span className="text-[10px] tabular-nums text-muted-foreground">
+            {totalFound} found
+          </span>
         )}
       </div>
 
-      <div className="px-4 py-4 space-y-4">
-        {/* Market movers */}
+      <div className="px-4 py-3 space-y-3">
+        {/* Market movers — compact colored chips */}
         {movers.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <TrendingUp className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Market Movers
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Movers
+            </span>
+            <div className="flex flex-wrap gap-1">
               {movers.map((m, i) => {
                 const isUp = (m.changePct ?? 0) >= 0;
                 return (
-                  <Badge
+                  <span
                     key={i}
-                    variant="secondary"
                     className={cn(
-                      "text-xs gap-1.5 py-1 px-2.5 font-mono",
+                      "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-mono font-medium",
                       isUp
                         ? "bg-emerald-500/10 text-emerald-500"
-                        : "bg-red-500/10 text-red-500"
+                        : "bg-red-500/10 text-red-500",
                     )}
                   >
-                    {isUp ? (
-                      <ArrowUpRight className="h-3 w-3" />
-                    ) : (
-                      <ArrowDownRight className="h-3 w-3" />
-                    )}
+                    {isUp ? <ArrowUpRight className="h-2.5 w-2.5" /> : <ArrowDownRight className="h-2.5 w-2.5" />}
                     {m.ticker}
                     {m.changePct != null && (
                       <span className="tabular-nums">
-                        {m.changePct >= 0 ? "+" : ""}
-                        {m.changePct.toFixed(1)}%
+                        {m.changePct >= 0 ? "+" : ""}{m.changePct.toFixed(1)}%
                       </span>
                     )}
-                  </Badge>
+                  </span>
                 );
               })}
             </div>
           </div>
         )}
 
-        {/* Upcoming earnings */}
+        {/* Upcoming earnings — outline chips */}
         {earnings.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Calendar className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Upcoming Earnings
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+              <Calendar className="h-2.5 w-2.5" />
+              Earnings
+            </span>
+            <div className="flex flex-wrap gap-1">
               {earnings.slice(0, 10).map((e, i) => (
                 <Badge
                   key={i}
                   variant="outline"
-                  className="text-xs gap-1.5 py-1 px-2.5 font-mono"
+                  className="text-[10px] gap-1 py-0 px-2 font-mono"
                 >
                   {e.ticker}
                   {e.date && (
-                    <span className="text-muted-foreground text-[10px]">
-                      {e.date}
-                    </span>
+                    <span className="text-muted-foreground">{e.date}</span>
                   )}
                 </Badge>
               ))}
               {earnings.length > 10 && (
-                <Badge
-                  variant="outline"
-                  className="text-[10px] text-muted-foreground"
-                >
+                <span className="text-[10px] text-muted-foreground self-center">
                   +{earnings.length - 10} more
-                </Badge>
+                </span>
               )}
             </div>
           </div>

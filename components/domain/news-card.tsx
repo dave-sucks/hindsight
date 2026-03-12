@@ -1,9 +1,7 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { ExternalLink, Newspaper } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,11 +13,10 @@ export type NewsItem = {
   date?: string;
 };
 
-// ─── NewsCard ─────────────────────────────────────────────────────────────────
+// ─── NewsCard — tight post-list style ─────────────────────────────────────────
 
 export function NewsCard({
   articles,
-  ticker,
   className,
 }: {
   articles: NewsItem[];
@@ -29,59 +26,37 @@ export function NewsCard({
   if (articles.length === 0) return null;
 
   return (
-    <Card className={cn("overflow-hidden p-0", className)}>
-      <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/20">
-        <div className="flex items-center gap-2">
-          <Newspaper className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">
-            Recent News
-            {ticker && (
-              <span className="ml-1.5 font-mono text-muted-foreground">
-                {ticker}
-              </span>
-            )}
-          </span>
-        </div>
-        <Badge variant="secondary" className="text-[10px] tabular-nums">
-          {articles.length} articles
-        </Badge>
-      </div>
-
-      <div className="divide-y">
-        {articles.map((article, i) => (
-          <div key={i} className="px-4 py-3 space-y-1">
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-medium leading-snug line-clamp-2">
-                {article.headline}
-              </p>
-              {article.url && (
+    <div className={cn("space-y-1", className)}>
+      {articles.slice(0, 5).map((article, i) => (
+        <div
+          key={i}
+          className="group flex items-start gap-2 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent/30"
+        >
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium leading-snug line-clamp-1">
+              {article.url ? (
                 <a
                   href={article.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                  className="hover:underline"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" />
+                  {article.headline}
                 </a>
+              ) : (
+                article.headline
               )}
-            </div>
-            {article.summary && (
-              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                {article.summary}
-              </p>
-            )}
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              <span>{article.source}</span>
-              {article.date && (
-                <>
-                  <span>·</span>
-                  <span>{article.date}</span>
-                </>
-              )}
-            </div>
+            </p>
+            <span className="text-[10px] text-muted-foreground">
+              {article.source}
+              {article.date && <> · {article.date}</>}
+            </span>
           </div>
-        ))}
-      </div>
-    </Card>
+          {article.url && (
+            <ExternalLink className="h-3 w-3 text-muted-foreground/40 group-hover:text-muted-foreground shrink-0 mt-0.5 transition-colors" />
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

@@ -9,8 +9,6 @@ import {
   Activity,
   ArrowDown,
   ArrowUp,
-  BarChart3,
-  Briefcase,
   TrendingUp,
 } from "lucide-react";
 
@@ -47,12 +45,11 @@ const REGIME_CONFIG: Record<
   volatile: { label: "Volatile", color: "text-red-400", icon: Activity },
 };
 
-// ─── MarketContextCard ────────────────────────────────────────────────────────
+// ─── MarketContextCard — compact ─────────────────────────────────────────────
 
 export function MarketContextCard({
   regime,
   keyLevels,
-  sectorRotation,
   portfolioStatus,
   todaysApproach,
   spxChange,
@@ -64,140 +61,113 @@ export function MarketContextCard({
 }: MarketContextCardProps) {
   const regimeCfg = REGIME_CONFIG[regime];
   const RegimeIcon = regimeCfg.icon;
+  const hasData = spxChange != null || vixLevel != null;
 
   return (
     <Card className={cn("overflow-hidden p-0", className)} {...cardProps}>
-      {/* Header */}
-      <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/20">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Market Context</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <RegimeIcon className={cn("h-3.5 w-3.5", regimeCfg.color)} />
-          <span className={cn("text-xs font-medium", regimeCfg.color)}>
-            {regimeCfg.label}
-          </span>
-        </div>
-      </div>
+      {/* Header row */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/40">
+        <span className="text-xs font-medium text-muted-foreground">Market</span>
+        <Badge
+          variant="secondary"
+          className={cn("text-[10px] gap-1 py-0", regimeCfg.color)}
+        >
+          <RegimeIcon className="h-2.5 w-2.5" />
+          {regimeCfg.label}
+        </Badge>
 
-      <div className="px-4 py-4 space-y-4">
-        {/* Market stats row */}
-        {(spxChange != null || vixLevel != null) && (
-          <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3 text-center">
+        {/* Inline SPX + VIX */}
+        {hasData && (
+          <div className="ml-auto flex items-center gap-3 text-xs">
             {spxChange != null && (
-              <div>
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                  S&P 500
-                </p>
-                <p
+              <span className="flex items-center gap-1">
+                <span className="text-muted-foreground">SPX</span>
+                <span
                   className={cn(
-                    "text-sm tabular-nums font-semibold",
-                    spxChange >= 0 ? "text-emerald-500" : "text-red-500"
+                    "tabular-nums font-semibold",
+                    spxChange >= 0 ? "text-emerald-500" : "text-red-500",
                   )}
                 >
-                  {spxChange >= 0 ? "+" : ""}
-                  {spxChange.toFixed(2)}%
-                </p>
-              </div>
+                  {spxChange >= 0 ? "+" : ""}{spxChange.toFixed(2)}%
+                </span>
+              </span>
             )}
             {vixLevel != null && (
-              <div>
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                  VIX
-                </p>
-                <p
+              <span className="flex items-center gap-1">
+                <span className="text-muted-foreground">VIX</span>
+                <span
                   className={cn(
-                    "text-sm tabular-nums font-semibold",
-                    vixLevel > 25
-                      ? "text-red-500"
-                      : vixLevel > 18
-                        ? "text-amber-500"
-                        : "text-muted-foreground"
+                    "tabular-nums font-semibold",
+                    vixLevel > 25 ? "text-red-500" : vixLevel > 18 ? "text-amber-500" : "text-muted-foreground",
                   )}
                 >
                   {vixLevel.toFixed(1)}
-                </p>
-              </div>
+                </span>
+              </span>
             )}
           </div>
         )}
+      </div>
 
-        {/* Sector heatmap */}
+      {/* Sector chips + portfolio (compact) */}
+      <div className="px-4 py-2.5 space-y-2">
+        {/* Sector heatmap chips */}
         {(topSectors.length > 0 || bottomSectors.length > 0) && (
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Sector Rotation
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {topSectors.map((s) => (
-                <Badge key={s.name} variant="secondary" className="text-[10px] gap-1">
-                  <ArrowUp className="h-2.5 w-2.5 text-emerald-500" />
-                  {s.name}
-                  <span className="tabular-nums text-emerald-500">
-                    +{s.change.toFixed(1)}%
-                  </span>
-                </Badge>
-              ))}
-              {bottomSectors.map((s) => (
-                <Badge key={s.name} variant="secondary" className="text-[10px] gap-1">
-                  <ArrowDown className="h-2.5 w-2.5 text-red-500" />
-                  {s.name}
-                  <span className="tabular-nums text-red-500">
-                    {s.change.toFixed(1)}%
-                  </span>
-                </Badge>
-              ))}
-            </div>
+          <div className="flex flex-wrap gap-1">
+            {topSectors.map((s) => (
+              <span
+                key={s.name}
+                className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium"
+              >
+                <ArrowUp className="h-2 w-2 text-emerald-500" />
+                <span className="text-muted-foreground">{s.name}</span>
+                <span className="tabular-nums text-emerald-500">+{s.change.toFixed(1)}%</span>
+              </span>
+            ))}
+            {bottomSectors.map((s) => (
+              <span
+                key={s.name}
+                className="inline-flex items-center gap-1 rounded-md bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium"
+              >
+                <ArrowDown className="h-2 w-2 text-red-500" />
+                <span className="text-muted-foreground">{s.name}</span>
+                <span className="tabular-nums text-red-500">{s.change.toFixed(1)}%</span>
+              </span>
+            ))}
           </div>
         )}
 
-        {/* Portfolio status */}
+        {/* Portfolio status — inline */}
         {portfolioStatus && (
-          <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/40 p-3 text-center">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                Positions
-              </p>
-              <p className="text-sm tabular-nums font-semibold">
-                {portfolioStatus.openPositions}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                Deployed
-              </p>
-              <p className="text-sm tabular-nums font-semibold">
-                ${portfolioStatus.capitalDeployed.toLocaleString()}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-                Available
-              </p>
-              <p className="text-sm tabular-nums font-semibold">
-                ${portfolioStatus.capitalAvailable.toLocaleString()}
-              </p>
-            </div>
+          <div className="flex items-center gap-4 text-xs">
+            <span>
+              <span className="text-muted-foreground">Positions</span>{" "}
+              <span className="tabular-nums font-medium">{portfolioStatus.openPositions}</span>
+            </span>
+            <span>
+              <span className="text-muted-foreground">Deployed</span>{" "}
+              <span className="tabular-nums font-medium">${portfolioStatus.capitalDeployed.toLocaleString()}</span>
+            </span>
+            <span>
+              <span className="text-muted-foreground">Available</span>{" "}
+              <span className="tabular-nums font-medium">${portfolioStatus.capitalAvailable.toLocaleString()}</span>
+            </span>
           </div>
+        )}
+
+        {/* Today's approach — only show if non-empty */}
+        {todaysApproach && todaysApproach.trim() && (
+          <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-primary/20 pl-2.5">
+            {todaysApproach}
+          </p>
         )}
 
         {/* Key levels */}
         {keyLevels && (
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             {keyLevels}
           </p>
         )}
-
-        {/* Today's approach */}
-        <div className="rounded-md border-l-2 border-primary/30 pl-3">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-            Today&apos;s Approach
-          </p>
-          <p className="text-sm text-foreground/80 leading-relaxed">
-            {todaysApproach}
-          </p>
-        </div>
       </div>
     </Card>
   );

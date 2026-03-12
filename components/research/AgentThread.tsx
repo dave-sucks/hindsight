@@ -3,16 +3,17 @@
 /**
  * AgentThread — the REAL agent UI.
  *
- * Rich tool UIs render data-dense cards for every tool call:
- * - Market overview → MarketContextCard
- * - Scan candidates → ScanResultsCard
- * - Stock data → StockCard + NewsCard
- * - Technical analysis → TechnicalCard
- * - Earnings data → EarningsCard
- * - Options flow → OptionsFlowCard
- * - Reddit sentiment → Badge row
- * - show_thesis → ThesisCard + ThesisArtifactSheet
+ * Compact tool UIs render tight data cards for every tool call:
+ * - Market overview → MarketContextCard (compact)
+ * - Scan candidates → ScanResultsCard (chip grid)
+ * - Stock data → StockCard (inline → sheet) + NewsCard (post-list)
+ * - Technical analysis → TechnicalCard (reasoning block)
+ * - Earnings data → EarningsCard (compact rows)
+ * - Options flow → OptionsFlowCard (compact)
+ * - Reddit sentiment → collapsible reasoning block
+ * - show_thesis → slim pill → ThesisArtifactSheet
  * - place_trade → TradeConfirmation → TradeCard
+ * - summarize_run → RunSummaryCard
  */
 
 import { useMemo, useEffect, useRef, useCallback, useState } from "react";
@@ -32,10 +33,17 @@ import {
   SquareIcon,
   Bot,
   MessageSquare,
+  TrendingUp,
+  TrendingDown,
+  FileText,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import {
-  ThesisCard,
   type ThesisCardData,
   TradeCard,
   TradeConfirmation,
@@ -50,8 +58,6 @@ import {
   RunSummaryCard,
 } from "@/components/domain";
 import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { createTrade } from "@/lib/actions/trade.actions";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
@@ -61,8 +67,98 @@ interface AgentThreadProps {
   analystName: string;
   analystId?: string;
   config: Record<string, unknown>;
-  /** Auto-start: send an initial message to kick off the agent */
   autoStart?: boolean;
+}
+
+// ─── Shared: compact spinner ────────────────────────────────────────────────
+
+function ToolSpinner({
+  label,
+  color = "blue",
+}: {
+  label: string;
+  color?: string;
+}) {
+  return (
+    <div className="my-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+      <span
+        className={cn(
+          "h-3 w-3 rounded-full border-2 border-muted-foreground/20 animate-spin",
+          color === "blue" && "border-t-blue-500",
+          color === "cyan" && "border-t-cyan-500",
+          color === "amber" && "border-t-amber-500",
+          color === "purple" && "border-t-purple-500",
+          color === "orange" && "border-t-orange-500",
+          color === "emerald" && "border-t-emerald-500",
+          color === "violet" && "border-t-violet-500",
+        )}
+      />
+      {label}
+    </div>
+  );
+}
+
+// ─── Shared: collapsible reasoning block ────────────────────────────────────
+
+function ReasoningBlock({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="my-2 rounded-lg border border-border/50 bg-muted/20">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {open ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+        <span className="font-medium">{title}</span>
+      </button>
+      {open && <div className="px-3 pb-2.5">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Shared: source chip row ────────────────────────────────────────────────
+
+const SOURCE_COLORS: Record<string, string> = {
+  finnhub: "bg-blue-500",
+  fmp: "bg-indigo-500",
+  reddit: "bg-orange-500",
+  options: "bg-purple-500",
+  earnings: "bg-amber-500",
+  technical: "bg-cyan-500",
+  stocktwits: "bg-green-500",
+};
+
+function SourceChips({ sources }: { sources: string[] }) {
+  if (!sources.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {sources.map((s) => {
+        const dot = SOURCE_COLORS[s.toLowerCase()] ?? "bg-muted-foreground";
+        return (
+          <span
+            key={s}
+            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground"
+          >
+            <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dot)} />
+            {s}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 // ─── Tool UI registrations ──────────────────────────────────────────────────
@@ -72,14 +168,7 @@ function useRegisterAgentToolUIs(runId: string) {
   useAssistantToolUI({
     toolName: "get_market_overview",
     render: ({ result }) => {
-      if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/20 border-t-blue-500 animate-spin" />
-            Checking market conditions...
-          </div>
-        );
-      }
+      if (!result) return <ToolSpinner label="Checking market conditions..." />;
 
       const spy = result.spy as {
         price: number;
@@ -117,7 +206,7 @@ function useRegisterAgentToolUIs(runId: string) {
               : "range_bound";
 
       return (
-        <div className="my-3">
+        <div className="my-2">
           <MarketContextCard
             regime={regime}
             spxChange={spy?.change_pct}
@@ -126,6 +215,7 @@ function useRegisterAgentToolUIs(runId: string) {
             bottomSectors={bottomSectors}
             todaysApproach=""
           />
+          <SourceChips sources={["Finnhub", "FMP"]} />
         </div>
       );
     },
@@ -135,14 +225,7 @@ function useRegisterAgentToolUIs(runId: string) {
   useAssistantToolUI({
     toolName: "scan_candidates",
     render: ({ result }) => {
-      if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/20 border-t-blue-500 animate-spin" />
-            Scanning for candidates...
-          </div>
-        );
-      }
+      if (!result) return <ToolSpinner label="Scanning for candidates..." />;
 
       const earnings = (result.earnings ?? []) as {
         ticker: string;
@@ -158,7 +241,7 @@ function useRegisterAgentToolUIs(runId: string) {
       }[];
 
       return (
-        <div className="my-3">
+        <div className="my-2">
           <ScanResultsCard
             earnings={earnings.map((e) => ({
               ticker: e.ticker,
@@ -179,20 +262,14 @@ function useRegisterAgentToolUIs(runId: string) {
     },
   });
 
-  // ── Stock data → StockCard + NewsCard ─────────────────────────────
+  // ── Stock data → StockCard (click-to-sheet) + NewsCard (post-list) ──
   useAssistantToolUI({
     toolName: "get_stock_data",
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/20 border-t-blue-500 animate-spin" />
-            Fetching stock data for{" "}
-            <span className="font-mono font-medium">{ticker}</span>...
-          </div>
-        );
+        return <ToolSpinner label={`Fetching ${ticker}...`} />;
       }
 
       const quote = result.quote as {
@@ -232,7 +309,7 @@ function useRegisterAgentToolUIs(runId: string) {
       }[];
 
       return (
-        <div className="my-3 space-y-3">
+        <div className="my-2 space-y-1.5">
           <StockCard
             ticker={ticker}
             companyName={company?.name}
@@ -266,37 +343,32 @@ function useRegisterAgentToolUIs(runId: string) {
             }
           />
           {news.length > 0 && <NewsCard articles={news} ticker={ticker} />}
+          <SourceChips sources={["Finnhub", "FMP"]} />
         </div>
       );
     },
   });
 
-  // ── Technical analysis → TechnicalCard ─────────────────────────────
+  // ── Technical analysis → TechnicalCard (compact) ────────────────────
   useAssistantToolUI({
     toolName: "get_technical_analysis",
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/20 border-t-cyan-500 animate-spin" />
-            Running technical analysis on{" "}
-            <span className="font-mono font-medium">{ticker}</span>...
-          </div>
-        );
+        return <ToolSpinner label={`Analyzing ${ticker}...`} color="cyan" />;
       }
 
       if (result.error) {
         return (
-          <div className="my-2 text-sm text-red-500 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
+          <div className="my-1.5 text-xs text-red-500 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-1.5">
             {String(result.error)}
           </div>
         );
       }
 
       return (
-        <div className="my-3">
+        <div className="my-2">
           <TechnicalCard
             ticker={ticker}
             currentPrice={result.current_price as number}
@@ -309,25 +381,20 @@ function useRegisterAgentToolUIs(runId: string) {
             volumeRatio={result.volume_ratio as string | null}
             trend={result.trend as string | null}
           />
+          <SourceChips sources={["Technical"]} />
         </div>
       );
     },
   });
 
-  // ── Earnings data → EarningsCard ─────────────────────────────────
+  // ── Earnings data → EarningsCard (compact) ──────────────────────────
   useAssistantToolUI({
     toolName: "get_earnings_data",
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/20 border-t-amber-500 animate-spin" />
-            Looking up earnings for{" "}
-            <span className="font-mono font-medium">{ticker}</span>...
-          </div>
-        );
+        return <ToolSpinner label={`Earnings for ${ticker}...`} color="amber" />;
       }
 
       const nextEarnings = result.next_earnings as {
@@ -343,15 +410,12 @@ function useRegisterAgentToolUIs(runId: string) {
       }[];
 
       return (
-        <div className="my-3">
+        <div className="my-2">
           <EarningsCard
             ticker={ticker}
             nextEarnings={
               nextEarnings
-                ? {
-                    date: nextEarnings.date,
-                    epsEstimate: nextEarnings.eps_estimate,
-                  }
+                ? { date: nextEarnings.date, epsEstimate: nextEarnings.eps_estimate }
                 : null
             }
             beatRate={result.beat_rate as string}
@@ -363,39 +427,33 @@ function useRegisterAgentToolUIs(runId: string) {
               surprisePct: q.surprise_pct,
             }))}
           />
+          <SourceChips sources={["Earnings"]} />
         </div>
       );
     },
   });
 
-  // ── Options flow → OptionsFlowCard ─────────────────────────────────
+  // ── Options flow → OptionsFlowCard (compact) ──────────────────────
   useAssistantToolUI({
     toolName: "get_options_flow",
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/20 border-t-purple-500 animate-spin" />
-            Analyzing options flow for{" "}
-            <span className="font-mono font-medium">{ticker}</span>...
-          </div>
-        );
+        return <ToolSpinner label={`Options for ${ticker}...`} color="purple" />;
       }
 
-      // No data available
       if (result.available === false) {
         return (
-          <div className="my-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-            No options data available for {ticker}.{" "}
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
+            No options data for {ticker}.{" "}
             {result.note && <span>{String(result.note)}</span>}
           </div>
         );
       }
 
       return (
-        <div className="my-3">
+        <div className="my-2">
           <OptionsFlowCard
             ticker={ticker}
             putCallRatio={result.put_call_ratio as number | null}
@@ -405,32 +463,27 @@ function useRegisterAgentToolUIs(runId: string) {
             contractsAvailable={result.contracts_available as number}
             signal={result.signal as string}
           />
+          <SourceChips sources={["Options"]} />
         </div>
       );
     },
   });
 
-  // ── Reddit sentiment → compact card ─────────────────────────────
+  // ── Reddit sentiment → collapsible reasoning block ────────────────
   useAssistantToolUI({
     toolName: "get_reddit_sentiment",
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/20 border-t-orange-500 animate-spin" />
-            Checking Reddit sentiment for{" "}
-            <span className="font-mono font-medium">{ticker}</span>...
-          </div>
-        );
+        return <ToolSpinner label={`Reddit for ${ticker}...`} color="orange" />;
       }
 
       if (!result.available) {
         return (
-          <div className="my-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-            <MessageSquare className="inline h-3 w-3 mr-1.5 text-orange-500" />
-            Reddit sentiment unavailable for {ticker}.
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
+            <MessageSquare className="inline h-3 w-3 mr-1 text-orange-500" />
+            Reddit unavailable for {ticker}.
           </div>
         );
       }
@@ -442,54 +495,29 @@ function useRegisterAgentToolUIs(runId: string) {
       }[];
 
       return (
-        <div className="my-3">
-          <Card className="overflow-hidden p-0">
-            <div className="px-4 py-3 flex items-center gap-2 border-b bg-muted/20">
-              <MessageSquare className="h-4 w-4 text-orange-500" />
-              <span className="text-sm font-semibold">
-                Reddit Sentiment
-                <span className="ml-1.5 font-mono text-muted-foreground">
-                  {ticker}
-                </span>
-              </span>
-              <Badge
-                variant="secondary"
-                className="ml-auto text-[10px] tabular-nums"
+        <ReasoningBlock title={`Reddit sentiment · ${ticker} · ${sources.length} sources`}>
+          <div className="flex flex-wrap gap-1">
+            {sources.map((s, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground"
               >
-                {sources.length} sources
-              </Badge>
-            </div>
-            {sources.length > 0 && (
-              <div className="px-4 py-3 flex flex-wrap gap-1.5">
-                {sources.map((s, i) => (
-                  <Badge
-                    key={i}
-                    variant="outline"
-                    className="text-[10px] gap-1"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-orange-500 shrink-0" />
-                    {s.title || s.provider}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </Card>
-        </div>
+                <span className="h-1.5 w-1.5 rounded-full bg-orange-500 shrink-0" />
+                {s.title || s.provider}
+              </span>
+            ))}
+          </div>
+        </ReasoningBlock>
       );
     },
   });
 
-  // ── Thesis card → ThesisCard + ThesisArtifactSheet ─────────────────
+  // ── Thesis → slim pill + ThesisArtifactSheet ─────────────────────
   useAssistantToolUI({
     toolName: "show_thesis",
     render: ({ result }) => {
       if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="h-4 w-4 rounded-full border-2 border-muted-foreground/20 border-t-amber-500 animate-spin" />
-            Building thesis...
-          </div>
-        );
+        return <ToolSpinner label="Building thesis..." color="amber" />;
       }
 
       const thesis: ThesisCardData = {
@@ -506,10 +534,101 @@ function useRegisterAgentToolUIs(runId: string) {
         signal_types: (result.signal_types ?? []) as string[],
       };
 
+      const isLong = thesis.direction === "LONG";
+      const isPass = thesis.direction === "PASS";
+      const DirIcon = isLong ? TrendingUp : TrendingDown;
+
       return (
-        <div className="my-3 space-y-2">
-          <ThesisCard {...thesis} />
-          <ThesisArtifactSheet thesis={thesis} />
+        <div className="my-2">
+          {/* Slim thesis pill — inline summary */}
+          <Card className="overflow-hidden p-0">
+            <div className="flex items-center gap-2.5 px-4 py-2.5">
+              <span className="text-sm font-semibold font-mono">{thesis.ticker}</span>
+              {!isPass ? (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px] gap-1 py-0 font-semibold",
+                    isLong
+                      ? "bg-emerald-500/10 text-emerald-500"
+                      : "bg-red-500/10 text-red-500",
+                  )}
+                >
+                  <DirIcon className="h-2.5 w-2.5" />
+                  {thesis.direction}
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="text-[10px] py-0">
+                  PASS
+                </Badge>
+              )}
+
+              {thesis.hold_duration && (
+                <span className="text-[10px] text-muted-foreground">
+                  {thesis.hold_duration}
+                </span>
+              )}
+
+              <span
+                className={cn(
+                  "ml-auto flex items-center justify-center rounded-full size-7 text-[11px] font-bold tabular-nums",
+                  thesis.confidence_score >= 80
+                    ? "bg-emerald-500/15 text-emerald-500"
+                    : thesis.confidence_score >= 60
+                      ? "bg-amber-500/15 text-amber-500"
+                      : "bg-muted text-muted-foreground",
+                )}
+              >
+                {thesis.confidence_score}
+              </span>
+            </div>
+
+            {/* Entry/Target/Stop compact row */}
+            {thesis.entry_price != null && !isPass && (
+              <div className="flex items-center gap-4 px-4 pb-2.5 text-[10px]">
+                <span>
+                  <span className="text-muted-foreground uppercase tracking-wide">Entry</span>{" "}
+                  <span className="tabular-nums font-medium">${thesis.entry_price!.toFixed(2)}</span>
+                </span>
+                {thesis.target_price != null && (
+                  <span>
+                    <span className="text-muted-foreground uppercase tracking-wide">Target</span>{" "}
+                    <span className="tabular-nums font-medium text-emerald-500">
+                      ${thesis.target_price!.toFixed(2)}
+                    </span>
+                  </span>
+                )}
+                {thesis.stop_loss != null && (
+                  <span>
+                    <span className="text-muted-foreground uppercase tracking-wide">Stop</span>{" "}
+                    <span className="tabular-nums font-medium text-red-500">
+                      ${thesis.stop_loss!.toFixed(2)}
+                    </span>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {isPass && thesis.reasoning_summary && (
+              <div className="px-4 pb-2.5">
+                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                  {thesis.reasoning_summary}
+                </p>
+              </div>
+            )}
+          </Card>
+
+          {/* Open sheet for full detail */}
+          {!isPass && (
+            <div className="mt-1">
+              <ThesisArtifactSheet thesis={thesis}>
+                <span className="flex items-center gap-1">
+                  <FileText className="h-3 w-3" />
+                  Full analysis
+                </span>
+              </ThesisArtifactSheet>
+            </div>
+          )}
         </div>
       );
     },
@@ -563,18 +682,12 @@ function useRegisterAgentToolUIs(runId: string) {
       }, []);
 
       if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="h-4 w-4 rounded-full border-2 border-muted-foreground/20 border-t-emerald-500 animate-spin" />
-            Preparing trade...
-          </div>
-        );
+        return <ToolSpinner label="Preparing trade..." color="emerald" />;
       }
 
-      // Show filled trade card after confirmation
       if (tradeState === "confirmed" && tradeResult) {
         return (
-          <div className="my-3">
+          <div className="my-2">
             <TradeCard
               ticker={result.ticker as string}
               direction={result.direction as "LONG" | "SHORT"}
@@ -588,9 +701,8 @@ function useRegisterAgentToolUIs(runId: string) {
         );
       }
 
-      // Show confirmation card for pending/executing/cancelled
       return (
-        <div className="my-3">
+        <div className="my-2">
           <TradeConfirmation
             ticker={result.ticker as string}
             direction={result.direction as "LONG" | "SHORT"}
@@ -620,12 +732,7 @@ function useRegisterAgentToolUIs(runId: string) {
     toolName: "summarize_run",
     render: ({ result }) => {
       if (!result) {
-        return (
-          <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/20 border-t-violet-500 animate-spin" />
-            Synthesizing research session...
-          </div>
-        );
+        return <ToolSpinner label="Synthesizing session..." color="violet" />;
       }
 
       const rankedPicks = (result.ranked_picks ?? []) as {
@@ -645,7 +752,7 @@ function useRegisterAgentToolUIs(runId: string) {
       } | null;
 
       return (
-        <div className="my-3">
+        <div className="my-2">
           <RunSummaryCard
             marketSummary={result.market_summary as string}
             rankedPicks={rankedPicks}
@@ -699,7 +806,7 @@ export function AgentThread({
   );
 }
 
-// ─── Default composer (copied from thread.tsx for composerSlot use) ──────────
+// ─── Default composer ───────────────────────────────────────────────────────
 
 function DefaultComposer() {
   return (
@@ -747,7 +854,7 @@ function DefaultComposer() {
   );
 }
 
-// ─── Quick reply suggestion chips ────────────────────────────────────────────
+// ─── Quick reply chips ──────────────────────────────────────────────────────
 
 const FOLLOW_UP_SUGGESTIONS = [
   "What's your conviction ranking?",
@@ -807,7 +914,6 @@ function AgentThreadInner({
 
   const threadRuntime = useThreadRuntime();
 
-  // Auto-start: send an initial "kick-off" message so the agent begins
   const hasSent = useRef(false);
   useEffect(() => {
     if (!autoStart || hasSent.current) return;
