@@ -3,11 +3,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { ArrowLeft, Bot, Clock } from "lucide-react";
-import RunChatThread from "@/components/research/RunChatThread";
 import RunLiveStream from "@/components/research/RunLiveStream";
-import { RunFollowupChat } from "@/components/research/RunFollowupChat";
-import type { ComposerRecentThesis } from "@/components/chat/ChatComposer";
-import type { RunEventRow } from "@/components/research/RunChatThread";
+import { RunUnifiedChat } from "@/components/research/RunUnifiedChat";
+import type { RunEventRow } from "@/components/research/types";
 
 // ── Synthesize events from thesis rows for legacy runs ────────────────────────
 
@@ -229,17 +227,6 @@ export default async function RunPage({
       ? (run.parameters as Record<string, unknown>)
       : {};
 
-  // Build recent theses for ChatComposer @ references
-  const recentTheses: ComposerRecentThesis[] = run.theses
-    .filter((t) => t.direction !== "PASS")
-    .map((t) => ({
-      id: t.id,
-      ticker: t.ticker,
-      direction: t.direction,
-      confidenceScore: t.confidenceScore,
-      reasoningSummary: t.reasoningSummary ?? "",
-      createdAt: t.createdAt,
-    }));
 
   return (
     <div className="flex flex-col h-[calc(100dvh-5.25rem)] overflow-hidden">
@@ -291,33 +278,26 @@ export default async function RunPage({
             <p className="text-sm">No details available for this run.</p>
           </div>
         ) : (
-          <RunChatThread
+          <RunUnifiedChat
             events={events}
             analystName={analystName}
             config={config}
-            composerSlot={
-              run.status === "COMPLETE" ? (
-                <RunFollowupChat
-                  runContext={{
-                    analystName,
-                    config,
-                    theses: run.theses.map((t: typeof run.theses[number]) => ({
-                      ticker: t.ticker,
-                      direction: t.direction,
-                      confidence_score: t.confidenceScore,
-                      reasoning_summary: t.reasoningSummary ?? undefined,
-                      thesis_bullets: t.thesisBullets ?? [],
-                      risk_flags: t.riskFlags ?? [],
-                      entry_price: t.entryPrice,
-                      target_price: t.targetPrice,
-                      stop_loss: t.stopLoss,
-                      signal_types: t.signalTypes ?? [],
-                    })),
-                  }}
-                  recentTheses={recentTheses}
-                />
-              ) : undefined
-            }
+            runContext={{
+              analystName,
+              config,
+              theses: run.theses.map((t: typeof run.theses[number]) => ({
+                ticker: t.ticker,
+                direction: t.direction,
+                confidence_score: t.confidenceScore,
+                reasoning_summary: t.reasoningSummary ?? undefined,
+                thesis_bullets: t.thesisBullets ?? [],
+                risk_flags: t.riskFlags ?? [],
+                entry_price: t.entryPrice,
+                target_price: t.targetPrice,
+                stop_loss: t.stopLoss,
+                signal_types: t.signalTypes ?? [],
+              })),
+            }}
           />
         )}
       </div>

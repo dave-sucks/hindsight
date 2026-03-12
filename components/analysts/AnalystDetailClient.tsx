@@ -28,7 +28,6 @@ import type {
   AnalystDetail,
   TradeWithThesis,
 } from "@/lib/actions/analyst.actions";
-import type { ComposerRecentThesis } from "@/components/chat/ChatComposer";
 import { cn } from "@/lib/utils";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -112,6 +111,104 @@ function SidebarTradeRow({ trade }: { trade: TradeWithThesis }) {
         ) : null}
       </div>
     </Link>
+  );
+}
+
+// ── Strategy Banner (collapsible config summary) ────────────────────────────
+
+function StrategyBanner({ config }: { config: AnalystDetail["config"] }) {
+  const [expanded, setExpanded] = useState(false);
+  const prompt = config.analystPrompt;
+  const hasPrompt = !!prompt && prompt.trim().length > 0;
+
+  const badges = [
+    config.directionBias,
+    ...config.holdDurations,
+    ...(config.sectors.length > 0 ? config.sectors.slice(0, 3) : []),
+    ...(config.signalTypes.length > 0 ? config.signalTypes.slice(0, 2) : []),
+    config.minConfidence ? `${config.minConfidence}% min` : null,
+  ].filter(Boolean) as string[];
+
+  return (
+    <div className="border-b shrink-0">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-5 py-2.5 text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground shrink-0">
+            Strategy
+          </span>
+          <div className="flex flex-wrap gap-1 min-w-0">
+            {badges.slice(0, expanded ? badges.length : 5).map((b) => (
+              <Badge
+                key={b}
+                variant="outline"
+                className="text-[10px] h-5 px-1.5 shrink-0"
+              >
+                {b}
+              </Badge>
+            ))}
+            {!expanded && badges.length > 5 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{badges.length - 5}
+              </span>
+            )}
+          </div>
+        </div>
+        <svg
+          className={cn(
+            "h-3 w-3 text-muted-foreground shrink-0 transition-transform",
+            expanded && "rotate-180"
+          )}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="px-5 pb-3 space-y-2">
+          {hasPrompt && (
+            <div className="rounded-lg bg-muted/40 p-3">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+                Master Prompt
+              </p>
+              <p className="text-xs text-foreground/80 whitespace-pre-wrap leading-relaxed">
+                {prompt}
+              </p>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-1">
+            {badges.map((b) => (
+              <Badge
+                key={b}
+                variant="outline"
+                className="text-[10px] h-5 px-1.5"
+              >
+                {b}
+              </Badge>
+            ))}
+          </div>
+          {config.sectors.length > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              <span className="font-medium">Sectors:</span>{" "}
+              {config.sectors.join(", ")}
+            </p>
+          )}
+          {config.signalTypes.length > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              <span className="font-medium">Signals:</span>{" "}
+              {config.signalTypes.join(", ")}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -308,20 +405,6 @@ export default function AnalystDetailClient({
     0
   );
 
-  const recentThesesFlat: ComposerRecentThesis[] = useMemo(() => {
-    return recentRuns
-      .flatMap((run) =>
-        run.theses.map((t) => ({
-          id: t.id,
-          ticker: t.ticker,
-          direction: t.direction,
-          confidenceScore: t.confidenceScore,
-          reasoningSummary: t.reasoningSummary,
-          createdAt: run.startedAt,
-        }))
-      )
-      .slice(0, 30);
-  }, [recentRuns]);
 
   return (
     <>
@@ -580,6 +663,9 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
+          {/* Strategy / config summary (collapsible) */}
+          <StrategyBanner config={config} />
+
           {/* Full-height AI chat */}
           <div className="flex-1 min-h-0">
             <AnalystEditorChat
@@ -597,7 +683,6 @@ export default function AnalystDetailClient({
                 maxOpenPositions: config.maxOpenPositions,
                 minMarketCapTier: config.minMarketCapTier ?? "LARGE",
               }}
-              recentTheses={recentThesesFlat}
             />
           </div>
         </div>

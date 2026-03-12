@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   CheckCircle2,
-  ExternalLink,
   Minus,
   TrendingDown,
   TrendingUp,
@@ -16,11 +15,7 @@ import {
 
 import { CitedText } from "../chat/CitedText";
 import type { SourceChipData } from "../chat/SourceChip";
-import {
-  Sources,
-  SourcesTrigger,
-  SourcesContent,
-} from "../ai-elements/sources";
+import { SourceChipRow } from "../chat/SourceChip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -269,33 +264,9 @@ export function ThesisCard({
           </ul>
         )}
 
-        {/* Sources — collapsible numbered list */}
+        {/* Sources — inline chip row */}
         {sources.length > 0 && (
-          <Sources className="pt-1">
-            <SourcesTrigger count={sources.length} />
-            <SourcesContent>
-              {sources.map((s, i) => (
-                <div key={`${s.provider}-${i}`} className="flex items-center gap-2 text-xs">
-                  <span className="tabular-nums text-muted-foreground w-4 text-right shrink-0">
-                    {i + 1}.
-                  </span>
-                  <span className="font-medium truncate max-w-[240px]">
-                    {s.title || s.provider}
-                  </span>
-                  {s.url && (
-                    <a
-                      href={s.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline shrink-0"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-              ))}
-            </SourcesContent>
-          </Sources>
+          <SourceChipRow sources={sources} className="pt-1" />
         )}
       </div>
     </Card>
