@@ -17,6 +17,7 @@ import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import {
   AssistantRuntimeProvider,
   useAssistantToolUI,
+  useThreadRuntime,
 } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
 import {
@@ -32,6 +33,7 @@ import { Bot } from "lucide-react";
 interface AgentThreadProps {
   runId: string;
   analystName: string;
+  analystId?: string;
   config: Record<string, unknown>;
   /** Auto-start: send an initial message to kick off the agent */
   autoStart?: boolean;
@@ -157,6 +159,7 @@ function useRegisterAgentToolUIs() {
 export function AgentThread({
   runId,
   analystName,
+  analystId,
   config,
   autoStart = true,
 }: AgentThreadProps) {
@@ -164,9 +167,9 @@ export function AgentThread({
     () =>
       new DefaultChatTransport({
         api: "/api/research/agent",
-        body: { runId, config },
+        body: { runId, analystId, config },
       }),
-    [runId, config],
+    [runId, analystId, config],
   );
 
   const runtime = useChatRuntime({ transport });
@@ -176,7 +179,6 @@ export function AgentThread({
       <AgentThreadInner
         analystName={analystName}
         autoStart={autoStart}
-        runtime={runtime}
       />
     </AssistantRuntimeProvider>
   );
@@ -188,15 +190,31 @@ function AgentThreadInner({
 }: {
   analystName: string;
   autoStart: boolean;
-  runtime: ReturnType<typeof useChatRuntime>;
 }) {
   useRegisterAgentToolUIs();
+
+  const threadRuntime = useThreadRuntime();
+
+  // Auto-start: send an initial "kick-off" message so the agent begins
+  const hasSent = useRef(false);
+  useEffect(() => {
+    if (!autoStart || hasSent.current) return;
+    hasSent.current = true;
+    // Small delay to let the runtime initialize
+    const timer = setTimeout(() => {
+      threadRuntime.append({
+        role: "user",
+        content: [{ type: "text", text: "Run" }],
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [autoStart, threadRuntime]);
 
   return (
     <Thread
       welcomeConfig={{
         title: analystName,
-        subtitle: "Autonomous research agent — ask me to start researching",
+        subtitle: "Autonomous research agent",
         icon: (
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/20 to-blue-500/20 ring-1 ring-violet-500/30">
             <Bot className="h-4.5 w-4.5 text-violet-600 dark:text-violet-400" />
