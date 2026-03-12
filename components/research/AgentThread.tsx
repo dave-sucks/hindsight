@@ -129,7 +129,14 @@ function ReasoningBlock({
   );
 }
 
-// ─── Shared: source chip row ────────────────────────────────────────────────
+// ─── Shared: source chips (ai-elements Sources) ────────────────────────────
+
+import {
+  Sources,
+  SourcesTrigger,
+  SourcesContent,
+  Source,
+} from "@/components/ai-elements";
 
 const SOURCE_COLORS: Record<string, string> = {
   finnhub: "bg-blue-500",
@@ -144,20 +151,20 @@ const SOURCE_COLORS: Record<string, string> = {
 function SourceChips({ sources }: { sources: string[] }) {
   if (!sources.length) return null;
   return (
-    <div className="flex flex-wrap gap-1 mt-1.5">
-      {sources.map((s) => {
-        const dot = SOURCE_COLORS[s.toLowerCase()] ?? "bg-muted-foreground";
-        return (
-          <span
-            key={s}
-            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground"
-          >
-            <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dot)} />
-            {s}
-          </span>
-        );
-      })}
-    </div>
+    <Sources className="mt-1.5">
+      <SourcesTrigger count={sources.length} className="text-[10px]" />
+      <SourcesContent>
+        {sources.map((s) => {
+          const dot = SOURCE_COLORS[s.toLowerCase()] ?? "bg-muted-foreground";
+          return (
+            <Source key={s} provider={s}>
+              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dot)} />
+              <span className="font-medium">{s}</span>
+            </Source>
+          );
+        })}
+      </SourcesContent>
+    </Sources>
   );
 }
 
