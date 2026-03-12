@@ -265,6 +265,7 @@ export default async function RunPage({
           <AgentThread
             runId={id}
             analystName={analystName}
+            analystId={run.agentConfig?.id}
             config={config}
             autoStart
           />
