@@ -130,29 +130,79 @@ import {
   ReasoningTrigger,
   ReasoningContent,
 } from "@/components/ai-elements";
+import { Citation } from "@/components/tool-ui/citation";
+import type { CitationType } from "@/components/tool-ui/citation";
 
-const SOURCE_COLORS: Record<string, string> = {
-  finnhub: "bg-blue-500",
-  fmp: "bg-indigo-500",
-  reddit: "bg-orange-500",
-  options: "bg-purple-500",
-  earnings: "bg-amber-500",
-  technical: "bg-cyan-500",
-  stocktwits: "bg-green-500",
+// ─── Source data shape (matches _sources from tool results) ─────────────────
+
+interface SourceData {
+  provider: string;
+  title: string;
+  url?: string;
+  excerpt?: string;
+}
+
+const PROVIDER_DOMAINS: Record<string, string> = {
+  finnhub: "finnhub.io",
+  fmp: "financialmodelingprep.com",
+  reddit: "reddit.com",
+  stocktwits: "stocktwits.com",
+  technical: "finnhub.io",
+  earnings: "finnhub.io",
+  options: "financialmodelingprep.com",
 };
 
-function SourceChips({ sources }: { sources: string[] }) {
+const PROVIDER_TYPES: Record<string, CitationType> = {
+  finnhub: "api",
+  fmp: "api",
+  reddit: "webpage",
+  stocktwits: "webpage",
+  technical: "api",
+  earnings: "api",
+  options: "api",
+};
+
+function faviconUrl(domain: string): string {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+}
+
+/** Extract _sources from a tool result, falling back to provider-only strings */
+function extractToolSources(result: Record<string, unknown>): SourceData[] {
+  const raw = result._sources;
+  if (Array.isArray(raw)) {
+    return raw.filter(
+      (s): s is SourceData =>
+        typeof s === "object" && s !== null && "provider" in s && "title" in s,
+    );
+  }
+  return [];
+}
+
+function SourceChips({ sources }: { sources: SourceData[] }) {
   if (!sources.length) return null;
   return (
     <Sources className="mt-1.5">
       <SourcesTrigger count={sources.length} className="text-[10px]" />
       <SourcesContent>
-        {sources.map((s) => {
-          const dot = SOURCE_COLORS[s.toLowerCase()] ?? "bg-muted-foreground";
+        {sources.map((s, i) => {
+          const key = s.provider.toLowerCase().replace(/[^a-z]/g, "");
+          const domain =
+            s.url
+              ? (() => { try { return new URL(s.url).hostname.replace(/^www\./, ""); } catch { return PROVIDER_DOMAINS[key]; } })()
+              : PROVIDER_DOMAINS[key];
+          const type = PROVIDER_TYPES[key] ?? "webpage";
+
           return (
-            <Source key={s} provider={s}>
-              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dot)} />
-              <span className="font-medium">{s}</span>
+            <Source key={`${s.provider}-${i}`} provider={s.provider}>
+              <Citation
+                href={s.url ?? `https://${domain ?? s.provider.toLowerCase() + ".com"}`}
+                title={s.title}
+                snippet={s.excerpt}
+                domain={domain ?? s.provider}
+                favicon={domain ? faviconUrl(domain) : undefined}
+                type={type}
+                variant="inline"
+              />
             </Source>
           );
         })}
@@ -217,7 +267,7 @@ function useRegisterAgentToolUIs(runId: string) {
             bottomSectors={bottomSectors}
             todaysApproach=""
           />
-          <SourceChips sources={["Finnhub", "FMP"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
@@ -345,7 +395,7 @@ function useRegisterAgentToolUIs(runId: string) {
             }
           />
           {news.length > 0 && <NewsCard articles={news} ticker={ticker} />}
-          <SourceChips sources={["Finnhub", "FMP"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
@@ -383,7 +433,7 @@ function useRegisterAgentToolUIs(runId: string) {
             volumeRatio={result.volume_ratio as string | null}
             trend={result.trend as string | null}
           />
-          <SourceChips sources={["Technical"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
@@ -429,7 +479,7 @@ function useRegisterAgentToolUIs(runId: string) {
               surprisePct: q.surprise_pct,
             }))}
           />
-          <SourceChips sources={["Earnings"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
@@ -465,7 +515,7 @@ function useRegisterAgentToolUIs(runId: string) {
             contractsAvailable={result.contracts_available as number}
             signal={result.signal as string}
           />
-          <SourceChips sources={["Options"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
@@ -570,7 +620,7 @@ function useRegisterAgentToolUIs(runId: string) {
               </div>
             )}
           </Card>
-          <SourceChips sources={["Reddit"]} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
