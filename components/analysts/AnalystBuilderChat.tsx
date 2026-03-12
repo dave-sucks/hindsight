@@ -5,13 +5,25 @@ import { useRouter } from "next/navigation";
 import { DefaultChatTransport } from "ai";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import { Thread } from "@/components/assistant-ui/thread";
+import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
 import {
   useRegisterBuilderToolUIs,
   ToolUICallbacksProvider,
 } from "@/components/assistant-ui/tool-uis";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 import { createAnalystFromBuilder } from "@/lib/actions/analyst.actions";
+import { Sparkles } from "lucide-react";
+
+const BUILDER_WELCOME: WelcomeConfig = {
+  title: "Create a new analyst",
+  subtitle:
+    "Describe the trading strategy you want — I'll build a custom analyst for you.",
+  icon: (
+    <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <Sparkles className="size-5" />
+    </div>
+  ),
+};
 
 const SUGGESTIONS = [
   {
@@ -64,6 +76,7 @@ function BuilderThread({
   return (
     <ToolUICallbacksProvider value={callbacks}>
       <Thread
+        welcomeConfig={BUILDER_WELCOME}
         composerFeatures={{
           slashCommands: false,
           tickerSearch: true,

@@ -5,13 +5,25 @@ import { useRouter } from "next/navigation";
 import { DefaultChatTransport } from "ai";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import { Thread } from "@/components/assistant-ui/thread";
+import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
+import { Settings2 } from "lucide-react";
 import {
   useRegisterEditorToolUIs,
   ToolUICallbacksProvider,
 } from "@/components/assistant-ui/tool-uis";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 import { updateAnalystFromBuilder } from "@/lib/actions/analyst.actions";
+
+const EDITOR_WELCOME: WelcomeConfig = {
+  title: "Edit your analyst",
+  subtitle:
+    "Ask questions about the current strategy or suggest changes — I'll show you a config diff.",
+  icon: (
+    <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <Settings2 className="size-5" />
+    </div>
+  ),
+};
 
 // ─── Inner component (needs to be inside AssistantRuntimeProvider) ──────────
 
@@ -41,6 +53,7 @@ function EditorThread({
   return (
     <ToolUICallbacksProvider value={callbacks}>
       <Thread
+        welcomeConfig={EDITOR_WELCOME}
         richComposer
         composerFeatures={{
           slashCommands: false,
