@@ -12,24 +12,47 @@ import { prisma } from "@/lib/prisma";
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
 
-// ── API helpers ─────────────────────────────────────────────────────────────
+// ── API helpers (with logging + error detail) ───────────────────────────────
 
-async function finnhub(path: string) {
-  const res = await fetch(
-    `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`,
-    { next: { revalidate: 300 } },
-  );
-  if (!res.ok) return null;
-  return res.json();
+async function finnhub(path: string): Promise<{ data: unknown; error?: string }> {
+  const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
+  try {
+    const res = await fetch(url, { next: { revalidate: 300 } });
+    if (!res.ok) {
+      const msg = `Finnhub ${path.split("?")[0]} returned ${res.status}`;
+      console.warn(`[finnhub] ${msg}`);
+      return { data: null, error: msg };
+    }
+    return { data: await res.json() };
+  } catch (err) {
+    const msg = `Finnhub ${path.split("?")[0]} fetch failed: ${err instanceof Error ? err.message : "unknown"}`;
+    console.error(`[finnhub] ${msg}`);
+    return { data: null, error: msg };
+  }
 }
 
-async function fmp(path: string) {
-  const res = await fetch(
-    `https://financialmodelingprep.com/api/v3${path}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`,
-    { next: { revalidate: 300 } },
-  );
-  if (!res.ok) return null;
-  return res.json();
+async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
+  const url = `https://financialmodelingprep.com/api/v3${path}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
+  try {
+    const res = await fetch(url, { next: { revalidate: 300 } });
+    if (!res.ok) {
+      const msg = `FMP ${path.split("?")[0]} returned ${res.status}`;
+      console.warn(`[fmp] ${msg}`);
+      return { data: null, error: msg };
+    }
+    const data = await res.json();
+    // FMP returns { "Error Message": "..." } on bad API key
+    if (data && typeof data === "object" && "Error Message" in data) {
+      const msg = `FMP ${path.split("?")[0]}: ${(data as Record<string, string>)["Error Message"]}`;
+      console.warn(`[fmp] ${msg}`);
+      return { data: null, error: msg };
+    }
+    return { data };
+  } catch (err) {
+    const msg = `FMP ${path.split("?")[0]} fetch failed: ${err instanceof Error ? err.message : "unknown"}`;
+    console.error(`[fmp] ${msg}`);
+    return { data: null, error: msg };
+  }
 }
 
 // ── Reddit (public JSON API — same approach as python-service/services/reddit.py) ──
@@ -54,7 +77,6 @@ async function fetchRedditSubreddit(
         },
       );
       if (res.status === 429 || res.status === 403) {
-        // Rate-limited or blocked — wait and retry
         console.warn(
           `[reddit] r/${sub} returned ${res.status} for ${ticker} (attempt ${attempt + 1}/${maxRetries + 1})`,
         );
@@ -111,8 +133,6 @@ async function redditSentiment(ticker: string) {
     results.push(...subPosts);
   }
 
-  // If all subreddits returned empty, it's likely a block/rate-limit issue.
-  // Track this separately from "no mentions found".
   if (failedCount === REDDIT_SUBREDDITS.length) {
     blockedCount = failedCount;
   }
@@ -125,10 +145,8 @@ async function redditSentiment(ticker: string) {
     return true;
   });
 
-  // Sort by score
   unique.sort((a, b) => b.score - a.score);
 
-  // Simple sentiment: positive keywords vs negative keywords
   const positiveWords = ["bull", "calls", "moon", "buy", "long", "breakout", "upgrade", "beat"];
   const negativeWords = ["bear", "puts", "crash", "sell", "short", "downgrade", "miss", "drop"];
   let sentimentScore = 0;
@@ -144,7 +162,6 @@ async function redditSentiment(ticker: string) {
     sentiment: sentimentScore > 2 ? "bullish" : sentimentScore < -2 ? "bearish" : "neutral",
     trending: unique.length >= 5,
     top_posts: unique.slice(0, 5),
-    // Diagnostic info: did all subreddits fail (likely blocked) vs just no mentions?
     all_blocked: blockedCount === REDDIT_SUBREDDITS.length,
     failed_subreddits: failedCount,
     total_subreddits: REDDIT_SUBREDDITS.length,
@@ -266,31 +283,51 @@ export function createResearchTools(ctx: ToolContext) {
         "Get current market conditions: S&P 500, VIX, and sector ETF performance. Call this first to understand the market environment.",
       inputSchema: emptyParams,
       execute: async () => {
-        const [spyQuote, sectors] = await Promise.all([
+        const errors: string[] = [];
+
+        const [spyResult, sectorResult] = await Promise.all([
           fmp("/quote/SPY"),
           fmp("/quote/XLK,XLF,XLV,XLY,XLP,XLE,XLI,XLB,XLRE,XLU,XLC"),
         ]);
 
-        const spy = spyQuote?.[0];
+        if (spyResult.error) errors.push(spyResult.error);
+        if (sectorResult.error) errors.push(sectorResult.error);
 
-        // VIX: Finnhub needs ^VIX (not plain VIX which returns 0).
-        // Try ^VIX first, fall back to FMP /quote/%5EVIX.
+        const spyQuote = spyResult.data;
+        const sectorsRaw = sectorResult.data;
+        const spy = Array.isArray(spyQuote) ? spyQuote[0] : null;
+
+        // VIX: Finnhub ^VIX first, fall back to FMP
         let vixLevel: number | null = null;
         let vixChangePct: number | null = null;
 
-        const vixFinnhub = await finnhub("/quote?symbol=%5EVIX");
+        const vixFinnhubResult = await finnhub("/quote?symbol=%5EVIX");
+        const vixFinnhub = vixFinnhubResult.data as Record<string, number> | null;
         if (vixFinnhub && typeof vixFinnhub.c === "number" && vixFinnhub.c > 0) {
           vixLevel = vixFinnhub.c;
           vixChangePct = vixFinnhub.dp ?? null;
         } else {
-          // Fallback: FMP VIX quote
-          const vixFmp = await fmp("/quote/%5EVIX");
+          if (vixFinnhubResult.error) errors.push(vixFinnhubResult.error);
+          const vixFmpResult = await fmp("/quote/%5EVIX");
+          const vixFmp = vixFmpResult.data;
           const vixItem = Array.isArray(vixFmp) ? vixFmp[0] : null;
           if (vixItem && typeof vixItem.price === "number" && vixItem.price > 0) {
             vixLevel = vixItem.price;
             vixChangePct = vixItem.changesPercentage ?? null;
+          } else if (vixFmpResult.error) {
+            errors.push(vixFmpResult.error);
           }
         }
+
+        const sectors = Array.isArray(sectorsRaw)
+          ? (sectorsRaw as { symbol: string; price: number; changesPercentage: number }[])
+              .map((s) => ({
+                symbol: s.symbol,
+                price: s.price,
+                change_pct: s.changesPercentage,
+              }))
+              .sort((a, b) => b.change_pct - a.change_pct)
+          : [];
 
         return {
           spy: spy
@@ -302,33 +339,32 @@ export function createResearchTools(ctx: ToolContext) {
               }
             : null,
           vix: vixLevel !== null
-            ? {
-                level: vixLevel,
-                change_pct: vixChangePct,
-              }
+            ? { level: vixLevel, change_pct: vixChangePct }
             : null,
-          sectors: Array.isArray(sectors)
-            ? sectors
-                .map(
-                  (s: {
-                    symbol: string;
-                    price: number;
-                    changesPercentage: number;
-                  }) => ({
-                    symbol: s.symbol,
-                    price: s.price,
-                    change_pct: s.changesPercentage,
-                  }),
-                )
-                .sort(
-                  (a: { change_pct: number }, b: { change_pct: number }) =>
-                    b.change_pct - a.change_pct,
-                )
-            : [],
+          sectors,
+          // Tell the agent exactly what failed so it can adapt
+          ...(errors.length > 0 ? { api_errors: errors, note: `Some data sources failed: ${errors.join("; ")}. Analyze what's available and proceed.` } : {}),
           _sources: [
-            { provider: "FMP", title: "SPY Real-Time Quote" },
-            { provider: "Finnhub", title: "CBOE VIX Index" },
-            { provider: "FMP", title: "S&P 500 Sector ETF Performance" },
+            {
+              provider: "FMP",
+              title: "SPY Real-Time Quote",
+              url: "https://financialmodelingprep.com/financial-statements/SPY",
+              excerpt: spy ? `SPY $${spy.price} (${spy.changesPercentage > 0 ? "+" : ""}${spy.changesPercentage?.toFixed(2)}%)` : "SPY quote unavailable",
+            },
+            {
+              provider: "Finnhub",
+              title: "CBOE VIX Index",
+              url: "https://finnhub.io/docs/api/quote",
+              excerpt: vixLevel !== null ? `VIX at ${vixLevel.toFixed(1)}${vixChangePct != null ? ` (${vixChangePct > 0 ? "+" : ""}${vixChangePct.toFixed(1)}%)` : ""}` : "VIX data unavailable",
+            },
+            {
+              provider: "FMP",
+              title: "S&P 500 Sector ETF Performance",
+              url: "https://financialmodelingprep.com/financial-statements/XLK",
+              excerpt: sectors.length > 0
+                ? `Top: ${sectors[0].symbol} ${sectors[0].change_pct > 0 ? "+" : ""}${sectors[0].change_pct?.toFixed(1)}% | Bottom: ${sectors[sectors.length - 1].symbol} ${sectors[sectors.length - 1].change_pct?.toFixed(1)}%`
+                : "Sector data unavailable",
+            },
           ],
         };
       },
@@ -344,82 +380,76 @@ export function createResearchTools(ctx: ToolContext) {
           .toISOString()
           .slice(0, 10);
 
-        // Parallel fetch from multiple sources (like old Python scanner)
-        const [earnings, gainers, losers, stTrending] = await Promise.all([
+        const [earningsResult, gainersResult, losersResult, stTrending] = await Promise.all([
           finnhub(`/calendar/earnings?from=${today}&to=${nextWeek}`),
           fmp("/stock_market/gainers"),
           fmp("/stock_market/losers"),
           stocktwitsTrending(),
         ]);
 
-        // ── Watchlist (highest priority) ──
+        const earnings = earningsResult.data as Record<string, unknown> | null;
+        const gainers = gainersResult.data as unknown[] | null;
+        const losers = losersResult.data as unknown[] | null;
+
+        // Watchlist (highest priority)
         const watchlistTickers = (ctx.watchlist ?? []).map((t) => ({
           ticker: t,
           source: "watchlist" as const,
           score: 4,
         }));
 
-        // ── Earnings calendar ──
+        // Earnings calendar
         const earningsTickers =
-          earnings?.earningsCalendar
+          (earnings as { earningsCalendar?: { symbol: string; date: string; epsEstimate: number | null }[] })
+            ?.earningsCalendar
             ?.slice(0, 15)
-            ?.map(
-              (e: {
-                symbol: string;
-                date: string;
-                epsEstimate: number | null;
-              }) => ({
-                ticker: e.symbol,
-                source: "earnings_calendar" as const,
-                date: e.date,
-                eps_estimate: e.epsEstimate,
-                score: 3,
-              }),
-            ) ?? [];
+            ?.map((e) => ({
+              ticker: e.symbol,
+              source: "earnings_calendar" as const,
+              date: e.date,
+              eps_estimate: e.epsEstimate,
+              score: 3,
+            })) ?? [];
 
-        // ── Market movers (gainers + losers) ──
-        const gainerTickers =
-          gainers
-            ?.slice(0, 8)
-            ?.map(
-              (m: {
-                symbol: string;
-                changesPercentage: number;
-                price: number;
-              }) => ({
-                ticker: m.symbol,
-                source: "top_gainers" as const,
-                change_pct: m.changesPercentage,
-                price: m.price,
-                score: 2,
-              }),
-            ) ?? [];
+        // Market movers
+        const gainerTickers = Array.isArray(gainers)
+          ? gainers
+              .slice(0, 8)
+              .map((m: unknown) => {
+                const mov = m as { symbol: string; changesPercentage: number; price: number };
+                return {
+                  ticker: mov.symbol,
+                  source: "top_gainers" as const,
+                  change_pct: mov.changesPercentage,
+                  price: mov.price,
+                  score: 2,
+                };
+              })
+          : [];
 
-        const loserTickers =
-          losers
-            ?.slice(0, 5)
-            ?.map(
-              (m: {
-                symbol: string;
-                changesPercentage: number;
-                price: number;
-              }) => ({
-                ticker: m.symbol,
-                source: "top_losers" as const,
-                change_pct: m.changesPercentage,
-                price: m.price,
-                score: 2,
-              }),
-            ) ?? [];
+        const loserTickers = Array.isArray(losers)
+          ? losers
+              .slice(0, 5)
+              .map((m: unknown) => {
+                const mov = m as { symbol: string; changesPercentage: number; price: number };
+                return {
+                  ticker: mov.symbol,
+                  source: "top_losers" as const,
+                  change_pct: mov.changesPercentage,
+                  price: mov.price,
+                  score: 2,
+                };
+              })
+          : [];
 
-        // ── StockTwits trending ──
+        // StockTwits trending
         const socialTickers = stTrending.map((t) => ({
           ticker: t,
           source: "stocktwits_trending" as const,
           score: 1,
         }));
 
-        // ── Score & deduplicate ──
+        // Score & deduplicate
         const allCandidates = [
           ...watchlistTickers,
           ...earningsTickers,
@@ -455,12 +485,10 @@ export function createResearchTools(ctx: ToolContext) {
           }
         }
 
-        // Sort by score, take top candidates
         const ranked = [...scoreMap.entries()]
           .sort((a, b) => b[1].score - a[1].score)
           .slice(0, 15);
 
-        // Split into categories for the UI
         const movers = ranked
           .filter(([, v]) =>
             v.sources.some((s) =>
@@ -498,11 +526,30 @@ export function createResearchTools(ctx: ToolContext) {
             ? `Filtered for sectors: ${sectors.join(", ")}. Review these candidates and decide which to research.`
             : "Review these candidates and decide which ones to research in depth.",
           _sources: [
-            { provider: "Finnhub", title: "Earnings Calendar (Next 7 Days)" },
-            { provider: "FMP", title: "Top Gainers & Losers" },
-            { provider: "StockTwits", title: "Trending Symbols" },
+            {
+              provider: "Finnhub",
+              title: "Earnings Calendar (Next 7 Days)",
+              url: "https://finnhub.io/docs/api/earnings-calendar",
+              excerpt: earningsOut.length > 0 ? `${earningsOut.length} upcoming: ${earningsOut.slice(0, 3).map((e) => e.ticker).join(", ")}` : "No upcoming earnings",
+            },
+            {
+              provider: "FMP",
+              title: "Top Gainers & Losers",
+              url: "https://financialmodelingprep.com/api/v3/stock_market/gainers",
+              excerpt: `${gainerTickers.length} gainers, ${loserTickers.length} losers scanned`,
+            },
+            {
+              provider: "StockTwits",
+              title: "Trending Symbols",
+              url: "https://stocktwits.com/rankings/trending",
+              excerpt: stTrending.length > 0 ? `Trending: ${stTrending.slice(0, 5).join(", ")}` : "No trending data",
+            },
             ...(ctx.watchlist?.length
-              ? [{ provider: "Watchlist", title: "Custom Watchlist" }]
+              ? [{
+                  provider: "Watchlist",
+                  title: "Custom Watchlist",
+                  excerpt: `Watching: ${ctx.watchlist.join(", ")}`,
+                }]
               : []),
           ],
         };
@@ -514,7 +561,7 @@ export function createResearchTools(ctx: ToolContext) {
         "Get comprehensive data for a stock: price quote, company profile, key financials, analyst ratings, and recent news. This is your primary research tool.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
-        const [quote, profile, financials, news, recommendations] =
+        const [quoteResult, profileResult, financialsResult, newsResult, recsResult] =
           await Promise.all([
             finnhub(`/quote?symbol=${ticker}`),
             finnhub(`/stock/profile2?symbol=${ticker}`),
@@ -524,6 +571,12 @@ export function createResearchTools(ctx: ToolContext) {
             ),
             finnhub(`/stock/recommendation?symbol=${ticker}`),
           ]);
+
+        const quote = quoteResult.data as Record<string, number> | null;
+        const profile = profileResult.data as Record<string, unknown> | null;
+        const financials = financialsResult.data as { metric?: Record<string, unknown> } | null;
+        const news = newsResult.data;
+        const recommendations = recsResult.data;
 
         const recentNews = Array.isArray(news)
           ? news.slice(0, 5).map(
@@ -544,22 +597,28 @@ export function createResearchTools(ctx: ToolContext) {
           : [];
 
         const latestRec = Array.isArray(recommendations)
-          ? recommendations[0]
+          ? (recommendations as Record<string, number>[])[0]
           : null;
 
+        // Collect errors for the agent
+        const errors: string[] = [];
+        if (quoteResult.error) errors.push(quoteResult.error);
+        if (profileResult.error) errors.push(profileResult.error);
+        if (financialsResult.error) errors.push(financialsResult.error);
+
         return {
-          quote: quote
+          quote: quote && quote.c
             ? {
-                price: quote.c as number,
-                change: quote.d as number,
-                change_pct: quote.dp as number,
-                high: quote.h as number,
-                low: quote.l as number,
-                open: quote.o as number,
-                prev_close: quote.pc as number,
+                price: quote.c,
+                change: quote.d,
+                change_pct: quote.dp,
+                high: quote.h,
+                low: quote.l,
+                open: quote.o,
+                prev_close: quote.pc,
               }
             : null,
-          company: profile
+          company: profile && profile.name
             ? {
                 name: profile.name as string,
                 sector: profile.finnhubIndustry as string,
@@ -584,20 +643,43 @@ export function createResearchTools(ctx: ToolContext) {
             : null,
           analyst_consensus: latestRec
             ? {
-                buy: latestRec.buy as number,
-                hold: latestRec.hold as number,
-                sell: latestRec.sell as number,
-                strong_buy: latestRec.strongBuy as number,
-                strong_sell: latestRec.strongSell as number,
+                buy: latestRec.buy,
+                hold: latestRec.hold,
+                sell: latestRec.sell,
+                strong_buy: latestRec.strongBuy,
+                strong_sell: latestRec.strongSell,
               }
             : null,
           news: recentNews,
+          ...(errors.length > 0 ? { api_errors: errors } : {}),
           _sources: [
-            { provider: "Finnhub", title: `${ticker} Real-Time Quote` },
-            { provider: "Finnhub", title: `${ticker} Company Profile` },
-            { provider: "Finnhub", title: `${ticker} Key Financials` },
+            {
+              provider: "Finnhub",
+              title: `${ticker} Real-Time Quote`,
+              url: "https://finnhub.io/docs/api/quote",
+              excerpt: quote && quote.c ? `$${quote.c} ${quote.dp > 0 ? "+" : ""}${quote.dp?.toFixed(2)}% | High $${quote.h} Low $${quote.l}` : "Quote unavailable",
+            },
+            {
+              provider: "Finnhub",
+              title: `${ticker} Company Profile`,
+              url: "https://finnhub.io/docs/api/company-profile2",
+              excerpt: profile && profile.name ? `${profile.name} | ${profile.finnhubIndustry} | ${profile.exchange}` : "Profile unavailable",
+            },
+            {
+              provider: "Finnhub",
+              title: `${ticker} Key Financials`,
+              url: "https://finnhub.io/docs/api/company-basic-financials",
+              excerpt: financials?.metric
+                ? `P/E ${(financials.metric.peNormalizedAnnual as number | null)?.toFixed(1) ?? "—"} | Beta ${(financials.metric.beta as number | null)?.toFixed(2) ?? "—"} | 52W $${(financials.metric["52WeekLow"] as number | null)?.toFixed(0) ?? "?"}-$${(financials.metric["52WeekHigh"] as number | null)?.toFixed(0) ?? "?"}`
+                : "Financials unavailable",
+            },
             ...(latestRec
-              ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus` }]
+              ? [{
+                  provider: "Finnhub",
+                  title: `${ticker} Analyst Consensus`,
+                  url: "https://finnhub.io/docs/api/recommendation-trends",
+                  excerpt: `Buy ${latestRec.buy + latestRec.strongBuy} | Hold ${latestRec.hold} | Sell ${latestRec.sell + latestRec.strongSell}`,
+                }]
               : []),
             ...recentNews.map((n: { source: string; headline: string; url: string; summary: string }) => ({
               provider: n.source,
@@ -620,22 +702,24 @@ export function createResearchTools(ctx: ToolContext) {
 
         // Try Finnhub first, fall back to FMP for historical prices
         let priceProvider = "Finnhub";
-        let candles = await finnhub(
+        const candleResult = await finnhub(
           `/stock/candle?symbol=${ticker}&resolution=D&from=${from}&to=${now}`,
         );
+        let candles = candleResult.data as { s?: string; c?: number[]; v?: number[] } | null;
 
         if (!candles || candles.s !== "ok" || !candles.c?.length) {
           // Fallback: try FMP historical prices
           priceProvider = "FMP";
-          const fmpHistory = await fmp(
+          const fmpResult = await fmp(
             `/historical-price-full/${ticker}?timeseries=90`,
           );
+          const fmpHistory = fmpResult.data as { historical?: { close: number; volume: number }[] } | null;
           if (fmpHistory?.historical?.length) {
-            const sorted = fmpHistory.historical.reverse(); // oldest first
+            const sorted = fmpHistory.historical.reverse();
             candles = {
               s: "ok",
-              c: sorted.map((d: { close: number }) => d.close),
-              v: sorted.map((d: { volume: number }) => d.volume),
+              c: sorted.map((d) => d.close),
+              v: sorted.map((d) => d.volume),
             };
           }
         }
@@ -695,7 +779,14 @@ export function createResearchTools(ctx: ToolContext) {
                 : "bearish (SMA20 < SMA50)"
               : "unknown",
           _sources: [
-            { provider: priceProvider, title: `${ticker} 90-Day Price History` },
+            {
+              provider: priceProvider,
+              title: `${ticker} 90-Day Price History`,
+              url: priceProvider === "Finnhub"
+                ? "https://finnhub.io/docs/api/stock-candles"
+                : `https://financialmodelingprep.com/financial-statements/${ticker}`,
+              excerpt: `RSI ${rsi?.toFixed(1) ?? "—"} | SMA20 $${sma20?.toFixed(2) ?? "—"} | SMA50 $${sma50?.toFixed(2) ?? "—"} | 52W position ${position52w}%`,
+            },
           ],
         };
       },
@@ -766,7 +857,12 @@ export function createResearchTools(ctx: ToolContext) {
             available: false,
             reason: "blocked",
             note: `Reddit API returned 403/429 for all subreddits (likely IP-based rate limiting). No Reddit sentiment data available for ${ticker}. Continue analysis with other data sources.`,
-            _sources: [{ provider: "Reddit", title: `${ticker} Reddit Sentiment (Blocked)` }],
+            _sources: [{
+              provider: "Reddit",
+              title: `${ticker} Reddit Sentiment (Blocked)`,
+              url: `https://www.reddit.com/search/?q=${ticker}&sort=new`,
+              excerpt: "Reddit API returned 403/429 — IP-based rate limiting active",
+            }],
           };
         }
 
@@ -775,15 +871,14 @@ export function createResearchTools(ctx: ToolContext) {
             available: false,
             reason: "no_mentions",
             note: `No recent Reddit mentions found for ${ticker}. This doesn't necessarily mean anything negative — some stocks simply aren't discussed on Reddit.`,
-            _sources: [{ provider: "Reddit", title: `${ticker} Reddit Search (No Results)` }],
+            _sources: [{
+              provider: "Reddit",
+              title: `${ticker} Reddit Search (No Results)`,
+              url: `https://www.reddit.com/search/?q=${ticker}&sort=new`,
+              excerpt: "No mentions found in r/wallstreetbets, r/stocks, r/options, r/investing",
+            }],
           };
         }
-
-        const redditSources = data.top_posts.map((p) => ({
-          provider: `Reddit r/${p.subreddit}`,
-          title: p.title,
-          url: p.url,
-        }));
 
         return {
           available: true,
@@ -797,7 +892,11 @@ export function createResearchTools(ctx: ToolContext) {
             url: p.url,
             score: p.score,
           })),
-          _sources: redditSources,
+          _sources: data.top_posts.map((p) => ({
+            provider: `Reddit r/${p.subreddit}`,
+            title: p.title,
+            url: p.url,
+          })),
         };
       },
     }),
@@ -807,9 +906,9 @@ export function createResearchTools(ctx: ToolContext) {
         "Get unusual options activity for a stock: put/call ratio, unusual volume contracts, and implied volatility signals.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
-        // Primary: FMP options chain (no expiration needed, returns all contracts)
-        // This matches the Python service approach and is more reliable.
-        const fmpData = await fmp(`/options/chain/${ticker.toUpperCase()}`);
+        // Primary: FMP options chain
+        const fmpResult = await fmp(`/options/chain/${ticker.toUpperCase()}`);
+        const fmpData = fmpResult.data;
 
         if (Array.isArray(fmpData) && fmpData.length > 0) {
           let totalCallVol = 0;
@@ -823,8 +922,6 @@ export function createResearchTools(ctx: ToolContext) {
             premium: number;
           }[] = [];
 
-          const stockPrice = fmpData[0]?.underlyingPrice ?? 0;
-
           for (const contract of fmpData) {
             const ctype = (contract.type ?? "").toUpperCase();
             const vol = Number(contract.volume ?? 0);
@@ -834,7 +931,6 @@ export function createResearchTools(ctx: ToolContext) {
             if (ctype === "CALL") totalCallVol += vol;
             else if (ctype === "PUT") totalPutVol += vol;
 
-            // Flag unusual: volume >5x open interest or large premium
             const volOiRatio = oi > 0 ? vol / oi : vol;
             const premium = lastPrice * vol * 100;
             if (vol > 0 && (volOiRatio >= 5 || premium >= 500_000)) {
@@ -849,7 +945,6 @@ export function createResearchTools(ctx: ToolContext) {
             }
           }
 
-          // Sort unusual by premium desc, cap at 5
           unusualContracts.sort((a, b) => b.premium - a.premium);
 
           return {
@@ -870,16 +965,22 @@ export function createResearchTools(ctx: ToolContext) {
                   : "neutral",
             data_source: "fmp",
             _sources: [
-              { provider: "FMP", title: `${ticker} Options Chain` },
+              {
+                provider: "FMP",
+                title: `${ticker} Options Chain`,
+                url: `https://financialmodelingprep.com/api/v3/options/chain/${ticker}`,
+                excerpt: `P/C ratio ${totalCallVol > 0 ? (totalPutVol / totalCallVol).toFixed(2) : "—"} | ${totalCallVol.toLocaleString()} calls / ${totalPutVol.toLocaleString()} puts | ${unusualContracts.length} unusual contracts`,
+              },
             ],
           };
         }
 
-        // Fallback: Finnhub option chain (requires expiration date guess)
+        // Fallback: Finnhub option chain
         const expDate = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
-        const finnhubData = await finnhub(
+        const finnhubResult = await finnhub(
           `/stock/option-chain?symbol=${ticker}&expiration=${expDate}`,
         );
+        const finnhubData = finnhubResult.data as { data?: { options?: { CALL?: { volume: number }[]; PUT?: { volume: number }[] }; expirationDate?: string }[] } | null;
 
         if (finnhubData?.data?.length) {
           const options = finnhubData.data[0];
@@ -912,7 +1013,12 @@ export function createResearchTools(ctx: ToolContext) {
                   : "neutral",
             data_source: "finnhub",
             _sources: [
-              { provider: "Finnhub", title: `${ticker} Options Chain` },
+              {
+                provider: "Finnhub",
+                title: `${ticker} Options Chain`,
+                url: "https://finnhub.io/docs/api/stock-option-chain",
+                excerpt: `P/C ratio ${totalCallVol > 0 ? (totalPutVol / totalCallVol).toFixed(2) : "—"} | ${calls.length} calls / ${puts.length} puts`,
+              },
             ],
           };
         }
@@ -921,7 +1027,12 @@ export function createResearchTools(ctx: ToolContext) {
           available: false,
           note: `No options data available for ${ticker}. This may be a smaller-cap stock without liquid options, or the options data providers may be temporarily unavailable.`,
           _sources: [
-            { provider: "Finnhub", title: `${ticker} Options Chain (No Data)` },
+            {
+              provider: "Finnhub",
+              title: `${ticker} Options Chain (No Data)`,
+              url: "https://finnhub.io/docs/api/stock-option-chain",
+              excerpt: "No options contracts found — may be small-cap or illiquid",
+            },
           ],
         };
       },
@@ -932,10 +1043,13 @@ export function createResearchTools(ctx: ToolContext) {
         "Get earnings estimates, historical beat rate, and upcoming earnings date for a stock.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
-        const [earnings, surprises] = await Promise.all([
+        const [earningsResult, surprisesResult] = await Promise.all([
           finnhub(`/calendar/earnings?symbol=${ticker}`),
           finnhub(`/stock/earnings?symbol=${ticker}&limit=8`),
         ]);
+
+        const earnings = earningsResult.data as { earningsCalendar?: { date: string; epsEstimate: number | null }[] } | null;
+        const surprises = surprisesResult.data;
 
         const upcoming = earnings?.earningsCalendar?.[0];
         const history = Array.isArray(surprises) ? surprises : [];
@@ -971,8 +1085,20 @@ export function createResearchTools(ctx: ToolContext) {
             }),
           ),
           _sources: [
-            { provider: "Finnhub", title: `${ticker} Earnings Calendar` },
-            { provider: "Finnhub", title: `${ticker} Earnings History` },
+            {
+              provider: "Finnhub",
+              title: `${ticker} Earnings Calendar`,
+              url: "https://finnhub.io/docs/api/earnings-calendar",
+              excerpt: upcoming ? `Next earnings: ${upcoming.date}${upcoming.epsEstimate != null ? ` (est. $${upcoming.epsEstimate})` : ""}` : "No upcoming earnings date",
+            },
+            {
+              provider: "Finnhub",
+              title: `${ticker} Earnings History`,
+              url: "https://finnhub.io/docs/api/company-earnings",
+              excerpt: history.length > 0
+                ? `Beat rate: ${Math.round((beats.length / history.length) * 100)}% over ${history.length} quarters`
+                : "No earnings history available",
+            },
           ],
         };
       },
@@ -983,7 +1109,6 @@ export function createResearchTools(ctx: ToolContext) {
         "Display your research thesis as a formatted card. Call this after you've completed your analysis of a ticker to present your findings. The thesis will be saved to the database.",
       inputSchema: thesisParams,
       execute: async (args: ThesisInput) => {
-        // Persist thesis to the database
         try {
           const thesis = await prisma.thesis.create({
             data: {
@@ -1005,7 +1130,6 @@ export function createResearchTools(ctx: ToolContext) {
           });
           return { ...args, thesis_id: thesis.id };
         } catch {
-          // If persistence fails, still return the thesis for display
           return args;
         }
       },
@@ -1075,7 +1199,6 @@ export function createResearchTools(ctx: ToolContext) {
           ),
       }),
       execute: async (args) => {
-        // Mark the run as complete
         try {
           await prisma.researchRun.update({
             where: { id: ctx.runId },
@@ -1085,7 +1208,7 @@ export function createResearchTools(ctx: ToolContext) {
             },
           });
         } catch {
-          // Non-fatal — still return the summary
+          // Non-fatal
         }
         return args;
       },

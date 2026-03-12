@@ -90,6 +90,26 @@ export async function POST(req: Request) {
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(25),
+    async onFinish({ response }) {
+      // Persist all messages from this exchange so the conversation can be replayed.
+      // We save each new message (user + assistant turns) that came in + were generated.
+      if (!runId) return;
+      try {
+        // Save the full messages array (input + output) as a single JSON blob.
+        // The last user message and the assistant response are the new turns.
+        const allMessages = [...messages, ...response.messages];
+        await prisma.runMessage.deleteMany({ where: { runId } });
+        await prisma.runMessage.create({
+          data: {
+            runId,
+            role: "thread",
+            content: JSON.stringify(allMessages),
+          },
+        });
+      } catch (err) {
+        console.error("[agent] Failed to persist messages:", err);
+      }
+    },
   });
 
   return result.toUIMessageStreamResponse();

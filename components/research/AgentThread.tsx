@@ -66,6 +66,7 @@ interface AgentThreadProps {
   analystId?: string;
   config: Record<string, unknown>;
   autoStart?: boolean;
+  initialMessages?: unknown[];
 }
 
 // ─── Shared: compact spinner ────────────────────────────────────────────────
@@ -897,6 +898,7 @@ export function AgentThread({
   analystId,
   config,
   autoStart = true,
+  initialMessages,
 }: AgentThreadProps) {
   const transport = useMemo(
     () =>
@@ -907,7 +909,10 @@ export function AgentThread({
     [runId, analystId, config],
   );
 
-  const runtime = useChatRuntime({ transport });
+  const runtime = useChatRuntime({
+    transport,
+    ...(initialMessages ? { messages: initialMessages as import("ai").UIMessage[] } : {}),
+  });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
