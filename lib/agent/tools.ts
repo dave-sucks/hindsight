@@ -1449,7 +1449,7 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Fetch recent SEC filings (10-K, 10-Q, 8-K, Form 4) for a stock from EDGAR. " +
         "Use this to check for recent regulatory filings, insider transactions, or material events.",
-      parameters: z.object({
+      inputSchema: z.object({
         symbol: z.string().describe("Ticker symbol, e.g. AAPL"),
       }),
       execute: async (args) => {
@@ -1504,7 +1504,7 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Fetch analyst price target consensus for a stock — consensus target, high, low, " +
         "and number of analysts. Use to validate entry/target price levels.",
-      parameters: z.object({
+      inputSchema: z.object({
         symbol: z.string().describe("Ticker symbol, e.g. NVDA"),
       }),
       execute: async (args) => {
@@ -1531,7 +1531,7 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Fetch peer/competitor companies for a stock with basic comparison metrics. " +
         "Use for sector alternative analysis and relative valuation.",
-      parameters: z.object({
+      inputSchema: z.object({
         symbol: z.string().describe("Ticker symbol, e.g. MSFT"),
       }),
       execute: async (args) => {
@@ -1568,7 +1568,7 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Fetch comprehensive news for a stock from multiple sources: stock-specific news, " +
         "press releases, and general market articles. More thorough than basic news.",
-      parameters: z.object({
+      inputSchema: z.object({
         symbol: z.string().describe("Ticker symbol, e.g. TSLA"),
       }),
       execute: async (args) => {

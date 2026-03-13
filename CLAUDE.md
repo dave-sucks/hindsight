@@ -125,7 +125,7 @@ learns what works. Built for one user now, marketed later.
 ## Repo
 https://github.com/dave-sucks/hindsight
 
-## Current Status — M1 through M10 (partial), 43 PRs merged
+## Current Status — M1 through M10 (partial), 46 PRs merged
 Full pipeline live end-to-end:
 - Multi-analyst setup: each AgentConfig is an "Analyst" with its own
   sectors, signals, confidence threshold, direction bias, schedule
@@ -144,8 +144,20 @@ Full pipeline live end-to-end:
 - Run page: chat-based UI (RunChatThread) transforms SSE events into
   conversation messages with inline thesis cards, source chips,
   trade placed messages
-- Analyst builder: conversational AI creates AgentConfig via
-  suggest_config tool call → ConfigPreviewCard
+- Analyst builder: full research experience with 10 tools — AI
+  researches real stocks during brainstorming, shows ThesisCards
+  inline, displays trending movers, uses $TICKER chips with live
+  prices, cites sources with [N] notation, then suggests config
+- Domain components: ThesisCard, TradeCard, TradeConfirmation,
+  AgentConfigCard, StockQuoteCard, TrendingStocksCard all render
+  inline in chat via useAssistantToolUI registrations
+- Chain of thought: ChainOfThought reasoning visible on all tool
+  calls across builder, editor, and run-followup chats
+- Agent tools: 14 tools in lib/agent/tools.ts including extended
+  data tools (SEC filings, analyst targets, company peers, news
+  deep dive) — all using inputSchema for AI SDK v6 compatibility
+- Floating analyst chat: analyst detail page has floating chat
+  overlay for quick interactions
 
 ## Known Issues / Tech Debt
 - synthesizeEventsFromTheses() does NOT generate trade_placed events
@@ -155,7 +167,6 @@ Full pipeline live end-to-end:
 - RunDetailClient.tsx (old 2-col thesis grid) is dead code — the run
   page is now chat-based at runs/[id]/page.tsx
 - No cross-trade analysis or run-wide summary at end of runs
-- No source elaboration or citation system in chat messages
 
 ## Key Files
 ### Backend / Python
@@ -202,19 +213,34 @@ Full pipeline live end-to-end:
 - components/research/RunDetailClient.tsx — OLD 2-col layout (dead
   code, replaced by runs/[id]/page.tsx chat-based view)
 - components/analysts/AnalystBuilderChat.tsx — chat-driven analyst
-  creation using useChat + suggest_config tool
+  creation using useChat + 10 tools (research, quotes, trending,
+  suggest_config). Full research experience with $TICKER chips,
+  [N] citations, ThesisCards, trending movers inline
 - components/analysts/AnalystEditorChat.tsx — chat-driven analyst
-  editing using same pattern
+  editing using same pattern + diff view
 - components/analysts/AnalystDetailClient.tsx — analyst detail 2-col
 - components/analysts/AnalystsPageClient.tsx — analyst card grid
+- components/assistant-ui/tool-uis.tsx — all tool UI renders +
+  registration hooks (useRegisterBuilderToolUIs, useRegisterEditorToolUIs,
+  useRegisterFollowupToolUIs). Includes StockQuoteRender,
+  TrendingStocksRender, ResearchTickerRender→ThesisCard,
+  PlaceTradeRender→TradeCard, CompareTickersRender, etc.
+- components/assistant-ui/thread.tsx — shared Thread component with
+  CitedMarkdownText + SourcesProvider (auto-renders $TICKER chips
+  and [N] source citations from any tool that returns _sources)
+- components/chat/TickerChip.tsx — parses $TICKER in markdown,
+  renders interactive chip with live price + hover card
+- components/chat/SourceChip.tsx — clickable source citations with
+  favicons and provider metadata
+- components/domain/ — ThesisCard, TradeCard, TradeConfirmation,
+  AgentConfigCard domain-specific UI components
 - components/chat/ChatComposer.tsx — shared chat input (textarea +
   context chips + recent theses)
-- components/chat/AssistantMessage.tsx — shared assistant bubble with
-  Sparkles avatar + MarkdownRenderer
 - components/ResearchChatFull.tsx — old custom SSE chat (analyst
   detail + /chat page), uses its own streaming, NOT useChat
 - components/dashboard/DashboardClient.tsx — Fey-style dashboard
 - components/MarketPulseStrip.tsx — live Finnhub WebSocket ticker strip
+- components/StockLogo.tsx — ticker logo from parqet with fallback
 
 ## Prisma Notes (v7)
 - Prisma 7 uses prisma.config.ts (not schema.prisma) for DB URLs
@@ -243,10 +269,14 @@ Full pipeline live end-to-end:
    still in backlog — data exists but not surfaced in UI
 10. 🔄 Streaming + Agent Observability — SSE streaming infra done,
     run page chat UI done, analyst builder/editor done, follow-up
-    chat done. REMAINING: Vercel AI Elements adoption, custom
-    domain components (ThesisCard, TradeCard), trade visibility
-    fix, cross-trade analysis, run-wide summaries, source/citation
-    system, ChatComposer rewrite with AI Elements PromptInput
+    chat done. Domain components done (ThesisCard, TradeCard,
+    TradeConfirmation, AgentConfigCard, StockQuoteCard,
+    TrendingStocksCard). Source/citation system done ($TICKER
+    chips + [N] citations via CitedMarkdownText + SourcesProvider).
+    ChainOfThought on all tool calls. Rich builder chat with 10
+    tools. Extended agent tools (SEC, analyst targets, peers, news).
+    REMAINING: trade visibility fix for legacy/cron runs,
+    cross-trade analysis, run-wide summaries, ChatComposer rewrite
 11. ⬜ AI Elements + Product Polish — adopt Vercel AI Elements
     component library (Conversation, Message, Reasoning,
     ChainOfThought, Sources, InlineCitation, Tool, PromptInput),
