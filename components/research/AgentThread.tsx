@@ -294,6 +294,16 @@ function useRegisterAgentToolUIs(runId: string) {
 
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Market conditions</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={TrendingUp} label="Fetched S&P 500, VIX" status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label={`Loaded ${sectors.length} sector ETFs`} status="complete" />
+              {apiErrors?.length ? (
+                <ChainOfThoughtStep icon={Activity} label={`Data issues: ${apiErrors.slice(0, 2).join("; ")}`} status="active" />
+              ) : null}
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <MarketContextCard
             regime={regime}
             spxChange={spy?.change_pct}
@@ -340,6 +350,14 @@ function useRegisterAgentToolUIs(runId: string) {
 
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Scanning for candidates</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Search} label={`Found ${earnings.length} earnings catalysts`} status="complete" />
+              <ChainOfThoughtStep icon={TrendingUp} label={`Found ${movers.length} top movers`} status="complete" />
+              <ChainOfThoughtStep icon={Activity} label="Checked StockTwits trending" status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <ScanResultsCard
             earnings={earnings.map((e) => ({
               ticker: e.ticker,
@@ -417,6 +435,14 @@ function useRegisterAgentToolUIs(runId: string) {
 
       return (
         <div className="my-2 space-y-1.5">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Researched {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Search} label={`Quote: $${quote?.price?.toFixed(2) ?? "—"} (${quote?.change_pct != null ? (quote.change_pct >= 0 ? "+" : "") + quote.change_pct.toFixed(2) + "%" : "—"})`} status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label={company?.name ? `${company.name} — ${company.sector ?? "Unknown sector"}` : "Company profile loaded"} status="complete" />
+              <ChainOfThoughtStep icon={Newspaper} label={`${news.length} news article${news.length !== 1 ? "s" : ""} found`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <StockCard
             ticker={ticker}
             companyName={company?.name}
@@ -482,19 +508,29 @@ function useRegisterAgentToolUIs(runId: string) {
         );
       }
 
+      const rsi = result.rsi_14 as number | null;
+      const trend = result.trend as string | null;
+
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Technical analysis — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={LineChart} label={rsi != null ? `RSI-14: ${rsi.toFixed(1)}` : "RSI computed"} status="complete" />
+              <ChainOfThoughtStep icon={Activity} label={trend ? `Trend: ${trend}` : "SMA crossover analysis"} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <TechnicalCard
             ticker={ticker}
             currentPrice={result.current_price as number}
-            rsi14={result.rsi_14 as number | null}
+            rsi14={rsi}
             sma20={result.sma_20 as number | null}
             sma50={result.sma_50 as number | null}
             priceVsSma20={result.price_vs_sma20 as string | null}
             priceVsSma50={result.price_vs_sma50 as string | null}
             positionIn52wRange={result.position_in_52w_range as string | null}
             volumeRatio={result.volume_ratio as string | null}
-            trend={result.trend as string | null}
+            trend={trend}
           />
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
@@ -534,6 +570,13 @@ function useRegisterAgentToolUIs(runId: string) {
 
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Earnings intelligence — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Calendar} label={nextEarnings ? `Next earnings: ${nextEarnings.date}` : "No upcoming earnings"} status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label={`${quarters.length} quarters analyzed — beat rate: ${result.beat_rate ?? "—"}`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <EarningsCard
             ticker={ticker}
             nextEarnings={
@@ -582,8 +625,16 @@ function useRegisterAgentToolUIs(runId: string) {
         );
       }
 
+      const signal = result.signal as string;
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Options flow — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Activity} label={`P/C ratio: ${result.put_call_ratio ?? "—"} — Signal: ${signal ?? "neutral"}`} status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label={`${result.contracts_available ?? 0} contracts analyzed`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <OptionsFlowCard
             ticker={ticker}
             putCallRatio={result.put_call_ratio as number | null}
@@ -591,7 +642,7 @@ function useRegisterAgentToolUIs(runId: string) {
             totalPutVolume={result.total_put_volume as number}
             expiration={result.expiration as string}
             contractsAvailable={result.contracts_available as number}
-            signal={result.signal as string}
+            signal={signal}
           />
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
@@ -641,6 +692,13 @@ function useRegisterAgentToolUIs(runId: string) {
 
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Reddit sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={MessageSquareText} label={`Scanned WSB, r/stocks, r/options, r/investing`} status="complete" />
+              <ChainOfThoughtStep icon={Search} label={`${mentionCount ?? 0} mentions — sentiment: ${sentiment ?? "unknown"}`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <Card className="overflow-hidden p-0">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b">
@@ -752,6 +810,13 @@ function useRegisterAgentToolUIs(runId: string) {
 
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Twitter/X sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={MessageSquareText} label="Scanned StockTwits feed" status="complete" />
+              <ChainOfThoughtStep icon={Search} label={`${mentionCount ?? 0} posts — sentiment: ${sentiment ?? "unknown"}`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <Card className="overflow-hidden p-0">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b">
@@ -854,9 +919,17 @@ function useRegisterAgentToolUIs(runId: string) {
         );
       }
       const filings = (result.filings ?? result) as { type: string; date: string; description: string; url?: string | null }[];
+      const filingsArr = Array.isArray(filings) ? filings : [];
       return (
         <div className="my-2">
-          <SecFilingsCard ticker={ticker} filings={Array.isArray(filings) ? filings : []} />
+          <ChainOfThought>
+            <ChainOfThoughtHeader>SEC filings — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={FileText} label="Looked up CIK on EDGAR" status="complete" />
+              <ChainOfThoughtStep icon={Search} label={`Found ${filingsArr.length} recent filings`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <SecFilingsCard ticker={ticker} filings={filingsArr} />
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
@@ -880,6 +953,12 @@ function useRegisterAgentToolUIs(runId: string) {
       }
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Analyst targets — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Target} label={`${result.num_analysts ?? 0} analysts — consensus: $${(result.consensus_target as number)?.toFixed(2) ?? "—"}`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <AnalystTargetsCard
             ticker={ticker}
             consensusTarget={result.consensus_target as number | null}
@@ -914,6 +993,12 @@ function useRegisterAgentToolUIs(runId: string) {
       const peers = (result.peers ?? []) as { ticker: string; name?: string; price?: number | null; change_pct?: number | null; pe_ratio?: number | null; market_cap?: number | null }[];
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Company peers — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Users} label={`Found ${peers.length} peer companies`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <PeersCard
             ticker={ticker}
             peers={peers}
@@ -960,6 +1045,13 @@ function useRegisterAgentToolUIs(runId: string) {
 
       return (
         <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>News deep dive — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Newspaper} label={`${stockNews.length} news articles`} status="complete" />
+              <ChainOfThoughtStep icon={FileText} label={`${pressReleases.length} press releases`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
           <Card className="overflow-hidden p-0">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/40">
               <span className="text-xs font-medium text-muted-foreground">News Deep Dive</span>
