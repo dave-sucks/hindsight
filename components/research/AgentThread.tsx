@@ -28,7 +28,6 @@ import { Thread } from "@/components/assistant-ui/thread";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
-  Bot,
   MessageSquare,
   TrendingUp,
   TrendingDown,
@@ -55,7 +54,7 @@ import {
 } from "@/components/domain";
 import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
 import { XPost } from "@/components/manifest-ui/x-post";
-import { PostCard } from "@/components/manifest-ui/post-card";
+import { PostList } from "@/components/manifest-ui/post-list";
 import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
 import { QuickReply as QuickReplyComponent } from "@/components/manifest-ui/quick-reply";
 
@@ -479,28 +478,23 @@ function useRegisterAgentToolUIs(runId: string) {
             }
           />
           {news.length > 0 && (
-            <div className="space-y-1.5">
-              {news.slice(0, 5).map((article, i) => (
-                <PostCard
-                  key={i}
-                  data={{
-                    post: {
-                      title: article.headline,
-                      excerpt: article.summary || undefined,
-                      category: article.source,
-                      publishedAt: article.date,
-                      url: article.url,
-                    },
-                  }}
-                  actions={{
-                    onReadMore: () => {
-                      if (article.url) window.open(article.url, "_blank", "noopener,noreferrer");
-                    },
-                  }}
-                  appearance={{ variant: "horizontal", showImage: false, showAuthor: false }}
-                />
-              ))}
-            </div>
+            <PostList
+              data={{
+                posts: news.slice(0, 5).map((article) => ({
+                  title: article.headline,
+                  excerpt: article.summary || undefined,
+                  category: article.source,
+                  publishedAt: article.date,
+                  url: article.url,
+                })),
+              }}
+              actions={{
+                onReadMore: (post) => {
+                  if (post.url) window.open(post.url, "_blank", "noopener,noreferrer");
+                },
+              }}
+              appearance={{ variant: "carousel", showAuthor: false }}
+            />
           )}
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
@@ -967,27 +961,22 @@ function useRegisterAgentToolUIs(runId: string) {
               <ChainOfThoughtStep icon={FileText} label={`${pressReleases.length} press releases`} status="complete" />
             </ChainOfThoughtContent>
           </ChainOfThought>
-          <div className="space-y-1.5">
-            {allNews.slice(0, 5).map((article, i) => (
-              <PostCard
-                key={i}
-                data={{
-                  post: {
-                    title: article.headline,
-                    category: article.source,
-                    publishedAt: article.date,
-                    url: article.url,
-                  },
-                }}
-                actions={{
-                  onReadMore: () => {
-                    if (article.url) window.open(article.url, "_blank", "noopener,noreferrer");
-                  },
-                }}
-                appearance={{ variant: "horizontal", showImage: false, showAuthor: false }}
-              />
-            ))}
-          </div>
+          <PostList
+            data={{
+              posts: allNews.slice(0, 5).map((article) => ({
+                title: article.headline,
+                category: article.source,
+                publishedAt: article.date,
+                url: article.url,
+              })),
+            }}
+            actions={{
+              onReadMore: (post) => {
+                if (post.url) window.open(post.url, "_blank", "noopener,noreferrer");
+              },
+            }}
+            appearance={{ variant: "carousel", showAuthor: false }}
+          />
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
@@ -1338,11 +1327,6 @@ function AgentThreadInner({
       welcomeConfig={{
         title: analystName,
         subtitle: "Autonomous research agent",
-        icon: (
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/20 to-blue-500/20 ring-1 ring-violet-500/30">
-            <Bot className="h-4.5 w-4.5 text-violet-600 dark:text-violet-400" />
-          </div>
-        ),
       }}
       composerSlot={
         <div>

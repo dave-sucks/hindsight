@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Bookmark,
-  Heart,
-  MessageCircle,
-  Repeat2,
-  Share,
-} from "lucide-react";
+import { Heart, MessageCircle, Repeat2 } from "lucide-react";
 
 export interface XPostProps {
   data?: {
@@ -24,7 +18,7 @@ export interface XPostProps {
 }
 
 /**
- * X (Twitter) post card.
+ * X (Twitter) post card — read-only social sentiment display.
  */
 export function XPost({ data }: XPostProps) {
   const author = data?.author;
@@ -35,30 +29,34 @@ export function XPost({ data }: XPostProps) {
   const likes = data?.likes;
   const retweets = data?.retweets;
   const replies = data?.replies;
-  const views = data?.views;
   const verified = data?.verified;
 
   if (!author && !content) {
     return null;
   }
 
+  // First letter of author or avatar text for the circle
+  const avatarLetter = avatar
+    ? avatar.charAt(0).toUpperCase()
+    : author
+      ? author.charAt(0).toUpperCase()
+      : "?";
+
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="flex gap-3">
-        {avatar && (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background">
-            {avatar}
-          </div>
-        )}
+    <div className="rounded-xl border bg-card px-3.5 py-3">
+      <div className="flex gap-2.5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+          {avatarLetter}
+        </div>
         <div className="min-w-0 flex-1">
           {(author || username || time) && (
             <div className="flex flex-wrap items-center gap-1">
               {author && (
-                <span className="text-sm font-bold">{author}</span>
+                <span className="text-xs font-semibold">{author}</span>
               )}
               {verified && (
                 <svg
-                  className="h-4 w-4 text-blue-500"
+                  className="h-3.5 w-3.5 text-blue-500"
                   viewBox="0 0 24 24"
                   fill="currentColor"
                 >
@@ -66,78 +64,42 @@ export function XPost({ data }: XPostProps) {
                 </svg>
               )}
               {username && (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   @{username}
                 </span>
               )}
               {time && (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   · {time}
                 </span>
               )}
             </div>
           )}
           {content && (
-            <p className="mt-1 whitespace-pre-wrap text-sm">{content}</p>
+            <p className="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-foreground/90">
+              {content}
+            </p>
           )}
-          {(replies || retweets || likes || views) && (
-            <div className="mt-3 flex max-w-md items-center justify-between text-muted-foreground">
+          {(replies || retweets || likes) && (
+            <div className="mt-2 flex items-center gap-4 text-muted-foreground">
               {replies !== undefined && (
-                <button
-                  aria-label="Reply"
-                  className="flex cursor-pointer items-center gap-1.5 text-xs transition-colors hover:text-blue-500"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  <span>{replies}</span>
-                </button>
+                <span className="flex items-center gap-1 text-[10px]">
+                  <MessageCircle className="h-3 w-3" />
+                  {replies}
+                </span>
               )}
               {retweets !== undefined && (
-                <button
-                  aria-label="Repost"
-                  className="flex cursor-pointer items-center gap-1.5 text-xs transition-colors hover:text-green-500"
-                >
-                  <Repeat2 className="h-4 w-4" />
-                  <span>{retweets}</span>
-                </button>
+                <span className="flex items-center gap-1 text-[10px]">
+                  <Repeat2 className="h-3 w-3" />
+                  {retweets}
+                </span>
               )}
               {likes !== undefined && (
-                <button
-                  aria-label="Like"
-                  className="flex cursor-pointer items-center gap-1.5 text-xs transition-colors hover:text-pink-500"
-                >
-                  <Heart className="h-4 w-4" />
-                  <span>{likes}</span>
-                </button>
+                <span className="flex items-center gap-1 text-[10px]">
+                  <Heart className="h-3 w-3" />
+                  {likes}
+                </span>
               )}
-              {views !== undefined && (
-                <button
-                  aria-label="Views"
-                  className="flex cursor-pointer items-center gap-1.5 text-xs transition-colors hover:text-blue-500"
-                >
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M3 12h4l3 8 4-16 3 8h4" />
-                  </svg>
-                  <span>{views}</span>
-                </button>
-              )}
-              <button
-                aria-label="Bookmark"
-                className="cursor-pointer transition-colors hover:text-blue-500"
-              >
-                <Bookmark className="h-4 w-4" />
-              </button>
-              <button
-                aria-label="Share"
-                className="cursor-pointer transition-colors hover:text-blue-500"
-              >
-                <Share className="h-4 w-4" />
-              </button>
             </div>
           )}
         </div>
