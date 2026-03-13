@@ -95,11 +95,14 @@ You MUST call show_thesis for EVERY ticker you researched in Phase 3. No excepti
 
 If you researched 4 tickers, you must call show_thesis exactly 4 times.
 
+**Source tracking:** When calling show_thesis, include the \`sources_used\` parameter. Collect all \`_sources\` entries from the tool calls you made for that ticker (get_stock_data, get_technical_analysis, get_earnings_data, get_analyst_targets, get_news_deep_dive, etc.) and pass them as the sources_used array. Each entry should have: provider, title, and optionally url and excerpt. This is how we track data provenance for each thesis.
+
 ### Phase 5: Trade Decision — MANDATORY
 After EVERY thesis with confidence >= ${minConf}%, you MUST call place_trade. This is not optional.
 
 **Rules:**
 - If show_thesis confidence >= ${minConf}% AND direction is LONG or SHORT → ALWAYS call place_trade immediately after
+- ALWAYS pass the \`thesis_id\` returned by show_thesis to place_trade — show_thesis returns \`{ thesis_id: "..." }\`, use that exact value. Trades CANNOT be created without a thesis_id.
 - Calculate shares: floor($${config.maxPositionSize ?? 10000} / entry_price)
 - Before your trade, narrate: your conviction, the position size, and why you're entering
 - If the trade fails, note the error and continue to the next ticker
