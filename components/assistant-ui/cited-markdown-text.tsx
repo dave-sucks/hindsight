@@ -26,41 +26,80 @@ import { cn } from "@/lib/utils";
 import { useSources } from "@/components/assistant-ui/message-sources-context";
 import { parseMarkers, CitationBadge } from "@/components/chat/CitedText";
 import type { SourceChipData } from "@/components/chat/SourceChip";
+import { TickerChip, parseTickerMentions } from "@/components/chat/TickerChip";
 
 // ─── Citation processing ────────────────────────────────────────────────────
 
 /**
+ * Process a plain text string: first handle [N] citations, then $TICKER mentions.
+ * Returns an array of ReactNode fragments.
+ */
+function processTextNode(
+  text: string,
+  sources: SourceChipData[],
+  keyPrefix: string,
+): ReactNode[] {
+  const result: ReactNode[] = [];
+
+  // Step 1: Split on citations [N]
+  const citationSegments = parseMarkers(text);
+
+  for (let i = 0; i < citationSegments.length; i++) {
+    const seg = citationSegments[i];
+
+    if (seg.type === "citation") {
+      const sourceIdx = seg.index - 1;
+      const source = sources[sourceIdx];
+      if (!source) {
+        result.push(
+          <sup key={`${keyPrefix}-c${i}`} className="text-muted-foreground text-[10px]">
+            [{seg.index}]
+          </sup>,
+        );
+      } else {
+        result.push(
+          <CitationBadge key={`${keyPrefix}-c${i}`} index={seg.index} source={source} />,
+        );
+      }
+      continue;
+    }
+
+    // Step 2: Plain text — check for $TICKER mentions
+    const tickerSegments = parseTickerMentions(seg.value);
+    if (tickerSegments.length === 1 && tickerSegments[0].type === "text") {
+      // No tickers — just push plain text
+      result.push(<Fragment key={`${keyPrefix}-t${i}`}>{seg.value}</Fragment>);
+    } else {
+      for (let j = 0; j < tickerSegments.length; j++) {
+        const tseg = tickerSegments[j];
+        if (tseg.type === "text") {
+          result.push(<Fragment key={`${keyPrefix}-t${i}-${j}`}>{tseg.value}</Fragment>);
+        } else {
+          result.push(<TickerChip key={`${keyPrefix}-tk${i}-${j}`} symbol={tseg.symbol} />);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * Recursively walks React children, replacing text containing [N] patterns
- * with CitationBadge popovers. Handles nested elements (strong, em, a, etc.)
+ * with CitationBadge popovers and $TICKER with interactive chips.
+ * Handles nested elements (strong, em, a, etc.)
  */
 function processCitationChildren(
   children: ReactNode,
   sources: SourceChipData[],
 ): ReactNode {
-  return Children.map(children, (child) => {
-    // String text node — check for [N] markers
+  return Children.map(children, (child, idx) => {
+    // String text node — process citations + tickers
     if (typeof child === "string") {
-      const segments = parseMarkers(child);
-      // No citations found — return as-is
-      if (segments.length === 1 && segments[0].type === "text") {
-        return child;
-      }
-      return segments.map((seg, i) => {
-        if (seg.type === "text") {
-          return <Fragment key={i}>{seg.value}</Fragment>;
-        }
-        const sourceIdx = seg.index - 1; // 1-based → 0-based
-        const source = sources[sourceIdx];
-        if (!source) {
-          // Fallback: render plain superscript if source not found
-          return (
-            <sup key={i} className="text-muted-foreground text-[10px]">
-              [{seg.index}]
-            </sup>
-          );
-        }
-        return <CitationBadge key={i} index={seg.index} source={source} />;
-      });
+      const nodes = processTextNode(child, sources, `n${idx}`);
+      // If nothing was transformed, return plain string
+      if (nodes.length === 1 && typeof nodes[0] === "string") return child;
+      return nodes;
     }
 
     // React element with children — recurse into it
@@ -81,11 +120,16 @@ function processCitationChildren(
 
 // ─── Citation-aware text container components ───────────────────────────────
 
+/**
+ * Process children: always run through processCitationChildren which now
+ * handles both [N] citations AND $TICKER mentions. Even with 0 sources,
+ * we still want tickers to render.
+ */
 function CitedP({ className, children, ...props }: React.ComponentProps<"p">) {
   const sources = useSources();
   return (
     <p className={cn("aui-md-p my-2.5 leading-normal first:mt-0 last:mb-0", className)} {...props}>
-      {sources.length > 0 ? processCitationChildren(children, sources) : children}
+      {processCitationChildren(children, sources)}
     </p>
   );
 }
@@ -94,7 +138,7 @@ function CitedLi({ className, children, ...props }: React.ComponentProps<"li">) 
   const sources = useSources();
   return (
     <li className={cn("aui-md-li leading-normal", className)} {...props}>
-      {sources.length > 0 ? processCitationChildren(children, sources) : children}
+      {processCitationChildren(children, sources)}
     </li>
   );
 }
@@ -109,7 +153,7 @@ function CitedTd({ className, children, ...props }: React.ComponentProps<"td">) 
       )}
       {...props}
     >
-      {sources.length > 0 ? processCitationChildren(children, sources) : children}
+      {processCitationChildren(children, sources)}
     </td>
   );
 }
@@ -124,7 +168,7 @@ function CitedBlockquote({ className, children, ...props }: React.ComponentProps
       )}
       {...props}
     >
-      {sources.length > 0 ? processCitationChildren(children, sources) : children}
+      {processCitationChildren(children, sources)}
     </blockquote>
   );
 }
