@@ -11,33 +11,47 @@ export async function POST(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return new Response("Unauthorized", { status: 401 });
+  if (!user) {
+    console.warn("[agent-run] Unauthorized request");
+    return new Response("Unauthorized", { status: 401 });
+  }
 
   const { agentConfigId } = (await req.json()) as {
     agentConfigId?: string;
   };
 
+  console.log(`[agent-run] Creating run for user=${user.id} agentConfigId=${agentConfigId ?? "none"}`);
+
   // Load agent config if provided
   const agentConfig = agentConfigId
     ? await prisma.agentConfig
         .findFirst({ where: { id: agentConfigId, userId: user.id } })
-        .catch(() => null)
+        .catch((err) => {
+          console.error("[agent-run] Failed to load config:", err);
+          return null;
+        })
     : null;
 
-  const run = await prisma.researchRun.create({
-    data: {
-      userId: user.id,
-      source: "MANUAL",
-      status: "RUNNING",
-      parameters: agentConfig
-        ? ({
-            analystName: agentConfig.name,
-            agentMode: true,
-          } as object)
-        : ({ agentMode: true } as object),
-      ...(agentConfig ? { agentConfigId: agentConfig.id } : {}),
-    },
-  });
+  try {
+    const run = await prisma.researchRun.create({
+      data: {
+        userId: user.id,
+        source: "MANUAL",
+        status: "RUNNING",
+        parameters: agentConfig
+          ? ({
+              analystName: agentConfig.name,
+              agentMode: true,
+            } as object)
+          : ({ agentMode: true } as object),
+        ...(agentConfig ? { agentConfigId: agentConfig.id } : {}),
+      },
+    });
 
-  return Response.json({ runId: run.id });
+    console.log(`[agent-run] Created run=${run.id} analyst=${agentConfig?.name ?? "none"}`);
+    return Response.json({ runId: run.id });
+  } catch (err) {
+    console.error("[agent-run] Failed to create run:", err);
+    return new Response("Failed to create run", { status: 500 });
+  }
 }

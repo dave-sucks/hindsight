@@ -112,14 +112,17 @@ export function StockCard({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Card
-          className={cn(
-            "overflow-hidden p-0 cursor-pointer transition-colors hover:bg-accent/30",
-            className,
-          )}
-          {...cardProps}
-        >
+      <SheetTrigger
+        render={
+          <Card
+            className={cn(
+              "overflow-hidden p-0 cursor-pointer transition-colors hover:bg-accent/30",
+              className,
+            )}
+            {...cardProps}
+          />
+        }
+      >
           <div className="flex items-center gap-3 px-4 py-3">
             {/* Ticker + company */}
             <div className="flex items-center gap-2 min-w-0">
@@ -200,7 +203,6 @@ export function StockCard({
               </span>
             )}
           </div>
-        </Card>
       </SheetTrigger>
 
       <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">

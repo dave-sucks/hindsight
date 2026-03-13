@@ -211,9 +211,9 @@ export default async function RunPage({
 
   // Agent mode: all new runs use the real LLM agent.
   // Legacy runs (no agentMode flag) fall back to the old event view.
-  // COMPLETED agent runs fall back to event view so results persist on reload.
   const isAgentMode = config.agentMode === true;
-  const useAgent = isAgentMode && run.status === "RUNNING";
+  // Use agent UI for both RUNNING (live) and COMPLETE (replay) agent runs
+  const useAgent = isAgentMode && (run.status === "RUNNING" || run.status === "COMPLETE");
 
   // Legacy-only: stale detection + event synthesis
   const isStaleRun =
@@ -223,7 +223,7 @@ export default async function RunPage({
     Date.now() - new Date(run.startedAt).getTime() > 15 * 60 * 1_000;
 
   // Load saved agent messages for completed runs
-  const savedMessages = useAgent && run.status === "COMPLETE"
+  const savedMessages = isAgentMode && run.status === "COMPLETE"
     ? await prisma.runMessage.findFirst({
         where: { runId: id, role: "thread" },
         orderBy: { createdAt: "desc" },
