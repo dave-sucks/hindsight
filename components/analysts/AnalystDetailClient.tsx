@@ -130,9 +130,12 @@ function SidebarTradeRow({ trade }: { trade: TradeWithThesis }) {
 
 function StrategyDocument({
   config,
+  fullSystemPrompt,
 }: {
   config: AnalystDetail["config"];
+  fullSystemPrompt?: string;
 }) {
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
   const prompt = config.analystPrompt;
   const hasPrompt = !!prompt && prompt.trim().length > 0;
 
@@ -373,6 +376,37 @@ function StrategyDocument({
             ))}
           </div>
         </div>
+
+        {/* Full System Prompt viewer */}
+        {fullSystemPrompt && (
+          <div className="space-y-3">
+            <button
+              onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+              className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 transition-transform",
+                  showSystemPrompt && "rotate-180"
+                )}
+              />
+              Full Agent System Prompt
+            </button>
+            {showSystemPrompt && (
+              <Card className="p-0 overflow-hidden">
+                <div className="bg-muted/30 border-b px-4 py-2">
+                  <p className="text-[10px] font-medium text-muted-foreground">
+                    This is the complete system prompt sent to GPT-4o at the start of every research run.
+                    It includes your strategy prompt, rules, and the agent&apos;s operating instructions.
+                  </p>
+                </div>
+                <pre className="p-4 text-xs text-foreground/80 whitespace-pre-wrap font-mono leading-relaxed max-h-[600px] overflow-y-auto">
+                  {fullSystemPrompt}
+                </pre>
+              </Card>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -489,9 +523,11 @@ function ConfigSheet({
 export default function AnalystDetailClient({
   detail,
   hasRunning,
+  fullSystemPrompt,
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
+  fullSystemPrompt?: string;
 }) {
   const { config, stats, recentRuns, recentTrades } = detail;
   const [configOpen, setConfigOpen] = useState(false);
@@ -835,7 +871,7 @@ export default function AnalystDetailClient({
           ) : (
             /* Strategy document view with floating chat trigger */
             <>
-              <StrategyDocument config={config} />
+              <StrategyDocument config={config} fullSystemPrompt={fullSystemPrompt} />
 
               {/* Floating chat trigger */}
               <div className="absolute bottom-6 right-6 z-10">

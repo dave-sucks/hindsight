@@ -377,6 +377,9 @@ export async function getAnalystDetail(
     maxPositionSize: config.maxPositionSize,
     maxRiskPct: config.maxRiskPct,
     minMarketCapTier: config.minMarketCapTier,
+    watchlist: config.watchlist as string[] ?? [],
+    exclusionList: config.exclusionList as string[] ?? [],
+    dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -538,6 +541,8 @@ export async function createAnalystFromBuilder(
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
 
+  console.log(`[analyst] Creating analyst: name="${data.name}" sectors=${data.sectors?.join(",") ?? "all"} bias=${data.directionBias}`);
+
   const analyst = await prisma.agentConfig.create({
     data: {
       userId,
@@ -572,6 +577,7 @@ export async function createAnalystFromBuilder(
     },
   });
 
+  console.log(`[analyst] Created analyst id=${analyst.id} name="${data.name}"`);
   revalidatePath("/analysts");
   return { id: analyst.id };
 }

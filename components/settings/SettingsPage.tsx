@@ -274,10 +274,8 @@ function AlertConfigCard({
         description="Send digest to a different address (leave blank to use your account email)"
       >
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span tabIndex={0}>
-              <Switch checked={false} disabled className="opacity-40 cursor-not-allowed" />
-            </span>
+          <TooltipTrigger render={<span tabIndex={0} />}>
+            <Switch checked={false} disabled className="opacity-40 cursor-not-allowed" />
           </TooltipTrigger>
           <TooltipContent>
             <p className="text-xs">Slack integration coming in M6</p>
