@@ -48,13 +48,16 @@ import {
   EarningsCard,
   OptionsFlowCard,
   ScanResultsCard,
-  NewsCard,
   RunSummaryCard,
   SecFilingsCard,
   AnalystTargetsCard,
   PeersCard,
 } from "@/components/domain";
 import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
+import { XPost } from "@/components/manifest-ui/x-post";
+import { PostCard } from "@/components/manifest-ui/post-card";
+import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
+import { QuickReply as QuickReplyComponent } from "@/components/manifest-ui/quick-reply";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -475,7 +478,30 @@ function useRegisterAgentToolUIs(runId: string) {
                 : null
             }
           />
-          {news.length > 0 && <NewsCard articles={news} ticker={ticker} />}
+          {news.length > 0 && (
+            <div className="space-y-1.5">
+              {news.slice(0, 5).map((article, i) => (
+                <PostCard
+                  key={i}
+                  data={{
+                    post: {
+                      title: article.headline,
+                      excerpt: article.summary || undefined,
+                      category: article.source,
+                      publishedAt: article.date,
+                      url: article.url,
+                    },
+                  }}
+                  actions={{
+                    onReadMore: () => {
+                      if (article.url) window.open(article.url, "_blank", "noopener,noreferrer");
+                    },
+                  }}
+                  appearance={{ variant: "horizontal", showImage: false, showAuthor: false }}
+                />
+              ))}
+            </div>
+          )}
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
@@ -699,70 +725,22 @@ function useRegisterAgentToolUIs(runId: string) {
               <ChainOfThoughtStep icon={Search} label={`${mentionCount ?? 0} mentions — sentiment: ${sentiment ?? "unknown"}`} status="complete" />
             </ChainOfThoughtContent>
           </ChainOfThought>
-          <Card className="overflow-hidden p-0">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-b">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-3.5 w-3.5 text-orange-500" />
-                <span className="text-xs font-medium">Reddit</span>
-                <span className="text-xs font-semibold font-mono">{ticker}</span>
-                {mentionCount != null && (
-                  <span className="text-[10px] text-muted-foreground">
-                    {mentionCount} mentions
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5">
-                {trending && (
-                  <Badge variant="secondary" className="text-[10px] py-0 bg-orange-500/10 text-orange-500 font-semibold">
-                    TRENDING
-                  </Badge>
-                )}
-                {sentiment && (
-                  <Badge
-                    variant="secondary"
-                    className={cn(
-                      "text-[10px] py-0 font-semibold",
-                      sentiment === "bullish" && "bg-emerald-500/10 text-emerald-500",
-                      sentiment === "bearish" && "bg-red-500/10 text-red-500",
-                      sentiment === "neutral" && "bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {sentiment.toUpperCase()}
-                  </Badge>
-                )}
-              </div>
+          {sources.length > 0 && (
+            <div className="space-y-1.5">
+              {sources.slice(0, 5).map((s, i) => (
+                <XPost
+                  key={i}
+                  data={{
+                    author: s.provider || "Reddit",
+                    username: s.provider?.replace(/^r\//, "") || "reddit",
+                    avatar: "R",
+                    content: s.title || "Untitled post",
+                    likes: s.score != null ? String(s.score) : undefined,
+                  }}
+                />
+              ))}
             </div>
-            {/* Posts */}
-            {sources.length > 0 && (
-              <div className="divide-y">
-                {sources.slice(0, 5).map((s, i) => (
-                  <div key={i} className="flex items-start gap-2.5 px-4 py-2">
-                    <span className="text-[10px] text-muted-foreground font-mono tabular-nums shrink-0 mt-0.5 w-8 text-right">
-                      {s.score != null ? (s.score >= 1000 ? `${(s.score / 1000).toFixed(1)}k` : s.score) : "—"}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      {s.url ? (
-                        <a
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-foreground hover:underline line-clamp-2 leading-snug"
-                        >
-                          {s.title || "Untitled post"}
-                        </a>
-                      ) : (
-                        <span className="text-xs text-foreground line-clamp-2 leading-snug">
-                          {s.title || "Untitled post"}
-                        </span>
-                      )}
-                      <span className="text-[10px] text-muted-foreground">{s.provider}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          )}
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
@@ -817,85 +795,22 @@ function useRegisterAgentToolUIs(runId: string) {
               <ChainOfThoughtStep icon={Search} label={`${mentionCount ?? 0} posts — sentiment: ${sentiment ?? "unknown"}`} status="complete" />
             </ChainOfThoughtContent>
           </ChainOfThought>
-          <Card className="overflow-hidden p-0">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-b">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
-                <span className="text-xs font-medium">Twitter/X</span>
-                <span className="text-xs font-semibold font-mono">{ticker}</span>
-                {mentionCount != null && mentionCount > 0 && (
-                  <span className="text-[10px] text-muted-foreground tabular-nums">
-                    {mentionCount} posts
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5">
-                {trendingFlag && (
-                  <Badge variant="secondary" className="text-[10px] py-0 bg-blue-500/10 text-blue-500 font-semibold">
-                    TRENDING
-                  </Badge>
-                )}
-                {sentiment && (
-                  <Badge
-                    variant="secondary"
-                    className={cn(
-                      "text-[10px] py-0 font-semibold",
-                      sentiment === "bullish" && "bg-emerald-500/10 text-emerald-500",
-                      sentiment === "bearish" && "bg-red-500/10 text-red-500",
-                      sentiment === "neutral" && "bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {sentiment.toUpperCase()}
-                  </Badge>
-                )}
-              </div>
+          {postsList.length > 0 && (
+            <div className="space-y-1.5">
+              {postsList.slice(0, 5).map((p, i) => (
+                <XPost
+                  key={i}
+                  data={{
+                    author: p.username,
+                    username: p.username,
+                    content: p.body,
+                    likes: p.likes != null && p.likes > 0 ? String(p.likes) : undefined,
+                    time: p.created_at,
+                  }}
+                />
+              ))}
             </div>
-            {/* Watchlist + FMP row */}
-            {(watchlistCount != null && watchlistCount > 0 || fmpSent) && (
-              <div className="flex items-center gap-4 px-4 py-2 border-b bg-muted/20 text-[10px] text-muted-foreground">
-                {watchlistCount != null && watchlistCount > 0 && (
-                  <span className="tabular-nums">
-                    {watchlistCount >= 1000 ? `${(watchlistCount / 1000).toFixed(1)}k` : watchlistCount} watchers
-                  </span>
-                )}
-                {fmpSent && (
-                  <span className="tabular-nums">
-                    FMP sentiment: <span className={cn(
-                      fmpSent.sentiment > 0.6 ? "text-emerald-500" :
-                      fmpSent.sentiment < 0.4 ? "text-red-500" :
-                      "text-muted-foreground"
-                    )}>{(fmpSent.sentiment * 100).toFixed(0)}%</span>
-                    {fmpSent.mentions > 0 && ` (${fmpSent.mentions} mentions)`}
-                  </span>
-                )}
-              </div>
-            )}
-            {/* Posts */}
-            {postsList.length > 0 && (
-              <div className="divide-y">
-                {postsList.slice(0, 5).map((p, i) => (
-                  <div key={i} className="flex items-start gap-2.5 px-4 py-2">
-                    <span className="text-[10px] text-muted-foreground font-medium shrink-0 mt-0.5 w-16 truncate">
-                      @{p.username}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <span className="text-xs text-foreground line-clamp-2 leading-snug">
-                        {p.body}
-                      </span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {p.likes != null && p.likes > 0 && (
-                          <span className="text-[10px] text-muted-foreground tabular-nums">
-                            {p.likes} likes
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          )}
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
@@ -1052,16 +967,27 @@ function useRegisterAgentToolUIs(runId: string) {
               <ChainOfThoughtStep icon={FileText} label={`${pressReleases.length} press releases`} status="complete" />
             </ChainOfThoughtContent>
           </ChainOfThought>
-          <Card className="overflow-hidden p-0">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/40">
-              <span className="text-xs font-medium text-muted-foreground">News Deep Dive</span>
-              <span className="text-xs font-mono font-medium">{ticker}</span>
-              <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
-                {allNews.length} article{allNews.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-            <NewsCard articles={allNews} />
-          </Card>
+          <div className="space-y-1.5">
+            {allNews.slice(0, 5).map((article, i) => (
+              <PostCard
+                key={i}
+                data={{
+                  post: {
+                    title: article.headline,
+                    category: article.source,
+                    publishedAt: article.date,
+                    url: article.url,
+                  },
+                }}
+                actions={{
+                  onReadMore: () => {
+                    if (article.url) window.open(article.url, "_blank", "noopener,noreferrer");
+                  },
+                }}
+                appearance={{ variant: "horizontal", showImage: false, showAuthor: false }}
+              />
+            ))}
+          </div>
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
@@ -1205,13 +1131,15 @@ function useRegisterAgentToolUIs(runId: string) {
     render: ({ result }) => {
       if (!result) {
         return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Placing trade</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={TrendingUp} label="Submitting to Alpaca Paper" status="active" />
-              <ChainOfThoughtStep icon={Activity} label="Waiting for fill" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
+          <div className="my-2 max-w-md">
+            <OrderConfirm
+              data={{
+                productName: "Placing trade…",
+                productVariant: "Submitting to Alpaca Paper",
+              }}
+              control={{ isLoading: true }}
+            />
+          </div>
         );
       }
 
@@ -1359,24 +1287,21 @@ function QuickReplies() {
   if (!visible) return null;
 
   return (
-    <div className="flex flex-wrap gap-1.5 pb-2">
-      {FOLLOW_UP_SUGGESTIONS.map((text) => (
-        <button
-          key={text}
-          type="button"
-          onClick={() => {
-            setVisible(false);
-            threadRuntime.append({
-              role: "user",
-              content: [{ type: "text", text }],
-            });
-          }}
-          className="inline-flex items-center rounded-full border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        >
-          {text}
-        </button>
-      ))}
-    </div>
+    <QuickReplyComponent
+      data={{
+        replies: FOLLOW_UP_SUGGESTIONS.map((text) => ({ label: text })),
+      }}
+      actions={{
+        onSelectReply: (reply) => {
+          if (!reply.label) return;
+          setVisible(false);
+          threadRuntime.append({
+            role: "user",
+            content: [{ type: "text", text: reply.label }],
+          });
+        },
+      }}
+    />
   );
 }
 
