@@ -166,14 +166,25 @@ export const morningResearch = inngest.createFunction(
                 analystName: config.name,
               },
             }),
-            signal: AbortSignal.timeout(120_000), // 2 min timeout
+            signal: AbortSignal.timeout(300_000), // 5 min timeout (pipeline needs time for multi-ticker research)
           });
 
           if (!res.ok) {
             const text = await res.text().catch(() => "");
+            console.error(
+              `[morning-research] Python service ${res.status} for config=${config.id} (${config.name}): ${text.slice(0, 500)}`
+            );
             await prisma.researchRun.update({
               where: { id: run.id },
-              data: { status: "FAILED", completedAt: new Date() },
+              data: {
+                status: "FAILED",
+                completedAt: new Date(),
+                parameters: {
+                  ...(run.parameters as object),
+                  error: `Python service ${res.status}: ${text.slice(0, 200)}`,
+                  failedAt: new Date().toISOString(),
+                } as object,
+              },
             });
             return { error: `Python service ${res.status}: ${text}` };
           }
@@ -182,9 +193,20 @@ export const morningResearch = inngest.createFunction(
           theses = data.theses ?? [];
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
+          console.error(
+            `[morning-research] Python service FAILED for config=${config.id} (${config.name}): ${message}`
+          );
           await prisma.researchRun.update({
             where: { id: run.id },
-            data: { status: "FAILED", completedAt: new Date() },
+            data: {
+              status: "FAILED",
+              completedAt: new Date(),
+              parameters: {
+                ...(run.parameters as object),
+                error: message,
+                failedAt: new Date().toISOString(),
+              } as object,
+            },
           });
           return { error: `Network error: ${message}` };
         }
@@ -281,8 +303,12 @@ export const morningResearch = inngest.createFunction(
             tradesPlaced++;
             slotsLeft--;
             totalTradesPlaced++;
-          } catch {
-            // Order failed — don't block the rest of the run
+          } catch (tradeErr) {
+            // Order failed — log the error but don't block the rest of the run
+            const tradeErrMsg = tradeErr instanceof Error ? tradeErr.message : String(tradeErr);
+            console.error(
+              `[morning-research] Trade FAILED for ${thesis.ticker} (${thesis.direction}): ${tradeErrMsg}`
+            );
             continue;
           }
         }
