@@ -36,16 +36,21 @@ async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
   try {
     const res = await fetch(url, { next: { revalidate: 300 } });
     if (!res.ok) {
-      const msg = `FMP ${path.split("?")[0]} returned ${res.status}`;
+      const body = await res.text().catch(() => "");
+      const msg = `FMP ${path.split("?")[0]} returned ${res.status}: ${body.slice(0, 200)}`;
       console.warn(`[fmp] ${msg}`);
       return { data: null, error: msg };
     }
     const data = await res.json();
-    // FMP returns { "Error Message": "..." } on bad API key
-    if (data && typeof data === "object" && "Error Message" in data) {
+    // FMP returns { "Error Message": "..." } on bad API key or invalid endpoint
+    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in data) {
       const msg = `FMP ${path.split("?")[0]}: ${(data as Record<string, string>)["Error Message"]}`;
       console.warn(`[fmp] ${msg}`);
       return { data: null, error: msg };
+    }
+    // FMP sometimes returns empty array for valid-but-unsupported symbols
+    if (Array.isArray(data) && data.length === 0) {
+      console.warn(`[fmp] ${path.split("?")[0]} returned empty array`);
     }
     return { data };
   } catch (err) {
@@ -286,19 +291,56 @@ export function createResearchTools(ctx: ToolContext) {
         console.log(`[tool] get_market_overview runId=${ctx.runId}`);
         const errors: string[] = [];
 
+        // Fetch SPY + sector ETFs. Try batch first, fall back to individual fetches.
+        const SECTOR_ETFS = ["XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLB", "XLRE", "XLU", "XLC"];
+
         const [spyResult, sectorResult] = await Promise.all([
           fmp("/quote/SPY"),
-          fmp("/quote/XLK,XLF,XLV,XLY,XLP,XLE,XLI,XLB,XLRE,XLU,XLC"),
+          fmp(`/quote/${SECTOR_ETFS.join(",")}`),
         ]);
 
         if (spyResult.error) errors.push(spyResult.error);
-        if (sectorResult.error) errors.push(sectorResult.error);
 
         const spyQuote = spyResult.data;
-        const sectorsRaw = sectorResult.data;
+        let sectorsRaw = sectorResult.data;
         const spy = Array.isArray(spyQuote) ? spyQuote[0] : null;
 
-        // VIX: Finnhub ^VIX first, fall back to FMP
+        // If batch sector fetch failed or returned empty, fetch individually
+        if (!Array.isArray(sectorsRaw) || sectorsRaw.length === 0) {
+          if (sectorResult.error) errors.push(sectorResult.error);
+          console.log(`[tool] Batch sector fetch failed, trying individual fetches...`);
+          const individualResults = await Promise.all(
+            SECTOR_ETFS.slice(0, 6).map((etf) => fmp(`/quote/${etf}`))
+          );
+          const collected: unknown[] = [];
+          for (const r of individualResults) {
+            if (Array.isArray(r.data) && r.data.length > 0) collected.push(r.data[0]);
+          }
+          if (collected.length > 0) {
+            sectorsRaw = collected;
+            console.log(`[tool] Individual sector fetch got ${collected.length} ETFs`);
+          }
+        }
+
+        // If FMP failed for SPY, try Finnhub as fallback
+        let spyData = spy;
+        if (!spyData) {
+          const spyFinnhub = await finnhub("/quote?symbol=SPY");
+          const fh = spyFinnhub.data as Record<string, number> | null;
+          if (fh && typeof fh.c === "number" && fh.c > 0) {
+            spyData = {
+              price: fh.c,
+              changesPercentage: fh.dp ?? 0,
+              dayHigh: fh.h ?? fh.c,
+              dayLow: fh.l ?? fh.c,
+            };
+            console.log(`[tool] SPY from Finnhub fallback: $${fh.c}`);
+          }
+        }
+
+        console.log(`[tool] get_market_overview SPY=${spyData ? `$${spyData.price}` : "null"} sectors=${Array.isArray(sectorsRaw) ? sectorsRaw.length : "null"}`);
+
+        // VIX: try Finnhub ^VIX → FMP ^VIX → FMP VIXY (ETF proxy)
         let vixLevel: number | null = null;
         let vixChangePct: number | null = null;
 
@@ -307,16 +349,31 @@ export function createResearchTools(ctx: ToolContext) {
         if (vixFinnhub && typeof vixFinnhub.c === "number" && vixFinnhub.c > 0) {
           vixLevel = vixFinnhub.c;
           vixChangePct = vixFinnhub.dp ?? null;
+          console.log(`[tool] VIX from Finnhub: ${vixLevel}`);
         } else {
           if (vixFinnhubResult.error) errors.push(vixFinnhubResult.error);
+          // Fallback 1: FMP ^VIX
           const vixFmpResult = await fmp("/quote/%5EVIX");
           const vixFmp = vixFmpResult.data;
           const vixItem = Array.isArray(vixFmp) ? vixFmp[0] : null;
           if (vixItem && typeof vixItem.price === "number" && vixItem.price > 0) {
             vixLevel = vixItem.price;
             vixChangePct = vixItem.changesPercentage ?? null;
-          } else if (vixFmpResult.error) {
-            errors.push(vixFmpResult.error);
+            console.log(`[tool] VIX from FMP ^VIX: ${vixLevel}`);
+          } else {
+            if (vixFmpResult.error) errors.push(vixFmpResult.error);
+            // Fallback 2: VIXY ETF (tracks VIX futures)
+            const vixyResult = await fmp("/quote/VIXY");
+            const vixyData = vixyResult.data;
+            const vixyItem = Array.isArray(vixyData) ? vixyData[0] : null;
+            if (vixyItem && typeof vixyItem.price === "number" && vixyItem.price > 0) {
+              // VIXY is a proxy, not the actual VIX level — but gives directionality
+              vixLevel = vixyItem.price;
+              vixChangePct = vixyItem.changesPercentage ?? null;
+              console.log(`[tool] VIX from VIXY proxy: ${vixLevel}`);
+            } else {
+              console.warn(`[tool] All VIX sources failed`);
+            }
           }
         }
 
@@ -331,12 +388,12 @@ export function createResearchTools(ctx: ToolContext) {
           : [];
 
         return {
-          spy: spy
+          spy: spyData
             ? {
-                price: spy.price as number,
-                change_pct: spy.changesPercentage as number,
-                day_high: spy.dayHigh as number,
-                day_low: spy.dayLow as number,
+                price: spyData.price as number,
+                change_pct: spyData.changesPercentage as number,
+                day_high: spyData.dayHigh as number,
+                day_low: spyData.dayLow as number,
               }
             : null,
           vix: vixLevel !== null
@@ -350,7 +407,7 @@ export function createResearchTools(ctx: ToolContext) {
               provider: "FMP",
               title: "SPY Real-Time Quote",
               url: "https://financialmodelingprep.com/financial-statements/SPY",
-              excerpt: spy ? `SPY $${spy.price} (${spy.changesPercentage > 0 ? "+" : ""}${spy.changesPercentage?.toFixed(2)}%)` : "SPY quote unavailable",
+              excerpt: spyData ? `SPY $${spyData.price} (${spyData.changesPercentage > 0 ? "+" : ""}${Number(spyData.changesPercentage)?.toFixed(2)}%)` : "SPY quote unavailable",
             },
             {
               provider: "Finnhub",

@@ -212,33 +212,21 @@ export default async function RunPage({
   // Agent mode: all new runs use the real LLM agent.
   // Legacy runs (no agentMode flag) fall back to the old event view.
   const isAgentMode = config.agentMode === true;
-  // Use agent UI for both RUNNING (live) and COMPLETE (replay) agent runs
-  const useAgent = isAgentMode && (run.status === "RUNNING" || run.status === "COMPLETE");
+  // Only use agent UI for RUNNING agent runs (live streaming).
+  // COMPLETE agent runs use RunUnifiedChat with synthesized events from
+  // persisted theses — this is reliable and shows exactly what the run did.
+  const useAgent = isAgentMode && run.status === "RUNNING";
 
-  // Legacy-only: stale detection + event synthesis
+  // Stale detection: a run stuck RUNNING with no events and no theses
   const isStaleRun =
     !useAgent &&
     run.status === "RUNNING" &&
     run.events.length === 0 &&
     Date.now() - new Date(run.startedAt).getTime() > 15 * 60 * 1_000;
 
-  // Load saved agent messages for completed runs
-  const savedMessages = isAgentMode && run.status === "COMPLETE"
-    ? await prisma.runMessage.findFirst({
-        where: { runId: id, role: "thread" },
-        orderBy: { createdAt: "desc" },
-      })
-    : null;
-
-  const initialMessages = savedMessages?.content
-    ? (() => {
-        try { return JSON.parse(savedMessages.content); }
-        catch { return undefined; }
-      })()
-    : undefined;
-
   let events: RunEventRow[];
   if (useAgent) {
+    // Live agent — events are rendered via tool UIs in AgentThread
     events = [];
   } else if (run.events.length > 0) {
     events = run.events.map((ev: { id: string; type: string; title: string; message: string | null; payload: unknown; createdAt: Date }) => ({
@@ -289,8 +277,7 @@ export default async function RunPage({
             analystName={analystName}
             analystId={run.agentConfig?.id}
             config={config}
-            autoStart={run.status !== "COMPLETE" && !initialMessages}
-            initialMessages={initialMessages}
+            autoStart={true}
           />
         ) : isStaleRun ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">

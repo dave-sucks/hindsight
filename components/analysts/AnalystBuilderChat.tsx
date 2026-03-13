@@ -115,18 +115,18 @@ export function AnalystBuilderChat({
             name: config.name,
             analystPrompt: config.analystPrompt,
             description: config.description,
-            directionBias: config.directionBias,
-            holdDurations: config.holdDurations as (
+            directionBias: config.directionBias ?? "BOTH",
+            holdDurations: (config.holdDurations ?? ["SWING"]) as (
               | "DAY"
               | "SWING"
               | "POSITION"
             )[],
-            sectors: config.sectors,
-            signalTypes: config.signalTypes,
-            minConfidence: config.minConfidence,
-            maxPositionSize: config.maxPositionSize,
-            maxOpenPositions: config.maxOpenPositions,
-            minMarketCapTier: config.minMarketCapTier as
+            sectors: config.sectors ?? [],
+            signalTypes: config.signalTypes ?? [],
+            minConfidence: config.minConfidence ?? 65,
+            maxPositionSize: config.maxPositionSize ?? 5000,
+            maxOpenPositions: config.maxOpenPositions ?? 5,
+            minMarketCapTier: (config.minMarketCapTier ?? "LARGE") as
               | "LARGE"
               | "MID"
               | "SMALL",

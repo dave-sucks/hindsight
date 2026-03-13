@@ -23,14 +23,14 @@ export type SuggestedConfig = {
   name: string;
   analystPrompt: string;
   description?: string;
-  directionBias: "LONG" | "SHORT" | "BOTH";
-  holdDurations: string[];
-  sectors: string[];
-  signalTypes: string[];
-  minConfidence: number;
-  maxPositionSize: number;
-  maxOpenPositions: number;
-  minMarketCapTier: string;
+  directionBias?: "LONG" | "SHORT" | "BOTH";
+  holdDurations?: string[];
+  sectors?: string[];
+  signalTypes?: string[];
+  minConfidence?: number;
+  maxPositionSize?: number;
+  maxOpenPositions?: number;
+  minMarketCapTier?: string;
   watchlist?: string[];
   exclusionList?: string[];
 };
@@ -77,11 +77,11 @@ export function ConfigPreviewCard({
         <div
           className={cn(
             "flex items-center gap-1 text-xs font-medium shrink-0",
-            directionColor[config.directionBias]
+            directionColor[config.directionBias ?? "BOTH"]
           )}
         >
-          {directionIcon[config.directionBias]}
-          {config.directionBias}
+          {directionIcon[config.directionBias ?? "BOTH"]}
+          {config.directionBias ?? "BOTH"}
         </div>
       </div>
 
@@ -95,32 +95,32 @@ export function ConfigPreviewCard({
       {/* Config grid */}
       <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 text-xs">
         <ConfigRow icon={Clock} label="Hold Duration">
-          {config.holdDurations.join(", ")}
+          {(config.holdDurations ?? []).join(", ") || "—"}
         </ConfigRow>
         <ConfigRow icon={Shield} label="Min Confidence">
-          <span className="tabular-nums">{config.minConfidence}%</span>
+          <span className="tabular-nums">{config.minConfidence ?? 0}%</span>
         </ConfigRow>
         <ConfigRow icon={DollarSign} label="Position Size">
           <span className="tabular-nums">
-            ${config.maxPositionSize.toLocaleString()}
+            ${(config.maxPositionSize ?? 0).toLocaleString()}
           </span>
         </ConfigRow>
         <ConfigRow icon={Target} label="Max Positions">
-          <span className="tabular-nums">{config.maxOpenPositions}</span>
+          <span className="tabular-nums">{config.maxOpenPositions ?? 0}</span>
         </ConfigRow>
         <ConfigRow icon={BarChart3} label="Market Cap">
-          {config.minMarketCapTier}+
+          {config.minMarketCapTier ?? "any"}+
         </ConfigRow>
       </div>
 
       {/* Sectors */}
-      {config.sectors.length > 0 && (
+      {(config.sectors ?? []).length > 0 && (
         <div className="space-y-1.5">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Sectors
           </span>
           <div className="flex flex-wrap gap-1.5">
-            {config.sectors.map((s) => (
+            {(config.sectors ?? []).map((s) => (
               <Badge key={s} variant="secondary" className="text-[11px]">
                 {s}
               </Badge>
@@ -130,13 +130,13 @@ export function ConfigPreviewCard({
       )}
 
       {/* Signal Types */}
-      {config.signalTypes.length > 0 && (
+      {(config.signalTypes ?? []).length > 0 && (
         <div className="space-y-1.5">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Signals
           </span>
           <div className="flex flex-wrap gap-1.5">
-            {config.signalTypes.map((s) => (
+            {(config.signalTypes ?? []).map((s) => (
               <Badge key={s} variant="outline" className="text-[11px]">
                 <TrendingUp className="h-2.5 w-2.5" />
                 {s.replace(/_/g, " ")}
