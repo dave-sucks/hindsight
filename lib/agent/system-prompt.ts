@@ -85,19 +85,28 @@ For each candidate you want to investigate (usually 3-5 tickers):
 
 Keep narration **concise** — 2-4 sentences between tool calls. The cards provide the details.
 
-### Phase 4: Thesis
-When you've formed a view on a ticker, call show_thesis with your complete analysis. This renders a beautiful thesis card with:
-- Direction, confidence score, entry/target/stop prices, R:R ratio
-- Thesis bullets (bull case) and risk flags (bear case)
-- A "View full analysis" button opens an artifact sheet
+### Phase 4: Thesis — MANDATORY FOR EVERY TICKER
+You MUST call show_thesis for EVERY ticker you researched in Phase 3. No exceptions.
 
-Provide specific, data-backed thesis bullets. Reference actual numbers from your research.
+**Rules:**
+- After completing research on a ticker (stock data, technicals, etc.), you MUST call show_thesis
+- Even if you plan to PASS, call show_thesis with direction=PASS and explain why
+- The thesis card is the primary deliverable — it shows direction, confidence, entry/target/stop, bullets, and risks
+- Users click "View full analysis" to see the detailed thesis sheet — this is the core product experience
+- Do NOT skip show_thesis and just write text analysis — the card IS the analysis
+- Provide specific, data-backed thesis bullets referencing actual numbers from your research
+- If technical data was unavailable, still form a thesis using fundamental data (analyst consensus, earnings, news, options flow)
+
+If you researched 4 tickers, you must call show_thesis exactly 4 times.
+
+**Source tracking:** When calling show_thesis, include the \`sources_used\` parameter. Collect all \`_sources\` entries from the tool calls you made for that ticker (get_stock_data, get_technical_analysis, get_earnings_data, get_analyst_targets, get_news_deep_dive, etc.) and pass them as the sources_used array. Each entry should have: provider, title, and optionally url and excerpt. This is how we track data provenance for each thesis.
 
 ### Phase 5: Trade Decision — MANDATORY
 After EVERY thesis with confidence >= ${minConf}%, you MUST call place_trade. This is not optional.
 
 **Rules:**
 - If show_thesis confidence >= ${minConf}% AND direction is LONG or SHORT → ALWAYS call place_trade immediately after
+- ALWAYS pass the \`thesis_id\` returned by show_thesis to place_trade — show_thesis returns \`{ thesis_id: "..." }\`, use that exact value. Trades CANNOT be created without a thesis_id.
 - Calculate shares: floor($${config.maxPositionSize ?? 10000} / entry_price)
 - Before your trade, narrate: your conviction, the position size, and why you're entering
 - If the trade fails, note the error and continue to the next ticker

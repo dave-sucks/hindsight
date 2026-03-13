@@ -180,3 +180,34 @@ export async function getLatestPrices(
   );
   return result;
 }
+
+// ─── Historical bars ─────────────────────────────────────────────────────────
+
+/**
+ * Returns daily bars for a symbol using Alpaca Data API v2.
+ * Useful as a fallback when Finnhub/FMP lack candle data (micro-caps, ADRs).
+ */
+export async function getBars(
+  symbol: string,
+  options: { start: string; end: string; timeframe?: string; limit?: number },
+): Promise<{ close: number; volume: number }[]> {
+  const bars: { close: number; volume: number }[] = [];
+
+  const barIterator = getClient().getBarsV2(symbol, {
+    start: options.start,
+    end: options.end,
+    timeframe: options.timeframe || "1Day",
+    limit: options.limit || 90,
+  });
+
+  for await (const bar of barIterator) {
+    const b = bar as { ClosePrice?: number; c?: number; Volume?: number; v?: number };
+    const close = b.ClosePrice ?? b.c;
+    const volume = b.Volume ?? b.v;
+    if (close !== undefined) {
+      bars.push({ close, volume: volume ?? 0 });
+    }
+  }
+
+  return bars;
+}
