@@ -840,11 +840,13 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
-          {/* ── Content area: Strategy doc OR full chat ─────────────────── */}
+          {/* ── Strategy document (always visible) ──────────────────────── */}
+          <StrategyDocument config={config} fullSystemPrompt={fullSystemPrompt} />
+
+          {/* ── Floating chat panel ──────────────────────────────────────── */}
           {chatExpanded ? (
-            /* Full-page chat mode */
-            <div className="flex-1 min-h-0 flex flex-col">
-              <div className="flex items-center justify-between px-5 py-2 border-b bg-muted/10 shrink-0">
+            <div className="absolute bottom-4 right-4 left-4 z-20 flex flex-col rounded-xl border bg-background shadow-2xl max-h-[60vh] overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30 shrink-0">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
                   <span className="text-xs font-medium">
@@ -858,10 +860,10 @@ export default function AnalystDetailClient({
                   onClick={() => setChatExpanded(false)}
                 >
                   <X className="h-3 w-3 mr-1" />
-                  Close Chat
+                  Close
                 </Button>
               </div>
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <AnalystEditorChat
                   analystId={config.id}
                   currentConfig={{
@@ -881,23 +883,18 @@ export default function AnalystDetailClient({
               </div>
             </div>
           ) : (
-            /* Strategy document view with floating chat trigger */
-            <>
-              <StrategyDocument config={config} fullSystemPrompt={fullSystemPrompt} />
-
-              {/* Floating chat trigger */}
-              <div className="absolute bottom-6 right-6 z-10">
-                <Button
-                  onClick={() => setChatExpanded(true)}
-                  className="h-12 rounded-full px-5 shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  <span className="text-sm font-medium">
-                    Edit with AI
-                  </span>
-                </Button>
-              </div>
-            </>
+            /* Floating chat trigger button */
+            <div className="absolute bottom-6 right-6 z-10">
+              <Button
+                onClick={() => setChatExpanded(true)}
+                className="h-12 rounded-full px-5 shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span className="text-sm font-medium">
+                  Edit with AI
+                </span>
+              </Button>
+            </div>
           )}
         </div>
       </div>

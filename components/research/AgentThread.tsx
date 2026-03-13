@@ -148,6 +148,8 @@ import {
   Activity,
   MessageSquareText,
   CheckCircle2,
+  Target,
+  Users,
 } from "lucide-react";
 
 // ─── Source data shape (matches _sources from tool results) ─────────────────
@@ -235,7 +237,17 @@ function useRegisterAgentToolUIs(runId: string) {
   useAssistantToolUI({
     toolName: "get_market_overview",
     render: ({ result }) => {
-      if (!result) return <ToolSpinner label="Checking market conditions..." />;
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Market conditions</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={TrendingUp} label="Fetching S&P 500, VIX" status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading sector performance" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
 
       const spy = result.spy as {
         price: number;
@@ -296,7 +308,18 @@ function useRegisterAgentToolUIs(runId: string) {
   useAssistantToolUI({
     toolName: "scan_candidates",
     render: ({ result }) => {
-      if (!result) return <ToolSpinner label="Scanning for candidates..." />;
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Scanning for candidates</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Search} label="Checking earnings calendar" status="active" />
+              <ChainOfThoughtStep icon={TrendingUp} label="Scanning gainers & losers" status="pending" />
+              <ChainOfThoughtStep icon={Activity} label="Social trends (StockTwits)" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
 
       const earnings = (result.earnings ?? []) as {
         ticker: string;
@@ -690,7 +713,15 @@ function useRegisterAgentToolUIs(runId: string) {
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
       if (!result) {
-        return <ToolSpinner label={`Checking SEC filings for ${ticker}...`} />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>SEC filings — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={FileText} label="Looking up CIK on EDGAR" status="active" />
+              <ChainOfThoughtStep icon={Search} label="Fetching recent filings" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
       const filings = (result.filings ?? result) as { type: string; date: string; description: string; url?: string | null }[];
       return (
@@ -708,7 +739,14 @@ function useRegisterAgentToolUIs(runId: string) {
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
       if (!result) {
-        return <ToolSpinner label={`Fetching analyst targets for ${ticker}...`} />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Analyst targets — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Target} label="Fetching Wall Street consensus" status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
       return (
         <div className="my-2">
@@ -733,7 +771,15 @@ function useRegisterAgentToolUIs(runId: string) {
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
       if (!result) {
-        return <ToolSpinner label={`Finding peers for ${ticker}...`} />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Company peers — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Users} label="Fetching peer companies" status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading comparison metrics" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
       const peers = (result.peers ?? []) as { ticker: string; name?: string; price?: number | null; change_pct?: number | null; pe_ratio?: number | null; market_cap?: number | null }[];
       return (
@@ -755,7 +801,15 @@ function useRegisterAgentToolUIs(runId: string) {
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
       if (!result) {
-        return <ToolSpinner label={`Deep diving news for ${ticker}...`} />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>News deep dive — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Newspaper} label="Fetching stock news" status="active" />
+              <ChainOfThoughtStep icon={FileText} label="Loading press releases" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
       const stockNews = (result.stock_news ?? []) as { headline: string; source: string; url?: string; published_at?: string }[];
       const pressReleases = (result.press_releases ?? []) as { headline: string; source: string; url?: string; published_at?: string }[];
@@ -928,7 +982,15 @@ function useRegisterAgentToolUIs(runId: string) {
     toolName: "place_trade",
     render: ({ result }) => {
       if (!result) {
-        return <ToolSpinner label="Placing trade on Alpaca..." color="emerald" />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Placing trade</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={TrendingUp} label="Submitting to Alpaca Paper" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="Waiting for fill" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
       const status = result.status as string;
@@ -963,7 +1025,15 @@ function useRegisterAgentToolUIs(runId: string) {
     toolName: "summarize_run",
     render: ({ result }) => {
       if (!result) {
-        return <ToolSpinner label="Synthesizing session..." color="violet" />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Portfolio synthesis</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={BarChart3} label="Ranking picks by conviction" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="Calculating exposure" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
       const rankedPicks = (result.ranked_picks ?? []) as {

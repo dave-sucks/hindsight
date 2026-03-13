@@ -79,7 +79,101 @@ export async function POST(req: Request) {
     }
   }
 
-  const systemPrompt = buildSystemPrompt(agentConfig);
+  // ── Load historical context: recent trades + accuracy stats ──────────────
+  let historyBlock = "";
+  try {
+    const configId = analystId || (agentConfig as Record<string, unknown>).id;
+
+    // Recent closed trades (last 20)
+    const recentTrades = await prisma.trade.findMany({
+      where: { userId: user.id, status: { in: ["CLOSED", "WIN", "LOSS"] } },
+      orderBy: { closedAt: "desc" },
+      take: 20,
+      select: {
+        ticker: true, direction: true, status: true,
+        entryPrice: true, exitPrice: true, shares: true,
+        pnl: true, pnlPct: true, closedAt: true,
+      },
+    });
+
+    // Open trades
+    const openTrades = await prisma.trade.findMany({
+      where: { userId: user.id, status: "OPEN" },
+      select: {
+        ticker: true, direction: true, entryPrice: true,
+        shares: true, targetPrice: true, stopLoss: true,
+        createdAt: true,
+      },
+    });
+
+    // Latest accuracy report
+    const latestAccuracy = configId
+      ? await prisma.accuracyReport.findFirst({
+          where: { agentConfigId: configId as string },
+          orderBy: { createdAt: "desc" },
+          select: {
+            overallWinRate: true, totalTrades: true,
+            avgPnlPct: true, narrative: true,
+          },
+        })
+      : null;
+
+    // Recent run summaries (last 5)
+    const recentRuns = await prisma.researchRun.findMany({
+      where: {
+        userId: user.id,
+        status: "COMPLETE",
+        ...(configId ? { agentConfigId: configId as string } : {}),
+      },
+      orderBy: { completedAt: "desc" },
+      take: 5,
+      select: { id: true, completedAt: true },
+    });
+
+    // Build context
+    const parts: string[] = [];
+
+    if (openTrades.length > 0) {
+      parts.push("## Your Open Positions");
+      for (const t of openTrades) {
+        parts.push(`- ${t.direction} ${t.shares} shares ${t.ticker} @ $${Number(t.entryPrice).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
+      }
+      parts.push(`\nDo NOT open duplicate positions in tickers you already hold.`);
+    }
+
+    if (recentTrades.length > 0) {
+      const wins = recentTrades.filter((t) => t.status === "WIN").length;
+      const losses = recentTrades.filter((t) => t.status === "LOSS").length;
+      parts.push(`\n## Recent Trade History (${recentTrades.length} trades)`);
+      parts.push(`Win/Loss: ${wins}W / ${losses}L`);
+      for (const t of recentTrades.slice(0, 10)) {
+        const pnl = t.pnl ? Number(t.pnl) : 0;
+        parts.push(`- ${t.status} ${t.direction} ${t.ticker}: entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.exitPrice ? Number(t.exitPrice).toFixed(2) : "—"} (${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)})`);
+      }
+    }
+
+    if (latestAccuracy) {
+      parts.push(`\n## Your Performance Stats`);
+      parts.push(`- Win Rate: ${latestAccuracy.overallWinRate ? Number(latestAccuracy.overallWinRate).toFixed(0) : "—"}%`);
+      parts.push(`- Total Trades: ${latestAccuracy.totalTrades ?? "—"}`);
+      parts.push(`- Avg P&L: ${latestAccuracy.avgPnlPct ? `${Number(latestAccuracy.avgPnlPct).toFixed(1)}%` : "—"}`);
+      if (latestAccuracy.narrative) {
+        parts.push(`- Calibration: ${String(latestAccuracy.narrative).slice(0, 300)}`);
+      }
+      parts.push(`\nUse this data to calibrate your confidence. If your win rate is low, be more selective.`);
+    }
+
+    if (recentRuns.length > 0) {
+      parts.push(`\n## Recent Research Sessions: ${recentRuns.length} completed`);
+    }
+
+    historyBlock = parts.join("\n");
+    console.log(`[agent] History loaded: ${openTrades.length} open, ${recentTrades.length} closed, accuracy=${!!latestAccuracy}`);
+  } catch (err) {
+    console.warn("[agent] Failed to load history (non-fatal):", err);
+  }
+
+  const systemPrompt = buildSystemPrompt(agentConfig) + (historyBlock ? `\n\n${historyBlock}` : "");
   const modelMessages = await convertToModelMessages(messages);
   console.log(`[agent] Config loaded: name=${agentConfig.name || "default"} systemPrompt=${systemPrompt.length} chars`);
 
