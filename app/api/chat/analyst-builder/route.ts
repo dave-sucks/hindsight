@@ -1,6 +1,8 @@
 import { streamText, tool, stepCountIs, convertToModelMessages } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
+import { createClient } from "@/lib/supabase/server";
+import { createResearchTools } from "@/lib/chat/tools/research-tools";
 
 export const maxDuration = 120;
 
@@ -109,8 +111,26 @@ If the user wants changes, discuss them, then call suggest_config again with upd
 - **web_search**: Search the web for current market news, sector analysis, trading strategies, or any relevant information
 - **get_market_context**: Get current SPY, VIX, and sector performance data
 - **search_reddit**: Search Reddit (r/wallstreetbets, r/stocks, r/investing) for retail sentiment and trending tickers
+- **get_stock_quote**: Quick quote for any ticker — price, change%, 52W range, market cap. Use when referencing a specific stock.
+- **get_trending_stocks**: See today's biggest movers — gainers, losers, most active. Great for grounding brainstorming in real market action.
+- **research_ticker**: Run the FULL research pipeline on a stock — generates a complete trade thesis with direction, confidence, entry/target/stop, risk flags, and reasoning. Use this to DEMONSTRATE how the strategy would work on a real stock.
+- **get_thesis**: Retrieve a previously generated thesis by ticker.
+- **compare_tickers**: Compare 2-3 tickers side-by-side with full research on each.
+- **explain_decision**: Explain why a trade was or wasn't placed for a given ticker.
 
 Use these tools proactively during the brainstorming phase! Don't wait for the user to ask. Show them you're doing real research to help build the best possible strategy.
+
+### How to Use Research Tools Effectively
+1. **Start with market context**: Call get_market_context early to see what's happening today
+2. **Ground the conversation**: Use get_trending_stocks to show real movers that fit the strategy
+3. **Quick references**: Use get_stock_quote when mentioning specific tickers — e.g. "Let me check $NVDA real quick..."
+4. **Demonstrate the strategy**: When the strategy is taking shape, use research_ticker on a stock that fits — "Let me show you what this strategy would produce on NVDA right now..."
+5. **Reddit sentiment**: Use search_reddit to find what retail traders are buzzing about in the relevant sector
+
+### Formatting Guidelines
+- When mentioning stock tickers in your text, use the $TICKER format (e.g. $NVDA, $AAPL, $TSLA). This renders as an interactive chip with live price data.
+- When citing information from tool results, use numbered citations like [1], [2], [3]. These render as clickable badges linked to the source.
+- Be specific and data-driven — reference actual prices, percentages, and metrics from tool results.
 
 ## Key Configuration Trade-offs
 - **minConfidence**: 60% = aggressive (more trades), 70% = balanced, 80% = selective, 90% = very picky
@@ -153,8 +173,15 @@ async function fetchJSON(url: string) {
 
 export async function POST(req: Request) {
   try {
+    // ── Auth (optional — research tools need userId for DB storage) ─────
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userId = user?.id ?? "";
+
     const { messages, currentConfig } = await req.json();
-    console.log(`[analyst-builder] POST messages=${messages?.length ?? 0} editing=${!!currentConfig}`);
+    console.log(`[analyst-builder] POST messages=${messages?.length ?? 0} editing=${!!currentConfig} authed=${!!user}`);
 
     const modelMessages = await convertToModelMessages(messages);
 
@@ -162,6 +189,9 @@ export async function POST(req: Request) {
     if (currentConfig) {
       systemPrompt += `\n\n## Current Configuration (user is editing an existing analyst)\n\`\`\`json\n${JSON.stringify(currentConfig, null, 2)}\n\`\`\`\nThe user wants to modify this analyst. Only change what they ask for. Call suggest_config with the full updated config (including the detailed analystPrompt).`;
     }
+
+    // ── Research tools (bound to authenticated user) ─────────────────────
+    const researchTools = userId ? createResearchTools(userId) : {};
 
     const result = streamText({
       model: openai("gpt-4o"),
@@ -176,6 +206,108 @@ export async function POST(req: Request) {
             return config;
           },
         }),
+
+        // ── Inline stock tools ──────────────────────────────────────────
+        get_stock_quote: tool({
+          description:
+            "Get a quick stock quote — current price, change%, 52W high/low, market cap. " +
+            "Use when referencing a specific ticker in conversation.",
+          inputSchema: z.object({
+            symbol: z.string().describe("Stock ticker symbol (e.g. NVDA, AAPL)"),
+          }),
+          execute: async ({ symbol }) => {
+            const ticker = symbol.toUpperCase();
+            try {
+              const [fmpQuote, finnhubQuote] = await Promise.all([
+                fetchJSON(
+                  `https://financialmodelingprep.com/api/v3/quote/${ticker}?apikey=${FMP_KEY}`
+                ),
+                fetchJSON(
+                  `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_KEY}`
+                ),
+              ]);
+
+              const q = Array.isArray(fmpQuote) ? fmpQuote[0] : null;
+              const fh = finnhubQuote;
+
+              if (!q && !fh) {
+                return { error: `No quote data for ${ticker}` };
+              }
+
+              return {
+                ticker,
+                price: q?.price ?? fh?.c ?? null,
+                change: q?.change ?? null,
+                changePercent: q?.changesPercentage ?? fh?.dp ?? null,
+                dayHigh: q?.dayHigh ?? fh?.h ?? null,
+                dayLow: q?.dayLow ?? fh?.l ?? null,
+                yearHigh: q?.yearHigh ?? null,
+                yearLow: q?.yearLow ?? null,
+                marketCap: q?.marketCap ?? null,
+                volume: q?.volume ?? null,
+                name: q?.name ?? ticker,
+                exchange: q?.exchange ?? null,
+                _sources: [
+                  {
+                    title: `${ticker} Quote — FMP`,
+                    url: `https://financialmodelingprep.com/financial-statements/${ticker}`,
+                    provider: "Financial Modeling Prep",
+                  },
+                ],
+              };
+            } catch {
+              return { error: `Failed to fetch quote for ${ticker}` };
+            }
+          },
+        }),
+
+        get_trending_stocks: tool({
+          description:
+            "Get today's biggest stock movers — top gainers, losers, and most active by volume. " +
+            "Great for grounding brainstorming in real market action.",
+          inputSchema: z.object({
+            category: z
+              .enum(["gainers", "losers", "actives"])
+              .optional()
+              .describe("Which category to fetch. Defaults to gainers."),
+          }),
+          execute: async ({ category = "gainers" }) => {
+            try {
+              const url = `https://financialmodelingprep.com/api/v3/stock_market/${category}?apikey=${FMP_KEY}`;
+              const data = await fetchJSON(url);
+
+              if (!Array.isArray(data) || data.length === 0) {
+                return { error: "Trending data unavailable" };
+              }
+
+              const stocks = data.slice(0, 8).map((s: Record<string, unknown>) => ({
+                ticker: String(s.symbol ?? ""),
+                name: String(s.name ?? ""),
+                price: Number(s.price ?? 0),
+                change: Number(s.change ?? 0),
+                changePercent: Number(s.changesPercentage ?? 0),
+              }));
+
+              return {
+                category,
+                stocks,
+                timestamp: new Date().toISOString(),
+                _sources: [
+                  {
+                    title: `Top ${category.charAt(0).toUpperCase() + category.slice(1)} — FMP`,
+                    url: `https://financialmodelingprep.com/market-movers`,
+                    provider: "Financial Modeling Prep",
+                  },
+                ],
+              };
+            } catch {
+              return { error: "Failed to fetch trending stocks" };
+            }
+          },
+        }),
+
+        // ── Research pipeline tools (need auth) ─────────────────────────
+        ...researchTools,
 
         web_search: tool({
           description:
@@ -349,7 +481,7 @@ export async function POST(req: Request) {
           },
         }),
       },
-      stopWhen: stepCountIs(10),
+      stopWhen: stepCountIs(15),
     });
 
     return result.toUIMessageStreamResponse();

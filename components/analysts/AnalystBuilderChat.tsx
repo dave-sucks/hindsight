@@ -28,28 +28,28 @@ const BUILDER_WELCOME: WelcomeConfig = {
 
 const SUGGESTIONS = [
   {
+    title: "What's hot today?",
+    label: "Trending stocks → strategy",
+    prompt:
+      "Show me what's trending in the market right now — top movers, biggest gainers. Then let's build a strategy around current momentum.",
+  },
+  {
     title: "Aggressive day trader",
     label: "Momentum + tech breakouts",
     prompt:
-      "Build me an aggressive day trader focused on momentum and technical breakouts in tech stocks",
-  },
-  {
-    title: "Conservative swing trader",
-    label: "Large-cap fundamentals",
-    prompt:
-      "Create a conservative swing trader that holds positions for 2-10 days, focused on large-cap fundamentals",
+      "Build me an aggressive day trader focused on momentum and technical breakouts in tech stocks. Show me some real examples of stocks that fit this strategy right now.",
   },
   {
     title: "Earnings momentum player",
     label: "Pre/post-earnings moves",
     prompt:
-      "I want an analyst that trades around earnings — catches the run-up and post-earnings momentum",
+      "I want an analyst that trades around earnings — catches the run-up and post-earnings momentum. Research a stock with upcoming earnings to show me how it would work.",
   },
   {
     title: "Biotech catalyst hunter",
     label: "FDA + options flow",
     prompt:
-      "Build a biotech-focused analyst that watches for FDA catalysts, clinical trial data, and unusual options flow",
+      "Build a biotech-focused analyst that watches for FDA catalysts, clinical trial data, and unusual options flow. What's buzzing on Reddit about biotech right now?",
   },
 ];
 

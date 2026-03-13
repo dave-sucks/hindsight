@@ -2,7 +2,11 @@
 Financial Modeling Prep (FMP) API wrapper.
 Used primarily for market movers (gainers, losers, most active)
 since Finnhub free tier lacks a real-time movers endpoint.
+
+NOTE: FMP legacy /quote/ endpoint was deprecated Aug 2025.
+All quote functions now use Finnhub as primary, FMP as fallback.
 """
+import asyncio
 import logging
 import os
 from typing import Any
@@ -26,6 +30,9 @@ async def _get(path: str, params: dict | None = None) -> Any:
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(url, params=p)
+            if resp.status_code == 403:
+                logger.warning("FMP 403 (legacy endpoint deprecated) for %s", path)
+                return []
             resp.raise_for_status()
             return resp.json()
     except Exception as exc:
@@ -70,6 +77,7 @@ async def _fetch_actives() -> list[dict]:
 
 
 # ── Sector ETF + index quotes (DAV-121: Market Context) ──────────────────
+# Now using Finnhub as primary source since FMP /quote/ is deprecated
 
 _SECTOR_ETFS = {
     "XLK": "Technology",
@@ -87,7 +95,29 @@ _SECTOR_ETFS = {
 
 
 async def get_quote(symbol: str) -> dict:
-    """Fetch a single stock/ETF quote from FMP. Returns {symbol, price, change_pct}."""
+    """Fetch a single stock/ETF quote. Uses Finnhub (primary), FMP (fallback).
+
+    Returns {symbol, price, change_pct, change, day_high, day_low, prev_close}.
+    """
+    # Primary: Finnhub (always works, free tier)
+    try:
+        from services.finnhub import FinnhubService
+        fh = FinnhubService()
+        q = await fh.get_quote(symbol)
+        if q.get("price") and q["price"] > 0:
+            return {
+                "symbol": symbol,
+                "price": q["price"],
+                "change_pct": q.get("change_pct"),
+                "change": q.get("change"),
+                "day_high": q.get("high"),
+                "day_low": q.get("low"),
+                "prev_close": q.get("prev_close"),
+            }
+    except Exception as exc:
+        logger.warning("Finnhub quote failed for %s: %s", symbol, exc)
+
+    # Fallback: FMP (may 403 on legacy plans)
     raw = await _get(f"/quote/{symbol}")
     if isinstance(raw, list) and raw:
         item = raw[0]
@@ -107,17 +137,22 @@ async def get_sector_etf_performance() -> list[dict]:
     """Fetch daily performance for all 11 SPDR sector ETFs.
 
     Returns list of {symbol, name, price, change_pct} sorted by change_pct desc.
+    Uses Finnhub for quotes (FMP /quote/ is deprecated).
     """
-    import asyncio
+    from services.finnhub import FinnhubService
+    fh = FinnhubService()
 
     async def _fetch_one(sym: str, name: str) -> dict:
-        q = await get_quote(sym)
-        return {
-            "symbol": sym,
-            "name": name,
-            "price": q.get("price"),
-            "change_pct": q.get("change_pct") or 0.0,
-        }
+        try:
+            q = await fh.get_quote(sym)
+            return {
+                "symbol": sym,
+                "name": name,
+                "price": q.get("price"),
+                "change_pct": q.get("change_pct") or 0.0,
+            }
+        except Exception:
+            return {"symbol": sym, "name": name, "price": None, "change_pct": 0.0}
 
     results = await asyncio.gather(
         *[_fetch_one(sym, name) for sym, name in _SECTOR_ETFS.items()],
@@ -133,18 +168,38 @@ async def get_index_quotes() -> dict:
     """Fetch SPY and VIX quotes for market context.
 
     Returns {spy: {price, change_pct}, vix: {price, change_pct}}.
+    Uses Finnhub for quotes (FMP /quote/ is deprecated).
     """
-    import asyncio
-    spy, vix = await asyncio.gather(
-        get_quote("SPY"),
-        get_quote("^VIX"),
-        return_exceptions=True,
-    )
-    # FMP uses VIXY or ^VIX — fallback if ^VIX fails
-    if isinstance(vix, Exception) or not vix.get("price"):
-        vix = await get_quote("VIXY")
-    if isinstance(spy, Exception):
+    from services.finnhub import FinnhubService
+    fh = FinnhubService()
+
+    try:
+        spy_q = await fh.get_quote("SPY")
+        spy = {
+            "symbol": "SPY",
+            "price": spy_q.get("price"),
+            "change_pct": spy_q.get("change_pct"),
+        }
+    except Exception:
         spy = {"symbol": "SPY", "price": None, "change_pct": None}
-    if isinstance(vix, Exception):
+
+    try:
+        # Finnhub uses ^GSPC for S&P, but VIX might need special handling
+        vix_q = await fh.get_quote("VXX")  # VXX is the tradeable VIX ETN
+        vix = {
+            "symbol": "VIX",
+            "price": vix_q.get("price"),
+            "change_pct": vix_q.get("change_pct"),
+        }
+        if not vix.get("price"):
+            # Fallback to VIXY
+            vix_q = await fh.get_quote("VIXY")
+            vix = {
+                "symbol": "VIX",
+                "price": vix_q.get("price"),
+                "change_pct": vix_q.get("change_pct"),
+            }
+    except Exception:
         vix = {"symbol": "VIX", "price": None, "change_pct": None}
+
     return {"spy": spy, "vix": vix}

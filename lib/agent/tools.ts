@@ -394,56 +394,29 @@ export function createResearchTools(ctx: ToolContext) {
         console.log(`[tool] get_market_overview runId=${ctx.runId}`);
         const errors: string[] = [];
 
-        // Fetch SPY + sector ETFs. Try batch first, fall back to individual fetches.
+        // Use Finnhub as primary for all quotes (FMP /quote/ is deprecated)
         const SECTOR_ETFS = ["XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLB", "XLRE", "XLU", "XLC"];
 
-        const [spyResult, sectorResult] = await Promise.all([
-          fmp("/quote/SPY"),
-          fmp(`/quote/${SECTOR_ETFS.join(",")}`),
-        ]);
+        // Fetch SPY + all sector ETFs from Finnhub in parallel
+        const allSymbols = ["SPY", ...SECTOR_ETFS];
+        const quoteResults = await Promise.all(
+          allSymbols.map(async (sym) => {
+            const res = await finnhub(`/quote?symbol=${sym}`);
+            const d = res.data as Record<string, number> | null;
+            if (d && typeof d.c === "number" && d.c > 0) {
+              return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
+            }
+            if (res.error) errors.push(res.error);
+            return null;
+          })
+        );
 
-        if (spyResult.error) errors.push(spyResult.error);
+        const spyData = quoteResults[0];
+        const sectorsRaw = quoteResults.slice(1).filter(Boolean);
 
-        const spyQuote = spyResult.data;
-        let sectorsRaw = sectorResult.data;
-        const spy = Array.isArray(spyQuote) ? spyQuote[0] : null;
+        console.log(`[tool] get_market_overview SPY=${spyData ? `$${spyData.price}` : "null"} sectors=${sectorsRaw.length}`);
 
-        // If batch sector fetch failed or returned empty, fetch individually
-        if (!Array.isArray(sectorsRaw) || sectorsRaw.length === 0) {
-          if (sectorResult.error) errors.push(sectorResult.error);
-          console.log(`[tool] Batch sector fetch failed, trying individual fetches...`);
-          const individualResults = await Promise.all(
-            SECTOR_ETFS.slice(0, 6).map((etf) => fmp(`/quote/${etf}`))
-          );
-          const collected: unknown[] = [];
-          for (const r of individualResults) {
-            if (Array.isArray(r.data) && r.data.length > 0) collected.push(r.data[0]);
-          }
-          if (collected.length > 0) {
-            sectorsRaw = collected;
-            console.log(`[tool] Individual sector fetch got ${collected.length} ETFs`);
-          }
-        }
-
-        // If FMP failed for SPY, try Finnhub as fallback
-        let spyData = spy;
-        if (!spyData) {
-          const spyFinnhub = await finnhub("/quote?symbol=SPY");
-          const fh = spyFinnhub.data as Record<string, number> | null;
-          if (fh && typeof fh.c === "number" && fh.c > 0) {
-            spyData = {
-              price: fh.c,
-              changesPercentage: fh.dp ?? 0,
-              dayHigh: fh.h ?? fh.c,
-              dayLow: fh.l ?? fh.c,
-            };
-            console.log(`[tool] SPY from Finnhub fallback: $${fh.c}`);
-          }
-        }
-
-        console.log(`[tool] get_market_overview SPY=${spyData ? `$${spyData.price}` : "null"} sectors=${Array.isArray(sectorsRaw) ? sectorsRaw.length : "null"}`);
-
-        // VIX: Finnhub ^VIX first, fall back to FMP ^VIX, then VIXY ETF
+        // VIX: Finnhub first, then VIXY fallback
         let vixLevel: number | null = null;
         let vixChangePct: number | null = null;
 
@@ -454,48 +427,34 @@ export function createResearchTools(ctx: ToolContext) {
           vixChangePct = vixFinnhub.dp ?? null;
           console.log(`[tool] VIX from Finnhub: ${vixLevel}`);
         } else {
-          if (vixFinnhubResult.error) errors.push(vixFinnhubResult.error);
-          // Fallback 1: FMP ^VIX
-          const vixFmpResult = await fmp(`/quote/${encodeURIComponent("^VIX")}`);
-          const vixFmp = vixFmpResult.data;
-          const vixItem = Array.isArray(vixFmp) ? vixFmp[0] : null;
-          if (vixItem && typeof vixItem.price === "number" && vixItem.price > 0) {
-            vixLevel = vixItem.price;
-            vixChangePct = vixItem.changesPercentage ?? null;
-            console.log(`[tool] VIX from FMP ^VIX: ${vixLevel}`);
+          // Fallback: VIXY ETF via Finnhub
+          const vixyResult = await finnhub("/quote?symbol=VIXY");
+          const vixy = vixyResult.data as Record<string, number> | null;
+          if (vixy && typeof vixy.c === "number" && vixy.c > 0) {
+            vixLevel = vixy.c;
+            vixChangePct = vixy.dp ?? null;
+            console.log(`[tool] VIX from VIXY proxy: ${vixLevel}`);
           } else {
-            if (vixFmpResult.error) errors.push(vixFmpResult.error);
-            // Fallback 2: VIXY ETF (tracks VIX futures)
-            const vixyResult = await fmp("/quote/VIXY");
-            const vixyData = vixyResult.data;
-            const vixyItem = Array.isArray(vixyData) ? vixyData[0] : null;
-            if (vixyItem && typeof vixyItem.price === "number" && vixyItem.price > 0) {
-              vixLevel = vixyItem.price;
-              vixChangePct = vixyItem.changesPercentage ?? null;
-              console.log(`[tool] VIX from VIXY proxy: ${vixLevel}`);
-            } else {
-              console.warn(`[tool] All VIX sources failed`);
-            }
+            console.warn(`[tool] All VIX sources failed`);
           }
         }
 
-        const sectors = Array.isArray(sectorsRaw)
-          ? (sectorsRaw as { symbol: string; price: number; changesPercentage: number }[])
-              .map((s) => ({
-                symbol: s.symbol,
-                price: s.price,
-                change_pct: s.changesPercentage,
-              }))
-              .sort((a, b) => b.change_pct - a.change_pct)
-          : [];
+        const sectors = sectorsRaw
+          .filter((s): s is NonNullable<typeof s> => s != null)
+          .map((s) => ({
+            symbol: s.symbol,
+            price: s.price,
+            change_pct: s.changesPercentage,
+          }))
+          .sort((a, b) => b.change_pct - a.change_pct);
 
         return {
           spy: spyData
             ? {
-                price: spyData.price as number,
-                change_pct: spyData.changesPercentage as number,
-                day_high: spyData.dayHigh as number,
-                day_low: spyData.dayLow as number,
+                price: spyData.price,
+                change_pct: spyData.changesPercentage,
+                day_high: spyData.dayHigh,
+                day_low: spyData.dayLow,
               }
             : null,
           vix: vixLevel !== null
@@ -506,10 +465,10 @@ export function createResearchTools(ctx: ToolContext) {
           ...(errors.length > 0 ? { api_errors: errors, note: `Some data sources failed: ${errors.join("; ")}. Analyze what's available and proceed.` } : {}),
           _sources: [
             {
-              provider: "FMP",
+              provider: "Finnhub",
               title: "SPY Real-Time Quote",
-              url: "https://financialmodelingprep.com/financial-statements/SPY",
-              excerpt: spyData ? `SPY $${spyData.price} (${spyData.changesPercentage > 0 ? "+" : ""}${Number(spyData.changesPercentage)?.toFixed(2)}%)` : "SPY quote unavailable",
+              url: "https://finnhub.io/docs/api/quote",
+              excerpt: spyData ? `SPY $${spyData.price} (${spyData.changesPercentage > 0 ? "+" : ""}${spyData.changesPercentage?.toFixed(2)}%)` : "SPY quote unavailable",
             },
             {
               provider: "Finnhub",
@@ -518,9 +477,9 @@ export function createResearchTools(ctx: ToolContext) {
               excerpt: vixLevel !== null ? `VIX at ${vixLevel.toFixed(1)}${vixChangePct != null ? ` (${vixChangePct > 0 ? "+" : ""}${vixChangePct.toFixed(1)}%)` : ""}` : "VIX data unavailable",
             },
             {
-              provider: "FMP",
+              provider: "Finnhub",
               title: "S&P 500 Sector ETF Performance",
-              url: "https://financialmodelingprep.com/financial-statements/XLK",
+              url: "https://finnhub.io/docs/api/quote",
               excerpt: sectors.length > 0
                 ? `Top: ${sectors[0].symbol} ${sectors[0].change_pct > 0 ? "+" : ""}${sectors[0].change_pct?.toFixed(1)}% | Bottom: ${sectors[sectors.length - 1].symbol} ${sectors[sectors.length - 1].change_pct?.toFixed(1)}%`
                 : "Sector data unavailable",
@@ -1599,7 +1558,7 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Fetch recent SEC filings (10-K, 10-Q, 8-K, Form 4) for a stock from EDGAR. " +
         "Use this to check for recent regulatory filings, insider transactions, or material events.",
-      parameters: z.object({
+      inputSchema: z.object({
         symbol: z.string().describe("Ticker symbol, e.g. AAPL"),
       }),
       execute: async (args) => {
@@ -1654,7 +1613,7 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Fetch analyst price target consensus for a stock — consensus target, high, low, " +
         "and number of analysts. Use to validate entry/target price levels.",
-      parameters: z.object({
+      inputSchema: z.object({
         symbol: z.string().describe("Ticker symbol, e.g. NVDA"),
       }),
       execute: async (args) => {
@@ -1681,7 +1640,7 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Fetch peer/competitor companies for a stock with basic comparison metrics. " +
         "Use for sector alternative analysis and relative valuation.",
-      parameters: z.object({
+      inputSchema: z.object({
         symbol: z.string().describe("Ticker symbol, e.g. MSFT"),
       }),
       execute: async (args) => {
@@ -1697,20 +1656,27 @@ export function createResearchTools(ctx: ToolContext) {
 
         if (peers.length === 0) return { peers: [] };
 
-        // Get quotes for peers from FMP
-        const { data: quotesData } = await fmp(`/quote/${peers.join(",")}`);
-        const quotes = (quotesData as { symbol?: string; name?: string; price?: number; changesPercentage?: number; pe?: number; marketCap?: number }[]) ?? [];
+        // Get quotes for peers from Finnhub (FMP /quote/ is deprecated)
+        const peerQuotes = await Promise.all(
+          peers.map(async (sym) => {
+            const [qRes, fRes] = await Promise.all([
+              finnhub(`/quote?symbol=${sym}`),
+              finnhub(`/stock/metric?symbol=${sym}&metric=all`),
+            ]);
+            const q = qRes.data as Record<string, number> | null;
+            const f = (fRes.data as Record<string, unknown>)?.metric as Record<string, number> | undefined;
+            return {
+              ticker: sym,
+              name: sym,
+              price: q?.c ?? null,
+              change_pct: q?.dp ?? null,
+              pe_ratio: f?.peNormalizedAnnual ?? null,
+              market_cap: f?.marketCapitalization ?? null,
+            };
+          })
+        );
 
-        return {
-          peers: quotes.map((q) => ({
-            ticker: q.symbol,
-            name: q.name,
-            price: q.price,
-            change_pct: q.changesPercentage,
-            pe_ratio: q.pe,
-            market_cap: q.marketCap,
-          })),
-        };
+        return { peers: peerQuotes };
       },
     }),
 
@@ -1718,7 +1684,7 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Fetch comprehensive news for a stock from multiple sources: stock-specific news, " +
         "press releases, and general market articles. More thorough than basic news.",
-      parameters: z.object({
+      inputSchema: z.object({
         symbol: z.string().describe("Ticker symbol, e.g. TSLA"),
       }),
       execute: async (args) => {
