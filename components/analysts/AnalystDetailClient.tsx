@@ -493,7 +493,19 @@ export default function AnalystDetailClient({
   detail: AnalystDetail;
   hasRunning: boolean;
 }) {
-  const { config, stats, recentRuns, recentTrades } = detail;
+  const { config: rawConfig, stats, recentRuns, recentTrades } = detail;
+
+  // Defensive defaults for array fields that may be missing from older data
+  const config = useMemo(() => ({
+    ...rawConfig,
+    sectors: rawConfig.sectors ?? [],
+    signalTypes: rawConfig.signalTypes ?? [],
+    holdDurations: rawConfig.holdDurations ?? [],
+    watchlist: rawConfig.watchlist ?? [],
+    exclusionList: rawConfig.exclusionList ?? [],
+    dailyLossLimit: rawConfig.dailyLossLimit ?? 0,
+  }), [rawConfig]);
+
   const [configOpen, setConfigOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [range, setRange] = useState<Range>("Max");
