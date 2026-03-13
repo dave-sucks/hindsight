@@ -34,13 +34,16 @@ export const SourcesTrigger = ({
   ...props
 }: SourcesTriggerProps) => (
   <CollapsibleTrigger
-    className={cn("flex items-center gap-2", className)}
+    className={cn(
+      "inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+      className,
+    )}
     {...props}
   >
     {children ?? (
       <>
-        <p className="font-medium">Used {count} sources</p>
-        <ChevronDownIcon className="h-3.5 w-3.5" />
+        <span className="font-medium">Used {count} sources</span>
+        <ChevronDownIcon className="h-3 w-3" />
       </>
     )}
   </CollapsibleTrigger>

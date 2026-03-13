@@ -412,21 +412,23 @@ function CarouselVariant({
         const isAtEnd = currentIndex >= desktopMaxIndex;
         return (
           <div className="relative hidden lg:block">
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="icon"
               onClick={goLeft}
               disabled={currentIndex === 0}
               aria-label="Previous product"
               className={cn(
-                "absolute top-1/2 left-2 z-10 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border bg-background/80 shadow-sm backdrop-blur-sm",
-                currentIndex === 0 ? "opacity-0" : "hover:bg-background"
+                "absolute top-1/2 left-2 z-10 h-8 w-8 -translate-y-1/2 rounded-full bg-background/80 shadow-sm backdrop-blur-sm",
+                currentIndex === 0 && "opacity-0"
               )}
             >
               <ChevronLeft className="h-4 w-4" />
-            </button>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="icon"
               onClick={() => {
                 if (currentIndex < desktopMaxIndex) {
                   setCurrentIndex(currentIndex + 1);
@@ -435,12 +437,12 @@ function CarouselVariant({
               disabled={isAtEnd}
               aria-label="Next product"
               className={cn(
-                "absolute top-1/2 right-2 z-10 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border bg-background/80 shadow-sm backdrop-blur-sm",
-                isAtEnd ? "opacity-0" : "hover:bg-background"
+                "absolute top-1/2 right-2 z-10 h-8 w-8 -translate-y-1/2 rounded-full bg-background/80 shadow-sm backdrop-blur-sm",
+                isAtEnd && "opacity-0"
               )}
             >
               <ChevronRight className="h-4 w-4" />
-            </button>
+            </Button>
 
             <div className="-mx-1 overflow-hidden py-1">
               <div
@@ -640,19 +642,24 @@ function PickerVariant({
           <thead className="border-b bg-muted/50">
             <tr>
               <th className="w-10 px-3 py-3">
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={handleSelectAll}
-                  className={cn(
-                    "flex h-4 w-4 items-center justify-center rounded border transition-colors",
-                    allSelected
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border hover:border-foreground/50"
-                  )}
+                  className="h-5 w-5 p-0"
                   aria-label="Select all products"
                 >
-                  {allSelected && <Check className="h-3 w-3" />}
-                </button>
+                  <div
+                    className={cn(
+                      "flex h-4 w-4 items-center justify-center rounded border transition-colors",
+                      allSelected
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border"
+                    )}
+                  >
+                    {allSelected && <Check className="h-3 w-3" />}
+                  </div>
+                </Button>
               </th>
               <th className="px-3 py-3 text-left font-medium text-muted-foreground">
                 Product

@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 /**
  * Represents a quick reply option.
@@ -33,17 +33,16 @@ export function QuickReply({ data, actions }: QuickReplyProps) {
     <div className="w-full rounded-lg bg-card p-4">
       <div className="flex flex-wrap gap-2">
         {replies.map((reply, index) => (
-          <button
+          <Button
             key={index}
+            variant="outline"
+            size="sm"
+            className="rounded-full text-xs sm:text-sm"
             onClick={() => onSelectReply?.(reply)}
-            className={cn(
-              "inline-flex cursor-pointer items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground transition-colors sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-sm",
-              "hover:border-foreground hover:bg-foreground hover:text-background"
-            )}
           >
             {reply.icon}
             {reply.label && <span>{reply.label}</span>}
-          </button>
+          </Button>
         ))}
       </div>
     </div>
