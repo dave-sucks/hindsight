@@ -1,3 +1,5 @@
+"use client";
+
 import {
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
