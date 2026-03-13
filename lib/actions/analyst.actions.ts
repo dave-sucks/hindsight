@@ -541,29 +541,45 @@ export async function createAnalystFromBuilder(
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
 
-  console.log(`[analyst] Creating analyst: name="${data.name}" sectors=${data.sectors?.join(",") ?? "all"} bias=${data.directionBias}`);
+  // Coerce all values to their expected types — AI tool output can be unpredictable
+  const name = String(data.name || "Untitled Analyst");
+  const prompt = String(data.analystPrompt || "General market research analyst");
+  const posSize = Number(data.maxPositionSize) || 5000;
+  const maxPos = Math.round(Number(data.maxOpenPositions) || 5);
+  const minConf = Math.round(Number(data.minConfidence) || 70);
+  const bias = (["LONG", "SHORT", "BOTH"] as const).includes(data.directionBias as "LONG" | "SHORT" | "BOTH")
+    ? data.directionBias
+    : "BOTH";
+  const holdDurs = Array.isArray(data.holdDurations) ? data.holdDurations : ["SWING"];
+  const sectors = Array.isArray(data.sectors) ? data.sectors : [];
+  const signals = Array.isArray(data.signalTypes) ? data.signalTypes : [];
+  const capTier = (["LARGE", "MID", "SMALL"] as const).includes(data.minMarketCapTier as "LARGE" | "MID" | "SMALL")
+    ? data.minMarketCapTier
+    : "LARGE";
+
+  console.log(`[analyst] Creating analyst: name="${name}" sectors=${sectors.join(",") || "all"} bias=${bias} posSize=${posSize} minConf=${minConf}`);
 
   const analyst = await prisma.agentConfig.create({
     data: {
       userId,
-      name: data.name,
+      name,
       description: data.description ?? "",
       enabled: true,
-      analystPrompt: data.analystPrompt,
+      analystPrompt: prompt,
       markets: ["US_EQUITIES"],
       exchanges: ["NASDAQ", "NYSE"],
-      sectors: data.sectors,
-      watchlist: data.watchlist ?? [],
-      exclusionList: data.exclusionList ?? [],
-      maxPositionSize: data.maxPositionSize,
-      maxOpenPositions: data.maxOpenPositions,
-      minConfidence: data.minConfidence,
+      sectors,
+      watchlist: Array.isArray(data.watchlist) ? data.watchlist : [],
+      exclusionList: Array.isArray(data.exclusionList) ? data.exclusionList : [],
+      maxPositionSize: posSize,
+      maxOpenPositions: maxPos,
+      minConfidence: minConf,
       maxRiskPct: 2,
       dailyLossLimit: 300,
-      holdDurations: data.holdDurations,
-      directionBias: data.directionBias,
-      signalTypes: data.signalTypes,
-      minMarketCapTier: data.minMarketCapTier,
+      holdDurations: holdDurs,
+      directionBias: bias,
+      signalTypes: signals,
+      minMarketCapTier: capTier,
       scheduleTime: "08:00",
       priceCheckFreq: "HOURLY",
       weekendMode: false,
@@ -571,13 +587,13 @@ export async function createAnalystFromBuilder(
       graduationMinTrades: 50,
       graduationProfitFactor: 1.5,
       realTradingEnabled: false,
-      realMaxPosition: data.maxPositionSize,
+      realMaxPosition: posSize,
       emailAlerts: true,
       weeklyDigestEnabled: true,
     },
   });
 
-  console.log(`[analyst] Created analyst id=${analyst.id} name="${data.name}"`);
+  console.log(`[analyst] Created analyst id=${analyst.id} name="${name}"`);
   revalidatePath("/analysts");
   return { id: analyst.id };
 }

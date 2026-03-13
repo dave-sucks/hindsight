@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback, useTransition } from "react";
+import { useMemo, useCallback, useTransition, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DefaultChatTransport } from "ai";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
@@ -13,6 +13,7 @@ import {
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 import { createAnalystFromBuilder } from "@/lib/actions/analyst.actions";
 import { Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 const BUILDER_WELCOME: WelcomeConfig = {
   title: "Create a new analyst",
@@ -107,13 +108,16 @@ export function AnalystBuilderChat({
     ),
   });
 
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const handleConfirmConfig = useCallback(
     (config: AgentConfigData) => {
+      setCreateError(null);
       startCreating(async () => {
         try {
           const result = await createAnalystFromBuilder({
-            name: config.name,
-            analystPrompt: config.analystPrompt,
+            name: config.name ?? "Untitled Analyst",
+            analystPrompt: config.analystPrompt ?? "General market research analyst",
             description: config.description,
             directionBias: config.directionBias ?? "BOTH",
             holdDurations: (config.holdDurations ?? ["SWING"]) as (
@@ -130,12 +134,16 @@ export function AnalystBuilderChat({
               | "LARGE"
               | "MID"
               | "SMALL",
-            watchlist: config.watchlist,
-            exclusionList: config.exclusionList,
+            watchlist: config.watchlist ?? [],
+            exclusionList: config.exclusionList ?? [],
           });
+          toast.success(`Analyst "${config.name}" created`);
           router.push(`/analysts/${result.id}`);
         } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
           console.error("Failed to create analyst:", err);
+          setCreateError(msg);
+          toast.error(`Failed to create analyst: ${msg}`);
         }
       });
     },
