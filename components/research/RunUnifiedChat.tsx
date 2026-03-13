@@ -47,7 +47,6 @@ import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
 import {
   CheckCircle2,
   SkipForward,
-  Bot,
   AlertCircle,
   Sparkles,
   Radar,
@@ -502,37 +501,32 @@ function useRegisterRunEventToolUIs() {
 
       return (
         <div className="space-y-3">
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 shrink-0">
-              <Bot className="h-4 w-4 text-primary" />
-            </div>
-            <div className="space-y-1.5 pt-0.5">
-              <p className="text-sm leading-relaxed">
-                Starting research run. I&apos;ll scan the market, analyze candidates across multiple data sources, and build thesis reports for the most promising opportunities.
-              </p>
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {direction && (
-                  <Badge variant="outline" className="text-[10px] gap-1 font-normal">
-                    <Target className="h-2.5 w-2.5 text-muted-foreground" />
-                    {direction}
-                  </Badge>
-                )}
-                {holdDurations.length > 0 && (
-                  <Badge variant="outline" className="text-[10px] gap-1 font-normal">
-                    Hold: {holdDurations.join(", ")}
-                  </Badge>
-                )}
-                {minConf != null && (
-                  <Badge variant="outline" className="text-[10px] gap-1 font-normal tabular-nums">
-                    Min {minConf}% confidence
-                  </Badge>
-                )}
-                {sectors.length > 0 && (
-                  <Badge variant="outline" className="text-[10px] gap-1 font-normal">
-                    {sectors.slice(0, 3).join(", ")}{sectors.length > 3 ? ` +${sectors.length - 3}` : ""}
-                  </Badge>
-                )}
-              </div>
+          <div className="space-y-1.5">
+            <p className="text-sm leading-relaxed">
+              Starting research run. I&apos;ll scan the market, analyze candidates across multiple data sources, and build thesis reports for the most promising opportunities.
+            </p>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {direction && (
+                <Badge variant="outline" className="text-[10px] gap-1 font-normal">
+                  <Target className="h-2.5 w-2.5 text-muted-foreground" />
+                  {direction}
+                </Badge>
+              )}
+              {holdDurations.length > 0 && (
+                <Badge variant="outline" className="text-[10px] gap-1 font-normal">
+                  Hold: {holdDurations.join(", ")}
+                </Badge>
+              )}
+              {minConf != null && (
+                <Badge variant="outline" className="text-[10px] gap-1 font-normal tabular-nums">
+                  Min {minConf}% confidence
+                </Badge>
+              )}
+              {sectors.length > 0 && (
+                <Badge variant="outline" className="text-[10px] gap-1 font-normal">
+                  {sectors.slice(0, 3).join(", ")}{sectors.length > 3 ? ` +${sectors.length - 3}` : ""}
+                </Badge>
+              )}
             </div>
           </div>
         </div>

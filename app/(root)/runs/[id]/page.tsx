@@ -153,6 +153,7 @@ export default async function RunPage({
     include: {
       agentConfig: { select: { id: true, name: true } },
       events: { orderBy: { createdAt: "asc" } },
+      messages: { orderBy: { createdAt: "asc" }, take: 1 },
       theses: {
         select: {
           id: true,
