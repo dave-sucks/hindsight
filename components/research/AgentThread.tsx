@@ -1049,7 +1049,8 @@ function useRegisterAgentToolUIs(runId: string) {
                 </span>
               )}
 
-              <span
+              <Badge
+                variant="secondary"
                 className={cn(
                   "ml-auto flex items-center justify-center rounded-full size-7 text-[11px] font-bold tabular-nums",
                   thesis.confidence_score >= 80
@@ -1060,7 +1061,7 @@ function useRegisterAgentToolUIs(runId: string) {
                 )}
               >
                 {thesis.confidence_score}
-              </span>
+              </Badge>
             </div>
 
             {/* Entry/Target/Stop compact row */}

@@ -163,7 +163,8 @@ export function ThesisCard({
               {s.replace(/_/g, " ")}
             </Badge>
           ))}
-          <div
+          <Badge
+            variant="secondary"
             className={cn(
               "flex items-center justify-center rounded-full size-10 text-sm font-bold tabular-nums",
               confidence_score >= 80
@@ -174,7 +175,7 @@ export function ThesisCard({
             )}
           >
             {confidence_score}
-          </div>
+          </Badge>
         </div>
       </div>
 
