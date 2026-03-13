@@ -8,6 +8,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { placeMarketOrder, getOrder, getLatestPrice } from "@/lib/alpaca";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
@@ -32,7 +33,11 @@ async function finnhub(path: string): Promise<{ data: unknown; error?: string }>
 }
 
 async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
-  const url = `https://financialmodelingprep.com/api/v3${path}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
+  // Support both v3 and v4 paths: if path starts with /v4/, use it directly
+  const base = path.startsWith("/v4/")
+    ? `https://financialmodelingprep.com/api${path}`
+    : `https://financialmodelingprep.com/api/v3${path}`;
+  const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
   try {
     const res = await fetch(url, { next: { revalidate: 300 } });
     if (!res.ok) {
@@ -340,11 +345,11 @@ export function createResearchTools(ctx: ToolContext) {
 
         console.log(`[tool] get_market_overview SPY=${spyData ? `$${spyData.price}` : "null"} sectors=${Array.isArray(sectorsRaw) ? sectorsRaw.length : "null"}`);
 
-        // VIX: try Finnhub ^VIX → FMP ^VIX → FMP VIXY (ETF proxy)
+        // VIX: Finnhub ^VIX first, fall back to FMP ^VIX, then VIXY ETF
         let vixLevel: number | null = null;
         let vixChangePct: number | null = null;
 
-        const vixFinnhubResult = await finnhub("/quote?symbol=%5EVIX");
+        const vixFinnhubResult = await finnhub(`/quote?symbol=${encodeURIComponent("^VIX")}`);
         const vixFinnhub = vixFinnhubResult.data as Record<string, number> | null;
         if (vixFinnhub && typeof vixFinnhub.c === "number" && vixFinnhub.c > 0) {
           vixLevel = vixFinnhub.c;
@@ -353,7 +358,7 @@ export function createResearchTools(ctx: ToolContext) {
         } else {
           if (vixFinnhubResult.error) errors.push(vixFinnhubResult.error);
           // Fallback 1: FMP ^VIX
-          const vixFmpResult = await fmp("/quote/%5EVIX");
+          const vixFmpResult = await fmp(`/quote/${encodeURIComponent("^VIX")}`);
           const vixFmp = vixFmpResult.data;
           const vixItem = Array.isArray(vixFmp) ? vixFmp[0] : null;
           if (vixItem && typeof vixItem.price === "number" && vixItem.price > 0) {
@@ -367,7 +372,6 @@ export function createResearchTools(ctx: ToolContext) {
             const vixyData = vixyResult.data;
             const vixyItem = Array.isArray(vixyData) ? vixyData[0] : null;
             if (vixyItem && typeof vixyItem.price === "number" && vixyItem.price > 0) {
-              // VIXY is a proxy, not the actual VIX level — but gives directionality
               vixLevel = vixyItem.price;
               vixChangePct = vixyItem.changesPercentage ?? null;
               console.log(`[tool] VIX from VIXY proxy: ${vixLevel}`);
@@ -1241,11 +1245,102 @@ export function createResearchTools(ctx: ToolContext) {
       inputSchema: tradeParams,
       execute: async (args: TradeInput) => {
         console.log(`[tool] place_trade ticker=${args.ticker} direction=${args.direction} shares=${args.shares} runId=${ctx.runId}`);
-        return {
-          ...args,
-          status: "pending_confirmation" as const,
-          note: "Trade ready to place. Awaiting confirmation.",
-        };
+
+        try {
+          // 1. Place Alpaca paper order
+          const alpacaOrder = await placeMarketOrder({
+            symbol: args.ticker,
+            qty: args.shares,
+            side: args.direction === "LONG" ? "buy" : "sell",
+          });
+          console.log(`[tool] place_trade Alpaca order placed: ${alpacaOrder.id}`);
+
+          // 2. Wait for fill (max 10s), fall back to entry price
+          let fillPrice = args.entry_price;
+          const deadline = Date.now() + 10_000;
+          while (Date.now() < deadline) {
+            const order = await getOrder(alpacaOrder.id);
+            if (order.status === "filled" && order.filled_avg_price) {
+              fillPrice = parseFloat(order.filled_avg_price);
+              break;
+            }
+            if (["cancelled", "expired", "rejected"].includes(order.status)) {
+              throw new Error(`Alpaca order ${order.status}`);
+            }
+            await new Promise((r) => setTimeout(r, 1_000));
+          }
+          // If still not filled, try latest price
+          if (fillPrice === args.entry_price) {
+            try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry_price */ }
+          }
+
+          // 3. Create Trade in DB
+          const trade = await prisma.trade.create({
+            data: {
+              thesisId: args.thesis_id ?? null,
+              userId: ctx.userId,
+              ticker: args.ticker,
+              direction: args.direction,
+              status: "OPEN",
+              entryPrice: fillPrice,
+              shares: args.shares,
+              targetPrice: args.target_price,
+              stopLoss: args.stop_loss,
+              exitStrategy: "PRICE_TARGET",
+              alpacaOrderId: alpacaOrder.id,
+            },
+          });
+
+          // 4. Write PLACED TradeEvent
+          await prisma.tradeEvent.create({
+            data: {
+              tradeId: trade.id,
+              eventType: "PLACED",
+              description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+              priceAt: fillPrice,
+            },
+          });
+
+          // 5. Write RunEvent so trade is visible on run page
+          if (ctx.runId) {
+            await prisma.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: "trade_placed",
+                title: `Trade placed: ${args.direction} ${args.ticker}`,
+                message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+                payload: {
+                  ticker: args.ticker,
+                  direction: args.direction,
+                  entry: fillPrice,
+                  target_price: args.target_price,
+                  stop_loss: args.stop_loss,
+                  shares: args.shares,
+                  trade_id: trade.id,
+                } as object,
+              },
+            });
+          }
+
+          console.log(`[tool] place_trade SUCCESS trade=${trade.id} fill=$${fillPrice.toFixed(2)}`);
+          return {
+            ...args,
+            status: "filled" as const,
+            fill_price: fillPrice,
+            trade_id: trade.id,
+            alpaca_order_id: alpacaOrder.id,
+            note: `Trade executed: ${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Trade placement failed";
+          console.error(`[tool] place_trade FAILED for ${args.ticker}: ${msg}`);
+          return {
+            ...args,
+            status: "failed" as const,
+            error: msg,
+            note: `Trade failed: ${msg}. The thesis has been saved but no position was opened.`,
+          };
+        }
       },
     }),
 
@@ -1348,7 +1443,187 @@ export function createResearchTools(ctx: ToolContext) {
         return args;
       },
     }),
+    // ── DAV-167: Extended data tools ──────────────────────────────────────
+
+    get_sec_filings: tool({
+      description:
+        "Fetch recent SEC filings (10-K, 10-Q, 8-K, Form 4) for a stock from EDGAR. " +
+        "Use this to check for recent regulatory filings, insider transactions, or material events.",
+      parameters: z.object({
+        symbol: z.string().describe("Ticker symbol, e.g. AAPL"),
+      }),
+      execute: async (args) => {
+        try {
+          const res = await fetch(
+            `https://data.sec.gov/submissions/CIK${await getCIK(args.symbol)}.json`,
+            {
+              headers: {
+                "User-Agent": "Hindsight Research Bot research@hindsight.app",
+                Accept: "application/json",
+              },
+            }
+          );
+          if (!res.ok) return { filings: [], error: `SEC returned ${res.status}` };
+          const data = (await res.json()) as {
+            filings?: {
+              recent?: {
+                form?: string[];
+                filingDate?: string[];
+                primaryDocDescription?: string[];
+                accessionNumber?: string[];
+                primaryDocument?: string[];
+              };
+            };
+          };
+          const recent = data.filings?.recent;
+          if (!recent) return { filings: [] };
+
+          const relevantTypes = new Set(["10-K", "10-Q", "8-K", "S-1", "DEF 14A", "4"]);
+          const filings: { type: string; date: string; description: string }[] = [];
+          const forms = recent.form ?? [];
+          const dates = recent.filingDate ?? [];
+          const descs = recent.primaryDocDescription ?? [];
+
+          for (let i = 0; i < Math.min(forms.length, 50); i++) {
+            if (!relevantTypes.has(forms[i])) continue;
+            filings.push({
+              type: forms[i],
+              date: dates[i] ?? "",
+              description: descs[i] ?? forms[i],
+            });
+            if (filings.length >= 8) break;
+          }
+          return { filings, count: filings.length };
+        } catch (err) {
+          return { filings: [], error: err instanceof Error ? err.message : "Failed" };
+        }
+      },
+    }),
+
+    get_analyst_targets: tool({
+      description:
+        "Fetch analyst price target consensus for a stock — consensus target, high, low, " +
+        "and number of analysts. Use to validate entry/target price levels.",
+      parameters: z.object({
+        symbol: z.string().describe("Ticker symbol, e.g. NVDA"),
+      }),
+      execute: async (args) => {
+        const { data, error } = await fmp(
+          `/v4/price-target-consensus?symbol=${args.symbol}`
+        );
+        if (error || !data) return { targets: null, error };
+        const arr = data as { targetConsensus?: number; targetHigh?: number; targetLow?: number; targetMedian?: number; numberOfAnalysts?: number }[];
+        if (!Array.isArray(arr) || arr.length === 0) return { targets: null };
+        const c = arr[0];
+        return {
+          targets: {
+            consensus: c.targetConsensus,
+            high: c.targetHigh,
+            low: c.targetLow,
+            median: c.targetMedian,
+            num_analysts: c.numberOfAnalysts,
+          },
+        };
+      },
+    }),
+
+    get_company_peers: tool({
+      description:
+        "Fetch peer/competitor companies for a stock with basic comparison metrics. " +
+        "Use for sector alternative analysis and relative valuation.",
+      parameters: z.object({
+        symbol: z.string().describe("Ticker symbol, e.g. MSFT"),
+      }),
+      execute: async (args) => {
+        // Get peers from Finnhub
+        const { data: peersData, error: peersErr } = await finnhub(
+          `/stock/peers?symbol=${args.symbol}`
+        );
+        if (peersErr || !peersData) return { peers: [], error: peersErr };
+
+        const peers = (peersData as string[])
+          .filter((p) => p.toUpperCase() !== args.symbol.toUpperCase())
+          .slice(0, 6);
+
+        if (peers.length === 0) return { peers: [] };
+
+        // Get quotes for peers from FMP
+        const { data: quotesData } = await fmp(`/quote/${peers.join(",")}`);
+        const quotes = (quotesData as { symbol?: string; name?: string; price?: number; changesPercentage?: number; pe?: number; marketCap?: number }[]) ?? [];
+
+        return {
+          peers: quotes.map((q) => ({
+            ticker: q.symbol,
+            name: q.name,
+            price: q.price,
+            change_pct: q.changesPercentage,
+            pe_ratio: q.pe,
+            market_cap: q.marketCap,
+          })),
+        };
+      },
+    }),
+
+    get_news_deep_dive: tool({
+      description:
+        "Fetch comprehensive news for a stock from multiple sources: stock-specific news, " +
+        "press releases, and general market articles. More thorough than basic news.",
+      parameters: z.object({
+        symbol: z.string().describe("Ticker symbol, e.g. TSLA"),
+      }),
+      execute: async (args) => {
+        const [stockNews, pressReleases] = await Promise.all([
+          fmp(`/stock_news?tickers=${args.symbol}&limit=10`),
+          fmp(`/press-releases/${args.symbol}?limit=5`),
+        ]);
+
+        const news = (
+          (stockNews.data as { title?: string; text?: string; site?: string; url?: string; publishedDate?: string }[]) ?? []
+        ).map((item) => ({
+          headline: item.title ?? "",
+          summary: (item.text ?? "").slice(0, 200),
+          source: item.site ?? "",
+          url: item.url ?? "",
+          date: item.publishedDate ?? "",
+        }));
+
+        const prs = (
+          (pressReleases.data as { title?: string; text?: string; date?: string }[]) ?? []
+        ).map((item) => ({
+          headline: item.title ?? "",
+          summary: (item.text ?? "").slice(0, 200),
+          date: item.date ?? "",
+        }));
+
+        return {
+          stock_news: news,
+          press_releases: prs,
+          total: news.length + prs.length,
+        };
+      },
+    }),
   };
+}
+
+// Helper: look up CIK from ticker for SEC EDGAR
+async function getCIK(ticker: string): Promise<string> {
+  const res = await fetch("https://www.sec.gov/files/company_tickers.json", {
+    headers: {
+      "User-Agent": "Hindsight Research Bot research@hindsight.app",
+      Accept: "application/json",
+    },
+  });
+  if (!res.ok) throw new Error(`SEC tickers lookup failed: ${res.status}`);
+  const data = (await res.json()) as Record<
+    string,
+    { cik_str: number; ticker: string }
+  >;
+  for (const entry of Object.values(data)) {
+    if (entry.ticker.toUpperCase() === ticker.toUpperCase()) {
+      return String(entry.cik_str).padStart(10, "0");
+    }
+  }
+  throw new Error(`No CIK found for ${ticker}`);
 }
 
 // Backwards-compatible export for existing code that doesn't pass context

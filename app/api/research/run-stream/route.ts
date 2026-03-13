@@ -1,9 +1,38 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { placeMarketOrder, getOrder, getLatestPrice } from "@/lib/alpaca";
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "";
 const PYTHON_SERVICE_SECRET = process.env.PYTHON_SERVICE_SECRET ?? "";
+
+/**
+ * Poll Alpaca until the order fills or timeout.
+ * Falls back to latest market price when market is closed.
+ */
+async function waitForFill(
+  orderId: string,
+  symbol: string,
+  fallbackPrice: number,
+  maxMs = 10_000
+): Promise<number> {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    const order = await getOrder(orderId);
+    if (order.status === "filled" && order.filled_avg_price) {
+      return parseFloat(order.filled_avg_price);
+    }
+    if (["cancelled", "expired", "rejected"].includes(order.status)) {
+      throw new Error(`Alpaca order ${order.status}`);
+    }
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  try {
+    return await getLatestPrice(symbol);
+  } catch {
+    return fallbackPrice;
+  }
+}
 
 type ThesisPayload = {
   ticker: string;
@@ -251,6 +280,33 @@ export async function POST(req: NextRequest) {
                   thesis.confidence_score >= minConfidence &&
                   thesis.entry_price != null
                 ) {
+                  const shares = Math.max(1, Math.floor(maxPositionSize / thesis.entry_price));
+
+                  // Actually place Alpaca paper order
+                  let alpacaOrderId: string | undefined;
+                  let fillPrice = thesis.entry_price;
+                  try {
+                    const order = await placeMarketOrder({
+                      symbol: thesis.ticker,
+                      qty: shares,
+                      side: thesis.direction === "LONG" ? "buy" : "sell",
+                    });
+                    alpacaOrderId = order.id;
+                    fillPrice = await waitForFill(
+                      order.id,
+                      thesis.ticker,
+                      thesis.entry_price
+                    );
+                  } catch (alpacaErr) {
+                    // Log but don't block — create trade as DB-only if Alpaca fails
+                    const errMsg = alpacaErr instanceof Error ? alpacaErr.message : String(alpacaErr);
+                    controller.enqueue(
+                      encoder.encode(
+                        `data: ${JSON.stringify({ type: "trade_warning", ticker: thesis.ticker, message: `Alpaca order failed: ${errMsg}. Trade saved as DB-only.` })}\n\n`
+                      )
+                    );
+                  }
+
                   const trade = await prisma.trade.create({
                     data: {
                       thesisId: row.id,
@@ -258,21 +314,60 @@ export async function POST(req: NextRequest) {
                       ticker: thesis.ticker,
                       direction: thesis.direction as "LONG" | "SHORT",
                       status: "OPEN",
-                      entryPrice: thesis.entry_price,
-                      shares: Math.max(1, Math.floor(maxPositionSize / thesis.entry_price)),
+                      entryPrice: fillPrice,
+                      shares,
                       targetPrice: thesis.target_price,
                       stopLoss: thesis.stop_loss,
-                      exitStrategy: "PRICE_TARGET",
+                      exitStrategy: thesis.target_price ? "PRICE_TARGET" : "MANUAL",
+                      ...(alpacaOrderId ? { alpacaOrderId } : {}),
                     },
                   });
                   await prisma.tradeEvent.create({
                     data: {
                       tradeId: trade.id,
                       eventType: "PLACED",
-                      description: `Trade placed via ${source.toLowerCase()} run`,
-                      priceAt: thesis.entry_price,
+                      description: alpacaOrderId
+                        ? `${thesis.direction} ${thesis.ticker} at $${fillPrice.toFixed(2)} via ${source.toLowerCase()} run`
+                        : `Trade placed via ${source.toLowerCase()} run (DB-only, Alpaca unavailable)`,
+                      priceAt: fillPrice,
                     },
                   });
+
+                  // Emit trade_placed event so the frontend can show it
+                  await prisma.runEvent.create({
+                    data: {
+                      runId: run.id,
+                      type: "trade_placed",
+                      title: `${thesis.direction} ${thesis.ticker} — ${shares} shares at $${fillPrice.toFixed(2)}`,
+                      message: alpacaOrderId ? `Alpaca order ${alpacaOrderId}` : "DB-only trade",
+                      payload: {
+                        tradeId: trade.id,
+                        ticker: thesis.ticker,
+                        direction: thesis.direction,
+                        shares,
+                        entryPrice: fillPrice,
+                        targetPrice: thesis.target_price,
+                        stopLoss: thesis.stop_loss,
+                        alpacaOrderId: alpacaOrderId ?? null,
+                      } as object,
+                    },
+                  });
+
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({
+                        type: "trade_placed",
+                        run_id: run.id,
+                        ticker: thesis.ticker,
+                        direction: thesis.direction,
+                        shares,
+                        entryPrice: fillPrice,
+                        targetPrice: thesis.target_price,
+                        stopLoss: thesis.stop_loss,
+                        alpacaOrderId: alpacaOrderId ?? null,
+                      })}\n\n`
+                    )
+                  );
                 }
               }
 
@@ -297,11 +392,31 @@ export async function POST(req: NextRequest) {
             `data: ${JSON.stringify({ type: "error", message: msg })}\n\n`
           )
         );
-        await prisma.researchRun.update({
-          where: { id: run.id },
-          data: { status: "FAILED", completedAt: new Date() },
-        });
+        // Mark run as FAILED if it's still RUNNING (prevents infinite running state)
+        try {
+          const currentRun = await prisma.researchRun.findUnique({ where: { id: run.id } });
+          if (currentRun && currentRun.status === "RUNNING") {
+            await prisma.researchRun.update({
+              where: { id: run.id },
+              data: { status: "FAILED", completedAt: new Date() },
+            });
+          }
+        } catch {
+          // Ignore — best effort cleanup
+        }
       } finally {
+        // Safety net: if run is still RUNNING after stream ends, mark FAILED
+        try {
+          const currentRun = await prisma.researchRun.findUnique({ where: { id: run.id } });
+          if (currentRun && currentRun.status === "RUNNING") {
+            await prisma.researchRun.update({
+              where: { id: run.id },
+              data: { status: "FAILED", completedAt: new Date() },
+            });
+          }
+        } catch {
+          // Ignore
+        }
         reader.releaseLock();
         controller.close();
       }

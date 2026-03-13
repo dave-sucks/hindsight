@@ -12,7 +12,7 @@
  * - Options flow → OptionsFlowCard (compact)
  * - Reddit sentiment → collapsible reasoning block
  * - show_thesis → slim pill → ThesisArtifactSheet
- * - place_trade → TradeConfirmation → TradeCard
+ * - place_trade → TradeCard (server-side execution)
  * - summarize_run → RunSummaryCard
  */
 
@@ -41,7 +41,6 @@ import { cn } from "@/lib/utils";
 import {
   type ThesisCardData,
   TradeCard,
-  TradeConfirmation,
   MarketContextCard,
   type MarketContextData,
   StockCard,
@@ -51,9 +50,11 @@ import {
   ScanResultsCard,
   NewsCard,
   RunSummaryCard,
+  SecFilingsCard,
+  AnalystTargetsCard,
+  PeersCard,
 } from "@/components/domain";
 import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
-import { createTrade } from "@/lib/actions/trade.actions";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,8 @@ import {
   Activity,
   MessageSquareText,
   CheckCircle2,
+  Target,
+  Users,
 } from "lucide-react";
 
 // ─── Source data shape (matches _sources from tool results) ─────────────────
@@ -234,7 +237,17 @@ function useRegisterAgentToolUIs(runId: string) {
   useAssistantToolUI({
     toolName: "get_market_overview",
     render: ({ result }) => {
-      if (!result) return <ToolSpinner label="Checking market conditions..." />;
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Market conditions</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={TrendingUp} label="Fetching S&P 500, VIX" status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading sector performance" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
 
       const spy = result.spy as {
         price: number;
@@ -273,6 +286,8 @@ function useRegisterAgentToolUIs(runId: string) {
               ? "trending_down"
               : "range_bound";
 
+      const apiErrors = result.api_errors as string[] | undefined;
+
       return (
         <div className="my-2">
           <MarketContextCard
@@ -281,7 +296,7 @@ function useRegisterAgentToolUIs(runId: string) {
             vixLevel={vix?.level}
             topSectors={topSectors}
             bottomSectors={bottomSectors}
-            todaysApproach=""
+            todaysApproach={apiErrors?.length ? `Data issues: ${apiErrors.slice(0, 2).join("; ")}` : ""}
           />
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
@@ -293,7 +308,18 @@ function useRegisterAgentToolUIs(runId: string) {
   useAssistantToolUI({
     toolName: "scan_candidates",
     render: ({ result }) => {
-      if (!result) return <ToolSpinner label="Scanning for candidates..." />;
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Scanning for candidates</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Search} label="Checking earnings calendar" status="active" />
+              <ChainOfThoughtStep icon={TrendingUp} label="Scanning gainers & losers" status="pending" />
+              <ChainOfThoughtStep icon={Activity} label="Social trends (StockTwits)" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
 
       const earnings = (result.earnings ?? []) as {
         ticker: string;
@@ -681,6 +707,145 @@ function useRegisterAgentToolUIs(runId: string) {
     },
   });
 
+  // ── SEC Filings → SecFilingsCard ────────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_sec_filings",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>SEC filings — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={FileText} label="Looking up CIK on EDGAR" status="active" />
+              <ChainOfThoughtStep icon={Search} label="Fetching recent filings" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+      const filings = (result.filings ?? result) as { type: string; date: string; description: string; url?: string | null }[];
+      return (
+        <div className="my-2">
+          <SecFilingsCard ticker={ticker} filings={Array.isArray(filings) ? filings : []} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Analyst Targets → AnalystTargetsCard ──────────────────────────
+  useAssistantToolUI({
+    toolName: "get_analyst_targets",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Analyst targets — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Target} label="Fetching Wall Street consensus" status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+      return (
+        <div className="my-2">
+          <AnalystTargetsCard
+            ticker={ticker}
+            consensusTarget={result.consensus_target as number | null}
+            high={result.high as number | null}
+            low={result.low as number | null}
+            median={result.median as number | null}
+            numAnalysts={result.num_analysts as number | null}
+            currentPrice={result.current_price as number | null}
+          />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Company Peers → PeersCard ────────────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_company_peers",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Company peers — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Users} label="Fetching peer companies" status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading comparison metrics" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+      const peers = (result.peers ?? []) as { ticker: string; name?: string; price?: number | null; change_pct?: number | null; pe_ratio?: number | null; market_cap?: number | null }[];
+      return (
+        <div className="my-2">
+          <PeersCard
+            ticker={ticker}
+            peers={peers}
+            sector={result.sector as string | undefined}
+          />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── News Deep Dive → NewsCard (reuse existing) ────────────────────
+  useAssistantToolUI({
+    toolName: "get_news_deep_dive",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>News deep dive — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Newspaper} label="Fetching stock news" status="active" />
+              <ChainOfThoughtStep icon={FileText} label="Loading press releases" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+      const stockNews = (result.stock_news ?? []) as { headline: string; source: string; url?: string; published_at?: string }[];
+      const pressReleases = (result.press_releases ?? []) as { headline: string; source: string; url?: string; published_at?: string }[];
+      const allNews = [...stockNews, ...pressReleases].map((n) => ({
+        headline: n.headline,
+        source: n.source,
+        url: n.url,
+        date: n.published_at,
+      }));
+
+      if (allNews.length === 0) {
+        return (
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
+            No additional news found for {ticker}.
+          </div>
+        );
+      }
+
+      return (
+        <div className="my-2">
+          <Card className="overflow-hidden p-0">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/40">
+              <span className="text-xs font-medium text-muted-foreground">News Deep Dive</span>
+              <span className="text-xs font-mono font-medium">{ticker}</span>
+              <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+                {allNews.length} article{allNews.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <NewsCard articles={allNews} />
+          </Card>
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
   // ── Thesis → slim pill + ThesisArtifactSheet ─────────────────────
   useAssistantToolUI({
     toolName: "show_thesis",
@@ -812,94 +977,43 @@ function useRegisterAgentToolUIs(runId: string) {
     },
   });
 
-  // ── Place trade → TradeConfirmation / TradeCard ─────────────────────
+  // ── Place trade → TradeCard (trades execute server-side now) ─────────
   useAssistantToolUI({
     toolName: "place_trade",
     render: ({ result }) => {
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const [tradeState, setTradeState] = useState<
-        "pending" | "executing" | "confirmed" | "cancelled"
-      >("pending");
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const [tradeResult, setTradeResult] = useState<{
-        fillPrice: number;
-        tradeId: string;
-      } | null>(null);
-
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const handleConfirm = useCallback(async () => {
-        if (!result) return;
-        setTradeState("executing");
-
-        try {
-          const res = await createTrade({
-            thesisId: (result.thesis_id as string) ?? "",
-            ticker: result.ticker as string,
-            direction: result.direction as "LONG" | "SHORT",
-            entryPrice: result.entry_price as number,
-            shares: result.shares as number,
-            targetPrice: result.target_price as number | undefined,
-            stopLoss: result.stop_loss as number | undefined,
-            exitStrategy: "PRICE_TARGET",
-            researchRunId: runId,
-          });
-
-          if (res.error) {
-            setTradeState("cancelled");
-          } else {
-            setTradeResult({ fillPrice: res.fillPrice, tradeId: res.tradeId });
-            setTradeState("confirmed");
-          }
-        } catch {
-          setTradeState("cancelled");
-        }
-      }, [result]);
-
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const handleCancel = useCallback(() => {
-        setTradeState("cancelled");
-      }, []);
-
       if (!result) {
-        return <ToolSpinner label="Preparing trade..." color="emerald" />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Placing trade</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={TrendingUp} label="Submitting to Alpaca Paper" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="Waiting for fill" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
-      if (tradeState === "confirmed" && tradeResult) {
+      const status = result.status as string;
+
+      if (status === "failed") {
         return (
-          <div className="my-2">
-            <TradeCard
-              ticker={result.ticker as string}
-              direction={result.direction as "LONG" | "SHORT"}
-              entryPrice={tradeResult.fillPrice}
-              shares={result.shares as number}
-              targetPrice={result.target_price as number | undefined}
-              stopLoss={result.stop_loss as number | undefined}
-              status="OPEN"
-            />
+          <div className="my-1.5 text-xs text-red-500 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2">
+            Trade failed: {String(result.error || result.note || "Unknown error")}
           </div>
         );
       }
 
+      // Trade was filled — show the TradeCard
       return (
         <div className="my-2">
-          <TradeConfirmation
+          <TradeCard
             ticker={result.ticker as string}
             direction={result.direction as "LONG" | "SHORT"}
-            estimatedPrice={result.entry_price as number}
-            estimatedCost={
-              (result.entry_price as number) * ((result.shares as number) || 1)
-            }
+            entryPrice={(result.fill_price as number) ?? (result.entry_price as number)}
             shares={result.shares as number}
-            onConfirm={handleConfirm}
-            onCancel={handleCancel}
-            isExecuting={tradeState === "executing"}
-            resolved={
-              tradeState === "confirmed"
-                ? "confirmed"
-                : tradeState === "cancelled"
-                  ? "cancelled"
-                  : null
-            }
+            targetPrice={result.target_price as number | undefined}
+            stopLoss={result.stop_loss as number | undefined}
+            status="OPEN"
           />
         </div>
       );
@@ -911,7 +1025,15 @@ function useRegisterAgentToolUIs(runId: string) {
     toolName: "summarize_run",
     render: ({ result }) => {
       if (!result) {
-        return <ToolSpinner label="Synthesizing session..." color="violet" />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Portfolio synthesis</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={BarChart3} label="Ranking picks by conviction" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="Calculating exposure" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
       const rankedPicks = (result.ranked_picks ?? []) as {

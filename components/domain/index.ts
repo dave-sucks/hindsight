@@ -48,3 +48,20 @@ export {
   type ScanResultsCardProps,
 } from "./scan-results-card";
 export { NewsCard, type NewsItem } from "./news-card";
+export {
+  SecFilingsCard,
+  type SecFiling,
+  type SecFilingsCardData,
+  type SecFilingsCardProps,
+} from "./sec-filings-card";
+export {
+  AnalystTargetsCard,
+  type AnalystTargetsData,
+  type AnalystTargetsCardProps,
+} from "./analyst-targets-card";
+export {
+  PeersCard,
+  type PeerData,
+  type PeersCardData,
+  type PeersCardProps,
+} from "./peers-card";
