@@ -8,6 +8,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { placeMarketOrder, getOrder, getLatestPrice } from "@/lib/alpaca";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
@@ -302,25 +303,34 @@ export function createResearchTools(ctx: ToolContext) {
         const sectorsRaw = sectorResult.data;
         const spy = Array.isArray(spyQuote) ? spyQuote[0] : null;
 
-        // VIX: Finnhub ^VIX first, fall back to FMP
+        // VIX: Finnhub ^VIX first, fall back to FMP ^VIX, then VIXY ETF
         let vixLevel: number | null = null;
         let vixChangePct: number | null = null;
 
-        const vixFinnhubResult = await finnhub("/quote?symbol=%5EVIX");
+        const vixFinnhubResult = await finnhub(`/quote?symbol=${encodeURIComponent("^VIX")}`);
         const vixFinnhub = vixFinnhubResult.data as Record<string, number> | null;
         if (vixFinnhub && typeof vixFinnhub.c === "number" && vixFinnhub.c > 0) {
           vixLevel = vixFinnhub.c;
           vixChangePct = vixFinnhub.dp ?? null;
         } else {
           if (vixFinnhubResult.error) errors.push(vixFinnhubResult.error);
-          const vixFmpResult = await fmp("/quote/%5EVIX");
+          // Try FMP ^VIX
+          const vixFmpResult = await fmp(`/quote/${encodeURIComponent("^VIX")}`);
           const vixFmp = vixFmpResult.data;
           const vixItem = Array.isArray(vixFmp) ? vixFmp[0] : null;
           if (vixItem && typeof vixItem.price === "number" && vixItem.price > 0) {
             vixLevel = vixItem.price;
             vixChangePct = vixItem.changesPercentage ?? null;
-          } else if (vixFmpResult.error) {
-            errors.push(vixFmpResult.error);
+          } else {
+            if (vixFmpResult.error) errors.push(vixFmpResult.error);
+            // Fallback: VIXY ETF as VIX proxy
+            const vixyResult = await fmp("/quote/VIXY");
+            const vixyData = vixyResult.data;
+            const vixyItem = Array.isArray(vixyData) ? vixyData[0] : null;
+            if (vixyItem && typeof vixyItem.price === "number" && vixyItem.price > 0) {
+              vixLevel = vixyItem.price;
+              vixChangePct = vixyItem.changesPercentage ?? null;
+            }
           }
         }
 
@@ -1188,11 +1198,102 @@ export function createResearchTools(ctx: ToolContext) {
       inputSchema: tradeParams,
       execute: async (args: TradeInput) => {
         console.log(`[tool] place_trade ticker=${args.ticker} direction=${args.direction} shares=${args.shares} runId=${ctx.runId}`);
-        return {
-          ...args,
-          status: "pending_confirmation" as const,
-          note: "Trade ready to place. Awaiting confirmation.",
-        };
+
+        try {
+          // 1. Place Alpaca paper order
+          const alpacaOrder = await placeMarketOrder({
+            symbol: args.ticker,
+            qty: args.shares,
+            side: args.direction === "LONG" ? "buy" : "sell",
+          });
+          console.log(`[tool] place_trade Alpaca order placed: ${alpacaOrder.id}`);
+
+          // 2. Wait for fill (max 10s), fall back to entry price
+          let fillPrice = args.entry_price;
+          const deadline = Date.now() + 10_000;
+          while (Date.now() < deadline) {
+            const order = await getOrder(alpacaOrder.id);
+            if (order.status === "filled" && order.filled_avg_price) {
+              fillPrice = parseFloat(order.filled_avg_price);
+              break;
+            }
+            if (["cancelled", "expired", "rejected"].includes(order.status)) {
+              throw new Error(`Alpaca order ${order.status}`);
+            }
+            await new Promise((r) => setTimeout(r, 1_000));
+          }
+          // If still not filled, try latest price
+          if (fillPrice === args.entry_price) {
+            try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry_price */ }
+          }
+
+          // 3. Create Trade in DB
+          const trade = await prisma.trade.create({
+            data: {
+              thesisId: args.thesis_id ?? null,
+              userId: ctx.userId,
+              ticker: args.ticker,
+              direction: args.direction,
+              status: "OPEN",
+              entryPrice: fillPrice,
+              shares: args.shares,
+              targetPrice: args.target_price,
+              stopLoss: args.stop_loss,
+              exitStrategy: "PRICE_TARGET",
+              alpacaOrderId: alpacaOrder.id,
+            },
+          });
+
+          // 4. Write PLACED TradeEvent
+          await prisma.tradeEvent.create({
+            data: {
+              tradeId: trade.id,
+              eventType: "PLACED",
+              description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+              priceAt: fillPrice,
+            },
+          });
+
+          // 5. Write RunEvent so trade is visible on run page
+          if (ctx.runId) {
+            await prisma.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: "trade_placed",
+                title: `Trade placed: ${args.direction} ${args.ticker}`,
+                message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+                payload: {
+                  ticker: args.ticker,
+                  direction: args.direction,
+                  entry: fillPrice,
+                  target_price: args.target_price,
+                  stop_loss: args.stop_loss,
+                  shares: args.shares,
+                  trade_id: trade.id,
+                } as object,
+              },
+            });
+          }
+
+          console.log(`[tool] place_trade SUCCESS trade=${trade.id} fill=$${fillPrice.toFixed(2)}`);
+          return {
+            ...args,
+            status: "filled" as const,
+            fill_price: fillPrice,
+            trade_id: trade.id,
+            alpaca_order_id: alpacaOrder.id,
+            note: `Trade executed: ${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Trade placement failed";
+          console.error(`[tool] place_trade FAILED for ${args.ticker}: ${msg}`);
+          return {
+            ...args,
+            status: "failed" as const,
+            error: msg,
+            note: `Trade failed: ${msg}. The thesis has been saved but no position was opened.`,
+          };
+        }
       },
     }),
 

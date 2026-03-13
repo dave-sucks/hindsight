@@ -113,6 +113,13 @@ export function MarketContextCard({
 
       {/* Sector chips + portfolio (compact) */}
       <div className="px-4 py-2.5 space-y-2">
+        {/* Empty state when no market data */}
+        {!hasData && topSectors.length === 0 && bottomSectors.length === 0 && !todaysApproach?.trim() && (
+          <p className="text-xs text-muted-foreground">
+            Market data temporarily unavailable. Proceeding with individual stock analysis.
+          </p>
+        )}
+
         {/* Sector heatmap chips */}
         {(topSectors.length > 0 || bottomSectors.length > 0) && (
           <div className="flex flex-wrap gap-1">

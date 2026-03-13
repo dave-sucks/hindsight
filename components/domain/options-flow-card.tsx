@@ -36,6 +36,7 @@ export function OptionsFlowCard({
   const isBearish = signal?.includes("bearish");
   const totalVol = (totalCallVolume ?? 0) + (totalPutVolume ?? 0);
   const callPct = totalVol > 0 ? ((totalCallVolume ?? 0) / totalVol) * 100 : 50;
+  const hasData = putCallRatio != null || totalVol > 0;
 
   return (
     <Card className={cn("overflow-hidden p-0", className)} {...cardProps}>
@@ -59,8 +60,15 @@ export function OptionsFlowCard({
         </div>
       </div>
 
+      {/* Empty state */}
+      {!hasData && (
+        <div className="px-4 py-3 text-xs text-muted-foreground">
+          No options data available — may be a smaller-cap stock or options are not actively traded.
+        </div>
+      )}
+
       {/* Compact metrics + ratio bar */}
-      <div className="px-4 py-2.5 space-y-2">
+      {hasData && <div className="px-4 py-2.5 space-y-2">
         <div className="flex items-center gap-4 text-xs">
           <span className="flex items-center gap-1.5">
             <span className="text-muted-foreground">P/C</span>
@@ -98,7 +106,7 @@ export function OptionsFlowCard({
             <div className="bg-red-500 transition-all" style={{ width: `${100 - callPct}%` }} />
           </div>
         )}
-      </div>
+      </div>}
     </Card>
   );
 }

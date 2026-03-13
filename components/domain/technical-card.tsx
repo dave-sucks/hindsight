@@ -60,6 +60,7 @@ export function TechnicalCard({
   const isBullish = trend?.includes("bullish");
   const isBearish = trend?.includes("bearish");
   const pos52w = positionIn52wRange ? parseInt(positionIn52wRange.replace("%", "")) : null;
+  const hasData = rsi14 != null || sma20 != null || sma50 != null || volumeRatio != null || pos52w != null;
 
   return (
     <Card className={cn("overflow-hidden p-0", className)} {...cardProps}>
@@ -83,6 +84,13 @@ export function TechnicalCard({
           )}
         </div>
       </div>
+
+      {/* Empty state when no data */}
+      {!hasData && (
+        <div className="px-4 py-3 text-xs text-muted-foreground">
+          Technical data unavailable — limited price history or non-US stock.
+        </div>
+      )}
 
       {/* Compact inline metrics */}
       <div className="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
