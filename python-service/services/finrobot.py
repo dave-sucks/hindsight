@@ -244,7 +244,7 @@ async def run_data_cot(
         _fetch(
             "Checking earnings intel", "Earnings",
             get_earnings_intel(ticker), {},
-            lambda r: f"Beat rate {r.get('beat_rate_pct', 'N/A')}%" if r.get("beat_rate_pct") else "",
+            lambda r: f"Beat rate {r.get('beat_rate', 'N/A')}%" if r.get("beat_rate") else "",
         ),
         # DAV-167: Extended data sources
         _fetch(
