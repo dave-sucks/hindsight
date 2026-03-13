@@ -154,6 +154,7 @@ async function fetchJSON(url: string) {
 export async function POST(req: Request) {
   try {
     const { messages, currentConfig } = await req.json();
+    console.log(`[analyst-builder] POST messages=${messages?.length ?? 0} editing=${!!currentConfig}`);
 
     const modelMessages = await convertToModelMessages(messages);
 

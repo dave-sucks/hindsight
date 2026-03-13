@@ -8,14 +8,20 @@ import { buildSystemPrompt } from "@/lib/agent/system-prompt";
 export const maxDuration = 120; // 2 min for multi-step agent
 
 export async function POST(req: Request) {
+  const t0 = Date.now();
+
   // Auth
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return new Response("Unauthorized", { status: 401 });
+  if (!user) {
+    console.warn("[agent] Unauthorized request");
+    return new Response("Unauthorized", { status: 401 });
+  }
 
   const { messages, runId, analystId, config } = await req.json();
+  console.log(`[agent] POST runId=${runId} analystId=${analystId} messages=${messages?.length ?? 0}`);
 
   // Load agent config — try analystId first, then from the run's linked config
   let agentConfig: Record<string, unknown> = config || {};
@@ -75,6 +81,7 @@ export async function POST(req: Request) {
 
   const systemPrompt = buildSystemPrompt(agentConfig);
   const modelMessages = await convertToModelMessages(messages);
+  console.log(`[agent] Config loaded: name=${agentConfig.name || "default"} systemPrompt=${systemPrompt.length} chars`);
 
   // Create context-aware tools so show_thesis persists and summarize_run completes
   const tools = createResearchTools({
@@ -91,12 +98,12 @@ export async function POST(req: Request) {
     tools,
     stopWhen: stepCountIs(25),
     async onFinish({ response }) {
+      const elapsed = Date.now() - t0;
+      console.log(`[agent] onFinish runId=${runId} elapsed=${elapsed}ms responseMsgs=${response.messages.length}`);
+
       // Persist all messages from this exchange so the conversation can be replayed.
-      // We save each new message (user + assistant turns) that came in + were generated.
       if (!runId) return;
       try {
-        // Save the full messages array (input + output) as a single JSON blob.
-        // The last user message and the assistant response are the new turns.
         const allMessages = [...messages, ...response.messages];
         await prisma.runMessage.deleteMany({ where: { runId } });
         await prisma.runMessage.create({
@@ -106,6 +113,7 @@ export async function POST(req: Request) {
             content: JSON.stringify(allMessages),
           },
         });
+        console.log(`[agent] Persisted ${allMessages.length} messages for runId=${runId}`);
       } catch (err) {
         console.error("[agent] Failed to persist messages:", err);
       }
