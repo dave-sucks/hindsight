@@ -424,6 +424,179 @@ const RedditSearchRender: ToolCallMessagePartComponent = ({ args, result, status
 };
 RedditSearchRender.displayName = "RedditSearchRender";
 
+// ─── Stock Quote tool UI ────────────────────────────────────────────────────
+
+import { StockLogo } from "@/components/StockLogo";
+
+const StockQuoteRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
+  const a = (args ?? {}) as Record<string, unknown>;
+  const r = (result ?? {}) as Record<string, unknown>;
+  const ticker = String(a.symbol ?? r.ticker ?? "").toUpperCase();
+
+  if (status?.type !== "complete" && !result) {
+    return (
+      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+        <StockLogo ticker={ticker || "?"} size="sm" />
+        Fetching quote for {ticker}…
+      </div>
+    );
+  }
+
+  if (r.error) {
+    return (
+      <div className="text-sm text-red-500 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
+        {String(r.error)}
+      </div>
+    );
+  }
+
+  const price = Number(r.price ?? 0);
+  const changePct = Number(r.changePercent ?? 0);
+  const yearHigh = typeof r.yearHigh === "number" ? r.yearHigh : null;
+  const yearLow = typeof r.yearLow === "number" ? r.yearLow : null;
+  const marketCap = typeof r.marketCap === "number" ? r.marketCap : null;
+  const isPositive = changePct >= 0;
+
+  // 52W range bar position (0-100%)
+  const rangePos =
+    yearHigh && yearLow && yearHigh !== yearLow
+      ? Math.min(100, Math.max(0, ((price - yearLow) / (yearHigh - yearLow)) * 100))
+      : 50;
+
+  return (
+    <div className="my-2 rounded-lg border overflow-hidden">
+      <div className="px-4 py-3 flex items-center gap-3">
+        <StockLogo ticker={ticker} size="md" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold font-mono">{ticker}</span>
+            {typeof r.name === "string" && r.name !== ticker && (
+              <span className="text-xs text-muted-foreground truncate">
+                {r.name}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-lg font-semibold tabular-nums">
+              ${price.toFixed(2)}
+            </span>
+            <Badge
+              variant="secondary"
+              className={cn(
+                "text-xs tabular-nums font-mono",
+                isPositive
+                  ? "text-emerald-500 bg-emerald-500/10"
+                  : "text-red-500 bg-red-500/10"
+              )}
+            >
+              {isPositive ? "+" : ""}{changePct.toFixed(2)}%
+            </Badge>
+          </div>
+        </div>
+      </div>
+      {/* 52W range bar + market cap */}
+      {(yearHigh || marketCap) && (
+        <div className="px-4 pb-3 pt-0 space-y-2">
+          {yearHigh && yearLow && (
+            <div>
+              <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                <span>52W Low: ${yearLow.toFixed(2)}</span>
+                <span>52W High: ${yearHigh.toFixed(2)}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted relative">
+                <div
+                  className="absolute top-0 left-0 h-full rounded-full bg-primary/40"
+                  style={{ width: `${rangePos}%` }}
+                />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-primary border-2 border-background"
+                  style={{ left: `${rangePos}%`, transform: `translate(-50%, -50%)` }}
+                />
+              </div>
+            </div>
+          )}
+          {marketCap && (
+            <p className="text-[10px] text-muted-foreground">
+              Market Cap: ${(marketCap / 1e9).toFixed(1)}B
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+StockQuoteRender.displayName = "StockQuoteRender";
+
+// ─── Trending Stocks tool UI ────────────────────────────────────────────────
+
+import { Flame } from "lucide-react";
+
+const TrendingStocksRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
+  const a = (args ?? {}) as Record<string, unknown>;
+  const r = (result ?? {}) as Record<string, unknown>;
+  const category = String(a.category ?? r.category ?? "gainers");
+  const stocks = Array.isArray(r.stocks) ? (r.stocks as Array<Record<string, unknown>>) : [];
+
+  if (status?.type !== "complete" && !result) {
+    return (
+      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+        <Flame className="h-4 w-4" />
+        Loading trending {category}…
+      </div>
+    );
+  }
+
+  if (stocks.length === 0) return null;
+
+  const categoryLabel = category === "actives" ? "Most Active" : category.charAt(0).toUpperCase() + category.slice(1);
+
+  return (
+    <div className="my-2 rounded-lg border overflow-hidden">
+      <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
+        <Flame className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground">
+          Trending: {categoryLabel}
+        </span>
+      </div>
+      <div className="divide-y">
+        {stocks.slice(0, 8).map((stock, i) => {
+          const pct = Number(stock.changePercent ?? 0);
+          const isUp = pct >= 0;
+          return (
+            <div key={i} className="px-3 py-2 flex items-center gap-3 hover:bg-muted/10 transition-colors">
+              <StockLogo ticker={String(stock.ticker ?? "")} size="sm" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold font-mono">
+                    {String(stock.ticker ?? "")}
+                  </span>
+                  <span className="text-xs text-muted-foreground truncate">
+                    {String(stock.name ?? "")}
+                  </span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm tabular-nums font-semibold">
+                  ${Number(stock.price ?? 0).toFixed(2)}
+                </p>
+                <p
+                  className={cn(
+                    "text-xs tabular-nums font-mono",
+                    isUp ? "text-emerald-500" : "text-red-500"
+                  )}
+                >
+                  {isUp ? "+" : ""}{pct.toFixed(2)}%
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+TrendingStocksRender.displayName = "TrendingStocksRender";
+
 // ─── Registration hooks ─────────────────────────────────────────────────────
 
 /**
@@ -447,6 +620,14 @@ export function useRegisterBuilderToolUIs() {
     toolName: "search_reddit",
     render: RedditSearchRender,
   });
+  // Research pipeline tools
+  useAssistantToolUI({ toolName: "research_ticker", render: ResearchTickerRender });
+  useAssistantToolUI({ toolName: "get_thesis", render: ResearchTickerRender });
+  useAssistantToolUI({ toolName: "compare_tickers", render: CompareTickersRender });
+  useAssistantToolUI({ toolName: "explain_decision", render: ExplainDecisionRender });
+  // Inline stock tools
+  useAssistantToolUI({ toolName: "get_stock_quote", render: StockQuoteRender });
+  useAssistantToolUI({ toolName: "get_trending_stocks", render: TrendingStocksRender });
 }
 
 /**
@@ -470,6 +651,14 @@ export function useRegisterEditorToolUIs() {
     toolName: "search_reddit",
     render: RedditSearchRender,
   });
+  // Research pipeline tools
+  useAssistantToolUI({ toolName: "research_ticker", render: ResearchTickerRender });
+  useAssistantToolUI({ toolName: "get_thesis", render: ResearchTickerRender });
+  useAssistantToolUI({ toolName: "compare_tickers", render: CompareTickersRender });
+  useAssistantToolUI({ toolName: "explain_decision", render: ExplainDecisionRender });
+  // Inline stock tools
+  useAssistantToolUI({ toolName: "get_stock_quote", render: StockQuoteRender });
+  useAssistantToolUI({ toolName: "get_trending_stocks", render: TrendingStocksRender });
 }
 
 /** @deprecated Use useRegisterBuilderToolUIs or useRegisterEditorToolUIs */
