@@ -7,6 +7,7 @@ import RunLiveStream from "@/components/research/RunLiveStream";
 import { RunUnifiedChat } from "@/components/research/RunUnifiedChat";
 import { AgentThread } from "@/components/research/AgentThread";
 import type { RunEventRow } from "@/components/research/types";
+import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 
 // ── Synthesize events from thesis rows for legacy runs ────────────────────────
 
@@ -153,6 +154,11 @@ export default async function RunPage({
     include: {
       agentConfig: { select: { id: true, name: true } },
       events: { orderBy: { createdAt: "asc" } },
+      messages: {
+        where: { role: "thread" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
       theses: {
         select: {
           id: true,
@@ -212,10 +218,24 @@ export default async function RunPage({
   // Agent mode: all new runs use the real LLM agent.
   // Legacy runs (no agentMode flag) fall back to the old event view.
   const isAgentMode = config.agentMode === true;
-  // Only use agent UI for RUNNING agent runs (live streaming).
-  // COMPLETE agent runs use RunUnifiedChat with synthesized events from
-  // persisted theses — this is reliable and shows exactly what the run did.
-  const useAgent = isAgentMode && run.status === "RUNNING";
+
+  // Parse persisted messages for completed agent runs
+  let persistedMessages: unknown[] | null = null;
+  if (isAgentMode && run.status === "COMPLETE" && run.messages.length > 0) {
+    try {
+      const raw = JSON.parse(run.messages[0].content);
+      if (Array.isArray(raw) && raw.length > 0) {
+        persistedMessages = convertPersistedToUIMessages(raw);
+      }
+    } catch {
+      // Malformed JSON — fall through to RunUnifiedChat
+    }
+  }
+
+  // Use AgentThread for RUNNING agent runs (live) or COMPLETE agent runs
+  // with persisted messages (replay with full tool call data).
+  const useAgent =
+    isAgentMode && (run.status === "RUNNING" || persistedMessages !== null);
 
   // Stale detection: a run stuck RUNNING with no events and no theses
   const isStaleRun =
@@ -271,13 +291,14 @@ export default async function RunPage({
       {/* Body — single-column chat */}
       <div className="flex-1 min-h-0">
         {useAgent ? (
-          /* Real agent mode — LLM orchestrates research via tools */
+          /* Real agent mode — live (autoStart) or replay (initialMessages) */
           <AgentThread
             runId={id}
             analystName={analystName}
             analystId={run.agentConfig?.id}
             config={config}
-            autoStart={true}
+            autoStart={persistedMessages === null}
+            initialMessages={persistedMessages ?? undefined}
           />
         ) : isStaleRun ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
