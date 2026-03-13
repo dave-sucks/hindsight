@@ -183,6 +183,7 @@ export async function POST(req: Request) {
     userId: user.id,
     watchlist: (agentConfig.watchlist as string[]) ?? [],
     exclusionList: (agentConfig.exclusionList as string[]) ?? [],
+    sectors: (agentConfig.sectors as string[]) ?? [],
   });
 
   const result = streamText({

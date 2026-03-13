@@ -8,7 +8,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { placeMarketOrder, getOrder, getLatestPrice } from "@/lib/alpaca";
+import { placeMarketOrder, getOrder, getLatestPrice, getBars } from "@/lib/alpaca";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
@@ -225,6 +225,27 @@ function calcSMA(closes: number[], period: number): number | null {
   return Math.round((slice.reduce((a, b) => a + b, 0) / period) * 100) / 100;
 }
 
+// ── Sector filtering helper ──────────────────────────────────────────────────
+
+async function batchFetchProfiles(
+  tickers: string[],
+): Promise<Map<string, string | null>> {
+  const profiles = new Map<string, string | null>();
+  // Fetch in batches of 5 to stay under Finnhub 60 req/min
+  for (let i = 0; i < tickers.length; i += 5) {
+    const batch = tickers.slice(i, i + 5);
+    const results = await Promise.all(
+      batch.map(async (ticker) => {
+        const { data } = await finnhub(`/stock/profile2?symbol=${ticker}`);
+        const profile = data as { finnhubIndustry?: string } | null;
+        return [ticker, profile?.finnhubIndustry ?? null] as const;
+      }),
+    );
+    for (const [t, sector] of results) profiles.set(t, sector);
+  }
+  return profiles;
+}
+
 // ── Parameter schemas ───────────────────────────────────────────────────────
 
 const emptyParams = z.object({});
@@ -255,6 +276,19 @@ const thesisParams = z.object({
   signal_types: z
     .array(z.string())
     .describe("Signal types: MOMENTUM, EARNINGS_BEAT, BREAKOUT, etc."),
+  sources_used: z
+    .array(
+      z.object({
+        provider: z.string(),
+        title: z.string(),
+        url: z.string().optional(),
+        excerpt: z.string().optional(),
+      }),
+    )
+    .optional()
+    .describe(
+      "Data sources used in your research — collect the _sources arrays from all tool calls for this ticker",
+    ),
 });
 const tradeParams = z.object({
   ticker: z.string(),
@@ -265,8 +299,7 @@ const tradeParams = z.object({
   shares: z.number().describe("Number of shares to buy/sell"),
   thesis_id: z
     .string()
-    .optional()
-    .describe("Associated thesis ID if available"),
+    .describe("REQUIRED — the thesis_id returned by show_thesis. Every trade must link to a thesis."),
 });
 
 // Inferred types
@@ -282,6 +315,7 @@ interface ToolContext {
   userId: string;
   watchlist?: string[];
   exclusionList?: string[];
+  sectors?: string[];
 }
 
 // ── Factory: creates tools with context ─────────────────────────────────────
@@ -511,7 +545,30 @@ export function createResearchTools(ctx: ToolContext) {
           .sort((a, b) => b[1].score - a[1].score)
           .slice(0, 15);
 
-        const movers = ranked
+        // ── Sector filtering ──────────────────────────────────────────────
+        const configSectors = ctx.sectors ?? [];
+        let filtered = ranked;
+
+        if (configSectors.length > 0) {
+          const tickersToCheck = ranked.map(([ticker]) => ticker);
+          const profiles = await batchFetchProfiles(tickersToCheck);
+
+          const sectorSet = new Set(configSectors.map((s) => s.toLowerCase()));
+          filtered = ranked.filter(([ticker]) => {
+            const sector = profiles.get(ticker);
+            if (!sector) return true; // keep unknowns — don't filter what we can't classify
+            return sectorSet.has(sector.toLowerCase());
+          });
+
+          // If filtering removed everything, keep top 5 unfiltered
+          if (filtered.length === 0) filtered = ranked.slice(0, 5);
+
+          console.log(
+            `[tool] scan_candidates sector filter: ${ranked.length} → ${filtered.length} (sectors: ${configSectors.join(",")})`,
+          );
+        }
+
+        const movers = filtered
           .filter(([, v]) =>
             v.sources.some((s) =>
               ["top_gainers", "top_losers", "watchlist", "stocktwits_trending"].includes(s),
@@ -524,7 +581,7 @@ export function createResearchTools(ctx: ToolContext) {
             price: (v.data as { price?: number }).price,
           }));
 
-        const earningsOut = ranked
+        const earningsOut = filtered
           .filter(([, v]) => v.sources.includes("earnings_calendar"))
           .map(([ticker, v]) => ({
             ticker,
@@ -536,7 +593,7 @@ export function createResearchTools(ctx: ToolContext) {
         return {
           earnings: earningsOut,
           movers,
-          total_found: ranked.length,
+          total_found: filtered.length,
           sources_queried: [
             "earnings_calendar",
             "top_gainers",
@@ -544,8 +601,8 @@ export function createResearchTools(ctx: ToolContext) {
             "stocktwits_trending",
             ...(ctx.watchlist?.length ? ["watchlist"] : []),
           ],
-          note: sectors?.length
-            ? `Filtered for sectors: ${sectors.join(", ")}. Review these candidates and decide which to research.`
+          note: configSectors.length > 0
+            ? `Sector-filtered for: ${configSectors.join(", ")}. ${filtered.length} candidates remain.`
             : "Review these candidates and decide which ones to research in depth.",
           _sources: [
             {
@@ -748,11 +805,32 @@ export function createResearchTools(ctx: ToolContext) {
           }
         }
 
+        // Fallback 3: Alpaca Data API bars
+        if (!candles || candles.s !== "ok" || !candles.c?.length) {
+          try {
+            priceProvider = "Alpaca";
+            const threeMonthsAgo = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
+            const today = new Date().toISOString().slice(0, 10);
+            const alpacaBars = await getBars(ticker, { start: threeMonthsAgo, end: today });
+
+            if (alpacaBars.length >= 14) {
+              candles = {
+                s: "ok",
+                c: alpacaBars.map((b) => b.close),
+                v: alpacaBars.map((b) => b.volume),
+              };
+              console.log(`[tool] get_technical_analysis: Alpaca fallback succeeded for ${ticker} (${alpacaBars.length} bars)`);
+            }
+          } catch (err) {
+            console.warn(`[tool] Alpaca bars fallback failed for ${ticker}:`, err instanceof Error ? err.message : err);
+          }
+        }
+
         if (!candles || candles.s !== "ok" || !candles.c?.length) {
           return {
             error: null,
             current_price: null,
-            note: `Technical analysis data unavailable for ${ticker}. This may be a non-US stock, recently IPO'd, or have limited trading history. Continue your analysis with fundamental data.`,
+            note: `Technical analysis data unavailable for ${ticker}. Tried Finnhub, FMP, and Alpaca — this may be a non-US stock, recently IPO'd, or have limited trading history. Continue your analysis with fundamental data.`,
           };
         }
 
@@ -824,6 +902,7 @@ export function createResearchTools(ctx: ToolContext) {
         const data = await redditSentiment(ticker);
 
         // If public Reddit API was fully blocked, try Python service (PRAW) as fallback
+        let redditErrorType: "rate_limited" | "service_unavailable" = "rate_limited";
         if (data.mention_count === 0 && data.all_blocked) {
           const pythonUrl = process.env.PYTHON_SERVICE_URL;
           const pythonSecret = process.env.PYTHON_SERVICE_SECRET;
@@ -867,9 +946,11 @@ export function createResearchTools(ctx: ToolContext) {
                   };
                 }
               } else {
+                redditErrorType = "service_unavailable";
                 console.warn(`[reddit] Python PRAW fallback returned ${res.status} for ${ticker}`);
               }
             } catch (err) {
+              redditErrorType = "service_unavailable";
               console.warn(
                 `[reddit] Python PRAW fallback failed for ${ticker}:`,
                 err instanceof Error ? err.message : err,
@@ -880,6 +961,7 @@ export function createResearchTools(ctx: ToolContext) {
           return {
             available: false,
             reason: "blocked",
+            error_type: redditErrorType,
             note: `Reddit API returned 403/429 for all subreddits (likely IP-based rate limiting). No Reddit sentiment data available for ${ticker}. Continue analysis with other data sources.`,
             _sources: [{
               provider: "Reddit",
@@ -894,6 +976,7 @@ export function createResearchTools(ctx: ToolContext) {
           return {
             available: false,
             reason: "no_mentions",
+            error_type: "no_mentions" as const,
             note: `No recent Reddit mentions found for ${ticker}. This doesn't necessarily mean anything negative — some stocks simply aren't discussed on Reddit.`,
             _sources: [{
               provider: "Reddit",
@@ -1091,7 +1174,16 @@ export function createResearchTools(ctx: ToolContext) {
             : null,
           beat_rate:
             history.length > 0
-              ? `${Math.round((beats.length / history.length) * 100)}% (${beats.length}/${history.length} quarters)`
+              ? (() => {
+                  const periods = history
+                    .map((e: { period?: string }) => e.period)
+                    .filter(Boolean) as string[];
+                  const range =
+                    periods.length >= 2
+                      ? `${periods[periods.length - 1]}–${periods[0]}`
+                      : periods[0] || "recent";
+                  return `${Math.round((beats.length / history.length) * 100)}% (${beats.length}/${history.length} quarters, ${range})`;
+                })()
               : "no history",
           recent_quarters: history.slice(0, 4).map(
             (e: {
@@ -1150,7 +1242,7 @@ export function createResearchTools(ctx: ToolContext) {
               stopLoss: args.stop_loss ?? null,
               holdDuration: args.hold_duration,
               signalTypes: args.signal_types,
-              sourcesUsed: [],
+              sourcesUsed: args.sources_used ?? [],
               source: "AGENT",
               modelUsed: "gpt-4o",
             },
@@ -1236,7 +1328,7 @@ export function createResearchTools(ctx: ToolContext) {
           // 3. Create Trade in DB
           const trade = await prisma.trade.create({
             data: {
-              thesisId: args.thesis_id ?? null,
+              thesisId: args.thesis_id,
               userId: ctx.userId,
               ticker: args.ticker,
               direction: args.direction,
@@ -1547,7 +1639,7 @@ export function createResearchTools(ctx: ToolContext) {
           (stockNews.data as { title?: string; text?: string; site?: string; url?: string; publishedDate?: string }[]) ?? []
         ).map((item) => ({
           headline: item.title ?? "",
-          summary: (item.text ?? "").slice(0, 200),
+          summary: (item.text ?? "").slice(0, 500),
           source: item.site ?? "",
           url: item.url ?? "",
           date: item.publishedDate ?? "",
@@ -1557,7 +1649,7 @@ export function createResearchTools(ctx: ToolContext) {
           (pressReleases.data as { title?: string; text?: string; date?: string }[]) ?? []
         ).map((item) => ({
           headline: item.title ?? "",
-          summary: (item.text ?? "").slice(0, 200),
+          summary: (item.text ?? "").slice(0, 500),
           date: item.date ?? "",
         }));
 

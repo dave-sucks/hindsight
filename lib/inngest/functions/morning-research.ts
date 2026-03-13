@@ -1,69 +1,9 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { placeMarketOrder, getOrder, getLatestPrice } from "@/lib/alpaca";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type ThesisOutput = {
-  ticker: string;
-  direction: "LONG" | "SHORT" | "PASS";
-  entry_price: number | null;
-  target_price: number | null;
-  stop_loss: number | null;
-  hold_duration: "DAY" | "SWING" | "POSITION";
-  confidence_score: number;
-  reasoning_summary: string;
-  thesis_bullets: string[];
-  risk_flags: string[];
-  signal_types: string[];
-  sector: string | null;
-  sources_used: {
-    type: string;
-    provider: string;
-    title: string;
-    url?: string | null;
-    published_at?: string | null;
-  }[];
-  model_used: string;
-};
-
-type RunResponse = {
-  theses: ThesisOutput[];
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Poll Alpaca until the order fills or until timeout (8s budget for cron context).
- * Falls back to latest market price when market is closed or fill is slow.
- */
-async function waitForFill(
-  orderId: string,
-  symbol: string,
-  fallbackPrice: number,
-  maxMs = 8_000
-): Promise<number> {
-  const deadline = Date.now() + maxMs;
-  while (Date.now() < deadline) {
-    const order = await getOrder(orderId);
-    if (order.status === "filled" && order.filled_avg_price) {
-      return parseFloat(order.filled_avg_price);
-    }
-    if (
-      order.status === "cancelled" ||
-      order.status === "expired" ||
-      order.status === "rejected"
-    ) {
-      throw new Error(`Alpaca order ${order.status}`);
-    }
-    await new Promise((r) => setTimeout(r, 1_000));
-  }
-  try {
-    return await getLatestPrice(symbol);
-  } catch {
-    return fallbackPrice;
-  }
-}
+import { generateText, stepCountIs } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { createResearchTools } from "@/lib/agent/tools";
+import { buildSystemPrompt } from "@/lib/agent/system-prompt";
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
 
@@ -79,9 +19,6 @@ export const morningResearch = inngest.createFunction(
     { event: "app/research.run.manual" },
   ],
   async ({ event, step }) => {
-    const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "";
-    const PYTHON_SERVICE_SECRET = process.env.PYTHON_SERVICE_SECRET ?? "";
-
     // Optional: if triggered manually for a specific analyst, only run that one
     const targetConfigId = (event as { data?: { agentConfigId?: string } })
       ?.data?.agentConfigId ?? null;
@@ -101,16 +38,14 @@ export const morningResearch = inngest.createFunction(
       return { ran: 0, reason: "no-enabled-configs" };
     }
 
-    if (!PYTHON_SERVICE_URL) {
-      return { ran: 0, reason: "PYTHON_SERVICE_URL-not-configured" };
-    }
-
     let totalTradesPlaced = 0;
 
-    // ── Step 2: Per-user research run ────────────────────────────────────────
+    // ── Step 2: Per-analyst agent run ──────────────────────────────────────
 
     for (const config of configs) {
-      await step.run(`research-${config.id}`, async () => {
+      const result = await step.run(`research-${config.id}`, async () => {
+        const t0 = Date.now();
+
         // 2a. Check open positions cap
         const openCount = await prisma.trade.count({
           where: { userId: config.userId, status: "OPEN" },
@@ -118,14 +53,11 @@ export const morningResearch = inngest.createFunction(
         const slotsRemaining = config.maxOpenPositions - openCount;
 
         if (slotsRemaining <= 0) {
+          console.log(`[morning-research] Skipping ${config.name}: max open positions reached (${openCount}/${config.maxOpenPositions})`);
           return { skipped: true, reason: "max-open-positions-reached" };
         }
 
-        // 2b. Determine tickers to research
-        // If watchlist is configured, use it; otherwise Python auto-discovers
-        const tickers: string[] = config.watchlist?.length ? config.watchlist : [];
-
-        // 2c. Create ResearchRun record (status: RUNNING)
+        // 2b. Create ResearchRun record (status: RUNNING)
         const run = await prisma.researchRun.create({
           data: {
             userId: config.userId,
@@ -137,65 +69,170 @@ export const morningResearch = inngest.createFunction(
               sectors: config.sectors,
               minConfidence: config.minConfidence,
               signalTypes: config.signalTypes,
-              tickers,
+              tickers: config.watchlist ?? [],
+              triggeredBy: "morning-cron",
             } as object,
           },
         });
 
-        // 2d. Call Python FastAPI research pipeline
-        let theses: ThesisOutput[] = [];
+        console.log(`[morning-research] Starting agent run for ${config.name} (config=${config.id}, run=${run.id})`);
+
+        // 2c. Build system prompt with historical context
+        const agentConfig = {
+          name: config.name,
+          analystPrompt: config.analystPrompt ?? undefined,
+          directionBias: config.directionBias,
+          holdDurations: config.holdDurations,
+          sectors: config.sectors,
+          signalTypes: config.signalTypes,
+          minConfidence: config.minConfidence,
+          maxPositionSize: Number(config.maxPositionSize),
+          maxOpenPositions: slotsRemaining, // Use remaining slots, not max
+          watchlist: config.watchlist,
+          exclusionList: config.exclusionList,
+        };
+
+        // Load historical context (same as agent route)
+        let historyBlock = "";
         try {
-          const res = await fetch(`${PYTHON_SERVICE_URL}/research/run`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Service-Secret": PYTHON_SERVICE_SECRET,
+          const recentTrades = await prisma.trade.findMany({
+            where: { userId: config.userId, status: { in: ["CLOSED", "WIN", "LOSS"] } },
+            orderBy: { closedAt: "desc" },
+            take: 20,
+            select: {
+              ticker: true, direction: true, status: true,
+              entryPrice: true, exitPrice: true, shares: true,
+              pnl: true, pnlPct: true, closedAt: true,
             },
-            body: JSON.stringify({
-              tickers,
-              source: "AGENT",
-              agent_config: {
-                minConfidence: config.minConfidence,
-                directionBias: config.directionBias,
-                holdDurations: config.holdDurations,
-                maxOpenPositions: slotsRemaining,
-                maxPositionSize: config.maxPositionSize,
-                sectors: config.sectors,
-                signalTypes: config.signalTypes,
-                analystPrompt: config.analystPrompt ?? null,
-                analystName: config.name,
-              },
-            }),
-            signal: AbortSignal.timeout(300_000), // 5 min timeout (pipeline needs time for multi-ticker research)
           });
 
-          if (!res.ok) {
-            const text = await res.text().catch(() => "");
-            console.error(
-              `[morning-research] Python service ${res.status} for config=${config.id} (${config.name}): ${text.slice(0, 500)}`
-            );
+          const openTrades = await prisma.trade.findMany({
+            where: { userId: config.userId, status: "OPEN" },
+            select: {
+              ticker: true, direction: true, entryPrice: true,
+              shares: true, targetPrice: true, stopLoss: true,
+              createdAt: true,
+            },
+          });
+
+          const latestAccuracy = await prisma.accuracyReport.findFirst({
+            where: { agentConfigId: config.id },
+            orderBy: { createdAt: "desc" },
+            select: {
+              overallWinRate: true, totalTrades: true,
+              avgPnlPct: true, narrative: true,
+            },
+          });
+
+          const parts: string[] = [];
+
+          if (openTrades.length > 0) {
+            parts.push("## Your Open Positions");
+            for (const t of openTrades) {
+              parts.push(`- ${t.direction} ${t.shares} shares ${t.ticker} @ $${Number(t.entryPrice).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
+            }
+            parts.push(`\nDo NOT open duplicate positions in tickers you already hold.`);
+          }
+
+          if (recentTrades.length > 0) {
+            const wins = recentTrades.filter((t) => t.status === "WIN").length;
+            const losses = recentTrades.filter((t) => t.status === "LOSS").length;
+            parts.push(`\n## Recent Trade History (${recentTrades.length} trades)`);
+            parts.push(`Win/Loss: ${wins}W / ${losses}L`);
+            for (const t of recentTrades.slice(0, 10)) {
+              const pnl = t.pnl ? Number(t.pnl) : 0;
+              parts.push(`- ${t.status} ${t.direction} ${t.ticker}: entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.exitPrice ? Number(t.exitPrice).toFixed(2) : "—"} (${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)})`);
+            }
+          }
+
+          if (latestAccuracy) {
+            parts.push(`\n## Your Performance Stats`);
+            parts.push(`- Win Rate: ${latestAccuracy.overallWinRate ? Number(latestAccuracy.overallWinRate).toFixed(0) : "—"}%`);
+            parts.push(`- Total Trades: ${latestAccuracy.totalTrades ?? "—"}`);
+            parts.push(`- Avg P&L: ${latestAccuracy.avgPnlPct ? `${Number(latestAccuracy.avgPnlPct).toFixed(1)}%` : "—"}`);
+            if (latestAccuracy.narrative) {
+              parts.push(`- Calibration: ${String(latestAccuracy.narrative).slice(0, 300)}`);
+            }
+            parts.push(`\nUse this data to calibrate your confidence. If your win rate is low, be more selective.`);
+          }
+
+          historyBlock = parts.join("\n");
+        } catch (err) {
+          console.warn("[morning-research] Failed to load history (non-fatal):", err);
+        }
+
+        const systemPrompt = buildSystemPrompt(agentConfig) + (historyBlock ? `\n\n${historyBlock}` : "");
+
+        // 2d. Create tools with run context
+        const tools = createResearchTools({
+          runId: run.id,
+          userId: config.userId,
+          watchlist: config.watchlist ?? [],
+          exclusionList: config.exclusionList ?? [],
+          sectors: config.sectors ?? [],
+        });
+
+        // 2e. Run the agent (generateText, not streamText — no client to stream to)
+        try {
+          const { text, steps } = await generateText({
+            model: openai("gpt-4o"),
+            system: systemPrompt,
+            prompt: "Begin your research session. Follow all phases in order.",
+            tools,
+            stopWhen: stepCountIs(25),
+          });
+
+          const toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
+          const elapsed = Date.now() - t0;
+          console.log(`[morning-research] Agent completed for ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`);
+
+          // Count trades placed by checking DB (the place_trade tool already created them)
+          const tradesPlaced = await prisma.trade.count({
+            where: {
+              userId: config.userId,
+              thesis: { researchRunId: run.id },
+            },
+          });
+
+          // Ensure run is marked COMPLETE (summarize_run tool should have done this,
+          // but belt-and-suspenders in case the agent didn't call it)
+          const currentRun = await prisma.researchRun.findUnique({ where: { id: run.id } });
+          if (currentRun && currentRun.status === "RUNNING") {
             await prisma.researchRun.update({
               where: { id: run.id },
               data: {
-                status: "FAILED",
+                status: "COMPLETE",
                 completedAt: new Date(),
                 parameters: {
-                  ...(run.parameters as object),
-                  error: `Python service ${res.status}: ${text.slice(0, 200)}`,
-                  failedAt: new Date().toISOString(),
+                  ...(currentRun.parameters as object),
+                  tradesPlaced,
+                  agentSteps: steps.length,
+                  agentToolCalls: toolCalls,
+                  elapsedMs: elapsed,
                 } as object,
               },
             });
-            return { error: `Python service ${res.status}: ${text}` };
           }
 
-          const data = (await res.json()) as RunResponse;
-          theses = data.theses ?? [];
+          // Persist agent messages for replay
+          try {
+            await prisma.runMessage.deleteMany({ where: { runId: run.id } });
+            await prisma.runMessage.create({
+              data: {
+                runId: run.id,
+                role: "thread",
+                content: JSON.stringify({ agentText: text, steps: steps.length, toolCalls }),
+              },
+            });
+          } catch (msgErr) {
+            console.warn("[morning-research] Failed to persist messages:", msgErr);
+          }
+
+          return { tradesPlaced, steps: steps.length, toolCalls, elapsedMs: elapsed };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          console.error(
-            `[morning-research] Python service FAILED for config=${config.id} (${config.name}): ${message}`
-          );
+          console.error(`[morning-research] Agent FAILED for ${config.name}: ${message}`);
+
           await prisma.researchRun.update({
             where: { id: run.id },
             data: {
@@ -208,127 +245,15 @@ export const morningResearch = inngest.createFunction(
               } as object,
             },
           });
-          return { error: `Network error: ${message}` };
+
+          return { error: message };
         }
-
-        // 2e. Persist theses + place Alpaca paper orders for actionable signals
-        let tradesPlaced = 0;
-        let slotsLeft = slotsRemaining;
-
-        for (const thesis of theses) {
-          // Save thesis regardless of direction
-          const thesisRow = await prisma.thesis.create({
-            data: {
-              researchRunId: run.id,
-              userId: config.userId,
-              ticker: thesis.ticker,
-              source: "AGENT",
-              direction: thesis.direction,
-              entryPrice: thesis.entry_price,
-              targetPrice: thesis.target_price,
-              stopLoss: thesis.stop_loss,
-              holdDuration: thesis.hold_duration,
-              confidenceScore: thesis.confidence_score,
-              reasoningSummary: thesis.reasoning_summary,
-              thesisBullets: thesis.thesis_bullets,
-              riskFlags: thesis.risk_flags,
-              signalTypes: thesis.signal_types,
-              sector: thesis.sector,
-              sourcesUsed: thesis.sources_used as object,
-              modelUsed: thesis.model_used,
-            },
-          });
-
-          // Skip PASS or low-confidence or if at position cap
-          if (
-            thesis.direction === "PASS" ||
-            thesis.confidence_score < config.minConfidence ||
-            thesis.entry_price == null ||
-            slotsLeft <= 0
-          ) {
-            continue;
-          }
-
-          // Place Alpaca paper market order
-          let alpacaOrderId: string;
-          try {
-            const shares = Math.max(
-              1,
-              Math.floor(config.maxPositionSize / thesis.entry_price)
-            );
-            const order = await placeMarketOrder({
-              symbol: thesis.ticker,
-              qty: shares,
-              side: thesis.direction === "LONG" ? "buy" : "sell",
-            });
-            alpacaOrderId = order.id;
-
-            // Wait for fill (or estimate from latest price if market closed)
-            const fillPrice = await waitForFill(
-              order.id,
-              thesis.ticker,
-              thesis.entry_price
-            );
-
-            const shares2 = Math.max(
-              1,
-              Math.floor(config.maxPositionSize / thesis.entry_price)
-            );
-
-            const trade = await prisma.trade.create({
-              data: {
-                thesisId: thesisRow.id,
-                userId: config.userId,
-                ticker: thesis.ticker,
-                direction: thesis.direction as "LONG" | "SHORT",
-                status: "OPEN",
-                entryPrice: fillPrice,
-                shares: shares2,
-                targetPrice: thesis.target_price,
-                stopLoss: thesis.stop_loss,
-                exitStrategy: thesis.target_price ? "PRICE_TARGET" : "MANUAL",
-                alpacaOrderId,
-              },
-            });
-
-            await prisma.tradeEvent.create({
-              data: {
-                tradeId: trade.id,
-                eventType: "PLACED",
-                description: `Agent cron: ${thesis.direction} ${thesis.ticker} at $${fillPrice.toFixed(2)}`,
-                priceAt: fillPrice,
-              },
-            });
-
-            tradesPlaced++;
-            slotsLeft--;
-            totalTradesPlaced++;
-          } catch (tradeErr) {
-            // Order failed — log the error but don't block the rest of the run
-            const tradeErrMsg = tradeErr instanceof Error ? tradeErr.message : String(tradeErr);
-            console.error(
-              `[morning-research] Trade FAILED for ${thesis.ticker} (${thesis.direction}): ${tradeErrMsg}`
-            );
-            continue;
-          }
-        }
-
-        // 2f. Mark ResearchRun COMPLETE
-        await prisma.researchRun.update({
-          where: { id: run.id },
-          data: {
-            status: "COMPLETE",
-            completedAt: new Date(),
-            parameters: {
-              ...(run.parameters as object),
-              thesesGenerated: theses.length,
-              tradesPlaced,
-            } as object,
-          },
-        });
-
-        return { thesesGenerated: theses.length, tradesPlaced };
       });
+
+      // Accumulate trades from successful runs
+      if (result && typeof result === "object" && "tradesPlaced" in result) {
+        totalTradesPlaced += (result as { tradesPlaced: number }).tradesPlaced;
+      }
     }
 
     return { ran: configs.length, totalTradesPlaced };
