@@ -32,7 +32,11 @@ async function finnhub(path: string): Promise<{ data: unknown; error?: string }>
 }
 
 async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
-  const url = `https://financialmodelingprep.com/api/v3${path}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
+  // Support both v3 and v4 paths: if path starts with /v4/, use it directly
+  const base = path.startsWith("/v4/")
+    ? `https://financialmodelingprep.com/api${path}`
+    : `https://financialmodelingprep.com/api/v3${path}`;
+  const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
   try {
     const res = await fetch(url, { next: { revalidate: 300 } });
     if (!res.ok) {
@@ -1282,7 +1286,187 @@ export function createResearchTools(ctx: ToolContext) {
         return args;
       },
     }),
+    // ── DAV-167: Extended data tools ──────────────────────────────────────
+
+    get_sec_filings: tool({
+      description:
+        "Fetch recent SEC filings (10-K, 10-Q, 8-K, Form 4) for a stock from EDGAR. " +
+        "Use this to check for recent regulatory filings, insider transactions, or material events.",
+      parameters: z.object({
+        symbol: z.string().describe("Ticker symbol, e.g. AAPL"),
+      }),
+      execute: async (args) => {
+        try {
+          const res = await fetch(
+            `https://data.sec.gov/submissions/CIK${await getCIK(args.symbol)}.json`,
+            {
+              headers: {
+                "User-Agent": "Hindsight Research Bot research@hindsight.app",
+                Accept: "application/json",
+              },
+            }
+          );
+          if (!res.ok) return { filings: [], error: `SEC returned ${res.status}` };
+          const data = (await res.json()) as {
+            filings?: {
+              recent?: {
+                form?: string[];
+                filingDate?: string[];
+                primaryDocDescription?: string[];
+                accessionNumber?: string[];
+                primaryDocument?: string[];
+              };
+            };
+          };
+          const recent = data.filings?.recent;
+          if (!recent) return { filings: [] };
+
+          const relevantTypes = new Set(["10-K", "10-Q", "8-K", "S-1", "DEF 14A", "4"]);
+          const filings: { type: string; date: string; description: string }[] = [];
+          const forms = recent.form ?? [];
+          const dates = recent.filingDate ?? [];
+          const descs = recent.primaryDocDescription ?? [];
+
+          for (let i = 0; i < Math.min(forms.length, 50); i++) {
+            if (!relevantTypes.has(forms[i])) continue;
+            filings.push({
+              type: forms[i],
+              date: dates[i] ?? "",
+              description: descs[i] ?? forms[i],
+            });
+            if (filings.length >= 8) break;
+          }
+          return { filings, count: filings.length };
+        } catch (err) {
+          return { filings: [], error: err instanceof Error ? err.message : "Failed" };
+        }
+      },
+    }),
+
+    get_analyst_targets: tool({
+      description:
+        "Fetch analyst price target consensus for a stock — consensus target, high, low, " +
+        "and number of analysts. Use to validate entry/target price levels.",
+      parameters: z.object({
+        symbol: z.string().describe("Ticker symbol, e.g. NVDA"),
+      }),
+      execute: async (args) => {
+        const { data, error } = await fmp(
+          `/v4/price-target-consensus?symbol=${args.symbol}`
+        );
+        if (error || !data) return { targets: null, error };
+        const arr = data as { targetConsensus?: number; targetHigh?: number; targetLow?: number; targetMedian?: number; numberOfAnalysts?: number }[];
+        if (!Array.isArray(arr) || arr.length === 0) return { targets: null };
+        const c = arr[0];
+        return {
+          targets: {
+            consensus: c.targetConsensus,
+            high: c.targetHigh,
+            low: c.targetLow,
+            median: c.targetMedian,
+            num_analysts: c.numberOfAnalysts,
+          },
+        };
+      },
+    }),
+
+    get_company_peers: tool({
+      description:
+        "Fetch peer/competitor companies for a stock with basic comparison metrics. " +
+        "Use for sector alternative analysis and relative valuation.",
+      parameters: z.object({
+        symbol: z.string().describe("Ticker symbol, e.g. MSFT"),
+      }),
+      execute: async (args) => {
+        // Get peers from Finnhub
+        const { data: peersData, error: peersErr } = await finnhub(
+          `/stock/peers?symbol=${args.symbol}`
+        );
+        if (peersErr || !peersData) return { peers: [], error: peersErr };
+
+        const peers = (peersData as string[])
+          .filter((p) => p.toUpperCase() !== args.symbol.toUpperCase())
+          .slice(0, 6);
+
+        if (peers.length === 0) return { peers: [] };
+
+        // Get quotes for peers from FMP
+        const { data: quotesData } = await fmp(`/quote/${peers.join(",")}`);
+        const quotes = (quotesData as { symbol?: string; name?: string; price?: number; changesPercentage?: number; pe?: number; marketCap?: number }[]) ?? [];
+
+        return {
+          peers: quotes.map((q) => ({
+            ticker: q.symbol,
+            name: q.name,
+            price: q.price,
+            change_pct: q.changesPercentage,
+            pe_ratio: q.pe,
+            market_cap: q.marketCap,
+          })),
+        };
+      },
+    }),
+
+    get_news_deep_dive: tool({
+      description:
+        "Fetch comprehensive news for a stock from multiple sources: stock-specific news, " +
+        "press releases, and general market articles. More thorough than basic news.",
+      parameters: z.object({
+        symbol: z.string().describe("Ticker symbol, e.g. TSLA"),
+      }),
+      execute: async (args) => {
+        const [stockNews, pressReleases] = await Promise.all([
+          fmp(`/stock_news?tickers=${args.symbol}&limit=10`),
+          fmp(`/press-releases/${args.symbol}?limit=5`),
+        ]);
+
+        const news = (
+          (stockNews.data as { title?: string; text?: string; site?: string; url?: string; publishedDate?: string }[]) ?? []
+        ).map((item) => ({
+          headline: item.title ?? "",
+          summary: (item.text ?? "").slice(0, 200),
+          source: item.site ?? "",
+          url: item.url ?? "",
+          date: item.publishedDate ?? "",
+        }));
+
+        const prs = (
+          (pressReleases.data as { title?: string; text?: string; date?: string }[]) ?? []
+        ).map((item) => ({
+          headline: item.title ?? "",
+          summary: (item.text ?? "").slice(0, 200),
+          date: item.date ?? "",
+        }));
+
+        return {
+          stock_news: news,
+          press_releases: prs,
+          total: news.length + prs.length,
+        };
+      },
+    }),
   };
+}
+
+// Helper: look up CIK from ticker for SEC EDGAR
+async function getCIK(ticker: string): Promise<string> {
+  const res = await fetch("https://www.sec.gov/files/company_tickers.json", {
+    headers: {
+      "User-Agent": "Hindsight Research Bot research@hindsight.app",
+      Accept: "application/json",
+    },
+  });
+  if (!res.ok) throw new Error(`SEC tickers lookup failed: ${res.status}`);
+  const data = (await res.json()) as Record<
+    string,
+    { cik_str: number; ticker: string }
+  >;
+  for (const entry of Object.values(data)) {
+    if (entry.ticker.toUpperCase() === ticker.toUpperCase()) {
+      return String(entry.cik_str).padStart(10, "0");
+    }
+  }
+  throw new Error(`No CIK found for ${ticker}`);
 }
 
 // Backwards-compatible export for existing code that doesn't pass context

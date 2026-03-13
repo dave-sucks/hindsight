@@ -496,9 +496,29 @@ async def _stream_run(
             _efn=_emit,
         ) -> tuple:
             try:
-                return await run_full_pipeline_streaming(
-                    _ticker, agent_config, _efn, finnhub,
-                    market_context=market_ctx,
+                return await asyncio.wait_for(
+                    run_full_pipeline_streaming(
+                        _ticker, agent_config, _efn, finnhub,
+                        market_context=market_ctx,
+                    ),
+                    timeout=120.0,  # 2 min per ticker max
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Ticker %s timed out after 120s", _ticker)
+                await _efn({"type": "ticker_error", "ticker": _ticker, "message": "Research timed out after 120s"})
+                return (
+                    ThesisOutput(
+                        ticker=_ticker,
+                        direction="PASS",
+                        hold_duration="SWING",
+                        confidence_score=0,
+                        reasoning_summary="Research timed out after 120s",
+                        thesis_bullets=[],
+                        risk_flags=["Pipeline timeout"],
+                        signal_types=[],
+                        model_used="gpt-4o",
+                    ),
+                    0,
                 )
             finally:
                 _q.put_nowait(_STREAM_DONE)
@@ -506,11 +526,19 @@ async def _stream_run(
         task = asyncio.create_task(_run_ticker())
 
         # Drain queue until sentinel — yields events as they arrive
-        while True:
-            item = await queue.get()
-            if item is _STREAM_DONE:
-                break
-            yield {"data": json.dumps(item)}
+        # Safety: also timeout after 130s in case sentinel never arrives
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=130.0)
+                except asyncio.TimeoutError:
+                    logger.warning("Queue drain timeout for %s — breaking", ticker)
+                    break
+                if item is _STREAM_DONE:
+                    break
+                yield {"data": json.dumps(item)}
+        except Exception as drain_exc:
+            logger.warning("Queue drain error for %s: %s", ticker, drain_exc)
 
         try:
             thesis, _ = task.result()

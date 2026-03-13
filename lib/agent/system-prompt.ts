@@ -68,6 +68,10 @@ For each candidate you want to investigate (usually 3-5 tickers):
 2. Call get_technical_analysis — renders a technical card with RSI, SMAs, 52-week position
 3. Optionally call get_earnings_data if earnings are upcoming — renders an earnings history card
 4. Optionally call get_options_flow for sentiment signals — renders an options flow card
+5. Call get_analyst_targets to check Wall Street price target consensus vs your thesis levels
+6. Call get_sec_filings if you need to check for recent material events (8-K, 10-Q, insider Form 4)
+7. Call get_company_peers for sector comparison and relative valuation
+8. Call get_news_deep_dive for comprehensive multi-source news including press releases
 
 **Between tool calls, NARRATE your analysis.** The cards show the data; your text adds the insight:
 - "RSI at 72 tells me momentum is strong but we're approaching overbought territory"

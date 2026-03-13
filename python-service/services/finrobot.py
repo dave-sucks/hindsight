@@ -157,6 +157,9 @@ async def run_data_cot(
     from services.reddit import get_reddit_sentiment
     from services.options_flow import get_unusual_options
     from services.earnings_intel import get_earnings_intel
+    from services.sec_filings import get_recent_filings
+    from services.news_aggregator import get_fmp_stock_news, get_fmp_analyst_targets, get_fmp_press_releases
+    from services.company_peers import get_peers_finnhub
 
     today = date.today().isoformat()
     earnings_from = today
@@ -188,6 +191,7 @@ async def run_data_cot(
         quote, profile, financials, news, earnings,
         candles, rec_trends, insider_txns,
         reddit_raw, options_raw, earnings_raw,
+        sec_filings_raw, fmp_news_raw, analyst_targets_raw, press_releases_raw, peers_raw,
     ) = await asyncio.gather(
         _fetch(
             "Fetching price quote", "Finnhub",
@@ -241,6 +245,32 @@ async def run_data_cot(
             "Checking earnings intel", "Earnings",
             get_earnings_intel(ticker), {},
             lambda r: f"Beat rate {r.get('beat_rate_pct', 'N/A')}%" if r.get("beat_rate_pct") else "",
+        ),
+        # DAV-167: Extended data sources
+        _fetch(
+            "Checking SEC filings", "SEC EDGAR",
+            get_recent_filings(ticker, limit=5), [],
+            lambda r: f"{len(r)} recent filing{'s' if len(r) != 1 else ''}" if r else "",
+        ),
+        _fetch(
+            "Fetching extended news", "FMP",
+            get_fmp_stock_news(ticker, limit=8), [],
+            lambda r: f"{len(r)} FMP article{'s' if len(r) != 1 else ''}" if r else "",
+        ),
+        _fetch(
+            "Fetching analyst price targets", "FMP",
+            get_fmp_analyst_targets(ticker), {},
+            lambda r: f"Target ${r.get('consensus_target', 'N/A')} ({r.get('num_analysts', 0)} analysts)" if r.get("consensus_target") else "",
+        ),
+        _fetch(
+            "Checking press releases", "FMP",
+            get_fmp_press_releases(ticker, limit=3), [],
+            lambda r: f"{len(r)} press release{'s' if len(r) != 1 else ''}" if r else "",
+        ),
+        _fetch(
+            "Finding peer companies", "Finnhub",
+            get_peers_finnhub(ticker), [],
+            lambda r: f"Peers: {', '.join(r[:4])}" if r else "",
         ),
     )
 
@@ -343,6 +373,38 @@ async def run_data_cot(
                 published_at=str(item.get("datetime", "")),
             )
         )
+    # Extended sources (DAV-167)
+    if sec_filings_raw:
+        for f in sec_filings_raw[:3]:
+            sources.append(SourceItem(
+                type="SEC_FILING",
+                provider="SEC EDGAR",
+                title=f"{f.get('type', 'Filing')}: {f.get('description', '')}",
+                url=f.get("url"),
+                published_at=f.get("date"),
+            ))
+    for item in (fmp_news_raw or [])[:3]:
+        sources.append(SourceItem(
+            type="NEWS",
+            provider="FMP",
+            title=item.get("headline", "News"),
+            url=item.get("url"),
+            published_at=item.get("published_at"),
+        ))
+    if analyst_targets_raw and analyst_targets_raw.get("consensus_target"):
+        sources.append(SourceItem(
+            type="ANALYST",
+            provider="FMP",
+            title=f"Price target consensus: ${analyst_targets_raw['consensus_target']} ({analyst_targets_raw.get('num_analysts', 0)} analysts)",
+            published_at=today,
+        ))
+    for item in (press_releases_raw or [])[:2]:
+        sources.append(SourceItem(
+            type="NEWS",
+            provider="Company PR",
+            title=item.get("headline", "Press release"),
+            published_at=item.get("published_at"),
+        ))
 
     return DataContext(
         ticker=ticker,
@@ -365,6 +427,11 @@ async def run_data_cot(
         reddit=reddit_signal,
         options_flow=options_flow,
         earnings_intel=earnings_intel,
+        # Extended data (DAV-167)
+        sec_filings=sec_filings_raw or [],
+        analyst_targets=analyst_targets_raw if analyst_targets_raw else None,
+        press_releases=press_releases_raw or [],
+        peers=peers_raw or [],
     )
 
 
@@ -459,6 +526,25 @@ Volume ratio (vs 20d avg): {vol_str}"""
         )
         if ei.next_eps_estimate is not None:
             earnings_block += f", next EPS est=${ei.next_eps_estimate:.2f}"
+
+    # Extended data blocks (DAV-167)
+    sec_block = ""
+    if data.sec_filings:
+        filings_str = "; ".join(f"{f.get('type', '?')} on {f.get('date', '?')}" for f in data.sec_filings[:3])
+        sec_block = f"\nSEC filings: {filings_str}"
+
+    targets_block = ""
+    if data.analyst_targets and data.analyst_targets.get("consensus_target"):
+        at = data.analyst_targets
+        targets_block = (
+            f"\nAnalyst price targets: consensus=${at['consensus_target']}, "
+            f"high=${at.get('high', 'N/A')}, low=${at.get('low', 'N/A')}, "
+            f"{at.get('num_analysts', 0)} analysts"
+        )
+
+    peers_block = ""
+    if data.peers:
+        peers_block = f"\nPeer companies: {', '.join(data.peers[:5])}"
     # ─────────────────────────────────────────────────────────────────────────
 
     # ── Market context block (DAV-121) ──────────────────────────────────────
@@ -488,7 +574,7 @@ Analyst Consensus: {analyst_block}
 Insider Activity: {insider_block}
 
 Recent news:
-{news_headlines or 'None'}{reddit_block}{options_block}{earnings_block}
+{news_headlines or 'None'}{reddit_block}{options_block}{earnings_block}{sec_block}{targets_block}{peers_block}
 
 Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}"""
 
@@ -573,6 +659,21 @@ Market Context:
         alt_data_lines.append(f"Earnings: {data.earnings_intel.beat_rate}% beat rate over {data.earnings_intel.quarters_analyzed}Q")
     alt_data_block = "\n".join(alt_data_lines) if alt_data_lines else "No alt-data"
 
+    # Extended data for thesis (DAV-167)
+    extended_lines = []
+    if data.analyst_targets and data.analyst_targets.get("consensus_target"):
+        at = data.analyst_targets
+        extended_lines.append(f"Analyst targets: consensus=${at['consensus_target']}, high=${at.get('high', 'N/A')}, low=${at.get('low', 'N/A')}")
+    if data.sec_filings:
+        filings_str = "; ".join(f"{f.get('type', '?')} ({f.get('date', '?')})" for f in data.sec_filings[:3])
+        extended_lines.append(f"SEC filings: {filings_str}")
+    if data.peers:
+        extended_lines.append(f"Peer companies: {', '.join(data.peers[:5])}")
+    if data.press_releases:
+        pr_str = "; ".join(f"\"{pr.get('headline', '?')}\"" for pr in data.press_releases[:2])
+        extended_lines.append(f"Recent press releases: {pr_str}")
+    extended_block = "\n".join(extended_lines) if extended_lines else ""
+
     prompt = f"""Generate a full trade thesis for:
 Ticker: {data.ticker} — {data.company_name}
 Direction: {concept.direction}
@@ -589,7 +690,8 @@ P/E: {data.pe_ratio} | Sector: {data.sector}
 {market_thesis_block}
 Alt-Data:
 {alt_data_block}
-
+{f'''Extended Research:
+{extended_block}''' if extended_block else ''}
 Remember: You must include invalidation conditions, a sector alternative comparison,
 a dated catalyst, exact execution details (share count for $10K, order type),
 and a sources array with relevance scores."""
@@ -767,6 +869,21 @@ async def run_combined_concept_thesis_streaming(
         alt_lines.append(f"Earnings: {ei.beat_rate}% beat rate, avg surprise {ei.avg_surprise_pct:+.1f}%")
     alt_block = "\n".join(alt_lines) if alt_lines else "None"
 
+    # Extended data for combined prompt (DAV-167)
+    ext_lines = []
+    if data.analyst_targets and data.analyst_targets.get("consensus_target"):
+        at = data.analyst_targets
+        ext_lines.append(f"Analyst targets: consensus=${at['consensus_target']}, high=${at.get('high', 'N/A')}, low=${at.get('low', 'N/A')}")
+    if data.sec_filings:
+        filings_str = "; ".join(f"{f.get('type', '?')} ({f.get('date', '?')})" for f in data.sec_filings[:3])
+        ext_lines.append(f"SEC filings: {filings_str}")
+    if data.peers:
+        ext_lines.append(f"Peer companies: {', '.join(data.peers[:5])}")
+    if data.press_releases:
+        pr_str = "; ".join(f"\"{pr.get('headline', '?')}\"" for pr in data.press_releases[:2])
+        ext_lines.append(f"Press releases: {pr_str}")
+    ext_block = "\n".join(ext_lines) if ext_lines else ""
+
     market_block = ""
     if market_context:
         market_block = f"""
@@ -799,7 +916,9 @@ Recent news:
 
 Alt-Data:
 {alt_block}
-
+{f'''
+Extended Research:
+{ext_block}''' if ext_block else ''}
 Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}
 
 Think through the analysis step by step, then provide the structured JSON output."""

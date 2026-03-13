@@ -96,6 +96,11 @@ class DataContext(BaseModel):
     reddit: Optional[RedditSignal] = None
     options_flow: Optional[OptionsFlow] = None
     earnings_intel: Optional[EarningsIntel] = None
+    # Extended data sources (DAV-167)
+    sec_filings: List[dict] = []          # recent SEC filings (10-K, 10-Q, 8-K)
+    analyst_targets: Optional[dict] = None  # {consensus_target, high, low, num_analysts}
+    press_releases: List[dict] = []       # company press releases
+    peers: List[dict] = []                # peer company comparison data
 
 
 class ConceptAnalysis(BaseModel):
