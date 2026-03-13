@@ -166,6 +166,8 @@ const PROVIDER_DOMAINS: Record<string, string> = {
   fmp: "financialmodelingprep.com",
   reddit: "reddit.com",
   stocktwits: "stocktwits.com",
+  twitter: "x.com",
+  "fmp social": "financialmodelingprep.com",
   technical: "finnhub.io",
   earnings: "finnhub.io",
   options: "financialmodelingprep.com",
@@ -176,6 +178,8 @@ const PROVIDER_TYPES: Record<string, CitationType> = {
   fmp: "api",
   reddit: "webpage",
   stocktwits: "webpage",
+  twitter: "webpage",
+  "fmp social": "api",
   technical: "api",
   earnings: "api",
   options: "api",
@@ -695,6 +699,132 @@ function useRegisterAgentToolUIs(runId: string) {
                         </span>
                       )}
                       <span className="text-[10px] text-muted-foreground">{s.provider}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Twitter/X sentiment → social card ────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_twitter_sentiment",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Twitter/X sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={MessageSquareText} label="Scanning StockTwits feed" status="active" />
+              <ChainOfThoughtStep icon={Search} label="Checking FMP social sentiment" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      if (!result.available) {
+        return (
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
+            <MessageSquare className="inline h-3 w-3 mr-1 text-blue-500" />
+            No Twitter/social data available for {ticker}.
+          </div>
+        );
+      }
+
+      const postsList = (result.posts ?? []) as {
+        body: string;
+        username: string;
+        created_at?: string;
+        likes?: number;
+      }[];
+      const sentiment = result.sentiment as string | undefined;
+      const mentionCount = result.mention_count as number | undefined;
+      const trendingFlag = result.trending as boolean | undefined;
+      const watchlistCount = result.watchlist_count as number | undefined;
+      const fmpSent = result.fmp_sentiment as { date: string; sentiment: number; mentions: number } | null | undefined;
+
+      return (
+        <div className="my-2">
+          <Card className="overflow-hidden p-0">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-xs font-medium">Twitter/X</span>
+                <span className="text-xs font-semibold font-mono">{ticker}</span>
+                {mentionCount != null && mentionCount > 0 && (
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                    {mentionCount} posts
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                {trendingFlag && (
+                  <Badge variant="secondary" className="text-[10px] py-0 bg-blue-500/10 text-blue-500 font-semibold">
+                    TRENDING
+                  </Badge>
+                )}
+                {sentiment && (
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "text-[10px] py-0 font-semibold",
+                      sentiment === "bullish" && "bg-emerald-500/10 text-emerald-500",
+                      sentiment === "bearish" && "bg-red-500/10 text-red-500",
+                      sentiment === "neutral" && "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {sentiment.toUpperCase()}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            {/* Watchlist + FMP row */}
+            {(watchlistCount != null && watchlistCount > 0 || fmpSent) && (
+              <div className="flex items-center gap-4 px-4 py-2 border-b bg-muted/20 text-[10px] text-muted-foreground">
+                {watchlistCount != null && watchlistCount > 0 && (
+                  <span className="tabular-nums">
+                    {watchlistCount >= 1000 ? `${(watchlistCount / 1000).toFixed(1)}k` : watchlistCount} watchers
+                  </span>
+                )}
+                {fmpSent && (
+                  <span className="tabular-nums">
+                    FMP sentiment: <span className={cn(
+                      fmpSent.sentiment > 0.6 ? "text-emerald-500" :
+                      fmpSent.sentiment < 0.4 ? "text-red-500" :
+                      "text-muted-foreground"
+                    )}>{(fmpSent.sentiment * 100).toFixed(0)}%</span>
+                    {fmpSent.mentions > 0 && ` (${fmpSent.mentions} mentions)`}
+                  </span>
+                )}
+              </div>
+            )}
+            {/* Posts */}
+            {postsList.length > 0 && (
+              <div className="divide-y">
+                {postsList.slice(0, 5).map((p, i) => (
+                  <div key={i} className="flex items-start gap-2.5 px-4 py-2">
+                    <span className="text-[10px] text-muted-foreground font-medium shrink-0 mt-0.5 w-16 truncate">
+                      @{p.username}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs text-foreground line-clamp-2 leading-snug">
+                        {p.body}
+                      </span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {p.likes != null && p.likes > 0 && (
+                          <span className="text-[10px] text-muted-foreground tabular-nums">
+                            {p.likes} likes
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
