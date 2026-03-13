@@ -287,6 +287,7 @@ export function createResearchTools(ctx: ToolContext) {
         "Get current market conditions: S&P 500, VIX, and sector ETF performance. Call this first to understand the market environment.",
       inputSchema: emptyParams,
       execute: async () => {
+        console.log(`[tool] get_market_overview runId=${ctx.runId}`);
         const errors: string[] = [];
 
         const [spyResult, sectorResult] = await Promise.all([
@@ -379,6 +380,7 @@ export function createResearchTools(ctx: ToolContext) {
         "Scan the market for trading candidates. Returns scored tickers from multiple sources: earnings calendar, market movers, gainers/losers, and social trends. Use sectors to filter.",
       inputSchema: scanParams,
       execute: async ({ sectors }: ScanInput) => {
+        console.log(`[tool] scan_candidates sectors=${sectors?.join(",") ?? "all"} runId=${ctx.runId}`);
         const today = new Date().toISOString().slice(0, 10);
         const nextWeek = new Date(Date.now() + 7 * 86400_000)
           .toISOString()
@@ -565,6 +567,7 @@ export function createResearchTools(ctx: ToolContext) {
         "Get comprehensive data for a stock: price quote, company profile, key financials, analyst ratings, and recent news. This is your primary research tool.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
+        console.log(`[tool] get_stock_data ticker=${ticker} runId=${ctx.runId}`);
         const [quoteResult, profileResult, financialsResult, newsResult, recsResult] =
           await Promise.all([
             finnhub(`/quote?symbol=${ticker}`),
@@ -701,6 +704,7 @@ export function createResearchTools(ctx: ToolContext) {
         "Get technical indicators for a stock: RSI-14, 20-day and 50-day SMA, price position in 52-week range. Requires recent price history.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
+        console.log(`[tool] get_technical_analysis ticker=${ticker} runId=${ctx.runId}`);
         const now = Math.floor(Date.now() / 1000);
         const from = now - 90 * 86400;
 
@@ -1113,10 +1117,12 @@ export function createResearchTools(ctx: ToolContext) {
         "Display your research thesis as a formatted card. Call this after you've completed your analysis of a ticker to present your findings. The thesis will be saved to the database.",
       inputSchema: thesisParams,
       execute: async (args: ThesisInput) => {
+        console.log(`[tool] show_thesis ticker=${args.ticker} direction=${args.direction} confidence=${args.confidence_score} runId=${ctx.runId}`);
         try {
           const thesis = await prisma.thesis.create({
             data: {
               researchRunId: ctx.runId,
+              userId: ctx.userId,
               ticker: args.ticker,
               direction: args.direction,
               confidenceScore: args.confidence_score,
@@ -1128,6 +1134,7 @@ export function createResearchTools(ctx: ToolContext) {
               stopLoss: args.stop_loss ?? null,
               holdDuration: args.hold_duration,
               signalTypes: args.signal_types,
+              sourcesUsed: [],
               source: "AGENT",
               modelUsed: "gpt-4o",
             },
@@ -1180,6 +1187,7 @@ export function createResearchTools(ctx: ToolContext) {
         "Place a paper trade on Alpaca. Only call this after presenting a thesis and explaining your reasoning. The trade will be executed immediately.",
       inputSchema: tradeParams,
       execute: async (args: TradeInput) => {
+        console.log(`[tool] place_trade ticker=${args.ticker} direction=${args.direction} shares=${args.shares} runId=${ctx.runId}`);
         return {
           ...args,
           status: "pending_confirmation" as const,
@@ -1239,6 +1247,7 @@ export function createResearchTools(ctx: ToolContext) {
           ),
       }),
       execute: async (args) => {
+        console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
         // Mark the run as complete + persist summary as RunEvent
         try {
           const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;

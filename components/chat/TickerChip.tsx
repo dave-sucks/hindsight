@@ -133,20 +133,22 @@ export const TickerChip = memo(function TickerChip({
 
   return (
     <HoverCard openDelay={100}>
-      <HoverCardTrigger asChild>
-        <Badge
-          variant="secondary"
-          className={cn(
-            "cursor-pointer rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums align-baseline mx-0.5 gap-1",
-            "hover:bg-accent transition-colors inline-flex items-center",
-          )}
-        >
-          <span className="font-semibold">{sym}</span>
-          <span className={cn("inline-flex items-center gap-0.5", color)}>
-            <DirectionIcon changePct={quote.changePct} className="h-2.5 w-2.5" />
-            <span>{formatChangePct(quote.changePct)}</span>
-          </span>
-        </Badge>
+      <HoverCardTrigger
+        render={
+          <Badge
+            variant="secondary"
+            className={cn(
+              "cursor-pointer rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums align-baseline mx-0.5 gap-1",
+              "hover:bg-accent transition-colors inline-flex items-center",
+            )}
+          />
+        }
+      >
+        <span className="font-semibold">{sym}</span>
+        <span className={cn("inline-flex items-center gap-0.5", color)}>
+          <DirectionIcon changePct={quote.changePct} className="h-2.5 w-2.5" />
+          <span>{formatChangePct(quote.changePct)}</span>
+        </span>
       </HoverCardTrigger>
       <HoverCardContent side="top" className="w-64 p-0 overflow-hidden">
         {/* Header */}
