@@ -2,14 +2,18 @@
 
 /**
  * InlineCitation — adapted from vercel/ai-elements.
- * Simple inline citation badges with hover tooltip.
- * Uses Popover (Base UI) for hover cards.
+ * Inline citation badges with hover tooltip using shadcn HoverCard.
  */
 
+import { Badge } from "@/components/ui/badge";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
 import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
 
 export type InlineCitationProps = ComponentProps<"span">;
 
@@ -42,7 +46,26 @@ export interface InlineCitationBadgeProps {
   url?: string;
   domain?: string;
   snippet?: string;
+  provider?: string;
   className?: string;
+}
+
+const PROVIDER_COLORS: Record<string, string> = {
+  finnhub: "bg-blue-500",
+  reddit: "bg-orange-500",
+  options: "bg-purple-500",
+  earnings: "bg-amber-500",
+  technical: "bg-cyan-500",
+  stocktwits: "bg-green-500",
+  fmp: "bg-indigo-500",
+};
+
+function providerDotColor(provider: string): string {
+  const key = provider.toLowerCase().replace(/[^a-z]/g, "");
+  for (const [k, v] of Object.entries(PROVIDER_COLORS)) {
+    if (key.includes(k)) return v;
+  }
+  return "bg-muted-foreground/50";
 }
 
 export const InlineCitationBadge = ({
@@ -52,76 +75,77 @@ export const InlineCitationBadge = ({
   url,
   domain,
   snippet,
+  provider,
   className,
 }: InlineCitationBadgeProps) => {
-  const [showPopover, setShowPopover] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const containerRef = useRef<HTMLSpanElement>(null);
-
   const displayLabel = label ?? (index != null ? `${index}` : "?");
-
-  const handleMouseEnter = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => setShowPopover(true), 100);
-  }, []);
-
-  const handleMouseLeave = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => setShowPopover(false), 150);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
-  const handleClick = () => {
-    if (url) window.open(url, "_blank", "noopener,noreferrer");
-  };
+  const resolvedDomain =
+    domain ??
+    (url
+      ? (() => {
+          try {
+            return new URL(url).hostname;
+          } catch {
+            return "unknown";
+          }
+        })()
+      : undefined);
 
   return (
-    <span
-      ref={containerRef}
-      className="relative inline-block"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      <button
-        type="button"
-        onClick={handleClick}
-        className={cn(
-          "ml-0.5 inline-flex items-center rounded-full bg-secondary px-1.5 py-0 text-[10px] font-medium text-secondary-foreground align-super cursor-pointer hover:bg-secondary/80 transition-colors",
-          className,
-        )}
+    <HoverCard>
+      <HoverCardTrigger
+        openDelay={100}
+        render={
+          <Badge
+            variant="secondary"
+            className={cn(
+              "cursor-pointer rounded-full px-1.5 py-0 text-[10px] font-medium tabular-nums align-super ml-0.5",
+              className,
+            )}
+          />
+        }
       >
         {displayLabel}
-      </button>
-      {showPopover && (title || snippet) && (
-        <div
-          className="absolute bottom-full left-0 mb-1 z-50 w-64 rounded-lg bg-popover p-3 shadow-md ring-1 ring-foreground/10 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2"
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5 text-muted-foreground text-[10px]">
-              <GlobeIcon className="size-3 shrink-0" />
-              <span className="truncate">
-                {domain ?? (url ? (() => { try { return new URL(url).hostname; } catch { return "unknown"; } })() : "unknown")}
-              </span>
-              {url && <ExternalLinkIcon className="size-2.5 shrink-0 ml-auto" />}
-            </div>
-            {title && (
-              <p className="text-xs font-medium leading-snug truncate">{title}</p>
-            )}
-            {snippet && (
-              <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
-                {snippet}
-              </p>
-            )}
-          </div>
+      </HoverCardTrigger>
+      <HoverCardContent side="top" className="w-72 space-y-2">
+        <div className="flex items-center gap-2">
+          {provider ? (
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full shrink-0",
+                providerDotColor(provider),
+              )}
+            />
+          ) : (
+            <GlobeIcon className="size-3 shrink-0 text-muted-foreground" />
+          )}
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">
+            {provider ?? resolvedDomain ?? "unknown"}
+          </span>
+          {url && (
+            <ExternalLinkIcon className="size-2.5 shrink-0 ml-auto text-muted-foreground" />
+          )}
         </div>
-      )}
-    </span>
+        {title && (
+          <p className="text-sm font-medium">{title}</p>
+        )}
+        {snippet && (
+          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+            {snippet}
+          </p>
+        )}
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            <ExternalLinkIcon className="h-3 w-3" />
+            View source
+          </a>
+        )}
+      </HoverCardContent>
+    </HoverCard>
   );
 };

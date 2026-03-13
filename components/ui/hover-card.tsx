@@ -5,25 +5,28 @@ import { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card
 import { cn } from "@/lib/utils"
 
 function HoverCard({
-  openDelay,
-  closeDelay,
   ...props
-}: PreviewCardPrimitive.Root.Props & {
-  openDelay?: number
-  closeDelay?: number
-}) {
+}: PreviewCardPrimitive.Root.Props) {
   return (
     <PreviewCardPrimitive.Root
       data-slot="hover-card"
-      delay={openDelay}
       {...props}
     />
   )
 }
 
-function HoverCardTrigger({ ...props }: PreviewCardPrimitive.Trigger.Props) {
+function HoverCardTrigger({
+  openDelay,
+  ...props
+}: PreviewCardPrimitive.Trigger.Props & {
+  openDelay?: number
+}) {
   return (
-    <PreviewCardPrimitive.Trigger data-slot="hover-card-trigger" {...props} />
+    <PreviewCardPrimitive.Trigger
+      data-slot="hover-card-trigger"
+      delay={openDelay}
+      {...props}
+    />
   )
 }
 

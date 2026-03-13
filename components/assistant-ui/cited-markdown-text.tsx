@@ -24,7 +24,8 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { cn } from "@/lib/utils";
 import { useSources } from "@/components/assistant-ui/message-sources-context";
-import { parseMarkers, CitationBadge } from "@/components/chat/CitedText";
+import { parseMarkers } from "@/components/chat/CitedText";
+import { InlineCitationBadge } from "@/components/ai-elements/inline-citation";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { TickerChip, parseTickerMentions } from "@/components/chat/TickerChip";
 
@@ -58,7 +59,14 @@ function processTextNode(
         );
       } else {
         result.push(
-          <CitationBadge key={`${keyPrefix}-c${i}`} index={seg.index} source={source} />,
+          <InlineCitationBadge
+            key={`${keyPrefix}-c${i}`}
+            index={seg.index}
+            title={source.title}
+            url={source.url}
+            snippet={source.excerpt}
+            provider={source.provider}
+          />,
         );
       }
       continue;
@@ -86,7 +94,7 @@ function processTextNode(
 
 /**
  * Recursively walks React children, replacing text containing [N] patterns
- * with CitationBadge popovers and $TICKER with interactive chips.
+ * with InlineCitationBadge popovers and $TICKER with interactive chips.
  * Handles nested elements (strong, em, a, etc.)
  */
 function processCitationChildren(

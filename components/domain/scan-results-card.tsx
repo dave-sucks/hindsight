@@ -58,10 +58,11 @@ export function ScanResultsCard({
               {movers.map((m, i) => {
                 const isUp = (m.changePct ?? 0) >= 0;
                 return (
-                  <span
+                  <Badge
                     key={i}
+                    variant="secondary"
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-mono font-medium",
+                      "gap-1 py-0 text-[11px] font-mono",
                       isUp
                         ? "bg-emerald-500/10 text-emerald-500"
                         : "bg-red-500/10 text-red-500",
@@ -74,7 +75,7 @@ export function ScanResultsCard({
                         {m.changePct >= 0 ? "+" : ""}{m.changePct.toFixed(1)}%
                       </span>
                     )}
-                  </span>
+                  </Badge>
                 );
               })}
             </div>

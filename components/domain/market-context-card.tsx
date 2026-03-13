@@ -124,24 +124,26 @@ export function MarketContextCard({
         {(topSectors.length > 0 || bottomSectors.length > 0) && (
           <div className="flex flex-wrap gap-1">
             {topSectors.map((s) => (
-              <span
+              <Badge
                 key={s.name}
-                className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium"
+                variant="secondary"
+                className="gap-1 py-0 text-[10px] bg-emerald-500/10"
               >
                 <ArrowUp className="h-2 w-2 text-emerald-500" />
                 <span className="text-muted-foreground">{s.name}</span>
                 <span className="tabular-nums text-emerald-500">+{s.change.toFixed(1)}%</span>
-              </span>
+              </Badge>
             ))}
             {bottomSectors.map((s) => (
-              <span
+              <Badge
                 key={s.name}
-                className="inline-flex items-center gap-1 rounded-md bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium"
+                variant="secondary"
+                className="gap-1 py-0 text-[10px] bg-red-500/10"
               >
                 <ArrowDown className="h-2 w-2 text-red-500" />
                 <span className="text-muted-foreground">{s.name}</span>
                 <span className="tabular-nums text-red-500">{s.change.toFixed(1)}%</span>
-              </span>
+              </Badge>
             ))}
           </div>
         )}

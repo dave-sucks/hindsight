@@ -196,6 +196,104 @@ async function stocktwitsTrending(): Promise<string[]> {
   }
 }
 
+// ── Twitter/X sentiment (StockTwits stream + FMP social sentiment) ──────────
+
+async function twitterSentiment(ticker: string): Promise<{
+  available: boolean;
+  mention_count: number;
+  sentiment: "bullish" | "bearish" | "neutral";
+  sentiment_score: number;
+  trending: boolean;
+  watchlist_count: number;
+  posts: { body: string; username: string; created_at: string; url: string; likes?: number }[];
+  fmp_sentiment: { date: string; sentiment: number; mentions: number } | null;
+}> {
+  const posts: { body: string; username: string; created_at: string; url: string; likes?: number }[] = [];
+  let watchlistCount = 0;
+  let sentimentScore = 0;
+  let mentionCount = 0;
+  let trending = false;
+
+  // 1. StockTwits stream (public API, no auth — closest proxy for Twitter stock discussion)
+  try {
+    const res = await fetch(
+      `https://api.stocktwits.com/api/2/streams/symbol/${ticker.toUpperCase()}.json`,
+      {
+        headers: { "User-Agent": "hindsight-research/1.0" },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const symbol = data?.symbol;
+      watchlistCount = symbol?.watchlist_count ?? 0;
+      trending = watchlistCount > 10000;
+
+      const messages = (data?.messages ?? []) as {
+        body: string;
+        user: { username: string };
+        created_at: string;
+        id: number;
+        entities?: { sentiment?: { basic: string } };
+        likes?: { total: number };
+      }[];
+
+      mentionCount = messages.length;
+
+      for (const msg of messages.slice(0, 8)) {
+        const sentimentBasic = msg.entities?.sentiment?.basic;
+        if (sentimentBasic === "Bullish") sentimentScore += 1;
+        else if (sentimentBasic === "Bearish") sentimentScore -= 1;
+
+        posts.push({
+          body: msg.body.slice(0, 200),
+          username: msg.user?.username ?? "anon",
+          created_at: msg.created_at ?? "",
+          url: `https://stocktwits.com/symbol/${ticker.toUpperCase()}`,
+          likes: msg.likes?.total,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn(`[twitter] StockTwits failed for ${ticker}:`, err instanceof Error ? err.message : err);
+  }
+
+  // 2. FMP social sentiment (aggregates Twitter + StockTwits data)
+  let fmpSentimentData: { date: string; sentiment: number; mentions: number } | null = null;
+  try {
+    const fmpResult = await fmp(`/v4/historical/social-sentiment?symbol=${ticker.toUpperCase()}&limit=1`);
+    const arr = fmpResult.data as { date: string; stocktwitsSentiment?: number; twitterSentiment?: number; stocktwitsPostsMention?: number; twitterPostsMention?: number }[] | null;
+    if (Array.isArray(arr) && arr.length > 0) {
+      const latest = arr[0];
+      const twitterSent = latest.twitterSentiment ?? latest.stocktwitsSentiment ?? 0;
+      const twitterMentions = latest.twitterPostsMention ?? latest.stocktwitsPostsMention ?? 0;
+      fmpSentimentData = {
+        date: latest.date,
+        sentiment: twitterSent,
+        mentions: twitterMentions,
+      };
+      if (twitterSent > 0.6) sentimentScore += 2;
+      else if (twitterSent < 0.4) sentimentScore -= 2;
+      mentionCount = Math.max(mentionCount, twitterMentions);
+    }
+  } catch {
+    // non-fatal
+  }
+
+  const sentiment = sentimentScore > 2 ? "bullish" : sentimentScore < -2 ? "bearish" : "neutral";
+
+  return {
+    available: posts.length > 0 || fmpSentimentData != null,
+    mention_count: mentionCount,
+    sentiment,
+    sentiment_score: sentimentScore,
+    trending,
+    watchlist_count: watchlistCount,
+    posts: posts.slice(0, 5),
+    fmp_sentiment: fmpSentimentData,
+  };
+}
+
 // ── Technical indicator calculations ────────────────────────────────────────
 
 function calcRSI(closes: number[], period = 14): number | null {
@@ -1004,6 +1102,58 @@ export function createResearchTools(ctx: ToolContext) {
             title: p.title,
             url: p.url,
           })),
+        };
+      },
+    }),
+
+    get_twitter_sentiment: tool({
+      description:
+        "Get Twitter/X social sentiment for a stock. Shows trending status, sentiment direction, recent social posts, and watchlist popularity from StockTwits + FMP social data.",
+      inputSchema: tickerParams,
+      execute: async ({ ticker }: TickerInput) => {
+        const data = await twitterSentiment(ticker);
+
+        if (!data.available) {
+          return {
+            available: false,
+            note: `No Twitter/social data available for ${ticker}. The stock may not be actively discussed on social media.`,
+            _sources: [{
+              provider: "StockTwits",
+              title: `${ticker} Social Feed (No Data)`,
+              url: `https://stocktwits.com/symbol/${ticker.toUpperCase()}`,
+              excerpt: "No social sentiment data found",
+            }],
+          };
+        }
+
+        return {
+          available: true,
+          mention_count: data.mention_count,
+          sentiment: data.sentiment,
+          sentiment_score: data.sentiment_score,
+          trending: data.trending,
+          watchlist_count: data.watchlist_count,
+          posts: data.posts.map((p) => ({
+            body: p.body,
+            username: p.username,
+            created_at: p.created_at,
+            likes: p.likes,
+          })),
+          fmp_sentiment: data.fmp_sentiment,
+          _sources: [
+            {
+              provider: "StockTwits",
+              title: `${ticker} Social Feed`,
+              url: `https://stocktwits.com/symbol/${ticker.toUpperCase()}`,
+              excerpt: `${data.mention_count} posts, sentiment: ${data.sentiment}`,
+            },
+            ...(data.fmp_sentiment ? [{
+              provider: "FMP Social",
+              title: `${ticker} Twitter/Social Sentiment`,
+              url: `https://financialmodelingprep.com/api/v4/historical/social-sentiment?symbol=${ticker}`,
+              excerpt: `Sentiment score: ${data.fmp_sentiment.sentiment.toFixed(2)}, ${data.fmp_sentiment.mentions} mentions`,
+            }] : []),
+          ],
         };
       },
     }),

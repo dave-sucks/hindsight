@@ -214,8 +214,8 @@ const AssistantMessage: FC = () => {
     >
       <div className="flex gap-3">
         {/* Avatar */}
-        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-gradient-to-br from-violet-500/10 to-blue-500/10">
-          <BotIcon className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-muted">
+          <BotIcon className="h-3.5 w-3.5 text-muted-foreground" />
         </div>
 
         <div className="min-w-0 flex-1">

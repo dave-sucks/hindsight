@@ -140,6 +140,58 @@ Built for one user now, marketed later.
 - weekly-digest.ts — Sunday 9 AM ET digest
 - accuracy-scorer.ts — weekly AccuracyReport generation
 
+## Manifest UI Components (components/manifest-ui/)
+External component library installed via `npx shadcn@latest add @manifest/<name>`.
+All use semantic prop structure: data, actions, appearance, control.
+- **XPost** — read-only social post card (Reddit/Twitter sentiment).
+  Props: data.{author, username, avatar, content, time, likes, retweets, replies}.
+  Avatar renders as letter circle. Stats are read-only spans (not buttons).
+- **PostCard** — blog/news card with variants: default, compact, horizontal, covered.
+  Props: data.post (Post type), appearance.variant, actions.onReadMore.
+- **PostList** — wraps PostCard[] with layout variants: list, grid, carousel, fullwidth.
+  Props: data.posts, appearance.{variant, columns, showAuthor, showCategory}.
+  **Carousel** variant is the default for article lists in agent tool UIs.
+- **ProductList** — product grid with variants: list, grid, carousel, picker.
+- **OrderConfirm** — order confirmation card with product info + confirm button.
+  Used for trade pending state in agent UI.
+- **QuickReply** — pill-shaped quick reply buttons for chat follow-ups.
+- **Types** in components/manifest-ui/types.ts: Post, Product, Option, OrderItem.
+
+## AI Elements Components (components/ai-elements/)
+Custom chain-of-thought and source display components:
+- **Reasoning** — collapsible reasoning block (ReasoningTrigger + ReasoningContent)
+- **Sources** — collapsible source list (SourcesTrigger + SourcesContent + Source)
+- **ChainOfThought** — multi-step progress display with icons and status
+  (ChainOfThoughtHeader, ChainOfThoughtStep, ChainOfThoughtContent,
+  ChainOfThoughtSearchResults, ChainOfThoughtSearchResult)
+- **Citation** — inline/chip source citation with favicon + domain
+
+## Agent Run Flow (AgentThread)
+The agent run page (`/runs/[id]`) renders via:
+1. **page.tsx** checks `agentMode` + `RUNNING` → renders `<AgentThread>`
+2. **AgentThread** creates `DefaultChatTransport({ api: "/api/research/agent" })`
+   + `useChatRuntime`, wraps in `AssistantRuntimeProvider`
+3. **useRegisterAgentToolUIs()** registers `useAssistantToolUI` for every tool:
+   - get_market_overview → MarketContextCard
+   - scan_candidates → ScanResultsCard
+   - get_stock_data → StockCard + PostList (carousel) for news
+   - get_technical_analysis → TechnicalCard
+   - get_earnings_data → EarningsCard
+   - get_options_flow → OptionsFlowCard
+   - get_reddit_sentiment → XPost cards
+   - get_twitter_sentiment → XPost cards
+   - get_sec_filings → SecFilingsCard
+   - get_analyst_targets → AnalystTargetsCard
+   - get_company_peers → PeersCard
+   - get_news_deep_dive → PostList (carousel)
+   - show_thesis → thesis pill + ThesisArtifactSheet
+   - place_trade → OrderConfirm (pending) / TradeCard (filled)
+   - summarize_run → RunSummaryCard
+4. Every tool UI shows a **ChainOfThought** loading state (pending) and
+   a **SourceChips** footer (complete) with provider-specific citations.
+5. Quick replies appear after run completes via **QuickReplyComponent**.
+6. For COMPLETE runs, **RunUnifiedChat** renders synthesized events.
+
 ## Design Rules — READ BEFORE ANY UI WORK
 - ONLY use ShadCN components from /components/ui
 - NEVER create a new component if an existing one can be extended
