@@ -345,11 +345,11 @@ function StrategyDocument({
               },
               {
                 label: "Max Risk",
-                value: `${config.maxRiskPct}%`,
+                value: `${config.maxRiskPct ?? 2}%`,
               },
               {
                 label: "Min Market Cap",
-                value: config.minMarketCapTier ?? "LARGE",
+                value: config.minMarketCapTier || "LARGE",
               },
               {
                 label: "Schedule",
@@ -436,7 +436,7 @@ function ConfigSheet({
       label: "Max Position Size",
       value: `$${(config.maxPositionSize ?? 0).toLocaleString()}`,
     },
-    { label: "Max Risk %", value: `${config.maxRiskPct}%` },
+    { label: "Max Risk %", value: `${config.maxRiskPct ?? 2}%` },
   ];
 
   return (

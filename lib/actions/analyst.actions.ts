@@ -20,8 +20,8 @@ export interface AnalystConfig {
   minConfidence: number;
   maxOpenPositions: number;
   maxPositionSize: number;
-  maxRiskPct: number | null;
-  minMarketCapTier: string | null;
+  maxRiskPct: number;
+  minMarketCapTier: string;
   watchlist: string[];
   exclusionList: string[];
   dailyLossLimit: number;
