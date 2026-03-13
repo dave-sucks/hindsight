@@ -11,6 +11,11 @@ import {
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ProductList } from "@/components/manifest-ui/product-list";
+import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
+import { XPost } from "@/components/manifest-ui/x-post";
+import { PostCard } from "@/components/manifest-ui/post-card";
+import type { Product } from "@/components/manifest-ui/types";
 
 // ─── Context for passing callbacks into tool UIs ────────────────────────────
 
@@ -204,7 +209,6 @@ import {
   Globe,
   LineChart,
   MessageCircle,
-  ExternalLink,
 } from "lucide-react";
 
 const WebSearchRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
@@ -225,42 +229,37 @@ const WebSearchRender: ToolCallMessagePartComponent = ({ args, result, status })
   if (results.length === 0) return null;
 
   return (
-    <div className="my-2 rounded-lg border overflow-hidden">
-      <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
+    <div className="my-2 space-y-2">
+      <div className="flex items-center gap-2 px-1">
         <Globe className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">
           Web Search: {query}
         </span>
       </div>
-      <div className="divide-y">
-        {results.slice(0, 4).map((item, i) => (
-          <div key={i} className="px-3 py-2 hover:bg-muted/10 transition-colors">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {String(item.title ?? "")}
-                </p>
-                <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                  {String(item.text ?? "")}
-                </p>
-              </div>
-              {typeof item.url === "string" && item.url && (
-                <a
-                  href={String(item.url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 text-muted-foreground hover:text-foreground"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-            <p className="text-[10px] text-muted-foreground/60 mt-1">
-              {String(item.source ?? "")}
-            </p>
-          </div>
-        ))}
-      </div>
+      {results.slice(0, 4).map((item, i) => {
+        const domain = typeof item.url === "string" ? (() => { try { return new URL(item.url).hostname; } catch { return ""; } })() : "";
+        return (
+          <PostCard
+            key={i}
+            data={{
+              post: {
+                title: String(item.title ?? ""),
+                excerpt: String(item.text ?? ""),
+                category: String(item.source ?? domain ?? "web"),
+                url: typeof item.url === "string" ? item.url : undefined,
+              },
+            }}
+            actions={{
+              onReadMore: () => {
+                if (typeof item.url === "string" && item.url) {
+                  window.open(item.url, "_blank", "noopener,noreferrer");
+                }
+              },
+            }}
+            appearance={{ variant: "horizontal", showImage: false, showAuthor: false }}
+          />
+        );
+      })}
     </div>
   );
 };
@@ -383,42 +382,26 @@ const RedditSearchRender: ToolCallMessagePartComponent = ({ args, result, status
   if (results.length === 0) return null;
 
   return (
-    <div className="my-2 rounded-lg border overflow-hidden">
-      <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
+    <div className="my-2 space-y-2">
+      <div className="flex items-center gap-2 px-1">
         <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">
           Reddit: {query}
         </span>
       </div>
-      <div className="divide-y">
-        {results.slice(0, 5).map((post, i) => (
-          <div key={i} className="px-3 py-2 hover:bg-muted/10 transition-colors">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm truncate">{String(post.title ?? "")}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                    r/{String(post.subreddit ?? "")}
-                  </Badge>
-                  <span className="text-[10px] text-muted-foreground tabular-nums">
-                    ↑ {Number(post.score ?? 0).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-              {typeof post.url === "string" && post.url && (
-                <a
-                  href={String(post.url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 text-muted-foreground hover:text-foreground"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      {results.slice(0, 5).map((post, i) => (
+        <XPost
+          key={i}
+          data={{
+            author: `r/${String(post.subreddit ?? "")}`,
+            username: String(post.subreddit ?? ""),
+            avatar: "R",
+            content: String(post.title ?? ""),
+            likes: Number(post.score ?? 0).toLocaleString(),
+            time: typeof post.created === "string" ? post.created : undefined,
+          }}
+        />
+      ))}
     </div>
   );
 };
@@ -550,48 +533,31 @@ const TrendingStocksRender: ToolCallMessagePartComponent = ({ args, result, stat
 
   const categoryLabel = category === "actives" ? "Most Active" : category.charAt(0).toUpperCase() + category.slice(1);
 
+  const products: Product[] = stocks.slice(0, 8).map((stock) => {
+    const pct = Number(stock.changePercent ?? 0);
+    const isUp = pct >= 0;
+    return {
+      name: String(stock.ticker ?? ""),
+      description: String(stock.name ?? ""),
+      price: Number(stock.price ?? 0),
+      image: `https://assets.parqet.com/logos/symbol/${String(stock.ticker ?? "")}?format=svg`,
+      badge: `${isUp ? "+" : ""}${pct.toFixed(2)}%`,
+      inStock: true,
+    };
+  });
+
   return (
-    <div className="my-2 rounded-lg border overflow-hidden">
-      <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
+    <div className="my-2 space-y-2">
+      <div className="flex items-center gap-2 px-1">
         <Flame className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">
           Trending: {categoryLabel}
         </span>
       </div>
-      <div className="divide-y">
-        {stocks.slice(0, 8).map((stock, i) => {
-          const pct = Number(stock.changePercent ?? 0);
-          const isUp = pct >= 0;
-          return (
-            <div key={i} className="px-3 py-2 flex items-center gap-3 hover:bg-muted/10 transition-colors">
-              <StockLogo ticker={String(stock.ticker ?? "")} size="sm" />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold font-mono">
-                    {String(stock.ticker ?? "")}
-                  </span>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {String(stock.name ?? "")}
-                  </span>
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-sm tabular-nums font-semibold">
-                  ${Number(stock.price ?? 0).toFixed(2)}
-                </p>
-                <p
-                  className={cn(
-                    "text-xs tabular-nums font-mono",
-                    isUp ? "text-emerald-500" : "text-red-500"
-                  )}
-                >
-                  {isUp ? "+" : ""}{pct.toFixed(2)}%
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <ProductList
+        data={{ products }}
+        appearance={{ variant: "list" }}
+      />
     </div>
   );
 };
@@ -670,7 +636,6 @@ import {
   ThesisCard,
   type ThesisCardData,
   TradeCard,
-  TradeConfirmation,
 } from "@/components/domain";
 import {
   TrendingUp,
@@ -730,28 +695,26 @@ ResearchTickerRender.displayName = "ResearchTickerRender";
 // ── place_trade → TradeConfirmation (pending) / TradeCard (result) ───────────
 
 const PlaceTradeRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
-  // Pending state — show confirmation preview
+  // Pending state — show order confirmation preview
   if (!result && args && typeof args === "object") {
     const a = args as Record<string, unknown>;
     const dir = String(a.direction ?? "LONG").toUpperCase();
+    const ticker = String(a.ticker ?? "");
+    const shares = typeof a.shares === "number" ? a.shares : 1;
+    const price = typeof a.price === "number" ? a.price : 0;
+    const cost = price * shares;
     return (
-      <div className="my-2">
-        <TradeConfirmation
-          ticker={String(a.ticker ?? "")}
-          direction={dir === "SHORT" ? "SHORT" : "LONG"}
-          shares={typeof a.shares === "number" ? a.shares : undefined}
-          estimatedPrice={typeof a.price === "number" ? a.price : null}
-          estimatedCost={
-            typeof a.price === "number" && typeof a.shares === "number"
-              ? a.price * a.shares
-              : null
-          }
-          action="BUY"
-          onConfirm={() => {}}
-          onCancel={() => {}}
-          isExecuting
-          resolved="confirmed"
-          className="max-w-md"
+      <div className="my-2 max-w-md">
+        <OrderConfirm
+          data={{
+            productName: `${ticker} — ${dir === "SHORT" ? "SHORT" : "LONG"}`,
+            productVariant: `${shares} share${shares !== 1 ? "s" : ""} @ $${price.toFixed(2)}`,
+            productImage: `https://assets.parqet.com/logos/symbol/${ticker}?format=svg`,
+            quantity: shares,
+            price: cost,
+            freeShipping: false,
+          }}
+          control={{ isLoading: true }}
         />
       </div>
     );
