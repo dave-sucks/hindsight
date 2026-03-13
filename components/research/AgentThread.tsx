@@ -128,8 +128,26 @@ import {
   ReasoningTrigger,
   ReasoningContent,
 } from "@/components/ai-elements";
+import {
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtStep,
+  ChainOfThoughtContent,
+  ChainOfThoughtSearchResults,
+  ChainOfThoughtSearchResult,
+} from "@/components/ai-elements/chain-of-thought";
 import { Citation } from "@/components/tool-ui/citation";
 import type { CitationType } from "@/components/tool-ui/citation";
+import {
+  BarChart3,
+  Search,
+  Newspaper,
+  LineChart,
+  Calendar,
+  Activity,
+  MessageSquareText,
+  CheckCircle2,
+} from "lucide-react";
 
 // ─── Source data shape (matches _sources from tool results) ─────────────────
 
@@ -319,7 +337,16 @@ function useRegisterAgentToolUIs(runId: string) {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return <ToolSpinner label={`Fetching ${ticker}...`} />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Researching {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Search} label={`Fetching quote for ${ticker}`} status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading financials" status="pending" />
+              <ChainOfThoughtStep icon={Newspaper} label="Scanning news" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
       const quote = result.quote as {
@@ -406,7 +433,15 @@ function useRegisterAgentToolUIs(runId: string) {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return <ToolSpinner label={`Analyzing ${ticker}...`} color="cyan" />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Technical analysis — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={LineChart} label="Computing RSI, MACD, Bollinger" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="SMA crossover analysis" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
       if (result.error) {
@@ -444,7 +479,15 @@ function useRegisterAgentToolUIs(runId: string) {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return <ToolSpinner label={`Earnings for ${ticker}...`} color="amber" />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Earnings intelligence — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Calendar} label="Checking earnings calendar" status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading beat/miss history" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
       const nextEarnings = result.next_earnings as {
@@ -490,7 +533,14 @@ function useRegisterAgentToolUIs(runId: string) {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return <ToolSpinner label={`Options for ${ticker}...`} color="purple" />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Options flow — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Activity} label="Scanning unusual activity" status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
       if (result.available === false) {
@@ -526,7 +576,14 @@ function useRegisterAgentToolUIs(runId: string) {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
       if (!result) {
-        return <ToolSpinner label={`Reddit for ${ticker}...`} color="orange" />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Reddit sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={MessageSquareText} label="Scanning WSB, r/stocks, r/options" status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
       if (!result.available) {
@@ -629,7 +686,16 @@ function useRegisterAgentToolUIs(runId: string) {
     toolName: "show_thesis",
     render: ({ result }) => {
       if (!result) {
-        return <ToolSpinner label="Building thesis..." color="amber" />;
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Building thesis</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={CheckCircle2} label="Data collected" status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label="Generating direction + confidence" status="active" />
+              <ChainOfThoughtStep icon={FileText} label="Writing full analysis" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
       }
 
       const thesis: ThesisCardData = {

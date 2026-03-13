@@ -3,7 +3,6 @@
 import {
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { CitedMarkdownText } from "@/components/assistant-ui/cited-markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -224,7 +223,7 @@ const AssistantMessage: FC = () => {
             <SourcesProvider sources={sources}>
               <MessagePrimitive.Parts
                 components={{
-                  Text: sources.length > 0 ? CitedMarkdownText : MarkdownText,
+                  Text: CitedMarkdownText,
                   tools: { Fallback: ToolFallback },
                 }}
               />
