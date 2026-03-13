@@ -7,7 +7,7 @@ import RunLiveStream from "@/components/research/RunLiveStream";
 import { RunUnifiedChat } from "@/components/research/RunUnifiedChat";
 import { AgentThread } from "@/components/research/AgentThread";
 import type { RunEventRow } from "@/components/research/types";
-import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
+import { convertPersistedToReplayMessages, type ReplayMessage } from "@/lib/agent/convert-messages";
 
 // ── Synthesize events from thesis rows for legacy runs ────────────────────────
 
@@ -220,12 +220,12 @@ export default async function RunPage({
   const isAgentMode = config.agentMode === true;
 
   // Parse persisted messages for completed agent runs
-  let persistedMessages: unknown[] | null = null;
+  let persistedMessages: ReplayMessage[] | null = null;
   if (isAgentMode && run.status === "COMPLETE" && run.messages.length > 0) {
     try {
       const raw = JSON.parse(run.messages[0].content);
       if (Array.isArray(raw) && raw.length > 0) {
-        persistedMessages = convertPersistedToUIMessages(raw);
+        persistedMessages = convertPersistedToReplayMessages(raw);
       }
     } catch {
       // Malformed JSON — fall through to RunUnifiedChat
@@ -298,7 +298,7 @@ export default async function RunPage({
             analystId={run.agentConfig?.id}
             config={config}
             autoStart={persistedMessages === null}
-            initialMessages={persistedMessages ?? undefined}
+            replayMessages={persistedMessages ?? undefined}
           />
         ) : isStaleRun ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">

@@ -23,7 +23,11 @@ import {
   AssistantRuntimeProvider,
   useAssistantToolUI,
   useThreadRuntime,
+  useExternalStoreRuntime,
+  type ThreadMessageLike,
+  type AppendMessage,
 } from "@assistant-ui/react";
+import type { ReplayMessage } from "@/lib/agent/convert-messages";
 import { Thread } from "@/components/assistant-ui/thread";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -66,7 +70,7 @@ interface AgentThreadProps {
   analystId?: string;
   config: Record<string, unknown>;
   autoStart?: boolean;
-  initialMessages?: unknown[];
+  replayMessages?: ReplayMessage[];
 }
 
 // ─── Shared: compact spinner ────────────────────────────────────────────────
@@ -1224,8 +1228,47 @@ export function AgentThread({
   analystId,
   config,
   autoStart = true,
-  initialMessages,
+  replayMessages,
 }: AgentThreadProps) {
+  // Replay mode: completed run with persisted messages
+  if (replayMessages) {
+    return (
+      <AgentThreadReplay
+        runId={runId}
+        analystName={analystName}
+        analystId={analystId}
+        config={config}
+        messages={replayMessages}
+      />
+    );
+  }
+
+  // Live mode: streaming agent run
+  return (
+    <AgentThreadLive
+      runId={runId}
+      analystName={analystName}
+      analystId={analystId}
+      config={config}
+      autoStart={autoStart}
+    />
+  );
+}
+
+/** Live streaming mode — uses useChatRuntime + DefaultChatTransport */
+function AgentThreadLive({
+  runId,
+  analystName,
+  analystId,
+  config,
+  autoStart,
+}: {
+  runId: string;
+  analystName: string;
+  analystId?: string;
+  config: Record<string, unknown>;
+  autoStart: boolean;
+}) {
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -1235,10 +1278,7 @@ export function AgentThread({
     [runId, analystId, config],
   );
 
-  const runtime = useChatRuntime({
-    transport,
-    ...(initialMessages ? { messages: initialMessages as import("ai").UIMessage[] } : {}),
-  });
+  const runtime = useChatRuntime({ transport });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -1246,6 +1286,115 @@ export function AgentThread({
         runId={runId}
         analystName={analystName}
         autoStart={autoStart}
+      />
+    </AssistantRuntimeProvider>
+  );
+}
+
+/** Replay mode — uses useExternalStoreRuntime with persisted messages */
+function AgentThreadReplay({
+  runId,
+  analystName,
+  analystId,
+  config,
+  messages,
+}: {
+  runId: string;
+  analystName: string;
+  analystId?: string;
+  config: Record<string, unknown>;
+  messages: ReplayMessage[];
+}) {
+  const convertMessage = useCallback(
+    (msg: ReplayMessage): ThreadMessageLike => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content as ThreadMessageLike["content"],
+      createdAt: msg.createdAt,
+      status: { type: "complete" as const, reason: "stop" as const },
+    }),
+    [],
+  );
+
+  // Follow-up chat transport for post-run questions
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chat/run-followup",
+        body: { runId, analystId, config },
+      }),
+    [runId, analystId, config],
+  );
+
+  const [followUpMessages, setFollowUpMessages] = useState<ReplayMessage[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+
+  const allMessages = useMemo(
+    () => [...messages, ...followUpMessages],
+    [messages, followUpMessages],
+  );
+
+  const onNew = useCallback(
+    async (message: AppendMessage) => {
+      const textPart = message.content.find((p) => p.type === "text");
+      if (!textPart || textPart.type !== "text") return;
+
+      const userMsg: ReplayMessage = {
+        id: `followup-user-${Date.now()}`,
+        role: "user",
+        content: [{ type: "text", text: textPart.text }],
+        createdAt: new Date(),
+      };
+      setFollowUpMessages((prev) => [...prev, userMsg]);
+      setIsRunning(true);
+
+      try {
+        const res = await fetch("/api/chat/run-followup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: textPart.text }],
+            runId,
+            analystId,
+            config,
+          }),
+        });
+
+        const text = await res.text();
+        const assistantMsg: ReplayMessage = {
+          id: `followup-assistant-${Date.now()}`,
+          role: "assistant",
+          content: [{ type: "text", text }],
+          createdAt: new Date(),
+        };
+        setFollowUpMessages((prev) => [...prev, assistantMsg]);
+      } catch {
+        // Silently fail — the user can retry
+      } finally {
+        setIsRunning(false);
+      }
+    },
+    [runId, analystId, config],
+  );
+
+  const onCancel = useCallback(() => {
+    setIsRunning(false);
+  }, []);
+
+  const runtime = useExternalStoreRuntime({
+    messages: allMessages,
+    convertMessage,
+    onNew,
+    onCancel,
+    isRunning,
+  });
+
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <AgentThreadInner
+        runId={runId}
+        analystName={analystName}
+        autoStart={false}
       />
     </AssistantRuntimeProvider>
   );
