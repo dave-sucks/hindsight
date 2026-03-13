@@ -1,17 +1,13 @@
 """Company peers and sector comparison service.
 
-Fetches peer companies from Finnhub and quick comparison data from FMP.
+Fetches peer companies from Finnhub and quick comparison data.
+NOTE: FMP /quote/ is deprecated — using Finnhub for peer quotes.
 """
 import asyncio
 import logging
 import os
 
-import httpx
-
 logger = logging.getLogger(__name__)
-
-_FMP_KEY = os.getenv("FMP_API_KEY", "")
-_TIMEOUT = 10.0
 
 
 async def get_peers_finnhub(ticker: str) -> list[str]:
@@ -33,42 +29,56 @@ async def get_peers_finnhub(ticker: str) -> list[str]:
 async def get_peer_comparison(ticker: str) -> dict:
     """Get peer companies with basic comparison metrics.
 
+    Uses Finnhub for quotes and financials (FMP /quote/ deprecated).
+
     Returns {
         peers: [{ticker, name, price, change_pct, pe_ratio, market_cap}],
         sector: str,
     }
     """
+    from services.finnhub import FinnhubService
+
     peers = await get_peers_finnhub(ticker)
-    if not peers or not _FMP_KEY:
+    if not peers:
         return {"peers": [], "sector": ""}
 
-    # Fetch quick quotes for all peers in parallel
-    async with httpx.AsyncClient() as client:
-        symbols = ",".join(peers[:6])
-        try:
-            resp = await client.get(
-                f"https://financialmodelingprep.com/api/v3/quote/{symbols}",
-                params={"apikey": _FMP_KEY},
-                timeout=_TIMEOUT,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as exc:
-            logger.debug("FMP peer quotes failed: %s", exc)
-            return {"peers": [{"ticker": p} for p in peers[:6]], "sector": ""}
+    fh = FinnhubService()
 
-    peer_data = []
+    async def _fetch_peer(sym: str) -> dict:
+        try:
+            quote, profile, financials = await asyncio.gather(
+                fh.get_quote(sym),
+                fh.get_company_profile(sym),
+                fh.get_basic_financials(sym),
+                return_exceptions=True,
+            )
+            q = quote if isinstance(quote, dict) else {}
+            p = profile if isinstance(profile, dict) else {}
+            f = financials if isinstance(financials, dict) else {}
+            return {
+                "ticker": sym,
+                "name": p.get("name", ""),
+                "price": q.get("price"),
+                "change_pct": q.get("change_pct"),
+                "pe_ratio": f.get("pe_ratio"),
+                "market_cap": f.get("market_cap"),
+            }
+        except Exception:
+            return {"ticker": sym}
+
+    results = await asyncio.gather(
+        *[_fetch_peer(p) for p in peers[:6]],
+        return_exceptions=True,
+    )
+
+    peer_data = [r for r in results if isinstance(r, dict)]
+
+    # Get sector from the first peer with a profile
     sector = ""
-    for item in (data if isinstance(data, list) else []):
-        peer_data.append({
-            "ticker": item.get("symbol", ""),
-            "name": item.get("name", ""),
-            "price": item.get("price"),
-            "change_pct": item.get("changesPercentage"),
-            "pe_ratio": item.get("pe"),
-            "market_cap": item.get("marketCap"),
-        })
-        if not sector:
-            sector = item.get("sector", "")
+    try:
+        profile = await fh.get_company_profile(ticker)
+        sector = profile.get("sector", "")
+    except Exception:
+        pass
 
     return {"peers": peer_data, "sector": sector}

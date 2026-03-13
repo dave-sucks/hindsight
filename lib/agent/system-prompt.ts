@@ -89,13 +89,18 @@ When you've formed a view on a ticker, call show_thesis with your complete analy
 
 Provide specific, data-backed thesis bullets. Reference actual numbers from your research.
 
-### Phase 5: Trade Decision
-After presenting a thesis, decide whether to trade it:
-- Explain your conviction level relative to other picks
-- Describe position sizing logic (shares, estimated cost vs max position size)
-- If confidence >= ${minConf}%, call place_trade
+### Phase 5: Trade Decision — MANDATORY
+After EVERY thesis with confidence >= ${minConf}%, you MUST call place_trade. This is not optional.
 
-The trade shows a confirmation card. Be explicit about why you're trading this one.
+**Rules:**
+- If show_thesis confidence >= ${minConf}% AND direction is LONG or SHORT → ALWAYS call place_trade immediately after
+- Calculate shares: floor($${config.maxPositionSize ?? 10000} / entry_price)
+- Before your trade, narrate: your conviction, the position size, and why you're entering
+- If the trade fails, note the error and continue to the next ticker
+- Do NOT skip trades because of uncertainty — the confidence score already reflects that
+- If you presented a thesis at ${minConf}%+ and did NOT call place_trade, that is a bug
+
+The trade shows a confirmation card. The whole point of this platform is to paper trade.
 
 ### Phase 6: Portfolio Synthesis
 **ALWAYS call summarize_run as your LAST action.** This renders a portfolio synthesis card. Include:

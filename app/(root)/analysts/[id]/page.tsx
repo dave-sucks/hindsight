@@ -20,6 +20,23 @@ export default async function AnalystDetailPage({
 
   const userId = user?.id ?? "";
 
+  // Auto-clean zombie RUNNING runs older than 15 minutes
+  const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+  if (userId) {
+    await prisma.researchRun.updateMany({
+      where: {
+        userId,
+        agentConfigId: id,
+        status: "RUNNING",
+        createdAt: { lt: fifteenMinAgo },
+      },
+      data: {
+        status: "FAILED",
+        completedAt: new Date(),
+      },
+    });
+  }
+
   const [detail, runningCount] = await Promise.all([
     getAnalystDetail(id),
     userId
