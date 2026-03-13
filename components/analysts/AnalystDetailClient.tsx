@@ -189,7 +189,7 @@ function StrategyDocument({
             variant="outline"
             className="text-xs h-6 px-2 font-mono tabular-nums"
           >
-            ${config.maxPositionSize.toLocaleString()} max
+            ${(config.maxPositionSize ?? 0).toLocaleString()} max
           </Badge>
         </div>
 
@@ -357,7 +357,7 @@ function StrategyDocument({
               },
               {
                 label: "Daily Loss Limit",
-                value: `$${config.dailyLossLimit.toLocaleString()}`,
+                value: `$${(config.dailyLossLimit ?? 0).toLocaleString()}`,
               },
               {
                 label: "Direction",
@@ -434,7 +434,7 @@ function ConfigSheet({
     { label: "Max Positions", value: String(config.maxOpenPositions) },
     {
       label: "Max Position Size",
-      value: `$${config.maxPositionSize.toLocaleString()}`,
+      value: `$${(config.maxPositionSize ?? 0).toLocaleString()}`,
     },
     { label: "Max Risk %", value: `${config.maxRiskPct}%` },
   ];

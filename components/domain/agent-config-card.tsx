@@ -29,14 +29,14 @@ export type AgentConfigData = {
   name: string;
   description?: string;
   analystPrompt: string;
-  directionBias: "LONG" | "SHORT" | "BOTH";
-  holdDurations: string[];
-  sectors: string[];
-  signalTypes: string[];
-  minConfidence: number;
-  maxPositionSize: number;
-  maxOpenPositions: number;
-  minMarketCapTier: string;
+  directionBias?: "LONG" | "SHORT" | "BOTH";
+  holdDurations?: string[];
+  sectors?: string[];
+  signalTypes?: string[];
+  minConfidence?: number;
+  maxPositionSize?: number;
+  maxOpenPositions?: number;
+  minMarketCapTier?: string;
   watchlist?: string[];
   exclusionList?: string[];
 };
@@ -76,14 +76,14 @@ export function AgentConfigCard({
   name,
   description,
   analystPrompt,
-  directionBias,
-  holdDurations,
-  sectors,
-  signalTypes,
-  minConfidence,
-  maxPositionSize,
-  maxOpenPositions,
-  minMarketCapTier,
+  directionBias = "BOTH",
+  holdDurations = [],
+  sectors = [],
+  signalTypes = [],
+  minConfidence = 0,
+  maxPositionSize = 0,
+  maxOpenPositions = 0,
+  minMarketCapTier = "any",
   watchlist = [],
   exclusionList = [],
   onConfirm,
