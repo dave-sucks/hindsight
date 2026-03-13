@@ -194,7 +194,7 @@ export async function POST(req: Request) {
     const researchTools = userId ? createResearchTools(userId) : {};
 
     const result = streamText({
-      model: openai("gpt-4o"),
+      model: openai("gpt-4.1"),
       system: systemPrompt,
       messages: modelMessages,
       tools: {
