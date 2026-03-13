@@ -32,7 +32,17 @@ import {
   TradeCard,
 } from "@/components/domain";
 import { SourceChipRow, type SourceChipData } from "@/components/chat/SourceChip";
-import { ReasoningBlock, ResearchStep } from "@/components/research/ReasoningBlock";
+import {
+  Reasoning,
+  ReasoningTrigger,
+  ReasoningContent,
+} from "@/components/ai-elements/reasoning";
+import {
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtStep,
+  ChainOfThoughtContent,
+} from "@/components/ai-elements/chain-of-thought";
 import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
 import {
   CheckCircle2,
@@ -559,13 +569,21 @@ function useRegisterRunEventToolUIs() {
             </p>
           </div>
           {a.steps && a.steps.length > 0 && (
-            <ReasoningBlock label={`${a.steps.length} sources checked`} defaultOpen={false}>
-              <div className="space-y-2 pt-1">
+            <ChainOfThought defaultOpen={false}>
+              <ChainOfThoughtHeader>
+                {a.steps.length} sources checked
+              </ChainOfThoughtHeader>
+              <ChainOfThoughtContent>
                 {a.steps.map((step, i) => (
-                  <ResearchStep key={i} label={step.label} done details={step.details} />
+                  <ChainOfThoughtStep
+                    key={i}
+                    label={step.label}
+                    description={step.details}
+                    status="complete"
+                  />
                 ))}
-              </div>
-            </ReasoningBlock>
+              </ChainOfThoughtContent>
+            </ChainOfThought>
           )}
         </div>
       );
@@ -668,18 +686,23 @@ function useRegisterRunEventToolUIs() {
             <SourceChipRow sources={a.sources} />
           )}
 
-          {/* ── Research steps (collapsible reasoning block) ──────── */}
+          {/* ── Research steps (collapsible chain-of-thought) ──────── */}
           {a.toolCalls.length > 0 && (
-            <ReasoningBlock
-              label={`Data collection — ${a.toolCalls.length} source${a.toolCalls.length !== 1 ? "s" : ""}`}
-              defaultOpen={false}
-            >
-              <div className="space-y-2 pt-1">
+            <ChainOfThought defaultOpen={false}>
+              <ChainOfThoughtHeader>
+                Data collection — {a.toolCalls.length} source{a.toolCalls.length !== 1 ? "s" : ""}
+              </ChainOfThoughtHeader>
+              <ChainOfThoughtContent>
                 {a.toolCalls.map((tc) => (
-                  <ResearchStep key={tc.id} label={tc.label} done details={tc.details} />
+                  <ChainOfThoughtStep
+                    key={tc.id}
+                    label={tc.label}
+                    description={tc.details}
+                    status="complete"
+                  />
                 ))}
-              </div>
-            </ReasoningBlock>
+              </ChainOfThoughtContent>
+            </ChainOfThought>
           )}
 
           {/* ── Concept signal ────────────────────────────────────── */}
@@ -717,9 +740,14 @@ function useRegisterRunEventToolUIs() {
 
           {/* ── Reasoning block (collapsible thinking) ───────────── */}
           {a.reasoning && a.reasoning.length > 0 && (
-            <ReasoningBlock label="Thesis reasoning" defaultOpen={false}>
-              {a.reasoning}
-            </ReasoningBlock>
+            <Reasoning defaultOpen={false}>
+              <ReasoningTrigger
+                getThinkingMessage={() => <span>Thesis reasoning</span>}
+              />
+              <ReasoningContent>
+                <p className="whitespace-pre-wrap leading-relaxed">{a.reasoning}</p>
+              </ReasoningContent>
+            </Reasoning>
           )}
 
           {/* ── Thesis card + artifact sheet ──────────────────────── */}

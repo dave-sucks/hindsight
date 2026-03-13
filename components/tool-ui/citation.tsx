@@ -1,11 +1,10 @@
 "use client";
 
 /**
- * Citation — adapted from assistant-ui/tool-ui.
- * Inline chip variant with hover popover, or full card variant.
+ * Citation — domain-specific citation component for tool results.
+ * Inline chip variant with hover popover (shadcn HoverCard), or full card variant.
  */
 
-import * as React from "react";
 import { cn } from "@/lib/utils";
 import {
   Globe,
@@ -17,6 +16,11 @@ import {
   ExternalLink,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 export type CitationType =
   | "webpage"
@@ -75,8 +79,6 @@ export function Citation({
 }: CitationProps) {
   const domain = providedDomain ?? extractDomain(href);
   const TypeIcon = TYPE_ICONS[type] ?? Globe;
-  const [showPopover, setShowPopover] = React.useState(false);
-  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const iconElement = favicon ? (
     <img
@@ -98,69 +100,45 @@ export function Citation({
     }
   };
 
-  const handleMouseEnter = React.useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => setShowPopover(true), 100);
-  }, []);
-
-  const handleMouseLeave = React.useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => setShowPopover(false), 150);
-  }, []);
-
-  React.useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
   // Inline variant: compact chip with hover popover
   if (variant === "inline") {
     return (
-      <span
-        className="relative inline-block"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        <button
-          type="button"
-          data-citation-id={id}
-          onClick={handleClick}
-          className={cn(
-            "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5",
-            "bg-muted/60 text-xs outline-none",
-            "transition-colors duration-150",
-            "hover:bg-muted",
-            className,
-          )}
+      <HoverCard>
+        <HoverCardTrigger
+          openDelay={100}
+          render={
+            <button
+              type="button"
+              data-citation-id={id}
+              onClick={handleClick}
+              className={cn(
+                "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5",
+                "bg-muted/60 text-xs outline-none",
+                "transition-colors duration-150",
+                "hover:bg-muted",
+                className,
+              )}
+            />
+          }
         >
           {iconElement}
           <span className="text-muted-foreground">{domain}</span>
-        </button>
-        {showPopover && (
-          <div
-            className="absolute bottom-full left-0 mb-1 z-50 w-64 rounded-lg bg-popover p-3 shadow-md ring-1 ring-foreground/10 animate-in fade-in-0 zoom-in-95"
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            onClick={handleClick}
-          >
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-start gap-2">
-                {iconElement}
-                <span className="text-muted-foreground text-[10px]">
-                  {domain}
-                </span>
-              </div>
-              <p className="text-xs leading-snug font-medium">{title}</p>
-              {snippet && (
-                <p className="text-muted-foreground line-clamp-2 text-[10px] leading-relaxed">
-                  {snippet}
-                </p>
-              )}
-            </div>
+        </HoverCardTrigger>
+        <HoverCardContent side="top" className="w-64 space-y-1.5">
+          <div className="flex items-start gap-2">
+            {iconElement}
+            <span className="text-muted-foreground text-[10px]">
+              {domain}
+            </span>
           </div>
-        )}
-      </span>
+          <p className="text-xs leading-snug font-medium">{title}</p>
+          {snippet && (
+            <p className="text-muted-foreground line-clamp-2 text-[10px] leading-relaxed">
+              {snippet}
+            </p>
+          )}
+        </HoverCardContent>
+      </HoverCard>
     );
   }
 

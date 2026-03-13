@@ -132,8 +132,9 @@ export const TickerChip = memo(function TickerChip({
   const color = directionColor(quote.changePct);
 
   return (
-    <HoverCard openDelay={100}>
+    <HoverCard>
       <HoverCardTrigger
+        openDelay={100}
         render={
           <Badge
             variant="secondary"
