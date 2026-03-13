@@ -54,9 +54,7 @@ function EditorThread({
     <ToolUICallbacksProvider value={callbacks}>
       <Thread
         welcomeConfig={EDITOR_WELCOME}
-        richComposer
         composerFeatures={{
-          slashCommands: false,
           tickerSearch: true,
           placeholder: "Ask a question or suggest strategy changes…",
         }}
@@ -84,7 +82,7 @@ export function AnalystEditorChat({
     transport: useMemo(
       () =>
         new DefaultChatTransport({
-          api: "/api/chat/analyst-builder",
+          api: "/api/chat/analyst-editor",
           body: { currentConfig },
         }),
       [currentConfig]

@@ -86,10 +86,23 @@ Technical interpretation:
 _THESIS_SYSTEM = """You are a senior equity analyst at a hedge fund generating a formal trade thesis.
 You write with conviction. Every recommendation includes specific, actionable execution details.
 
+CITATION RULES — IMPORTANT:
+When writing reasoning_summary and thesis_bullets, reference your data sources using
+inline citation markers like [1], [2], [3] etc. Each number corresponds to the position
+in the "sources" array you return (1-indexed). This lets the UI render hover-able citations.
+
+Examples of good inline citations:
+- "RSI at 28 suggests oversold conditions [1], while unusual call option volume
+  at the $150 strike signals institutional accumulation [4]."
+- "Recent Reddit sentiment on r/wallstreetbets is overwhelmingly bullish [3],
+  though insider selling by the CFO raises concerns [5]."
+
+Every factual claim should cite its source. Aim for 3-8 citations across the reasoning_summary.
+
 Return a JSON object with these exact fields:
 {
-  "reasoning_summary": "<3-4 paragraph analysis: (1) situation overview + market context, (2) catalysts with specific dates/timeframes, (3) risk/reward setup with sector comparison, (4) execution rationale>",
-  "thesis_bullets": ["<bullet 1>", "<bullet 2>", "<bullet 3>", "<bullet 4>", "<bullet 5>"],
+  "reasoning_summary": "<3-4 paragraph analysis with [N] citation markers: (1) situation overview + market context, (2) catalysts with specific dates/timeframes, (3) risk/reward setup with sector comparison, (4) execution rationale>",
+  "thesis_bullets": ["<bullet with [N] citations>", "<bullet 2>", "<bullet 3>", "<bullet 4>", "<bullet 5>"],
   "risk_flags": ["<risk 1>", "<risk 2>", "<risk 3>"],
   "invalidation": "<1-2 sentences: specific conditions that would make this thesis wrong — not generic risks, but concrete price/event triggers>",
   "sector_alternative": "<ticker and 1-sentence comparison to at least one alternative in the same sector>",
@@ -117,7 +130,9 @@ Requirements:
 - order_type: LIMIT for entries near support/resistance, MARKET for momentum/catalyst plays.
 - suggested_shares: calculate for a $10,000 position size. Round to whole number.
 - sources: list each data source that informed the thesis with type, relevance (0-1),
-  and directional sentiment.
+  and directional sentiment. ORDER MATTERS: the first source is [1], second is [2], etc.
+  Put the most-cited sources first. Every [N] in reasoning_summary/thesis_bullets must
+  correspond to a source at that index.
 
 Confidence calibration:
 - 80+ means you would bet your own money. Multiple independent signals strongly aligned.
@@ -477,10 +492,24 @@ Recent news:
 
 Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}"""
 
+    # ── Inject analyst strategy prompt if available ──
+    analyst_prompt = agent_config.get("analystPrompt") or agent_config.get("analyst_prompt")
+    system_content = _CONCEPT_SYSTEM
+    if analyst_prompt:
+        analyst_name = agent_config.get("analystName", agent_config.get("analyst_name", "Analyst"))
+        system_content = f"""{_CONCEPT_SYSTEM}
+
+--- ANALYST STRATEGY INSTRUCTIONS ({analyst_name}) ---
+The following is the analyst's strategy document. Use it to guide your signal selection,
+direction bias, confidence calibration, and what patterns/setups to prioritize:
+
+{analyst_prompt}
+--- END STRATEGY INSTRUCTIONS ---"""
+
     response = await _openai.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": _CONCEPT_SYSTEM},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
@@ -497,6 +526,7 @@ async def run_thesis_cot(
     concept: ConceptAnalysis,
     total_tokens: list,
     market_context=None,  # DAV-121/124
+    agent_config: dict | None = None,
 ) -> ThesisOutput:
     """Step 3: GPT-4o structured thesis synthesis."""
     tech = data.technicals
@@ -564,10 +594,25 @@ Remember: You must include invalidation conditions, a sector alternative compari
 a dated catalyst, exact execution details (share count for $10K, order type),
 and a sources array with relevance scores."""
 
+    # ── Inject analyst strategy prompt if available ──
+    thesis_system = _THESIS_SYSTEM
+    if agent_config:
+        analyst_prompt = agent_config.get("analystPrompt") or agent_config.get("analyst_prompt")
+        if analyst_prompt:
+            analyst_name = agent_config.get("analystName", agent_config.get("analyst_name", "Analyst"))
+            thesis_system = f"""{_THESIS_SYSTEM}
+
+--- ANALYST STRATEGY INSTRUCTIONS ({analyst_name}) ---
+Use the analyst's strategy to inform thesis quality, risk framing, entry/exit levels,
+and which catalysts to emphasize:
+
+{analyst_prompt}
+--- END STRATEGY INSTRUCTIONS ---"""
+
     response = await _openai.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": _THESIS_SYSTEM},
+            {"role": "system", "content": thesis_system},
             {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
@@ -626,14 +671,19 @@ Write 3-5 paragraphs analyzing the stock. Cover:
 - Risk factors and what could go wrong
 - Your directional conclusion and conviction level
 
+CITATION RULES:
+In reasoning_summary AND thesis_bullets, reference data sources using inline [N] markers
+(1-indexed into the "sources" array). Example: "RSI at 28 [1] with unusual call volume [4]."
+Every factual claim should cite its source. Aim for 3-8 citations in the reasoning_summary.
+
 SECTION 2 — STRUCTURED OUTPUT (JSON block):
 After your reasoning, output a JSON block wrapped in ```json ... ``` markers with these fields:
 {
   "direction": "LONG" | "SHORT" | "PASS",
   "hold_duration": "DAY" | "SWING" | "POSITION",
   "signal_types": ["<signal1>", "<signal2>"],
-  "reasoning_summary": "<3-4 paragraph analysis>",
-  "thesis_bullets": ["<bullet 1>", "<bullet 2>", "<bullet 3>", "<bullet 4>", "<bullet 5>"],
+  "reasoning_summary": "<3-4 paragraph analysis with [N] citation markers>",
+  "thesis_bullets": ["<bullet with [N] citations>", "<bullet 2>", "<bullet 3>", "<bullet 4>", "<bullet 5>"],
   "risk_flags": ["<risk 1>", "<risk 2>", "<risk 3>"],
   "invalidation": "<specific conditions that would make this thesis wrong>",
   "sector_alternative": "<comparison to a sector peer>",
@@ -754,6 +804,20 @@ Direction bias allowed: {agent_config.get('directionBias', 'BOTH')}
 
 Think through the analysis step by step, then provide the structured JSON output."""
 
+    # ── Inject analyst strategy prompt if available ──
+    combined_system = _COMBINED_SYSTEM
+    analyst_prompt = agent_config.get("analystPrompt") or agent_config.get("analyst_prompt")
+    if analyst_prompt:
+        analyst_name = agent_config.get("analystName", agent_config.get("analyst_name", "Analyst"))
+        combined_system = f"""{_COMBINED_SYSTEM}
+
+--- ANALYST STRATEGY INSTRUCTIONS ({analyst_name}) ---
+Use the analyst's strategy to guide your signal selection, direction bias, confidence
+calibration, risk framing, and which catalysts to emphasize:
+
+{analyst_prompt}
+--- END STRATEGY INSTRUCTIONS ---"""
+
     # Stream the response — emit reasoning tokens, then parse JSON
     reasoning_text = ""
     full_text = ""
@@ -763,7 +827,7 @@ Think through the analysis step by step, then provide the structured JSON output
     async with _openai.chat.completions.stream(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": _COMBINED_SYSTEM},
+            {"role": "system", "content": combined_system},
             {"role": "user", "content": prompt},
         ],
         temperature=0.4,
@@ -1006,7 +1070,7 @@ async def run_full_pipeline(
                 total_tokens[0],
             )
 
-        thesis = await run_thesis_cot(data, concept, total_tokens, market_context=market_context)
+        thesis = await run_thesis_cot(data, concept, total_tokens, market_context=market_context, agent_config=agent_config)
         return thesis, total_tokens[0]
 
     except Exception as exc:

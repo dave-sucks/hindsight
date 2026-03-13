@@ -875,9 +875,10 @@ function RunThread() {
   return (
     <ToolUICallbacksProvider value={{}}>
       <Thread
-        richComposer
         hideWelcome
         composerFeatures={{
+          tickerSearch: true,
+          slashCommands: true,
           placeholder: "Ask about this run, research a ticker, or place a trade…",
         }}
       />

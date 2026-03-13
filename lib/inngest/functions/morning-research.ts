@@ -162,6 +162,8 @@ export const morningResearch = inngest.createFunction(
                 maxPositionSize: config.maxPositionSize,
                 sectors: config.sectors,
                 signalTypes: config.signalTypes,
+                analystPrompt: config.analystPrompt ?? null,
+                analystName: config.name,
               },
             }),
             signal: AbortSignal.timeout(120_000), // 2 min timeout

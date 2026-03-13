@@ -198,25 +198,277 @@ const SuggestConfigEditorRender: ToolCallMessagePartComponent<
 
 SuggestConfigEditorRender.displayName = "SuggestConfigEditorRender";
 
+// ─── Builder research tool UIs ──────────────────────────────────────────────
+
+import {
+  Globe,
+  LineChart,
+  MessageCircle,
+  ExternalLink,
+} from "lucide-react";
+
+const WebSearchRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
+  const a = (args ?? {}) as Record<string, unknown>;
+  const r = (result ?? {}) as Record<string, unknown>;
+  const results = Array.isArray(r.results) ? r.results as Array<Record<string, unknown>> : [];
+  const query = String(a.query ?? r.query ?? "");
+
+  if (status?.type !== "complete" && !result) {
+    return (
+      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+        <Globe className="h-4 w-4" />
+        Searching: {query}…
+      </div>
+    );
+  }
+
+  if (results.length === 0) return null;
+
+  return (
+    <div className="my-2 rounded-lg border overflow-hidden">
+      <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
+        <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground">
+          Web Search: {query}
+        </span>
+      </div>
+      <div className="divide-y">
+        {results.slice(0, 4).map((item, i) => (
+          <div key={i} className="px-3 py-2 hover:bg-muted/10 transition-colors">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {String(item.title ?? "")}
+                </p>
+                <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                  {String(item.text ?? "")}
+                </p>
+              </div>
+              {typeof item.url === "string" && item.url && (
+                <a
+                  href={String(item.url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+            <p className="text-[10px] text-muted-foreground/60 mt-1">
+              {String(item.source ?? "")}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+WebSearchRender.displayName = "WebSearchRender";
+
+const MarketContextRender: ToolCallMessagePartComponent = ({ result, status }) => {
+  const r = (result ?? {}) as Record<string, unknown>;
+
+  if (status?.type !== "complete" && !result) {
+    return (
+      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+        <LineChart className="h-4 w-4" />
+        Loading market data…
+      </div>
+    );
+  }
+
+  if (r.error) return null;
+
+  const spy = r.spy as Record<string, unknown> | null;
+  const vix = r.vix as Record<string, unknown> | null;
+  const sectors = Array.isArray(r.sectors) ? r.sectors as Array<Record<string, unknown>> : [];
+
+  return (
+    <div className="my-2 rounded-lg border overflow-hidden">
+      <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
+        <LineChart className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground">
+          Market Context
+        </span>
+      </div>
+      <div className="p-3 space-y-3">
+        {/* SPY + VIX row */}
+        <div className="grid grid-cols-2 gap-3">
+          {spy && (
+            <div className="rounded-md border bg-muted/10 px-3 py-2">
+              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
+                SPY
+              </p>
+              <p className="text-sm font-semibold tabular-nums">
+                ${Number(spy.price ?? 0).toFixed(2)}
+              </p>
+              <p
+                className={cn(
+                  "text-xs tabular-nums",
+                  Number(spy.change ?? 0) >= 0 ? "text-emerald-500" : "text-red-500"
+                )}
+              >
+                {Number(spy.change ?? 0) >= 0 ? "+" : ""}{Number(spy.change ?? 0).toFixed(2)}%
+              </p>
+            </div>
+          )}
+          {vix && (
+            <div className="rounded-md border bg-muted/10 px-3 py-2">
+              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
+                VIX
+              </p>
+              <p className="text-sm font-semibold tabular-nums">
+                {Number(vix.level ?? 0).toFixed(1)}
+              </p>
+              {vix.change != null && (
+                <p
+                  className={cn(
+                    "text-xs tabular-nums",
+                    Number(vix.change) >= 0 ? "text-red-500" : "text-emerald-500"
+                  )}
+                >
+                  {Number(vix.change) >= 0 ? "+" : ""}{Number(vix.change).toFixed(2)}%
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        {/* Sectors */}
+        {sectors.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
+              Sectors
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {sectors.slice(0, 8).map((s, i) => {
+                const change = parseFloat(String(s.changesPercentage ?? s.change ?? "0"));
+                return (
+                  <Badge
+                    key={i}
+                    variant="outline"
+                    className={cn(
+                      "text-[10px] px-2 py-0.5 tabular-nums font-mono",
+                      change >= 0 ? "text-emerald-500 border-emerald-500/30" : "text-red-500 border-red-500/30"
+                    )}
+                  >
+                    {String(s.sector ?? "").replace("Services", "").trim()} {change >= 0 ? "+" : ""}{change.toFixed(2)}%
+                  </Badge>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+MarketContextRender.displayName = "MarketContextRender";
+
+const RedditSearchRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
+  const a = (args ?? {}) as Record<string, unknown>;
+  const r = (result ?? {}) as Record<string, unknown>;
+  const results = Array.isArray(r.results) ? r.results as Array<Record<string, unknown>> : [];
+  const query = String(a.query ?? r.query ?? "");
+
+  if (status?.type !== "complete" && !result) {
+    return (
+      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+        <MessageCircle className="h-4 w-4" />
+        Searching Reddit: {query}…
+      </div>
+    );
+  }
+
+  if (results.length === 0) return null;
+
+  return (
+    <div className="my-2 rounded-lg border overflow-hidden">
+      <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
+        <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground">
+          Reddit: {query}
+        </span>
+      </div>
+      <div className="divide-y">
+        {results.slice(0, 5).map((post, i) => (
+          <div key={i} className="px-3 py-2 hover:bg-muted/10 transition-colors">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm truncate">{String(post.title ?? "")}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    r/{String(post.subreddit ?? "")}
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                    ↑ {Number(post.score ?? 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              {typeof post.url === "string" && post.url && (
+                <a
+                  href={String(post.url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+RedditSearchRender.displayName = "RedditSearchRender";
+
 // ─── Registration hooks ─────────────────────────────────────────────────────
 
 /**
  * Register suggest_config tool UI for the builder (shows full config card + create button).
+ * Also registers research tool UIs (web_search, get_market_context, search_reddit).
  */
 export function useRegisterBuilderToolUIs() {
   useAssistantToolUI({
     toolName: "suggest_config",
     render: SuggestConfigRender,
   });
+  useAssistantToolUI({
+    toolName: "web_search",
+    render: WebSearchRender,
+  });
+  useAssistantToolUI({
+    toolName: "get_market_context",
+    render: MarketContextRender,
+  });
+  useAssistantToolUI({
+    toolName: "search_reddit",
+    render: RedditSearchRender,
+  });
 }
 
 /**
  * Register suggest_config tool UI for the editor (shows diff card + apply button).
+ * Also registers research tool UIs (web_search, get_market_context, search_reddit).
  */
 export function useRegisterEditorToolUIs() {
   useAssistantToolUI({
     toolName: "suggest_config",
     render: SuggestConfigEditorRender,
+  });
+  useAssistantToolUI({
+    toolName: "web_search",
+    render: WebSearchRender,
+  });
+  useAssistantToolUI({
+    toolName: "get_market_context",
+    render: MarketContextRender,
+  });
+  useAssistantToolUI({
+    toolName: "search_reddit",
+    render: RedditSearchRender,
   });
 }
 

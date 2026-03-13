@@ -22,6 +22,9 @@ export interface AnalystConfig {
   maxPositionSize: number;
   maxRiskPct: number | null;
   minMarketCapTier: string | null;
+  watchlist: string[];
+  exclusionList: string[];
+  dailyLossLimit: number;
   scheduleTime: string;
   createdAt: Date;
   updatedAt: Date;

@@ -11,11 +11,8 @@ const configSchema = z.object({
   analystPrompt: z
     .string()
     .describe(
-      "A detailed, thorough strategy prompt (at least 3-5 paragraphs) that will guide the agent during every research run. " +
-      "Include: the core thesis/edge, what patterns to look for, what sources matter most, " +
-      "entry/exit criteria, risk management philosophy, what makes a trade worth taking, " +
-      "and any contrarian or unique angles. Write it as if you're briefing a brilliant junior analyst " +
-      "who will execute this strategy autonomously every morning."
+      "The COMPLETE updated strategy prompt (at least 3-5 paragraphs). " +
+      "This replaces the current analystPrompt entirely — include everything, not just changes."
     ),
   description: z
     .string()
@@ -30,7 +27,7 @@ const configSchema = z.object({
     .describe("DAY = close same day, SWING = hold 2-10 days, POSITION = hold weeks+"),
   sectors: z
     .array(z.string())
-    .describe("Sector filters. Common: TECHNOLOGY, HEALTHCARE, FINANCE, ENERGY, CONSUMER, INDUSTRIAL, REAL_ESTATE, UTILITIES, MATERIALS, COMMUNICATION. Empty = all sectors"),
+    .describe("Sector filters. Empty = all sectors"),
   signalTypes: z
     .array(z.string())
     .describe("Preferred signals. Options: MOMENTUM, EARNINGS_BEAT, SECTOR_ROTATION, MEAN_REVERSION, BREAKOUT, NEWS_CATALYST, TECHNICAL, INSIDER, UNUSUAL_OPTIONS_FLOW, EARNINGS_WHISPERS"),
@@ -38,7 +35,7 @@ const configSchema = z.object({
     .number()
     .min(40)
     .max(95)
-    .describe("Minimum confidence score (0-100) to auto-place a paper trade. Lower = more trades, higher = fewer but higher conviction. Default 70"),
+    .describe("Minimum confidence score (0-100) to auto-place a paper trade"),
   maxPositionSize: z
     .number()
     .min(100)
@@ -48,7 +45,7 @@ const configSchema = z.object({
     .number()
     .min(1)
     .max(20)
-    .describe("Maximum simultaneous open trades. Default 5."),
+    .describe("Maximum simultaneous open trades"),
   minMarketCapTier: z
     .enum(["LARGE", "MID", "SMALL"])
     .describe("Minimum market cap. LARGE = $10B+, MID = $2-10B, SMALL = <$2B"),
@@ -64,75 +61,61 @@ const configSchema = z.object({
 
 // ── System prompt ───────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are the Analyst Builder for Hindsight, an AI-powered paper trading platform.
+function buildEditorSystemPrompt(currentConfig: Record<string, unknown>): string {
+  return `You are the Analyst Editor for Hindsight, an AI-powered paper trading platform.
 
-Your job: help users BRAINSTORM and CREATE a brilliant, unique trading analyst. You are a genius strategist who helps people figure out exactly what kind of edge they want to find in the market and turns that into a detailed, actionable agent configuration.
+Your job: help users REFINE and IMPROVE an existing trading analyst configuration. You deeply understand the current strategy and help users make targeted, intelligent changes.
 
 ## Your Personality
-You're like a top-tier hedge fund PM brainstorming with a promising new hire. You're sharp, opinionated, creative, and you push people to think deeper. You don't just accept "I want to trade tech stocks" — you dig into WHY, WHAT specifically, and WHAT EDGE they think exists.
+You're like a senior PM reviewing a junior analyst's strategy with them. You understand nuance — when they say "make it more aggressive" you know that could mean lower confidence threshold, tighter stops, or shifting to momentum signals. You always explain the TRADE-OFFS of any change.
+
+## Current Configuration
+\`\`\`json
+${JSON.stringify(currentConfig, null, 2)}
+\`\`\`
 
 ## How to Work
 
-### Phase 1: Understand the Vision (1-2 exchanges)
-Ask incisive questions to understand what the user wants:
-- What excites them about trading? What catches their eye?
-- Do they see patterns they want to exploit? Events that create opportunities?
-- Are they drawn to fast-paced day trading or patient multi-day setups?
-- What's their risk appetite? Are they okay with frequent small losses for occasional big wins?
+### Answering Questions
+When the user asks about the current strategy, give clear, insightful answers:
+- "What's this analyst good at?" → analyze the strategy prompt, sectors, and signals
+- "Why might it be underperforming?" → look for gaps, conflicting settings, or market mismatches
+- "Is the confidence threshold too high?" → explain the trade-off: fewer but higher-quality trades vs. more trades
 
-Don't ask all at once. Be conversational. Listen and build on their answers.
+### Making Changes
+When the user wants modifications:
+1. **Acknowledge the change** — "You want to add biotech to the sector filter"
+2. **Explain the impact** — "This means the scanner will also evaluate biotech stocks. Given your current signal types (MOMENTUM, EARNINGS_BEAT), this pairs well since biotech has frequent earnings catalysts."
+3. **Call suggest_config** with the COMPLETE updated config. The analystPrompt must be the FULL strategy document with your changes woven in — not just the delta.
 
-### Phase 2: Research & Brainstorm (1-3 exchanges)
-This is where you shine. Based on what the user told you:
-- Use **web_search** to look up current market conditions, trending sectors, recent catalysts
-- Use **get_market_context** to see what's happening right now in the market
-- Use **search_reddit** to see what retail traders are buzzing about
-- Share your findings naturally: "I just looked at the market and noticed X... that aligns with your interest in Y"
-- Propose specific angles: "What if instead of just momentum, we focused on post-earnings momentum in semis? Here's why..."
-- Challenge assumptions: "You said LONG only, but some of the best setups in biotech are actually short after failed trials..."
+### Strategy Prompt Edits
+The analystPrompt (strategy document) is the most important field. When editing it:
+- Preserve the parts that are working well
+- Weave in new instructions naturally — don't just append
+- Maintain the voice and style of the original
+- The updated prompt should read as a cohesive strategy document, not a patchwork
+- Always output the COMPLETE prompt, not just the changed sections
 
-### Phase 3: Craft the Strategy Prompt (the key output)
-When you have enough context, write a DETAILED strategy prompt — this is the most important output. The analystPrompt should be:
-- **3-5 paragraphs minimum** — this is a strategy document, not a sentence
-- **Specific about the edge**: What exactly is the analyst looking for? What patterns?
-- **Specific about sources**: Which data matters most? Reddit sentiment? Options flow? Earnings surprises?
-- **Specific about entry criteria**: What makes a stock worth buying? RSI levels? News catalysts? Volume spikes?
-- **Specific about risk**: When to cut losses? How to size positions? What's the stop loss philosophy?
-- **Unique and opinionated**: The best analysts have a clear point of view
-
-Then call suggest_config with the full configuration.
-
-### Phase 4: Refine
-If the user wants changes, discuss them, then call suggest_config again with updates.
+### Proactive Suggestions
+When you notice potential improvements, suggest them:
+- "Your analyst uses MOMENTUM signals but has POSITION hold duration — those can conflict"
+- "With a 90% confidence threshold, your analyst might not place many trades. Consider 75-80% for more activity"
+- "You're scanning all sectors but your strategy prompt only discusses tech — consider narrowing sectors or broadening the prompt"
 
 ## Available Research Tools
-- **web_search**: Search the web for current market news, sector analysis, trading strategies, or any relevant information
-- **get_market_context**: Get current SPY, VIX, and sector performance data
-- **search_reddit**: Search Reddit (r/wallstreetbets, r/stocks, r/investing) for retail sentiment and trending tickers
+- **web_search**: Search for current market news or strategy insights to inform your editing recommendations
+- **get_market_context**: Get current SPY, VIX, and sector performance to contextualize changes
+- **search_reddit**: Check Reddit sentiment to validate or challenge strategy changes
 
-Use these tools proactively during the brainstorming phase! Don't wait for the user to ask. Show them you're doing real research to help build the best possible strategy.
+Use these tools when the user's request benefits from current market context, but you don't need to use them for straightforward config changes.
 
-## Key Configuration Trade-offs
-- **minConfidence**: 60% = aggressive (more trades), 70% = balanced, 80% = selective, 90% = very picky
-- **directionBias**: BOTH is most flexible, LONG-only is safer for beginners, SHORT requires more experience
-- **holdDurations**: DAY = needs liquid stocks + volatile markets; SWING = most common; POSITION = fundamental plays
-- **maxPositionSize**: Start with $500 for learning, $1000-2500 for serious paper trading
-- **sectors**: Empty means scan everything. Focused sectors (1-3) produce more relevant results
-- **signalTypes**: Multiple signals = broader coverage. MOMENTUM + TECHNICAL are most data-rich. EARNINGS_BEAT + NEWS_CATALYST are event-driven.
-
-## Name Generation
-Create short, memorable names that capture the analyst's personality:
-- "EV Momentum Hunter" (sector + signal)
-- "Post-Earnings Scalper" (event + style)
-- "Biotech Catalyst Sniper" (sector + strategy)
-- "Contrarian Value Finder" (style + philosophy)
-
-## Important
-- Always call suggest_config with ALL required fields filled in
-- The analystPrompt field is the MOST important — make it thorough and specific
-- Be conversational and enthusiastic — push the user to think deeper
-- This is paper trading (simulated) — remind users if they seem confused about real money
-- Use your research tools during brainstorming — don't just ask questions, bring data to the conversation`;
+## Key Rules
+- ALWAYS include ALL fields when calling suggest_config — it replaces the entire config
+- The analystPrompt must be COMPLETE (not a diff) — at least 3-5 paragraphs
+- When only changing numeric params (confidence, position size), keep the analystPrompt unchanged
+- Explain trade-offs before making changes — don't just blindly do what's asked
+- If the user's change seems counterproductive, respectfully push back with reasoning`;
+}
 
 // ── Helpers for research tools ──────────────────────────────────────────────────
 
@@ -156,11 +139,7 @@ export async function POST(req: Request) {
     const { messages, currentConfig } = await req.json();
 
     const modelMessages = await convertToModelMessages(messages);
-
-    let systemPrompt = SYSTEM_PROMPT;
-    if (currentConfig) {
-      systemPrompt += `\n\n## Current Configuration (user is editing an existing analyst)\n\`\`\`json\n${JSON.stringify(currentConfig, null, 2)}\n\`\`\`\nThe user wants to modify this analyst. Only change what they ask for. Call suggest_config with the full updated config (including the detailed analystPrompt).`;
-    }
+    const systemPrompt = buildEditorSystemPrompt(currentConfig ?? {});
 
     const result = streamText({
       model: openai("gpt-4o"),
@@ -169,7 +148,7 @@ export async function POST(req: Request) {
       tools: {
         suggest_config: tool({
           description:
-            "Suggest a complete analyst configuration. Call this when you have enough information to build a thorough config with a detailed strategy prompt.",
+            "Suggest an updated analyst configuration. Call this with the COMPLETE config (all fields) after explaining the changes and their trade-offs.",
           inputSchema: configSchema,
           execute: async (config) => {
             return config;
@@ -178,13 +157,12 @@ export async function POST(req: Request) {
 
         web_search: tool({
           description:
-            "Search the web for current market news, trading strategies, sector analysis, or any relevant information to help brainstorm the analyst's strategy.",
+            "Search the web for current market news or strategy insights to inform editing recommendations.",
           inputSchema: z.object({
-            query: z.string().describe("Search query — be specific. E.g. 'semiconductor stocks momentum strategies 2024' or 'best biotech catalysts trading'"),
+            query: z.string().describe("Search query — be specific"),
           }),
           execute: async ({ query }) => {
             try {
-              // Use FMP news search as a proxy for web search
               const newsUrl = `https://financialmodelingprep.com/api/v3/stock_news?limit=10&apikey=${FMP_KEY}`;
               const stockNewsUrl = `https://financialmodelingprep.com/api/v3/fmp/articles?page=0&size=10&apikey=${FMP_KEY}`;
 
@@ -233,7 +211,7 @@ export async function POST(req: Request) {
                   excerpt: r.text,
                 })),
               };
-            } catch (err) {
+            } catch {
               return { query, results: [], error: "Search unavailable" };
             }
           },
@@ -241,7 +219,7 @@ export async function POST(req: Request) {
 
         get_market_context: tool({
           description:
-            "Get current market conditions: SPY performance, VIX level, and sector performance. Use this to ground the brainstorming in real market data.",
+            "Get current market conditions: SPY performance, VIX level, and sector performance.",
           inputSchema: z.object({}),
           execute: async () => {
             try {
@@ -254,7 +232,6 @@ export async function POST(req: Request) {
                 ),
               ]);
 
-              // VIX from Finnhub
               const vixQuote = await fetchJSON(
                 `https://finnhub.io/api/v1/quote?symbol=VIX&token=${FINNHUB_KEY}`,
               );
@@ -288,9 +265,9 @@ export async function POST(req: Request) {
 
         search_reddit: tool({
           description:
-            "Search Reddit trading communities for sentiment and trending tickers. Searches r/wallstreetbets, r/stocks, r/options, and r/investing.",
+            "Search Reddit trading communities for sentiment — useful for validating strategy changes.",
           inputSchema: z.object({
-            query: z.string().describe("Search query for Reddit — ticker symbol or topic. E.g. 'NVDA', 'biotech FDA', 'momentum plays'"),
+            query: z.string().describe("Search query for Reddit"),
           }),
           execute: async ({ query }) => {
             try {
@@ -353,7 +330,7 @@ export async function POST(req: Request) {
 
     return result.toUIMessageStreamResponse();
   } catch (error) {
-    console.error("[analyst-builder] Error:", error);
+    console.error("[analyst-editor] Error:", error);
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "Internal error",

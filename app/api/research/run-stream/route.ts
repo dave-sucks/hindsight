@@ -88,6 +88,8 @@ export async function POST(req: NextRequest) {
     holdDurations: ["SWING"],
     maxOpenPositions: 5,
     maxPositionSize: 500,
+    analystPrompt: null,
+    name: "Default",
   };
 
   // Create ResearchRun upfront (RUNNING status)
