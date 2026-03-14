@@ -1292,9 +1292,8 @@ function AgentThreadInner({
           <HindsightComposer
             features={{
               placeholder: "Ask a follow-up question…",
-              plusMenu: false,
-              tickerSearch: false,
-              slashCommands: false,
+              tickerSearch: true,
+              slashCommands: true,
             }}
           />
         </div>
