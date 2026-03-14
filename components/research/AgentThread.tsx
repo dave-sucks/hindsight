@@ -168,7 +168,7 @@ const PROVIDER_DOMAINS: Record<string, string> = {
   fmp: "financialmodelingprep.com",
   reddit: "reddit.com",
   stocktwits: "stocktwits.com",
-  twitter: "x.com",
+  twitter: "stocktwits.com",
   "fmp social": "financialmodelingprep.com",
   technical: "finnhub.io",
   earnings: "finnhub.io",
@@ -741,7 +741,7 @@ function useRegisterAgentToolUIs(runId: string) {
     },
   });
 
-  // ── Twitter/X sentiment → social card ────────────────────────────
+  // ── StockTwits sentiment → social card ───────────────────────────
   useAssistantToolUI({
     toolName: "get_twitter_sentiment",
     render: ({ args, result }) => {
@@ -750,7 +750,7 @@ function useRegisterAgentToolUIs(runId: string) {
       if (!result) {
         return (
           <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Twitter/X sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtHeader>StockTwits sentiment — {ticker}</ChainOfThoughtHeader>
             <ChainOfThoughtContent>
               <ChainOfThoughtStep icon={MessageSquareText} label="Scanning StockTwits feed" status="active" />
               <ChainOfThoughtStep icon={Search} label="Checking FMP social sentiment" status="pending" />
@@ -763,7 +763,7 @@ function useRegisterAgentToolUIs(runId: string) {
         return (
           <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
             <MessageSquare className="inline h-3 w-3 mr-1 text-blue-500" />
-            No Twitter/social data available for {ticker}.
+            No StockTwits data available for {ticker}.
           </div>
         );
       }
@@ -783,7 +783,7 @@ function useRegisterAgentToolUIs(runId: string) {
       return (
         <div className="my-2">
           <ChainOfThought>
-            <ChainOfThoughtHeader>Twitter/X sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtHeader>StockTwits sentiment — {ticker}</ChainOfThoughtHeader>
             <ChainOfThoughtContent>
               <ChainOfThoughtStep icon={MessageSquareText} label="Scanned StockTwits feed" status="complete" />
               <ChainOfThoughtStep icon={Search} label={`${mentionCount ?? 0} posts — sentiment: ${sentiment ?? "unknown"}`} status="complete" />
