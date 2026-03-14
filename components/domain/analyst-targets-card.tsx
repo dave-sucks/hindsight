@@ -64,7 +64,7 @@ export function AnalystTargetsCard({
                 <span className="text-muted-foreground">Consensus</span>
                 <span className="tabular-nums font-semibold">${consensusTarget.toFixed(2)}</span>
                 {upside != null && (
-                  <span className={cn("text-[10px] tabular-nums font-medium", upside >= 0 ? "text-emerald-500" : "text-red-500")}>
+                  <span className={cn("text-[10px] tabular-nums font-medium", upside >= 0 ? "text-positive" : "text-negative")}>
                     {upside >= 0 ? "+" : ""}{upside.toFixed(1)}%
                   </span>
                 )}

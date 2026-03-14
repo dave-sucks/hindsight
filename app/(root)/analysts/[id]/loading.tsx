@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AnalystDetailLoading() {
   return (
-    <div className="h-[calc(100dvh-5.25rem)] flex flex-col">
+    <div className="h-[calc(100dvh-3rem)] flex flex-col">
       <div className="flex items-center justify-between px-6 h-14 border-b shrink-0">
         <div className="flex items-center gap-3">
           <Skeleton className="h-4 w-20" />

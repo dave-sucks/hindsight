@@ -9,6 +9,7 @@ import TradingViewWidget from '@/components/TradingViewWidget';
 import { CANDLE_CHART_WIDGET_CONFIG } from '@/lib/constants';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
+import { getStockProfile } from '@/lib/actions/finnhub.actions';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -30,7 +31,7 @@ function EventIcon({ type }: { type: string }) {
   switch (type) {
     case 'PLACED':      return <ArrowDownUp className="h-3.5 w-3.5" />;
     case 'NEAR_TARGET': return <Target className="h-3.5 w-3.5 text-amber-500" />;
-    case 'CLOSED':      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />;
+    case 'CLOSED':      return <CheckCircle2 className="h-3.5 w-3.5 text-positive" />;
     case 'EVALUATED':   return <Brain className="h-3.5 w-3.5 text-primary" />;
     default:            return <span className={cn('h-2 w-2 rounded-full', isMajor ? 'bg-foreground' : 'bg-muted-foreground/40')} />;
   }
@@ -40,8 +41,8 @@ function EventIcon({ type }: { type: string }) {
 
 function getStatusDisplay(status: string, outcome: string | null) {
   if (status === 'OPEN') return { label: 'Open', dotClass: 'bg-blue-400 animate-pulse' };
-  if (outcome === 'WIN')  return { label: 'Won', dotClass: 'bg-emerald-500' };
-  if (outcome === 'LOSS') return { label: 'Loss', dotClass: 'bg-red-500' };
+  if (outcome === 'WIN')  return { label: 'Won', dotClass: 'bg-positive' };
+  if (outcome === 'LOSS') return { label: 'Loss', dotClass: 'bg-negative' };
   return { label: 'Closed', dotClass: 'bg-muted-foreground/40' };
 }
 
@@ -74,6 +75,10 @@ export default async function TradeDetailPage({
   });
 
   if (!trade || trade.userId !== user?.id) notFound();
+
+  const stockProfile = await getStockProfile(trade.ticker);
+  const companyName = stockProfile?.name ?? null;
+  const exchange = stockProfile?.exchange ?? null;
 
   const isOpen = trade.status === 'OPEN';
   const currentPrice = trade.closePrice ?? trade.entryPrice;
@@ -148,10 +153,12 @@ export default async function TradeDetailPage({
           <div className="flex items-center gap-3">
             <StockLogo ticker={trade.ticker} size="lg" />
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-brand text-2xl leading-tight">{trade.ticker}</h1>
+              <h1 className="font-brand font-bold text-2xl leading-tight">
+                {companyName ?? trade.ticker}
+              </h1>
+              <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-xs font-mono text-muted-foreground">
-                  {trade.direction}
+                  {trade.ticker}{exchange ? ` · ${exchange}` : ''} · {trade.direction}
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground">
                   <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status.dotClass}`} />
@@ -187,8 +194,8 @@ export default async function TradeDetailPage({
             <div className={cn(
               'rounded-xl border px-4 py-3 text-sm font-medium flex items-center gap-2',
               trade.outcome === 'WIN'
-                ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-500'
-                : 'border-red-500/30 bg-red-500/5 text-red-500'
+                ? 'border-positive/30 bg-positive/10 text-positive'
+                : 'border-negative/30 bg-negative/10 text-negative'
             )}>
               {trade.outcome === 'WIN'  && <CheckCircle2 className="h-4 w-4 shrink-0" />}
               {trade.outcome === 'LOSS' && <XCircle className="h-4 w-4 shrink-0" />}
@@ -209,7 +216,7 @@ export default async function TradeDetailPage({
                 <p className="text-2xl font-medium tabular-nums">${currentPrice.toFixed(2)}</p>
                 {pnlPct !== 0 && (
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className={cn('text-sm font-light tabular-nums', isPos ? 'text-emerald-500' : 'text-red-500')}>
+                    <span className={cn('text-sm font-light tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
                       {isPos ? '+' : '−'}${Math.abs(pnl / trade.shares).toFixed(2)}
                     </span>
                     <PnlBadge value={pnlPct} />
@@ -241,8 +248,8 @@ export default async function TradeDetailPage({
             <div className="grid grid-cols-3 border-t divide-x">
               {[
                 { label: 'Entry', value: `$${trade.entryPrice.toFixed(2)}` },
-                { label: 'Target', value: `$${targetPrice.toFixed(2)}`, cls: 'text-emerald-500' },
-                { label: 'Stop', value: `$${stopPrice.toFixed(2)}`, cls: 'text-red-500' },
+                { label: 'Target', value: `$${targetPrice.toFixed(2)}`, cls: 'text-positive' },
+                { label: 'Stop', value: `$${stopPrice.toFixed(2)}`, cls: 'text-negative' },
                 { label: 'R:R Ratio', value: `${riskReward.toFixed(2)}:1` },
                 { label: 'Confidence', value: `${trade.thesis?.confidenceScore ?? '—'}%` },
                 { label: 'Hold', value: trade.thesis?.holdDuration ?? 'Swing' },
@@ -275,9 +282,9 @@ export default async function TradeDetailPage({
               <CardContent className="p-0">
                 <div className="grid grid-cols-2 divide-x min-h-[120px]">
                   {/* Bulls */}
-                  <div className="p-4 bg-gradient-to-br from-emerald-400/10 via-emerald-400/2 to-emerald-400/0 flex flex-col gap-4">
-                  
-                    <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-700 border-none rounded-lg">
+                  <div className="p-4 bg-gradient-to-br from-positive/10 via-positive/2 to-positive/0 flex flex-col gap-4">
+
+                    <Badge variant="secondary" className="bg-positive/10 text-positive border-none rounded-lg">
                       Bull Case
                     </Badge>
                     <div className="space-y-2">
@@ -293,8 +300,8 @@ export default async function TradeDetailPage({
                     </div>
                   </div>
                   {/* Bears */}
-                  <div className="p-4 bg-gradient-to-br from-red-400/10 via-red-400/2 to-red-400/0 flex flex-col gap-4">
-                    <Badge variant="secondary" className="bg-red-500/15 text-red-700 border-none rounded-lg">
+                  <div className="p-4 bg-gradient-to-br from-negative/10 via-negative/2 to-negative/0 flex flex-col gap-4">
+                    <Badge variant="secondary" className="bg-negative/10 text-negative border-none rounded-lg">
                       Bear Case
                     </Badge>
                     <div className="space-y-2">
@@ -356,7 +363,7 @@ export default async function TradeDetailPage({
                         <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
                           ${event.priceAt.toFixed(2)}
                           {event.pnlAt != null && (
-                            <span className={cn('ml-1', event.pnlAt >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                            <span className={cn('ml-1', event.pnlAt >= 0 ? 'text-positive' : 'text-negative')}>
                               {event.pnlAt >= 0 ? '+' : ''}${event.pnlAt.toFixed(2)}
                             </span>
                           )}
@@ -399,7 +406,7 @@ export default async function TradeDetailPage({
               <div className="pt-1">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">{isOpen ? 'Unrealized P&L' : 'Realized P&L'}</span>
-                  <span className={cn('font-medium tabular-nums', isPos ? 'text-emerald-500' : 'text-red-500')}>
+                  <span className={cn('font-medium tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
                     {isPos ? '+' : ''}${Math.abs(pnl).toFixed(2)}
                   </span>
                 </div>
@@ -451,7 +458,7 @@ export default async function TradeDetailPage({
                           i === 0 && 'rounded-l-full',
                           i === 9 && 'rounded-r-full',
                           isFilled
-                            ? isPos ? 'bg-emerald-500' : 'bg-red-500'
+                            ? isPos ? 'bg-positive' : 'bg-negative'
                             : 'bg-muted'
                         )}
                       />
@@ -472,8 +479,8 @@ export default async function TradeDetailPage({
                   <span className="tabular-nums">${trade.entryPrice.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-emerald-500">Target</span>
-                  <span className="tabular-nums text-emerald-500">
+                  <span className="text-positive">Target</span>
+                  <span className="tabular-nums text-positive">
                     ${targetPrice.toFixed(2)}
                     <span className="text-muted-foreground ml-1">
                       +{(((targetPrice - trade.entryPrice) / trade.entryPrice) * 100).toFixed(1)}%
@@ -481,8 +488,8 @@ export default async function TradeDetailPage({
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-red-500">Stop</span>
-                  <span className="tabular-nums text-red-500">
+                  <span className="text-negative">Stop</span>
+                  <span className="tabular-nums text-negative">
                     ${stopPrice.toFixed(2)}
                     <span className="text-muted-foreground ml-1">
                       −{(((trade.entryPrice - stopPrice) / trade.entryPrice) * 100).toFixed(1)}%

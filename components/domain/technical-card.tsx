@@ -27,9 +27,9 @@ export type TechnicalCardProps = ComponentProps<typeof Card> & TechnicalCardData
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function rsiColor(rsi: number): string {
-  if (rsi >= 70) return "text-red-500";
+  if (rsi >= 70) return "text-negative";
   if (rsi >= 60) return "text-amber-500";
-  if (rsi <= 30) return "text-emerald-500";
+  if (rsi <= 30) return "text-positive";
   if (rsi <= 40) return "text-blue-500";
   return "text-foreground";
 }
@@ -74,8 +74,8 @@ export function TechnicalCard({
               variant="secondary"
               className={cn(
                 "text-[10px] gap-1 py-0",
-                isBullish && "text-emerald-500",
-                isBearish && "text-red-500",
+                isBullish && "text-positive",
+                isBearish && "text-negative",
               )}
             >
               {isBullish ? <ArrowUpRight className="h-2.5 w-2.5" /> : isBearish ? <ArrowDownRight className="h-2.5 w-2.5" /> : null}
@@ -108,7 +108,7 @@ export function TechnicalCard({
             <span className="text-muted-foreground">SMA20</span>
             <span className="tabular-nums font-medium">${sma20.toFixed(2)}</span>
             {priceVsSma20 && (
-              <span className={cn("text-[10px]", priceVsSma20.includes("above") ? "text-emerald-500" : "text-red-500")}>
+              <span className={cn("text-[10px]", priceVsSma20.includes("above") ? "text-positive" : "text-negative")}>
                 {priceVsSma20.includes("above") ? "Above" : "Below"}
               </span>
             )}
@@ -119,7 +119,7 @@ export function TechnicalCard({
             <span className="text-muted-foreground">SMA50</span>
             <span className="tabular-nums font-medium">${sma50.toFixed(2)}</span>
             {priceVsSma50 && (
-              <span className={cn("text-[10px]", priceVsSma50.includes("above") ? "text-emerald-500" : "text-red-500")}>
+              <span className={cn("text-[10px]", priceVsSma50.includes("above") ? "text-positive" : "text-negative")}>
                 {priceVsSma50.includes("above") ? "Above" : "Below"}
               </span>
             )}
@@ -149,7 +149,7 @@ export function TechnicalCard({
               <div
                 className={cn(
                   "absolute inset-y-0 left-0 rounded-full",
-                  pos52w >= 70 ? "bg-emerald-500" : pos52w >= 30 ? "bg-amber-400" : "bg-red-500",
+                  pos52w >= 70 ? "bg-positive" : pos52w >= 30 ? "bg-amber-400" : "bg-negative",
                 )}
                 style={{ width: `${Math.min(pos52w, 100)}%` }}
               />

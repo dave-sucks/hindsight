@@ -104,7 +104,7 @@ export function RunSummaryCard({
                     <span
                       className={cn(
                         "flex items-center gap-0.5 text-xs font-medium",
-                        isLong ? "text-emerald-500" : "text-red-500"
+                        isLong ? "text-positive" : "text-negative"
                       )}
                     >
                       {isLong ? (
@@ -118,7 +118,7 @@ export function RunSummaryCard({
                       className={cn(
                         "text-xs tabular-nums font-medium",
                         pick.confidence >= 70
-                          ? "text-emerald-500"
+                          ? "text-positive"
                           : "text-amber-500"
                       )}
                     >
@@ -129,7 +129,7 @@ export function RunSummaryCard({
                       className={cn(
                         "text-[10px] ml-auto",
                         pick.action === "TRADE" &&
-                          "bg-emerald-500/15 text-emerald-500"
+                          "bg-positive/10 text-positive"
                       )}
                     >
                       {pick.action}
@@ -148,7 +148,7 @@ export function RunSummaryCard({
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
                 Long
               </p>
-              <p className="text-sm tabular-nums font-semibold text-emerald-500">
+              <p className="text-sm tabular-nums font-semibold text-positive">
                 ${exposureBreakdown.longExposure.toLocaleString()}
               </p>
             </div>
@@ -156,7 +156,7 @@ export function RunSummaryCard({
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
                 Short
               </p>
-              <p className="text-sm tabular-nums font-semibold text-red-500">
+              <p className="text-sm tabular-nums font-semibold text-negative">
                 ${exposureBreakdown.shortExposure.toLocaleString()}
               </p>
             </div>
@@ -168,8 +168,8 @@ export function RunSummaryCard({
                 className={cn(
                   "text-sm tabular-nums font-semibold",
                   exposureBreakdown.netExposure >= 0
-                    ? "text-emerald-500"
-                    : "text-red-500"
+                    ? "text-positive"
+                    : "text-negative"
                 )}
               >
                 ${Math.abs(exposureBreakdown.netExposure).toLocaleString()}

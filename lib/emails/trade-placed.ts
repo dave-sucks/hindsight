@@ -66,7 +66,7 @@ export function tradePlacedHtml(d: TradePlacedData): string {
           d.targetPrice
             ? `<tr>
           <td style="padding:6px 0;font-size:13px;color:#6b7280;">Target price</td>
-          <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:#10b981;font-variant-numeric:tabular-nums;">$${d.targetPrice.toFixed(2)}${targetPct ? ` (+${targetPct}%)` : ""}</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:#51b857;font-variant-numeric:tabular-nums;">$${d.targetPrice.toFixed(2)}${targetPct ? ` (+${targetPct}%)` : ""}</td>
         </tr>`
             : ""
         }
@@ -74,7 +74,7 @@ export function tradePlacedHtml(d: TradePlacedData): string {
           d.stopLoss
             ? `<tr>
           <td style="padding:6px 0;font-size:13px;color:#6b7280;">Stop loss</td>
-          <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:#ef4444;font-variant-numeric:tabular-nums;">$${d.stopLoss.toFixed(2)}${stopPct ? ` (-${stopPct}%)` : ""}</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:#ff6d87;font-variant-numeric:tabular-nums;">$${d.stopLoss.toFixed(2)}${stopPct ? ` (-${stopPct}%)` : ""}</td>
         </tr>`
             : ""
         }

@@ -49,8 +49,8 @@ const SENTIMENT_CONFIG: Record<
   string,
   { label: string; color: string }
 > = {
-  bullish: { label: "Bullish", color: "text-emerald-500" },
-  bearish: { label: "Bearish", color: "text-red-500" },
+  bullish: { label: "Bullish", color: "text-positive" },
+  bearish: { label: "Bearish", color: "text-negative" },
   neutral: { label: "Neutral", color: "text-muted-foreground" },
 };
 
@@ -81,8 +81,8 @@ export function ResearchStepCard({
     status === "loading"
       ? "text-muted-foreground"
       : status === "done"
-        ? "text-emerald-500"
-        : "text-red-500";
+        ? "text-positive"
+        : "text-negative";
 
   return (
     <Card

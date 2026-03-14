@@ -62,7 +62,7 @@ export function TradeConfirmation({
   const [hovering, setHovering] = useState<"confirm" | "cancel" | null>(null);
   const isLong = direction === "LONG";
   const DirIcon = isLong ? ArrowUpRight : ArrowDownRight;
-  const dirColor = isLong ? "text-emerald-500" : "text-red-500";
+  const dirColor = isLong ? "text-positive" : "text-negative";
   const actionLabel = ACTION_LABELS[action] ?? "Execute Trade";
 
   if (resolved === "cancelled") {
@@ -78,8 +78,8 @@ export function TradeConfirmation({
 
   if (resolved === "confirmed") {
     return (
-      <Card className={cn("p-4 border-emerald-500/30 bg-emerald-500/5", className)}>
-        <div className="flex items-center gap-2 text-sm text-emerald-500">
+      <Card className={cn("p-4 border-positive/30 bg-positive/10", className)}>
+        <div className="flex items-center gap-2 text-sm text-positive">
           <Check className="h-4 w-4" />
           Trade confirmed — executing {ticker} {direction.toLowerCase()}.
         </div>
@@ -143,7 +143,7 @@ export function TradeConfirmation({
             disabled={isExecuting}
             className={cn(
               "flex-1 h-9",
-              hovering === "confirm" && "ring-2 ring-emerald-500/30"
+              hovering === "confirm" && "ring-2 ring-positive/30"
             )}
             size="sm"
             onMouseEnter={() => setHovering("confirm")}
@@ -158,7 +158,7 @@ export function TradeConfirmation({
             variant="outline"
             className={cn(
               "h-9",
-              hovering === "cancel" && "ring-2 ring-red-500/30"
+              hovering === "cancel" && "ring-2 ring-negative/30"
             )}
             size="sm"
             onMouseEnter={() => setHovering("cancel")}

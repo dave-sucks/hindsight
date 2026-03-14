@@ -1,3 +1,5 @@
+## NEVER add custom classes to ShadCN components. Use them as-is with only variants and sizes. Do not override styling with className overrides.
+
 # CLAUDE.md — Hindsight Trading Platform
 
 ## What This App Is

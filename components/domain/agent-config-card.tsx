@@ -59,14 +59,14 @@ const directionIcon = {
 };
 
 const directionColor = {
-  LONG: "text-emerald-500",
-  SHORT: "text-red-500",
+  LONG: "text-positive",
+  SHORT: "text-negative",
   BOTH: "text-blue-500",
 };
 
 const directionBg = {
-  LONG: "bg-emerald-500/10",
-  SHORT: "bg-red-500/10",
+  LONG: "bg-positive/10",
+  SHORT: "bg-negative/10",
   BOTH: "bg-blue-500/10",
 };
 
@@ -291,7 +291,7 @@ function StatCell({
       <p
         className={cn(
           "text-sm tabular-nums font-semibold",
-          highlight && "text-emerald-500"
+          highlight && "text-positive"
         )}
       >
         {value}

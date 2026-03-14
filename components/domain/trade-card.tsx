@@ -39,7 +39,7 @@ const STATUS_CONFIG: Record<
 > = {
   OPEN: {
     label: "Open",
-    dotClass: "bg-emerald-500 animate-pulse",
+    dotClass: "bg-positive animate-pulse",
     icon: Clock,
   },
   CLOSED: { label: "Closed", dotClass: "bg-muted-foreground", icon: CheckCircle2 },
@@ -67,7 +67,7 @@ export function TradeCard({
   ...cardProps
 }: TradeCardProps) {
   const isLong = direction === "LONG";
-  const dirColor = isLong ? "text-emerald-500" : "text-red-500";
+  const dirColor = isLong ? "text-positive" : "text-negative";
   const DirIcon = isLong ? ArrowUpRight : ArrowDownRight;
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.OPEN;
   const isClosed = status === "CLOSED";
@@ -88,7 +88,7 @@ export function TradeCard({
             className={cn(
               "gap-1 text-xs font-semibold",
               dirColor,
-              isLong ? "bg-emerald-500/10" : "bg-red-500/10"
+              isLong ? "bg-positive/10" : "bg-negative/10"
             )}
           >
             <DirIcon className="h-3.5 w-3.5" />
@@ -109,8 +109,8 @@ export function TradeCard({
               variant="secondary"
               className={cn(
                 "text-xs font-semibold",
-                outcome === "WIN" && "bg-emerald-500/15 text-emerald-500",
-                outcome === "LOSS" && "bg-red-500/15 text-red-500",
+                outcome === "WIN" && "bg-positive/10 text-positive",
+                outcome === "LOSS" && "bg-negative/10 text-negative",
                 outcome === "BREAKEVEN" && "text-muted-foreground"
               )}
             >
@@ -151,7 +151,7 @@ export function TradeCard({
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                 Target
               </p>
-              <p className="text-base tabular-nums font-bold text-emerald-500">
+              <p className="text-base tabular-nums font-bold text-positive">
                 ${targetPrice.toFixed(2)}
               </p>
             </div>
@@ -162,7 +162,7 @@ export function TradeCard({
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                 Stop
               </p>
-              <p className="text-base tabular-nums font-bold text-red-500">
+              <p className="text-base tabular-nums font-bold text-negative">
                 ${stopLoss.toFixed(2)}
               </p>
             </div>
@@ -188,7 +188,7 @@ export function TradeCard({
                 <span
                   className={cn(
                     "text-base tabular-nums font-bold",
-                    realizedPnl >= 0 ? "text-emerald-500" : "text-red-500"
+                    realizedPnl >= 0 ? "text-positive" : "text-negative"
                   )}
                 >
                   {realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}

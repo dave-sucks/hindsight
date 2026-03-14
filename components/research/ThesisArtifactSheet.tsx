@@ -90,8 +90,8 @@ export function ThesisArtifactSheet({
                 className={cn(
                   "gap-1 text-xs font-semibold",
                   isLong
-                    ? "bg-emerald-500/10 text-emerald-500"
-                    : "bg-red-500/10 text-red-500",
+                    ? "bg-positive/10 text-positive"
+                    : "bg-negative/10 text-negative",
                 )}
               >
                 <DirIcon className="h-3.5 w-3.5" />
@@ -112,7 +112,7 @@ export function ThesisArtifactSheet({
               className={cn(
                 "ml-auto flex items-center justify-center rounded-full size-12 text-base font-bold tabular-nums",
                 thesis.confidence_score >= 80
-                  ? "bg-emerald-500/15 text-emerald-500"
+                  ? "bg-positive/10 text-positive"
                   : thesis.confidence_score >= 60
                     ? "bg-amber-500/15 text-amber-500"
                     : "bg-muted text-muted-foreground",
@@ -164,11 +164,11 @@ export function ThesisArtifactSheet({
                     <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                       Target
                     </p>
-                    <p className="text-lg tabular-nums font-bold text-emerald-500">
+                    <p className="text-lg tabular-nums font-bold text-positive">
                       ${thesis.target_price!.toFixed(2)}
                     </p>
                     {gainPct && (
-                      <p className="text-xs text-emerald-500/70 tabular-nums">
+                      <p className="text-xs text-positive/70 tabular-nums">
                         +{gainPct}%
                       </p>
                     )}
@@ -179,11 +179,11 @@ export function ThesisArtifactSheet({
                     <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                       Stop Loss
                     </p>
-                    <p className="text-lg tabular-nums font-bold text-red-500">
+                    <p className="text-lg tabular-nums font-bold text-negative">
                       ${thesis.stop_loss!.toFixed(2)}
                     </p>
                     {lossPct && (
-                      <p className="text-xs text-red-500/70 tabular-nums">
+                      <p className="text-xs text-negative/70 tabular-nums">
                         &minus;{lossPct}%
                       </p>
                     )}
@@ -198,10 +198,10 @@ export function ThesisArtifactSheet({
                       className={cn(
                         "text-lg tabular-nums font-bold",
                         parseFloat(rr) >= 2
-                          ? "text-emerald-500"
+                          ? "text-positive"
                           : parseFloat(rr) >= 1
                             ? "text-foreground"
-                            : "text-red-500",
+                            : "text-negative",
                       )}
                     >
                       {rr}&times;
@@ -231,7 +231,7 @@ export function ThesisArtifactSheet({
               {/* Pros */}
               {thesis.thesis_bullets && thesis.thesis_bullets.length > 0 && (
                 <div className="space-y-2">
-                  <span className="text-xs font-medium uppercase tracking-wide text-emerald-500">
+                  <span className="text-xs font-medium uppercase tracking-wide text-positive">
                     Bull Case
                   </span>
                   <div className="space-y-2">
@@ -240,7 +240,7 @@ export function ThesisArtifactSheet({
                         key={i}
                         className="flex items-start gap-2 text-sm"
                       >
-                        <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-emerald-500" />
+                        <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-positive" />
                         <span className="leading-relaxed">{b}</span>
                       </div>
                     ))}
@@ -251,7 +251,7 @@ export function ThesisArtifactSheet({
               {/* Cons */}
               {thesis.risk_flags && thesis.risk_flags.length > 0 && (
                 <div className="space-y-2">
-                  <span className="text-xs font-medium uppercase tracking-wide text-red-500">
+                  <span className="text-xs font-medium uppercase tracking-wide text-negative">
                     Risk Factors
                   </span>
                   <div className="space-y-2">
@@ -260,7 +260,7 @@ export function ThesisArtifactSheet({
                         key={i}
                         className="flex items-start gap-2 text-sm text-muted-foreground"
                       >
-                        <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-red-500" />
+                        <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-negative" />
                         <span className="leading-relaxed">{r}</span>
                       </div>
                     ))}

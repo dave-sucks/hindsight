@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn, pnlBadgeClasses } from "@/lib/utils";
 
 interface PnlBadgeProps {
   value: number;
@@ -14,7 +14,6 @@ export function PnlBadge({
   className,
 }: PnlBadgeProps) {
   const isPositive = value > 0;
-  const isNeutral = value === 0;
 
   const formatted =
     format === "percent"
@@ -25,9 +24,7 @@ export function PnlBadge({
     <span
       className={cn(
         "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums",
-        isNeutral && "bg-muted text-muted-foreground",
-        isPositive && "bg-emerald-500/15 text-emerald-500",
-        !isPositive && !isNeutral && "bg-red-500/15 text-red-500",
+        pnlBadgeClasses(value),
         className,
       )}
     >

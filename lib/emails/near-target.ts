@@ -43,11 +43,11 @@ export function nearTargetHtml(d: NearTargetData): string {
         </tr>
         <tr>
           <td style="padding:6px 0;font-size:13px;color:#6b7280;">Target</td>
-          <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:#10b981;font-variant-numeric:tabular-nums;">$${d.targetPrice.toFixed(2)}</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:#51b857;font-variant-numeric:tabular-nums;">$${d.targetPrice.toFixed(2)}</td>
         </tr>
         <tr>
           <td style="padding:6px 0;font-size:13px;color:#6b7280;">Unrealized P&amp;L</td>
-          <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:#10b981;font-variant-numeric:tabular-nums;">${pnlSign}$${d.unrealizedPnl.toFixed(2)} (${pnlSign}${d.unrealizedPnlPct.toFixed(1)}%)</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;text-align:right;color:#51b857;font-variant-numeric:tabular-nums;">${pnlSign}$${d.unrealizedPnl.toFixed(2)} (${pnlSign}${d.unrealizedPnlPct.toFixed(1)}%)</td>
         </tr>
       </table>
 
@@ -55,10 +55,10 @@ export function nearTargetHtml(d: NearTargetData): string {
       <div style="margin-top:16px;">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
           <span style="font-size:12px;color:#6b7280;">Progress to target</span>
-          <span style="font-size:12px;font-weight:600;color:#10b981;">${progressBar}%</span>
+          <span style="font-size:12px;font-weight:600;color:#51b857;">${progressBar}%</span>
         </div>
         <div style="background:#1f2937;border-radius:4px;height:6px;overflow:hidden;">
-          <div style="background:#10b981;height:100%;width:${Math.min(progressBar, 100)}%;border-radius:4px;"></div>
+          <div style="background:#51b857;height:100%;width:${Math.min(progressBar, 100)}%;border-radius:4px;"></div>
         </div>
       </div>
     </div>

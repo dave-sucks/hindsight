@@ -155,9 +155,9 @@ export function ThesisCard({
     tradeStatus === "OPEN"
       ? "bg-blue-400 animate-pulse"
       : tradeStatus === "WIN"
-        ? "bg-emerald-500"
+        ? "bg-positive"
         : tradeStatus === "LOSS"
-          ? "bg-red-500"
+          ? "bg-negative"
           : tradeStatus === "CLOSED" || tradeStatus === "EVALUATED"
             ? "bg-muted-foreground"
             : "bg-muted-foreground/40";
@@ -236,7 +236,7 @@ export function ThesisCard({
 
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-lg font-brand font-semibold text-foreground truncate leading-tight">
+                    <p className="text-lg font-brand font-bold text-foreground truncate leading-tight">
                       {companyName}
                     </p>
                     {/* Status badge inline */}
@@ -277,7 +277,7 @@ export function ThesisCard({
                   {deltaAmount != null && (
                     <span
                       className={`text-lg tabular-nums font-light ${
-                        deltaPositive ? "text-emerald-500" : "text-red-500"
+                        deltaPositive ? "text-positive" : "text-negative"
                       }`}
                     >
                       {deltaPositive ? "+" : "−"}${Math.abs(deltaAmount).toFixed(2)}

@@ -37,7 +37,7 @@ export interface WeeklyDigestData {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function pnlColor(val: number) {
-  return val >= 0 ? "#10b981" : "#ef4444";
+  return val >= 0 ? "#51b857" : "#ff6d87";
 }
 
 function fmt(n: number, decimals = 2) {

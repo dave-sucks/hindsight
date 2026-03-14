@@ -39,10 +39,10 @@ const REGIME_CONFIG: Record<
   MarketContextData["regime"],
   { label: string; color: string; icon: typeof TrendingUp }
 > = {
-  trending_up: { label: "Trending Up", color: "text-emerald-500", icon: TrendingUp },
-  trending_down: { label: "Trending Down", color: "text-red-500", icon: ArrowDown },
+  trending_up: { label: "Trending Up", color: "text-positive", icon: TrendingUp },
+  trending_down: { label: "Trending Down", color: "text-negative", icon: ArrowDown },
   range_bound: { label: "Range-Bound", color: "text-amber-500", icon: Activity },
-  volatile: { label: "Volatile", color: "text-red-400", icon: Activity },
+  volatile: { label: "Volatile", color: "text-negative", icon: Activity },
 };
 
 // ─── MarketContextCard — compact ─────────────────────────────────────────────
@@ -72,9 +72,9 @@ export function MarketContextCard({
         <span className="text-xs font-medium text-muted-foreground">Market</span>
         <Badge
           variant="secondary"
-          className={cn("text-[10px] gap-1 py-0", regimeCfg.color)}
+          className={cn("", regimeCfg.color)}
         >
-          <RegimeIcon className="h-2.5 w-2.5" />
+          <RegimeIcon />
           {regimeCfg.label}
         </Badge>
 
@@ -87,7 +87,7 @@ export function MarketContextCard({
                 <span
                   className={cn(
                     "tabular-nums font-semibold",
-                    spxChange >= 0 ? "text-emerald-500" : "text-red-500",
+                    spxChange >= 0 ? "text-positive" : "text-negative",
                   )}
                 >
                   {spxChange >= 0 ? "+" : ""}{spxChange.toFixed(2)}%
@@ -100,7 +100,7 @@ export function MarketContextCard({
                 <span
                   className={cn(
                     "tabular-nums font-semibold",
-                    effectiveVix > 25 ? "text-red-500" : effectiveVix > 18 ? "text-amber-500" : "text-muted-foreground",
+                    effectiveVix > 25 ? "text-negative" : effectiveVix > 18 ? "text-amber-500" : "text-muted-foreground",
                   )}
                 >
                   {effectiveVix.toFixed(1)}
@@ -127,22 +127,22 @@ export function MarketContextCard({
               <Badge
                 key={s.name}
                 variant="secondary"
-                className="gap-1 py-0 text-[10px] bg-emerald-500/10"
+                className="bg-positive/10"
               >
-                <ArrowUp className="h-2 w-2 text-emerald-500" />
+                <ArrowUp className="h-2 w-2 text-positive" />
                 <span className="text-muted-foreground">{s.name}</span>
-                <span className="tabular-nums text-emerald-500">+{s.change.toFixed(1)}%</span>
+                <span className="tabular-nums text-positive">+{s.change.toFixed(1)}%</span>
               </Badge>
             ))}
             {bottomSectors.map((s) => (
               <Badge
                 key={s.name}
                 variant="secondary"
-                className="gap-1 py-0 text-[10px] bg-red-500/10"
+                className="gap-1 py-0 text-[10px] bg-negative/10"
               >
-                <ArrowDown className="h-2 w-2 text-red-500" />
+                <ArrowDown className="h-2 w-2 text-negative" />
                 <span className="text-muted-foreground">{s.name}</span>
-                <span className="tabular-nums text-red-500">{s.change.toFixed(1)}%</span>
+                <span className="tabular-nums text-negative">{s.change.toFixed(1)}%</span>
               </Badge>
             ))}
           </div>

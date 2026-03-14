@@ -50,8 +50,8 @@ export function OptionsFlowCard({
               variant="secondary"
               className={cn(
                 "text-[10px] py-0",
-                isBullish && "text-emerald-500",
-                isBearish && "text-red-500",
+                isBullish && "text-positive",
+                isBearish && "text-negative",
               )}
             >
               {signal}
@@ -76,9 +76,9 @@ export function OptionsFlowCard({
               className={cn(
                 "tabular-nums font-semibold",
                 putCallRatio != null && putCallRatio < 0.7
-                  ? "text-emerald-500"
+                  ? "text-positive"
                   : putCallRatio != null && putCallRatio > 1.3
-                    ? "text-red-500"
+                    ? "text-negative"
                     : "text-foreground",
               )}
             >
@@ -87,13 +87,13 @@ export function OptionsFlowCard({
           </span>
           <span className="flex items-center gap-1.5">
             <span className="text-muted-foreground">Calls</span>
-            <span className="tabular-nums font-medium text-emerald-500">
+            <span className="tabular-nums font-medium text-positive">
               {(totalCallVolume ?? 0).toLocaleString()}
             </span>
           </span>
           <span className="flex items-center gap-1.5">
             <span className="text-muted-foreground">Puts</span>
-            <span className="tabular-nums font-medium text-red-500">
+            <span className="tabular-nums font-medium text-negative">
               {(totalPutVolume ?? 0).toLocaleString()}
             </span>
           </span>
@@ -102,8 +102,8 @@ export function OptionsFlowCard({
         {/* Ratio bar */}
         {totalVol > 0 && (
           <div className="flex h-1.5 rounded-full overflow-hidden">
-            <div className="bg-emerald-500 transition-all" style={{ width: `${callPct}%` }} />
-            <div className="bg-red-500 transition-all" style={{ width: `${100 - callPct}%` }} />
+            <div className="bg-positive transition-all" style={{ width: `${callPct}%` }} />
+            <div className="bg-negative transition-all" style={{ width: `${100 - callPct}%` }} />
           </div>
         )}
       </div>}

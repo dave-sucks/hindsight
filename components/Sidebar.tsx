@@ -18,6 +18,7 @@ import {
   Moon,
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
+import { SidebarMarquee } from '@/components/MarketPulseStrip';
 import {
   Sidebar,
   SidebarContent,
@@ -55,10 +56,12 @@ export default function AppSidebar({
   user,
   initialStocks,
   portfolioValue,
+  openTradeTickers = [],
 }: {
   user: User;
   initialStocks: StockWithWatchlistStatus[];
   portfolioValue: number;
+  openTradeTickers?: string[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -117,6 +120,9 @@ export default function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      {/* Ticker marquee — above user footer */}
+      <SidebarMarquee openTradeTickers={openTradeTickers} />
 
       {/* User footer — clickable dropdown */}
       <SidebarFooter>

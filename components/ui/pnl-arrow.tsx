@@ -14,7 +14,7 @@ export function PnlArrow({ direction, className }: PnlArrowProps) {
         viewBox="0 0 24 24"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        className={cn("h-5 w-5 text-emerald-500", className)}
+        className={cn("h-5 w-5 text-positive", className)}
       >
         <path
           fillRule="evenodd"
@@ -33,7 +33,7 @@ export function PnlArrow({ direction, className }: PnlArrowProps) {
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={cn("h-5 w-5 text-red-500", className)}
+      className={cn("h-5 w-5 text-negative", className)}
     >
       <path
         fillRule="evenodd"

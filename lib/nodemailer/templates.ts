@@ -450,7 +450,7 @@ export const STOCK_ALERT_UPPER_EMAIL_TEMPLATE = `<!DOCTYPE html>
                                     <p class="dark-text-muted" style="margin: 0 0 5px 0; font-size: 14px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">
                                         Current Price
                                     </p>
-                                    <p class="mobile-price" style="margin: 0; font-size: 36px; font-weight: 700; color: #10b981;">
+                                    <p class="mobile-price" style="margin: 0; font-size: 36px; font-weight: 700; color: #51b857;">
                                         {{currentPrice}}
                                     </p>
                                 </div>
@@ -659,7 +659,7 @@ export const STOCK_ALERT_LOWER_EMAIL_TEMPLATE = `<!DOCTYPE html>
                                     <p class="dark-text-muted" style="margin: 0 0 5px 0; font-size: 14px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">
                                         Current Price
                                     </p>
-                                    <p class="mobile-price" style="margin: 0; font-size: 36px; font-weight: 700; color: #ef4444;">
+                                    <p class="mobile-price" style="margin: 0; font-size: 36px; font-weight: 700; color: #ff6d87;">
                                         {{currentPrice}}
                                     </p>
                                 </div>

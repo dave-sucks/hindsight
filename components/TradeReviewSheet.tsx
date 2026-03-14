@@ -116,8 +116,8 @@ export function TradeReviewSheet({
               className={cn(
                 "flex h-10 w-10 items-center justify-center rounded-full",
                 isLong
-                  ? "bg-emerald-500/10 text-emerald-500"
-                  : "bg-red-500/10 text-red-500"
+                  ? "bg-positive/10 text-positive"
+                  : "bg-negative/10 text-negative"
               )}
             >
               {isLong ? (
@@ -146,13 +146,13 @@ export function TradeReviewSheet({
                 label: "TARGET",
                 value: targetPrice,
                 pct: targetPct,
-                className: "text-emerald-500",
+                className: "text-positive",
               },
               {
                 label: "STOP",
                 value: stopPrice,
                 pct: stopPct,
-                className: "text-red-500",
+                className: "text-negative",
               },
             ].map(({ label, value, pct, className }) => (
               <div
@@ -241,13 +241,13 @@ export function TradeReviewSheet({
                 <p className="text-xs text-muted-foreground mb-0.5">
                   Potential gain
                 </p>
-                <p className="text-sm font-semibold tabular-nums text-emerald-500">
+                <p className="text-sm font-semibold tabular-nums text-positive">
                   +${Math.abs(potentialPnl).toFixed(2)}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-0.5">Max loss</p>
-                <p className="text-sm font-semibold tabular-nums text-red-500">
+                <p className="text-sm font-semibold tabular-nums text-negative">
                   -${Math.abs(maxLoss).toFixed(2)}
                 </p>
               </div>

@@ -70,7 +70,7 @@ export function PeersCard({
                 <span className="tabular-nums shrink-0">${p.price.toFixed(2)}</span>
               )}
               {p.change_pct != null && (
-                <span className={cn("tabular-nums shrink-0", p.change_pct >= 0 ? "text-emerald-500" : "text-red-500")}>
+                <span className={cn("tabular-nums shrink-0", p.change_pct >= 0 ? "text-positive" : "text-negative")}>
                   {p.change_pct >= 0 ? "+" : ""}{p.change_pct.toFixed(1)}%
                 </span>
               )}

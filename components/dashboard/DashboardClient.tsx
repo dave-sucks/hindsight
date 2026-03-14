@@ -14,10 +14,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { StockLogo } from '@/components/StockLogo';
 import { ThesisCard } from '@/components/ThesisCard';
 import type { ThesisCardData, ThesisCardProfile } from '@/components/ThesisCard';
-import { PnlBadge } from '@/components/ui/pnl-badge';
+import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { Bot } from 'lucide-react';
 import {
   mockOpenTrades,
@@ -29,41 +28,8 @@ import type { DashboardData, RecentPick } from '@/lib/actions/portfolio.actions'
 import type { DashboardRun } from '@/lib/actions/analyst.actions';
 import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtIsoLabel(d: string): string {
-  // Intraday synthetic points: "YYYY-MM-DDTHH:MM"
-  if (d.includes('T')) {
-    const dt = new Date(d);
-    return dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  }
-  if (d.length === 10 && d.includes('-')) {
-    const dt = new Date(d + 'T12:00:00');
-    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
-  return d;
-}
-
-function fmtUsd(val: number): string {
-  return val.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatRelativeTime(date: Date): string {
-  const d = Date.now() - date.getTime();
-  const s = Math.floor(d / 1000);
-  if (s < 10) return 'just now';
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
+import { cn, PNL_HEX } from '@/lib/utils';
+import { formatCurrency, formatDateLabel, formatRelativeTime } from '@/lib/format';
 
 // ─── Time range ───────────────────────────────────────────────────────────────
 
@@ -142,7 +108,7 @@ function pickToProfile(pick: RecentPick): ThesisCardProfile {
 
 // ─── Recent picks section ─────────────────────────────────────────────────────
 
-function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
+function RecentPicksSection({ picks, profiles = {} }: { picks: RecentPick[]; profiles?: Record<string, ThesisCardProfile> }) {
   const [filter, setFilter] = useState<PickFilter>('all');
 
   const filtered = picks.filter((p) => {
@@ -197,7 +163,7 @@ function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
             <ThesisCard
               key={pick.id}
               thesis={pickToThesisCardData(pick)}
-              profile={pickToProfile(pick)}
+              profile={profiles[pick.ticker] ?? pickToProfile(pick)}
             />
           ))}
         </div>
@@ -208,47 +174,24 @@ function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
 
 // ─── Trade row (for positions card) ──────────────────────────────────────────
 
-function TradeRow({
+function DashboardTradeRow({
   trade,
   flash,
 }: {
   trade: MockTrade;
   flash?: 'win' | 'loss';
 }) {
-  const pnl = trade.pnl ?? 0;
-  const pct = trade.pnlPct ?? 0;
-  const pos = pnl >= 0;
-  const shares = trade.shares ?? 1;
-  const totalWorth = trade.currentPrice * shares;
-
   return (
-    <Link
-      href={`/trades/${trade.id}`}
-      className={cn(
-        'flex items-center gap-3 px-3 py-2.5 hover:bg-accent/40 transition-colors border-b border-border/40 last:border-0',
-        flash === 'win' && 'bg-emerald-500/5',
-        flash === 'loss' && 'bg-red-500/5',
-      )}
-    >
-      <StockLogo ticker={trade.ticker} size="md" className="rounded-md" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">{trade.ticker}</span>
-          <span className="text-sm tabular-nums font-light">${trade.currentPrice.toFixed(2)}</span>
-        </div>
-        <div className="flex items-center justify-between mt-0.5">
-          <span className="text-xs text-muted-foreground tabular-nums">
-            ${fmtUsd(totalWorth)} — {shares} share{shares !== 1 ? 's' : ''}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <span className={cn('text-sm tabular-nums', pos ? 'text-emerald-500' : 'text-red-500')}>
-              {pos ? '+' : ''}${Math.abs(pnl).toFixed(2)}
-            </span>
-            <PnlBadge value={pct} format="percent" className="text-xs" />
-          </div>
-        </div>
-      </div>
-    </Link>
+    <SharedTradeRow
+      id={trade.id}
+      ticker={trade.ticker}
+      currentPrice={trade.currentPrice}
+      shares={trade.shares}
+      pnl={trade.pnl ?? 0}
+      pnlPct={trade.pnlPct ?? 0}
+      status={trade.status}
+      flash={flash}
+    />
   );
 }
 
@@ -286,9 +229,9 @@ function DashboardRunCard({ run }: { run: DashboardRun }) {
             {run.theses.map((thesis, i) => {
               const cls =
                 thesis.direction === 'LONG'
-                  ? 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10 dark:text-emerald-400'
+                  ? 'text-positive border-positive/30 bg-positive/10'
                   : thesis.direction === 'SHORT'
-                    ? 'text-red-600 border-red-500/30 bg-red-500/10 dark:text-red-400'
+                    ? 'text-negative border-negative/30 bg-negative/10'
                     : 'text-muted-foreground border-border bg-muted/50';
               return (
                 <span
@@ -324,12 +267,14 @@ interface DashboardClientProps {
   data?: DashboardData;
   recentRuns?: DashboardRun[];
   userId?: string;
+  profiles?: Record<string, ThesisCardProfile>;
 }
 
 export default function DashboardClient({
   data,
   recentRuns = [],
   userId,
+  profiles = {},
 }: DashboardClientProps) {
   const [range, setRange] = useState<Range>('1M');
   const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(new Set());
@@ -377,7 +322,7 @@ export default function DashboardClient({
     openCount: mockOpenTrades.length,
   };
 
-  const totalValueStr = fmtUsd(portfolio.totalValue);
+  const totalValueStr = formatCurrency(portfolio.totalValue);
   const unrealizedPnl = portfolio.unrealizedPnl;
   const pnlPositive = unrealizedPnl >= 0;
   const unrealizedPct =
@@ -393,13 +338,13 @@ export default function DashboardClient({
     equityData.length > 1
       ? equityData[equityData.length - 1].value >= equityData[0].value
       : true;
-  const strokeColor = equityPositive ? '#10b981' : '#ef4444';
+  const strokeColor = equityPositive ? PNL_HEX.positive : PNL_HEX.negative;
 
   const loading = !data;
 
   return (
     // ── Scrollable page wrapper — NOT full-height flex sidebar ──────────────
-    <div className="overflow-y-auto h-[calc(100dvh-5.25rem)]">
+    <div className="overflow-y-auto h-[calc(100dvh-3rem)]">
       <div className="max-w-7xl mx-auto px-6 py-6">
 
         {/* ── 2-col flex: left (content) + right (positions card) ─────────── */}
@@ -418,10 +363,10 @@ export default function DashboardClient({
               ) : (
                 <>
                   <p className="text-4xl font-semibold tabular-nums tracking-tight">
-                    ${totalValueStr}
+                    {totalValueStr}
                   </p>
                   <p className="text-sm tabular-nums flex items-center gap-1 flex-wrap">
-                    <span className={pnlPositive ? 'text-emerald-500' : 'text-red-500'}>
+                    <span className={pnlPositive ? 'text-positive' : 'text-negative'}>
                       {pnlPositive ? '+' : '-'}${Math.abs(unrealizedPnl).toFixed(2)}{' '}
                       ({pnlPositive ? '+' : ''}{unrealizedPct.toFixed(2)}%)
                     </span>
@@ -486,7 +431,7 @@ export default function DashboardClient({
                       tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
                       tickLine={false}
                       axisLine={false}
-                      tickFormatter={(v) => fmtIsoLabel(v).toUpperCase()}
+                      tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
                       interval={Math.max(1, Math.floor(equityData.length / 6))}
                       padding={{ left: 0, right: 0 }}
                     />
@@ -500,7 +445,7 @@ export default function DashboardClient({
                         color: 'var(--popover-foreground)',
                       }}
                       formatter={(v) => [`$${Number(v).toLocaleString()}`, 'Portfolio']}
-                      labelFormatter={(l: unknown) => fmtIsoLabel(String(l))}
+                      labelFormatter={(l: unknown) => formatDateLabel(String(l))}
                       labelStyle={{ color: 'var(--muted-foreground)' }}
                     />
                     <Area
@@ -523,7 +468,7 @@ export default function DashboardClient({
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-48 w-full rounded-lg" />)}
               </div>
             ) : (
-              <RecentPicksSection picks={recentPicks} />
+              <RecentPicksSection picks={recentPicks} profiles={profiles} />
             )}
 
             {/* ── Recent research runs ─────────────────────────────────────── */}
@@ -576,7 +521,7 @@ export default function DashboardClient({
                     ) : (
                       <div>
                         {openTrades.map((t) => (
-                          <TradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
+                          <DashboardTradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
                         ))}
                       </div>
                     )}
@@ -588,7 +533,7 @@ export default function DashboardClient({
                     ) : (
                       <div>
                         {closedTrades.map((t) => (
-                          <TradeRow key={t.id} trade={t} />
+                          <DashboardTradeRow key={t.id} trade={t} />
                         ))}
                       </div>
                     )}

@@ -33,6 +33,8 @@ export type ThesisCardData = {
   signal_types?: string[];
   sources?: SourceChipData[];
   pass_reason?: string;
+  company_name?: string | null;
+  exchange?: string | null;
 };
 
 export type ThesisCardProps = ComponentProps<typeof Card> & ThesisCardData;
@@ -65,6 +67,8 @@ export function ThesisCard({
   signal_types = [],
   sources = [],
   pass_reason,
+  company_name,
+  exchange,
   className,
   ...cardProps
 }: ThesisCardProps) {
@@ -72,9 +76,9 @@ export function ThesisCard({
   const isShort = direction === "SHORT";
   const isPass = direction === "PASS";
   const dirColor = isLong
-    ? "text-emerald-500"
+    ? "text-positive"
     : isShort
-      ? "text-red-500"
+      ? "text-negative"
       : "text-muted-foreground";
 
   const DirIcon = isLong ? TrendingUp : isShort ? TrendingDown : Minus;
@@ -100,7 +104,14 @@ export function ThesisCard({
       >
         <div className="px-5 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-lg font-semibold font-mono">{ticker}</span>
+            {company_name ? (
+              <div>
+                <span className="text-lg font-bold font-brand">{company_name}</span>
+                <span className="block text-xs font-mono text-muted-foreground">{ticker}{exchange ? ` · ${exchange}` : ''}</span>
+              </div>
+            ) : (
+              <span className="text-lg font-bold font-mono">{ticker}</span>
+            )}
             <Badge variant="secondary" className="text-xs">
               PASS
             </Badge>
@@ -135,13 +146,20 @@ export function ThesisCard({
       {/* ── Header ───────────────────────────────────────────────────── */}
       <div className="px-5 pt-4 pb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-lg font-semibold font-mono">{ticker}</span>
+          {company_name ? (
+            <div>
+              <span className="text-lg font-bold font-brand">{company_name}</span>
+              <span className="block text-xs font-mono text-muted-foreground">{ticker}{exchange ? ` · ${exchange}` : ''}</span>
+            </div>
+          ) : (
+            <span className="text-lg font-bold font-mono">{ticker}</span>
+          )}
           <Badge
             variant="secondary"
             className={cn(
               "gap-1 text-xs font-semibold",
               dirColor,
-              isLong ? "bg-emerald-500/10" : "bg-red-500/10"
+              isLong ? "bg-positive/10" : "bg-negative/10"
             )}
           >
             <DirIcon className="h-3.5 w-3.5" />
@@ -168,7 +186,7 @@ export function ThesisCard({
             className={cn(
               "flex items-center justify-center rounded-full size-10 text-sm font-bold tabular-nums",
               confidence_score >= 80
-                ? "bg-emerald-500/15 text-emerald-500"
+                ? "bg-positive/10 text-positive"
                 : confidence_score >= 60
                   ? "bg-amber-500/15 text-amber-500"
                   : "bg-muted text-muted-foreground"
@@ -196,11 +214,11 @@ export function ThesisCard({
                 <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                   Target
                 </p>
-                <p className="text-base tabular-nums font-bold text-emerald-500">
+                <p className="text-base tabular-nums font-bold text-positive">
                   ${target_price!.toFixed(2)}
                 </p>
                 {gainPct && (
-                  <p className="text-[10px] text-emerald-500/70 tabular-nums">
+                  <p className="text-[10px] text-positive/70 tabular-nums">
                     +{gainPct}%
                   </p>
                 )}
@@ -211,11 +229,11 @@ export function ThesisCard({
                 <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                   Stop
                 </p>
-                <p className="text-base tabular-nums font-bold text-red-500">
+                <p className="text-base tabular-nums font-bold text-negative">
                   ${stop_loss!.toFixed(2)}
                 </p>
                 {lossPct && (
-                  <p className="text-[10px] text-red-500/70 tabular-nums">
+                  <p className="text-[10px] text-negative/70 tabular-nums">
                     &minus;{lossPct}%
                   </p>
                 )}
@@ -230,10 +248,10 @@ export function ThesisCard({
                   className={cn(
                     "text-base tabular-nums font-bold",
                     parseFloat(rr) >= 2
-                      ? "text-emerald-500"
+                      ? "text-positive"
                       : parseFloat(rr) >= 1
                         ? "text-foreground"
-                        : "text-red-500"
+                        : "text-negative"
                   )}
                 >
                   {rr}&times;
@@ -257,7 +275,7 @@ export function ThesisCard({
           <div className="space-y-2">
             {thesis_bullets.map((b, i) => (
               <div key={i} className="flex items-start gap-2.5 text-sm">
-                <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-emerald-500" />
+                <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-positive" />
                 <CitedText
                   text={b}
                   sources={sources}
