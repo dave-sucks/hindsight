@@ -14,7 +14,6 @@ import {
 } from "@assistant-ui/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +30,7 @@ import {
   Command,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
@@ -41,7 +41,6 @@ import {
   IconWorld,
   IconPaperclip,
   IconWand,
-  IconBrandReddit,
   IconChartLine,
 } from "@tabler/icons-react";
 import {
@@ -129,28 +128,6 @@ export interface HindsightComposerFeatures {
     icon: FC<{ size?: number; className?: string }>;
     onClick: () => void;
   }>;
-}
-
-// ── Inline search input for ticker search (within popover) ─────────────────
-
-function TickerSearchInput({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex items-center border-b px-3">
-      <Search className="mr-2 h-3.5 w-3.5 shrink-0 opacity-50" />
-      <input
-        className="flex h-9 w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
-        placeholder="Search ticker…"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
-  );
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -291,14 +268,14 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
         onChange={() => {}}
       />
 
-      {/* ─── Main card container (AI-03 style) ─────────────────────────── */}
-      <div className="bg-background border border-border rounded-2xl overflow-hidden transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20">
+      {/* ─── Main card container ──────────────────────────────────────── */}
+      <div className="bg-background border border-border rounded-lg overflow-hidden transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20">
         {/* Context chips above input */}
         {selectedTicker && (
           <div className="flex flex-wrap gap-1.5 px-4 pt-3">
             <Badge
               variant="secondary"
-              className="gap-1 font-mono tabular-nums text-xs h-6"
+              className="gap-1 tabular-nums text-xs h-6"
             >
               <DollarSign className="h-3 w-3" />
               {selectedTicker.symbol}
@@ -335,34 +312,28 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
         <div className="mb-2 px-2 flex items-center justify-between">
           {/* Left side: plus menu + tools */}
           <div className="flex items-center gap-1">
-            {/* Plus menu (AI-03 style) */}
+            {/* Plus menu */}
             {plusMenu && (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
+                      variant="outline"
+                      size="icon-sm"
                     />
                   }
                 >
                   <IconPlus className="size-3" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="max-w-xs rounded-2xl p-1.5"
-                >
-                  <DropdownMenuGroup className="space-y-1">
+                <DropdownMenuContent align="start">
+                  <DropdownMenuGroup>
                     <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <IconPaperclip size={16} className="opacity-60" />
                       Attach Files
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
                       onClick={() => {
                         const text = composerRuntime.getState().text;
                         composerRuntime.setText(
@@ -378,7 +349,6 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                     {extraMenuItems.map((item) => (
                       <DropdownMenuItem
                         key={item.label}
-                        className="rounded-[calc(1rem-6px)] text-xs"
                         onClick={item.onClick}
                       >
                         <item.icon size={16} className="opacity-60" />
@@ -393,20 +363,12 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
             {/* Auto mode toggle */}
             {showAutoMode && (
               <Button
-                variant="ghost"
+                variant={autoModeActive ? "secondary" : "outline"}
                 size="sm"
                 onClick={() => setAutoModeActive(!autoModeActive)}
-                className={cn(
-                  "h-7 px-2 rounded-full border border-border hover:bg-accent",
-                  {
-                    "bg-primary/10 text-primary border-primary/30":
-                      autoModeActive,
-                    "text-muted-foreground": !autoModeActive,
-                  },
-                )}
               >
                 <IconWand className="size-3" />
-                <span className="text-xs">Auto</span>
+                Auto
               </Button>
             )}
 
@@ -414,19 +376,21 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
             {slashCommands && (
               <Popover open={slashOpen} onOpenChange={setSlashOpen}>
                 <PopoverTrigger
-                  className={cn(
-                    "inline-flex items-center gap-1 h-7 px-2 text-xs rounded-full border border-border transition-colors",
-                    "hover:bg-accent text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() => {
-                    if (!slashOpen) {
-                      setSlashOpen(true);
-                      composerRuntime.setText("/");
-                    }
-                  }}
+                  render={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (!slashOpen) {
+                          setSlashOpen(true);
+                          composerRuntime.setText("/");
+                        }
+                      }}
+                    />
+                  }
                 >
                   <Slash className="h-3 w-3" />
-                  <span className="text-xs">Commands</span>
+                  Commands
                 </PopoverTrigger>
                 <PopoverContent
                   className="w-64 p-0"
@@ -442,14 +406,13 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                             key={cmd.name}
                             value={cmd.name}
                             onSelect={() => selectCommand(cmd)}
-                            className="gap-2.5"
                           >
-                            <cmd.icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <cmd.icon className="text-muted-foreground shrink-0" />
                             <div className="min-w-0">
-                              <span className="font-mono text-xs font-medium">
+                              <span className="text-sm font-medium">
                                 {cmd.label}
                               </span>
-                              <p className="text-[11px] text-muted-foreground truncate">
+                              <p className="text-xs text-muted-foreground truncate">
                                 {cmd.description}
                               </p>
                             </div>
@@ -466,26 +429,27 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
             {tickerSearch && (
               <Popover open={tickerOpen} onOpenChange={setTickerOpen}>
                 <PopoverTrigger
-                  className={cn(
-                    "inline-flex items-center gap-1 h-7 px-2 text-xs rounded-full border border-border transition-colors",
-                    "hover:bg-accent text-muted-foreground hover:text-foreground font-mono",
-                  )}
+                  render={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                    />
+                  }
                 >
                   <IconChartLine className="size-3" />
-                  <span>
-                    {selectedTicker ? selectedTicker.symbol : "Ticker"}
-                  </span>
+                  {selectedTicker ? selectedTicker.symbol : "Ticker"}
                 </PopoverTrigger>
                 <PopoverContent
                   className="w-64 p-0"
                   side="top"
                   align="start"
                 >
-                  <TickerSearchInput
-                    value={tickerSearchQuery}
-                    onChange={setTickerSearchQuery}
-                  />
                   <Command>
+                    <CommandInput
+                      placeholder="Search ticker…"
+                      value={tickerSearchQuery}
+                      onValueChange={setTickerSearchQuery}
+                    />
                     <CommandList>
                       <CommandEmpty>
                         {tickerSearchQuery ? "No results" : "Type to search"}
@@ -498,7 +462,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                               value={r.symbol}
                               onSelect={() => selectTicker(r.symbol)}
                             >
-                              <span className="font-medium font-mono">
+                              <span className="font-medium">
                                 {r.symbol}
                               </span>
                               <span className="ml-2 text-xs text-muted-foreground truncate">
@@ -521,7 +485,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
               <ComposerPrimitive.Send asChild>
                 <Button
                   type="button"
-                  className="size-7 p-0 rounded-full bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  size="icon-sm"
                   aria-label="Send message"
                 >
                   <IconSend className="size-3" />
@@ -533,7 +497,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                 <Button
                   type="button"
                   variant="default"
-                  className="size-7 p-0 rounded-full"
+                  size="icon-sm"
                   aria-label="Stop generating"
                 >
                   <SquareIcon className="size-3 fill-current" />
