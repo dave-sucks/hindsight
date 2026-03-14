@@ -136,10 +136,10 @@ export const priceMonitor = inngest.createFunction(
                     direction: trade.direction as "LONG" | "SHORT",
                     entryPrice: trade.entryPrice,
                     currentPrice,
-                    targetPrice: trade.targetPrice,
+                    targetPrice: trade.targetPrice!,
                     progressPct: progress * 100,
                     unrealizedPnl,
-                    unrealizedPnlPct: calculatePnl(trade, currentPrice).pct,
+                    unrealizedPnlPct: calculatePnl(trade as unknown as TradeModel, currentPrice).pct,
                     tradeId: trade.id,
                   }),
                 });

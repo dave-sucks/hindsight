@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         where: { userId },
         orderBy: { createdAt: "desc" },
         take: 10,
-        select: { id: true, ticker: true, createdAt: true },
+        select: { id: true, createdAt: true },
       }),
     ]);
 
@@ -72,8 +72,7 @@ export async function GET(request: NextRequest) {
       ...runs.map((r) => ({
         id: `run-${r.id}`,
         type: "RESEARCH_START",
-        ticker: r.ticker ?? undefined,
-        detail: `Agent started research run${r.ticker ? ` for ${r.ticker}` : ""}`,
+        detail: `Agent started research run`,
         timestamp: r.createdAt.toISOString(),
       })),
     ].sort(

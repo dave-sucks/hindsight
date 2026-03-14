@@ -41,7 +41,7 @@ import {
   deleteAnalyst,
   type AnalystFormInput,
 } from '@/lib/actions/settings.actions';
-import type { AgentConfig } from '@/lib/generated/prisma';
+import type { AgentConfig } from '@/lib/generated/prisma/client';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ function AnalystFormSheet({
         const result = await createAnalyst(form);
         if (result.success && result.id) {
           toast.success('Analyst created');
-          const newConfig: AgentConfig = {
+          const newConfig = {
             id: result.id,
             userId: '',
             name: form.name,
@@ -187,7 +187,7 @@ function AnalystFormSheet({
             digestEmail: null,
             createdAt: new Date(),
             updatedAt: new Date(),
-          };
+          } as unknown as AgentConfig;
           onSuccess(newConfig, true);
           onOpenChange(false);
         } else {
