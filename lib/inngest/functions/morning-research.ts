@@ -71,6 +71,8 @@ export const morningResearch = inngest.createFunction(
               signalTypes: config.signalTypes,
               tickers: config.watchlist ?? [],
               triggeredBy: "morning-cron",
+              agentMode: true,
+              analystName: config.name,
             } as object,
           },
         });
@@ -174,7 +176,7 @@ export const morningResearch = inngest.createFunction(
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)
         try {
-          const { text, steps } = await generateText({
+          const { text, steps, response } = await generateText({
             model: openai("gpt-4o"),
             system: systemPrompt,
             prompt: "Begin your research session. Follow all phases in order.",
@@ -214,14 +216,19 @@ export const morningResearch = inngest.createFunction(
             });
           }
 
-          // Persist agent messages for replay
+          // Persist full conversation messages for replay (same format as agent route)
           try {
+            const userMessage = {
+              role: "user",
+              content: [{ type: "text", text: "Begin your research session. Follow all phases in order." }],
+            };
+            const allMessages = [userMessage, ...response.messages];
             await prisma.runMessage.deleteMany({ where: { runId: run.id } });
             await prisma.runMessage.create({
               data: {
                 runId: run.id,
                 role: "thread",
-                content: JSON.stringify({ agentText: text, steps: steps.length, toolCalls }),
+                content: JSON.stringify(allMessages),
               },
             });
           } catch (msgErr) {
