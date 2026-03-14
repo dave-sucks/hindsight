@@ -145,10 +145,6 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     extraMenuItems = [],
   } = features;
 
-  // Slash command state
-  const [slashOpen, setSlashOpen] = useState(false);
-  const [slashFilter, setSlashFilter] = useState("");
-
   // Ticker state
   const [tickerOpen, setTickerOpen] = useState(false);
   const [tickerSearchQuery, setTickerSearchQuery] = useState("");
@@ -164,29 +160,9 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   const composerRuntime = useComposerRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Detect slash command trigger ───────────────────────────────────────
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const val = e.target.value;
-
-      if (slashCommands) {
-        if (val.startsWith("/") && !val.includes(" ")) {
-          setSlashOpen(true);
-          setSlashFilter(val.slice(1).toLowerCase());
-        } else {
-          setSlashOpen(false);
-          setSlashFilter("");
-        }
-      }
-    },
-    [slashCommands],
-  );
-
   // ── Select a slash command ─────────────────────────────────────────────
   const selectCommand = useCallback(
     (cmd: SlashCommand) => {
-      setSlashOpen(false);
-      setSlashFilter("");
       composerRuntime.setText(cmd.template);
     },
     [composerRuntime],
@@ -250,13 +226,6 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     }
   }, [selectedTicker, composerRuntime]);
 
-  const filteredCommands = slashFilter
-    ? commands.filter(
-        (c) =>
-          c.name.includes(slashFilter) || c.label.includes(slashFilter),
-      )
-    : commands;
-
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       {/* Hidden file input */}
@@ -304,7 +273,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
             rows={1}
             autoFocus
             aria-label="Message input"
-            onChange={handleInputChange}
+
           />
         </div>
 
@@ -372,57 +341,34 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
               </Button>
             )}
 
-            {/* Slash commands trigger */}
+            {/* Slash commands menu */}
             {slashCommands && (
-              <Popover open={slashOpen} onOpenChange={setSlashOpen}>
-                <PopoverTrigger
+              <DropdownMenu>
+                <DropdownMenuTrigger
                   render={
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        if (!slashOpen) {
-                          setSlashOpen(true);
-                          composerRuntime.setText("/");
-                        }
-                      }}
                     />
                   }
                 >
                   <Slash className="h-3 w-3" />
                   Commands
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-64 p-0"
-                  side="top"
-                  align="start"
-                >
-                  <Command>
-                    <CommandList>
-                      <CommandEmpty>No commands found</CommandEmpty>
-                      <CommandGroup heading="Commands">
-                        {filteredCommands.map((cmd) => (
-                          <CommandItem
-                            key={cmd.name}
-                            value={cmd.name}
-                            onSelect={() => selectCommand(cmd)}
-                          >
-                            <cmd.icon className="text-muted-foreground shrink-0" />
-                            <div className="min-w-0">
-                              <span className="text-sm font-medium">
-                                {cmd.label}
-                              </span>
-                              <p className="text-xs text-muted-foreground truncate">
-                                {cmd.description}
-                              </p>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top">
+                  <DropdownMenuGroup>
+                    {commands.map((cmd) => (
+                      <DropdownMenuItem
+                        key={cmd.name}
+                        onClick={() => selectCommand(cmd)}
+                      >
+                        <cmd.icon className="text-muted-foreground shrink-0" />
+                        {cmd.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             {/* Ticker search trigger */}
