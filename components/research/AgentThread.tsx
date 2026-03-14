@@ -57,7 +57,6 @@ import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
 import { XPost } from "@/components/manifest-ui/x-post";
 import { PostList } from "@/components/manifest-ui/post-list";
 import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
-import { QuickReply as QuickReplyComponent } from "@/components/manifest-ui/quick-reply";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -1254,48 +1253,6 @@ export function AgentThread({
 
 // Old DefaultComposer removed — replaced by HindsightComposer
 
-// ─── Quick reply chips ──────────────────────────────────────────────────────
-
-const FOLLOW_UP_SUGGESTIONS = [
-  "What's your conviction ranking?",
-  "Tell me more about the risks",
-  "Why did you pass on some candidates?",
-  "What are you watching for tomorrow?",
-];
-
-function QuickReplies() {
-  const threadRuntime = useThreadRuntime();
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const unsub = threadRuntime.subscribe(() => {
-      const state = threadRuntime.getState();
-      setVisible(!state.isRunning && state.messages.length > 1);
-    });
-    return unsub;
-  }, [threadRuntime]);
-
-  if (!visible) return null;
-
-  return (
-    <QuickReplyComponent
-      data={{
-        replies: FOLLOW_UP_SUGGESTIONS.map((text) => ({ label: text })),
-      }}
-      actions={{
-        onSelectReply: (reply) => {
-          if (!reply.label) return;
-          setVisible(false);
-          threadRuntime.append({
-            role: "user",
-            content: [{ type: "text", text: reply.label }],
-          });
-        },
-      }}
-    />
-  );
-}
-
 // ─── Inner thread component ─────────────────────────────────────────────────
 
 function AgentThreadInner({
@@ -1332,7 +1289,6 @@ function AgentThreadInner({
       }}
       composerSlot={
         <div>
-          <QuickReplies />
           <HindsightComposer
             features={{
               placeholder: "Ask a follow-up question…",
