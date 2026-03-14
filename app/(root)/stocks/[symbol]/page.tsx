@@ -145,6 +145,7 @@ export default async function StockDetailPage({ params }: Props) {
             confidenceScore: true,
             reasoningSummary: true,
             createdAt: true,
+            researchRunId: true,
             researchRun: { select: { source: true } },
           },
         })
@@ -365,7 +366,7 @@ export default async function StockDetailPage({ params }: Props) {
                       {tickerTheses.slice(0, 3).map((thesis) => (
                         <Link
                           key={thesis.id}
-                          href={`/research/${thesis.id}`}
+                          href={`/runs/${thesis.researchRunId}`}
                           className="flex items-start gap-2 p-2 rounded border border-border hover:bg-secondary/30 transition-colors"
                         >
                           <FlaskConical className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
@@ -469,7 +470,7 @@ export default async function StockDetailPage({ params }: Props) {
               {tickerTheses.map((thesis) => (
                 <Link
                   key={thesis.id}
-                  href={`/research/${thesis.id}`}
+                  href={`/runs/${thesis.researchRunId}`}
                   className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors"
                 >
                   <FlaskConical className="h-4 w-4 text-primary mt-0.5 shrink-0" />

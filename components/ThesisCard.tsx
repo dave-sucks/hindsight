@@ -208,7 +208,7 @@ export function ThesisCard({
       <div className="relative rounded-lg border bg-background hover:border-foreground/25 transition-colors">
         {/* Full-card link overlay */}
         <Link
-          href={`/research/${thesis.id}`}
+          href={`/stocks/${thesis.ticker}`}
           className="absolute inset-0 z-0 rounded-lg"
           aria-label={`View ${thesis.ticker} thesis`}
         />

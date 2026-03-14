@@ -22,12 +22,9 @@ import {
 } from "@/components/ui/sheet";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import { StockLogo } from "@/components/StockLogo";
-import { AnalystEditorChat } from "@/components/analysts/AnalystEditorChat";
 import {
   ArrowLeft,
   Settings2,
-  MessageSquare,
-  X,
   ChevronDown,
   FileText,
   Sparkles,
@@ -543,7 +540,6 @@ export default function AnalystDetailClient({
   }), [rawConfig]);
 
   const [configOpen, setConfigOpen] = useState(false);
-  const [chatExpanded, setChatExpanded] = useState(false);
   const [range, setRange] = useState<Range>("Max");
 
   // ── Chart data ──────────────────────────────────────────────────────────
@@ -761,7 +757,7 @@ export default function AnalystDetailClient({
         </div>
 
         {/* ── Right: Strategy prompt hero + floating chat ──────────────── */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between gap-4 px-5 py-3 border-b shrink-0">
             <div className="flex items-center gap-2 min-w-0">
@@ -842,60 +838,6 @@ export default function AnalystDetailClient({
 
           {/* ── Strategy document (always visible) ──────────────────────── */}
           <StrategyDocument config={config} fullSystemPrompt={fullSystemPrompt} />
-
-          {/* ── Floating chat panel ──────────────────────────────────────── */}
-          {chatExpanded ? (
-            <div className="absolute bottom-4 right-4 left-4 z-20 flex flex-col rounded-xl border bg-background shadow-2xl max-h-[60vh] overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30 shrink-0">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-xs font-medium">
-                    Chat with {config.name}
-                  </span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs text-muted-foreground"
-                  onClick={() => setChatExpanded(false)}
-                >
-                  <X className="h-3 w-3 mr-1" />
-                  Close
-                </Button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <AnalystEditorChat
-                  analystId={config.id}
-                  currentConfig={{
-                    name: config.name,
-                    analystPrompt: config.analystPrompt ?? "",
-                    description: config.description ?? "",
-                    directionBias: config.directionBias,
-                    holdDurations: config.holdDurations,
-                    sectors: config.sectors,
-                    signalTypes: config.signalTypes,
-                    minConfidence: config.minConfidence,
-                    maxPositionSize: config.maxPositionSize,
-                    maxOpenPositions: config.maxOpenPositions,
-                    minMarketCapTier: config.minMarketCapTier ?? "LARGE",
-                  }}
-                />
-              </div>
-            </div>
-          ) : (
-            /* Floating chat trigger button */
-            <div className="absolute bottom-6 right-6 z-10">
-              <Button
-                onClick={() => setChatExpanded(true)}
-                className="h-12 rounded-full px-5 shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
-              >
-                <MessageSquare className="h-4 w-4" />
-                <span className="text-sm font-medium">
-                  Edit with AI
-                </span>
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 

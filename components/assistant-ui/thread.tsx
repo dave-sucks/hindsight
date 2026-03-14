@@ -26,7 +26,7 @@ import {
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
-  BotIcon,
+
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -212,12 +212,7 @@ const AssistantMessage: FC = () => {
       className="aui-assistant-message-root fade-in slide-in-from-bottom-1 relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
       data-role="assistant"
     >
-      <div className="flex gap-3">
-        {/* Avatar */}
-        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-muted">
-          <BotIcon className="h-3.5 w-3.5 text-muted-foreground" />
-        </div>
-
+      <div>
         <div className="min-w-0 flex-1">
           <div className="aui-assistant-message-content wrap-break-word text-foreground leading-relaxed">
             <SourcesProvider sources={sources}>
