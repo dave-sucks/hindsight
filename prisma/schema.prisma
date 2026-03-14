@@ -189,6 +189,9 @@ model AgentConfig {
   emailAlerts           Boolean  @default(true)
   weeklyDigestEnabled   Boolean  @default(true)
   digestEmail           String?  // override email for digest; uses auth email when null
+  // AI-generated analyst briefing ("daily standup") — updated after each run
+  analystBriefing       String?  // rich markdown: portfolio status, recent trades, strategy observations, outlook
+  briefingUpdatedAt     DateTime? // when briefing was last regenerated
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }

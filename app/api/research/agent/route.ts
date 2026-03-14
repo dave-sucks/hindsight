@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildSystemPrompt } from "@/lib/agent/system-prompt";
+import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 
 export const maxDuration = 120; // 2 min for multi-step agent
 
@@ -79,26 +80,34 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── Load historical context: recent trades + accuracy stats ──────────────
+  // ── Load historical context: recent trades + accuracy stats + briefing ────
   let historyBlock = "";
   try {
     const configId = analystId || (agentConfig as Record<string, unknown>).id;
 
     // Recent closed trades (last 20)
     const recentTrades = await prisma.trade.findMany({
-      where: { userId: user.id, status: { in: ["CLOSED", "WIN", "LOSS"] } },
+      where: {
+        userId: user.id,
+        status: "CLOSED",
+        ...(configId ? { thesis: { researchRun: { agentConfigId: configId as string } } } : {}),
+      },
       orderBy: { closedAt: "desc" },
       take: 20,
       select: {
-        ticker: true, direction: true, status: true,
-        entryPrice: true, exitPrice: true, shares: true,
-        pnl: true, pnlPct: true, closedAt: true,
+        ticker: true, direction: true, outcome: true,
+        entryPrice: true, closePrice: true, shares: true,
+        realizedPnl: true, closeReason: true, closedAt: true,
       },
     });
 
     // Open trades
     const openTrades = await prisma.trade.findMany({
-      where: { userId: user.id, status: "OPEN" },
+      where: {
+        userId: user.id,
+        status: "OPEN",
+        ...(configId ? { thesis: { researchRun: { agentConfigId: configId as string } } } : {}),
+      },
       select: {
         ticker: true, direction: true, entryPrice: true,
         shares: true, targetPrice: true, stopLoss: true,
@@ -107,16 +116,14 @@ export async function POST(req: Request) {
     });
 
     // Latest accuracy report
-    const latestAccuracy = configId
-      ? await prisma.accuracyReport.findFirst({
-          where: { agentConfigId: configId as string },
-          orderBy: { createdAt: "desc" },
-          select: {
-            overallWinRate: true, totalTrades: true,
-            avgPnlPct: true, narrative: true,
-          },
-        })
-      : null;
+    const latestAccuracy = await prisma.accuracyReport.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        winRate: true, tradesAnalyzed: true,
+        narrativeSummary: true,
+      },
+    });
 
     // Recent run summaries (last 5)
     const recentRuns = await prisma.researchRun.findMany({
@@ -130,35 +137,52 @@ export async function POST(req: Request) {
       select: { id: true, completedAt: true },
     });
 
+    // Load analyst briefing if available (the "daily standup" from prior runs)
+    let analystBriefing: string | null = null;
+    if (configId) {
+      const briefingConfig = await prisma.agentConfig.findFirst({
+        where: { id: configId as string },
+        select: { analystBriefing: true, briefingUpdatedAt: true },
+      });
+      analystBriefing = briefingConfig?.analystBriefing ?? null;
+    }
+
     // Build context
     const parts: string[] = [];
 
+    // Inject the analyst briefing first — this is the "living memory" of past runs
+    if (analystBriefing) {
+      parts.push("## Your Latest Portfolio Briefing");
+      parts.push("This is your most recent self-assessment from your last research session. Use it to inform today's decisions.\n");
+      parts.push(analystBriefing);
+    }
+
     if (openTrades.length > 0) {
-      parts.push("## Your Open Positions");
+      parts.push("\n## Your Open Positions");
       for (const t of openTrades) {
-        parts.push(`- ${t.direction} ${t.shares} shares ${t.ticker} @ $${Number(t.entryPrice).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
+        parts.push(`- ${t.direction} ${t.shares} shares $${t.ticker} @ $${Number(t.entryPrice).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
       }
-      parts.push(`\nDo NOT open duplicate positions in tickers you already hold.`);
+      parts.push(`\nDo NOT open duplicate positions in tickers you already hold. Consider whether existing positions should be closed based on new information.`);
     }
 
     if (recentTrades.length > 0) {
-      const wins = recentTrades.filter((t) => t.status === "WIN").length;
-      const losses = recentTrades.filter((t) => t.status === "LOSS").length;
+      const wins = recentTrades.filter((t) => t.outcome === "WIN").length;
+      const losses = recentTrades.filter((t) => t.outcome === "LOSS").length;
       parts.push(`\n## Recent Trade History (${recentTrades.length} trades)`);
       parts.push(`Win/Loss: ${wins}W / ${losses}L`);
       for (const t of recentTrades.slice(0, 10)) {
-        const pnl = t.pnl ? Number(t.pnl) : 0;
-        parts.push(`- ${t.status} ${t.direction} ${t.ticker}: entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.exitPrice ? Number(t.exitPrice).toFixed(2) : "—"} (${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)})`);
+        const pnl = t.realizedPnl ?? 0;
+        parts.push(`- ${t.outcome ?? "?"} ${t.direction} $${t.ticker}: entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} (${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}, reason: ${t.closeReason ?? "—"})`);
       }
+      parts.push(`\nLearn from these results. Avoid repeating patterns that led to losses.`);
     }
 
     if (latestAccuracy) {
       parts.push(`\n## Your Performance Stats`);
-      parts.push(`- Win Rate: ${latestAccuracy.overallWinRate ? Number(latestAccuracy.overallWinRate).toFixed(0) : "—"}%`);
-      parts.push(`- Total Trades: ${latestAccuracy.totalTrades ?? "—"}`);
-      parts.push(`- Avg P&L: ${latestAccuracy.avgPnlPct ? `${Number(latestAccuracy.avgPnlPct).toFixed(1)}%` : "—"}`);
-      if (latestAccuracy.narrative) {
-        parts.push(`- Calibration: ${String(latestAccuracy.narrative).slice(0, 300)}`);
+      parts.push(`- Win Rate: ${latestAccuracy.winRate != null ? (Number(latestAccuracy.winRate) * 100).toFixed(0) : "—"}%`);
+      parts.push(`- Trades Analyzed: ${latestAccuracy.tradesAnalyzed ?? "—"}`);
+      if (latestAccuracy.narrativeSummary) {
+        parts.push(`- Calibration: ${String(latestAccuracy.narrativeSummary).slice(0, 300)}`);
       }
       parts.push(`\nUse this data to calibrate your confidence. If your win rate is low, be more selective.`);
     }
@@ -168,7 +192,7 @@ export async function POST(req: Request) {
     }
 
     historyBlock = parts.join("\n");
-    console.log(`[agent] History loaded: ${openTrades.length} open, ${recentTrades.length} closed, accuracy=${!!latestAccuracy}`);
+    console.log(`[agent] History loaded: ${openTrades.length} open, ${recentTrades.length} closed, accuracy=${!!latestAccuracy}, briefing=${!!analystBriefing}`);
   } catch (err) {
     console.warn("[agent] Failed to load history (non-fatal):", err);
   }
@@ -211,6 +235,22 @@ export async function POST(req: Request) {
         console.log(`[agent] Persisted ${allMessages.length} messages for runId=${runId}`);
       } catch (err) {
         console.error("[agent] Failed to persist messages:", err);
+      }
+
+      // Update analyst briefing (non-blocking, fire-and-forget)
+      const resolvedAnalystId = analystId || (await prisma.researchRun.findFirst({
+        where: { id: runId },
+        select: { agentConfigId: true },
+      }))?.agentConfigId;
+
+      if (resolvedAnalystId) {
+        updateAnalystBriefing({
+          analystId: resolvedAnalystId,
+          runId,
+          userId: user.id,
+        }).catch((err) =>
+          console.error("[agent] Briefing update failed:", err)
+        );
       }
     },
   });
