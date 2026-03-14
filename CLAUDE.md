@@ -25,7 +25,7 @@ Built for one user now, marketed later.
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
 - Redirects to /runs/[id] → renders AgentThread component
 - AgentThread uses AI SDK v6 useChat → POST /api/research/agent
-- GPT-4o with 14 tools autonomously researches, generates theses,
+- GPT-4.1 with 14 tools autonomously researches, generates theses,
   places trades via Alpaca
 - Tools render as domain cards in UI (MarketContextCard, StockCard,
   ThesisArtifactSheet, TradeCard, etc.)
@@ -65,7 +65,7 @@ Built for one user now, marketed later.
 - TradeEvent — trade lifecycle log (PLACED, PRICE_CHECK,
   NEAR_TARGET, CLOSED, EVALUATED)
 - AccuracyReport — weekly per-analyst calibration (win rate,
-  signal accuracy, direction stats, GPT-4o narrative)
+  signal accuracy, direction stats, GPT-4o narrative eval)
 
 ## Pages
 - / (Dashboard) — MarketPulseStrip (Finnhub WebSocket), portfolio
@@ -220,6 +220,10 @@ The agent run page (`/runs/[id]`) renders via:
   always cast with type guard
 - async params in Next.js App Router: params: Promise<{ id: string }>
 - FMP /quote/ endpoint DEPRECATED — use Finnhub for all quotes
+- Model strategy: GPT-4.1 for agent + crons (tool calling,
+  instruction following). GPT-4o for builder/editor chats
+  (conversational). GPT-4o-mini for lightweight summaries
+  (briefings). DO NOT change agent model to GPT-4o.
 - gh auth switch --user dave-sucks before pushing
 
 ## Run Flow (Button Click → Completion)
@@ -227,7 +231,7 @@ The agent run page (`/runs/[id]`) renders via:
 2. Redirect to /runs/[id] → AgentThread renders with autoStart
 3. AgentThread → useChat → POST /api/research/agent
 4. Agent route loads config + historical context (trades, accuracy)
-5. GPT-4o calls tools: market overview → scan → research → thesis → trade → summarize
+5. GPT-4.1 calls tools: market overview → scan → research → thesis → trade → summarize
 6. Each tool renders a domain card in the chat UI
 7. show_thesis persists Thesis to DB + renders ThesisArtifactSheet
 8. place_trade calls Alpaca + persists Trade to DB + renders TradeCard
