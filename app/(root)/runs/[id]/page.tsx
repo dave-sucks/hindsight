@@ -3,137 +3,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { ArrowLeft, Bot, Clock } from "lucide-react";
-import RunLiveStream from "@/components/research/RunLiveStream";
-import { RunUnifiedChat } from "@/components/research/RunUnifiedChat";
 import { AgentThread } from "@/components/research/AgentThread";
-import type { RunEventRow } from "@/components/research/types";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 import type { UIMessage } from "ai";
-
-// ── Synthesize events from thesis rows for legacy runs ────────────────────────
-
-function synthesizeEventsFromTheses(
-  theses: {
-    ticker: string;
-    direction: string;
-    confidenceScore: number;
-    reasoningSummary: string;
-    thesisBullets: string[];
-    riskFlags: string[];
-    entryPrice: number | null;
-    targetPrice: number | null;
-    stopLoss: number | null;
-    holdDuration: string;
-    signalTypes: string[];
-    createdAt: Date;
-    trade: { direction: string; entryPrice: number } | null;
-  }[]
-): RunEventRow[] {
-  if (theses.length === 0) return [];
-
-  const events: RunEventRow[] = [];
-  let uid = 0;
-  const nextId = () => `synth-${uid++}`;
-  const baseDate = theses[0].createdAt.toISOString();
-
-  // candidates list
-  events.push({
-    id: nextId(),
-    type: "candidates",
-    title: "Candidates",
-    message: null,
-    payload: { tickers: theses.map((t) => t.ticker), count: theses.length },
-    createdAt: baseDate,
-  });
-
-  // per-ticker: concept then thesis or skip
-  for (const thesis of theses) {
-    const ts = thesis.createdAt.toISOString();
-
-    events.push({
-      id: nextId(),
-      type: "concept",
-      title: "Concept",
-      message: null,
-      payload: {
-        ticker: thesis.ticker,
-        direction: thesis.direction,
-        confidence: thesis.confidenceScore,
-      },
-      createdAt: ts,
-    });
-
-    if (thesis.direction === "PASS") {
-      events.push({
-        id: nextId(),
-        type: "skip",
-        title: "Skip",
-        message: null,
-        payload: {
-          ticker: thesis.ticker,
-          reason:
-            thesis.reasoningSummary?.slice(0, 120) ||
-            "No clear tradeable signal",
-          confidence: thesis.confidenceScore,
-        },
-        createdAt: ts,
-      });
-    } else {
-      events.push({
-        id: nextId(),
-        type: "thesis_complete",
-        title: "Thesis",
-        message: null,
-        payload: {
-          ticker: thesis.ticker,
-          thesis: {
-            ticker: thesis.ticker,
-            direction: thesis.direction,
-            confidence_score: thesis.confidenceScore,
-            reasoning_summary: thesis.reasoningSummary,
-            thesis_bullets: thesis.thesisBullets ?? [],
-            risk_flags: thesis.riskFlags ?? [],
-            entry_price: thesis.entryPrice,
-            target_price: thesis.targetPrice,
-            stop_loss: thesis.stopLoss,
-            hold_duration: thesis.holdDuration || "SWING",
-            signal_types: thesis.signalTypes ?? [],
-          },
-        },
-        createdAt: ts,
-      });
-
-      // Emit trade_placed if a trade was opened for this thesis
-      if (thesis.trade) {
-        events.push({
-          id: nextId(),
-          type: "trade_placed",
-          title: "Trade Placed",
-          message: null,
-          payload: {
-            ticker: thesis.ticker,
-            direction: thesis.trade.direction,
-            entry: thesis.trade.entryPrice,
-          },
-          createdAt: ts,
-        });
-      }
-    }
-  }
-
-  const recommended = theses.filter((t) => t.direction !== "PASS").length;
-  const placed = theses.filter((t) => t.trade !== null).length;
-  events.push({
-    id: nextId(),
-    type: "run_complete",
-    title: "Run Complete",
-    message: null,
-    payload: { analyzed: theses.length, recommended, placed },
-    createdAt: new Date().toISOString(),
-  });
-
-  return events;
-}
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -154,30 +26,10 @@ export default async function RunPage({
     where: { id, userId },
     include: {
       agentConfig: { select: { id: true, name: true } },
-      events: { orderBy: { createdAt: "asc" } },
       messages: {
         where: { role: "thread" },
         orderBy: { createdAt: "desc" },
         take: 1,
-      },
-      theses: {
-        select: {
-          id: true,
-          ticker: true,
-          direction: true,
-          confidenceScore: true,
-          reasoningSummary: true,
-          thesisBullets: true,
-          riskFlags: true,
-          entryPrice: true,
-          targetPrice: true,
-          stopLoss: true,
-          holdDuration: true,
-          signalTypes: true,
-          createdAt: true,
-          trade: { select: { direction: true, entryPrice: true } },
-        },
-        orderBy: { createdAt: "asc" },
       },
     },
   });
@@ -216,54 +68,21 @@ export default async function RunPage({
       ? (run.parameters as Record<string, unknown>)
       : {};
 
-  // Agent mode: all new runs use the real LLM agent.
-  // Legacy runs (no agentMode flag) fall back to the old event view.
-  const isAgentMode = config.agentMode === true;
-
-  // Parse persisted messages for completed agent runs
+  // Parse persisted messages for completed runs
   let persistedMessages: UIMessage[] | null = null;
-  if (isAgentMode && run.status === "COMPLETE" && run.messages.length > 0) {
+  if (run.status === "COMPLETE" && run.messages.length > 0) {
     try {
       const raw = JSON.parse(run.messages[0].content);
       if (Array.isArray(raw) && raw.length > 0) {
         persistedMessages = convertPersistedToUIMessages(raw);
       }
     } catch {
-      // Malformed JSON — fall through to RunUnifiedChat
+      // Malformed JSON — will show empty state
     }
   }
 
-  // Use AgentThread for RUNNING agent runs (live) or COMPLETE agent runs
-  // with persisted messages (replay with full tool call data).
-  const useAgent =
-    isAgentMode && (run.status === "RUNNING" || persistedMessages !== null);
-
-  // Stale detection: a run stuck RUNNING with no events and no theses
-  const isStaleRun =
-    !useAgent &&
-    run.status === "RUNNING" &&
-    run.events.length === 0 &&
-    Date.now() - new Date(run.startedAt).getTime() > 15 * 60 * 1_000;
-
-  let events: RunEventRow[];
-  if (useAgent) {
-    // Live agent — events are rendered via tool UIs in AgentThread
-    events = [];
-  } else if (run.events.length > 0) {
-    events = run.events.map((ev: { id: string; type: string; title: string; message: string | null; payload: unknown; createdAt: Date }) => ({
-      id: ev.id,
-      type: ev.type,
-      title: ev.title,
-      message: ev.message,
-      payload: ev.payload,
-      createdAt: ev.createdAt.toISOString(),
-    }));
-  } else {
-    // Fallback: synthesize events from thesis rows (covers legacy runs
-    // and completed agent runs that didn't write RunEvent rows)
-    events = synthesizeEventsFromTheses(run.theses);
-  }
-
+  const isLive = run.status === "RUNNING";
+  const hasReplay = persistedMessages !== null;
 
   return (
     <div className="flex flex-col h-[calc(100dvh-5.25rem)] overflow-hidden">
@@ -289,63 +108,26 @@ export default async function RunPage({
         </div>
       </div>
 
-      {/* Body — single-column chat */}
+      {/* Body */}
       <div className="flex-1 min-h-0">
-        {useAgent ? (
-          /* Real agent mode — live (autoStart) or replay (initialMessages) */
+        {isLive || hasReplay ? (
           <AgentThread
             runId={id}
             analystName={analystName}
             analystId={run.agentConfig?.id}
             config={config}
-            autoStart={persistedMessages === null}
+            autoStart={isLive}
             initialMessages={persistedMessages ?? undefined}
           />
-        ) : isStaleRun ? (
+        ) : (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
-            <div className="h-2.5 w-2.5 rounded-full bg-red-400" />
             <p className="text-sm font-medium text-foreground">
-              Run appears to have stalled
+              No replay data available
             </p>
             <p className="text-xs max-w-xs">
-              This run started over 15 minutes ago but no events were recorded.
-              The research service may have crashed before completing. You can
-              try triggering a new run.
+              This run completed before message persistence was enabled.
             </p>
           </div>
-        ) : run.status === "RUNNING" ? (
-          <RunLiveStream
-            runId={id}
-            userId={userId}
-            analystName={analystName}
-            config={config}
-          />
-        ) : events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2">
-            <p className="text-sm">No details available for this run.</p>
-          </div>
-        ) : (
-          <RunUnifiedChat
-            events={events}
-            analystName={analystName}
-            config={config}
-            runContext={{
-              analystName,
-              config,
-              theses: run.theses.map((t: typeof run.theses[number]) => ({
-                ticker: t.ticker,
-                direction: t.direction,
-                confidence_score: t.confidenceScore,
-                reasoning_summary: t.reasoningSummary ?? undefined,
-                thesis_bullets: t.thesisBullets ?? [],
-                risk_flags: t.riskFlags ?? [],
-                entry_price: t.entryPrice,
-                target_price: t.targetPrice,
-                stop_loss: t.stopLoss,
-                signal_types: t.signalTypes ?? [],
-              })),
-            }}
-          />
         )}
       </div>
     </div>
