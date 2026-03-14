@@ -177,7 +177,7 @@ export const morningResearch = inngest.createFunction(
         // 2e. Run the agent (generateText, not streamText — no client to stream to)
         try {
           const { text, steps, response } = await generateText({
-            model: openai("gpt-4o"),
+            model: openai("gpt-4.1"),
             system: systemPrompt,
             prompt: "Begin your research session. Follow all phases in order.",
             tools,
