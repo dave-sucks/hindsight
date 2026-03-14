@@ -16,7 +16,7 @@ const EVENT_CONFIG: Record<
   TRADE_PLACED: { icon: "📈", className: "text-blue-500" },
   PRICE_CHECK: { icon: "👁", className: "text-zinc-400" },
   NEAR_TARGET: { icon: "⚡", className: "text-amber-500" },
-  TRADE_CLOSED: { icon: "✅", className: "text-emerald-500" },
+  TRADE_CLOSED: { icon: "✅", className: "text-positive" },
   EVALUATED: { icon: "🧠", className: "text-purple-400" },
   EOD_CHECK: { icon: "📊", className: "text-zinc-400" },
 };
@@ -59,7 +59,7 @@ function ActivityLogItem({ event }: { event: AgentEvent }) {
             <span
               className={cn(
                 "text-xs font-medium tabular-nums",
-                event.pnlPct >= 0 ? "text-emerald-500" : "text-red-500"
+                event.pnlPct >= 0 ? "text-positive" : "text-negative"
               )}
             >
               {event.pnlPct >= 0 ? "+" : ""}
@@ -97,7 +97,7 @@ export function AgentActivityLog({ userId }: AgentActivityLogProps) {
               className={cn(
                 "h-2 w-2 rounded-full",
                 isConnected
-                  ? "bg-emerald-500 animate-pulse"
+                  ? "bg-positive animate-pulse"
                   : "bg-muted-foreground/40"
               )}
             />

@@ -226,7 +226,7 @@ export default async function StockDetailPage({ params }: Props) {
               <span className="text-2xl font-bold tabular-nums text-foreground">
                 {fmtCur(price)}
               </span>
-              <span className={cn("text-sm font-medium tabular-nums flex items-center gap-0.5", isUp ? "text-emerald-500" : "text-red-500")}>
+              <span className={cn("text-sm font-medium tabular-nums flex items-center gap-0.5", isUp ? "text-positive" : "text-negative")}>
                 {isUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
                 {fmtCur(change)} ({fmtPct(changePct)})
               </span>
@@ -402,9 +402,9 @@ export default async function StockDetailPage({ params }: Props) {
                             className="flex items-start gap-2 p-2 rounded border border-border hover:bg-secondary/30 transition-colors"
                           >
                             {trade.outcome === "WIN" ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                              <CheckCircle2 className="h-3.5 w-3.5 text-positive mt-0.5 shrink-0" />
                             ) : trade.outcome === "LOSS" ? (
-                              <XCircle className="h-3.5 w-3.5 text-red-500 mt-0.5 shrink-0" />
+                              <XCircle className="h-3.5 w-3.5 text-negative mt-0.5 shrink-0" />
                             ) : (
                               <Clock className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
                             )}
@@ -417,7 +417,7 @@ export default async function StockDetailPage({ params }: Props) {
                                   {trade.direction}
                                 </Badge>
                                 {!isOpen && (
-                                  <span className={cn("text-[10px] font-medium tabular-nums", pnlPos ? "text-emerald-500" : "text-red-500")}>
+                                  <span className={cn("text-[10px] font-medium tabular-nums", pnlPos ? "text-positive" : "text-negative")}>
                                     {pnlPos ? "+" : ""}{pnl.toFixed(2)}
                                   </span>
                                 )}
@@ -512,9 +512,9 @@ export default async function StockDetailPage({ params }: Props) {
                     className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors"
                   >
                     {isWin ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-positive mt-0.5 shrink-0" />
                     ) : isLoss ? (
-                      <XCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                      <XCircle className="h-4 w-4 text-negative mt-0.5 shrink-0" />
                     ) : (
                       <Clock className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     )}
@@ -530,7 +530,7 @@ export default async function StockDetailPage({ params }: Props) {
                           {trade.direction}
                         </Badge>
                         {!isOpen && (
-                          <span className={cn("text-xs font-medium tabular-nums", pnlPos ? "text-emerald-500" : "text-red-500")}>
+                          <span className={cn("text-xs font-medium tabular-nums", pnlPos ? "text-positive" : "text-negative")}>
                             {pnlPos ? "+" : ""}{pnlPct.toFixed(2)}%
                           </span>
                         )}

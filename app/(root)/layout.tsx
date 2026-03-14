@@ -2,7 +2,7 @@ import AppSidebar from "@/components/Sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import MarketPulseStrip from "@/components/MarketPulseStrip";
+import { MarketStatusPill } from "@/components/MarketPulseStrip";
 import SearchCommand from "@/components/SearchCommand";
 import { createClient } from "@/lib/supabase/server";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
@@ -47,7 +47,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
 
     return (
         <SidebarProvider>
-            <AppSidebar user={userObj} initialStocks={initialStocks} portfolioValue={portfolioValue} />
+            <AppSidebar user={userObj} initialStocks={initialStocks} portfolioValue={portfolioValue} openTradeTickers={openTradeTickers} />
             <SidebarInset>
                 {/* Top bar — sidebar toggle + search + theme */}
                 <header className="flex w-full h-12 items-center gap-2 border-b px-4 shrink-0">
@@ -56,9 +56,9 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                     <div className="flex-1 flex items-center justify-center">
                         <SearchCommand renderAs="icon" label="Search stocks" initialStocks={initialStocks} />
                     </div>
+                    <MarketStatusPill open={marketOpen} />
                     <ThemeToggle />
                 </header>
-                <MarketPulseStrip openTradeTickers={openTradeTickers} marketOpen={marketOpen} />
                 <main className="flex-1">
                     {children}
                 </main>

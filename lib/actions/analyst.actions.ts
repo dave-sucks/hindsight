@@ -87,6 +87,7 @@ export interface TradeWithThesis {
   direction: string;
   status: string;
   entryPrice: number;
+  shares: number;
   closePrice: number | null;
   realizedPnl: number | null;
   outcome: string | null;
@@ -301,6 +302,7 @@ export async function getAnalystDetail(
         direction: true,
         status: true,
         entryPrice: true,
+        shares: true,
         closePrice: true,
         realizedPnl: true,
         outcome: true,

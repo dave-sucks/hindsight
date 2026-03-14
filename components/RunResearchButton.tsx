@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { FlaskConical, Loader2 } from "lucide-react";
+import { Redo2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export function RunResearchButton({
@@ -46,18 +46,17 @@ export function RunResearchButton({
       variant="outline"
       onClick={handleClick}
       disabled={disabled}
-      className="gap-2 shrink-0"
     >
       {loading || hasRunning ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <Loader2 className="animate-spin" />
       ) : (
-        <FlaskConical className="h-3.5 w-3.5" />
+        <Redo2 />
       )}
       {loading
         ? "Starting run…"
         : hasRunning
-          ? "Research Running…"
-          : "Run Research Now"}
+          ? "Running…"
+          : "Run"}
     </Button>
   );
 }

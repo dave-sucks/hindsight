@@ -16,7 +16,7 @@ export interface TradeClosedData {
 export function tradeClosedHtml(d: TradeClosedData): string {
   const isWin = d.outcome === "WIN";
   const isBreakeven = d.outcome === "BREAKEVEN";
-  const pnlColor = isWin ? "#10b981" : isBreakeven ? "#f59e0b" : "#ef4444";
+  const pnlColor = isWin ? "#51b857" : isBreakeven ? "#f59e0b" : "#ff6d87";
   const pnlSign = d.realizedPnl >= 0 ? "+" : "";
 
   const outcomeEmoji = isWin ? "✅" : isBreakeven ? "↔️" : "⛔";

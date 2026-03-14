@@ -61,8 +61,8 @@ async function fetchQuote(symbol: string): Promise<QuoteData | null> {
 // ─── Direction helpers ────────────────────────────────────────────────────────
 
 function directionColor(changePct: number) {
-  if (changePct > 0.05) return "text-emerald-500";
-  if (changePct < -0.05) return "text-red-500";
+  if (changePct > 0.05) return "text-positive";
+  if (changePct < -0.05) return "text-negative";
   return "text-muted-foreground";
 }
 
@@ -73,8 +73,8 @@ function DirectionIcon({ changePct, className }: { changePct: number; className?
 }
 
 function TrendIcon({ changePct, className }: { changePct: number; className?: string }) {
-  if (changePct > 0.05) return <TrendingUp className={cn("h-4 w-4 text-emerald-500", className)} />;
-  if (changePct < -0.05) return <TrendingDown className={cn("h-4 w-4 text-red-500", className)} />;
+  if (changePct > 0.05) return <TrendingUp className={cn("h-4 w-4 text-positive", className)} />;
+  if (changePct < -0.05) return <TrendingDown className={cn("h-4 w-4 text-negative", className)} />;
   return <Minus className={cn("h-4 w-4 text-muted-foreground", className)} />;
 }
 
@@ -193,7 +193,7 @@ export const TickerChip = memo(function TickerChip({
               <div
                 className={cn(
                   "absolute inset-y-0 left-0 rounded-full transition-all",
-                  quote.changePct >= 0 ? "bg-emerald-500/60" : "bg-red-500/60",
+                  quote.changePct >= 0 ? "bg-positive/60" : "bg-negative/60",
                 )}
                 style={{
                   width: `${Math.min(100, Math.max(5, 50 + quote.changePct * 5))}%`,

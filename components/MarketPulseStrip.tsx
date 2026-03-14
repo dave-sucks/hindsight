@@ -15,7 +15,7 @@ interface Props {
 function TickerSkeleton({ symbol }: { symbol: string }) {
   return (
     <div className="flex items-center gap-1.5 shrink-0 animate-pulse">
-      <span className="text-xs font-medium text-muted-foreground hidden sm:block">
+      <span className="text-xs font-medium text-muted-foreground">
         {symbol}
       </span>
       <span className="h-3 w-14 bg-muted rounded" />
@@ -24,9 +24,9 @@ function TickerSkeleton({ symbol }: { symbol: string }) {
   );
 }
 
-// ── Market status pill ────────────────────────────────────────────────────────
+// ── Market status pill (exported for use in header) ──────────────────────────
 
-function MarketStatusPill({ open }: { open: boolean }) {
+export function MarketStatusPill({ open }: { open: boolean }) {
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-US", {
     month: "short",
@@ -36,8 +36,8 @@ function MarketStatusPill({ open }: { open: boolean }) {
     <div className="flex items-center gap-1.5 shrink-0">
       {open ? (
         <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-positive" />
         </span>
       ) : (
         <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
@@ -45,7 +45,7 @@ function MarketStatusPill({ open }: { open: boolean }) {
       <span
         className={cn(
           "text-xs font-medium tabular-nums",
-          open ? "text-emerald-500" : "text-muted-foreground"
+          open ? "text-positive" : "text-muted-foreground"
         )}
       >
         {open ? "OPEN" : "CLOSED"} · {dateStr}
@@ -54,7 +54,72 @@ function MarketStatusPill({ open }: { open: boolean }) {
   );
 }
 
-// ── Main strip ────────────────────────────────────────────────────────────────
+// ── Sidebar marquee — slow infinite scroll ───────────────────────────────────
+
+export function SidebarMarquee({
+  openTradeTickers = [],
+}: {
+  openTradeTickers?: string[];
+}) {
+  const { quotes, tickers } = useMarketPulse(openTradeTickers);
+
+  const items = tickers.map((symbol) => {
+    const q = quotes[symbol];
+    if (!q || q.price === 0) {
+      return <TickerSkeleton key={symbol} symbol={symbol} />;
+    }
+
+    const positive = q.changePct >= 0;
+    const priceStr =
+      symbol === "BTC-USD" || symbol === "ETH-USD"
+        ? q.price.toLocaleString("en-US", { maximumFractionDigits: 0 })
+        : q.price.toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+    const label =
+      symbol === "BTC-USD" ? "BTC" : symbol === "ETH-USD" ? "ETH" : symbol;
+
+    return (
+      <div key={symbol} className="flex items-center gap-1.5 shrink-0">
+        <span className="text-xs font-medium text-muted-foreground">
+          {label}
+        </span>
+        <span
+          className={cn(
+            "text-xs font-medium tabular-nums transition-colors duration-300",
+            q.flash === "up" && "text-positive",
+            q.flash === "down" && "text-negative",
+            !q.flash && "text-foreground"
+          )}
+        >
+          {priceStr}
+        </span>
+        <span
+          className={cn(
+            "text-xs tabular-nums font-medium",
+            positive ? "text-positive" : "text-negative"
+          )}
+        >
+          {positive ? "+" : ""}
+          {q.changePct.toFixed(2)}%
+        </span>
+      </div>
+    );
+  });
+
+  return (
+    <div className="overflow-hidden border-t group-data-[collapsible=icon]:hidden">
+      <div className="flex items-center gap-6 py-2 px-3 animate-marquee whitespace-nowrap">
+        {items}
+        {/* Duplicate for seamless loop */}
+        {items}
+      </div>
+    </div>
+  );
+}
+
+// ── Legacy full strip (keep default export for backwards compat) ─────────────
 
 export default function MarketPulseStrip({
   openTradeTickers = [],
@@ -85,22 +150,20 @@ export default function MarketPulseStrip({
             <span className="text-xs font-medium text-muted-foreground hidden sm:block">
               {label}
             </span>
-            {/* Price — flashes color on tick */}
             <span
               className={cn(
                 "text-xs font-medium tabular-nums transition-colors duration-300",
-                q.flash === "up" && "text-emerald-400",
-                q.flash === "down" && "text-red-400",
+                q.flash === "up" && "text-positive",
+                q.flash === "down" && "text-negative",
                 !q.flash && "text-foreground"
               )}
             >
               {priceStr}
             </span>
-            {/* % change — persistent color */}
             <span
               className={cn(
                 "text-xs tabular-nums font-medium",
-                positive ? "text-emerald-500" : "text-red-500"
+                positive ? "text-positive" : "text-negative"
               )}
             >
               {positive ? "+" : ""}

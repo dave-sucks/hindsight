@@ -151,7 +151,7 @@ export function StockCard({
                 <span
                   className={cn(
                     "flex items-center gap-0.5 text-xs tabular-nums font-medium",
-                    isUp ? "text-emerald-500" : "text-red-500",
+                    isUp ? "text-positive" : "text-negative",
                   )}
                 >
                   <ChangeIcon className="h-3 w-3" />
@@ -187,7 +187,7 @@ export function StockCard({
                 <span
                   className={cn(
                     "tabular-nums font-medium",
-                    buyPct >= 60 ? "text-emerald-500" : buyPct >= 40 ? "text-amber-500" : "text-red-500",
+                    buyPct >= 60 ? "text-positive" : buyPct >= 40 ? "text-amber-500" : "text-negative",
                   )}
                 >
                   {buyPct.toFixed(0)}%
@@ -226,7 +226,7 @@ export function StockCard({
                 <span
                   className={cn(
                     "flex items-center gap-0.5 text-sm font-semibold tabular-nums pb-0.5",
-                    isUp ? "text-emerald-500" : "text-red-500",
+                    isUp ? "text-positive" : "text-negative",
                   )}
                 >
                   <ChangeIcon className="h-4 w-4" />
@@ -305,19 +305,19 @@ export function StockCard({
               </div>
               <div className="flex h-2 rounded-full overflow-hidden mb-2">
                 {analystConsensus.strongBuy > 0 && (
-                  <div className="bg-emerald-600" style={{ width: `${(analystConsensus.strongBuy / totalRatings) * 100}%` }} />
+                  <div className="bg-positive" style={{ width: `${(analystConsensus.strongBuy / totalRatings) * 100}%` }} />
                 )}
                 {analystConsensus.buy > 0 && (
-                  <div className="bg-emerald-400" style={{ width: `${(analystConsensus.buy / totalRatings) * 100}%` }} />
+                  <div className="bg-positive" style={{ width: `${(analystConsensus.buy / totalRatings) * 100}%` }} />
                 )}
                 {analystConsensus.hold > 0 && (
                   <div className="bg-amber-400" style={{ width: `${(analystConsensus.hold / totalRatings) * 100}%` }} />
                 )}
                 {analystConsensus.sell > 0 && (
-                  <div className="bg-red-400" style={{ width: `${(analystConsensus.sell / totalRatings) * 100}%` }} />
+                  <div className="bg-negative" style={{ width: `${(analystConsensus.sell / totalRatings) * 100}%` }} />
                 )}
                 {analystConsensus.strongSell > 0 && (
-                  <div className="bg-red-600" style={{ width: `${(analystConsensus.strongSell / totalRatings) * 100}%` }} />
+                  <div className="bg-negative" style={{ width: `${(analystConsensus.strongSell / totalRatings) * 100}%` }} />
                 )}
               </div>
               <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
@@ -331,7 +331,7 @@ export function StockCard({
                   <span
                     className={cn(
                       "font-semibold",
-                      buyPct >= 60 ? "text-emerald-500" : buyPct >= 40 ? "text-amber-500" : "text-red-500",
+                      buyPct >= 60 ? "text-positive" : buyPct >= 40 ? "text-amber-500" : "text-negative",
                     )}
                   >
                     {buyPct.toFixed(0)}%

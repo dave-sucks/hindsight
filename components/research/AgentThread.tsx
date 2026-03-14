@@ -522,7 +522,7 @@ function useRegisterAgentToolUIs(runId: string) {
 
       if (result.error) {
         return (
-          <div className="my-1.5 text-xs text-red-500 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-1.5">
+          <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-1.5">
             {String(result.error)}
           </div>
         );
@@ -1030,8 +1030,8 @@ function useRegisterAgentToolUIs(runId: string) {
                   className={cn(
                     "text-[10px] gap-1 py-0 font-semibold",
                     isLong
-                      ? "bg-emerald-500/10 text-emerald-500"
-                      : "bg-red-500/10 text-red-500",
+                      ? "bg-positive/10 text-positive"
+                      : "bg-negative/10 text-negative",
                   )}
                 >
                   <DirIcon className="h-2.5 w-2.5" />
@@ -1054,7 +1054,7 @@ function useRegisterAgentToolUIs(runId: string) {
                 className={cn(
                   "ml-auto flex items-center justify-center rounded-full size-7 text-[11px] font-bold tabular-nums",
                   thesis.confidence_score >= 80
-                    ? "bg-emerald-500/15 text-emerald-500"
+                    ? "bg-positive/10 text-positive"
                     : thesis.confidence_score >= 60
                       ? "bg-amber-500/15 text-amber-500"
                       : "bg-muted text-muted-foreground",
@@ -1074,7 +1074,7 @@ function useRegisterAgentToolUIs(runId: string) {
                 {thesis.target_price != null && (
                   <span>
                     <span className="text-muted-foreground uppercase tracking-wide">Target</span>{" "}
-                    <span className="tabular-nums font-medium text-emerald-500">
+                    <span className="tabular-nums font-medium text-positive">
                       ${thesis.target_price!.toFixed(2)}
                     </span>
                   </span>
@@ -1082,7 +1082,7 @@ function useRegisterAgentToolUIs(runId: string) {
                 {thesis.stop_loss != null && (
                   <span>
                     <span className="text-muted-foreground uppercase tracking-wide">Stop</span>{" "}
-                    <span className="tabular-nums font-medium text-red-500">
+                    <span className="tabular-nums font-medium text-negative">
                       ${thesis.stop_loss!.toFixed(2)}
                     </span>
                   </span>
@@ -1137,7 +1137,7 @@ function useRegisterAgentToolUIs(runId: string) {
 
       if (status === "failed") {
         return (
-          <div className="my-1.5 text-xs text-red-500 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2">
+          <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
             Trade failed: {String(result.error || result.note || "Unknown error")}
           </div>
         );

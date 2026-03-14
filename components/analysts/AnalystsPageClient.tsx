@@ -33,8 +33,8 @@ function WinRateBar({ winRate, tradeCount }: { winRate: number | null; tradeCoun
               i === 9 && "rounded-r-full",
               i < filled
                 ? positive
-                  ? "bg-emerald-500"
-                  : "bg-red-500"
+                  ? "bg-positive"
+                  : "bg-negative"
                 : "bg-muted"
             )}
           />

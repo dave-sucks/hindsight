@@ -31,7 +31,7 @@ const SelectField = ({ name, label, placeholder, options, control, error, requir
                                 </SelectItem>
                             ))}
                         </SelectContent>
-                        {error && <p className="text-sm text-red-500">{error.message}</p>}
+                        {error && <p className="text-sm text-negative">{error.message}</p>}
                     </Select>
                 )}
             />

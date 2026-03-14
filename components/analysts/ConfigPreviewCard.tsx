@@ -42,8 +42,8 @@ const directionIcon = {
 };
 
 const directionColor = {
-  LONG: "text-emerald-500",
-  SHORT: "text-red-500",
+  LONG: "text-positive",
+  SHORT: "text-negative",
   BOTH: "text-blue-500",
 };
 

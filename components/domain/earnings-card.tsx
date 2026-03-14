@@ -69,9 +69,9 @@ export function EarningsCard({
             return (
               <div key={i} className="flex items-center gap-2 px-4 py-1.5 text-xs">
                 {beat ? (
-                  <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
+                  <CheckCircle2 className="h-3 w-3 text-positive shrink-0" />
                 ) : miss ? (
-                  <XCircle className="h-3 w-3 text-red-500 shrink-0" />
+                  <XCircle className="h-3 w-3 text-negative shrink-0" />
                 ) : (
                   <div className="h-3 w-3 rounded-full bg-muted-foreground/20 shrink-0" />
                 )}
@@ -87,7 +87,7 @@ export function EarningsCard({
                   <span
                     className={cn(
                       "ml-auto tabular-nums font-medium",
-                      beat ? "text-emerald-500" : miss ? "text-red-500" : "",
+                      beat ? "text-positive" : miss ? "text-negative" : "",
                     )}
                   >
                     {q.surprisePct >= 0 ? "+" : ""}{q.surprisePct.toFixed(1)}%

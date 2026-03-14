@@ -64,8 +64,8 @@ export function ScanResultsCard({
                     className={cn(
                       "gap-1 py-0 text-[11px] font-mono",
                       isUp
-                        ? "bg-emerald-500/10 text-emerald-500"
-                        : "bg-red-500/10 text-red-500",
+                        ? "bg-positive/10 text-positive"
+                        : "bg-negative/10 text-negative",
                     )}
                   >
                     {isUp ? <ArrowUpRight className="h-2.5 w-2.5" /> : <ArrowDownRight className="h-2.5 w-2.5" />}

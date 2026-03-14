@@ -57,10 +57,10 @@ export default async function RunPage({
 
   const statusDot =
     run.status === "COMPLETE"
-      ? "bg-emerald-500"
+      ? "bg-positive"
       : run.status === "RUNNING"
       ? "bg-amber-500"
-      : "bg-red-400";
+      : "bg-negative";
 
   // Extract config snapshot from the run parameters
   const config =
@@ -85,7 +85,7 @@ export default async function RunPage({
   const hasReplay = persistedMessages !== null;
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-5.25rem)] overflow-hidden">
+    <div className="flex flex-col h-[calc(100dvh-3rem)] overflow-hidden">
       {/* Header */}
       <div className="border-b px-6 py-3 flex items-center gap-3 shrink-0">
         <Link
@@ -121,6 +121,7 @@ export default async function RunPage({
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
+            <div className="h-2.5 w-2.5 rounded-full bg-negative" />
             <p className="text-sm font-medium text-foreground">
               No replay data available
             </p>

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, PNL_HEX } from '@/lib/utils';
 import type { AnalyticsData, AnalystStat, ResearchRunSummary } from '@/lib/actions/analytics.actions';
 import {
   ResponsiveContainer,
@@ -27,8 +27,8 @@ import { TrendingUp, Trophy, Target, BarChart3 } from 'lucide-react';
 // ─── Recharts dark theme constants ────────────────────────────────────────────
 const GRID_COLOR = 'var(--border)';
 const AXIS_COLOR = 'var(--muted-foreground)';
-const EMERALD = '#10b981';      // emerald-500
-const RED = '#ef4444';          // red-500
+const EMERALD = PNL_HEX.positive;
+const RED = PNL_HEX.negative;
 const BLUE = '#3b82f6';         // blue-500 (primary)
 
 const TIME_RANGES = ['1D', '1W', '1M', 'ALL'] as const;
@@ -75,7 +75,7 @@ function StatCard({
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
         <p className={cn(
           'text-2xl font-semibold tabular-nums',
-          positive === undefined ? 'text-foreground' : positive ? 'text-emerald-500' : 'text-red-500'
+          positive === undefined ? 'text-foreground' : positive ? 'text-positive' : 'text-negative'
         )}>
           {value}
         </p>
@@ -123,22 +123,22 @@ function AnalystBreakdownCard({ analysts }: { analysts: AnalystStat[] }) {
             <div className="flex items-center gap-6 shrink-0">
               <div className="text-right">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Win Rate</p>
-                <p className={cn('text-sm font-semibold tabular-nums', a.winRate >= 50 ? 'text-emerald-500' : 'text-red-500')}>
+                <p className={cn('text-sm font-semibold tabular-nums', a.winRate >= 50 ? 'text-positive' : 'text-negative')}>
                   {a.winRate.toFixed(1)}%
                 </p>
               </div>
               <div className="text-right">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">P&amp;L</p>
-                <p className={cn('text-sm font-semibold tabular-nums', a.totalPnl >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                <p className={cn('text-sm font-semibold tabular-nums', a.totalPnl >= 0 ? 'text-positive' : 'text-negative')}>
                   {a.totalPnl >= 0 ? '+' : ''}${Math.abs(a.totalPnl).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </p>
               </div>
               <div className="text-right hidden sm:block">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">W / L</p>
                 <p className="text-sm font-medium tabular-nums">
-                  <span className="text-emerald-500">{a.wins}</span>
+                  <span className="text-positive">{a.wins}</span>
                   <span className="text-muted-foreground"> / </span>
-                  <span className="text-red-500">{a.losses}</span>
+                  <span className="text-negative">{a.losses}</span>
                 </p>
               </div>
             </div>
@@ -191,14 +191,14 @@ function ResearchRunsCard({ runs }: { runs: ResearchRunSummary[] }) {
                     <div className="text-right hidden sm:block">
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">W / L</p>
                       <p className="text-sm tabular-nums">
-                        <span className="text-emerald-500">{run.wins}</span>
+                        <span className="text-positive">{run.wins}</span>
                         <span className="text-muted-foreground"> / </span>
-                        <span className="text-red-500">{run.losses}</span>
+                        <span className="text-negative">{run.losses}</span>
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">P&amp;L</p>
-                      <p className={cn('text-sm font-semibold tabular-nums', run.pnl >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                      <p className={cn('text-sm font-semibold tabular-nums', run.pnl >= 0 ? 'text-positive' : 'text-negative')}>
                         {run.pnl >= 0 ? '+' : ''}${Math.abs(run.pnl).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </p>
                     </div>
@@ -446,7 +446,7 @@ export default function PerformancePage({ data }: Props) {
                         <div className="bg-card border border-border rounded-md px-3 py-2 text-sm shadow-lg">
                           <p className="font-mono font-semibold text-foreground">{d.ticker}</p>
                           <p className="text-xs text-muted-foreground">Conf: <span className="tabular-nums text-foreground">{d.confidence}%</span></p>
-                          <p className={cn('text-xs tabular-nums', d.return >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                          <p className={cn('text-xs tabular-nums', d.return >= 0 ? 'text-positive' : 'text-negative')}>
                             Return: {d.return >= 0 ? '+' : ''}{d.return.toFixed(2)}%
                           </p>
                         </div>
@@ -573,7 +573,7 @@ export default function PerformancePage({ data }: Props) {
                 </div>
                 <p className={cn(
                   'text-xl font-semibold tabular-nums',
-                  positive === undefined ? 'text-foreground' : positive ? 'text-emerald-500' : 'text-amber-500'
+                  positive === undefined ? 'text-foreground' : positive ? 'text-positive' : 'text-amber-500'
                 )}>
                   {current}{unit}
                   {target !== null && (

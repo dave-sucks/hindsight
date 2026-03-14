@@ -124,10 +124,10 @@ export default async function RunsPage() {
 
           const statusDot =
             run.status === "COMPLETE"
-              ? "bg-emerald-500"
+              ? "bg-positive"
               : run.status === "RUNNING"
                 ? "bg-amber-500 animate-pulse"
-                : "bg-red-400";
+                : "bg-negative";
 
           return (
             <Link

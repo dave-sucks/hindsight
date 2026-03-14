@@ -55,9 +55,9 @@ type FilterTab = 'ALL' | 'OPEN' | 'CLOSED' | 'WON' | 'LOST';
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<TradeStatus, { label: string; dotClass: string }> = {
-  OPEN: { label: 'Open', dotClass: 'bg-emerald-500 animate-pulse' },
-  CLOSED_WIN: { label: 'Won', dotClass: 'bg-emerald-500' },
-  CLOSED_LOSS: { label: 'Loss', dotClass: 'bg-red-500' },
+  OPEN: { label: 'Open', dotClass: 'bg-positive animate-pulse' },
+  CLOSED_WIN: { label: 'Won', dotClass: 'bg-positive' },
+  CLOSED_LOSS: { label: 'Loss', dotClass: 'bg-negative' },
   CLOSED_EXPIRED: { label: 'Expired', dotClass: 'bg-muted-foreground/40' },
 };
 
@@ -110,8 +110,8 @@ function TargetDots({
             'h-1.5 w-1.5 rounded-full',
             i < filled
               ? isPositive
-                ? 'bg-emerald-500'
-                : 'bg-red-500'
+                ? 'bg-positive'
+                : 'bg-negative'
               : 'bg-muted',
           )}
         />
@@ -357,7 +357,7 @@ export default function TradesPage({
                         </DropdownMenuItem>
                         {isOpen && (
                           <DropdownMenuItem
-                            className="text-red-500 focus:text-red-500"
+                            className="text-negative focus:text-negative"
                             onClick={(e) => {
                               e.stopPropagation();
                               setCloseTarget(trade.id);
