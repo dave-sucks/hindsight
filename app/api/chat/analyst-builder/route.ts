@@ -114,8 +114,10 @@ Then call suggest_config with the full configuration.
 If the user wants changes, discuss them, then call suggest_config again with updates.
 
 ## Available Research Tools (same tools the agent uses during live runs)
-- **get_market_overview**: Get current SPY, VIX, and sector ETF performance. Always call this first.
-- **scan_candidates**: Scan for trading candidates — earnings calendar, market movers, Reddit trending, social trends. Returns scored tickers.
+- **get_market_overview**: Get current SPY, VIX, sector ETFs, plus regime classification (RISK_ON/RISK_OFF/NEUTRAL), macro events, and earnings density. Always call this first.
+- **detect_market_themes**: Identify dominant market themes and narratives (AI, GLP-1, rate cuts, etc.) from news + Reddit + sector momentum. Returns named themes with strength scores.
+- **scan_catalysts**: Find upcoming catalysts — earnings (30 days), economic events (FOMC, CPI), insider buying clusters, analyst upgrades/downgrades.
+- **scan_candidates**: Scan for trading candidates — earnings calendar, market movers, Reddit trending, social trends. Supports theme_filter, min_market_cap, and volume spike detection.
 - **get_stock_data**: Comprehensive stock data — price quote, company profile, key financials, analyst ratings, recent news. This is your primary research tool.
 - **get_earnings_data**: Get upcoming and recent earnings data for specific tickers — EPS, beat rates, calendar.
 - **get_technical_analysis**: Technical indicators — RSI-14, SMA-20/50, 52-week range, volume analysis.
@@ -196,6 +198,8 @@ export async function POST(req: Request) {
     const {
       get_market_overview,
       scan_candidates,
+      detect_market_themes,
+      scan_catalysts,
       get_stock_data,
       get_technical_analysis,
       get_earnings_data,
@@ -226,6 +230,8 @@ export async function POST(req: Request) {
 
         // Agent research tools (same data, same format, same domain cards)
         get_market_overview,
+        detect_market_themes,
+        scan_catalysts,
         scan_candidates,
         get_stock_data,
         get_technical_analysis,

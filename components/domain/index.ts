@@ -65,3 +65,13 @@ export {
   type PeersCardData,
   type PeersCardProps,
 } from "./peers-card";
+export {
+  MarketThemesCard,
+  type MarketThemesData,
+  type MarketThemesCardProps,
+} from "./market-themes-card";
+export {
+  CatalystTimelineCard,
+  type CatalystTimelineData,
+  type CatalystTimelineCardProps,
+} from "./catalyst-timeline-card";

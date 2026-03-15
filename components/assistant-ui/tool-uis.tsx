@@ -54,6 +54,8 @@ import {
   SecFilingsCard,
   AnalystTargetsCard,
   PeersCard,
+  MarketThemesCard,
+  CatalystTimelineCard,
 } from "@/components/domain";
 
 // ─── Chat UI Components ─────────────────────────────────────────────────────
@@ -396,14 +398,22 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         .reverse()
         .map((s) => ({ name: s.symbol, change: s.change_pct }));
 
+      // Use tool's regime classification if available, fall back to derived
+      const toolRegime = result.regime as string | undefined;
+      const REGIME_MAP: Record<string, MarketContextData["regime"]> = {
+        RISK_ON: "trending_up",
+        RISK_OFF: "volatile",
+        NEUTRAL: "range_bound",
+      };
       const regime: MarketContextData["regime"] =
-        vix && vix.level > 25
+        (toolRegime && REGIME_MAP[toolRegime]) ??
+        (vix && vix.level > 25
           ? "volatile"
           : spy && spy.change_pct > 0.5
             ? "trending_up"
             : spy && spy.change_pct < -0.5
               ? "trending_down"
-              : "range_bound";
+              : "range_bound");
 
       const apiErrors = result.api_errors as string[] | undefined;
 
@@ -488,6 +498,107 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             }))}
             totalFound={result.total_found as number}
           />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Detect market themes → MarketThemesCard ────────────────────────
+  useAssistantToolUI({
+    toolName: "detect_market_themes",
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Detecting market themes</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Newspaper} label="Analyzing market news" status="active" />
+              <ChainOfThoughtStep icon={MessageSquare} label="Scanning social trends" status="pending" />
+              <ChainOfThoughtStep icon={TrendingUp} label="Identifying themes" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const themes = (result.themes ?? []) as {
+        id: string;
+        label: string;
+        strength: number;
+        direction: "BULLISH" | "BEARISH" | "NEUTRAL";
+        tickers: string[];
+        headline_matches: number;
+        reddit_overlap: number;
+        representative_headlines: string[];
+      }[];
+      const meta = (result.meta ?? { headlines_analyzed: 0, reddit_tickers_found: 0, lookback_days: 3 }) as {
+        headlines_analyzed: number;
+        reddit_tickers_found: number;
+        lookback_days: number;
+      };
+
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Detecting market themes</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Newspaper} label={`Analyzed ${meta.headlines_analyzed} headlines`} status="complete" />
+              <ChainOfThoughtStep icon={MessageSquare} label={`Found ${meta.reddit_tickers_found} Reddit tickers`} status="complete" />
+              <ChainOfThoughtStep icon={TrendingUp} label={`Identified ${themes.length} themes`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <MarketThemesCard themes={themes} meta={meta} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Scan catalysts → CatalystTimelineCard ──────────────────────────
+  useAssistantToolUI({
+    toolName: "scan_catalysts",
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Scanning for catalysts</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Calendar} label="Checking earnings calendar" status="active" />
+              <ChainOfThoughtStep icon={TrendingUp} label="Scanning economic events" status="pending" />
+              <ChainOfThoughtStep icon={Users} label="Reviewing insider activity" status="pending" />
+              <ChainOfThoughtStep icon={Target} label="Checking analyst actions" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const catalysts = (result.catalysts ?? []) as {
+        ticker: string | null;
+        catalyst_type: "EARNINGS" | "ECONOMIC" | "INSIDER" | "ANALYST_ACTION";
+        date: string;
+        expected_impact: "HIGH" | "MEDIUM" | "LOW";
+        direction_bias: "BULLISH" | "BEARISH" | "UNKNOWN";
+        details: string;
+      }[];
+      const summary = (result.summary ?? { total: 0, by_type: {}, next_high_impact: null }) as {
+        total: number;
+        by_type: Record<string, number>;
+        next_high_impact: string | null;
+      };
+
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Scanning for catalysts</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Calendar} label={`${summary.by_type.EARNINGS ?? 0} earnings events`} status="complete" />
+              <ChainOfThoughtStep icon={TrendingUp} label={`${summary.by_type.ECONOMIC ?? 0} economic events`} status="complete" />
+              <ChainOfThoughtStep icon={Users} label={`${summary.by_type.INSIDER ?? 0} insider signals`} status="complete" />
+              <ChainOfThoughtStep icon={Target} label={`${summary.by_type.ANALYST_ACTION ?? 0} analyst actions`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <CatalystTimelineCard catalysts={catalysts} summary={summary} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },

@@ -259,7 +259,7 @@ export async function POST(req: Request) {
     system: systemPrompt,
     messages: modelMessages,
     tools,
-    stopWhen: stepCountIs(25),
+    stopWhen: stepCountIs(30),
     async onFinish({ response }) {
       const elapsed = Date.now() - t0;
       console.log(`[agent] onFinish runId=${runId} elapsed=${elapsed}ms responseMsgs=${response.messages.length}`);
