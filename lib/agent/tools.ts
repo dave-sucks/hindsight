@@ -1698,7 +1698,7 @@ export function createResearchTools(ctx: ToolContext) {
     search_reddit: tool({
       description:
         "Search Reddit trading communities by topic or keyword. Searches r/wallstreetbets, r/stocks, r/options, r/investing. Use for broad topics like 'biotech FDA', 'momentum plays', 'semiconductor earnings'. For ticker-specific sentiment, use get_reddit_sentiment instead.",
-      parameters: z.object({
+      inputSchema: z.object({
         query: z.string().describe("Search query — topic or ticker. E.g. 'biotech FDA', 'NVDA earnings', 'momentum plays'"),
       }),
       execute: async ({ query }) => {
