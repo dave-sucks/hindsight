@@ -5,6 +5,7 @@ import {
 } from "@/components/assistant-ui/attachment";
 import { CitedMarkdownText } from "@/components/assistant-ui/cited-markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
+import { ResearchToolGroup } from "@/components/assistant-ui/research-tool-group";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
   SourcesProvider,
@@ -220,6 +221,7 @@ const AssistantMessage: FC = () => {
                 components={{
                   Text: CitedMarkdownText,
                   tools: { Fallback: ToolFallback },
+                  ToolGroup: ResearchToolGroup,
                 }}
               />
             </SourcesProvider>

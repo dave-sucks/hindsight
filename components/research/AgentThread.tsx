@@ -9,7 +9,7 @@
  * - Stock data → StockCard (inline → sheet) + NewsCard (post-list)
  * - Technical analysis → TechnicalCard (reasoning block)
  * - Earnings data → EarningsCard (compact rows)
- * - Options flow → OptionsFlowCard (compact)
+ * - Options flow → CoT step (via ResearchToolGroup)
  * - Reddit sentiment → collapsible reasoning block
  * - show_thesis → slim pill → ThesisArtifactSheet
  * - place_trade → TradeCard (server-side execution)
@@ -163,7 +163,6 @@ function AgentThreadInner({
       }}
       composerSlot={
         <div className="space-y-2">
-          {isFollowupMode && <FollowupQuickReplies />}
           <HindsightComposer
             features={{
               placeholder: isFollowupMode
