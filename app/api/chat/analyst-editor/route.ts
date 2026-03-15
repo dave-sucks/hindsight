@@ -157,47 +157,54 @@ export async function POST(req: Request) {
 
         web_search: tool({
           description:
-            "Search the web for current market news or strategy insights to inform editing recommendations.",
+            "Search for current market news by topic or ticker to inform editing recommendations.",
           inputSchema: z.object({
-            query: z.string().describe("Search query — be specific"),
+            query: z.string().describe("Search query — ticker symbol or topic"),
           }),
           execute: async ({ query }) => {
             try {
-              const newsUrl = `https://financialmodelingprep.com/api/v3/stock_news?limit=10&apikey=${FMP_KEY}`;
-              const stockNewsUrl = `https://financialmodelingprep.com/api/v3/fmp/articles?page=0&size=10&apikey=${FMP_KEY}`;
-
-              const [news, articles] = await Promise.all([
-                fetchJSON(newsUrl),
-                fetchJSON(stockNewsUrl),
+              // Use Finnhub general news + FMP stock news
+              const [finnhubNews, fmpNews] = await Promise.all([
+                fetchJSON(
+                  `https://finnhub.io/api/v1/news?category=general&token=${FINNHUB_KEY}`
+                ),
+                fetchJSON(
+                  `https://financialmodelingprep.com/api/v3/stock_news?limit=10&apikey=${FMP_KEY}`
+                ),
               ]);
 
               const results: Array<{ title: string; text: string; url: string; source: string }> = [];
+              const queryLower = query.toLowerCase();
 
-              if (Array.isArray(news)) {
-                for (const n of news.slice(0, 5)) {
+              if (Array.isArray(finnhubNews)) {
+                for (const n of finnhubNews.slice(0, 10)) {
+                  const title = String(n.headline ?? "");
+                  const summary = String(n.summary ?? "");
                   if (
-                    n.title?.toLowerCase().includes(query.split(" ")[0]?.toLowerCase()) ||
-                    n.text?.toLowerCase().includes(query.split(" ")[0]?.toLowerCase()) ||
+                    title.toLowerCase().includes(queryLower) ||
+                    summary.toLowerCase().includes(queryLower) ||
                     results.length < 3
                   ) {
                     results.push({
-                      title: n.title ?? "",
-                      text: (n.text ?? "").slice(0, 200),
-                      url: n.url ?? "",
-                      source: n.site ?? "FMP",
+                      title,
+                      text: summary.slice(0, 200),
+                      url: String(n.url ?? ""),
+                      source: String(n.source ?? "Finnhub"),
                     });
                   }
+                  if (results.length >= 5) break;
                 }
               }
 
-              if (Array.isArray(articles?.content)) {
-                for (const a of articles.content.slice(0, 3)) {
+              if (Array.isArray(fmpNews) && results.length < 6) {
+                for (const n of fmpNews.slice(0, 5)) {
                   results.push({
-                    title: a.title ?? "",
-                    text: (a.content ?? "").slice(0, 200),
-                    url: a.link ?? "",
-                    source: "FMP Analysis",
+                    title: String(n.title ?? ""),
+                    text: String(n.text ?? "").slice(0, 200),
+                    url: String(n.url ?? ""),
+                    source: String(n.site ?? "FMP"),
                   });
+                  if (results.length >= 6) break;
                 }
               }
 
@@ -223,27 +230,25 @@ export async function POST(req: Request) {
           inputSchema: z.object({}),
           execute: async () => {
             try {
-              const [spyQuote, sectorData] = await Promise.all([
+              // Use Finnhub for SPY + VIX (FMP /quote/ is deprecated/403)
+              const [spyQuote, vixQuote, sectorData] = await Promise.all([
                 fetchJSON(
-                  `https://financialmodelingprep.com/api/v3/quote/SPY?apikey=${FMP_KEY}`,
+                  `https://finnhub.io/api/v1/quote?symbol=SPY&token=${FINNHUB_KEY}`,
+                ),
+                fetchJSON(
+                  `https://finnhub.io/api/v1/quote?symbol=VIX&token=${FINNHUB_KEY}`,
                 ),
                 fetchJSON(
                   `https://financialmodelingprep.com/api/v3/sectors-performance?apikey=${FMP_KEY}`,
                 ),
               ]);
 
-              const vixQuote = await fetchJSON(
-                `https://finnhub.io/api/v1/quote?symbol=VIX&token=${FINNHUB_KEY}`,
-              );
-
-              const spy = Array.isArray(spyQuote) ? spyQuote[0] : null;
-
               return {
-                spy: spy
+                spy: spyQuote?.c
                   ? {
-                      price: spy.price,
-                      change: spy.changesPercentage,
-                      dayRange: `${spy.dayLow} - ${spy.dayHigh}`,
+                      price: spyQuote.c,
+                      change: spyQuote.dp ?? 0,
+                      dayRange: `${spyQuote.l ?? "—"} - ${spyQuote.h ?? "—"}`,
                     }
                   : null,
                 vix: vixQuote?.c
