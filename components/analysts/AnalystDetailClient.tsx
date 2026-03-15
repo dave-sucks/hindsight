@@ -17,9 +17,11 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import { TradeRow } from "@/components/ui/trade-row";
 import { Markdown } from "@/components/ui/markdown";
+import { BriefingFeed } from "@/components/analysts/BriefingFeed";
 import {
   Settings2,
   FileText,
@@ -28,7 +30,7 @@ import type {
   AnalystDetail,
   TradeWithThesis,
 } from "@/lib/actions/analyst.actions";
-import { cn, pnlColor, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
+import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -76,38 +78,6 @@ function AnalystTradeRow({ trade }: { trade: TradeWithThesis }) {
       pnlPct={pnlPct}
       status={trade.status}
     />
-  );
-}
-
-// ── Strategy Document (the hero prompt) ──────────────────────────────────────
-
-function StrategyDocument({
-  config,
-}: {
-  config: AnalystDetail["config"];
-}) {
-  const prompt = config.analystPrompt;
-  const hasPrompt = !!prompt && prompt.trim().length > 0;
-
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-8 py-10">
-        {hasPrompt ? (
-          <Markdown variant="prose">{prompt}</Markdown>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-20 space-y-3">
-            <FileText className="h-10 w-10 text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">
-              No strategy prompt yet
-            </p>
-            <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
-              Use the chat below to brainstorm and create a detailed strategy
-              prompt that will guide this analyst&apos;s research runs.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -225,7 +195,7 @@ export default function AnalystDetailClient({
   detail: AnalystDetail;
   hasRunning: boolean;
 }) {
-  const { config: rawConfig, stats, recentRuns, recentTrades } = detail;
+  const { config: rawConfig, stats, recentTrades } = detail;
 
   // Defensive defaults for array fields that may be missing from older data
   const config = useMemo(() => ({
@@ -271,7 +241,7 @@ export default function AnalystDetailClient({
       : PNL_HEX.negative;
 
   // ── Display values ──────────────────────────────────────────────────────
-  const pnlColor =
+  const pnlColorClass =
     stats.totalTrades > 0
       ? stats.totalPnl >= 0
         ? "text-positive"
@@ -285,7 +255,7 @@ export default function AnalystDetailClient({
   return (
     <>
       <div className="grid lg:grid-cols-3 h-[calc(100dvh-3rem)] overflow-hidden">
-        {/* ── Left: Strategy prompt hero ───────────────────────────────── */}
+        {/* ── Left: Analyst briefing hero ───────────────────────────────── */}
         <div className="lg:col-span-2 flex flex-col overflow-y-auto relative">
           {/* Header */}
           <div className="flex items-start justify-between gap-4 p-4 shrink-0">
@@ -340,8 +310,47 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
-          {/* ── Strategy document (always visible) ──────────────────────── */}
-          <StrategyDocument config={config} />
+          {/* ── Tabs: Briefings | Overview ───── */}
+          <Tabs defaultValue={0} className="flex-1 overflow-hidden">
+            <div className="px-4 shrink-0">
+              <TabsList>
+                <TabsTrigger value={0}>
+                  Briefings
+                  {detail.briefings.length > 0 && (
+                    <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
+                      {detail.briefings.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value={1}>Overview</TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value={0} className="flex-1 overflow-y-auto">
+              <div className="max-w-3xl mx-auto px-8 py-6">
+                <BriefingFeed briefings={detail.briefings} />
+              </div>
+            </TabsContent>
+            <TabsContent value={1} className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto">
+                <div className="max-w-3xl mx-auto px-8 py-6">
+                  {config.analystPrompt && config.analystPrompt.trim().length > 0 ? (
+                    <Markdown variant="prose">{config.analystPrompt}</Markdown>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-20 space-y-3">
+                      <FileText className="h-10 w-10 text-muted-foreground/30" />
+                      <p className="text-sm text-muted-foreground">
+                        No strategy prompt yet
+                      </p>
+                      <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
+                        Use the chat below to brainstorm and create a detailed strategy
+                        prompt that will guide this analyst&apos;s research runs.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
         {/* ── Right sidebar: portfolio-style ─────────────────────────────── */}
         <div className="p-4 h-full">
@@ -361,7 +370,7 @@ export default function AnalystDetailClient({
                     <p
                       className={cn(
                         "text-lg font-semibold tabular-nums",
-                        pnlColor,
+                        pnlColorClass,
                       )}
                     >
                       {pnlStr}

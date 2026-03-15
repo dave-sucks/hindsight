@@ -27,7 +27,7 @@ import {
   toggleAutoRun,
   type AgentConfigInput,
 } from '@/lib/actions/settings.actions';
-import type { AgentConfig } from '@/lib/generated/prisma';
+import type { AgentConfig } from '@/lib/generated/prisma/client';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ function ResearchScheduleCard({
       </SettingRow>
 
       <SettingRow label="Max Open Positions">
-        <Select value={maxTrades} onValueChange={setMaxTrades}>
+        <Select value={maxTrades} onValueChange={(v) => v != null && setMaxTrades(v)}>
           <SelectTrigger className="w-20 h-8 text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -170,7 +170,7 @@ function ResearchScheduleCard({
       </SettingRow>
 
       <SettingRow label="Min Confidence Threshold">
-        <Select value={minConfidence} onValueChange={setMinConfidence}>
+        <Select value={minConfidence} onValueChange={(v) => v != null && setMinConfidence(v)}>
           <SelectTrigger className="w-20 h-8 text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -465,7 +465,7 @@ export default function SettingsPage({
   const [config, setConfig] = useState<AgentConfig>(initialConfig);
 
   const handleSaved = (patch: Partial<AgentConfigInput>) => {
-    setConfig((prev) => ({
+    setConfig((prev: AgentConfig) => ({
       ...prev,
       ...patch,
       // map AgentConfigInput keys back to AgentConfig model keys
