@@ -14,9 +14,12 @@
  * - show_thesis → slim pill → ThesisArtifactSheet
  * - place_trade → TradeCard (server-side execution)
  * - summarize_run → RunSummaryCard
+ *
+ * After a run completes, the composer switches to the followup transport
+ * so users can ask questions, place trades, and manage positions.
  */
 
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useCallback } from "react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
@@ -26,7 +29,14 @@ import {
 } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
-import { useRegisterResearchToolUIs } from "@/components/assistant-ui/tool-uis";
+import {
+  useRegisterResearchToolUIs,
+  useRegisterFollowupToolUIs,
+} from "@/components/assistant-ui/tool-uis";
+import {
+  QuickReply,
+  type QuickReply as QuickReplyType,
+} from "@/components/manifest-ui/quick-reply";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -49,13 +59,18 @@ export function AgentThread({
   autoStart = true,
   initialMessages,
 }: AgentThreadProps) {
+  // Live runs use the agent route; completed runs use followup route
+  const isFollowupMode = !autoStart && !!initialMessages;
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
-        api: "/api/research/agent",
-        body: { runId, analystId, config },
+        api: isFollowupMode ? "/api/chat/run-followup" : "/api/research/agent",
+        body: isFollowupMode
+          ? { runId, analystId }
+          : { runId, analystId, config },
       }),
-    [runId, analystId, config],
+    [runId, analystId, config, isFollowupMode],
   );
 
   const runtime = useChatRuntime({
@@ -69,12 +84,43 @@ export function AgentThread({
         runId={runId}
         analystName={analystName}
         autoStart={autoStart}
+        isFollowupMode={isFollowupMode}
       />
     </AssistantRuntimeProvider>
   );
 }
 
-// Old DefaultComposer removed — replaced by HindsightComposer
+// ─── Quick reply pills for completed runs ───────────────────────────────────
+
+function FollowupQuickReplies() {
+  const threadRuntime = useThreadRuntime();
+
+  const handleSelect = useCallback(
+    (reply: QuickReplyType) => {
+      if (reply.label) {
+        threadRuntime.append({
+          role: "user",
+          content: [{ type: "text", text: reply.label }],
+        });
+      }
+    },
+    [threadRuntime],
+  );
+
+  return (
+    <QuickReply
+      data={{
+        replies: [
+          { label: "Show portfolio status" },
+          { label: "Explain the top pick" },
+          { label: "What are the biggest risks?" },
+          { label: "Research another ticker" },
+        ],
+      }}
+      actions={{ onSelectReply: handleSelect }}
+    />
+  );
+}
 
 // ─── Inner thread component ─────────────────────────────────────────────────
 
@@ -82,12 +128,15 @@ function AgentThreadInner({
   runId,
   analystName,
   autoStart,
+  isFollowupMode,
 }: {
   runId: string;
   analystName: string;
   autoStart: boolean;
+  isFollowupMode: boolean;
 }) {
   useRegisterResearchToolUIs(runId);
+  useRegisterFollowupToolUIs();
 
   const threadRuntime = useThreadRuntime();
 
@@ -108,13 +157,18 @@ function AgentThreadInner({
     <Thread
       welcomeConfig={{
         title: analystName,
-        subtitle: "Autonomous research agent",
+        subtitle: isFollowupMode
+          ? "Run complete — ask follow-up questions or place trades"
+          : "Autonomous research agent",
       }}
       composerSlot={
-        <div>
+        <div className="space-y-2">
+          {isFollowupMode && <FollowupQuickReplies />}
           <HindsightComposer
             features={{
-              placeholder: "Ask a follow-up question…",
+              placeholder: isFollowupMode
+                ? "Ask about the run, research a ticker, or place a trade…"
+                : "Ask a follow-up question…",
               tickerSearch: true,
               slashCommands: true,
             }}

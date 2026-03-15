@@ -60,6 +60,8 @@ export interface AnalystStat {
   trades: number;
   winRate: number;
   totalPnl: number;
+  bestTrade: { ticker: string; pnl: number } | null;
+  worstTrade: { ticker: string; pnl: number } | null;
 }
 
 export interface ResearchRunSummary {
@@ -283,17 +285,25 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 
   // ── Per-analyst breakdown ─────────────────────────────────────────────────
 
-  interface AnalystAccum { name: string; wins: number; losses: number; totalPnl: number; }
+  interface AnalystAccum {
+    name: string; wins: number; losses: number; totalPnl: number;
+    bestTrade: { ticker: string; pnl: number } | null;
+    worstTrade: { ticker: string; pnl: number } | null;
+  }
   const analystMap = new Map<string, AnalystAccum>();
 
   for (const t of tradesWithOutcome) {
     const runConfig = (t.thesis as { researchRun?: { agentConfigId: string | null; agentConfig: { name: string } | null } } | undefined)?.researchRun;
     const analystId = runConfig?.agentConfigId ?? "__unassigned__";
     const analystName = runConfig?.agentConfig?.name ?? "Unassigned";
-    const acc = analystMap.get(analystId) ?? { name: analystName, wins: 0, losses: 0, totalPnl: 0 };
+    const acc = analystMap.get(analystId) ?? { name: analystName, wins: 0, losses: 0, totalPnl: 0, bestTrade: null, worstTrade: null };
     if (t.outcome === "WIN") acc.wins++;
     else if (t.outcome === "LOSS") acc.losses++;
-    acc.totalPnl += t.realizedPnl ?? 0;
+    const pnl = t.realizedPnl ?? 0;
+    acc.totalPnl += pnl;
+    const ticker = t.thesis?.ticker ?? "???";
+    if (!acc.bestTrade || pnl > acc.bestTrade.pnl) acc.bestTrade = { ticker, pnl };
+    if (!acc.worstTrade || pnl < acc.worstTrade.pnl) acc.worstTrade = { ticker, pnl };
     analystMap.set(analystId, acc);
   }
 
@@ -306,6 +316,8 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
       trades: acc.wins + acc.losses,
       winRate: acc.wins + acc.losses > 0 ? (acc.wins / (acc.wins + acc.losses)) * 100 : 0,
       totalPnl: acc.totalPnl,
+      bestTrade: acc.bestTrade,
+      worstTrade: acc.worstTrade,
     }))
     .sort((a, b) => b.trades - a.trades);
 
