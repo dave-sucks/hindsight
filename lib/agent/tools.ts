@@ -65,118 +65,12 @@ async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
   }
 }
 
-// ── Reddit (public JSON API — same approach as python-service/services/reddit.py) ──
-
-const REDDIT_SUBREDDITS = ["wallstreetbets", "stocks", "options", "investing"];
-
-async function fetchRedditSubreddit(
-  sub: string,
-  ticker: string,
-  maxRetries = 2,
-): Promise<{ title: string; score: number; subreddit: string; url: string }[]> {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const res = await fetch(
-        `https://www.reddit.com/r/${sub}/search.json?q=${ticker}&sort=new&t=week&limit=10&restrict_sr=on`,
-        {
-          headers: {
-            "User-Agent": "hindsight-research/1.0 (by /u/hindsight-bot)",
-            Accept: "application/json",
-          },
-          signal: AbortSignal.timeout(8000),
-        },
-      );
-      if (res.status === 429 || res.status === 403) {
-        console.warn(
-          `[reddit] r/${sub} returned ${res.status} for ${ticker} (attempt ${attempt + 1}/${maxRetries + 1})`,
-        );
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-          continue;
-        }
-        return [];
-      }
-      if (!res.ok) {
-        console.warn(`[reddit] r/${sub} returned ${res.status} for ${ticker}`);
-        return [];
-      }
-      const data = await res.json();
-      const posts = data?.data?.children ?? [];
-      const results: { title: string; score: number; subreddit: string; url: string }[] = [];
-      for (const post of posts) {
-        const d = post.data;
-        if (d?.title) {
-          results.push({
-            title: d.title,
-            score: d.score ?? 0,
-            subreddit: sub,
-            url: `https://reddit.com${d.permalink}`,
-          });
-        }
-      }
-      return results;
-    } catch (err) {
-      console.warn(
-        `[reddit] r/${sub} fetch error for ${ticker} (attempt ${attempt + 1}/${maxRetries + 1}):`,
-        err instanceof Error ? err.message : err,
-      );
-      if (attempt < maxRetries) {
-        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-        continue;
-      }
-      return [];
-    }
-  }
-  return [];
-}
-
-async function redditSentiment(ticker: string) {
-  const results: { title: string; score: number; subreddit: string; url: string }[] = [];
-  let failedCount = 0;
-  let blockedCount = 0;
-
-  const subResults = await Promise.all(
-    REDDIT_SUBREDDITS.map((sub) => fetchRedditSubreddit(sub, ticker)),
-  );
-  for (const subPosts of subResults) {
-    if (subPosts.length === 0) failedCount++;
-    results.push(...subPosts);
-  }
-
-  if (failedCount === REDDIT_SUBREDDITS.length) {
-    blockedCount = failedCount;
-  }
-
-  // Deduplicate by URL
-  const seen = new Set<string>();
-  const unique = results.filter((r) => {
-    if (seen.has(r.url)) return false;
-    seen.add(r.url);
-    return true;
-  });
-
-  unique.sort((a, b) => b.score - a.score);
-
-  const positiveWords = ["bull", "calls", "moon", "buy", "long", "breakout", "upgrade", "beat"];
-  const negativeWords = ["bear", "puts", "crash", "sell", "short", "downgrade", "miss", "drop"];
-  let sentimentScore = 0;
-  for (const r of unique) {
-    const lower = r.title.toLowerCase();
-    for (const w of positiveWords) if (lower.includes(w)) sentimentScore += 1;
-    for (const w of negativeWords) if (lower.includes(w)) sentimentScore -= 1;
-  }
-
-  return {
-    mention_count: unique.length,
-    sentiment_score: sentimentScore,
-    sentiment: sentimentScore > 2 ? "bullish" : sentimentScore < -2 ? "bearish" : "neutral",
-    trending: unique.length >= 5,
-    top_posts: unique.slice(0, 5),
-    all_blocked: blockedCount === REDDIT_SUBREDDITS.length,
-    failed_subreddits: failedCount,
-    total_subreddits: REDDIT_SUBREDDITS.length,
-  };
-}
+// ── Reddit (shared client in lib/reddit.ts) ──
+import {
+  getRedditSentiment,
+  discoverTrendingTickers,
+  type RedditSentimentResult,
+} from "@/lib/reddit";
 
 // ── StockTwits trending ─────────────────────────────────────────────────────
 
@@ -535,11 +429,12 @@ export function createResearchTools(ctx: ToolContext) {
           .toISOString()
           .slice(0, 10);
 
-        const [earningsResult, gainersResult, losersResult, stTrending] = await Promise.all([
+        const [earningsResult, gainersResult, losersResult, stTrending, redditTrending] = await Promise.all([
           finnhub(`/calendar/earnings?from=${today}&to=${nextWeek}`),
           fmp("/stock_market/gainers"),
           fmp("/stock_market/losers"),
           stocktwitsTrending(),
+          discoverTrendingTickers(),
         ]);
 
         const earnings = earningsResult.data as Record<string, unknown> | null;
@@ -604,6 +499,14 @@ export function createResearchTools(ctx: ToolContext) {
           score: 1,
         }));
 
+        // Reddit trending (WSB + r/stocks + r/options + r/investing)
+        const redditTickers = redditTrending.map((t) => ({
+          ticker: t.ticker,
+          source: "reddit_trending" as const,
+          score: 2, // Reddit retail momentum signal
+          mentions: t.mentions,
+        }));
+
         // Score & deduplicate
         const allCandidates = [
           ...watchlistTickers,
@@ -611,6 +514,7 @@ export function createResearchTools(ctx: ToolContext) {
           ...gainerTickers,
           ...loserTickers,
           ...socialTickers,
+          ...redditTickers,
         ];
 
         const scoreMap = new Map<
@@ -670,7 +574,7 @@ export function createResearchTools(ctx: ToolContext) {
         const movers = filtered
           .filter(([, v]) =>
             v.sources.some((s) =>
-              ["top_gainers", "top_losers", "watchlist", "stocktwits_trending"].includes(s),
+              ["top_gainers", "top_losers", "watchlist", "stocktwits_trending", "reddit_trending"].includes(s),
             ),
           )
           .map(([ticker, v]) => ({
@@ -995,87 +899,15 @@ export function createResearchTools(ctx: ToolContext) {
 
     get_reddit_sentiment: tool({
       description:
-        "Get Reddit sentiment for a stock from r/wallstreetbets, r/stocks, r/options, r/investing. Shows mention count, sentiment direction, and top posts.",
+        "Get Reddit sentiment for a stock from r/wallstreetbets, r/stocks, r/options, r/investing. Shows mention count, sentiment direction, and top posts with upvotes and comment counts.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
-        const data = await redditSentiment(ticker);
+        const data: RedditSentimentResult = await getRedditSentiment(ticker);
 
-        // If public Reddit API was fully blocked, try Python service (PRAW) as fallback
-        let redditErrorType: "rate_limited" | "service_unavailable" = "rate_limited";
-        if (data.mention_count === 0 && data.all_blocked) {
-          const pythonUrl = process.env.PYTHON_SERVICE_URL;
-          const pythonSecret = process.env.PYTHON_SERVICE_SECRET;
-          if (pythonUrl) {
-            try {
-              console.log(`[reddit] Public API blocked, trying Python PRAW fallback for ${ticker}`);
-              const res = await fetch(`${pythonUrl}/research/reddit-sentiment?ticker=${ticker}`, {
-                headers: {
-                  "X-Service-Secret": pythonSecret ?? "",
-                  Accept: "application/json",
-                },
-                signal: AbortSignal.timeout(15000),
-              });
-              if (res.ok) {
-                const pyData = await res.json();
-                if (pyData && (pyData.mention_count > 0 || pyData.posts?.length > 0)) {
-                  const posts = (pyData.posts ?? pyData.top_posts ?? []) as {
-                    title: string;
-                    score: number;
-                    subreddit: string;
-                    url: string;
-                  }[];
-                  return {
-                    available: true,
-                    mention_count: pyData.mention_count ?? posts.length,
-                    sentiment: pyData.sentiment ?? "neutral",
-                    sentiment_score: pyData.sentiment_score ?? 0,
-                    trending: pyData.trending ?? posts.length >= 5,
-                    sources: posts.slice(0, 5).map((p) => ({
-                      provider: `r/${p.subreddit}`,
-                      title: p.title,
-                      url: p.url,
-                      score: p.score,
-                    })),
-                    data_source: "python_praw",
-                    _sources: posts.slice(0, 5).map((p) => ({
-                      provider: `Reddit r/${p.subreddit}`,
-                      title: p.title,
-                      url: p.url,
-                    })),
-                  };
-                }
-              } else {
-                redditErrorType = "service_unavailable";
-                console.warn(`[reddit] Python PRAW fallback returned ${res.status} for ${ticker}`);
-              }
-            } catch (err) {
-              redditErrorType = "service_unavailable";
-              console.warn(
-                `[reddit] Python PRAW fallback failed for ${ticker}:`,
-                err instanceof Error ? err.message : err,
-              );
-            }
-          }
-
-          return {
-            available: false,
-            reason: "blocked",
-            error_type: redditErrorType,
-            note: `Reddit API returned 403/429 for all subreddits (likely IP-based rate limiting). No Reddit sentiment data available for ${ticker}. Continue analysis with other data sources.`,
-            _sources: [{
-              provider: "Reddit",
-              title: `${ticker} Reddit Sentiment (Blocked)`,
-              url: `https://www.reddit.com/search/?q=${ticker}&sort=new`,
-              excerpt: "Reddit API returned 403/429 — IP-based rate limiting active",
-            }],
-          };
-        }
-
-        if (data.mention_count === 0) {
+        if (!data.available || data.mention_count === 0) {
           return {
             available: false,
             reason: "no_mentions",
-            error_type: "no_mentions" as const,
             note: `No recent Reddit mentions found for ${ticker}. This doesn't necessarily mean anything negative — some stocks simply aren't discussed on Reddit.`,
             _sources: [{
               provider: "Reddit",
@@ -1097,6 +929,7 @@ export function createResearchTools(ctx: ToolContext) {
             title: p.title,
             url: p.url,
             score: p.score,
+            comments: p.num_comments,
           })),
           _sources: data.top_posts.map((p) => ({
             provider: `Reddit r/${p.subreddit}`,
