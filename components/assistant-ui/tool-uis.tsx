@@ -3,17 +3,44 @@
 import { createContext, useContext, useMemo, useState } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { useAssistantToolUI } from "@assistant-ui/react";
-import { ArrowRight, Check } from "lucide-react";
 import {
-  AgentConfigCard,
-  type AgentConfigData,
-} from "@/components/domain/agent-config-card";
+  ArrowRight,
+  Check,
+  BarChart3,
+  Search,
+  Newspaper,
+  LineChart as LineChartIcon,
+  Calendar,
+  Activity,
+  MessageSquareText,
+  CheckCircle2,
+  Target,
+  Users,
+  TrendingUp,
+  TrendingDown,
+  FileText,
+  MessageSquare,
+  Globe,
+  ExternalLink,
+  Flame,
+  Briefcase,
+  GitCompare,
+  HelpCircle,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// ─── UI Components ──────────────────────────────────────────────────────────
+
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-// ─── Research tool UI imports ────────────────────────────────────────────────
+// ─── Domain Components ──────────────────────────────────────────────────────
 
+import {
+  AgentConfigCard,
+  type AgentConfigData,
+} from "@/components/domain/agent-config-card";
 import {
   ThesisCard,
   type ThesisCardData,
@@ -31,6 +58,10 @@ import {
   AnalystTargetsCard,
   PeersCard,
 } from "@/components/domain";
+import { StockLogo } from "@/components/StockLogo";
+
+// ─── Chat UI Components ─────────────────────────────────────────────────────
+
 import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
 import { XPost } from "@/components/manifest-ui/x-post";
 import { PostList } from "@/components/manifest-ui/post-list";
@@ -49,22 +80,6 @@ import {
 } from "@/components/ai-elements/chain-of-thought";
 import { Citation } from "@/components/tool-ui/citation";
 import type { CitationType } from "@/components/tool-ui/citation";
-import {
-  BarChart3,
-  Search,
-  Newspaper,
-  LineChart as LineChartIcon,
-  Calendar,
-  Activity,
-  MessageSquareText,
-  CheckCircle2,
-  Target,
-  Users,
-  TrendingUp,
-  TrendingDown,
-  FileText,
-  MessageSquare,
-} from "lucide-react";
 
 // ─── Context for passing callbacks into tool UIs ────────────────────────────
 
@@ -336,11 +351,6 @@ SuggestConfigEditorRender.displayName = "SuggestConfigEditorRender";
 
 // ─── Builder research tool UIs ──────────────────────────────────────────────
 
-import {
-  Globe,
-  ExternalLink,
-} from "lucide-react";
-
 const WebSearchRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
   const a = (args ?? {}) as Record<string, unknown>;
   const r = (result ?? {}) as Record<string, unknown>;
@@ -401,11 +411,7 @@ const WebSearchRender: ToolCallMessagePartComponent = ({ args, result, status })
 WebSearchRender.displayName = "WebSearchRender";
 
 
-import { StockLogo } from "@/components/StockLogo";
-
 // ─── Trending Stocks tool UI ────────────────────────────────────────────────
-
-import { Flame } from "lucide-react";
 
 const TrendingStocksRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
   const a = (args ?? {}) as Record<string, unknown>;
@@ -1660,17 +1666,8 @@ export function useRegisterEditorToolUIs() {
   useAssistantToolUI({ toolName: "get_trending_stocks", render: TrendingStocksRender });
 }
 
-/** @deprecated Use useRegisterBuilderToolUIs or useRegisterEditorToolUIs */
-export const useRegisterToolUIs = useRegisterBuilderToolUIs;
 
 // ─── Trading / Research / Portfolio tool UIs (run-followup chat) ────────────
-
-import {
-  Briefcase,
-  GitCompare,
-  HelpCircle,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
 
 // ── research_ticker / get_thesis → ThesisCard ───────────────────────────────
 
