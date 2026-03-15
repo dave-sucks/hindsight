@@ -99,6 +99,8 @@ You MUST call show_thesis for EVERY ticker you researched in Phase 3. No excepti
 
 If you researched 4 tickers, you must call show_thesis exactly 4 times.
 
+**PASS theses MUST include entry_price** — even when passing, include the current market price as \`entry_price\`. This allows us to track what would have happened and measure whether your pass decisions were correct.
+
 **Source tracking:** When calling show_thesis, include the \`sources_used\` parameter. Collect all \`_sources\` entries from the tool calls you made for that ticker (get_stock_data, get_technical_analysis, get_earnings_data, get_analyst_targets, get_news_deep_dive, etc.) and pass them as the sources_used array. Each entry should have: provider, title, and optionally url and excerpt. This is how we track data provenance for each thesis.
 
 ### Phase 5: Trade Decision — MANDATORY

@@ -29,6 +29,15 @@ export type DirectionStats = {
   winRate: number | null;
 };
 
+export type ShadowStats = {
+  totalPasses: number;
+  goodPasses: number;       // price moved against the would-be trade (pass was correct)
+  badPasses: number;        // price moved in favor (missed opportunity)
+  passAccuracy: number | null;  // goodPasses / totalPasses
+  avgMissedGain: number;    // avg $ missed on bad passes
+  avgAvoidedLoss: number;   // avg $ avoided on good passes
+};
+
 export type AccuracyStats = {
   tradesAnalyzed: number;
   overallWinRate: number | null;
@@ -37,6 +46,7 @@ export type AccuracyStats = {
   directionStats: DirectionStats[];
   longestWinStreak: number;
   longestLossStreak: number;
+  shadowStats: ShadowStats | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -115,6 +125,7 @@ export async function getAccuracyStats(
       directionStats: [],
       longestWinStreak: 0,
       longestLossStreak: 0,
+      shadowStats: null,
     };
   }
 
@@ -174,6 +185,37 @@ export async function getAccuracyStats(
     trades.map((t) => t.outcome ?? "")
   );
 
+  // ── Shadow trade stats (pass accuracy) ───────────────────────────────────
+  let shadowStats: ShadowStats | null = null;
+  const shadowTrades = await prisma.trade.findMany({
+    where: {
+      userId,
+      status: "SHADOW_CLOSED",
+      outcome: { in: ["WIN", "LOSS"] },
+      ...(since ? { closedAt: { gte: since } } : {}),
+    },
+    select: { outcome: true, realizedPnl: true },
+  });
+
+  if (shadowTrades.length > 0) {
+    const goodPasses = shadowTrades.filter((t) => t.outcome === "WIN");
+    const badPasses = shadowTrades.filter((t) => t.outcome === "LOSS");
+    const avgAvoidedLoss = goodPasses.length > 0
+      ? goodPasses.reduce((sum, t) => sum + Math.abs(t.realizedPnl ?? 0), 0) / goodPasses.length
+      : 0;
+    const avgMissedGain = badPasses.length > 0
+      ? badPasses.reduce((sum, t) => sum + Math.abs(t.realizedPnl ?? 0), 0) / badPasses.length
+      : 0;
+    shadowStats = {
+      totalPasses: shadowTrades.length,
+      goodPasses: goodPasses.length,
+      badPasses: badPasses.length,
+      passAccuracy: winRateFrom(goodPasses.length, shadowTrades.length),
+      avgMissedGain,
+      avgAvoidedLoss,
+    };
+  }
+
   return {
     tradesAnalyzed: n,
     overallWinRate,
@@ -182,5 +224,6 @@ export async function getAccuracyStats(
     directionStats,
     longestWinStreak,
     longestLossStreak,
+    shadowStats,
   };
 }

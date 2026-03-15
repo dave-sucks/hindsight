@@ -414,6 +414,7 @@ interface ToolContext {
   watchlist?: string[];
   exclusionList?: string[];
   sectors?: string[];
+  maxPositionSize?: number;
 }
 
 // ── Factory: creates tools with context ─────────────────────────────────────
@@ -1431,6 +1432,48 @@ export function createResearchTools(ctx: ToolContext) {
                 } as object,
               },
             });
+          }
+
+          // Create shadow trade for PASS theses to track what would have happened
+          if (args.direction === "PASS" && args.entry_price) {
+            try {
+              const posSize = ctx.maxPositionSize ?? 10000;
+              const shadowShares = Math.floor(posSize / args.entry_price);
+              if (shadowShares > 0) {
+                // 5 trading days from now (roughly 7 calendar days to account for weekends)
+                const exitDate = new Date();
+                exitDate.setDate(exitDate.getDate() + 7);
+
+                const shadowTrade = await prisma.trade.create({
+                  data: {
+                    thesisId: thesis.id,
+                    userId: ctx.userId,
+                    ticker: args.ticker,
+                    direction: "LONG", // default: "what if we'd gone long?"
+                    status: "SHADOW",
+                    entryPrice: args.entry_price,
+                    shares: shadowShares,
+                    targetPrice: null,
+                    stopLoss: null,
+                    exitStrategy: "TIME_BASED",
+                    exitDate,
+                    alpacaOrderId: null,
+                  },
+                });
+
+                await prisma.tradeEvent.create({
+                  data: {
+                    tradeId: shadowTrade.id,
+                    eventType: "PLACED",
+                    description: `SHADOW: Passed on ${args.ticker} at $${args.entry_price.toFixed(2)}, tracking ${shadowShares} hypothetical shares for 5 trading days`,
+                    priceAt: args.entry_price,
+                  },
+                });
+                console.log(`[tool] show_thesis created shadow trade for PASS on ${args.ticker}`);
+              }
+            } catch (shadowErr) {
+              console.warn("[tool] show_thesis shadow trade creation failed (non-fatal):", shadowErr);
+            }
           }
 
           return { ...args, thesis_id: thesis.id };

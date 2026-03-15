@@ -57,6 +57,7 @@ export async function updateAnalystBriefing({
       runSummaryEvent,
       allRunsCount,
       previousBriefing,
+      recentShadowTrades,
     ] = await Promise.all([
       prisma.agentConfig.findFirst({
         where: { id: analystId, userId },
@@ -155,6 +156,20 @@ export async function updateAnalystBriefing({
         where: { analystId },
         orderBy: { createdAt: "desc" },
         select: { narrative: true, strategyNotes: true, createdAt: true },
+      }),
+      // Recent shadow-closed trades (pass tracking)
+      prisma.trade.findMany({
+        where: {
+          userId,
+          status: "SHADOW_CLOSED",
+          thesis: { researchRun: { agentConfigId: analystId } },
+        },
+        orderBy: { closedAt: "desc" },
+        take: 10,
+        select: {
+          ticker: true, entryPrice: true, closePrice: true,
+          realizedPnl: true, outcome: true,
+        },
       }),
     ]);
 
@@ -295,6 +310,15 @@ Trades placed: ${runTrades.length}
 Run summary: ${runSummaryText}
 ${previousBriefingText}
 
+### Shadow Trades — Pass Tracking
+${recentShadowTrades.length > 0
+  ? recentShadowTrades.map((t) => {
+      const priceDelta = t.closePrice ? ((t.closePrice - t.entryPrice) / t.entryPrice * 100) : 0;
+      const label = t.outcome === "WIN" ? "GOOD PASS" : "BAD PASS";
+      return `- ${label}: $${t.ticker} passed at $${t.entryPrice.toFixed(2)}, closed at $${(t.closePrice ?? 0).toFixed(2)} (${priceDelta >= 0 ? "+" : ""}${priceDelta.toFixed(1)}%)`;
+    }).join("\n")
+  : "No shadow trades resolved yet."}
+
 ### Session Stats
 Total completed research sessions: ${allRunsCount}
 
@@ -306,7 +330,8 @@ Generate a structured briefing with two parts:
 1. Portfolio Status — Open positions, what we're holding and why
 2. Recent Activity — What we bought/sold recently, outcomes
 3. Performance Review — Win rate, P&L trends, what's working vs not
-4. Tomorrow's Focus — What to look for next session
+4. Pass Accuracy — If shadow trades exist, comment on whether your pass decisions were good (avoided losses) or bad (missed gains)
+5. Tomorrow's Focus — What to look for next session
 
 **strategyNotes**: Specific, data-driven strategy adjustments. What patterns do you see in wins vs losses? What should we do differently? Be honest and actionable.
 

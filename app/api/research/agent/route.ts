@@ -151,6 +151,21 @@ export async function POST(req: Request) {
       });
     }
 
+    // Recent shadow-closed trades (pass tracking results)
+    const shadowTrades = await prisma.trade.findMany({
+      where: {
+        userId: user.id,
+        status: "SHADOW_CLOSED",
+        ...(configId ? { thesis: { researchRun: { agentConfigId: configId as string } } } : {}),
+      },
+      orderBy: { closedAt: "desc" },
+      take: 10,
+      select: {
+        ticker: true, entryPrice: true, closePrice: true,
+        realizedPnl: true, outcome: true, closedAt: true,
+      },
+    });
+
     // Build context
     const parts: string[] = [];
 
@@ -191,6 +206,20 @@ export async function POST(req: Request) {
       parts.push(`\nLearn from these results and evaluations. Avoid repeating patterns that led to losses.`);
     }
 
+    if (shadowTrades.length > 0) {
+      const goodPasses = shadowTrades.filter((t) => t.outcome === "WIN").length;
+      const badPasses = shadowTrades.filter((t) => t.outcome === "LOSS").length;
+      parts.push(`\n## Shadow Trade Results — Passes You Tracked (${shadowTrades.length} resolved)`);
+      parts.push(`Good passes: ${goodPasses} | Bad passes: ${badPasses}`);
+      for (const t of shadowTrades) {
+        const priceDelta = t.closePrice ? ((t.closePrice - t.entryPrice) / t.entryPrice * 100) : 0;
+        const hypotheticalPnl = t.realizedPnl ?? 0;
+        const label = t.outcome === "WIN" ? "GOOD PASS" : "BAD PASS";
+        parts.push(`- ${label} | $${t.ticker} | passed at $${Number(t.entryPrice).toFixed(2)}, now $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} (${priceDelta >= 0 ? "+" : ""}${priceDelta.toFixed(1)}%) | ${hypotheticalPnl >= 0 ? "Missed" : "Avoided"} $${Math.abs(hypotheticalPnl).toFixed(2)}`);
+      }
+      parts.push(`\nUse these results to calibrate your pass decisions. If you're making too many bad passes, consider being more aggressive.`);
+    }
+
     if (latestAccuracy) {
       parts.push(`\n## Your Performance Stats`);
       parts.push(`- Win Rate: ${latestAccuracy.winRate != null ? (Number(latestAccuracy.winRate) * 100).toFixed(0) : "—"}%`);
@@ -222,6 +251,7 @@ export async function POST(req: Request) {
     watchlist: (agentConfig.watchlist as string[]) ?? [],
     exclusionList: (agentConfig.exclusionList as string[]) ?? [],
     sectors: (agentConfig.sectors as string[]) ?? [],
+    maxPositionSize: (agentConfig.maxPositionSize as number) ?? undefined,
   });
 
   const result = streamText({
