@@ -138,24 +138,34 @@ export async function POST(req: Request) {
       select: { id: true, completedAt: true },
     });
 
-    // Load analyst briefing if available (the "daily standup" from prior runs)
-    let analystBriefing: string | null = null;
+    // Load recent briefings from the new AnalystBriefing table (accumulating history)
+    let recentBriefings: { narrative: string; strategyNotes: string | null; createdAt: Date }[] = [];
     if (configId) {
-      const briefingConfig = await prisma.agentConfig.findFirst({
-        where: { id: configId as string },
-        select: { analystBriefing: true, briefingUpdatedAt: true },
+      recentBriefings = await prisma.analystBriefing.findMany({
+        where: { analystId: configId as string },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: { narrative: true, strategyNotes: true, createdAt: true },
       });
-      analystBriefing = briefingConfig?.analystBriefing ?? null;
     }
 
     // Build context
     const parts: string[] = [];
 
-    // Inject the analyst briefing first — this is the "living memory" of past runs
-    if (analystBriefing) {
-      parts.push("## Your Latest Portfolio Briefing");
-      parts.push("This is your most recent self-assessment from your last research session. Use it to inform today's decisions.\n");
-      parts.push(analystBriefing);
+    // Inject recent briefings — the evolving "living memory" of past runs
+    if (recentBriefings.length > 0) {
+      parts.push("## Your Recent Briefings");
+      parts.push("These are your self-assessments from recent research sessions. Use them to inform today's decisions and track your evolving strategy.\n");
+      for (const [i, b] of recentBriefings.entries()) {
+        const dateStr = b.createdAt.toISOString().slice(0, 10);
+        const label = i === 0 ? "Latest" : `${i + 1} sessions ago`;
+        parts.push(`### ${label} (${dateStr})`);
+        parts.push(b.narrative.slice(0, 600));
+        if (b.strategyNotes) {
+          parts.push(`\n**Strategy Notes:** ${b.strategyNotes.slice(0, 300)}`);
+        }
+        parts.push("");
+      }
     }
 
     if (openTrades.length > 0) {
@@ -193,7 +203,7 @@ export async function POST(req: Request) {
     }
 
     historyBlock = parts.join("\n");
-    console.log(`[agent] History loaded: ${openTrades.length} open, ${recentTrades.length} closed, accuracy=${!!latestAccuracy}, briefing=${!!analystBriefing}`);
+    console.log(`[agent] History loaded: ${openTrades.length} open, ${recentTrades.length} closed, accuracy=${!!latestAccuracy}, briefings=${recentBriefings.length}`);
   } catch (err) {
     console.warn("[agent] Failed to load history (non-fatal):", err);
   }

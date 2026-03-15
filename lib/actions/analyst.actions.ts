@@ -120,6 +120,19 @@ export interface AnalystDetail {
   recentRuns: RunWithTheses[];
   recentTrades: TradeWithThesis[];
   stats: AnalystStats;
+  briefings: AnalystBriefingItem[];
+}
+
+export interface AnalystBriefingItem {
+  id: string;
+  runId: string | null;
+  narrative: string;
+  marketContext: unknown;
+  theses: unknown;
+  trades: unknown;
+  portfolioSnapshot: unknown;
+  strategyNotes: string | null;
+  createdAt: Date;
 }
 
 export interface DashboardRun {
@@ -255,7 +268,7 @@ export async function getAnalystDetail(
   });
   if (!config) return null;
 
-  const [recentRuns, recentTrades, totalRuns, totalTheses] = await Promise.all([
+  const [recentRuns, recentTrades, totalRuns, totalTheses, briefings] = await Promise.all([
     // Last 20 runs with their theses
     prisma.researchRun.findMany({
       where: { agentConfigId: analystId, userId },
@@ -322,6 +335,23 @@ export async function getAnalystDetail(
     prisma.researchRun.count({ where: { agentConfigId: analystId, userId } }),
     prisma.thesis.count({
       where: { researchRun: { agentConfigId: analystId }, userId },
+    }),
+    // Load briefings (most recent 20)
+    prisma.analystBriefing.findMany({
+      where: { analystId, userId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        runId: true,
+        narrative: true,
+        marketContext: true,
+        theses: true,
+        trades: true,
+        portfolioSnapshot: true,
+        strategyNotes: true,
+        createdAt: true,
+      },
     }),
   ]);
 
@@ -395,6 +425,7 @@ export async function getAnalystDetail(
     config: mappedConfig,
     recentRuns,
     recentTrades,
+    briefings,
     stats: {
       totalRuns,
       totalTheses,

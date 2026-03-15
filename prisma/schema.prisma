@@ -45,9 +45,10 @@ model ResearchRun {
   theses        Thesis[]
   events        RunEvent[]
   messages      RunMessage[]
-  agentConfig   AgentConfig? @relation(fields: [agentConfigId], references: [id], onDelete: SetNull)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  agentConfig   AgentConfig?      @relation(fields: [agentConfigId], references: [id], onDelete: SetNull)
+  briefing      AnalystBriefing?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
   @@index([agentConfigId])
   @@index([userId])
@@ -164,6 +165,7 @@ model AgentConfig {
   conceptPromptExtra    String?       // extra instructions for concept system prompt
   thesisPromptExtra     String?       // extra instructions for thesis system prompt
   researchRuns          ResearchRun[]
+  briefings             AnalystBriefing[]
   markets               String[] // ["US_EQUITIES", "CRYPTO", "ETFS"]
   exchanges             String[] // ["NASDAQ", "NYSE"]
   sectors               String[] // ["TECH", "FINANCE", ...]
@@ -194,6 +196,26 @@ model AgentConfig {
   briefingUpdatedAt     DateTime? // when briefing was last regenerated
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+model AnalystBriefing {
+  id                String        @id @default(cuid())
+  analystId         String
+  runId             String?       @unique // the run that generated this briefing (null if manual)
+  userId            String
+  // Structured data — each renders as a domain card
+  narrative         String        // AI-generated analysis/adaptation narrative (markdown with $TICKER)
+  marketContext     Json?         // MarketContextData snapshot (renders as MarketContextCard)
+  theses            Json?         // ThesisCardData[] from this run (renders as ThesisCards)
+  trades            Json?         // TradeCardData[] placed in this run (renders as TradeCards)
+  portfolioSnapshot Json?        // { openPositions, totalPnl, winRate, totalInvested, closedPnl, wins, losses }
+  strategyNotes     String?       // What's working, what to adjust, what to watch next
+  createdAt         DateTime      @default(now())
+  analyst           AgentConfig   @relation(fields: [analystId], references: [id], onDelete: Cascade)
+  run               ResearchRun?  @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([analystId, createdAt])
+  @@index([runId])
 }
 
 model AccuracyReport {

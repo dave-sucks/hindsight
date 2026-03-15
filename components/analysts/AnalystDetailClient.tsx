@@ -22,10 +22,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import { TradeRow } from "@/components/ui/trade-row";
 import { Markdown } from "@/components/ui/markdown";
 import { TickerMarkdown } from "@/components/ui/ticker-markdown";
+import { BriefingFeed } from "@/components/analysts/BriefingFeed";
 import {
   Settings2,
   FileText,
@@ -330,7 +332,7 @@ export default function AnalystDetailClient({
   detail: AnalystDetail;
   hasRunning: boolean;
 }) {
-  const { config: rawConfig, stats, recentRuns, recentTrades } = detail;
+  const { config: rawConfig, stats, recentTrades } = detail;
 
   // Defensive defaults for array fields that may be missing from older data
   const config = useMemo(() => ({
@@ -445,8 +447,30 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
-          {/* ── Analyst briefing (replaces static strategy document) ───── */}
-          <AnalystBriefing config={config} stats={stats} />
+          {/* ── Tabs: Overview | Briefings ───── */}
+          <Tabs defaultValue={0} className="flex-1 overflow-hidden">
+            <div className="px-4 shrink-0">
+              <TabsList variant="line">
+                <TabsTrigger value={0}>Overview</TabsTrigger>
+                <TabsTrigger value={1}>
+                  Briefings
+                  {detail.briefings.length > 0 && (
+                    <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
+                      {detail.briefings.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value={0} className="flex-1 overflow-y-auto">
+              <AnalystBriefing config={config} stats={stats} />
+            </TabsContent>
+            <TabsContent value={1} className="flex-1 overflow-y-auto">
+              <div className="max-w-3xl mx-auto px-8 py-6">
+                <BriefingFeed briefings={detail.briefings} />
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
         {/* ── Right sidebar: portfolio-style ─────────────────────────────── */}
         <div className="p-4 h-full">
