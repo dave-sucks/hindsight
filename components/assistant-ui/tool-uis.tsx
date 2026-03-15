@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useState } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { useAssistantToolUI } from "@assistant-ui/react";
 import {
