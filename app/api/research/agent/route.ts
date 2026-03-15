@@ -1,5 +1,6 @@
 import { streamText, convertToModelMessages, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -237,19 +238,22 @@ export async function POST(req: Request) {
         console.error("[agent] Failed to persist messages:", err);
       }
 
-      // Update analyst briefing (non-blocking, fire-and-forget)
+      // Update analyst briefing — use waitUntil so Vercel keeps the
+      // function alive after the stream closes for this async work
       const resolvedAnalystId = analystId || (await prisma.researchRun.findFirst({
         where: { id: runId },
         select: { agentConfigId: true },
       }))?.agentConfigId;
 
       if (resolvedAnalystId) {
-        updateAnalystBriefing({
-          analystId: resolvedAnalystId,
-          runId,
-          userId: user.id,
-        }).catch((err) =>
-          console.error("[agent] Briefing update failed:", err)
+        waitUntil(
+          updateAnalystBriefing({
+            analystId: resolvedAnalystId,
+            runId,
+            userId: user.id,
+          }).catch((err) =>
+            console.error("[agent] Briefing update failed:", err)
+          )
         );
       }
     },
