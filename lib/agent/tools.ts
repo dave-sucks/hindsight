@@ -9,6 +9,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getBars } from "@/lib/alpaca";
+import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity } from "@/lib/discovery/types";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
@@ -217,6 +218,13 @@ function calcSMA(closes: number[], period: number): number | null {
   return Math.round((slice.reduce((a, b) => a + b, 0) / period) * 100) / 100;
 }
 
+// ── Date formatting helper ───────────────────────────────────────────────────
+
+function formatShortDate(isoDate: string): string {
+  const d = new Date(isoDate + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 // ── Sector filtering helper ──────────────────────────────────────────────────
 
 async function batchFetchProfiles(
@@ -319,26 +327,41 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Get current market conditions: S&P 500, VIX, and sector ETF performance. Call this first to understand the market environment.",
       inputSchema: emptyParams,
-      execute: async () => {
+      execute: async (): Promise<MarketOverviewResult> => {
         console.log(`[tool] get_market_overview runId=${ctx.runId}`);
         const errors: string[] = [];
+
+        const today = new Date().toISOString().slice(0, 10);
+        const now = Math.floor(Date.now() / 1000);
+        const thirtyDaysAgo = now - 30 * 86400;
+        const fiveDaysForward = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
 
         // Use Finnhub as primary for all quotes (FMP /quote/ is deprecated)
         const SECTOR_ETFS = ["XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLB", "XLRE", "XLU", "XLC"];
 
-        // Fetch SPY + all sector ETFs from Finnhub in parallel
+        // Fetch SPY + all sector ETFs from Finnhub in parallel,
+        // plus SPY candles, macro calendar, and earnings density
         const allSymbols = ["SPY", ...SECTOR_ETFS];
-        const quoteResults = await Promise.all(
-          allSymbols.map(async (sym) => {
-            const res = await finnhub(`/quote?symbol=${sym}`);
-            const d = res.data as Record<string, number> | null;
-            if (d && typeof d.c === "number" && d.c > 0) {
-              return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
-            }
-            if (res.error) errors.push(res.error);
-            return null;
-          })
-        );
+        const [quoteResults, spyCandleResult, macroCalResult, earningsDensityResult] = await Promise.all([
+          // All quotes in parallel
+          Promise.all(
+            allSymbols.map(async (sym) => {
+              const res = await finnhub(`/quote?symbol=${sym}`);
+              const d = res.data as Record<string, number> | null;
+              if (d && typeof d.c === "number" && d.c > 0) {
+                return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
+              }
+              if (res.error) errors.push(res.error);
+              return null;
+            })
+          ),
+          // SPY 30-day candles for SMA-20 + regime
+          finnhub(`/stock/candle?symbol=SPY&resolution=D&from=${thirtyDaysAgo}&to=${now}`),
+          // FMP economic calendar for macro events today
+          fmp(`/economic_calendar?from=${today}&to=${today}`),
+          // Finnhub earnings calendar for next 5 days
+          finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`),
+        ]);
 
         const spyData = quoteResults[0];
         const sectorsRaw = quoteResults.slice(1).filter(Boolean);
@@ -368,13 +391,112 @@ export function createResearchTools(ctx: ToolContext) {
           }
         }
 
-        const sectors = sectorsRaw
+        // ── SPY trend + regime classification ──────────────────────────────
+        let spyTrend: MarketOverviewResult["spy_trend"] = null;
+        let regime: MarketOverviewResult["regime"] = "NEUTRAL";
+        let fiveDayReturn = 0;
+
+        const spyCandle = spyCandleResult.data as { c?: number[]; s?: string } | null;
+        if (spyCandle && spyCandle.s === "ok" && Array.isArray(spyCandle.c) && spyCandle.c.length >= 5) {
+          const closes = spyCandle.c;
+          const sma20 = calcSMA(closes, 20);
+          const currentPrice = closes[closes.length - 1];
+          fiveDayReturn = closes.length >= 6
+            ? ((currentPrice - closes[closes.length - 6]) / closes[closes.length - 6]) * 100
+            : 0;
+
+          if (sma20 !== null) {
+            const position: "above" | "below" = currentPrice >= sma20 ? "above" : "below";
+            const pctFromSma = Math.round(((currentPrice - sma20) / sma20) * 10000) / 100;
+            spyTrend = { sma_20: sma20, position, pct_from_sma: pctFromSma };
+          }
+        } else if (spyCandleResult.error) {
+          errors.push(spyCandleResult.error);
+        }
+
+        // Regime rules
+        const spyAboveSma = spyTrend?.position === "above";
+        if (vixLevel !== null && vixLevel < 16 && spyAboveSma) {
+          regime = "RISK_ON";
+        } else if (
+          (vixLevel !== null && vixLevel > 25) ||
+          (!spyAboveSma && fiveDayReturn < -1)
+        ) {
+          regime = "RISK_OFF";
+        }
+
+        console.log(`[tool] regime=${regime} vix=${vixLevel} spyAboveSma=${spyAboveSma} 5dReturn=${fiveDayReturn.toFixed(2)}%`);
+
+        // ── Macro events today ─────────────────────────────────────────────
+        let macroEventsToday: MacroEvent[] = [];
+        try {
+          const macroRaw = macroCalResult.data as { event?: string; country?: string; actual?: number | null; estimate?: number | null; impact?: string }[] | null;
+          if (Array.isArray(macroRaw)) {
+            macroEventsToday = macroRaw
+              .filter((e) => e.country === "US")
+              .map((e) => ({
+                event: e.event ?? "Unknown",
+                actual: e.actual ?? null,
+                estimate: e.estimate ?? null,
+                impact: e.impact === "High" ? "HIGH" as const : e.impact === "Medium" ? "MEDIUM" as const : "LOW" as const,
+              }));
+          }
+        } catch {
+          // non-fatal: return empty array
+        }
+
+        // ── Earnings density (next 5 days) ─────────────────────────────────
+        let earningsDensity: EarningsDensity = { count: 0, period: `${today}–${fiveDaysForward}` };
+        try {
+          const earningsRaw = earningsDensityResult.data as { earningsCalendar?: { symbol: string }[] } | null;
+          if (earningsRaw?.earningsCalendar) {
+            earningsDensity = {
+              count: earningsRaw.earningsCalendar.length,
+              period: `${formatShortDate(today)}–${formatShortDate(fiveDaysForward)}`,
+            };
+          }
+        } catch {
+          // non-fatal
+        }
+
+        // ── Sector momentum (10-day SMA) ───────────────────────────────────
+        const tenDaysAgo = now - 10 * 86400;
+        let sectorCandleMap: Map<string, number[]> = new Map();
+        try {
+          const sectorCandleResults = await Promise.all(
+            SECTOR_ETFS.map(async (sym) => {
+              const res = await finnhub(`/stock/candle?symbol=${sym}&resolution=D&from=${tenDaysAgo}&to=${now}`);
+              const d = res.data as { c?: number[]; s?: string } | null;
+              if (d && d.s === "ok" && Array.isArray(d.c)) {
+                return [sym, d.c] as const;
+              }
+              return [sym, null] as const;
+            })
+          );
+          for (const [sym, closes] of sectorCandleResults) {
+            if (closes) sectorCandleMap.set(sym, closes);
+          }
+        } catch {
+          // non-fatal: skip sector momentum
+        }
+
+        const sectors: SectorQuote[] = sectorsRaw
           .filter((s): s is NonNullable<typeof s> => s != null)
-          .map((s) => ({
-            symbol: s.symbol,
-            price: s.price,
-            change_pct: s.changesPercentage,
-          }))
+          .map((s) => {
+            const entry: SectorQuote = {
+              symbol: s.symbol,
+              price: s.price,
+              change_pct: s.changesPercentage,
+            };
+            const closes = sectorCandleMap.get(s.symbol);
+            if (closes && closes.length >= 10) {
+              const sma10 = calcSMA(closes, 10);
+              if (sma10 !== null) {
+                entry.momentum = closes[closes.length - 1] >= sma10 ? "leading" : "lagging";
+              }
+            }
+            return entry;
+          })
           .sort((a, b) => b.change_pct - a.change_pct);
 
         return {
@@ -390,6 +512,10 @@ export function createResearchTools(ctx: ToolContext) {
             ? { level: vixLevel, change_pct: vixChangePct }
             : null,
           sectors,
+          regime,
+          spy_trend: spyTrend,
+          macro_events_today: macroEventsToday,
+          earnings_density: earningsDensity,
           // Tell the agent exactly what failed so it can adapt
           ...(errors.length > 0 ? { api_errors: errors, note: `Some data sources failed: ${errors.join("; ")}. Analyze what's available and proceed.` } : {}),
           _sources: [
@@ -412,6 +538,24 @@ export function createResearchTools(ctx: ToolContext) {
               excerpt: sectors.length > 0
                 ? `Top: ${sectors[0].symbol} ${sectors[0].change_pct > 0 ? "+" : ""}${sectors[0].change_pct?.toFixed(1)}% | Bottom: ${sectors[sectors.length - 1].symbol} ${sectors[sectors.length - 1].change_pct?.toFixed(1)}%`
                 : "Sector data unavailable",
+            },
+            {
+              provider: "Finnhub",
+              title: "SPY 30-Day Candles (SMA-20 + Regime)",
+              url: "https://finnhub.io/docs/api/stock-candles",
+              excerpt: spyTrend ? `SPY ${spyTrend.position} SMA-20 ($${spyTrend.sma_20}) by ${spyTrend.pct_from_sma > 0 ? "+" : ""}${spyTrend.pct_from_sma}%` : "SPY candle data unavailable",
+            },
+            {
+              provider: "FMP",
+              title: "US Economic Calendar",
+              url: "https://site.financialmodelingprep.com/developer/docs#economic-calendar",
+              excerpt: macroEventsToday.length > 0 ? `${macroEventsToday.length} US macro event(s) today` : "No US macro events today",
+            },
+            {
+              provider: "Finnhub",
+              title: "Earnings Calendar (5-Day Density)",
+              url: "https://finnhub.io/docs/api/earnings-calendar",
+              excerpt: `${earningsDensity.count} earnings reports ${earningsDensity.period}`,
             },
           ],
         };
