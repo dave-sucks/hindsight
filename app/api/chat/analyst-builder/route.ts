@@ -426,58 +426,18 @@ export async function POST(req: Request) {
             query: z.string().describe("Search query for Reddit — ticker symbol or topic. E.g. 'NVDA', 'biotech FDA', 'momentum plays'"),
           }),
           execute: async ({ query }) => {
-            try {
-              const subreddits = ["wallstreetbets", "stocks", "options", "investing"];
-              const results: Array<{
-                subreddit: string;
-                title: string;
-                score: number;
-                url: string;
-              }> = [];
-
-              await Promise.all(
-                subreddits.map(async (sub) => {
-                  try {
-                    const res = await fetch(
-                      `https://www.reddit.com/r/${sub}/search.json?q=${encodeURIComponent(query)}&sort=relevance&t=week&limit=3`,
-                      {
-                        headers: { "User-Agent": "Hindsight/1.0" },
-                        signal: AbortSignal.timeout(5000),
-                      },
-                    );
-                    if (!res.ok) return;
-                    const data = await res.json();
-                    const posts = data?.data?.children ?? [];
-                    for (const post of posts) {
-                      const d = post.data;
-                      results.push({
-                        subreddit: sub,
-                        title: d.title ?? "",
-                        score: d.score ?? 0,
-                        url: `https://reddit.com${d.permalink ?? ""}`,
-                      });
-                    }
-                  } catch {
-                    /* skip */
-                  }
-                }),
-              );
-
-              return {
-                query,
-                results: results
-                  .sort((a, b) => b.score - a.score)
-                  .slice(0, 8),
-                _sources: results.slice(0, 8).map((r) => ({
-                  title: r.title,
-                  url: r.url,
-                  provider: `r/${r.subreddit}`,
-                  excerpt: `Score: ${r.score}`,
-                })),
-              };
-            } catch {
-              return { query, results: [], error: "Reddit search unavailable" };
-            }
+            const { searchReddit } = await import("@/lib/reddit");
+            const results = await searchReddit(query);
+            return {
+              query,
+              results,
+              _sources: results.map((r) => ({
+                title: r.title,
+                url: r.url,
+                provider: `r/${r.subreddit}`,
+                excerpt: `Score: ${r.score}`,
+              })),
+            };
           },
         }),
       },
