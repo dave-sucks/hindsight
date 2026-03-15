@@ -1118,6 +1118,266 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       );
     },
   });
+
+  // ── Options flow → OptionsFlowCard ──────────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_options_flow",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Options flow — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Activity} label="Scanning unusual activity" status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      if (result.available === false) {
+        return (
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
+            No options data for {ticker}.{" "}
+            {result.note && <span>{String(result.note)}</span>}
+          </div>
+        );
+      }
+
+      const signal = result.signal as string;
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Options flow — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Activity} label={`P/C ratio: ${result.put_call_ratio ?? "—"} — Signal: ${signal ?? "neutral"}`} status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label={`${result.contracts_available ?? 0} contracts analyzed`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <OptionsFlowCard
+            ticker={ticker}
+            putCallRatio={result.put_call_ratio as number | null}
+            totalCallVolume={result.total_call_volume as number}
+            totalPutVolume={result.total_put_volume as number}
+            expiration={result.expiration as string}
+            contractsAvailable={result.contracts_available as number}
+            signal={signal}
+          />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Reddit sentiment → XPost cards ──────────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_reddit_sentiment",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Reddit sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={MessageSquareText} label="Scanning WSB, r/stocks, r/options" status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      if (!result.available) {
+        const reason = result.reason as string | undefined;
+        const isBlocked = reason === "blocked";
+        return (
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
+            <MessageSquare className="inline h-3 w-3 mr-1 text-orange-500" />
+            {isBlocked
+              ? `Reddit API rate-limited — no sentiment data for ${ticker}.`
+              : `No recent Reddit mentions for ${ticker}.`}
+          </div>
+        );
+      }
+
+      const sources = (result.sources ?? []) as {
+        provider: string;
+        title?: string;
+        url?: string;
+        score?: number;
+      }[];
+      const sentiment = result.sentiment as string | undefined;
+      const mentionCount = result.mention_count as number | undefined;
+
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Reddit sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={MessageSquareText} label={`Scanned WSB, r/stocks, r/options, r/investing`} status="complete" />
+              <ChainOfThoughtStep icon={Search} label={`${mentionCount ?? 0} mentions — sentiment: ${sentiment ?? "unknown"}`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          {sources.length > 0 && (
+            <div className="space-y-1.5">
+              {sources.slice(0, 5).map((s, i) => (
+                <XPost
+                  key={i}
+                  data={{
+                    author: s.provider || "Reddit",
+                    username: s.provider?.replace(/^r\//, "") || "reddit",
+                    avatar: "R",
+                    content: s.title || "Untitled post",
+                    likes: s.score != null ? String(s.score) : undefined,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── StockTwits sentiment → XPost cards ──────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_twitter_sentiment",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>StockTwits sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={MessageSquareText} label="Scanning StockTwits feed" status="active" />
+              <ChainOfThoughtStep icon={Search} label="Checking FMP social sentiment" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      if (!result.available) {
+        return (
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
+            <MessageSquare className="inline h-3 w-3 mr-1 text-blue-500" />
+            No StockTwits data available for {ticker}.
+          </div>
+        );
+      }
+
+      const postsList = (result.posts ?? []) as {
+        body: string;
+        username: string;
+        created_at?: string;
+        likes?: number;
+      }[];
+      const sentiment = result.sentiment as string | undefined;
+      const mentionCount = result.mention_count as number | undefined;
+
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>StockTwits sentiment — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={MessageSquareText} label="Scanned StockTwits feed" status="complete" />
+              <ChainOfThoughtStep icon={Search} label={`${mentionCount ?? 0} posts — sentiment: ${sentiment ?? "unknown"}`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          {postsList.length > 0 && (
+            <div className="space-y-1.5">
+              {postsList.slice(0, 5).map((p, i) => (
+                <XPost
+                  key={i}
+                  data={{
+                    author: p.username,
+                    username: p.username,
+                    content: p.body,
+                    likes: p.likes != null && p.likes > 0 ? String(p.likes) : undefined,
+                    time: p.created_at,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── SEC Filings → SecFilingsCard ────────────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_sec_filings",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>SEC filings — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={FileText} label="Looking up CIK on EDGAR" status="active" />
+              <ChainOfThoughtStep icon={Search} label="Fetching recent filings" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+      const filings = (result.filings ?? result) as { type: string; date: string; description: string; url?: string | null }[];
+      const filingsArr = Array.isArray(filings) ? filings : [];
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>SEC filings — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={FileText} label="Looked up CIK on EDGAR" status="complete" />
+              <ChainOfThoughtStep icon={Search} label={`Found ${filingsArr.length} recent filings`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <SecFilingsCard ticker={ticker} filings={filingsArr} />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Analyst Targets → AnalystTargetsCard ────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_analyst_targets",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Analyst targets — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Target} label="Fetching Wall Street consensus" status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Analyst targets — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Target} label={`${result.num_analysts ?? 0} analysts — consensus: $${(result.consensus_target as number)?.toFixed(2) ?? "—"}`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <AnalystTargetsCard
+            ticker={ticker}
+            consensusTarget={result.consensus_target as number | null}
+            high={result.high as number | null}
+            low={result.low as number | null}
+            median={result.median as number | null}
+            numAnalysts={result.num_analysts as number | null}
+            currentPrice={result.current_price as number | null}
+          />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
 }
 
 // ─── Registration hooks ─────────────────────────────────────────────────────
