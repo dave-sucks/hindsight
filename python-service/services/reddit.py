@@ -1,12 +1,14 @@
-"""Reddit sentiment scanner and trending ticker discovery (DAV-73 / DAV-78).
+"""Reddit sentiment scanner and trending ticker discovery.
 
 Uses the public Reddit JSON API — no auth required.
-Scans r/wallstreetbets, r/stocks, r/options, r/investing for recent ticker mentions.
+Scans r/wallstreetbets, r/stocks, r/options, r/investing for ticker mentions.
+
+Rate-limit-aware: 2s spacing between requests, retry with backoff on 429/403.
 """
 import asyncio
 import logging
 import re
-from datetime import datetime, timezone
+import time
 
 import httpx
 
@@ -14,24 +16,69 @@ logger = logging.getLogger(__name__)
 
 _SUBREDDITS = ["wallstreetbets", "stocks", "options", "investing"]
 _HEADERS = {
-    # Reddit requires a non-default User-Agent or it throttles
-    "User-Agent": "hindsight-research-bot/1.0 (paper trading)"
+    "User-Agent": "hindsight-research/2.0 (paper-trading-bot)",
+    "Accept": "application/json",
 }
-_TIMEOUT = 8.0
+_TIMEOUT = 10.0
+_REQUEST_SPACING = 2.0  # seconds between requests
+_MAX_RETRIES = 2
 
-# ─── Ticker extraction (DAV-78) ───────────────────────────────────────────────
+# Track last request time for rate limiting
+_last_request_at: float = 0.0
 
-# Words that match the ticker regex but are never real tickers
+
+# ─── Rate-limited fetch ──────────────────────────────────────────────────────
+
+async def _reddit_fetch(client: httpx.AsyncClient, url: str, params: dict | None = None) -> dict | None:
+    """Fetch from Reddit with rate limiting and retry logic."""
+    global _last_request_at
+
+    for attempt in range(_MAX_RETRIES + 1):
+        # Enforce minimum spacing
+        now = time.monotonic()
+        wait = _REQUEST_SPACING - (now - _last_request_at)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _last_request_at = time.monotonic()
+
+        try:
+            r = await client.get(url, params=params, headers=_HEADERS, timeout=_TIMEOUT)
+
+            if r.status_code in (429, 403):
+                logger.warning("Reddit %d from %s (attempt %d)", r.status_code, url.split("?")[0], attempt + 1)
+                if attempt < _MAX_RETRIES:
+                    await asyncio.sleep(3.0 * (attempt + 1))
+                    continue
+                return None
+
+            if r.status_code != 200:
+                logger.warning("Reddit %d from %s", r.status_code, url.split("?")[0])
+                return None
+
+            return r.json()
+        except Exception as exc:
+            logger.warning("Reddit fetch error (attempt %d): %s", attempt + 1, exc)
+            if attempt < _MAX_RETRIES:
+                await asyncio.sleep(2.0 * (attempt + 1))
+                continue
+            return None
+
+    return None
+
+
+# ─── Ticker extraction ───────────────────────────────────────────────────────
+
 _BLACKLIST: frozenset[str] = frozenset({
     # Reddit / WSB slang
     "DD", "OP", "YOLO", "FOMO", "HODL", "MOON", "PUMP", "DUMP",
     "WSB", "LOSS", "GAIN", "MEME", "BEAR", "BULL", "CALL", "PUT",
-    "CEO", "CFO", "COO", "CTO",
-    # Finance terms that aren't tickers
+    "CEO", "CFO", "COO", "CTO", "OG",
+    # Finance terms
     "IPO", "ETF", "SEC", "FDA", "FED", "GDP", "CPI", "PPI", "PCE",
     "EPS", "PE", "ATH", "ATL", "DCA", "AH", "PM", "EOD", "EOW",
     "PNL", "ROI", "OTM", "ITM", "ATM", "IV", "DTE", "BUY", "SELL",
-    # Common English 2–5 char words
+    "SPY", "QQQ", "VIX", "IWM", "DIA",  # index ETFs
+    # Common English
     "THE", "AND", "FOR", "NOT", "YOU", "ARE", "BUT", "ALL", "HAS",
     "WAS", "HAD", "CAN", "MAY", "NEW", "OLD", "NOW", "LOL", "WTF",
     "IMO", "IRA", "LLC", "INC", "DIY", "HOW", "WHY", "USA", "USD",
@@ -40,203 +87,204 @@ _BLACKLIST: frozenset[str] = frozenset({
     "JUST", "BEEN", "INTO", "THEY", "FROM", "WITH", "LIKE", "WILL",
     "HAVE", "THIS", "THAT", "WHAT", "YOUR", "KNOW", "THAN", "THEN",
     "MUCH", "SOME", "ALSO", "MORE", "MOST", "SUCH", "OVER", "COME",
-    # 2-char noise
     "AI", "IT", "IS", "IN", "OF", "ON", "AT", "TO", "UP", "DO",
     "GO", "OR", "IF", "SO", "AS", "BY", "BE", "NO", "AN", "MY",
     "US", "UK", "EU", "UN",
 })
 
 _CASHTAG_RE = re.compile(r'\$([A-Z]{1,5})\b')
-_PLAIN_RE = re.compile(r'(?<![A-Z])([A-Z]{2,5})(?![A-Z])')
+_PLAIN_RE = re.compile(r'(?<![A-Za-z])([A-Z]{2,5})(?![a-zA-Z])')
 
 
 def _extract_tickers(text: str) -> list[str]:
     """Extract probable ticker symbols from raw text."""
     upper = text.upper()
-    found: list[str] = []
-    # Cashtags ($AAPL) have highest confidence — intentional mention
-    found.extend(_CASHTAG_RE.findall(upper))
-    # Plain uppercase tokens
-    found.extend(_PLAIN_RE.findall(upper))
+    found: set[str] = set()
+    found.update(_CASHTAG_RE.findall(upper))
+    found.update(_PLAIN_RE.findall(upper))
     return [t for t in found if t not in _BLACKLIST]
 
 
-async def _fetch_hot_posts(
-    client: httpx.AsyncClient,
-    subreddit: str,
-    limit: int,
-) -> list[dict]:
-    """Fetch hot posts from a subreddit's public JSON feed."""
-    url = f"https://www.reddit.com/r/{subreddit}/hot.json"
-    try:
-        r = await client.get(
-            url,
-            params={"limit": str(min(limit, 100))},
-            headers=_HEADERS,
-            timeout=_TIMEOUT,
-        )
-        if r.status_code == 429:
-            logger.debug("Reddit rate limit hit for r/%s — skipping", subreddit)
-            return []
-        r.raise_for_status()
-        children = r.json().get("data", {}).get("children", [])
-        return [c.get("data", {}) for c in children]
-    except Exception as exc:
-        logger.debug("Reddit r/%s hot posts failed: %s", subreddit, exc)
-        return []
+# ─── Sentiment scoring ───────────────────────────────────────────────────────
 
+_BULLISH = [
+    "buy", "calls", "bull", "moon", "long", "breakout", "squeeze",
+    "beat", "upgrade", "strong", "green", "rocket", "hold", "bullish",
+    "rally", "rip", "tendies", "diamond", "hands", "gamma",
+]
+
+_BEARISH = [
+    "sell", "puts", "bear", "short", "dump", "crash", "miss",
+    "downgrade", "weak", "red", "dead", "falling", "bearish",
+    "drill", "tank", "bagholder", "rug", "overvalued",
+]
+
+
+def _score_sentiment(texts: list[str]) -> tuple[float, str]:
+    """Score sentiment from a list of text strings. Returns (score, label)."""
+    combined = " ".join(texts).lower()
+    bullish = sum(1 for w in _BULLISH if w in combined)
+    bearish = sum(1 for w in _BEARISH if w in combined)
+    total = bullish + bearish
+    if total == 0:
+        return 0.0, "neutral"
+    score = round((bullish - bearish) / total, 2)
+    label = "bullish" if score > 0.2 else "bearish" if score < -0.2 else "neutral"
+    return score, label
+
+
+# ─── Post helpers ─────────────────────────────────────────────────────────────
+
+def _extract_posts(data: dict | None) -> list[dict]:
+    """Extract post data from Reddit JSON response."""
+    if not data:
+        return []
+    children = data.get("data", {}).get("children", [])
+    return [
+        {
+            "title": c.get("data", {}).get("title", ""),
+            "selftext": c.get("data", {}).get("selftext", ""),
+            "score": c.get("data", {}).get("score", 0),
+            "num_comments": c.get("data", {}).get("num_comments", 0),
+            "subreddit": c.get("data", {}).get("subreddit", ""),
+            "created_utc": c.get("data", {}).get("created_utc", 0),
+            "permalink": c.get("data", {}).get("permalink", ""),
+            "url": f"https://reddit.com{c.get('data', {}).get('permalink', '')}",
+        }
+        for c in children
+    ]
+
+
+# ─── Public API ──────────────────────────────────────────────────────────────
 
 async def get_trending_tickers_reddit(
     subreddits: list[str] | None = None,
     limit: int = 50,
 ) -> list[str]:
     """
-    Scan subreddit hot feeds for trending ticker mentions (DAV-78).
+    Scan subreddit hot + rising feeds for trending ticker mentions.
 
-    Fetches the top `limit` hot posts from each subreddit, extracts ticker
-    symbols from titles and selftext via cashtag + uppercase-word regex,
-    counts cross-post mentions, and returns up to 10 tickers ranked by
-    mention frequency.
-
-    Handles 429 rate limits and network errors gracefully — returns [] on
-    any failure. No API key required (uses public Reddit JSON API).
+    Fetches hot posts from each subreddit (+ rising from WSB), extracts
+    tickers, counts mentions, returns up to 15 ranked by frequency.
+    Requires 2+ mentions to qualify.
     """
-    subs = subreddits if subreddits is not None else _SUBREDDITS
+    subs = subreddits or _SUBREDDITS
     mention_counts: dict[str, int] = {}
 
     try:
         async with httpx.AsyncClient() as client:
-            results = await asyncio.gather(
-                *[_fetch_hot_posts(client, sub, limit) for sub in subs],
-                return_exceptions=True,
-            )
+            all_posts: list[dict] = []
 
-        for result in results:
-            if not isinstance(result, list):
-                continue
-            for post in result:
-                text = f"{post.get('title', '')} {post.get('selftext', '')}"
-                for ticker in _extract_tickers(text):
-                    mention_counts[ticker] = mention_counts.get(ticker, 0) + 1
+            for sub in subs:
+                data = await _reddit_fetch(
+                    client,
+                    f"https://www.reddit.com/r/{sub}/hot.json",
+                    params={"limit": str(min(limit, 100))},
+                )
+                all_posts.extend(_extract_posts(data))
+
+                # Also fetch rising from WSB for early trend detection
+                if sub == "wallstreetbets":
+                    data = await _reddit_fetch(
+                        client,
+                        f"https://www.reddit.com/r/{sub}/rising.json",
+                        params={"limit": "25"},
+                    )
+                    all_posts.extend(_extract_posts(data))
+
+        for post in all_posts:
+            text = f"{post['title']} {post['selftext'][:500]}"
+            for ticker in _extract_tickers(text):
+                mention_counts[ticker] = mention_counts.get(ticker, 0) + 1
 
     except Exception as exc:
         logger.warning("Reddit trending discovery failed: %s", exc)
         return []
 
     ranked = sorted(mention_counts.items(), key=lambda x: x[1], reverse=True)
-    tickers = [t for t, _ in ranked[:10]]
+    tickers = [t for t, count in ranked if count >= 2][:15]
     logger.debug("Reddit trending tickers: %s", tickers)
     return tickers
 
 
-# ─── Sentiment (DAV-73) ───────────────────────────────────────────────────────
-
-def _score_sentiment(text: str) -> float:
-    """Naive keyword-based sentiment: returns -1.0 to 1.0."""
-    text = text.lower()
-    bullish = sum(text.count(w) for w in [
-        "buy", "calls", "bull", "moon", "long", "breakout", "squeeze",
-        "beat", "upgrade", "strong", "green", "rocket", "hold",
-    ])
-    bearish = sum(text.count(w) for w in [
-        "sell", "puts", "bear", "short", "dump", "crash", "miss",
-        "downgrade", "weak", "red", "dead", "falling",
-    ])
-    total = bullish + bearish
-    if total == 0:
-        return 0.0
-    return round((bullish - bearish) / total, 2)
-
-
-async def _search_subreddit(
-    client: httpx.AsyncClient,
-    ticker: str,
-    subreddit: str,
-) -> list[dict]:
-    """Search one subreddit for recent ticker mentions."""
-    url = f"https://www.reddit.com/r/{subreddit}/search.json"
-    params = {
-        "q": ticker,
-        "sort": "new",
-        "restrict_sr": "on",
-        "limit": "15",
-        "t": "week",
-    }
-    try:
-        r = await client.get(url, params=params, headers=_HEADERS, timeout=_TIMEOUT)
-        r.raise_for_status()
-        posts = r.json().get("data", {}).get("children", [])
-        results = []
-        for post in posts:
-            d = post.get("data", {})
-            title = d.get("title", "")
-            # Only include if ticker appears in title (avoid false positives)
-            if re.search(rf"\b{re.escape(ticker)}\b", title, re.IGNORECASE):
-                results.append({
-                    "title": title,
-                    "score": d.get("score", 0),
-                    "num_comments": d.get("num_comments", 0),
-                    "subreddit": subreddit,
-                    "created_utc": d.get("created_utc", 0),
-                })
-        return results
-    except Exception as exc:
-        logger.debug("Reddit %s search failed: %s", subreddit, exc)
-        return []
-
-
 async def get_reddit_sentiment(ticker: str) -> dict:
     """
-    Aggregate Reddit mentions for a ticker across key subreddits.
+    Search all trading subreddits for a specific ticker and score sentiment.
 
     Returns:
         {
             mention_count: int,
-            total_score: int,       # sum of upvotes across mentions
-            sentiment_score: float, # -1.0 (bearish) to 1.0 (bullish)
-            trending: bool,         # True if mention_count >= 5
-            top_posts: [str],       # up to 3 headline strings
+            total_score: int,
+            sentiment_score: float,  # -1.0 to 1.0
+            sentiment: str,          # "bullish" | "bearish" | "neutral"
+            trending: bool,
+            top_posts: [{title, score, num_comments, subreddit, url}],
         }
-    Falls back to empty dict on any error.
     """
-    try:
-        async with httpx.AsyncClient() as client:
-            results = await asyncio.gather(
-                *[_search_subreddit(client, ticker, sub) for sub in _SUBREDDITS],
-                return_exceptions=True,
-            )
+    ticker_upper = ticker.upper()
+    ticker_re = re.compile(rf"\b\$?{re.escape(ticker_upper)}\b", re.IGNORECASE)
 
+    try:
         all_posts: list[dict] = []
-        for r in results:
-            if isinstance(r, list):
-                all_posts.extend(r)
+
+        async with httpx.AsyncClient() as client:
+            for sub in _SUBREDDITS:
+                data = await _reddit_fetch(
+                    client,
+                    f"https://www.reddit.com/r/{sub}/search.json",
+                    params={
+                        "q": ticker_upper,
+                        "sort": "new",
+                        "restrict_sr": "on",
+                        "limit": "10",
+                        "t": "week",
+                    },
+                )
+                posts = _extract_posts(data)
+                # Only keep posts that actually mention the ticker
+                for post in posts:
+                    if ticker_re.search(post["title"]) or ticker_re.search(post["selftext"][:1000]):
+                        all_posts.append(post)
 
         if not all_posts:
-            return {"mention_count": 0, "total_score": 0, "sentiment_score": 0.0,
-                    "trending": False, "top_posts": []}
+            return {
+                "mention_count": 0,
+                "total_score": 0,
+                "sentiment_score": 0.0,
+                "sentiment": "neutral",
+                "trending": False,
+                "top_posts": [],
+            }
 
-        # Deduplicate by title
+        # Deduplicate by permalink
         seen: set[str] = set()
         unique: list[dict] = []
         for p in all_posts:
-            if p["title"] not in seen:
-                seen.add(p["title"])
+            if p["permalink"] not in seen:
+                seen.add(p["permalink"])
                 unique.append(p)
 
-        # Sort by score (upvotes)
         unique.sort(key=lambda x: x["score"], reverse=True)
 
         total_score = sum(p["score"] for p in unique)
-        combined_text = " ".join(p["title"] for p in unique)
-        sentiment = _score_sentiment(combined_text)
-        top_posts = [p["title"] for p in unique[:3]]
+        sentiment_score, sentiment_label = _score_sentiment([p["title"] for p in unique])
 
         return {
             "mention_count": len(unique),
             "total_score": total_score,
-            "sentiment_score": sentiment,
+            "sentiment_score": sentiment_score,
+            "sentiment": sentiment_label,
             "trending": len(unique) >= 5,
-            "top_posts": top_posts,
+            "top_posts": [
+                {
+                    "title": p["title"],
+                    "score": p["score"],
+                    "num_comments": p["num_comments"],
+                    "subreddit": p["subreddit"],
+                    "url": p["url"],
+                }
+                for p in unique[:5]
+            ],
         }
     except Exception as exc:
         logger.warning("Reddit sentiment failed for %s: %s", ticker, exc)
