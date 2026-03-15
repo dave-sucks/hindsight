@@ -9,7 +9,8 @@ import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getBars } from "@/lib/alpaca";
-import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity } from "@/lib/discovery/types";
+import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult } from "@/lib/discovery/types";
+import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
@@ -257,6 +258,18 @@ const scanParams = z.object({
     .array(z.string())
     .optional()
     .describe("Sectors to focus on, e.g. ['Technology', 'Healthcare']"),
+  theme_filter: z
+    .string()
+    .optional()
+    .describe("Theme name from detect_market_themes to boost matching tickers (e.g. 'AI Infrastructure')"),
+  min_market_cap: z
+    .number()
+    .optional()
+    .describe("Minimum market cap in dollars (default $1B). Filters out micro-caps."),
+  min_avg_volume: z
+    .number()
+    .optional()
+    .describe("Minimum 10-day average volume (default 500K). Filters out illiquid stocks."),
 });
 const thesisParams = z.object({
   ticker: z.string(),
@@ -564,17 +577,19 @@ export function createResearchTools(ctx: ToolContext) {
 
     scan_candidates: tool({
       description:
-        "Scan the market for trading candidates. Returns scored tickers from multiple sources: earnings calendar, market movers, gainers/losers, and social trends. Use sectors to filter.",
+        "Scan the market for trading candidates. Returns scored tickers from multiple sources: earnings calendar (30 days), market movers, gainers/losers, social trends. Supports theme filtering, market cap/volume quality floors, and volume spike detection.",
       inputSchema: scanParams,
-      execute: async ({ sectors }: ScanInput) => {
-        console.log(`[tool] scan_candidates sectors=${sectors?.join(",") ?? "all"} runId=${ctx.runId}`);
+      execute: async ({ sectors, theme_filter, min_market_cap, min_avg_volume }: ScanInput): Promise<ScanCandidatesResult> => {
+        console.log(`[tool] scan_candidates sectors=${sectors?.join(",") ?? "all"} theme=${theme_filter ?? "none"} runId=${ctx.runId}`);
+        const minCap = min_market_cap ?? 1_000_000_000; // $1B default
+        const minVol = min_avg_volume ?? 500_000; // 500K shares default
         const today = new Date().toISOString().slice(0, 10);
-        const nextWeek = new Date(Date.now() + 7 * 86400_000)
+        const nextMonth = new Date(Date.now() + 30 * 86400_000)
           .toISOString()
           .slice(0, 10);
 
         const [earningsResult, gainersResult, losersResult, stTrending, redditTrending] = await Promise.all([
-          finnhub(`/calendar/earnings?from=${today}&to=${nextWeek}`),
+          finnhub(`/calendar/earnings?from=${today}&to=${nextMonth}`),
           fmp("/stock_market/gainers"),
           fmp("/stock_market/losers"),
           stocktwitsTrending(),
@@ -592,11 +607,11 @@ export function createResearchTools(ctx: ToolContext) {
           score: 4,
         }));
 
-        // Earnings calendar
+        // Earnings calendar (30 days forward)
         const earningsTickers =
           (earnings as { earningsCalendar?: { symbol: string; date: string; epsEstimate: number | null }[] })
             ?.earningsCalendar
-            ?.slice(0, 15)
+            ?.slice(0, 30)
             ?.map((e) => ({
               ticker: e.symbol,
               source: "earnings_calendar" as const,
@@ -651,6 +666,20 @@ export function createResearchTools(ctx: ToolContext) {
           mentions: t.mentions,
         }));
 
+        // ── Theme filter boost (BEFORE dedup/ranking) ─────────────────────
+        let themeBoostTickers = new Set<string>();
+        if (theme_filter) {
+          // Match by label (display name) or id (snake_case key)
+          const matchedTheme = Object.entries(THEME_DEFINITIONS).find(
+            ([id, def]) =>
+              def.label.toLowerCase() === theme_filter.toLowerCase() ||
+              id === theme_filter.toLowerCase().replace(/[\s/&]+/g, "_"),
+          );
+          if (matchedTheme) {
+            themeBoostTickers = new Set(matchedTheme[1].tickers.map((t) => t.toUpperCase()));
+          }
+        }
+
         // Score & deduplicate
         const allCandidates = [
           ...watchlistTickers,
@@ -688,6 +717,18 @@ export function createResearchTools(ctx: ToolContext) {
           }
         }
 
+        // Apply theme boost after dedup so it counts once per ticker
+        if (themeBoostTickers.size > 0) {
+          for (const [sym, entry] of scoreMap) {
+            if (themeBoostTickers.has(sym)) {
+              entry.score += 3;
+              if (!entry.sources.includes("theme_match")) {
+                entry.sources.push("theme_match");
+              }
+            }
+          }
+        }
+
         const ranked = [...scoreMap.entries()]
           .sort((a, b) => b[1].score - a[1].score)
           .slice(0, 15);
@@ -715,10 +756,78 @@ export function createResearchTools(ctx: ToolContext) {
           );
         }
 
+        // ── Quality filtering (market cap + volume) ───────────────────────
+        const preFilterCount = filtered.length;
+        const volumeSpikeSet = new Set<string>();
+
+        // Batch-fetch metrics for quality filtering + volume spike detection
+        const metricTickers = filtered.map(([ticker]) => ticker);
+        const metricsMap = new Map<string, { marketCap: number | null; avgVolume: number | null; currentVolume: number | null }>();
+
+        for (let i = 0; i < metricTickers.length; i += 5) {
+          const batch = metricTickers.slice(i, i + 5);
+          const results = await Promise.all(
+            batch.map(async (ticker) => {
+              try {
+                const [metricResult, quoteResult] = await Promise.all([
+                  finnhub(`/stock/metric?symbol=${ticker}&metric=all`),
+                  finnhub(`/quote?symbol=${ticker}`),
+                ]);
+                const metric = metricResult.data as { metric?: Record<string, number> } | null;
+                const quote = quoteResult.data as { v?: number } | null;
+
+                // Finnhub marketCapitalization is in millions
+                const marketCapM = metric?.metric?.marketCapitalization;
+                const avgVol = metric?.metric?.["10DayAverageTradingVolume"];
+
+                return {
+                  ticker,
+                  // Convert from millions to dollars
+                  marketCap: marketCapM != null ? marketCapM * 1_000_000 : null,
+                  // 10DayAverageTradingVolume is in millions of shares
+                  avgVolume: avgVol != null ? avgVol * 1_000_000 : null,
+                  currentVolume: quote?.v ?? null,
+                };
+              } catch {
+                return { ticker, marketCap: null, avgVolume: null, currentVolume: null };
+              }
+            }),
+          );
+          for (const r of results) {
+            metricsMap.set(r.ticker, { marketCap: r.marketCap, avgVolume: r.avgVolume, currentVolume: r.currentVolume });
+          }
+        }
+
+        // Apply quality filters
+        filtered = filtered.filter(([ticker]) => {
+          const m = metricsMap.get(ticker);
+          if (!m) return true; // can't get metrics — keep the ticker
+          if (m.marketCap != null && m.marketCap < minCap) return false;
+          if (m.avgVolume != null && m.avgVolume < minVol) return false;
+          return true;
+        });
+
+        // If filtering removed everything, keep top 5 unfiltered
+        if (filtered.length === 0) filtered = ranked.slice(0, 5);
+
+        const droppedCount = preFilterCount - filtered.length;
+        console.log(`[tool] scan_candidates quality filter: ${preFilterCount} → ${filtered.length} (dropped ${droppedCount}, minCap=$${minCap}, minVol=${minVol})`);
+
+        // ── Volume spike detection ────────────────────────────────────────
+        for (const [ticker] of filtered) {
+          const m = metricsMap.get(ticker);
+          if (m?.currentVolume != null && m?.avgVolume != null && m.avgVolume > 0) {
+            if (m.currentVolume > 2 * m.avgVolume) {
+              volumeSpikeSet.add(ticker);
+            }
+          }
+        }
+
+        // ── Build output ──────────────────────────────────────────────────
         const movers = filtered
           .filter(([, v]) =>
             v.sources.some((s) =>
-              ["top_gainers", "top_losers", "watchlist", "stocktwits_trending", "reddit_trending"].includes(s),
+              ["top_gainers", "top_losers", "watchlist", "stocktwits_trending", "reddit_trending", "theme_match"].includes(s),
             ),
           )
           .map(([ticker, v]) => ({
@@ -726,6 +835,7 @@ export function createResearchTools(ctx: ToolContext) {
             source: v.sources.join(", "),
             change_pct: (v.data as { change_pct?: number }).change_pct,
             price: (v.data as { price?: number }).price,
+            volume_spike: volumeSpikeSet.has(ticker) || undefined,
           }));
 
         const earningsOut = filtered
@@ -737,6 +847,13 @@ export function createResearchTools(ctx: ToolContext) {
             epsEstimate: (v.data as { eps_estimate?: number | null }).eps_estimate,
           }));
 
+        const notes: string[] = [];
+        if (configSectors.length > 0) notes.push(`Sector-filtered for: ${configSectors.join(", ")}.`);
+        if (theme_filter) notes.push(`Theme boost: ${theme_filter}.`);
+        if (droppedCount > 0) notes.push(`${droppedCount} candidates dropped by quality filters.`);
+        if (volumeSpikeSet.size > 0) notes.push(`Volume spikes: ${[...volumeSpikeSet].join(", ")}.`);
+        notes.push(`${filtered.length} candidates remain.`);
+
         return {
           earnings: earningsOut,
           movers,
@@ -746,15 +863,22 @@ export function createResearchTools(ctx: ToolContext) {
             "top_gainers",
             "top_losers",
             "stocktwits_trending",
+            "reddit_trending",
             ...(ctx.watchlist?.length ? ["watchlist"] : []),
+            ...(theme_filter ? ["theme_match"] : []),
           ],
-          note: configSectors.length > 0
-            ? `Sector-filtered for: ${configSectors.join(", ")}. ${filtered.length} candidates remain.`
-            : "Review these candidates and decide which ones to research in depth.",
+          note: notes.join(" "),
+          filters_applied: {
+            min_market_cap: minCap,
+            min_avg_volume: minVol,
+            theme_filter: theme_filter ?? null,
+            dropped_count: droppedCount,
+          },
+          volume_spikes: [...volumeSpikeSet],
           _sources: [
             {
               provider: "Finnhub",
-              title: "Earnings Calendar (Next 7 Days)",
+              title: "Earnings Calendar (30 Days)",
               url: "https://finnhub.io/docs/api/earnings-calendar",
               excerpt: earningsOut.length > 0 ? `${earningsOut.length} upcoming: ${earningsOut.slice(0, 3).map((e) => e.ticker).join(", ")}` : "No upcoming earnings",
             },
@@ -770,10 +894,17 @@ export function createResearchTools(ctx: ToolContext) {
               url: "https://stocktwits.com/rankings/trending",
               excerpt: stTrending.length > 0 ? `Trending: ${stTrending.slice(0, 5).join(", ")}` : "No trending data",
             },
+            {
+              provider: "Reddit",
+              title: "Trending Tickers (WSB, r/stocks, r/options, r/investing)",
+              url: "https://reddit.com/r/wallstreetbets",
+              excerpt: redditTrending.length > 0 ? `${redditTrending.length} trending tickers` : "No Reddit data",
+            },
             ...(ctx.watchlist?.length
               ? [{
                   provider: "Watchlist",
                   title: "Custom Watchlist",
+                  url: "",
                   excerpt: `Watching: ${ctx.watchlist.join(", ")}`,
                 }]
               : []),
@@ -1871,6 +2002,23 @@ export function createResearchTools(ctx: ToolContext) {
         console.log(`[tool] detect_market_themes lookback=${lookback_days ?? 3} runId=${ctx.runId}`);
         const { detectThemes } = await import("@/lib/discovery/themes");
         return detectThemes(lookback_days);
+      },
+    }),
+
+    scan_catalysts: tool({
+      description:
+        "Find upcoming catalysts that could move stock prices: earnings reports, economic events (FOMC, CPI, jobs), insider buying clusters, and analyst upgrades/downgrades. Use this after detect_market_themes to find time-sensitive opportunities.",
+      inputSchema: z.object({
+        forward_days: z.number().optional().describe("Days to look forward (default 14)"),
+        catalyst_types: z
+          .array(z.enum(["EARNINGS", "ECONOMIC", "INSIDER", "ANALYST_ACTION"]))
+          .optional()
+          .describe("Types of catalysts to scan for (default: all)"),
+      }),
+      execute: async ({ forward_days, catalyst_types }) => {
+        console.log(`[tool] scan_catalysts forward=${forward_days ?? 14} types=${catalyst_types?.join(",") ?? "all"} runId=${ctx.runId}`);
+        const { scanCatalysts } = await import("@/lib/discovery/catalysts");
+        return scanCatalysts({ forwardDays: forward_days, catalystTypes: catalyst_types });
       },
     }),
   };
