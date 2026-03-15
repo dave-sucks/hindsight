@@ -35,9 +35,9 @@ export const priceMonitor = inngest.createFunction(
   },
   { cron: "0 10-20 * * 1-5" }, // every hour, 10am–8pm UTC (covers 9:30–4pm ET + buffer)
   async ({ step }) => {
-    // Step 1: Fetch all OPEN trades
+    // Step 1: Fetch all OPEN + SHADOW trades
     const openTrades = await step.run("fetch-open-trades", async () => {
-      return prisma.trade.findMany({ where: { status: "OPEN" } });
+      return prisma.trade.findMany({ where: { status: { in: ["OPEN", "SHADOW"] } } });
     });
 
     if (openTrades.length === 0) return { checked: 0, reason: "no-open-trades" };
@@ -92,11 +92,46 @@ export const priceMonitor = inngest.createFunction(
             data: {
               tradeId: trade.id,
               eventType: "PRICE_CHECK",
-              description: `Price check: $${currentPrice.toFixed(2)} (${pnl.pct >= 0 ? "+" : ""}${pnl.pct.toFixed(1)}%)`,
+              description: `${trade.status === "SHADOW" ? "SHADOW " : ""}Price check: $${currentPrice.toFixed(2)} (${pnl.pct >= 0 ? "+" : ""}${pnl.pct.toFixed(1)}%)`,
               priceAt: currentPrice,
               pnlAt: pnl.dollars,
             },
           });
+
+          // Shadow trade expiry check — close if observation window has passed
+          if (trade.status === "SHADOW" && trade.exitDate && new Date() >= new Date(trade.exitDate)) {
+            // For shadow trades: WIN = good pass (price dropped, you avoided a loss)
+            // LOSS = bad pass (price rose, you missed a gain)
+            const outcome = pnl.dollars <= 0 ? "WIN" : "LOSS";
+            await prisma.trade.update({
+              where: { id: trade.id },
+              data: {
+                status: "SHADOW_CLOSED",
+                closePrice: currentPrice,
+                realizedPnl: pnl.dollars,
+                outcome,
+                closeReason: "SHADOW_EXPIRY",
+                closedAt: new Date(),
+              },
+            });
+            await prisma.tradeEvent.create({
+              data: {
+                tradeId: trade.id,
+                eventType: "CLOSED",
+                description: `SHADOW CLOSED: ${outcome === "WIN" ? "Good pass" : "Bad pass"} — ${trade.ticker} moved ${pnl.pct >= 0 ? "+" : ""}${pnl.pct.toFixed(1)}% (${pnl.dollars >= 0 ? "+" : ""}$${pnl.dollars.toFixed(2)} hypothetical)`,
+                priceAt: currentPrice,
+                pnlAt: pnl.dollars,
+              },
+            });
+            checked++;
+            return;
+          }
+
+          // Skip exit conditions and alerts for shadow trades
+          if (trade.status === "SHADOW") {
+            checked++;
+            return;
+          }
 
           // Check exit conditions — DAV-33 implements auto-close
           await checkExitConditions(trade as unknown as TradeModel, currentPrice);

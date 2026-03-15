@@ -107,9 +107,11 @@ export const morningResearch = inngest.createFunction(
             orderBy: { closedAt: "desc" },
             take: 20,
             select: {
+              id: true,
               ticker: true, direction: true, outcome: true,
               entryPrice: true, closePrice: true, shares: true,
               realizedPnl: true, closeReason: true, closedAt: true,
+              agentEvaluation: true,
             },
           });
 
@@ -141,6 +143,21 @@ export const morningResearch = inngest.createFunction(
             orderBy: { createdAt: "desc" },
             take: 3,
             select: { narrative: true, strategyNotes: true, createdAt: true },
+          });
+
+          // Recent shadow-closed trades (pass tracking results)
+          const shadowTrades = await prisma.trade.findMany({
+            where: {
+              userId: config.userId,
+              status: "SHADOW_CLOSED",
+              thesis: { researchRun: { agentConfigId: config.id } },
+            },
+            orderBy: { closedAt: "desc" },
+            take: 10,
+            select: {
+              ticker: true, entryPrice: true, closePrice: true,
+              realizedPnl: true, outcome: true, closedAt: true,
+            },
           });
 
           const parts: string[] = [];
@@ -176,9 +193,24 @@ export const morningResearch = inngest.createFunction(
             parts.push(`Win/Loss: ${wins}W / ${losses}L`);
             for (const t of recentTrades.slice(0, 10)) {
               const pnl = t.realizedPnl ?? 0;
-              parts.push(`- ${t.outcome ?? "?"} ${t.direction} $${t.ticker}: entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} (${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}, reason: ${t.closeReason ?? "—"})`);
+              const evalSnippet = t.agentEvaluation ? ` | Eval: ${t.agentEvaluation.slice(0, 200)}` : "";
+              parts.push(`- ${t.outcome ?? "?"} | ${t.direction} $${t.ticker} | entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} | ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}${evalSnippet}`);
             }
-            parts.push(`\nLearn from these results. Avoid repeating patterns that led to losses.`);
+            parts.push(`\nLearn from these results and evaluations. Avoid repeating patterns that led to losses.`);
+          }
+
+          if (shadowTrades.length > 0) {
+            const goodPasses = shadowTrades.filter((t) => t.outcome === "WIN").length;
+            const badPasses = shadowTrades.filter((t) => t.outcome === "LOSS").length;
+            parts.push(`\n## Shadow Trade Results — Passes You Tracked (${shadowTrades.length} resolved)`);
+            parts.push(`Good passes: ${goodPasses} | Bad passes: ${badPasses}`);
+            for (const t of shadowTrades) {
+              const priceDelta = t.closePrice ? ((t.closePrice - t.entryPrice) / t.entryPrice * 100) : 0;
+              const hypotheticalPnl = t.realizedPnl ?? 0;
+              const label = t.outcome === "WIN" ? "GOOD PASS" : "BAD PASS";
+              parts.push(`- ${label} | $${t.ticker} | passed at $${Number(t.entryPrice).toFixed(2)}, now $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} (${priceDelta >= 0 ? "+" : ""}${priceDelta.toFixed(1)}%) | ${hypotheticalPnl >= 0 ? "Missed" : "Avoided"} $${Math.abs(hypotheticalPnl).toFixed(2)}`);
+            }
+            parts.push(`\nUse these results to calibrate your pass decisions. If you're making too many bad passes, consider being more aggressive.`);
           }
 
           if (latestAccuracy) {
@@ -205,6 +237,7 @@ export const morningResearch = inngest.createFunction(
           watchlist: config.watchlist ?? [],
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
+          maxPositionSize: Number(config.maxPositionSize),
         });
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)

@@ -99,6 +99,8 @@ You MUST call show_thesis for EVERY ticker you researched in Phase 3. No excepti
 
 If you researched 4 tickers, you must call show_thesis exactly 4 times.
 
+**PASS theses MUST include entry_price** — even when passing, include the current market price as \`entry_price\`. This allows us to track what would have happened and measure whether your pass decisions were correct.
+
 **Source tracking:** When calling show_thesis, include the \`sources_used\` parameter. Collect all \`_sources\` entries from the tool calls you made for that ticker (get_stock_data, get_technical_analysis, get_earnings_data, get_analyst_targets, get_news_deep_dive, etc.) and pass them as the sources_used array. Each entry should have: provider, title, and optionally url and excerpt. This is how we track data provenance for each thesis.
 
 ### Phase 5: Trade Decision — MANDATORY
@@ -114,6 +116,16 @@ After EVERY thesis with confidence >= ${minConf}%, you MUST call place_trade. Th
 - If you presented a thesis at ${minConf}%+ and did NOT call place_trade, that is a bug
 
 The trade shows a confirmation card. The whole point of this platform is to paper trade.
+
+### Phase 5.5: Portfolio Review
+Before summarizing, review ALL theses generated this session alongside your current open positions. Consider:
+- **Total portfolio exposure**: How much capital is now deployed long vs short?
+- **Sector concentration**: Are you overweight in one sector across new and existing positions?
+- **Correlation risk**: Do your new trades move together? (e.g., multiple semiconductor longs)
+- **Daily loss limits**: Could a bad day wipe out more than your risk tolerance allows?
+- **Max position count**: Are you approaching or exceeding your max open positions limit?
+
+If you placed multiple trades this session, confirm the combined risk is acceptable. If you're overexposed to a sector or direction, note this clearly. Write your portfolio review assessment and pass it as the \`portfolio_review\` field when calling summarize_run.
 
 ### Phase 6: Portfolio Synthesis
 **ALWAYS call summarize_run as your LAST action.** This renders a portfolio synthesis card. Include:

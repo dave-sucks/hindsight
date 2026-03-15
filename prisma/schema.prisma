@@ -112,7 +112,7 @@ model Trade {
   userId          String
   ticker          String
   direction       String       // "LONG" | "SHORT"
-  status          String       // "OPEN" | "CLOSED" | "CANCELLED"
+  status          String       // "OPEN" | "CLOSED" | "CANCELLED" | "SHADOW" | "SHADOW_CLOSED"
   entryPrice      Float
   shares          Float
   targetPrice     Float?
@@ -121,7 +121,7 @@ model Trade {
   exitDate        DateTime?
   trailingStopPct Float?
   closePrice      Float?
-  closeReason     String?      // "TARGET" | "STOP" | "TIME" | "MANUAL"
+  closeReason     String?      // "TARGET" | "STOP" | "TIME" | "MANUAL" | "SHADOW_EXPIRY"
   realizedPnl     Float?
   outcome         String?      // "WIN" | "LOSS" | "BREAKEVEN"
   agentEvaluation      String?

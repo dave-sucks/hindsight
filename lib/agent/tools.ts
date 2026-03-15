@@ -414,6 +414,7 @@ interface ToolContext {
   watchlist?: string[];
   exclusionList?: string[];
   sectors?: string[];
+  maxPositionSize?: number;
 }
 
 // ── Factory: creates tools with context ─────────────────────────────────────
@@ -1433,6 +1434,48 @@ export function createResearchTools(ctx: ToolContext) {
             });
           }
 
+          // Create shadow trade for PASS theses to track what would have happened
+          if (args.direction === "PASS" && args.entry_price) {
+            try {
+              const posSize = ctx.maxPositionSize ?? 10000;
+              const shadowShares = Math.floor(posSize / args.entry_price);
+              if (shadowShares > 0) {
+                // 5 trading days from now (roughly 7 calendar days to account for weekends)
+                const exitDate = new Date();
+                exitDate.setDate(exitDate.getDate() + 7);
+
+                const shadowTrade = await prisma.trade.create({
+                  data: {
+                    thesisId: thesis.id,
+                    userId: ctx.userId,
+                    ticker: args.ticker,
+                    direction: "LONG", // default: "what if we'd gone long?"
+                    status: "SHADOW",
+                    entryPrice: args.entry_price,
+                    shares: shadowShares,
+                    targetPrice: null,
+                    stopLoss: null,
+                    exitStrategy: "TIME_BASED",
+                    exitDate,
+                    alpacaOrderId: null,
+                  },
+                });
+
+                await prisma.tradeEvent.create({
+                  data: {
+                    tradeId: shadowTrade.id,
+                    eventType: "PLACED",
+                    description: `SHADOW: Passed on ${args.ticker} at $${args.entry_price.toFixed(2)}, tracking ${shadowShares} hypothetical shares for 5 trading days`,
+                    priceAt: args.entry_price,
+                  },
+                });
+                console.log(`[tool] show_thesis created shadow trade for PASS on ${args.ticker}`);
+              }
+            } catch (shadowErr) {
+              console.warn("[tool] show_thesis shadow trade creation failed (non-fatal):", shadowErr);
+            }
+          }
+
           return { ...args, thesis_id: thesis.id };
         } catch {
           return args;
@@ -1594,6 +1637,12 @@ export function createResearchTools(ctx: ToolContext) {
           .describe(
             "Final assessment of the session — what went well, what to watch tomorrow",
           ),
+        portfolio_review: z
+          .string()
+          .optional()
+          .describe(
+            "Portfolio review assessment from Phase 5.5 — total exposure analysis, sector concentration, correlation risk, and whether combined risk is acceptable",
+          ),
       }),
       execute: async (args) => {
         console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
@@ -1620,6 +1669,7 @@ export function createResearchTools(ctx: ToolContext) {
                   summary: args.market_summary,
                   ranked_picks: args.ranked_picks,
                   risk_notes: args.risk_notes,
+                  portfolio_review: args.portfolio_review,
                   overall_assessment: args.overall_assessment,
                 } as object,
               },
