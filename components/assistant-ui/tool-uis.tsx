@@ -1378,6 +1378,337 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       );
     },
   });
+
+  // ── Company Peers → PeersCard ──────────────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_company_peers",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Company peers — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Users} label="Fetching peer companies" status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading comparison metrics" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+      const peers = (result.peers ?? []) as { ticker: string; name?: string; price?: number | null; change_pct?: number | null; pe_ratio?: number | null; market_cap?: number | null }[];
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Company peers — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Users} label={`Found ${peers.length} peer companies`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <PeersCard
+            ticker={ticker}
+            peers={peers}
+            sector={result.sector as string | undefined}
+          />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── News Deep Dive → PostList (carousel) ───────────────────────────
+  useAssistantToolUI({
+    toolName: "get_news_deep_dive",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>News deep dive — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Newspaper} label="Fetching stock news" status="active" />
+              <ChainOfThoughtStep icon={FileText} label="Loading press releases" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+      const stockNews = (result.stock_news ?? []) as { headline: string; source: string; url?: string; published_at?: string }[];
+      const pressReleases = (result.press_releases ?? []) as { headline: string; source: string; url?: string; published_at?: string }[];
+      const allNews = [...stockNews, ...pressReleases].map((n) => ({
+        headline: n.headline,
+        source: n.source,
+        url: n.url,
+        date: n.published_at,
+      }));
+
+      if (allNews.length === 0) {
+        return (
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
+            No additional news found for {ticker}.
+          </div>
+        );
+      }
+
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>News deep dive — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Newspaper} label={`${stockNews.length} news articles`} status="complete" />
+              <ChainOfThoughtStep icon={FileText} label={`${pressReleases.length} press releases`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <PostList
+            data={{
+              posts: allNews.slice(0, 5).map((article) => ({
+                title: article.headline,
+                category: article.source,
+                publishedAt: article.date,
+                url: article.url,
+              })),
+            }}
+            actions={{
+              onReadMore: (post) => {
+                if (post.url) window.open(post.url, "_blank", "noopener,noreferrer");
+              },
+            }}
+            appearance={{ variant: "carousel", showAuthor: false }}
+          />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Thesis → slim pill + ThesisArtifactSheet ──────────────────────
+  useAssistantToolUI({
+    toolName: "show_thesis",
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Building thesis</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={CheckCircle2} label="Data collected" status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label="Generating direction + confidence" status="active" />
+              <ChainOfThoughtStep icon={FileText} label="Writing full analysis" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const thesis: ThesisCardData = {
+        ticker: result.ticker as string,
+        direction: result.direction as "LONG" | "SHORT" | "PASS",
+        confidence_score: result.confidence_score as number,
+        reasoning_summary: result.reasoning_summary as string,
+        thesis_bullets: (result.thesis_bullets ?? []) as string[],
+        risk_flags: (result.risk_flags ?? []) as string[],
+        entry_price: (result.entry_price as number) ?? null,
+        target_price: (result.target_price as number) ?? null,
+        stop_loss: (result.stop_loss as number) ?? null,
+        hold_duration: (result.hold_duration as string) ?? "SWING",
+        signal_types: (result.signal_types ?? []) as string[],
+      };
+
+      const isLong = thesis.direction === "LONG";
+      const isPass = thesis.direction === "PASS";
+      const DirIcon = isLong ? TrendingUp : TrendingDown;
+
+      return (
+        <div className="my-2">
+          {/* Slim thesis pill — inline summary */}
+          <Card className="overflow-hidden p-0">
+            <div className="flex items-center gap-2.5 px-4 py-2.5">
+              <span className="text-sm font-semibold font-mono">{thesis.ticker}</span>
+              {!isPass ? (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px] gap-1 py-0 font-semibold",
+                    isLong
+                      ? "bg-positive/10 text-positive"
+                      : "bg-negative/10 text-negative",
+                  )}
+                >
+                  <DirIcon className="h-2.5 w-2.5" />
+                  {thesis.direction}
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="text-[10px] py-0">
+                  PASS
+                </Badge>
+              )}
+
+              {thesis.hold_duration && (
+                <span className="text-[10px] text-muted-foreground">
+                  {thesis.hold_duration}
+                </span>
+              )}
+
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "ml-auto flex items-center justify-center rounded-full size-7 text-[11px] font-bold tabular-nums",
+                  thesis.confidence_score >= 80
+                    ? "bg-positive/10 text-positive"
+                    : thesis.confidence_score >= 60
+                      ? "bg-amber-500/15 text-amber-500"
+                      : "bg-muted text-muted-foreground",
+                )}
+              >
+                {thesis.confidence_score}
+              </Badge>
+            </div>
+
+            {/* Entry/Target/Stop compact row */}
+            {thesis.entry_price != null && !isPass && (
+              <div className="flex items-center gap-4 px-4 pb-2.5 text-[10px]">
+                <span>
+                  <span className="text-muted-foreground uppercase tracking-wide">Entry</span>{" "}
+                  <span className="tabular-nums font-medium">${thesis.entry_price!.toFixed(2)}</span>
+                </span>
+                {thesis.target_price != null && (
+                  <span>
+                    <span className="text-muted-foreground uppercase tracking-wide">Target</span>{" "}
+                    <span className="tabular-nums font-medium text-positive">
+                      ${thesis.target_price!.toFixed(2)}
+                    </span>
+                  </span>
+                )}
+                {thesis.stop_loss != null && (
+                  <span>
+                    <span className="text-muted-foreground uppercase tracking-wide">Stop</span>{" "}
+                    <span className="tabular-nums font-medium text-negative">
+                      ${thesis.stop_loss!.toFixed(2)}
+                    </span>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {isPass && thesis.reasoning_summary && (
+              <div className="px-4 pb-2.5">
+                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                  {thesis.reasoning_summary}
+                </p>
+              </div>
+            )}
+          </Card>
+
+          {/* Open sheet for full detail */}
+          {!isPass && (
+            <div className="mt-1">
+              <ThesisArtifactSheet thesis={thesis}>
+                <span className="flex items-center gap-1">
+                  <FileText className="h-3 w-3" />
+                  Full analysis
+                </span>
+              </ThesisArtifactSheet>
+            </div>
+          )}
+        </div>
+      );
+    },
+  });
+
+  // ── Place trade → OrderConfirm (pending) / TradeCard (filled) ─────
+  useAssistantToolUI({
+    toolName: "place_trade",
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <div className="my-2 max-w-md">
+            <OrderConfirm
+              data={{
+                productName: "Placing trade…",
+                productVariant: "Submitting to Alpaca Paper",
+              }}
+              control={{ isLoading: true }}
+            />
+          </div>
+        );
+      }
+
+      const status = result.status as string;
+
+      if (status === "failed") {
+        return (
+          <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
+            Trade failed: {String(result.error || result.note || "Unknown error")}
+          </div>
+        );
+      }
+
+      return (
+        <div className="my-2">
+          <TradeCard
+            ticker={result.ticker as string}
+            direction={result.direction as "LONG" | "SHORT"}
+            entryPrice={(result.fill_price as number) ?? (result.entry_price as number)}
+            shares={result.shares as number}
+            targetPrice={result.target_price as number | undefined}
+            stopLoss={result.stop_loss as number | undefined}
+            status="OPEN"
+          />
+        </div>
+      );
+    },
+  });
+
+  // ── Run summary → RunSummaryCard ──────────────────────────────────
+  useAssistantToolUI({
+    toolName: "summarize_run",
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Portfolio synthesis</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={BarChart3} label="Ranking picks by conviction" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="Calculating exposure" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const rankedPicks = (result.ranked_picks ?? []) as {
+        rank: number;
+        ticker: string;
+        direction: "LONG" | "SHORT";
+        confidence: number;
+        reasoning: string;
+        action: "TRADE" | "WATCH" | "PASS";
+      }[];
+
+      const exposure = result.exposure_breakdown as {
+        long_exposure: number;
+        short_exposure: number;
+        net_exposure: number;
+        sector_concentration?: string;
+      } | null;
+
+      return (
+        <div className="my-2">
+          <RunSummaryCard
+            marketSummary={result.market_summary as string}
+            rankedPicks={rankedPicks}
+            exposureBreakdown={
+              exposure
+                ? {
+                    longExposure: exposure.long_exposure,
+                    shortExposure: exposure.short_exposure,
+                    netExposure: exposure.net_exposure,
+                    sectorConcentration: exposure.sector_concentration,
+                  }
+                : undefined
+            }
+            riskNotes={(result.risk_notes ?? []) as string[]}
+            overallAssessment={result.overall_assessment as string}
+          />
+        </div>
+      );
+    },
+  });
 }
 
 // ─── Registration hooks ─────────────────────────────────────────────────────
