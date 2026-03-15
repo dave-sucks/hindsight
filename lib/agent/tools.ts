@@ -1860,6 +1860,19 @@ export function createResearchTools(ctx: ToolContext) {
         };
       },
     }),
+
+    detect_market_themes: tool({
+      description:
+        "Identify dominant market themes and narratives driving capital flows. Returns named themes with strength, direction, and representative tickers. Call this after get_market_overview to understand what stories are moving the market.",
+      inputSchema: z.object({
+        lookback_days: z.number().optional().describe("Days to look back for news (default 3)"),
+      }),
+      execute: async ({ lookback_days }) => {
+        console.log(`[tool] detect_market_themes lookback=${lookback_days ?? 3} runId=${ctx.runId}`);
+        const { detectThemes } = await import("@/lib/discovery/themes");
+        return detectThemes(lookback_days);
+      },
+    }),
   };
 }
 
