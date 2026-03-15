@@ -268,7 +268,6 @@ export default function AnalystDetailClient({
                 {hasRunning && (
                   <Badge
                     variant="secondary"
-                    className="text-[10px] h-5 px-2 shrink-0 animate-pulse"
                   >
                     Research Running…
                   </Badge>

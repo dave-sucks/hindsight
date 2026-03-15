@@ -2,9 +2,9 @@
 
 import type { ComponentProps } from "react";
 
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import { ArrowUpRight, ArrowDownRight, Calendar } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,15 +60,9 @@ export function ScanResultsCard({
                 return (
                   <Badge
                     key={i}
-                    variant="secondary"
-                    className={cn(
-                      "gap-1 py-0 text-[11px] font-mono",
-                      isUp
-                        ? "bg-positive/10 text-positive"
-                        : "bg-negative/10 text-negative",
-                    )}
+                    variant={isUp ? "positive" : "negative"}
                   >
-                    {isUp ? <ArrowUpRight className="h-2.5 w-2.5" /> : <ArrowDownRight className="h-2.5 w-2.5" />}
+                    {isUp ? <ArrowUpRight /> : <ArrowDownRight />}
                     {m.ticker}
                     {m.changePct != null && (
                       <span className="tabular-nums">
@@ -94,7 +88,6 @@ export function ScanResultsCard({
                 <Badge
                   key={i}
                   variant="outline"
-                  className="text-[10px] gap-1 py-0 px-2 font-mono"
                 >
                   {e.ticker}
                   {e.date && (

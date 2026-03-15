@@ -116,7 +116,7 @@ export function ResearchStepCard({
               {SENTIMENT_CONFIG[sentiment]?.label}
             </span>
           )}
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline">
             {provider}
           </Badge>
         </div>

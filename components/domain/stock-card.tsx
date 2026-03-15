@@ -137,8 +137,8 @@ export function StockCard({
             {/* Right: price + change + arrow */}
             <div className="ml-auto flex items-center gap-3 shrink-0">
               {sector && (
-                <Badge variant="outline" className="text-[10px] gap-1 hidden sm:inline-flex">
-                  <Building2 className="h-2.5 w-2.5" />
+                <Badge variant="outline">
+                  <Building2 />
                   {sector}
                 </Badge>
               )}
@@ -250,13 +250,13 @@ export function StockCard({
           {/* Tags */}
           <div className="flex flex-wrap gap-1.5">
             {sector && (
-              <Badge variant="outline" className="text-[10px] gap-1">
-                <Building2 className="h-2.5 w-2.5" />
+              <Badge variant="outline">
+                <Building2 />
                 {sector}
               </Badge>
             )}
             {exchange && (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline">
                 {exchange}
               </Badge>
             )}

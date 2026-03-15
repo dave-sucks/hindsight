@@ -1,14 +1,14 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { cn } from "@/lib/utils";
-import { ArrowUpRight, ArrowDownRight, Minus, ExternalLink, TrendingUp, TrendingDown } from "lucide-react";
-import { useEffect, useState, memo, useCallback } from "react";
+import { StockLogo } from "@/components/StockLogo";
+import { PnlBadge } from "@/components/ui/pnl-badge";
+import { cn, pnlColor } from "@/lib/utils";
+import { useEffect, useState, memo } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,42 +58,56 @@ async function fetchQuote(symbol: string): Promise<QuoteData | null> {
   return promise;
 }
 
-// ─── Direction helpers ────────────────────────────────────────────────────────
-
-function directionColor(changePct: number) {
-  if (changePct > 0.05) return "text-positive";
-  if (changePct < -0.05) return "text-negative";
-  return "text-muted-foreground";
-}
-
-function DirectionIcon({ changePct, className }: { changePct: number; className?: string }) {
-  if (changePct > 0.05) return <ArrowUpRight className={cn("h-3 w-3", className)} />;
-  if (changePct < -0.05) return <ArrowDownRight className={cn("h-3 w-3", className)} />;
-  return <Minus className={cn("h-3 w-3", className)} />;
-}
-
-function TrendIcon({ changePct, className }: { changePct: number; className?: string }) {
-  if (changePct > 0.05) return <TrendingUp className={cn("h-4 w-4 text-positive", className)} />;
-  if (changePct < -0.05) return <TrendingDown className={cn("h-4 w-4 text-negative", className)} />;
-  return <Minus className={cn("h-4 w-4 text-muted-foreground", className)} />;
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatPrice(price: number): string {
   if (price >= 1000) return price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return price.toFixed(2);
 }
 
-function formatChange(change: number): string {
-  const prefix = change > 0 ? "+" : "";
-  return `${prefix}${change.toFixed(2)}`;
+// ─── Day range gauge — 10 small rectangles ───────────────────────────────────
+
+function DayRangeGauge({
+  prevClose,
+  current,
+}: {
+  prevClose: number;
+  current: number;
+}) {
+  const changePct = prevClose > 0 ? ((current - prevClose) / prevClose) * 100 : 0;
+  // Map change percentage to filled blocks (0-10)
+  // Each block ≈ 1% move. Center is 5 blocks (0% change).
+  const filled = Math.min(10, Math.max(0, Math.round(5 + changePct * 2)));
+  const isPositive = changePct >= 0;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <span className="tabular-nums">${formatPrice(prevClose)}</span>
+        <span className={cn("tabular-nums", isPositive ? "text-positive" : "text-negative")}>
+          ${formatPrice(current)}
+        </span>
+      </div>
+      <div className="flex gap-0.5">
+        {Array.from({ length: 10 }, (_, i) => (
+          <div
+            key={i}
+            className={cn(
+              "h-1 flex-1 rounded-[1px]",
+              i < filled
+                ? isPositive
+                  ? "bg-positive/60"
+                  : "bg-negative/60"
+                : "bg-muted",
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
-function formatChangePct(pct: number): string {
-  const prefix = pct > 0 ? "+" : "";
-  return `${prefix}${pct.toFixed(2)}%`;
-}
-
-// ─── Inline TickerChip — Perplexity-style badge with hover card ──────────────
+// ─── Inline TickerChip — Perplexity-style inline text with hover card ────────
 
 export const TickerChip = memo(function TickerChip({
   symbol,
@@ -117,94 +131,64 @@ export const TickerChip = memo(function TickerChip({
 
   const sym = symbol.toUpperCase();
 
-  // Loading or no data — render a plain badge
+  // Loading or no data — render plain text
   if (loading || !quote) {
     return (
-      <Badge
-        variant="secondary"
-        className="cursor-default rounded-full px-1.5 py-0 text-[11px] font-semibold tabular-nums align-baseline mx-0.5 gap-0.5"
-      >
-        <span className="font-mono">${sym}</span>
-      </Badge>
+      <span className="font-mono font-medium text-foreground mx-0.5">
+        ${sym}
+      </span>
     );
   }
 
-  const color = directionColor(quote.changePct);
+  const isPositive = quote.changePct >= 0;
 
   return (
     <HoverCard>
       <HoverCardTrigger
-        openDelay={100}
         render={
-          <Badge
-            variant="secondary"
-            className={cn(
-              "cursor-pointer rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums align-baseline mx-0.5 gap-1",
-              "hover:bg-accent transition-colors inline-flex items-center",
-            )}
-          />
+          <span className="cursor-pointer inline-flex items-center gap-1 mx-0.5 align-baseline" />
         }
       >
-        <span className="font-semibold">{sym}</span>
-        <span className={cn("inline-flex items-center gap-0.5", color)}>
-          <DirectionIcon changePct={quote.changePct} className="h-2.5 w-2.5" />
-          <span>{formatChangePct(quote.changePct)}</span>
+        <span className="font-mono font-medium text-foreground">${sym}</span>
+        <span
+          className={cn(
+            "inline-flex items-center rounded-md px-1.5 py-0 text-xs font-medium tabular-nums",
+            isPositive
+              ? "bg-positive/10 text-positive"
+              : "bg-negative/10 text-negative",
+          )}
+        >
+          {isPositive ? "↗" : "↘"} {isPositive ? "+" : ""}{quote.changePct.toFixed(2)}%
         </span>
       </HoverCardTrigger>
       <HoverCardContent side="top" className="w-64 p-0 overflow-hidden">
-        {/* Header */}
-        <div className="px-3 py-2.5 border-b bg-muted/30">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TrendIcon changePct={quote.changePct} />
-              <div>
-                <p className="text-sm font-semibold">{sym}</p>
+        {/* Main row: logo + name/ticker + price */}
+        <div className="flex items-center gap-3 px-3 py-2.5">
+          <StockLogo ticker={sym} size="md" className="rounded-md" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{sym}</p>
+              </div>
+              <span className="text-sm font-medium tabular-nums shrink-0">
+                ${formatPrice(quote.price)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between mt-0.5">
+              <span className="text-[10px] text-muted-foreground font-mono">${sym}</span>
+              <div className="flex items-center gap-1.5">
+                <span className={cn("text-xs tabular-nums", pnlColor(quote.change))}>
+                  {quote.change >= 0 ? "+" : ""}{quote.change.toFixed(2)}
+                </span>
+                <PnlBadge value={quote.changePct} format="percent" className="text-[10px]" />
               </div>
             </div>
-            <a
-              href={`https://finance.yahoo.com/quote/${sym}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
           </div>
         </div>
 
-        {/* Price */}
-        <div className="px-3 py-2.5">
-          <div className="flex items-baseline justify-between">
-            <span className="text-lg font-semibold tabular-nums">
-              ${formatPrice(quote.price)}
-            </span>
-            <span className={cn("text-sm font-medium tabular-nums", color)}>
-              {formatChange(quote.change)} ({formatChangePct(quote.changePct)})
-            </span>
-          </div>
-
-          {/* Day range bar */}
-          <div className="mt-2.5 space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground uppercase tracking-wide">
-              <span>Prev Close</span>
-              <span>Current</span>
-            </div>
-            <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
-              <div
-                className={cn(
-                  "absolute inset-y-0 left-0 rounded-full transition-all",
-                  quote.changePct >= 0 ? "bg-positive/60" : "bg-negative/60",
-                )}
-                style={{
-                  width: `${Math.min(100, Math.max(5, 50 + quote.changePct * 5))}%`,
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-xs tabular-nums text-muted-foreground">
-              <span>${formatPrice(quote.prevClose)}</span>
-              <span className={color}>${formatPrice(quote.price)}</span>
-            </div>
-          </div>
+        {/* Day range gauge */}
+        <div className="px-3 pb-2.5">
+          <DayRangeGauge prevClose={quote.prevClose} current={quote.price} />
         </div>
 
         {/* Footer */}

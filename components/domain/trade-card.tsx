@@ -67,7 +67,6 @@ export function TradeCard({
   ...cardProps
 }: TradeCardProps) {
   const isLong = direction === "LONG";
-  const dirColor = isLong ? "text-positive" : "text-negative";
   const DirIcon = isLong ? ArrowUpRight : ArrowDownRight;
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.OPEN;
   const isClosed = status === "CLOSED";
@@ -83,14 +82,7 @@ export function TradeCard({
       <div className="px-5 py-4 flex items-center justify-between border-b">
         <div className="flex items-center gap-3">
           <span className="text-lg font-semibold font-mono">{ticker}</span>
-          <Badge
-            variant="secondary"
-            className={cn(
-              "gap-1 text-xs font-semibold",
-              dirColor,
-              isLong ? "bg-positive/10" : "bg-negative/10"
-            )}
-          >
+          <Badge variant={isLong ? "positive" : "negative"}>
             <DirIcon className="h-3.5 w-3.5" />
             {direction}
           </Badge>
@@ -106,13 +98,13 @@ export function TradeCard({
           </div>
           {outcome && (
             <Badge
-              variant="secondary"
-              className={cn(
-                "text-xs font-semibold",
-                outcome === "WIN" && "bg-positive/10 text-positive",
-                outcome === "LOSS" && "bg-negative/10 text-negative",
-                outcome === "BREAKEVEN" && "text-muted-foreground"
-              )}
+              variant={
+                outcome === "WIN"
+                  ? "positive"
+                  : outcome === "LOSS"
+                    ? "negative"
+                    : "secondary"
+              }
             >
               {outcome}
             </Badge>
