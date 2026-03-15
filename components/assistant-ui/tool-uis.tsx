@@ -12,6 +12,60 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
+// ─── Research tool UI imports ────────────────────────────────────────────────
+
+import {
+  ThesisCard,
+  type ThesisCardData,
+  TradeCard,
+  TradeConfirmation,
+  MarketContextCard,
+  type MarketContextData,
+  StockCard,
+  TechnicalCard,
+  EarningsCard,
+  OptionsFlowCard,
+  ScanResultsCard,
+  RunSummaryCard,
+  SecFilingsCard,
+  AnalystTargetsCard,
+  PeersCard,
+} from "@/components/domain";
+import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
+import { XPost } from "@/components/manifest-ui/x-post";
+import { PostList } from "@/components/manifest-ui/post-list";
+import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
+import {
+  Sources,
+  SourcesTrigger,
+  SourcesContent,
+  Source,
+} from "@/components/ai-elements";
+import {
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtStep,
+  ChainOfThoughtContent,
+} from "@/components/ai-elements/chain-of-thought";
+import { Citation } from "@/components/tool-ui/citation";
+import type { CitationType } from "@/components/tool-ui/citation";
+import {
+  BarChart3,
+  Search,
+  Newspaper,
+  LineChart as LineChartIcon,
+  Calendar,
+  Activity,
+  MessageSquareText,
+  CheckCircle2,
+  Target,
+  Users,
+  TrendingUp,
+  TrendingDown,
+  FileText,
+  MessageSquare,
+} from "lucide-react";
+
 // ─── Context for passing callbacks into tool UIs ────────────────────────────
 
 type ToolUICallbacks = {
@@ -31,6 +85,88 @@ const ToolUICallbacksContext = createContext<ToolUICallbacks>({});
 
 export const ToolUICallbacksProvider = ToolUICallbacksContext.Provider;
 export const useToolUICallbacks = () => useContext(ToolUICallbacksContext);
+
+// ─── Shared: source attribution helpers ──────────────────────────────────────
+
+interface SourceData {
+  provider: string;
+  title: string;
+  url?: string;
+  excerpt?: string;
+}
+
+const PROVIDER_DOMAINS: Record<string, string> = {
+  finnhub: "finnhub.io",
+  fmp: "financialmodelingprep.com",
+  reddit: "reddit.com",
+  stocktwits: "stocktwits.com",
+  twitter: "stocktwits.com",
+  "fmp social": "financialmodelingprep.com",
+  technical: "finnhub.io",
+  earnings: "finnhub.io",
+  options: "financialmodelingprep.com",
+};
+
+const PROVIDER_TYPES: Record<string, CitationType> = {
+  finnhub: "api",
+  fmp: "api",
+  reddit: "webpage",
+  stocktwits: "webpage",
+  twitter: "webpage",
+  "fmp social": "api",
+  technical: "api",
+  earnings: "api",
+  options: "api",
+};
+
+function faviconUrl(domain: string): string {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+}
+
+/** Extract _sources from a tool result, falling back to provider-only strings */
+function extractToolSources(result: Record<string, unknown>): SourceData[] {
+  const raw = result._sources;
+  if (Array.isArray(raw)) {
+    return raw.filter(
+      (s): s is SourceData =>
+        typeof s === "object" && s !== null && "provider" in s && "title" in s,
+    );
+  }
+  return [];
+}
+
+function SourceChips({ sources }: { sources: SourceData[] }) {
+  if (!sources.length) return null;
+  return (
+    <Sources className="mt-1.5">
+      <SourcesTrigger count={sources.length} className="text-[10px]" />
+      <SourcesContent>
+        {sources.map((s, i) => {
+          const key = s.provider.toLowerCase().replace(/[^a-z]/g, "");
+          const domain =
+            s.url
+              ? (() => { try { return new URL(s.url).hostname.replace(/^www\./, ""); } catch { return PROVIDER_DOMAINS[key]; } })()
+              : PROVIDER_DOMAINS[key];
+          const type = PROVIDER_TYPES[key] ?? "webpage";
+
+          return (
+            <Source key={`${s.provider}-${i}`} provider={s.provider}>
+              <Citation
+                href={s.url ?? `https://${domain ?? s.provider.toLowerCase() + ".com"}`}
+                title={s.title}
+                snippet={s.excerpt}
+                domain={domain ?? s.provider}
+                favicon={domain ? faviconUrl(domain) : undefined}
+                type={type}
+                variant="inline"
+              />
+            </Source>
+          );
+        })}
+      </SourcesContent>
+    </Sources>
+  );
+}
 
 // ─── suggest_config tool UI ─────────────────────────────────────────────────
 
@@ -202,7 +338,6 @@ SuggestConfigEditorRender.displayName = "SuggestConfigEditorRender";
 
 import {
   Globe,
-  LineChart,
   MessageCircle,
   ExternalLink,
 } from "lucide-react";
@@ -272,7 +407,7 @@ const MarketContextRender: ToolCallMessagePartComponent = ({ result, status }) =
   if (status?.type !== "complete" && !result) {
     return (
       <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-        <LineChart className="h-4 w-4" />
+        <LineChartIcon className="h-4 w-4" />
         Loading market data…
       </div>
     );
@@ -287,7 +422,7 @@ const MarketContextRender: ToolCallMessagePartComponent = ({ result, status }) =
   return (
     <div className="my-2 rounded-lg border overflow-hidden">
       <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
-        <LineChart className="h-3.5 w-3.5 text-muted-foreground" />
+        <LineChartIcon className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">
           Market Context
         </span>
@@ -597,6 +732,394 @@ const TrendingStocksRender: ToolCallMessagePartComponent = ({ args, result, stat
 };
 TrendingStocksRender.displayName = "TrendingStocksRender";
 
+// ─── Research tool UI registrations (shared across agent, builder, editor) ───
+
+/**
+ * Register all 14 research tool UIs used by the agent.
+ * Extracted from AgentThread.tsx so any chat context can render the same
+ * rich domain cards with ChainOfThought loading + SourceChips attribution.
+ */
+export function useRegisterResearchToolUIs(_runId?: string) {
+  // ── Market overview → MarketContextCard ─────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_market_overview",
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Market conditions</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={TrendingUp} label="Fetching S&P 500, VIX" status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading sector performance" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const spy = result.spy as {
+        price: number;
+        change_pct: number;
+        day_high: number;
+        day_low: number;
+      } | null;
+      const rawVix = result.vix as {
+        level: number;
+        change_pct: number;
+      } | null;
+      const vix = rawVix && rawVix.level > 0.1 ? rawVix : null;
+      const sectors = (result.sectors ?? []) as {
+        symbol: string;
+        price: number;
+        change_pct: number;
+      }[];
+
+      const topSectors = sectors
+        .filter((s) => s.change_pct > 0)
+        .slice(0, 3)
+        .map((s) => ({ name: s.symbol, change: s.change_pct }));
+      const bottomSectors = sectors
+        .filter((s) => s.change_pct < 0)
+        .slice(-3)
+        .reverse()
+        .map((s) => ({ name: s.symbol, change: s.change_pct }));
+
+      const regime: MarketContextData["regime"] =
+        vix && vix.level > 25
+          ? "volatile"
+          : spy && spy.change_pct > 0.5
+            ? "trending_up"
+            : spy && spy.change_pct < -0.5
+              ? "trending_down"
+              : "range_bound";
+
+      const apiErrors = result.api_errors as string[] | undefined;
+
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Market conditions</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={TrendingUp} label="Fetched S&P 500, VIX" status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label={`Loaded ${sectors.length} sector ETFs`} status="complete" />
+              {apiErrors?.length ? (
+                <ChainOfThoughtStep icon={Activity} label={`Data issues: ${apiErrors.slice(0, 2).join("; ")}`} status="active" />
+              ) : null}
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <MarketContextCard
+            regime={regime}
+            spxChange={spy?.change_pct}
+            vixLevel={vix?.level}
+            topSectors={topSectors}
+            bottomSectors={bottomSectors}
+            todaysApproach={apiErrors?.length ? `Data issues: ${apiErrors.slice(0, 2).join("; ")}` : ""}
+          />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Scan candidates → ScanResultsCard ─────────────────────────────
+  useAssistantToolUI({
+    toolName: "scan_candidates",
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Scanning for candidates</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Search} label="Checking earnings calendar" status="active" />
+              <ChainOfThoughtStep icon={TrendingUp} label="Scanning gainers & losers" status="pending" />
+              <ChainOfThoughtStep icon={Activity} label="Social trends (StockTwits)" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const earnings = (result.earnings ?? []) as {
+        ticker: string;
+        source: string;
+        date?: string;
+        eps_estimate?: number | null;
+      }[];
+      const movers = (result.movers ?? []) as {
+        ticker: string;
+        source: string;
+        change_pct?: number;
+        price?: number;
+      }[];
+
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Scanning for candidates</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Search} label={`Found ${earnings.length} earnings catalysts`} status="complete" />
+              <ChainOfThoughtStep icon={TrendingUp} label={`Found ${movers.length} top movers`} status="complete" />
+              <ChainOfThoughtStep icon={Activity} label="Checked StockTwits trending" status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <ScanResultsCard
+            earnings={earnings.map((e) => ({
+              ticker: e.ticker,
+              source: e.source,
+              date: e.date,
+              epsEstimate: e.eps_estimate,
+            }))}
+            movers={movers.map((m) => ({
+              ticker: m.ticker,
+              source: m.source,
+              changePct: m.change_pct,
+              price: m.price,
+            }))}
+            totalFound={result.total_found as number}
+          />
+        </div>
+      );
+    },
+  });
+
+  // ── Stock data → StockCard + PostList (news carousel) ──────────────
+  useAssistantToolUI({
+    toolName: "get_stock_data",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Researching {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Search} label={`Fetching quote for ${ticker}`} status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading financials" status="pending" />
+              <ChainOfThoughtStep icon={Newspaper} label="Scanning news" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const quote = result.quote as {
+        price: number;
+        change: number;
+        change_pct: number;
+        high: number;
+        low: number;
+      } | null;
+      const company = result.company as {
+        name: string;
+        sector: string;
+        market_cap: number | null;
+        exchange: string;
+      } | null;
+      const financials = result.financials as {
+        pe_ratio: number | null;
+        pb_ratio: number | null;
+        high_52w: number | null;
+        low_52w: number | null;
+        avg_volume_10d: number | null;
+        beta: number | null;
+      } | null;
+      const consensus = result.analyst_consensus as {
+        buy: number;
+        hold: number;
+        sell: number;
+        strong_buy: number;
+        strong_sell: number;
+      } | null;
+      const news = (result.news ?? []) as {
+        headline: string;
+        summary: string;
+        source: string;
+        url: string;
+        date: string;
+      }[];
+
+      return (
+        <div className="my-2 space-y-1.5">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Researched {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Search} label={`Quote: $${quote?.price?.toFixed(2) ?? "—"} (${quote?.change_pct != null ? (quote.change_pct >= 0 ? "+" : "") + quote.change_pct.toFixed(2) + "%" : "—"})`} status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label={company?.name ? `${company.name} — ${company.sector ?? "Unknown sector"}` : "Company profile loaded"} status="complete" />
+              <ChainOfThoughtStep icon={Newspaper} label={`${news.length} news article${news.length !== 1 ? "s" : ""} found`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <StockCard
+            ticker={ticker}
+            companyName={company?.name}
+            price={quote?.price}
+            change={quote?.change}
+            changePct={quote?.change_pct}
+            sector={company?.sector}
+            marketCap={company?.market_cap}
+            exchange={company?.exchange}
+            dayHigh={quote?.high}
+            dayLow={quote?.low}
+            peRatio={financials?.pe_ratio}
+            beta={financials?.beta}
+            high52w={financials?.high_52w}
+            low52w={financials?.low_52w}
+            avgVolume={
+              financials?.avg_volume_10d
+                ? financials.avg_volume_10d * 1_000_000
+                : null
+            }
+            analystConsensus={
+              consensus
+                ? {
+                    buy: consensus.buy,
+                    hold: consensus.hold,
+                    sell: consensus.sell,
+                    strongBuy: consensus.strong_buy,
+                    strongSell: consensus.strong_sell,
+                  }
+                : null
+            }
+          />
+          {news.length > 0 && (
+            <PostList
+              data={{
+                posts: news.slice(0, 5).map((article) => ({
+                  title: article.headline,
+                  excerpt: article.summary || undefined,
+                  category: article.source,
+                  publishedAt: article.date,
+                  url: article.url,
+                })),
+              }}
+              actions={{
+                onReadMore: (post) => {
+                  if (post.url) window.open(post.url, "_blank", "noopener,noreferrer");
+                },
+              }}
+              appearance={{ variant: "carousel", showAuthor: false }}
+            />
+          )}
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Technical analysis → TechnicalCard ──────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_technical_analysis",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Technical analysis — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={LineChartIcon} label="Computing RSI, MACD, Bollinger" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="SMA crossover analysis" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      if (result.error) {
+        return (
+          <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-1.5">
+            {String(result.error)}
+          </div>
+        );
+      }
+
+      const rsi = result.rsi_14 as number | null;
+      const trend = result.trend as string | null;
+
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Technical analysis — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={LineChartIcon} label={rsi != null ? `RSI-14: ${rsi.toFixed(1)}` : "RSI computed"} status="complete" />
+              <ChainOfThoughtStep icon={Activity} label={trend ? `Trend: ${trend}` : "SMA crossover analysis"} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <TechnicalCard
+            ticker={ticker}
+            currentPrice={result.current_price as number}
+            rsi14={rsi}
+            sma20={result.sma_20 as number | null}
+            sma50={result.sma_50 as number | null}
+            priceVsSma20={result.price_vs_sma20 as string | null}
+            priceVsSma50={result.price_vs_sma50 as string | null}
+            positionIn52wRange={result.position_in_52w_range as string | null}
+            volumeRatio={result.volume_ratio as string | null}
+            trend={trend}
+          />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+
+  // ── Earnings data → EarningsCard ────────────────────────────────────
+  useAssistantToolUI({
+    toolName: "get_earnings_data",
+    render: ({ args, result }) => {
+      const ticker = (args as { ticker?: string })?.ticker ?? "";
+
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Earnings intelligence — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Calendar} label="Checking earnings calendar" status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Loading beat/miss history" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const nextEarnings = result.next_earnings as {
+        date: string;
+        eps_estimate: number | null;
+      } | null;
+      const quarters = (result.recent_quarters ?? []) as {
+        period: string;
+        actual_eps: number | null;
+        estimated_eps: number | null;
+        surprise: number | null;
+        surprise_pct: number | null;
+      }[];
+
+      return (
+        <div className="my-2">
+          <ChainOfThought>
+            <ChainOfThoughtHeader>Earnings intelligence — {ticker}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Calendar} label={nextEarnings ? `Next earnings: ${nextEarnings.date}` : "No upcoming earnings"} status="complete" />
+              <ChainOfThoughtStep icon={BarChart3} label={`${quarters.length} quarters analyzed — beat rate: ${result.beat_rate ?? "—"}`} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+          <EarningsCard
+            ticker={ticker}
+            nextEarnings={
+              nextEarnings
+                ? { date: nextEarnings.date, epsEstimate: nextEarnings.eps_estimate }
+                : null
+            }
+            beatRate={result.beat_rate as string}
+            recentQuarters={quarters.map((q) => ({
+              period: q.period,
+              actualEps: q.actual_eps,
+              estimatedEps: q.estimated_eps,
+              surprise: q.surprise,
+              surprisePct: q.surprise_pct,
+            }))}
+          />
+          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
+        </div>
+      );
+    },
+  });
+}
+
 // ─── Registration hooks ─────────────────────────────────────────────────────
 
 /**
@@ -667,16 +1190,7 @@ export const useRegisterToolUIs = useRegisterBuilderToolUIs;
 // ─── Trading / Research / Portfolio tool UIs (run-followup chat) ────────────
 
 import {
-  ThesisCard,
-  type ThesisCardData,
-  TradeCard,
-  TradeConfirmation,
-} from "@/components/domain";
-import {
-  TrendingUp,
-  TrendingDown,
   Briefcase,
-  BarChart3,
   GitCompare,
   HelpCircle,
 } from "lucide-react";
