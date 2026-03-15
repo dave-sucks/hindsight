@@ -115,33 +115,51 @@ function AnalystBreakdownCard({ analysts }: { analysts: AnalystStat[] }) {
       </CardHeader>
       <CardContent className="divide-y divide-border">
         {analysts.map((a) => (
-          <div key={a.analystId} className="flex items-center justify-between py-3 gap-4">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
-              <p className="text-xs text-muted-foreground tabular-nums">{a.trades} closed trades</p>
+          <div key={a.analystId} className="py-3 space-y-1.5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
+                <p className="text-xs text-muted-foreground tabular-nums">{a.trades} closed trades</p>
+              </div>
+              <div className="flex items-center gap-6 shrink-0">
+                <div className="text-right">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Win Rate</p>
+                  <p className={cn('text-sm font-semibold tabular-nums', a.winRate >= 50 ? 'text-positive' : 'text-negative')}>
+                    {a.winRate.toFixed(1)}%
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">P&amp;L</p>
+                  <p className={cn('text-sm font-semibold tabular-nums', a.totalPnl >= 0 ? 'text-positive' : 'text-negative')}>
+                    {a.totalPnl >= 0 ? '+' : ''}${Math.abs(a.totalPnl).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
+                </div>
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">W / L</p>
+                  <p className="text-sm font-medium tabular-nums">
+                    <span className="text-positive">{a.wins}</span>
+                    <span className="text-muted-foreground"> / </span>
+                    <span className="text-negative">{a.losses}</span>
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-6 shrink-0">
-              <div className="text-right">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Win Rate</p>
-                <p className={cn('text-sm font-semibold tabular-nums', a.winRate >= 50 ? 'text-positive' : 'text-negative')}>
-                  {a.winRate.toFixed(1)}%
-                </p>
+            {(a.bestTrade || a.worstTrade) && (
+              <div className="flex items-center gap-4 text-xs text-muted-foreground tabular-nums">
+                {a.bestTrade && (
+                  <span>
+                    Best: <span className="font-mono text-foreground">{a.bestTrade.ticker}</span>{' '}
+                    <span className="text-positive">+${a.bestTrade.pnl.toFixed(0)}</span>
+                  </span>
+                )}
+                {a.worstTrade && (
+                  <span>
+                    Worst: <span className="font-mono text-foreground">{a.worstTrade.ticker}</span>{' '}
+                    <span className="text-negative">{a.worstTrade.pnl >= 0 ? '+' : ''}${a.worstTrade.pnl.toFixed(0)}</span>
+                  </span>
+                )}
               </div>
-              <div className="text-right">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">P&amp;L</p>
-                <p className={cn('text-sm font-semibold tabular-nums', a.totalPnl >= 0 ? 'text-positive' : 'text-negative')}>
-                  {a.totalPnl >= 0 ? '+' : ''}${Math.abs(a.totalPnl).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-              </div>
-              <div className="text-right hidden sm:block">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">W / L</p>
-                <p className="text-sm font-medium tabular-nums">
-                  <span className="text-positive">{a.wins}</span>
-                  <span className="text-muted-foreground"> / </span>
-                  <span className="text-negative">{a.losses}</span>
-                </p>
-              </div>
-            </div>
+            )}
           </div>
         ))}
       </CardContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
@@ -32,6 +32,8 @@ import type {
 } from "@/lib/actions/analyst.actions";
 import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
+import { useRouter } from "next/navigation";
+import { Send } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -186,6 +188,60 @@ function ConfigSheet({
   );
 }
 
+// ── Floating composer (redirects to editor page on send) ─────────────────
+
+function FloatingEditorComposer({ analystId }: { analystId: string }) {
+  const router = useRouter();
+  const [text, setText] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleSend = useCallback(() => {
+    const msg = text.trim();
+    if (!msg) return;
+    router.push(`/analysts/${analystId}/edit?message=${encodeURIComponent(msg)}`);
+  }, [text, analystId, router]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
+
+  return (
+    <div className="shrink-0 px-4 pb-4 pt-3">
+      <div className="max-w-3xl mx-auto">
+        <div className="bg-background border border-border rounded-lg overflow-hidden transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20">
+          <div className="px-3 pt-3 pb-2">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask a question or suggest strategy changes…"
+              rows={1}
+              className="w-full bg-transparent p-0 text-foreground placeholder-muted-foreground resize-none outline-none text-sm min-h-10 max-h-[15vh]"
+            />
+          </div>
+          <div className="mb-2 px-2 flex items-center justify-end">
+            <Button
+              size="icon-sm"
+              disabled={!text.trim()}
+              onClick={handleSend}
+              aria-label="Send message"
+            >
+              <Send className="size-3" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AnalystDetailClient({
@@ -256,7 +312,7 @@ export default function AnalystDetailClient({
     <>
       <div className="grid lg:grid-cols-3 h-[calc(100dvh-3rem)] overflow-hidden">
         {/* ── Left: Analyst briefing hero ───────────────────────────────── */}
-        <div className="lg:col-span-2 flex flex-col overflow-y-auto relative">
+        <div className="lg:col-span-2 flex flex-col overflow-hidden relative">
           {/* Header */}
           <div className="flex items-start justify-between gap-4 p-4 shrink-0">
             {/* Left Side Analyst Name */}
@@ -351,6 +407,9 @@ export default function AnalystDetailClient({
               </div>
             </TabsContent>
           </Tabs>
+
+          {/* ── Floating composer — sends first message to editor page ── */}
+          <FloatingEditorComposer analystId={config.id} />
         </div>
         {/* ── Right sidebar: portfolio-style ─────────────────────────────── */}
         <div className="p-4 h-full">

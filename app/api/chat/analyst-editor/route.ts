@@ -1,6 +1,8 @@
 import { streamText, tool, stepCountIs, convertToModelMessages } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
+import { createClient } from "@/lib/supabase/server";
+import { createResearchTools as createAgentTools } from "@/lib/agent/tools";
 
 export const maxDuration = 120;
 
@@ -102,10 +104,13 @@ When you notice potential improvements, suggest them:
 - "With a 90% confidence threshold, your analyst might not place many trades. Consider 75-80% for more activity"
 - "You're scanning all sectors but your strategy prompt only discusses tech — consider narrowing sectors or broadening the prompt"
 
-## Available Research Tools
-- **web_search**: Search for current market news or strategy insights to inform your editing recommendations
-- **get_market_context**: Get current SPY, VIX, and sector performance to contextualize changes
-- **search_reddit**: Check Reddit sentiment to validate or challenge strategy changes
+## Available Research Tools (same tools the agent uses during live runs)
+- **get_market_overview**: Get current SPY, VIX, and sector ETF performance
+- **get_stock_data**: Comprehensive stock data — price, company profile, financials, analyst ratings, news
+- **get_earnings_data**: Upcoming and recent earnings data
+- **get_reddit_sentiment**: Reddit sentiment for a specific ticker from major trading communities
+- **search_reddit**: Search Reddit by topic or keyword (e.g. "biotech FDA", "semiconductor earnings")
+- **get_news_deep_dive**: Deep dive into news for a ticker
 
 Use these tools when the user's request benefits from current market context, but you don't need to use them for straightforward config changes.
 
@@ -117,29 +122,35 @@ Use these tools when the user's request benefits from current market context, bu
 - If the user's change seems counterproductive, respectfully push back with reasoning`;
 }
 
-// ── Helpers for research tools ──────────────────────────────────────────────────
-
-const FMP_KEY = process.env.FMP_API_KEY ?? "";
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY ?? "";
-
-async function fetchJSON(url: string) {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
 // ── Route ───────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userId = user?.id ?? "";
+
     const { messages, currentConfig } = await req.json();
 
     const modelMessages = await convertToModelMessages(messages);
     const systemPrompt = buildEditorSystemPrompt(currentConfig ?? {});
+
+    // ── Use the SAME research tools as the agent ─────────────────────────
+    const agentTools = createAgentTools({
+      runId: "editor",
+      userId,
+    });
+
+    const {
+      get_market_overview,
+      get_stock_data,
+      get_earnings_data,
+      get_reddit_sentiment,
+      get_news_deep_dive,
+      search_reddit,
+    } = agentTools;
 
     const result = streamText({
       model: openai("gpt-4o"),
@@ -155,135 +166,13 @@ export async function POST(req: Request) {
           },
         }),
 
-        web_search: tool({
-          description:
-            "Search the web for current market news or strategy insights to inform editing recommendations.",
-          inputSchema: z.object({
-            query: z.string().describe("Search query — be specific"),
-          }),
-          execute: async ({ query }) => {
-            try {
-              const newsUrl = `https://financialmodelingprep.com/api/v3/stock_news?limit=10&apikey=${FMP_KEY}`;
-              const stockNewsUrl = `https://financialmodelingprep.com/api/v3/fmp/articles?page=0&size=10&apikey=${FMP_KEY}`;
-
-              const [news, articles] = await Promise.all([
-                fetchJSON(newsUrl),
-                fetchJSON(stockNewsUrl),
-              ]);
-
-              const results: Array<{ title: string; text: string; url: string; source: string }> = [];
-
-              if (Array.isArray(news)) {
-                for (const n of news.slice(0, 5)) {
-                  if (
-                    n.title?.toLowerCase().includes(query.split(" ")[0]?.toLowerCase()) ||
-                    n.text?.toLowerCase().includes(query.split(" ")[0]?.toLowerCase()) ||
-                    results.length < 3
-                  ) {
-                    results.push({
-                      title: n.title ?? "",
-                      text: (n.text ?? "").slice(0, 200),
-                      url: n.url ?? "",
-                      source: n.site ?? "FMP",
-                    });
-                  }
-                }
-              }
-
-              if (Array.isArray(articles?.content)) {
-                for (const a of articles.content.slice(0, 3)) {
-                  results.push({
-                    title: a.title ?? "",
-                    text: (a.content ?? "").slice(0, 200),
-                    url: a.link ?? "",
-                    source: "FMP Analysis",
-                  });
-                }
-              }
-
-              return {
-                query,
-                results: results.slice(0, 6),
-                _sources: results.map((r) => ({
-                  title: r.title,
-                  url: r.url,
-                  provider: r.source,
-                  excerpt: r.text,
-                })),
-              };
-            } catch {
-              return { query, results: [], error: "Search unavailable" };
-            }
-          },
-        }),
-
-        get_market_context: tool({
-          description:
-            "Get current market conditions: SPY performance, VIX level, and sector performance.",
-          inputSchema: z.object({}),
-          execute: async () => {
-            try {
-              const [spyQuote, sectorData] = await Promise.all([
-                fetchJSON(
-                  `https://financialmodelingprep.com/api/v3/quote/SPY?apikey=${FMP_KEY}`,
-                ),
-                fetchJSON(
-                  `https://financialmodelingprep.com/api/v3/sectors-performance?apikey=${FMP_KEY}`,
-                ),
-              ]);
-
-              const vixQuote = await fetchJSON(
-                `https://finnhub.io/api/v1/quote?symbol=VIX&token=${FINNHUB_KEY}`,
-              );
-
-              const spy = Array.isArray(spyQuote) ? spyQuote[0] : null;
-
-              return {
-                spy: spy
-                  ? {
-                      price: spy.price,
-                      change: spy.changesPercentage,
-                      dayRange: `${spy.dayLow} - ${spy.dayHigh}`,
-                    }
-                  : null,
-                vix: vixQuote?.c
-                  ? { level: vixQuote.c, change: vixQuote.dp }
-                  : null,
-                sectors: Array.isArray(sectorData)
-                  ? sectorData.slice(0, 11).map((s: Record<string, unknown>) => ({
-                      sector: s.sector,
-                      change: s.changesPercentage,
-                    }))
-                  : [],
-                timestamp: new Date().toISOString(),
-              };
-            } catch {
-              return { error: "Market data unavailable" };
-            }
-          },
-        }),
-
-        search_reddit: tool({
-          description:
-            "Search Reddit trading communities for sentiment — useful for validating strategy changes.",
-          inputSchema: z.object({
-            query: z.string().describe("Search query for Reddit"),
-          }),
-          execute: async ({ query }) => {
-            const { searchReddit } = await import("@/lib/reddit");
-            const results = await searchReddit(query);
-            return {
-              query,
-              results,
-              _sources: results.map((r) => ({
-                title: r.title,
-                url: r.url,
-                provider: `r/${r.subreddit}`,
-                excerpt: `Score: ${r.score}`,
-              })),
-            };
-          },
-        }),
+        // Agent research tools (same data, same format, same domain cards)
+        get_market_overview,
+        get_stock_data,
+        get_earnings_data,
+        get_reddit_sentiment,
+        get_news_deep_dive,
+        search_reddit,
       },
       stopWhen: stepCountIs(10),
     });
