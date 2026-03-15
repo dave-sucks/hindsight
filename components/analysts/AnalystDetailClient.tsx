@@ -32,6 +32,7 @@ import type {
 } from "@/lib/actions/analyst.actions";
 import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
+import { AnalystEditorChat } from "@/components/analysts/AnalystEditorChat";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -256,7 +257,7 @@ export default function AnalystDetailClient({
     <>
       <div className="grid lg:grid-cols-3 h-[calc(100dvh-3rem)] overflow-hidden">
         {/* ── Left: Analyst briefing hero ───────────────────────────────── */}
-        <div className="lg:col-span-2 flex flex-col overflow-y-auto relative">
+        <div className="lg:col-span-2 flex flex-col overflow-hidden relative">
           {/* Header */}
           <div className="flex items-start justify-between gap-4 p-4 shrink-0">
             {/* Left Side Analyst Name */}
@@ -351,6 +352,14 @@ export default function AnalystDetailClient({
               </div>
             </TabsContent>
           </Tabs>
+
+          {/* ── Floating editor chat at bottom of left panel ────────────── */}
+          <div className="shrink-0 border-t h-[280px] min-h-[280px]">
+            <AnalystEditorChat
+              analystId={config.id}
+              currentConfig={config as Record<string, unknown>}
+            />
+          </div>
         </div>
         {/* ── Right sidebar: portfolio-style ─────────────────────────────── */}
         <div className="p-4 h-full">
