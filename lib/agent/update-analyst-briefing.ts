@@ -8,9 +8,6 @@
  * Each briefing is a permanent record that accumulates over time — the analyst
  * gets smarter because each briefing feeds forward into the next run's
  * system prompt.
- *
- * Also updates the AgentConfig.analystBriefing field with the latest narrative
- * for backward compatibility (dashboard display, quick access).
  */
 
 import { generateObject } from "ai";
@@ -339,15 +336,6 @@ Rules:
         trades: tradesData as object[],
         portfolioSnapshot: portfolioSnapshot as object,
         strategyNotes: object.strategyNotes,
-      },
-    });
-
-    // Also update the AgentConfig summary for quick access / backward compat
-    await prisma.agentConfig.update({
-      where: { id: analystId },
-      data: {
-        analystBriefing: object.narrative,
-        briefingUpdatedAt: new Date(),
       },
     });
 

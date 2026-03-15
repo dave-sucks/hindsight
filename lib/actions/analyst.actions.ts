@@ -26,8 +26,6 @@ export interface AnalystConfig {
   exclusionList: string[];
   dailyLossLimit: number;
   scheduleTime: string;
-  analystBriefing: string | null;
-  briefingUpdatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -415,8 +413,6 @@ export async function getAnalystDetail(
     exclusionList: (config.exclusionList as string[]) ?? [],
     dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
-    analystBriefing: config.analystBriefing,
-    briefingUpdatedAt: config.briefingUpdatedAt,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
   };

@@ -108,12 +108,13 @@ function AnalystTradeRow({ trade }: { trade: TradeWithThesis }) {
 function AnalystBriefing({
   config,
   stats,
+  latestBriefing,
 }: {
   config: AnalystDetail["config"];
   stats: AnalystDetail["stats"];
+  latestBriefing: AnalystDetail["briefings"][number] | null;
 }) {
-  const briefing = config.analystBriefing;
-  const hasBriefing = !!briefing && briefing.trim().length > 0;
+  const hasBriefing = !!latestBriefing;
   const prompt = config.analystPrompt;
   const hasPrompt = !!prompt && prompt.trim().length > 0;
   const [strategyOpen, setStrategyOpen] = useState(false);
@@ -132,12 +133,10 @@ function AnalystBriefing({
                   Portfolio Briefing
                 </h2>
               </div>
-              {config.briefingUpdatedAt && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  <span>Updated {formatRelativeTime(config.briefingUpdatedAt)}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>Updated {formatRelativeTime(latestBriefing.createdAt)}</span>
+              </div>
             </div>
 
             {/* Quick stats bar */}
@@ -171,7 +170,17 @@ function AnalystBriefing({
             </div>
 
             {/* Rich briefing content with inline tickers */}
-            <TickerMarkdown>{briefing}</TickerMarkdown>
+            <TickerMarkdown>{latestBriefing.narrative}</TickerMarkdown>
+
+            {/* Strategy notes from latest briefing */}
+            {latestBriefing.strategyNotes && (
+              <div className="rounded-md border-l-2 border-primary/30 pl-3 mt-4">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
+                  Strategy Notes
+                </p>
+                <TickerMarkdown>{latestBriefing.strategyNotes}</TickerMarkdown>
+              </div>
+            )}
           </div>
         ) : hasPrompt ? (
           /* Fallback: show static strategy if no briefing yet */
@@ -463,7 +472,11 @@ export default function AnalystDetailClient({
               </TabsList>
             </div>
             <TabsContent value={0} className="flex-1 overflow-y-auto">
-              <AnalystBriefing config={config} stats={stats} />
+              <AnalystBriefing
+                config={config}
+                stats={stats}
+                latestBriefing={detail.briefings[0] ?? null}
+              />
             </TabsContent>
             <TabsContent value={1} className="flex-1 overflow-y-auto">
               <div className="max-w-3xl mx-auto px-8 py-6">

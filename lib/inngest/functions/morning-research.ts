@@ -135,19 +135,30 @@ export const morningResearch = inngest.createFunction(
             },
           });
 
-          // Load analyst briefing for context
-          const briefingData = await prisma.agentConfig.findFirst({
-            where: { id: config.id },
-            select: { analystBriefing: true },
+          // Load recent briefings from the AnalystBriefing table
+          const recentBriefings = await prisma.analystBriefing.findMany({
+            where: { analystId: config.id },
+            orderBy: { createdAt: "desc" },
+            take: 3,
+            select: { narrative: true, strategyNotes: true, createdAt: true },
           });
 
           const parts: string[] = [];
 
-          // Inject the analyst briefing first
-          if (briefingData?.analystBriefing) {
-            parts.push("## Your Latest Portfolio Briefing");
-            parts.push("This is your most recent self-assessment. Use it to inform today's decisions.\n");
-            parts.push(briefingData.analystBriefing);
+          // Inject recent briefings for evolving context
+          if (recentBriefings.length > 0) {
+            parts.push("## Your Recent Briefings");
+            parts.push("These are your self-assessments from recent sessions. Use them to inform today's decisions.\n");
+            for (const [i, b] of recentBriefings.entries()) {
+              const dateStr = b.createdAt.toISOString().slice(0, 10);
+              const label = i === 0 ? "Latest" : `${i + 1} sessions ago`;
+              parts.push(`### ${label} (${dateStr})`);
+              parts.push(b.narrative.slice(0, 600));
+              if (b.strategyNotes) {
+                parts.push(`\n**Strategy Notes:** ${b.strategyNotes.slice(0, 300)}`);
+              }
+              parts.push("");
+            }
           }
 
           if (openTrades.length > 0) {

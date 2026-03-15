@@ -1,3 +1,7 @@
+-- DropColumn: remove old single-value briefing fields from AgentConfig
+ALTER TABLE "AgentConfig" DROP COLUMN IF EXISTS "analystBriefing";
+ALTER TABLE "AgentConfig" DROP COLUMN IF EXISTS "briefingUpdatedAt";
+
 -- CreateTable
 CREATE TABLE "AnalystBriefing" (
     "id" TEXT NOT NULL,
