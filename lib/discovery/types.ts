@@ -16,12 +16,12 @@
 // ─── Shared types ────────────────────────────────────────────────────────────
 
 /** Source attribution — every tool result includes _sources */
-export type ToolSource = {
+export interface ToolSource {
   provider: string;   // "Finnhub", "FMP", "Reddit", "StockTwits", "SEC EDGAR"
   title: string;      // Human-readable label
-  url?: string;       // Link to data source
-  excerpt?: string;   // Short summary of what this source contributed
-};
+  url: string;        // Link to data source (empty string if N/A)
+  excerpt: string;    // Short summary of what this source contributed (empty string if N/A)
+}
 
 /** Market regime classification */
 export type MarketRegime = "RISK_ON" | "RISK_OFF" | "NEUTRAL";
@@ -43,7 +43,32 @@ export type SectorMomentum = "leading" | "lagging";
 
 // ─── Tool 1: get_market_overview (enhanced) ──────────────────────────────────
 
-export type MarketOverviewResult = {
+export interface SpyTrend {
+  sma_20: number;
+  position: "above" | "below";
+  pct_from_sma: number;            // e.g. 2.3 means 2.3% above SMA
+}
+
+export interface EarningsDensity {
+  count: number;                    // companies reporting in next 5 days
+  period: string;                   // e.g. "Mar 15–Mar 20"
+}
+
+export interface MacroEvent {
+  event: string;                    // "FOMC Rate Decision"
+  actual: number | null;
+  estimate: number | null;
+  impact: ImpactLevel;
+}
+
+export interface SectorQuote {
+  symbol: string;                   // "XLK", "XLF", etc.
+  price: number;
+  change_pct: number;
+  momentum?: SectorMomentum;       // above/below 10d SMA
+}
+
+export interface MarketOverviewResult {
   // Existing fields (unchanged)
   spy: {
     price: number;
@@ -57,43 +82,33 @@ export type MarketOverviewResult = {
   } | null;
   sectors: SectorQuote[];
 
-  // New fields (v1 additions)
+  // v1 additions
   regime: MarketRegime;
-  spy_trend: {
-    sma_20: number;
-    position: "above" | "below";
-    pct_from_sma: number;            // e.g. 2.3 means 2.3% above SMA
-  } | null;
+  spy_trend: SpyTrend | null;
   macro_events_today: MacroEvent[];
-  earnings_density: {
-    count: number;                    // companies reporting in next 5 days
-    period: string;                   // e.g. "Mar 15–Mar 20"
-  };
+  earnings_density: EarningsDensity;
 
   // Error handling (existing pattern)
   api_errors?: string[];
   note?: string;
 
   _sources: ToolSource[];
-};
-
-export type SectorQuote = {
-  symbol: string;                     // "XLK", "XLF", etc.
-  price: number;
-  change_pct: number;
-  momentum?: SectorMomentum;         // NEW — above/below 10d SMA
-};
-
-export type MacroEvent = {
-  event: string;                      // "FOMC Rate Decision"
-  actual: number | null;
-  estimate: number | null;
-  impact: ImpactLevel;
-};
+}
 
 // ─── Tool 2: detect_market_themes ────────────────────────────────────────────
 
-export type DetectMarketThemesResult = {
+export interface MarketTheme {
+  id: string;                       // snake_case key from THEME_DEFINITIONS
+  label: string;                    // "AI Infrastructure", "GLP-1 / Weight Loss"
+  strength: number;                 // 0–1, normalized across themes
+  direction: ThemeDirection;
+  tickers: string[];                // representative tickers from theme
+  headline_matches: number;         // how many headlines matched
+  reddit_overlap: number;           // tickers also trending on Reddit
+  representative_headlines: string[]; // up to 3 representative headlines
+}
+
+export interface DetectMarketThemesResult {
   themes: MarketTheme[];
   meta: {
     headlines_analyzed: number;
@@ -102,21 +117,20 @@ export type DetectMarketThemesResult = {
   };
 
   _sources: ToolSource[];
-};
-
-export type MarketTheme = {
-  name: string;                       // "AI Infrastructure", "GLP-1 Momentum"
-  strength: number;                   // 0–1, normalized across themes
-  direction: ThemeDirection;
-  key_sectors: string[];              // ["Technology", "Semiconductors"]
-  representative_tickers: string[];   // ["NVDA", "MSFT", "AVGO"]
-  headline_count: number;             // how many headlines matched
-  top_headlines: string[];            // up to 3 representative headlines
-};
+}
 
 // ─── Tool 3: scan_catalysts ──────────────────────────────────────────────────
 
-export type ScanCatalystsResult = {
+export interface Catalyst {
+  ticker: string | null;            // null for macro events like "FOMC Meeting"
+  catalyst_type: CatalystType;
+  date: string;                     // ISO "YYYY-MM-DD"
+  expected_impact: ImpactLevel;
+  direction_bias: DirectionBias;
+  details: string;                  // "Q1 2026 earnings, EPS est $2.35"
+}
+
+export interface ScanCatalystsResult {
   catalysts: Catalyst[];
   summary: {
     total: number;
@@ -125,20 +139,26 @@ export type ScanCatalystsResult = {
   };
 
   _sources: ToolSource[];
-};
-
-export type Catalyst = {
-  ticker: string | null;              // null for macro events like "FOMC Meeting"
-  catalyst_type: CatalystType;
-  date: string;                       // ISO "YYYY-MM-DD"
-  expected_impact: ImpactLevel;
-  direction_bias: DirectionBias;
-  details: string;                    // "Q1 2026 earnings, EPS est $2.35"
-};
+}
 
 // ─── Tool 4: scan_candidates (enhanced) ──────────────────────────────────────
 
-export type ScanCandidatesResult = {
+export interface ScanEarningsCandidate {
+  ticker: string;
+  source: string;                   // comma-joined sources: "earnings_calendar, watchlist"
+  date?: string;                    // earnings date
+  epsEstimate?: number | null;
+}
+
+export interface ScanMoverCandidate {
+  ticker: string;
+  source: string;
+  change_pct?: number;
+  price?: number;
+  volume_spike?: boolean;           // true if volume > 2x 10d avg
+}
+
+export interface ScanCandidatesResult {
   // Existing fields (preserved)
   earnings: ScanEarningsCandidate[];
   movers: ScanMoverCandidate[];
@@ -146,122 +166,123 @@ export type ScanCandidatesResult = {
   sources_queried: string[];
   note: string;
 
-  // New fields (v1 additions)
+  // v1 additions
   filters_applied: {
-    min_market_cap: number;           // applied floor in dollars
-    min_avg_volume: number;           // applied floor in shares
-    theme_filter: string | null;      // theme name if used
-    dropped_count: number;            // how many candidates were filtered out
+    min_market_cap: number;         // applied floor in dollars
+    min_avg_volume: number;         // applied floor in shares
+    theme_filter: string | null;    // theme name if used
+    dropped_count: number;          // how many candidates were filtered out
   };
-  volume_spikes: string[];            // tickers with >2x avg volume
+  volume_spikes: string[];          // tickers with >2x avg volume
 
   _sources: ToolSource[];
-};
+}
 
-export type ScanEarningsCandidate = {
-  ticker: string;
-  source: string;                     // comma-joined sources: "earnings_calendar, watchlist"
-  date?: string;                      // earnings date
-  epsEstimate?: number | null;
-};
+// ─── Theme keyword map (used by detect_market_themes and scan_candidates) ────
 
-export type ScanMoverCandidate = {
-  ticker: string;
-  source: string;
-  change_pct?: number;
-  price?: number;
-  volume_spike?: boolean;             // NEW — true if volume > 2x 10d avg
-};
-
-// ─── Theme keyword map type (used by themes.ts and scan_candidates) ─────────
-
-export type ThemeDefinition = {
+export interface ThemeDefinition {
+  label: string;                    // Display name: "AI Infrastructure"
   keywords: string[];
-  sectors: string[];
   tickers: string[];
-};
+  sectors: string[];                // Sector ETF symbols: ["XLK"]
+}
 
 /**
  * Shared theme keyword map — used by detect_market_themes for clustering
  * and by scan_candidates for theme_filter scoring.
  *
- * Lives here so both tools reference the same theme definitions.
+ * Keys are snake_case identifiers; `label` is the display name.
  */
 export const THEME_DEFINITIONS: Record<string, ThemeDefinition> = {
-  "AI Infrastructure": {
+  ai_infrastructure: {
+    label: "AI Infrastructure",
     keywords: ["artificial intelligence", "AI", "GPU", "data center",
-      "machine learning", "LLM", "nvidia", "cloud computing", "inference",
-      "transformer", "generative AI"],
-    sectors: ["Technology"],
-    tickers: ["NVDA", "MSFT", "GOOGL", "AMD", "AVGO", "SMCI", "META",
-      "TSM", "MRVL", "ARM"],
+      "machine learning", "LLM", "generative AI", "neural", "compute", "chips"],
+    tickers: ["NVDA", "AMD", "AVGO", "MRVL", "SMCI", "MSFT", "GOOGL", "META",
+      "AMZN", "TSM"],
+    sectors: ["XLK"],
   },
-  "GLP-1 / Weight Loss": {
-    keywords: ["GLP-1", "Ozempic", "Wegovy", "weight loss", "obesity",
-      "semaglutide", "tirzepatide", "Mounjaro", "Zepbound"],
-    sectors: ["Healthcare"],
-    tickers: ["LLY", "NVO", "AMGN", "VKTX", "HIMS"],
+  semiconductor_cycle: {
+    label: "Semiconductor Cycle",
+    keywords: ["semiconductor", "chip", "wafer", "foundry", "DRAM", "NAND",
+      "memory", "fab", "lithography", "EUV"],
+    tickers: ["NVDA", "AMD", "INTC", "TSM", "AVGO", "QCOM", "MU", "LRCX",
+      "AMAT", "KLAC", "ASML"],
+    sectors: ["XLK"],
   },
-  "Rate Cuts / Fed Policy": {
-    keywords: ["rate cut", "Fed", "FOMC", "interest rate", "monetary policy",
-      "Powell", "dovish", "hawkish", "treasury yield", "basis points"],
-    sectors: ["Financials"],
-    tickers: ["TLT", "SHY", "JPM", "GS", "BAC"],
+  energy_transition: {
+    label: "Energy Transition",
+    keywords: ["solar", "wind", "EV", "battery", "lithium", "renewable",
+      "clean energy", "hydrogen", "grid", "nuclear"],
+    tickers: ["TSLA", "ENPH", "FSLR", "NEE", "LI", "RIVN", "PLUG", "BE",
+      "VST", "CEG"],
+    sectors: ["XLE", "XLU"],
   },
-  "Oil / Energy": {
-    keywords: ["oil", "crude", "OPEC", "energy", "natural gas", "petroleum",
-      "drilling", "refining", "pipeline", "oil price"],
-    sectors: ["Energy"],
-    tickers: ["XOM", "CVX", "COP", "SLB", "OXY", "MPC"],
+  biotech_pharma: {
+    label: "Biotech & Pharma",
+    keywords: ["FDA", "drug", "trial", "biotech", "pharma", "approval",
+      "pipeline", "clinical", "PDUFA", "GLP-1", "obesity"],
+    tickers: ["LLY", "NVO", "MRNA", "AMGN", "GILD", "BIIB", "VRTX", "REGN",
+      "BMY", "PFE"],
+    sectors: ["XLV"],
   },
-  "EV / Autonomous": {
-    keywords: ["electric vehicle", "EV", "autonomous", "self-driving",
-      "battery", "charging", "lithium", "Tesla", "EV sales"],
-    sectors: ["Consumer Discretionary"],
-    tickers: ["TSLA", "RIVN", "LCID", "NIO", "LI", "XPEV", "F", "GM"],
+  china_trade: {
+    label: "China & Trade",
+    keywords: ["China", "tariff", "trade war", "export ban", "sanctions",
+      "geopolitical", "Taiwan", "decoupling", "reshoring"],
+    tickers: ["BABA", "PDD", "JD", "BIDU", "NIO", "XPEV", "FXI", "KWEB"],
+    sectors: ["XLK", "XLI"],
   },
-  "Crypto / Bitcoin": {
-    keywords: ["bitcoin", "crypto", "ethereum", "blockchain", "BTC",
-      "cryptocurrency", "digital asset", "mining", "halving", "ETF bitcoin"],
-    sectors: ["Financials", "Technology"],
-    tickers: ["COIN", "MSTR", "MARA", "RIOT", "SQ", "HOOD"],
+  rates_and_fed: {
+    label: "Rates & Fed Policy",
+    keywords: ["Fed", "rate cut", "rate hike", "inflation", "CPI", "PPI",
+      "jobs", "unemployment", "treasury", "yield", "dovish", "hawkish",
+      "FOMC", "Powell"],
+    tickers: ["TLT", "SHY", "GLD", "JPM", "BAC", "GS", "MS"],
+    sectors: ["XLF"],
   },
-  "China / Trade": {
-    keywords: ["China", "tariff", "trade war", "Beijing", "CCP",
-      "semiconductor ban", "export controls", "stimulus China", "Alibaba"],
-    sectors: ["Technology", "Consumer Discretionary"],
-    tickers: ["BABA", "PDD", "JD", "BIDU", "NIO", "FXI"],
+  consumer_spending: {
+    label: "Consumer Spending",
+    keywords: ["consumer", "retail", "spending", "e-commerce", "holiday",
+      "luxury", "discretionary", "credit card"],
+    tickers: ["AMZN", "WMT", "COST", "TGT", "HD", "NKE", "SBUX", "MCD",
+      "V", "MA"],
+    sectors: ["XLY", "XLP"],
   },
-  "Defense / Aerospace": {
-    keywords: ["defense", "military", "Pentagon", "aerospace", "NATO",
-      "missile", "drone", "arms", "defense spending", "geopolitical"],
-    sectors: ["Industrials"],
-    tickers: ["LMT", "RTX", "NOC", "GD", "BA", "HII"],
+  real_estate_reits: {
+    label: "Real Estate & REITs",
+    keywords: ["real estate", "REIT", "housing", "mortgage",
+      "commercial real estate", "office", "CRE"],
+    tickers: ["O", "AMT", "PLD", "EQIX", "SPG", "DLR", "PSA", "AVB"],
+    sectors: ["XLRE"],
   },
-  "Semiconductor Cycle": {
-    keywords: ["semiconductor", "chip", "wafer", "foundry", "DRAM",
-      "NAND", "memory", "fab", "chip shortage", "semiconductor cycle"],
-    sectors: ["Technology"],
-    tickers: ["NVDA", "AMD", "INTC", "TSM", "AVGO", "QCOM", "MU",
-      "LRCX", "AMAT", "KLAC"],
+  commodities_resources: {
+    label: "Commodities & Resources",
+    keywords: ["oil", "crude", "gold", "copper", "mining", "commodity",
+      "OPEC", "natural gas", "steel"],
+    tickers: ["XOM", "CVX", "COP", "SLB", "FCX", "NEM", "BHP", "RIO", "CLF"],
+    sectors: ["XLE", "XLB"],
   },
-  "Banking / Financial Stress": {
-    keywords: ["bank", "banking crisis", "deposit", "SVB", "FDIC",
-      "regional bank", "credit", "loan loss", "delinquency", "bank run"],
-    sectors: ["Financials"],
-    tickers: ["JPM", "BAC", "WFC", "C", "GS", "MS", "KRE", "SCHW"],
+  defense_aerospace: {
+    label: "Defense & Aerospace",
+    keywords: ["defense", "military", "Pentagon", "aerospace", "drone",
+      "missile", "contract", "NATO", "conflict"],
+    tickers: ["LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "KTOS"],
+    sectors: ["XLI"],
   },
-  "Consumer Spending": {
-    keywords: ["consumer", "retail", "spending", "inflation", "CPI",
-      "consumer confidence", "discretionary", "holiday sales", "earnings retail"],
-    sectors: ["Consumer Discretionary", "Consumer Staples"],
-    tickers: ["AMZN", "WMT", "TGT", "COST", "HD", "NKE"],
-  },
-  "Meme / Retail Squeeze": {
+  meme_retail_squeeze: {
+    label: "Meme / Retail Squeeze",
     keywords: ["meme stock", "short squeeze", "gamma squeeze", "WSB",
       "wallstreetbets", "diamond hands", "YOLO", "retail traders",
       "to the moon"],
-    sectors: [],
     tickers: ["GME", "AMC", "BBBY", "BB", "PLTR"],
+    sectors: [],
+  },
+  banking_financial_stress: {
+    label: "Banking / Financial Stress",
+    keywords: ["bank", "banking crisis", "deposit", "SVB", "FDIC",
+      "regional bank", "credit", "loan loss", "delinquency", "bank run"],
+    tickers: ["JPM", "BAC", "WFC", "C", "GS", "MS", "KRE", "SCHW"],
+    sectors: ["XLF"],
   },
 };
