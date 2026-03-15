@@ -204,6 +204,7 @@ export async function POST(req: Request) {
       get_company_peers,
       get_analyst_targets,
       get_sec_filings,
+      search_reddit,
       // Exclude: show_thesis, place_trade, summarize_run (need real run context)
       // Exclude: get_options_flow, get_twitter_sentiment (less useful for builder)
     } = agentTools;
@@ -234,29 +235,7 @@ export async function POST(req: Request) {
         get_company_peers,
         get_analyst_targets,
         get_sec_filings,
-
-        // Reddit topic search (uses shared lib/reddit.ts client)
-        search_reddit: tool({
-          description:
-            "Search Reddit trading communities for sentiment and trending tickers. Searches r/wallstreetbets, r/stocks, r/options, and r/investing.",
-          inputSchema: z.object({
-            query: z.string().describe("Search query for Reddit — ticker symbol or topic. E.g. 'NVDA', 'biotech FDA', 'momentum plays'"),
-          }),
-          execute: async ({ query }) => {
-            const { searchReddit } = await import("@/lib/reddit");
-            const results = await searchReddit(query);
-            return {
-              query,
-              results,
-              _sources: results.map((r) => ({
-                title: r.title,
-                url: r.url,
-                provider: `r/${r.subreddit}`,
-                excerpt: `Score: ${r.score}`,
-              })),
-            };
-          },
-        }),
+        search_reddit,
       },
       stopWhen: stepCountIs(15),
     });

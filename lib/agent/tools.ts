@@ -1693,6 +1693,29 @@ export function createResearchTools(ctx: ToolContext) {
         };
       },
     }),
+
+    // ── Reddit topic search (broader than ticker-specific sentiment) ────
+    search_reddit: tool({
+      description:
+        "Search Reddit trading communities by topic or keyword. Searches r/wallstreetbets, r/stocks, r/options, r/investing. Use for broad topics like 'biotech FDA', 'momentum plays', 'semiconductor earnings'. For ticker-specific sentiment, use get_reddit_sentiment instead.",
+      parameters: z.object({
+        query: z.string().describe("Search query — topic or ticker. E.g. 'biotech FDA', 'NVDA earnings', 'momentum plays'"),
+      }),
+      execute: async ({ query }) => {
+        const { searchReddit } = await import("@/lib/reddit");
+        const results = await searchReddit(query);
+        return {
+          query,
+          results,
+          _sources: results.map((r) => ({
+            title: r.title,
+            url: r.url,
+            provider: `r/${r.subreddit}`,
+            excerpt: `Score: ${r.score}`,
+          })),
+        };
+      },
+    }),
   };
 }
 

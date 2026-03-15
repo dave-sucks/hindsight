@@ -149,6 +149,7 @@ export async function POST(req: Request) {
       get_earnings_data,
       get_reddit_sentiment,
       get_news_deep_dive,
+      search_reddit,
     } = agentTools;
 
     const result = streamText({
@@ -171,29 +172,7 @@ export async function POST(req: Request) {
         get_earnings_data,
         get_reddit_sentiment,
         get_news_deep_dive,
-
-        // Reddit topic search (uses shared lib/reddit.ts client)
-        search_reddit: tool({
-          description:
-            "Search Reddit trading communities for sentiment — useful for validating strategy changes.",
-          inputSchema: z.object({
-            query: z.string().describe("Search query for Reddit"),
-          }),
-          execute: async ({ query }) => {
-            const { searchReddit } = await import("@/lib/reddit");
-            const results = await searchReddit(query);
-            return {
-              query,
-              results,
-              _sources: results.map((r) => ({
-                title: r.title,
-                url: r.url,
-                provider: `r/${r.subreddit}`,
-                excerpt: `Score: ${r.score}`,
-              })),
-            };
-          },
-        }),
+        search_reddit,
       },
       stopWhen: stepCountIs(10),
     });
