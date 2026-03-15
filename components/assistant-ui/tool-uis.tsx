@@ -1711,11 +1711,155 @@ export function useRegisterResearchToolUIs(_runId?: string) {
   });
 }
 
+// ─── Builder/Editor domain card mappers ──────────────────────────────────────
+
+/**
+ * Map builder/editor get_market_context result to MarketContextCard.
+ * Builder returns: { spy: { price, change }, vix: { level, change }, sectors: [{ sector, change }] }
+ */
+const BuilderMarketContextRender: ToolCallMessagePartComponent = ({ result, status }) => {
+  if (status?.type !== "complete" && !result) {
+    return (
+      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+        <LineChartIcon className="h-4 w-4" />
+        Loading market data…
+      </div>
+    );
+  }
+
+  const r = (result ?? {}) as Record<string, unknown>;
+  if (r.error) return null;
+
+  const spy = r.spy as { price?: number; change?: number } | null;
+  const vix = r.vix as { level?: number; change?: number } | null;
+  const sectors = Array.isArray(r.sectors) ? r.sectors as Array<{ sector: string; change: number; changesPercentage?: number }> : [];
+
+  const spxChange = spy?.change ?? 0;
+  const vixLevel = vix?.level;
+  const topSectors = sectors
+    .map((s) => ({ name: s.sector, change: s.changesPercentage ?? s.change ?? 0 }))
+    .filter((s) => s.change > 0)
+    .slice(0, 3);
+  const bottomSectors = sectors
+    .map((s) => ({ name: s.sector, change: s.changesPercentage ?? s.change ?? 0 }))
+    .filter((s) => s.change <= 0)
+    .slice(0, 3);
+
+  const regime: MarketContextData["regime"] =
+    vixLevel && vixLevel > 25
+      ? "volatile"
+      : spxChange > 0.5
+        ? "trending_up"
+        : spxChange < -0.5
+          ? "trending_down"
+          : "range_bound";
+
+  return (
+    <div className="my-2">
+      <MarketContextCard
+        regime={regime}
+        spxChange={spxChange}
+        vixLevel={vixLevel}
+        topSectors={topSectors}
+        bottomSectors={bottomSectors}
+        todaysApproach=""
+      />
+    </div>
+  );
+};
+BuilderMarketContextRender.displayName = "BuilderMarketContextRender";
+
+/**
+ * Map builder get_stock_quote result to StockCard.
+ * Builder returns: { ticker, price, change, changePercent, dayHigh, dayLow, yearHigh, yearLow, marketCap, name, exchange }
+ */
+const BuilderStockQuoteRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
+  const a = (args ?? {}) as Record<string, unknown>;
+  const r = (result ?? {}) as Record<string, unknown>;
+  const ticker = String(a.symbol ?? r.ticker ?? "").toUpperCase();
+
+  if (status?.type !== "complete" && !result) {
+    return (
+      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+        <StockLogo ticker={ticker || "?"} size="sm" />
+        Fetching quote for {ticker}…
+      </div>
+    );
+  }
+
+  if (r.error) {
+    return (
+      <div className="text-sm text-red-500 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
+        {String(r.error)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-2">
+      <StockCard
+        ticker={ticker}
+        companyName={typeof r.name === "string" ? r.name : undefined}
+        price={typeof r.price === "number" ? r.price : undefined}
+        change={typeof r.change === "number" ? r.change : undefined}
+        changePct={typeof r.changePercent === "number" ? r.changePercent : undefined}
+        dayHigh={typeof r.dayHigh === "number" ? r.dayHigh : undefined}
+        dayLow={typeof r.dayLow === "number" ? r.dayLow : undefined}
+        high52w={typeof r.yearHigh === "number" ? r.yearHigh : undefined}
+        low52w={typeof r.yearLow === "number" ? r.yearLow : undefined}
+        marketCap={typeof r.marketCap === "number" ? r.marketCap : undefined}
+        exchange={typeof r.exchange === "string" ? r.exchange : undefined}
+      />
+    </div>
+  );
+};
+BuilderStockQuoteRender.displayName = "BuilderStockQuoteRender";
+
+/**
+ * Map builder/editor search_reddit result to XPost cards.
+ * Builder returns: { results: [{ subreddit, title, score, url }] }
+ */
+const BuilderRedditRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
+  const a = (args ?? {}) as Record<string, unknown>;
+  const r = (result ?? {}) as Record<string, unknown>;
+  const results = Array.isArray(r.results) ? r.results as Array<Record<string, unknown>> : [];
+  const query = String(a.query ?? r.query ?? "");
+
+  if (status?.type !== "complete" && !result) {
+    return (
+      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+        <MessageSquareText className="h-4 w-4" />
+        Searching Reddit: {query}…
+      </div>
+    );
+  }
+
+  if (results.length === 0) return null;
+
+  return (
+    <div className="my-2 space-y-1.5">
+      {results.slice(0, 5).map((post, i) => (
+        <XPost
+          key={i}
+          data={{
+            author: `r/${String(post.subreddit ?? "")}`,
+            username: String(post.subreddit ?? ""),
+            avatar: "R",
+            content: String(post.title ?? ""),
+            likes: post.score != null ? String(post.score) : undefined,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+BuilderRedditRender.displayName = "BuilderRedditRender";
+
 // ─── Registration hooks ─────────────────────────────────────────────────────
 
 /**
  * Register suggest_config tool UI for the builder (shows full config card + create button).
- * Also registers research tool UIs (web_search, get_market_context, search_reddit).
+ * Also registers research tool UIs with domain cards where possible.
  */
 export function useRegisterBuilderToolUIs() {
   useAssistantToolUI({
@@ -1728,25 +1872,25 @@ export function useRegisterBuilderToolUIs() {
   });
   useAssistantToolUI({
     toolName: "get_market_context",
-    render: MarketContextRender,
+    render: BuilderMarketContextRender,
   });
   useAssistantToolUI({
     toolName: "search_reddit",
-    render: RedditSearchRender,
+    render: BuilderRedditRender,
   });
   // Research pipeline tools
   useAssistantToolUI({ toolName: "research_ticker", render: ResearchTickerRender });
   useAssistantToolUI({ toolName: "get_thesis", render: ResearchTickerRender });
   useAssistantToolUI({ toolName: "compare_tickers", render: CompareTickersRender });
   useAssistantToolUI({ toolName: "explain_decision", render: ExplainDecisionRender });
-  // Inline stock tools
-  useAssistantToolUI({ toolName: "get_stock_quote", render: StockQuoteRender });
+  // Inline stock tools — now using domain StockCard
+  useAssistantToolUI({ toolName: "get_stock_quote", render: BuilderStockQuoteRender });
   useAssistantToolUI({ toolName: "get_trending_stocks", render: TrendingStocksRender });
 }
 
 /**
  * Register suggest_config tool UI for the editor (shows diff card + apply button).
- * Also registers research tool UIs (web_search, get_market_context, search_reddit).
+ * Also registers research tool UIs with domain cards where possible.
  */
 export function useRegisterEditorToolUIs() {
   useAssistantToolUI({
@@ -1759,19 +1903,19 @@ export function useRegisterEditorToolUIs() {
   });
   useAssistantToolUI({
     toolName: "get_market_context",
-    render: MarketContextRender,
+    render: BuilderMarketContextRender,
   });
   useAssistantToolUI({
     toolName: "search_reddit",
-    render: RedditSearchRender,
+    render: BuilderRedditRender,
   });
   // Research pipeline tools
   useAssistantToolUI({ toolName: "research_ticker", render: ResearchTickerRender });
   useAssistantToolUI({ toolName: "get_thesis", render: ResearchTickerRender });
   useAssistantToolUI({ toolName: "compare_tickers", render: CompareTickersRender });
   useAssistantToolUI({ toolName: "explain_decision", render: ExplainDecisionRender });
-  // Inline stock tools
-  useAssistantToolUI({ toolName: "get_stock_quote", render: StockQuoteRender });
+  // Inline stock tools — now using domain StockCard
+  useAssistantToolUI({ toolName: "get_stock_quote", render: BuilderStockQuoteRender });
   useAssistantToolUI({ toolName: "get_trending_stocks", render: TrendingStocksRender });
 }
 
