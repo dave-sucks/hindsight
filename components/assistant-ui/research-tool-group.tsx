@@ -69,6 +69,11 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
   },
 };
 
+/** Extract ticker from tool args — tools use either `ticker` or `symbol` */
+function extractTicker(args: Record<string, unknown>): string {
+  return (args.ticker as string) ?? (args.symbol as string) ?? "";
+}
+
 // ── ToolGroup Component ─────────────────────────────────────────────────────
 
 interface ToolGroupProps {
@@ -119,7 +124,7 @@ export function ResearchToolGroup({
 
   // Build the CoT header — use shared ticker if all steps target the same one
   const tickers = [
-    ...new Set(stepParts.map((s) => (s.args.ticker as string) ?? "").filter(Boolean)),
+    ...new Set(stepParts.map((s) => extractTicker(s.args)).filter(Boolean)),
   ];
   const headerLabel =
     tickers.length === 1
@@ -137,7 +142,7 @@ export function ResearchToolGroup({
         <ChainOfThoughtHeader>{headerLabel}</ChainOfThoughtHeader>
         <ChainOfThoughtContent>
           {stepParts.map((step) => {
-            const ticker = (step.args.ticker as string) ?? "";
+            const ticker = extractTicker(step.args);
             const label = step.result
               ? step.config.completeLabel(ticker, step.result)
               : step.config.loadingLabel(ticker);
