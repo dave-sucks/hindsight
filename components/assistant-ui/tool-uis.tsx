@@ -20,9 +20,6 @@ import {
   TrendingDown,
   FileText,
   MessageSquare,
-  Globe,
-  ExternalLink,
-  Flame,
   Briefcase,
   GitCompare,
   HelpCircle,
@@ -58,7 +55,6 @@ import {
   AnalystTargetsCard,
   PeersCard,
 } from "@/components/domain";
-import { StockLogo } from "@/components/StockLogo";
 
 // ─── Chat UI Components ─────────────────────────────────────────────────────
 
@@ -348,136 +344,6 @@ const SuggestConfigEditorRender: ToolCallMessagePartComponent<
 };
 
 SuggestConfigEditorRender.displayName = "SuggestConfigEditorRender";
-
-// ─── Builder research tool UIs ──────────────────────────────────────────────
-
-const WebSearchRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
-  const a = (args ?? {}) as Record<string, unknown>;
-  const r = (result ?? {}) as Record<string, unknown>;
-  const results = Array.isArray(r.results) ? r.results as Array<Record<string, unknown>> : [];
-  const query = String(a.query ?? r.query ?? "");
-
-  if (status?.type !== "complete" && !result) {
-    return (
-      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-        <Globe className="h-4 w-4" />
-        Searching: {query}…
-      </div>
-    );
-  }
-
-  if (results.length === 0) return null;
-
-  return (
-    <div className="my-2 rounded-lg border overflow-hidden">
-      <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
-        <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground">
-          Web Search: {query}
-        </span>
-      </div>
-      <div className="divide-y">
-        {results.slice(0, 4).map((item, i) => (
-          <div key={i} className="px-3 py-2 hover:bg-muted/10 transition-colors">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {String(item.title ?? "")}
-                </p>
-                <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                  {String(item.text ?? "")}
-                </p>
-              </div>
-              {typeof item.url === "string" && item.url && (
-                <a
-                  href={String(item.url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 text-muted-foreground hover:text-foreground"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-            <p className="text-[10px] text-muted-foreground/60 mt-1">
-              {String(item.source ?? "")}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-WebSearchRender.displayName = "WebSearchRender";
-
-
-// ─── Trending Stocks tool UI ────────────────────────────────────────────────
-
-const TrendingStocksRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
-  const a = (args ?? {}) as Record<string, unknown>;
-  const r = (result ?? {}) as Record<string, unknown>;
-  const category = String(a.category ?? r.category ?? "gainers");
-  const stocks = Array.isArray(r.stocks) ? (r.stocks as Array<Record<string, unknown>>) : [];
-
-  if (status?.type !== "complete" && !result) {
-    return (
-      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-        <Flame className="h-4 w-4" />
-        Loading trending {category}…
-      </div>
-    );
-  }
-
-  if (stocks.length === 0) return null;
-
-  const categoryLabel = category === "actives" ? "Most Active" : category.charAt(0).toUpperCase() + category.slice(1);
-
-  return (
-    <div className="my-2 rounded-lg border overflow-hidden">
-      <div className="px-3 py-2 border-b bg-muted/20 flex items-center gap-2">
-        <Flame className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground">
-          Trending: {categoryLabel}
-        </span>
-      </div>
-      <div className="divide-y">
-        {stocks.slice(0, 8).map((stock, i) => {
-          const pct = Number(stock.changePercent ?? 0);
-          const isUp = pct >= 0;
-          return (
-            <div key={i} className="px-3 py-2 flex items-center gap-3 hover:bg-muted/10 transition-colors">
-              <StockLogo ticker={String(stock.ticker ?? "")} size="sm" />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold font-mono">
-                    {String(stock.ticker ?? "")}
-                  </span>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {String(stock.name ?? "")}
-                  </span>
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-sm tabular-nums font-semibold">
-                  ${Number(stock.price ?? 0).toFixed(2)}
-                </p>
-                <p
-                  className={cn(
-                    "text-xs tabular-nums font-mono",
-                    isUp ? "text-emerald-500" : "text-red-500"
-                  )}
-                >
-                  {isUp ? "+" : ""}{pct.toFixed(2)}%
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-TrendingStocksRender.displayName = "TrendingStocksRender";
 
 // ─── Research tool UI registrations (shared across agent, builder, editor) ───
 
@@ -1458,150 +1324,6 @@ export function useRegisterResearchToolUIs(_runId?: string) {
   });
 }
 
-// ─── Builder/Editor domain card mappers ──────────────────────────────────────
-
-/**
- * Map builder/editor get_market_context result to MarketContextCard.
- * Builder returns: { spy: { price, change }, vix: { level, change }, sectors: [{ sector, change }] }
- */
-const BuilderMarketContextRender: ToolCallMessagePartComponent = ({ result, status }) => {
-  if (status?.type !== "complete" && !result) {
-    return (
-      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-        <LineChartIcon className="h-4 w-4" />
-        Loading market data…
-      </div>
-    );
-  }
-
-  const r = (result ?? {}) as Record<string, unknown>;
-  if (r.error) return null;
-
-  const spy = r.spy as { price?: number; change?: number } | null;
-  const vix = r.vix as { level?: number; change?: number } | null;
-  const sectors = Array.isArray(r.sectors) ? r.sectors as Array<{ sector: string; change: number; changesPercentage?: number }> : [];
-
-  const spxChange = spy?.change ?? 0;
-  const vixLevel = vix?.level;
-  const topSectors = sectors
-    .map((s) => ({ name: s.sector, change: s.changesPercentage ?? s.change ?? 0 }))
-    .filter((s) => s.change > 0)
-    .slice(0, 3);
-  const bottomSectors = sectors
-    .map((s) => ({ name: s.sector, change: s.changesPercentage ?? s.change ?? 0 }))
-    .filter((s) => s.change <= 0)
-    .slice(0, 3);
-
-  const regime: MarketContextData["regime"] =
-    vixLevel && vixLevel > 25
-      ? "volatile"
-      : spxChange > 0.5
-        ? "trending_up"
-        : spxChange < -0.5
-          ? "trending_down"
-          : "range_bound";
-
-  return (
-    <div className="my-2">
-      <MarketContextCard
-        regime={regime}
-        spxChange={spxChange}
-        vixLevel={vixLevel}
-        topSectors={topSectors}
-        bottomSectors={bottomSectors}
-        todaysApproach=""
-      />
-    </div>
-  );
-};
-BuilderMarketContextRender.displayName = "BuilderMarketContextRender";
-
-/**
- * Map builder get_stock_quote result to StockCard.
- * Builder returns: { ticker, price, change, changePercent, dayHigh, dayLow, yearHigh, yearLow, marketCap, name, exchange }
- */
-const BuilderStockQuoteRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
-  const a = (args ?? {}) as Record<string, unknown>;
-  const r = (result ?? {}) as Record<string, unknown>;
-  const ticker = String(a.symbol ?? r.ticker ?? "").toUpperCase();
-
-  if (status?.type !== "complete" && !result) {
-    return (
-      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-        <StockLogo ticker={ticker || "?"} size="sm" />
-        Fetching quote for {ticker}…
-      </div>
-    );
-  }
-
-  if (r.error) {
-    return (
-      <div className="text-sm text-red-500 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
-        {String(r.error)}
-      </div>
-    );
-  }
-
-  return (
-    <div className="my-2">
-      <StockCard
-        ticker={ticker}
-        companyName={typeof r.name === "string" ? r.name : undefined}
-        price={typeof r.price === "number" ? r.price : undefined}
-        change={typeof r.change === "number" ? r.change : undefined}
-        changePct={typeof r.changePercent === "number" ? r.changePercent : undefined}
-        dayHigh={typeof r.dayHigh === "number" ? r.dayHigh : undefined}
-        dayLow={typeof r.dayLow === "number" ? r.dayLow : undefined}
-        high52w={typeof r.yearHigh === "number" ? r.yearHigh : undefined}
-        low52w={typeof r.yearLow === "number" ? r.yearLow : undefined}
-        marketCap={typeof r.marketCap === "number" ? r.marketCap : undefined}
-        exchange={typeof r.exchange === "string" ? r.exchange : undefined}
-      />
-    </div>
-  );
-};
-BuilderStockQuoteRender.displayName = "BuilderStockQuoteRender";
-
-/**
- * Map builder/editor search_reddit result to XPost cards.
- * Builder returns: { results: [{ subreddit, title, score, url }] }
- */
-const BuilderRedditRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
-  const a = (args ?? {}) as Record<string, unknown>;
-  const r = (result ?? {}) as Record<string, unknown>;
-  const results = Array.isArray(r.results) ? r.results as Array<Record<string, unknown>> : [];
-  const query = String(a.query ?? r.query ?? "");
-
-  if (status?.type !== "complete" && !result) {
-    return (
-      <div className="my-2 rounded-lg border p-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-        <MessageSquareText className="h-4 w-4" />
-        Searching Reddit: {query}…
-      </div>
-    );
-  }
-
-  if (results.length === 0) return null;
-
-  return (
-    <div className="my-2 space-y-1.5">
-      {results.slice(0, 5).map((post, i) => (
-        <XPost
-          key={i}
-          data={{
-            author: `r/${String(post.subreddit ?? "")}`,
-            username: String(post.subreddit ?? ""),
-            avatar: "R",
-            content: String(post.title ?? ""),
-            likes: post.score != null ? String(post.score) : undefined,
-          }}
-        />
-      ))}
-    </div>
-  );
-};
-BuilderRedditRender.displayName = "BuilderRedditRender";
-
 // ─── Registration hooks ─────────────────────────────────────────────────────
 
 /**
@@ -1609,30 +1331,14 @@ BuilderRedditRender.displayName = "BuilderRedditRender";
  * Also registers research tool UIs with domain cards where possible.
  */
 export function useRegisterBuilderToolUIs() {
+  // Reuse the SAME research tool UIs as the agent run (domain cards)
+  useRegisterResearchToolUIs();
+
+  // Builder-only: suggest_config renders as config card + create button
   useAssistantToolUI({
     toolName: "suggest_config",
     render: SuggestConfigRender,
   });
-  useAssistantToolUI({
-    toolName: "web_search",
-    render: WebSearchRender,
-  });
-  useAssistantToolUI({
-    toolName: "get_market_context",
-    render: BuilderMarketContextRender,
-  });
-  useAssistantToolUI({
-    toolName: "search_reddit",
-    render: BuilderRedditRender,
-  });
-  // Research pipeline tools
-  useAssistantToolUI({ toolName: "research_ticker", render: ResearchTickerRender });
-  useAssistantToolUI({ toolName: "get_thesis", render: ResearchTickerRender });
-  useAssistantToolUI({ toolName: "compare_tickers", render: CompareTickersRender });
-  useAssistantToolUI({ toolName: "explain_decision", render: ExplainDecisionRender });
-  // Inline stock tools — now using domain StockCard
-  useAssistantToolUI({ toolName: "get_stock_quote", render: BuilderStockQuoteRender });
-  useAssistantToolUI({ toolName: "get_trending_stocks", render: TrendingStocksRender });
 }
 
 /**
@@ -1640,30 +1346,14 @@ export function useRegisterBuilderToolUIs() {
  * Also registers research tool UIs with domain cards where possible.
  */
 export function useRegisterEditorToolUIs() {
+  // Reuse the SAME research tool UIs as the agent run (domain cards)
+  useRegisterResearchToolUIs();
+
+  // Editor-only: suggest_config renders as diff card + apply button
   useAssistantToolUI({
     toolName: "suggest_config",
     render: SuggestConfigEditorRender,
   });
-  useAssistantToolUI({
-    toolName: "web_search",
-    render: WebSearchRender,
-  });
-  useAssistantToolUI({
-    toolName: "get_market_context",
-    render: BuilderMarketContextRender,
-  });
-  useAssistantToolUI({
-    toolName: "search_reddit",
-    render: BuilderRedditRender,
-  });
-  // Research pipeline tools
-  useAssistantToolUI({ toolName: "research_ticker", render: ResearchTickerRender });
-  useAssistantToolUI({ toolName: "get_thesis", render: ResearchTickerRender });
-  useAssistantToolUI({ toolName: "compare_tickers", render: CompareTickersRender });
-  useAssistantToolUI({ toolName: "explain_decision", render: ExplainDecisionRender });
-  // Inline stock tools — now using domain StockCard
-  useAssistantToolUI({ toolName: "get_stock_quote", render: BuilderStockQuoteRender });
-  useAssistantToolUI({ toolName: "get_trending_stocks", render: TrendingStocksRender });
 }
 
 

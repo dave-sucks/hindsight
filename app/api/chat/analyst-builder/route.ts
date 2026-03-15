@@ -2,7 +2,7 @@ import { streamText, tool, stepCountIs, convertToModelMessages } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { createResearchTools } from "@/lib/chat/tools/research-tools";
+import { createResearchTools as createAgentTools } from "@/lib/agent/tools";
 
 export const maxDuration = 120;
 
@@ -86,15 +86,18 @@ Don't ask all at once. Be conversational. Listen and build on their answers.
 
 ### Phase 2: Research & Brainstorm (1-3 exchanges)
 This is where you shine and is MANDATORY — you MUST call at least 2-3 research tools before calling suggest_config. NEVER skip this phase. Even if the user says "just do it" or "use your judgement", you MUST research first. Based on what the user told you:
-- ALWAYS call **get_market_context** first to see what's happening right now
-- ALWAYS call **get_trending_stocks** to show real movers that fit the strategy
-- Use **get_stock_quote** on 1-2 specific tickers that fit the emerging strategy
-- Use **search_reddit** to see what retail traders are buzzing about
+- ALWAYS call **get_market_overview** first to see what's happening right now (SPY, VIX, sector ETFs)
+- ALWAYS call **scan_candidates** to find real trading candidates (earnings, movers, trending)
+- Use **get_stock_data** on 1-2 specific tickers that fit the emerging strategy — shows quote, financials, news, analyst ratings
+- Use **get_earnings_data** to find stocks with upcoming or recent earnings
+- Use **get_reddit_sentiment** to see what retail traders are buzzing about
+- Use **search_reddit** to search Reddit for broader topics or trends (e.g. "biotech FDA", "momentum plays")
+- Use **get_news_deep_dive** to find relevant news for specific tickers
 - Share your findings naturally: "I just looked at the market and noticed X... that aligns with your interest in Y"
 - Propose specific angles: "What if instead of just momentum, we focused on post-earnings momentum in semis? Here's why..."
 - Challenge assumptions: "You said LONG only, but some of the best setups in biotech are actually short after failed trials..."
 
-CRITICAL: Do NOT call suggest_config until you have called at least get_market_context AND one other research tool. The user is paying for real research, not generic advice.
+CRITICAL: Do NOT call suggest_config until you have called at least get_market_overview AND one other research tool. The user is paying for real research, not generic advice.
 
 ### Phase 3: Craft the Strategy Prompt (the key output)
 When you have enough context, write a DETAILED strategy prompt — this is the most important output. The analystPrompt should be:
@@ -110,25 +113,27 @@ Then call suggest_config with the full configuration.
 ### Phase 4: Refine
 If the user wants changes, discuss them, then call suggest_config again with updates.
 
-## Available Research Tools
-- **web_search**: Search the web for current market news, sector analysis, trading strategies, or any relevant information
-- **get_market_context**: Get current SPY, VIX, and sector performance data
-- **search_reddit**: Search Reddit (r/wallstreetbets, r/stocks, r/investing) for retail sentiment and trending tickers
-- **get_stock_quote**: Quick quote for any ticker — price, change%, 52W range, market cap. Use when referencing a specific stock.
-- **get_trending_stocks**: See today's biggest movers — gainers, losers, most active. Great for grounding brainstorming in real market action.
-- **research_ticker**: Run the FULL research pipeline on a stock — generates a complete trade thesis with direction, confidence, entry/target/stop, risk flags, and reasoning. Use this to DEMONSTRATE how the strategy would work on a real stock.
-- **get_thesis**: Retrieve a previously generated thesis by ticker.
-- **compare_tickers**: Compare 2-3 tickers side-by-side with full research on each.
-- **explain_decision**: Explain why a trade was or wasn't placed for a given ticker.
+## Available Research Tools (same tools the agent uses during live runs)
+- **get_market_overview**: Get current SPY, VIX, and sector ETF performance. Always call this first.
+- **scan_candidates**: Scan for trading candidates — earnings calendar, market movers, Reddit trending, social trends. Returns scored tickers.
+- **get_stock_data**: Comprehensive stock data — price quote, company profile, key financials, analyst ratings, recent news. This is your primary research tool.
+- **get_earnings_data**: Get upcoming and recent earnings data for specific tickers — EPS, beat rates, calendar.
+- **get_technical_analysis**: Technical indicators — RSI-14, SMA-20/50, 52-week range, volume analysis.
+- **get_reddit_sentiment**: Reddit sentiment for a specific ticker from r/wallstreetbets, r/stocks, r/options, r/investing.
+- **search_reddit**: Search Reddit trading communities by topic or keyword (e.g. "biotech FDA", "semiconductor earnings"). Broader than ticker-specific sentiment.
+- **get_news_deep_dive**: Deep dive into news for a ticker — press releases, headlines, analysis.
+- **get_company_peers**: Compare a stock to its peers.
+- **get_analyst_targets**: Analyst consensus price targets for a ticker.
+- **get_sec_filings**: Recent SEC filings for a ticker.
 
 Use these tools proactively during the brainstorming phase! Don't wait for the user to ask. Show them you're doing real research to help build the best possible strategy.
 
 ### How to Use Research Tools Effectively
-1. **Start with market context**: Call get_market_context early to see what's happening today
-2. **Ground the conversation**: Use get_trending_stocks to show real movers that fit the strategy
-3. **Quick references**: Use get_stock_quote when mentioning specific tickers — e.g. "Let me check $NVDA real quick..."
-4. **Demonstrate the strategy**: When the strategy is taking shape, use research_ticker on a stock that fits — "Let me show you what this strategy would produce on NVDA right now..."
-5. **Reddit sentiment**: Use search_reddit to find what retail traders are buzzing about in the relevant sector
+1. **Start with market overview**: Call get_market_overview early to see what's happening today
+2. **Scan for candidates**: Use scan_candidates to find real movers and upcoming earnings
+3. **Deep dive on stocks**: Use get_stock_data when mentioning specific tickers — shows price, financials, news, analyst ratings
+4. **Check earnings**: Use get_earnings_data to find stocks with upcoming/recent earnings
+5. **Reddit sentiment**: Use get_reddit_sentiment for specific tickers, search_reddit for broader topics
 
 ### Formatting Guidelines
 - When mentioning stock tickers in your text, use the $TICKER format (e.g. $NVDA, $AAPL, $TSLA). This renders as an interactive chip with live price data.
@@ -151,7 +156,7 @@ Create short, memorable names that capture the analyst's personality:
 - "Contrarian Value Finder" (style + philosophy)
 
 ## Important
-- NEVER call suggest_config without first calling at least get_market_context + one other research tool
+- NEVER call suggest_config without first calling at least get_market_overview + one other research tool
 - Always call suggest_config with ALL required fields filled in
 - The analystPrompt field is the MOST important — make it thorough and specific
 - Be conversational and enthusiastic — push the user to think deeper
@@ -159,26 +164,10 @@ Create short, memorable names that capture the analyst's personality:
 - Use your research tools during brainstorming — don't just ask questions, bring data to the conversation
 - If the user is vague or says "just do it", that's your cue to research MORE, not less — show them what the market looks like and build a strategy grounded in real data`;
 
-// ── Helpers for research tools ──────────────────────────────────────────────────
-
-const FMP_KEY = process.env.FMP_API_KEY ?? "";
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY ?? "";
-
-async function fetchJSON(url: string) {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
 // ── Route ───────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
   try {
-    // ── Auth (optional — research tools need userId for DB storage) ─────
     const supabase = await createClient();
     const {
       data: { user },
@@ -195,14 +184,36 @@ export async function POST(req: Request) {
       systemPrompt += `\n\n## Current Configuration (user is editing an existing analyst)\n\`\`\`json\n${JSON.stringify(currentConfig, null, 2)}\n\`\`\`\nThe user wants to modify this analyst. Only change what they ask for. Call suggest_config with the full updated config (including the detailed analystPrompt).`;
     }
 
-    // ── Research tools (bound to authenticated user) ─────────────────────
-    const researchTools = userId ? createResearchTools(userId) : {};
+    // ── Use the SAME research tools as the agent ─────────────────────────
+    // These are the real Finnhub/FMP tools that produce domain card data.
+    // We pass a dummy runId since builder doesn't have a run (tools only use it for logging).
+    const agentTools = createAgentTools({
+      runId: "builder",
+      userId,
+    });
+
+    // Cherry-pick data-fetching tools (no DB writes, no trade execution)
+    const {
+      get_market_overview,
+      scan_candidates,
+      get_stock_data,
+      get_technical_analysis,
+      get_earnings_data,
+      get_reddit_sentiment,
+      get_news_deep_dive,
+      get_company_peers,
+      get_analyst_targets,
+      get_sec_filings,
+      // Exclude: show_thesis, place_trade, summarize_run (need real run context)
+      // Exclude: get_options_flow, get_twitter_sentiment (less useful for builder)
+    } = agentTools;
 
     const result = streamText({
       model: openai("gpt-4o"),
       system: systemPrompt,
       messages: modelMessages,
       tools: {
+        // Builder-only tool
         suggest_config: tool({
           description:
             "Suggest a complete analyst configuration. Call this when you have enough information to build a thorough config with a detailed strategy prompt.",
@@ -212,233 +223,19 @@ export async function POST(req: Request) {
           },
         }),
 
-        // ── Inline stock tools ──────────────────────────────────────────
-        get_stock_quote: tool({
-          description:
-            "Get a quick stock quote — current price, change%, 52W high/low, market cap. " +
-            "Use when referencing a specific ticker in conversation.",
-          inputSchema: z.object({
-            symbol: z.string().describe("Stock ticker symbol (e.g. NVDA, AAPL)"),
-          }),
-          execute: async ({ symbol }) => {
-            const ticker = symbol.toUpperCase();
-            try {
-              // Finnhub for quote + profile (FMP /quote/ is deprecated/403)
-              const [fhQuote, fhProfile] = await Promise.all([
-                fetchJSON(
-                  `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_KEY}`
-                ),
-                fetchJSON(
-                  `https://finnhub.io/api/v1/stock/profile2?symbol=${ticker}&token=${FINNHUB_KEY}`
-                ),
-              ]);
+        // Agent research tools (same data, same format, same domain cards)
+        get_market_overview,
+        scan_candidates,
+        get_stock_data,
+        get_technical_analysis,
+        get_earnings_data,
+        get_reddit_sentiment,
+        get_news_deep_dive,
+        get_company_peers,
+        get_analyst_targets,
+        get_sec_filings,
 
-              if (!fhQuote || fhQuote.c === 0) {
-                return { error: `No quote data for ${ticker}` };
-              }
-
-              return {
-                ticker,
-                price: fhQuote.c,
-                change: fhQuote.d ?? null,
-                changePercent: fhQuote.dp ?? null,
-                dayHigh: fhQuote.h ?? null,
-                dayLow: fhQuote.l ?? null,
-                previousClose: fhQuote.pc ?? null,
-                yearHigh: null,
-                yearLow: null,
-                marketCap: fhProfile?.marketCapitalization
-                  ? fhProfile.marketCapitalization * 1_000_000
-                  : null,
-                volume: null,
-                name: fhProfile?.name ?? ticker,
-                exchange: fhProfile?.exchange ?? null,
-                industry: fhProfile?.finnhubIndustry ?? null,
-                _sources: [
-                  {
-                    title: `${ticker} Quote — Finnhub`,
-                    url: `https://finnhub.io/`,
-                    provider: "Finnhub",
-                  },
-                ],
-              };
-            } catch {
-              return { error: `Failed to fetch quote for ${ticker}` };
-            }
-          },
-        }),
-
-        get_trending_stocks: tool({
-          description:
-            "Get today's biggest stock movers — top gainers, losers, and most active by volume. " +
-            "Great for grounding brainstorming in real market action.",
-          inputSchema: z.object({
-            category: z
-              .enum(["gainers", "losers", "actives"])
-              .optional()
-              .describe("Which category to fetch. Defaults to gainers."),
-          }),
-          execute: async ({ category = "gainers" }) => {
-            try {
-              const url = `https://financialmodelingprep.com/api/v3/stock_market/${category}?apikey=${FMP_KEY}`;
-              const data = await fetchJSON(url);
-
-              if (!Array.isArray(data) || data.length === 0) {
-                return { error: "Trending data unavailable" };
-              }
-
-              const stocks = data.slice(0, 8).map((s: Record<string, unknown>) => ({
-                ticker: String(s.symbol ?? ""),
-                name: String(s.name ?? ""),
-                price: Number(s.price ?? 0),
-                change: Number(s.change ?? 0),
-                changePercent: Number(s.changesPercentage ?? 0),
-              }));
-
-              return {
-                category,
-                stocks,
-                timestamp: new Date().toISOString(),
-                _sources: [
-                  {
-                    title: `Top ${category.charAt(0).toUpperCase() + category.slice(1)} — FMP`,
-                    url: `https://financialmodelingprep.com/market-movers`,
-                    provider: "Financial Modeling Prep",
-                  },
-                ],
-              };
-            } catch {
-              return { error: "Failed to fetch trending stocks" };
-            }
-          },
-        }),
-
-        // ── Research pipeline tools (need auth) ─────────────────────────
-        ...researchTools,
-
-        web_search: tool({
-          description:
-            "Search for current market news by topic or ticker. Returns recent headlines and articles.",
-          inputSchema: z.object({
-            query: z.string().describe("Search query — ticker symbol or topic. E.g. 'NVDA', 'semiconductor earnings', 'biotech FDA'"),
-          }),
-          execute: async ({ query }) => {
-            try {
-              // Use Finnhub general news + FMP stock news
-              const [finnhubNews, fmpNews] = await Promise.all([
-                fetchJSON(
-                  `https://finnhub.io/api/v1/news?category=general&token=${FINNHUB_KEY}`
-                ),
-                fetchJSON(
-                  `https://financialmodelingprep.com/api/v3/stock_news?limit=10&apikey=${FMP_KEY}`
-                ),
-              ]);
-
-              const results: Array<{ title: string; text: string; url: string; source: string }> = [];
-              const queryLower = query.toLowerCase();
-
-              // Finnhub general news
-              if (Array.isArray(finnhubNews)) {
-                for (const n of finnhubNews.slice(0, 10)) {
-                  const title = String(n.headline ?? "");
-                  const summary = String(n.summary ?? "");
-                  if (
-                    title.toLowerCase().includes(queryLower) ||
-                    summary.toLowerCase().includes(queryLower) ||
-                    results.length < 3
-                  ) {
-                    results.push({
-                      title,
-                      text: summary.slice(0, 200),
-                      url: String(n.url ?? ""),
-                      source: String(n.source ?? "Finnhub"),
-                    });
-                  }
-                  if (results.length >= 5) break;
-                }
-              }
-
-              // FMP stock news as supplement
-              if (Array.isArray(fmpNews) && results.length < 6) {
-                for (const n of fmpNews.slice(0, 5)) {
-                  const title = String(n.title ?? "");
-                  const text = String(n.text ?? "");
-                  if (
-                    title.toLowerCase().includes(queryLower) ||
-                    text.toLowerCase().includes(queryLower) ||
-                    results.length < 4
-                  ) {
-                    results.push({
-                      title,
-                      text: text.slice(0, 200),
-                      url: String(n.url ?? ""),
-                      source: String(n.site ?? "FMP"),
-                    });
-                  }
-                  if (results.length >= 6) break;
-                }
-              }
-
-              return {
-                query,
-                results: results.slice(0, 6),
-                _sources: results.map((r) => ({
-                  title: r.title,
-                  url: r.url,
-                  provider: r.source,
-                  excerpt: r.text,
-                })),
-              };
-            } catch {
-              return { query, results: [], error: "Search unavailable" };
-            }
-          },
-        }),
-
-        get_market_context: tool({
-          description:
-            "Get current market conditions: SPY performance, VIX level, and sector performance. Use this to ground the brainstorming in real market data.",
-          inputSchema: z.object({}),
-          execute: async () => {
-            try {
-              // Use Finnhub for SPY + VIX (FMP /quote/ is deprecated/403)
-              const [spyQuote, vixQuote, sectorData] = await Promise.all([
-                fetchJSON(
-                  `https://finnhub.io/api/v1/quote?symbol=SPY&token=${FINNHUB_KEY}`,
-                ),
-                fetchJSON(
-                  `https://finnhub.io/api/v1/quote?symbol=VIX&token=${FINNHUB_KEY}`,
-                ),
-                fetchJSON(
-                  `https://financialmodelingprep.com/api/v3/sectors-performance?apikey=${FMP_KEY}`,
-                ),
-              ]);
-
-              return {
-                spy: spyQuote?.c
-                  ? {
-                      price: spyQuote.c,
-                      change: spyQuote.dp ?? 0,
-                      dayRange: `${spyQuote.l ?? "—"} - ${spyQuote.h ?? "—"}`,
-                    }
-                  : null,
-                vix: vixQuote?.c
-                  ? { level: vixQuote.c, change: vixQuote.dp }
-                  : null,
-                sectors: Array.isArray(sectorData)
-                  ? sectorData.slice(0, 11).map((s: Record<string, unknown>) => ({
-                      sector: s.sector,
-                      change: s.changesPercentage,
-                    }))
-                  : [],
-                timestamp: new Date().toISOString(),
-              };
-            } catch {
-              return { error: "Market data unavailable" };
-            }
-          },
-        }),
-
+        // Reddit topic search (uses shared lib/reddit.ts client)
         search_reddit: tool({
           description:
             "Search Reddit trading communities for sentiment and trending tickers. Searches r/wallstreetbets, r/stocks, r/options, and r/investing.",
