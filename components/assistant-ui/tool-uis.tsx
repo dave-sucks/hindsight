@@ -48,34 +48,37 @@ import {
   StockCard,
   TechnicalCard,
   EarningsCard,
-  OptionsFlowCard,
   ScanResultsCard,
   RunSummaryCard,
   SecFilingsCard,
-  AnalystTargetsCard,
   PeersCard,
 } from "@/components/domain";
 
 // ─── Chat UI Components ─────────────────────────────────────────────────────
 
 import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
-import { XPost } from "@/components/manifest-ui/x-post";
 import { PostList } from "@/components/manifest-ui/post-list";
 import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
-import {
-  Sources,
-  SourcesTrigger,
-  SourcesContent,
-  Source,
-} from "@/components/ai-elements";
 import {
   ChainOfThought,
   ChainOfThoughtHeader,
   ChainOfThoughtStep,
   ChainOfThoughtContent,
 } from "@/components/ai-elements/chain-of-thought";
-import { Citation } from "@/components/tool-ui/citation";
-import type { CitationType } from "@/components/tool-ui/citation";
+import {
+  InlineCitation,
+  InlineCitationCard,
+  InlineCitationCardTrigger,
+  InlineCitationCardBody,
+  InlineCitationCarousel,
+  InlineCitationCarouselContent,
+  InlineCitationCarouselItem,
+  InlineCitationCarouselHeader,
+  InlineCitationCarouselIndex,
+  InlineCitationCarouselPrev,
+  InlineCitationCarouselNext,
+  InlineCitationSource,
+} from "@/components/ai-elements/inline-citation";
 
 // ─── Context for passing callbacks into tool UIs ────────────────────────────
 
@@ -106,34 +109,6 @@ interface SourceData {
   excerpt?: string;
 }
 
-const PROVIDER_DOMAINS: Record<string, string> = {
-  finnhub: "finnhub.io",
-  fmp: "financialmodelingprep.com",
-  reddit: "reddit.com",
-  stocktwits: "stocktwits.com",
-  twitter: "stocktwits.com",
-  "fmp social": "financialmodelingprep.com",
-  technical: "finnhub.io",
-  earnings: "finnhub.io",
-  options: "financialmodelingprep.com",
-};
-
-const PROVIDER_TYPES: Record<string, CitationType> = {
-  finnhub: "api",
-  fmp: "api",
-  reddit: "webpage",
-  stocktwits: "webpage",
-  twitter: "webpage",
-  "fmp social": "api",
-  technical: "api",
-  earnings: "api",
-  options: "api",
-};
-
-function faviconUrl(domain: string): string {
-  return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-}
-
 /** Extract _sources from a tool result, falling back to provider-only strings */
 function extractToolSources(result: Record<string, unknown>): SourceData[] {
   const raw = result._sources;
@@ -146,36 +121,81 @@ function extractToolSources(result: Record<string, unknown>): SourceData[] {
   return [];
 }
 
+const PROVIDER_DOMAINS: Record<string, string> = {
+  finnhub: "https://finnhub.io",
+  fmp: "https://financialmodelingprep.com",
+  reddit: "https://reddit.com",
+  stocktwits: "https://stocktwits.com",
+  twitter: "https://x.com",
+  "fmp social": "https://financialmodelingprep.com",
+  technical: "https://finnhub.io",
+  earnings: "https://finnhub.io",
+  options: "https://financialmodelingprep.com",
+  sec: "https://sec.gov",
+};
+
+/** Get a valid URL for a source (needed by InlineCitationCardTrigger) */
+function sourceUrl(s: SourceData): string {
+  if (s.url) return s.url;
+  const key = s.provider.toLowerCase().replace(/[^a-z ]/g, "");
+  return PROVIDER_DOMAINS[key] ?? `https://${s.provider.toLowerCase().replace(/[^a-z]/g, "")}.com`;
+}
+
+/** Favicon from a URL */
+function faviconFromUrl(url: string): string | null {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`;
+  } catch {
+    return null;
+  }
+}
+
+/** Provider row with favicon + name for carousel items */
+function ProviderRow({ provider, url }: { provider: string; url: string }) {
+  const favicon = faviconFromUrl(url);
+  return (
+    <div className="flex items-center gap-2 mb-1">
+      {favicon && (
+        <img src={favicon} alt="" width={16} height={16} className="size-4 shrink-0 rounded-sm" />
+      )}
+      <span className="text-xs font-medium text-muted-foreground">{provider}</span>
+    </div>
+  );
+}
+
 function SourceChips({ sources }: { sources: SourceData[] }) {
   if (!sources.length) return null;
-  return (
-    <Sources className="mt-1.5">
-      <SourcesTrigger count={sources.length} className="text-[10px]" />
-      <SourcesContent>
-        {sources.map((s, i) => {
-          const key = s.provider.toLowerCase().replace(/[^a-z]/g, "");
-          const domain =
-            s.url
-              ? (() => { try { return new URL(s.url).hostname.replace(/^www\./, ""); } catch { return PROVIDER_DOMAINS[key]; } })()
-              : PROVIDER_DOMAINS[key];
-          const type = PROVIDER_TYPES[key] ?? "webpage";
+  const urls = sources.map(sourceUrl);
 
-          return (
-            <Source key={`${s.provider}-${i}`} provider={s.provider}>
-              <Citation
-                href={s.url ?? `https://${domain ?? s.provider.toLowerCase() + ".com"}`}
-                title={s.title}
-                snippet={s.excerpt}
-                domain={domain ?? s.provider}
-                favicon={domain ? faviconUrl(domain) : undefined}
-                type={type}
-                variant="inline"
-              />
-            </Source>
-          );
-        })}
-      </SourcesContent>
-    </Sources>
+  return (
+    <div className="mt-1.5">
+      <InlineCitation>
+        <InlineCitationCard>
+          <InlineCitationCardTrigger sources={urls} />
+          <InlineCitationCardBody>
+            <InlineCitationCarousel>
+              <InlineCitationCarouselHeader>
+                <InlineCitationCarouselPrev />
+                <InlineCitationCarouselNext />
+                <InlineCitationCarouselIndex />
+              </InlineCitationCarouselHeader>
+              <InlineCitationCarouselContent>
+                {sources.map((s, i) => (
+                  <InlineCitationCarouselItem key={`${s.provider}-${i}`}>
+                    <ProviderRow provider={s.provider} url={urls[i]} />
+                    <InlineCitationSource
+                      title={s.title}
+                      url={s.url}
+                      description={s.excerpt}
+                    />
+                  </InlineCitationCarouselItem>
+                ))}
+              </InlineCitationCarouselContent>
+            </InlineCitationCarousel>
+          </InlineCitationCardBody>
+        </InlineCitationCard>
+      </InlineCitation>
+    </div>
   );
 }
 
@@ -279,7 +299,7 @@ const SuggestConfigEditorRender: ToolCallMessagePartComponent<
           <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Proposed Changes
           </h4>
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant="secondary">
             {diffs.length} {diffs.length === 1 ? "change" : "changes"}
           </Badge>
         </div>
@@ -634,15 +654,15 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       }
 
       if (result.error) {
-        return (
-          <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-1.5">
-            {String(result.error)}
-          </div>
-        );
+        return null;
       }
 
       const rsi = result.rsi_14 as number | null;
       const trend = result.trend as string | null;
+
+      // Hide card entirely when no meaningful data (micro-cap/ADR with no candles)
+      const hasData = rsi != null || (result.sma_20 != null) || (result.sma_50 != null);
+      if (!hasData) return null;
 
       return (
         <div className="my-2">
@@ -732,55 +752,10 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Options flow → OptionsFlowCard ──────────────────────────────────
+  // ── Options flow — rendered as CoT step by ResearchToolGroup ────────
   useAssistantToolUI({
     toolName: "get_options_flow",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Options flow — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Activity} label="Scanning unusual activity" status="active" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-
-      if (result.available === false) {
-        return (
-          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
-            No options data for {ticker}.{" "}
-            {result.note && <span>{String(result.note)}</span>}
-          </div>
-        );
-      }
-
-      const signal = result.signal as string;
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Options flow — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Activity} label={`P/C ratio: ${result.put_call_ratio ?? "—"} — Signal: ${signal ?? "neutral"}`} status="complete" />
-              <ChainOfThoughtStep icon={BarChart3} label={`${result.contracts_available ?? 0} contracts analyzed`} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          <OptionsFlowCard
-            ticker={ticker}
-            putCallRatio={result.put_call_ratio as number | null}
-            totalCallVolume={result.total_call_volume as number}
-            totalPutVolume={result.total_put_volume as number}
-            expiration={result.expiration as string}
-            contractsAvailable={result.contracts_available as number}
-            signal={signal}
-          />
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
   // ── Reddit sentiment → XPost cards ──────────────────────────────────
@@ -801,16 +776,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       }
 
       if (!result.available) {
-        const reason = result.reason as string | undefined;
-        const isBlocked = reason === "blocked";
-        return (
-          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
-            <MessageSquare className="inline h-3 w-3 mr-1 text-orange-500" />
-            {isBlocked
-              ? `Reddit API rate-limited — no sentiment data for ${ticker}.`
-              : `No recent Reddit mentions for ${ticker}.`}
-          </div>
-        );
+        return null;
       }
 
       const sources = (result.sources ?? []) as {
@@ -832,20 +798,22 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             </ChainOfThoughtContent>
           </ChainOfThought>
           {sources.length > 0 && (
-            <div className="space-y-1.5">
-              {sources.slice(0, 5).map((s, i) => (
-                <XPost
-                  key={i}
-                  data={{
-                    author: s.provider || "Reddit",
-                    username: s.provider?.replace(/^r\//, "") || "reddit",
-                    avatar: "R",
-                    content: s.title || "Untitled post",
-                    likes: s.score != null ? String(s.score) : undefined,
-                  }}
-                />
-              ))}
-            </div>
+            <PostList
+              data={{
+                posts: sources.slice(0, 5).map((s) => ({
+                  title: s.title || "Untitled post",
+                  excerpt: `Posted in ${s.provider || "Reddit"}${s.score != null ? ` · ${s.score} points` : ""}`,
+                  category: s.provider || "Reddit",
+                  url: s.url,
+                })),
+              }}
+              actions={{
+                onReadMore: (post) => {
+                  if (post.url) window.open(post.url, "_blank", "noopener,noreferrer");
+                },
+              }}
+              appearance={{ variant: "carousel", showAuthor: false }}
+            />
           )}
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
@@ -872,12 +840,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       }
 
       if (!result.available) {
-        return (
-          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
-            <MessageSquare className="inline h-3 w-3 mr-1 text-blue-500" />
-            No StockTwits data available for {ticker}.
-          </div>
-        );
+        return null;
       }
 
       const postsList = (result.posts ?? []) as {
@@ -899,20 +862,17 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             </ChainOfThoughtContent>
           </ChainOfThought>
           {postsList.length > 0 && (
-            <div className="space-y-1.5">
-              {postsList.slice(0, 5).map((p, i) => (
-                <XPost
-                  key={i}
-                  data={{
-                    author: p.username,
-                    username: p.username,
-                    content: p.body,
-                    likes: p.likes != null && p.likes > 0 ? String(p.likes) : undefined,
-                    time: p.created_at,
-                  }}
-                />
-              ))}
-            </div>
+            <PostList
+              data={{
+                posts: postsList.slice(0, 5).map((p) => ({
+                  title: p.body.length > 120 ? p.body.slice(0, 120) + "…" : p.body,
+                  excerpt: `@${p.username}${p.likes != null && p.likes > 0 ? ` · ${p.likes} likes` : ""}`,
+                  category: "StockTwits",
+                  publishedAt: p.created_at,
+                })),
+              }}
+              appearance={{ variant: "carousel", showAuthor: false }}
+            />
           )}
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
@@ -954,42 +914,10 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Analyst Targets → AnalystTargetsCard ────────────────────────────
+  // ── Analyst Targets — rendered as CoT step by ResearchToolGroup ─────
   useAssistantToolUI({
     toolName: "get_analyst_targets",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Analyst targets — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Target} label="Fetching Wall Street consensus" status="active" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Analyst targets — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Target} label={`${result.num_analysts ?? 0} analysts — consensus: $${(result.consensus_target as number)?.toFixed(2) ?? "—"}`} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          <AnalystTargetsCard
-            ticker={ticker}
-            consensusTarget={result.consensus_target as number | null}
-            high={result.high as number | null}
-            low={result.low as number | null}
-            median={result.median as number | null}
-            numAnalysts={result.num_analysts as number | null}
-            currentPrice={result.current_price as number | null}
-          />
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
   // ── Company Peers → PeersCard ──────────────────────────────────────
@@ -1054,11 +982,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       }));
 
       if (allNews.length === 0) {
-        return (
-          <div className="my-1.5 text-xs text-muted-foreground rounded-md border border-dashed px-3 py-1.5">
-            No additional news found for {ticker}.
-          </div>
-        );
+        return null;
       }
 
       return (
@@ -1134,20 +1058,12 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             <div className="flex items-center gap-2.5 px-4 py-2.5">
               <span className="text-sm font-semibold font-mono">{thesis.ticker}</span>
               {!isPass ? (
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "text-[10px] gap-1 py-0 font-semibold",
-                    isLong
-                      ? "bg-positive/10 text-positive"
-                      : "bg-negative/10 text-negative",
-                  )}
-                >
+                <Badge variant={isLong ? "positive" : "negative"}>
                   <DirIcon className="h-2.5 w-2.5" />
                   {thesis.direction}
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="text-[10px] py-0">
+                <Badge variant="secondary">
                   PASS
                 </Badge>
               )}
@@ -1158,8 +1074,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
                 </span>
               )}
 
-              <Badge
-                variant="secondary"
+              <span
                 className={cn(
                   "ml-auto flex items-center justify-center rounded-full size-7 text-[11px] font-bold tabular-nums",
                   thesis.confidence_score >= 80
@@ -1170,7 +1085,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
                 )}
               >
                 {thesis.confidence_score}
-              </Badge>
+              </span>
             </div>
 
             {/* Entry/Target/Stop compact row */}

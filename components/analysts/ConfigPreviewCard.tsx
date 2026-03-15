@@ -121,7 +121,7 @@ export function ConfigPreviewCard({
           </span>
           <div className="flex flex-wrap gap-1.5">
             {(config.sectors ?? []).map((s) => (
-              <Badge key={s} variant="secondary" className="text-[11px]">
+              <Badge key={s} variant="secondary" >
                 {s}
               </Badge>
             ))}
@@ -137,7 +137,7 @@ export function ConfigPreviewCard({
           </span>
           <div className="flex flex-wrap gap-1.5">
             {(config.signalTypes ?? []).map((s) => (
-              <Badge key={s} variant="outline" className="text-[11px]">
+              <Badge key={s} variant="outline" >
                 <TrendingUp className="h-2.5 w-2.5" />
                 {s.replace(/_/g, " ")}
               </Badge>
@@ -154,7 +154,7 @@ export function ConfigPreviewCard({
           </span>
           <div className="flex flex-wrap gap-1.5">
             {config.watchlist!.map((t) => (
-              <Badge key={t} variant="secondary" className="text-[11px] font-mono">
+              <Badge key={t} variant="secondary" >
                 <Eye className="h-2.5 w-2.5" />
                 {t}
               </Badge>
@@ -170,7 +170,7 @@ export function ConfigPreviewCard({
           </span>
           <div className="flex flex-wrap gap-1.5">
             {config.exclusionList!.map((t) => (
-              <Badge key={t} variant="outline" className="text-[11px] font-mono text-muted-foreground">
+              <Badge key={t} variant="outline" >
                 <Ban className="h-2.5 w-2.5" />
                 {t}
               </Badge>

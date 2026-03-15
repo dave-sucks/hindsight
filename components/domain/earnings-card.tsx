@@ -45,7 +45,7 @@ export function EarningsCard({
         {ticker && <span className="text-xs font-mono font-medium">{ticker}</span>}
         <div className="ml-auto flex items-center gap-2">
           {beatRate && beatRate !== "no history" && (
-            <Badge variant="secondary" className="text-[10px] py-0 tabular-nums">
+            <Badge variant="secondary">
               {beatRate} beat
             </Badge>
           )}

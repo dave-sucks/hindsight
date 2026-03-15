@@ -71,12 +71,7 @@ export function TechnicalCard({
         <div className="ml-auto flex items-center gap-1.5">
           {trend && (
             <Badge
-              variant="secondary"
-              className={cn(
-                "text-[10px] gap-1 py-0",
-                isBullish && "text-positive",
-                isBearish && "text-negative",
-              )}
+              variant={isBullish ? "positive" : isBearish ? "negative" : "secondary"}
             >
               {isBullish ? <ArrowUpRight className="h-2.5 w-2.5" /> : isBearish ? <ArrowDownRight className="h-2.5 w-2.5" /> : null}
               {isBullish ? "Bullish" : isBearish ? "Bearish" : "Neutral"}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useTransition } from "react";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
@@ -10,13 +10,13 @@ import {
 } from "@/components/ui/chart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AnalystConfigSheet } from "@/components/analysts/AnalystConfigSheet";
+import { StockCombobox } from "@/components/analysts/StockCombobox";
+import { StockLogo } from "@/components/StockLogo";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
+  addToWatchlist,
+  removeFromWatchlist,
+} from "@/lib/actions/analyst.actions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import { TradeRow } from "@/components/ui/trade-row";
@@ -25,6 +25,8 @@ import { BriefingFeed } from "@/components/analysts/BriefingFeed";
 import {
   Settings2,
   FileText,
+  Eye,
+  X,
 } from "lucide-react";
 import type {
   AnalystDetail,
@@ -83,108 +85,28 @@ function AnalystTradeRow({ trade }: { trade: TradeWithThesis }) {
   );
 }
 
-// ── Config Sheet ──────────────────────────────────────────────────────────────
+// ── Watching row for sidebar ──────────────────────────────────────────────────
 
-function ConfigSheet({
-  open,
-  onOpenChange,
-  config,
+function WatchingRow({
+  symbol,
+  onRemove,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  config: AnalystDetail["config"];
+  symbol: string;
+  onRemove: (symbol: string) => void;
 }) {
-  const configRows = [
-    { label: "Direction", value: config.directionBias },
-    {
-      label: "Hold Duration",
-      value: config.holdDurations.join(", ") || "—",
-    },
-    { label: "Min Confidence", value: `${config.minConfidence}%` },
-    { label: "Schedule", value: config.scheduleTime },
-    { label: "Max Positions", value: String(config.maxOpenPositions) },
-    {
-      label: "Max Position Size",
-      value: `$${(config.maxPositionSize ?? 0).toLocaleString()}`,
-    },
-    { label: "Max Risk %", value: `${config.maxRiskPct}%` },
-  ];
-
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="w-[420px] sm:max-w-[420px] overflow-y-auto"
+    <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 last:border-0">
+      <StockLogo ticker={symbol} size="md" className="rounded-md" />
+      <div className="flex-1 min-w-0">
+        <span className="text-sm font-medium">{symbol}</span>
+      </div>
+      <button
+        onClick={() => onRemove(symbol)}
+        className="p-1 rounded hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors"
       >
-        <SheetHeader>
-          <SheetTitle className="text-sm font-semibold">
-            Configuration
-          </SheetTitle>
-          <SheetDescription className="text-xs">
-            Use the AI chat to edit these settings.
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="px-4 pb-6 space-y-5">
-          <div className="space-y-0.5">
-            {configRows.map(({ label, value }) => (
-              <div
-                key={label}
-                className="flex items-center justify-between text-sm border-b border-border pb-1.5 pt-1.5"
-              >
-                <span className="text-muted-foreground">{label}</span>
-                <span className="font-medium tabular-nums">{value}</span>
-              </div>
-            ))}
-          </div>
-
-          {config.sectors.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-sm text-muted-foreground">
-                Sectors
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {config.sectors.map((s) => (
-                  <Badge
-                    key={s}
-                    variant="secondary"
-                    className=""
-                  >
-                    {s}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {config.signalTypes.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-sm text-muted-foreground">
-                Signals
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {config.signalTypes.map((s) => (
-                  <Badge
-                    key={s}
-                    variant="secondary"
-                  >
-                    {s}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-lg border border-dashed p-3">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              To edit any configuration, describe the changes you want in the AI
-              chat. For example: &ldquo;Make this analyst focus on small-cap
-              biotech with higher confidence&rdquo;
-            </p>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -211,31 +133,29 @@ function FloatingEditorComposer({ analystId }: { analystId: string }) {
     [handleSend],
   );
 
-  return (
-    <div className="shrink-0 px-4 pb-4 pt-3">
-      <div className="max-w-3xl mx-auto">
-        <div className="bg-background border border-border rounded-lg overflow-hidden transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20">
-          <div className="px-3 pt-3 pb-2">
-            <textarea
-              ref={textareaRef}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask a question or suggest strategy changes…"
-              rows={1}
-              className="w-full bg-transparent p-0 text-foreground placeholder-muted-foreground resize-none outline-none text-sm min-h-10 max-h-[15vh]"
-            />
-          </div>
-          <div className="mb-2 px-2 flex items-center justify-end">
-            <Button
-              size="icon-sm"
-              disabled={!text.trim()}
-              onClick={handleSend}
-              aria-label="Send message"
-            >
-              <Send className="size-3" />
-            </Button>
-          </div>
+  return ( 
+    <div className="max-w-3xl mx-auto z-10">
+      <div className="bg-background/80 backdrop-blur-sm border border-border rounded-lg overflow-hidden transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20">
+        <div className="px-3 pt-3 pb-2 grow">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask a question or suggest strategy changes…"
+            rows={1}
+            className="w-full bg-transparent! p-0 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-foreground placeholder-muted-foreground resize-none border-none outline-none text-sm min-h-10 max-h-[25vh]"
+          />
+        </div>
+        <div className="mb-2 px-2 flex items-center justify-end">
+          <Button
+            size="icon-sm"
+            disabled={!text.trim()}
+            onClick={handleSend}
+            aria-label="Send message"
+          >
+            <Send className="size-3" />
+          </Button>
         </div>
       </div>
     </div>
@@ -266,6 +186,24 @@ export default function AnalystDetailClient({
 
   const [configOpen, setConfigOpen] = useState(false);
   const [range, setRange] = useState<Range>("Max");
+  const [watchlist, setWatchlist] = useState(config.watchlist);
+  const [, startTransition] = useTransition();
+
+  const handleAddStock = (symbol: string) => {
+    const upper = symbol.toUpperCase();
+    if (watchlist.includes(upper)) return;
+    setWatchlist((prev) => [...prev, upper]);
+    startTransition(async () => {
+      await addToWatchlist(config.id, upper);
+    });
+  };
+
+  const handleRemoveStock = (symbol: string) => {
+    setWatchlist((prev) => prev.filter((s) => s !== symbol));
+    startTransition(async () => {
+      await removeFromWatchlist(config.id, symbol);
+    });
+  };
 
   // ── Chart data ──────────────────────────────────────────────────────────
   const equityData = useMemo(() => {
@@ -330,7 +268,6 @@ export default function AnalystDetailClient({
                 {hasRunning && (
                   <Badge
                     variant="secondary"
-                    className="text-[10px] h-5 px-2 shrink-0 animate-pulse"
                   >
                     Research Running…
                   </Badge>
@@ -365,55 +302,60 @@ export default function AnalystDetailClient({
               />
             </div>
           </div>
-
-          {/* ── Tabs: Briefings | Overview ───── */}
-          <Tabs defaultValue={0} className="flex-1 overflow-hidden">
-            <div className="px-4 shrink-0">
-              <TabsList>
-                <TabsTrigger value={0}>
-                  Briefings
-                  {detail.briefings.length > 0 && (
-                    <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
-                      {detail.briefings.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value={1}>Overview</TabsTrigger>
-              </TabsList>
-            </div>
-            <TabsContent value={0} className="flex-1 overflow-y-auto">
-              <div className="max-w-3xl mx-auto px-8 py-6">
-                <BriefingFeed briefings={detail.briefings} />
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {/* ── Tabs: Briefings | Overview ───── */}
+            <Tabs defaultValue={0} className="flex-1 overflow-hidden">
+              <div className="px-4 shrink-0">
+                <TabsList>
+                  <TabsTrigger value={0}>
+                    Briefings
+                    {detail.briefings.length > 0 && (
+                      <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
+                        {detail.briefings.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value={1}>Overview</TabsTrigger>
+                </TabsList>
               </div>
-            </TabsContent>
-            <TabsContent value={1} className="flex-1 overflow-y-auto">
-              <div className="flex-1 overflow-y-auto">
+              <TabsContent value={0} className="flex-1 overflow-y-auto">
                 <div className="max-w-3xl mx-auto px-8 py-6">
-                  {config.analystPrompt && config.analystPrompt.trim().length > 0 ? (
-                    <Markdown variant="prose">{config.analystPrompt}</Markdown>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-20 space-y-3">
-                      <FileText className="h-10 w-10 text-muted-foreground/30" />
-                      <p className="text-sm text-muted-foreground">
-                        No strategy prompt yet
-                      </p>
-                      <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
-                        Use the chat below to brainstorm and create a detailed strategy
-                        prompt that will guide this analyst&apos;s research runs.
-                      </p>
-                    </div>
-                  )}
+                  <BriefingFeed briefings={detail.briefings} />
                 </div>
-              </div>
-            </TabsContent>
-          </Tabs>
+              </TabsContent>
+              <TabsContent value={1} className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto">
+                  <div className="max-w-3xl mx-auto px-8 py-6">
+                    {config.analystPrompt && config.analystPrompt.trim().length > 0 ? (
+                      <Markdown variant="prose">{config.analystPrompt}</Markdown>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-20 space-y-3">
+                        <FileText className="h-10 w-10 text-muted-foreground/30" />
+                        <p className="text-sm text-muted-foreground">
+                          No strategy prompt yet
+                        </p>
+                        <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
+                          Use the chat below to brainstorm and create a detailed strategy
+                          prompt that will guide this analyst&apos;s research runs.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
 
-          {/* ── Floating composer — sends first message to editor page ── */}
-          <FloatingEditorComposer analystId={config.id} />
+            {/* ── Floating composer — sends first message to editor page ── */}
+            <div className="sticky bottom-0 px-4 pb-4 bg-transparent">
+              <FloatingEditorComposer analystId={config.id} />
+            </div>
+            
+
+          </div>
         </div>
         {/* ── Right sidebar: portfolio-style ─────────────────────────────── */}
         <div className="p-4 h-full">
-          <div className="h-full rounded-xl border bg-background overflow-y-auto">
+          <div className="h-full rounded-xl border bg-background overflow-hidden flex flex-col">
             {/* Equity chart */}
             {equityData.length < 2 ? (
               <div className="h-[200px] bg-muted/30 flex items-center justify-center shrink-0">
@@ -528,25 +470,74 @@ export default function AnalystDetailClient({
               </div>
             )}
 
-            {/* Trade rows */}
-            <div className="flex-1 overflow-y-auto">
-              {recentTrades.length === 0 ? (
-                <p className="text-[10px] text-muted-foreground text-center py-6 px-2">
-                  No trades yet
-                </p>
-              ) : (
-                recentTrades.map((trade) => (
-                  <AnalystTradeRow key={trade.id} trade={trade} />
-                ))
-              )}
-            </div>
+            {/* Sidebar tabs: Trades | Watching */}
+            <Tabs defaultValue={0} className="flex-1 overflow-hidden">
+              <div className="px-3 pt-2 shrink-0">
+                <TabsList>
+                  <TabsTrigger value={0}>
+                    Trades
+                    {recentTrades.length > 0 && (
+                      <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
+                        {recentTrades.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value={1}>
+                    Watching
+                    {watchlist.length > 0 && (
+                      <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
+                        {watchlist.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value={0} className="flex-1 overflow-y-auto">
+                {recentTrades.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-6 px-2">
+                    No trades yet
+                  </p>
+                ) : (
+                  recentTrades.map((trade) => (
+                    <AnalystTradeRow key={trade.id} trade={trade} />
+                  ))
+                )}
+              </TabsContent>
+
+              <TabsContent value={1} className="flex-1 overflow-y-auto">
+                <div className="px-3 py-2 shrink-0">
+                  <StockCombobox
+                    onSelect={handleAddStock}
+                    excludeSymbols={watchlist}
+                  />
+                </div>
+                {watchlist.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 px-4 space-y-2">
+                    <Eye className="h-8 w-8 text-muted-foreground/30" />
+                    <p className="text-[10px] text-muted-foreground text-center">
+                      No stocks on the watchlist yet. Add stocks this analyst should
+                      prioritize during runs.
+                    </p>
+                  </div>
+                ) : (
+                  watchlist.map((symbol) => (
+                    <WatchingRow
+                      key={symbol}
+                      symbol={symbol}
+                      onRemove={handleRemoveStock}
+                    />
+                  ))
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
         {/* End Sidebar */}
       </div>
 
       {/* Config Sheet */}
-      <ConfigSheet
+      <AnalystConfigSheet
         open={configOpen}
         onOpenChange={setConfigOpen}
         config={config}

@@ -25,15 +25,87 @@ import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button
 import { cn } from "@/lib/utils";
 import { useSources } from "@/components/assistant-ui/message-sources-context";
 import { parseMarkers } from "@/components/chat/CitedText";
-import { InlineCitationBadge } from "@/components/ai-elements/inline-citation";
+import {
+  InlineCitation,
+  InlineCitationCard,
+  InlineCitationCardTrigger,
+  InlineCitationCardBody,
+  InlineCitationCarousel,
+  InlineCitationCarouselContent,
+  InlineCitationCarouselItem,
+  InlineCitationCarouselHeader,
+  InlineCitationCarouselIndex,
+  InlineCitationCarouselPrev,
+  InlineCitationCarouselNext,
+  InlineCitationSource,
+} from "@/components/ai-elements/inline-citation";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { TickerChip, parseTickerMentions } from "@/components/chat/TickerChip";
 
 // ─── Citation processing ────────────────────────────────────────────────────
 
+const PROVIDER_DOMAINS: Record<string, string> = {
+  finnhub: "https://finnhub.io",
+  fmp: "https://financialmodelingprep.com",
+  reddit: "https://reddit.com",
+  stocktwits: "https://stocktwits.com",
+  twitter: "https://x.com",
+  technical: "https://finnhub.io",
+  earnings: "https://finnhub.io",
+  options: "https://financialmodelingprep.com",
+  sec: "https://sec.gov",
+};
+
+function sourceUrl(s: SourceChipData): string {
+  if (s.url) return s.url;
+  const key = s.provider.toLowerCase().replace(/[^a-z ]/g, "");
+  return PROVIDER_DOMAINS[key] ?? `https://${s.provider.toLowerCase().replace(/[^a-z]/g, "")}.com`;
+}
+
+function faviconFromUrl(url: string): string | null {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`;
+  } catch {
+    return null;
+  }
+}
+
+function ProviderRow({ provider, url }: { provider: string; url: string }) {
+  const favicon = faviconFromUrl(url);
+  return (
+    <span className="flex items-center gap-2 mb-1">
+      {favicon && (
+        <img src={favicon} alt="" width={16} height={16} className="size-4 shrink-0 rounded-sm" />
+      )}
+      <span className="text-xs font-medium text-muted-foreground">{provider}</span>
+    </span>
+  );
+}
+
+type GroupedSeg =
+  | { type: "text"; value: string }
+  | { type: "citations"; indices: number[] };
+
+function groupCitations(segments: { type: string; value?: string; index?: number }[]): GroupedSeg[] {
+  const grouped: GroupedSeg[] = [];
+  for (const seg of segments) {
+    if (seg.type === "text") {
+      grouped.push({ type: "text", value: seg.value! });
+    } else {
+      const last = grouped[grouped.length - 1];
+      if (last && last.type === "citations") {
+        last.indices.push(seg.index!);
+      } else {
+        grouped.push({ type: "citations", indices: [seg.index!] });
+      }
+    }
+  }
+  return grouped;
+}
+
 /**
- * Process a plain text string: first handle [N] citations, then $TICKER mentions.
- * Returns an array of ReactNode fragments.
+ * Process a plain text string: first handle [N] citations (grouped into
+ * InlineCitation carousel pills), then $TICKER mentions.
  */
 function processTextNode(
   text: string,
@@ -42,31 +114,53 @@ function processTextNode(
 ): ReactNode[] {
   const result: ReactNode[] = [];
 
-  // Step 1: Split on citations [N]
-  const citationSegments = parseMarkers(text);
+  // Step 1: Split on citations [N] and group consecutive ones
+  const rawSegments = parseMarkers(text);
+  const grouped = groupCitations(rawSegments);
 
-  for (let i = 0; i < citationSegments.length; i++) {
-    const seg = citationSegments[i];
+  for (let i = 0; i < grouped.length; i++) {
+    const seg = grouped[i];
 
-    if (seg.type === "citation") {
-      const sourceIdx = seg.index - 1;
-      const source = sources[sourceIdx];
-      if (!source) {
+    if (seg.type === "citations") {
+      const citationSources = seg.indices
+        .map((idx) => sources[idx - 1])
+        .filter(Boolean);
+
+      if (citationSources.length === 0) {
         result.push(
           <sup key={`${keyPrefix}-c${i}`} className="text-muted-foreground text-[10px]">
-            [{seg.index}]
+            [{seg.indices.join("][")}]
           </sup>,
         );
       } else {
+        const urls = citationSources.map(sourceUrl);
         result.push(
-          <InlineCitationBadge
-            key={`${keyPrefix}-c${i}`}
-            index={seg.index}
-            title={source.title}
-            url={source.url}
-            snippet={source.excerpt}
-            provider={source.provider}
-          />,
+          <InlineCitation key={`${keyPrefix}-c${i}`}>
+            <InlineCitationCard>
+              <InlineCitationCardTrigger sources={urls} />
+              <InlineCitationCardBody>
+                <InlineCitationCarousel>
+                  <InlineCitationCarouselHeader>
+                    <InlineCitationCarouselPrev />
+                    <InlineCitationCarouselNext />
+                    <InlineCitationCarouselIndex />
+                  </InlineCitationCarouselHeader>
+                  <InlineCitationCarouselContent>
+                    {citationSources.map((s, j) => (
+                      <InlineCitationCarouselItem key={j}>
+                        <ProviderRow provider={s.provider} url={sourceUrl(s)} />
+                        <InlineCitationSource
+                          title={s.title}
+                          url={s.url}
+                          description={s.excerpt}
+                        />
+                      </InlineCitationCarouselItem>
+                    ))}
+                  </InlineCitationCarouselContent>
+                </InlineCitationCarousel>
+              </InlineCitationCardBody>
+            </InlineCitationCard>
+          </InlineCitation>,
         );
       }
       continue;
@@ -75,7 +169,6 @@ function processTextNode(
     // Step 2: Plain text — check for $TICKER mentions
     const tickerSegments = parseTickerMentions(seg.value);
     if (tickerSegments.length === 1 && tickerSegments[0].type === "text") {
-      // No tickers — just push plain text
       result.push(<Fragment key={`${keyPrefix}-t${i}`}>{seg.value}</Fragment>);
     } else {
       for (let j = 0; j < tickerSegments.length; j++) {

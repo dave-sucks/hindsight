@@ -58,18 +58,6 @@ const directionIcon = {
   BOTH: <ArrowLeftRight className="h-4 w-4" />,
 };
 
-const directionColor = {
-  LONG: "text-positive",
-  SHORT: "text-negative",
-  BOTH: "text-blue-500",
-};
-
-const directionBg = {
-  LONG: "bg-positive/10",
-  SHORT: "bg-negative/10",
-  BOTH: "bg-blue-500/10",
-};
-
 // ─── AgentConfigCard ──────────────────────────────────────────────────────────
 
 export function AgentConfigCard({
@@ -113,12 +101,13 @@ export function AgentConfigCard({
             )}
           </div>
           <Badge
-            variant="secondary"
-            className={cn(
-              "gap-1 text-xs font-semibold shrink-0",
-              directionColor[directionBias],
-              directionBg[directionBias]
-            )}
+            variant={
+              directionBias === "LONG"
+                ? "positive"
+                : directionBias === "SHORT"
+                  ? "negative"
+                  : "secondary"
+            }
           >
             {directionIcon[directionBias]}
             {directionBias}
@@ -179,7 +168,7 @@ export function AgentConfigCard({
             <SectionLabel>Sectors</SectionLabel>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {sectors.map((s) => (
-                <Badge key={s} variant="secondary" className="text-xs">
+                <Badge key={s} variant="outline">
                   {s}
                 </Badge>
               ))}
@@ -193,7 +182,7 @@ export function AgentConfigCard({
             <SectionLabel>Signals</SectionLabel>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {signalTypes.map((s) => (
-                <Badge key={s} variant="outline" className="text-xs gap-1">
+                <Badge key={s} variant="outline">
                   <TrendingUp className="h-2.5 w-2.5" />
                   {s.replace(/_/g, " ")}
                 </Badge>
@@ -210,8 +199,7 @@ export function AgentConfigCard({
               {watchlist.map((t) => (
                 <Badge
                   key={t}
-                  variant="secondary"
-                  className="text-xs font-mono gap-1"
+                  variant="outline"
                 >
                   <Eye className="h-2.5 w-2.5" />
                   {t}
@@ -230,7 +218,6 @@ export function AgentConfigCard({
                 <Badge
                   key={t}
                   variant="outline"
-                  className="text-xs font-mono text-muted-foreground gap-1"
                 >
                   <Ban className="h-2.5 w-2.5" />
                   {t}

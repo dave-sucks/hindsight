@@ -23,22 +23,6 @@ export type SecFilingsCardData = {
 
 export type SecFilingsCardProps = ComponentProps<typeof Card> & SecFilingsCardData;
 
-// ─── Filing type badge color ──────────────────────────────────────────────────
-
-function filingColor(type: string): string {
-  switch (type) {
-    case "10-K":
-    case "10-Q":
-      return "text-blue-500";
-    case "8-K":
-      return "text-amber-500";
-    case "4":
-      return "text-violet-500";
-    default:
-      return "text-muted-foreground";
-  }
-}
-
 // ─── SecFilingsCard ───────────────────────────────────────────────────────────
 
 export function SecFilingsCard({
@@ -66,7 +50,7 @@ export function SecFilingsCard({
         <div className="divide-y divide-border/40">
           {filings.slice(0, 5).map((f, i) => (
             <div key={i} className="group flex items-center gap-2 px-4 py-2 hover:bg-accent/30 transition-colors">
-              <Badge variant="secondary" className={cn("text-[10px] py-0 shrink-0", filingColor(f.type))}>
+              <Badge variant="outline">
                 {f.type}
               </Badge>
               <span className="text-xs truncate flex-1 min-w-0">

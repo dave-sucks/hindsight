@@ -75,11 +75,6 @@ export function ThesisCard({
   const isLong = direction === "LONG";
   const isShort = direction === "SHORT";
   const isPass = direction === "PASS";
-  const dirColor = isLong
-    ? "text-positive"
-    : isShort
-      ? "text-negative"
-      : "text-muted-foreground";
 
   const DirIcon = isLong ? TrendingUp : isShort ? TrendingDown : Minus;
 
@@ -112,7 +107,7 @@ export function ThesisCard({
             ) : (
               <span className="text-lg font-bold font-mono">{ticker}</span>
             )}
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary">
               PASS
             </Badge>
           </div>
@@ -154,14 +149,7 @@ export function ThesisCard({
           ) : (
             <span className="text-lg font-bold font-mono">{ticker}</span>
           )}
-          <Badge
-            variant="secondary"
-            className={cn(
-              "gap-1 text-xs font-semibold",
-              dirColor,
-              isLong ? "bg-positive/10" : "bg-negative/10"
-            )}
-          >
+          <Badge variant={isLong ? "positive" : "negative"}>
             <DirIcon className="h-3.5 w-3.5" />
             {direction}
           </Badge>
@@ -175,14 +163,12 @@ export function ThesisCard({
           {signal_types.slice(0, 2).map((s) => (
             <Badge
               key={s}
-              variant="outline"
-              className="text-[10px] text-muted-foreground"
+              variant="secondary"
             >
               {s.replace(/_/g, " ")}
             </Badge>
           ))}
-          <Badge
-            variant="secondary"
+          <span
             className={cn(
               "flex items-center justify-center rounded-full size-10 text-sm font-bold tabular-nums",
               confidence_score >= 80
@@ -193,7 +179,7 @@ export function ThesisCard({
             )}
           >
             {confidence_score}
-          </Badge>
+          </span>
         </div>
       </div>
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { BriefingCard } from "./BriefingCard";
 import { FileText } from "lucide-react";
 import type { AnalystBriefingItem } from "@/lib/actions/analyst.actions";
@@ -10,10 +9,6 @@ export function BriefingFeed({
 }: {
   briefings: AnalystBriefingItem[];
 }) {
-  const [expandedId, setExpandedId] = useState<string | null>(
-    briefings[0]?.id ?? null
-  );
-
   if (briefings.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-3">
@@ -28,20 +23,9 @@ export function BriefingFeed({
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       {briefings.map((briefing) => (
-        <div
-          key={briefing.id}
-          className="cursor-pointer"
-          onClick={() =>
-            setExpandedId(expandedId === briefing.id ? null : briefing.id)
-          }
-        >
-          <BriefingCard
-            briefing={briefing}
-            expanded={expandedId === briefing.id}
-          />
-        </div>
+        <BriefingCard key={briefing.id} briefing={briefing} />
       ))}
     </div>
   );

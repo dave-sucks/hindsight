@@ -63,12 +63,12 @@ export function RunSummaryCard({
           <span className="text-sm font-semibold">Portfolio Synthesis</span>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="text-[10px] gap-1">
+          <Badge variant="secondary">
             <Target className="h-2.5 w-2.5" />
             {trades.length} trades
           </Badge>
           {watches.length > 0 && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="secondary">
               {watches.length} watchlist
             </Badge>
           )}
@@ -125,12 +125,13 @@ export function RunSummaryCard({
                       {pick.confidence}%
                     </span>
                     <Badge
-                      variant={pick.action === "TRADE" ? "default" : "outline"}
-                      className={cn(
-                        "text-[10px] ml-auto",
-                        pick.action === "TRADE" &&
-                          "bg-positive/10 text-positive"
-                      )}
+                      variant={
+                        pick.action === "TRADE"
+                          ? "positive"
+                          : pick.action === "WATCH"
+                            ? "warning"
+                            : "secondary"
+                      }
                     >
                       {pick.action}
                     </Badge>

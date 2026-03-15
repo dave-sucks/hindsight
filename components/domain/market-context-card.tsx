@@ -37,12 +37,12 @@ export type MarketContextCardProps = ComponentProps<typeof Card> &
 
 const REGIME_CONFIG: Record<
   MarketContextData["regime"],
-  { label: string; color: string; icon: typeof TrendingUp }
+  { label: string; variant: "positive" | "negative" | "warning" | "secondary"; icon: typeof TrendingUp }
 > = {
-  trending_up: { label: "Trending Up", color: "text-positive", icon: TrendingUp },
-  trending_down: { label: "Trending Down", color: "text-negative", icon: ArrowDown },
-  range_bound: { label: "Range-Bound", color: "text-amber-500", icon: Activity },
-  volatile: { label: "Volatile", color: "text-negative", icon: Activity },
+  trending_up: { label: "Trending Up", variant: "positive", icon: TrendingUp },
+  trending_down: { label: "Trending Down", variant: "negative", icon: ArrowDown },
+  range_bound: { label: "Range-Bound", variant: "warning", icon: Activity },
+  volatile: { label: "Volatile", variant: "warning", icon: Activity },
 };
 
 // ─── MarketContextCard — compact ─────────────────────────────────────────────
@@ -66,13 +66,12 @@ export function MarketContextCard({
   const hasData = spxChange != null || effectiveVix != null;
 
   return (
-    <Card className={cn("overflow-hidden p-0", className)} {...cardProps}>
+    <Card className={cn("overflow-hidden p-0" , className)} {...cardProps}>
       {/* Header row */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/40">
         <span className="text-xs font-medium text-muted-foreground">Market</span>
         <Badge
-          variant="secondary"
-          className={cn("", regimeCfg.color)}
+          variant={regimeCfg.variant}
         >
           <RegimeIcon />
           {regimeCfg.label}
@@ -126,23 +125,19 @@ export function MarketContextCard({
             {topSectors.map((s) => (
               <Badge
                 key={s.name}
-                variant="secondary"
-                className="bg-positive/10"
+                variant="positive"
               >
-                <ArrowUp className="h-2 w-2 text-positive" />
-                <span className="text-muted-foreground">{s.name}</span>
-                <span className="tabular-nums text-positive">+{s.change.toFixed(1)}%</span>
+                <ArrowUp />
+                {s.name} +{s.change.toFixed(1)}%
               </Badge>
             ))}
             {bottomSectors.map((s) => (
               <Badge
                 key={s.name}
-                variant="secondary"
-                className="gap-1 py-0 text-[10px] bg-negative/10"
+                variant="negative"
               >
-                <ArrowDown className="h-2 w-2 text-negative" />
-                <span className="text-muted-foreground">{s.name}</span>
-                <span className="tabular-nums text-negative">{s.change.toFixed(1)}%</span>
+                <ArrowDown />
+                {s.name} {s.change.toFixed(1)}%
               </Badge>
             ))}
           </div>
