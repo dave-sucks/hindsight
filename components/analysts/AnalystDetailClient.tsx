@@ -17,23 +17,14 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import { TradeRow } from "@/components/ui/trade-row";
 import { Markdown } from "@/components/ui/markdown";
-import { TickerMarkdown } from "@/components/ui/ticker-markdown";
 import { BriefingFeed } from "@/components/analysts/BriefingFeed";
 import {
   Settings2,
   FileText,
-  ChevronDown,
-  Clock,
-  Briefcase,
 } from "lucide-react";
 import type {
   AnalystDetail,
@@ -66,19 +57,6 @@ function sliceByRange(
   return filtered.length > 1 ? filtered : data.slice(-2);
 }
 
-function formatRelativeTime(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - new Date(date).getTime();
-  const diffMins = Math.floor(diffMs / 60_000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHrs = Math.floor(diffMins / 60);
-  if (diffHrs < 24) return `${diffHrs}h ago`;
-  const diffDays = Math.floor(diffHrs / 24);
-  if (diffDays === 1) return "yesterday";
-  return `${diffDays}d ago`;
-}
-
 // ── Sidebar trade row (uses shared TradeRow component) ───────────────────────
 
 function AnalystTradeRow({ trade }: { trade: TradeWithThesis }) {
@@ -100,130 +78,6 @@ function AnalystTradeRow({ trade }: { trade: TradeWithThesis }) {
       pnlPct={pnlPct}
       status={trade.status}
     />
-  );
-}
-
-// ── Analyst Briefing (the "Daily Standup" hero view) ─────────────────────────
-
-function AnalystBriefing({
-  config,
-  stats,
-  latestBriefing,
-}: {
-  config: AnalystDetail["config"];
-  stats: AnalystDetail["stats"];
-  latestBriefing: AnalystDetail["briefings"][number] | null;
-}) {
-  const hasBriefing = !!latestBriefing;
-  const prompt = config.analystPrompt;
-  const hasPrompt = !!prompt && prompt.trim().length > 0;
-  const [strategyOpen, setStrategyOpen] = useState(false);
-
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-8 py-6">
-        {/* Briefing section — the "daily standup" */}
-        {hasBriefing ? (
-          <div className="space-y-4">
-            {/* Briefing header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Briefcase className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                  Portfolio Briefing
-                </h2>
-              </div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                <span>Updated {formatRelativeTime(latestBriefing.createdAt)}</span>
-              </div>
-            </div>
-
-            {/* Quick stats bar */}
-            <div className="flex items-center gap-4 py-2 border-b border-border">
-              {stats.winRate != null && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Win Rate</span>
-                  <span className={cn(
-                    "text-sm font-semibold tabular-nums",
-                    stats.winRate >= 0.5 ? "text-positive" : "text-negative"
-                  )}>
-                    {Math.round(stats.winRate * 100)}%
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-muted-foreground">P&L</span>
-                <span className={cn(
-                  "text-sm font-semibold tabular-nums",
-                  stats.totalPnl >= 0 ? "text-positive" : "text-negative"
-                )}>
-                  {stats.totalPnl >= 0 ? "+" : ""}{formatCurrency(stats.totalPnl)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-muted-foreground">Record</span>
-                <span className="text-sm font-semibold tabular-nums">
-                  {stats.wins}W / {stats.losses}L
-                </span>
-              </div>
-            </div>
-
-            {/* Rich briefing content with inline tickers */}
-            <TickerMarkdown>{latestBriefing.narrative}</TickerMarkdown>
-
-            {/* Strategy notes from latest briefing */}
-            {latestBriefing.strategyNotes && (
-              <div className="rounded-md border-l-2 border-primary/30 pl-3 mt-4">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                  Strategy Notes
-                </p>
-                <TickerMarkdown>{latestBriefing.strategyNotes}</TickerMarkdown>
-              </div>
-            )}
-          </div>
-        ) : hasPrompt ? (
-          /* Fallback: show static strategy if no briefing yet */
-          <Markdown variant="prose">{prompt}</Markdown>
-        ) : (
-          /* Empty state */
-          <div className="flex flex-col items-center justify-center py-20 space-y-3">
-            <FileText className="h-10 w-10 text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">
-              No strategy prompt yet
-            </p>
-            <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
-              Use the chat below to brainstorm and create a detailed strategy
-              prompt that will guide this analyst&apos;s research runs.
-            </p>
-          </div>
-        )}
-
-        {/* Collapsible core strategy section */}
-        {hasBriefing && hasPrompt && (
-          <Collapsible
-            open={strategyOpen}
-            onOpenChange={setStrategyOpen}
-            className="mt-8 border-t border-border pt-4"
-          >
-            <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full">
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 transition-transform",
-                  strategyOpen && "rotate-180"
-                )}
-              />
-              <span className="font-medium uppercase tracking-wide text-xs">
-                Core Strategy Prompt
-              </span>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-4">
-              <Markdown variant="prose">{prompt}</Markdown>
-            </CollapsibleContent>
-          </Collapsible>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -456,12 +310,11 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
-          {/* ── Tabs: Overview | Briefings ───── */}
+          {/* ── Tabs: Briefings | Overview ───── */}
           <Tabs defaultValue={0} className="flex-1 overflow-hidden">
             <div className="px-4 shrink-0">
-              <TabsList variant="line">
-                <TabsTrigger value={0}>Overview</TabsTrigger>
-                <TabsTrigger value={1}>
+              <TabsList>
+                <TabsTrigger value={0}>
                   Briefings
                   {detail.briefings.length > 0 && (
                     <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
@@ -469,18 +322,32 @@ export default function AnalystDetailClient({
                     </span>
                   )}
                 </TabsTrigger>
+                <TabsTrigger value={1}>Overview</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value={0} className="flex-1 overflow-y-auto">
-              <AnalystBriefing
-                config={config}
-                stats={stats}
-                latestBriefing={detail.briefings[0] ?? null}
-              />
-            </TabsContent>
-            <TabsContent value={1} className="flex-1 overflow-y-auto">
               <div className="max-w-3xl mx-auto px-8 py-6">
                 <BriefingFeed briefings={detail.briefings} />
+              </div>
+            </TabsContent>
+            <TabsContent value={1} className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto">
+                <div className="max-w-3xl mx-auto px-8 py-6">
+                  {config.analystPrompt && config.analystPrompt.trim().length > 0 ? (
+                    <Markdown variant="prose">{config.analystPrompt}</Markdown>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-20 space-y-3">
+                      <FileText className="h-10 w-10 text-muted-foreground/30" />
+                      <p className="text-sm text-muted-foreground">
+                        No strategy prompt yet
+                      </p>
+                      <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
+                        Use the chat below to brainstorm and create a detailed strategy
+                        prompt that will guide this analyst&apos;s research runs.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </TabsContent>
           </Tabs>
