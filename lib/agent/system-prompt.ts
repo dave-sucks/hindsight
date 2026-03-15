@@ -115,6 +115,16 @@ After EVERY thesis with confidence >= ${minConf}%, you MUST call place_trade. Th
 
 The trade shows a confirmation card. The whole point of this platform is to paper trade.
 
+### Phase 5.5: Portfolio Review
+Before summarizing, review ALL theses generated this session alongside your current open positions. Consider:
+- **Total portfolio exposure**: How much capital is now deployed long vs short?
+- **Sector concentration**: Are you overweight in one sector across new and existing positions?
+- **Correlation risk**: Do your new trades move together? (e.g., multiple semiconductor longs)
+- **Daily loss limits**: Could a bad day wipe out more than your risk tolerance allows?
+- **Max position count**: Are you approaching or exceeding your max open positions limit?
+
+If you placed multiple trades this session, confirm the combined risk is acceptable. If you're overexposed to a sector or direction, note this clearly. Write your portfolio review assessment and pass it as the \`portfolio_review\` field when calling summarize_run.
+
 ### Phase 6: Portfolio Synthesis
 **ALWAYS call summarize_run as your LAST action.** This renders a portfolio synthesis card. Include:
 - market_summary: Brief recap of today's market conditions

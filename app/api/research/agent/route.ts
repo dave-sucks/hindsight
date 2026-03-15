@@ -86,7 +86,7 @@ export async function POST(req: Request) {
   try {
     const configId = analystId || (agentConfig as Record<string, unknown>).id;
 
-    // Recent closed trades (last 20)
+    // Recent closed trades (last 20) with evaluation data
     const recentTrades = await prisma.trade.findMany({
       where: {
         userId: user.id,
@@ -96,9 +96,11 @@ export async function POST(req: Request) {
       orderBy: { closedAt: "desc" },
       take: 20,
       select: {
+        id: true,
         ticker: true, direction: true, outcome: true,
         entryPrice: true, closePrice: true, shares: true,
         realizedPnl: true, closeReason: true, closedAt: true,
+        agentEvaluation: true,
       },
     });
 
@@ -183,9 +185,10 @@ export async function POST(req: Request) {
       parts.push(`Win/Loss: ${wins}W / ${losses}L`);
       for (const t of recentTrades.slice(0, 10)) {
         const pnl = t.realizedPnl ?? 0;
-        parts.push(`- ${t.outcome ?? "?"} ${t.direction} $${t.ticker}: entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} (${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}, reason: ${t.closeReason ?? "—"})`);
+        const evalSnippet = t.agentEvaluation ? ` | Eval: ${t.agentEvaluation.slice(0, 200)}` : "";
+        parts.push(`- ${t.outcome ?? "?"} | ${t.direction} $${t.ticker} | entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} | ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}${evalSnippet}`);
       }
-      parts.push(`\nLearn from these results. Avoid repeating patterns that led to losses.`);
+      parts.push(`\nLearn from these results and evaluations. Avoid repeating patterns that led to losses.`);
     }
 
     if (latestAccuracy) {

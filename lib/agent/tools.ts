@@ -1594,6 +1594,12 @@ export function createResearchTools(ctx: ToolContext) {
           .describe(
             "Final assessment of the session — what went well, what to watch tomorrow",
           ),
+        portfolio_review: z
+          .string()
+          .optional()
+          .describe(
+            "Portfolio review assessment from Phase 5.5 — total exposure analysis, sector concentration, correlation risk, and whether combined risk is acceptable",
+          ),
       }),
       execute: async (args) => {
         console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
@@ -1620,6 +1626,7 @@ export function createResearchTools(ctx: ToolContext) {
                   summary: args.market_summary,
                   ranked_picks: args.ranked_picks,
                   risk_notes: args.risk_notes,
+                  portfolio_review: args.portfolio_review,
                   overall_assessment: args.overall_assessment,
                 } as object,
               },
