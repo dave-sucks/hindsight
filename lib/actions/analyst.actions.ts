@@ -631,6 +631,91 @@ export async function createAnalystFromBuilder(
   return { id: analyst.id };
 }
 
+// ── updateAnalystField (direct inline edit of a single config field) ──────────
+
+type UpdatableField =
+  | "directionBias"
+  | "minConfidence"
+  | "maxPositionSize"
+  | "maxOpenPositions"
+  | "maxRiskPct"
+  | "scheduleTime"
+  | "holdDurations"
+  | "watchlist"
+  | "exclusionList";
+
+export async function updateAnalystField(
+  id: string,
+  field: UpdatableField,
+  value: unknown,
+): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  await prisma.agentConfig.update({
+    where: { id, userId },
+    data: { [field]: value },
+  });
+
+  revalidatePath(`/analysts/${id}`);
+  revalidatePath("/analysts");
+}
+
+// ── updateAnalystWatchlist (add/remove single symbol) ────────────────────────
+
+export async function addToWatchlist(
+  id: string,
+  symbol: string,
+): Promise<string[]> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  const config = await prisma.agentConfig.findFirst({
+    where: { id, userId },
+    select: { watchlist: true },
+  });
+  if (!config) throw new Error("Analyst not found");
+
+  const current = (config.watchlist as string[]) ?? [];
+  const upper = symbol.toUpperCase();
+  if (current.includes(upper)) return current;
+
+  const updated = [...current, upper];
+  await prisma.agentConfig.update({
+    where: { id, userId },
+    data: { watchlist: updated },
+  });
+
+  revalidatePath(`/analysts/${id}`);
+  return updated;
+}
+
+export async function removeFromWatchlist(
+  id: string,
+  symbol: string,
+): Promise<string[]> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  const config = await prisma.agentConfig.findFirst({
+    where: { id, userId },
+    select: { watchlist: true },
+  });
+  if (!config) throw new Error("Analyst not found");
+
+  const current = (config.watchlist as string[]) ?? [];
+  const upper = symbol.toUpperCase();
+  const updated = current.filter((s) => s !== upper);
+
+  await prisma.agentConfig.update({
+    where: { id, userId },
+    data: { watchlist: updated },
+  });
+
+  revalidatePath(`/analysts/${id}`);
+  return updated;
+}
+
 // ── updateAnalystFromBuilder (apply AI-suggested config to existing analyst) ──
 
 export async function updateAnalystFromBuilder(

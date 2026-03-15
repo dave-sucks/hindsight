@@ -63,19 +63,25 @@ import { XPost } from "@/components/manifest-ui/x-post";
 import { PostList } from "@/components/manifest-ui/post-list";
 import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
 import {
-  Sources,
-  SourcesTrigger,
-  SourcesContent,
-  Source,
-} from "@/components/ai-elements";
-import {
   ChainOfThought,
   ChainOfThoughtHeader,
   ChainOfThoughtStep,
   ChainOfThoughtContent,
 } from "@/components/ai-elements/chain-of-thought";
-import { Citation } from "@/components/tool-ui/citation";
-import type { CitationType } from "@/components/tool-ui/citation";
+import {
+  InlineCitation,
+  InlineCitationCard,
+  InlineCitationCardTrigger,
+  InlineCitationCardBody,
+  InlineCitationCarousel,
+  InlineCitationCarouselContent,
+  InlineCitationCarouselItem,
+  InlineCitationCarouselHeader,
+  InlineCitationCarouselIndex,
+  InlineCitationCarouselPrev,
+  InlineCitationCarouselNext,
+  InlineCitationSource,
+} from "@/components/ai-elements/inline-citation";
 
 // ─── Context for passing callbacks into tool UIs ────────────────────────────
 
@@ -106,34 +112,6 @@ interface SourceData {
   excerpt?: string;
 }
 
-const PROVIDER_DOMAINS: Record<string, string> = {
-  finnhub: "finnhub.io",
-  fmp: "financialmodelingprep.com",
-  reddit: "reddit.com",
-  stocktwits: "stocktwits.com",
-  twitter: "stocktwits.com",
-  "fmp social": "financialmodelingprep.com",
-  technical: "finnhub.io",
-  earnings: "finnhub.io",
-  options: "financialmodelingprep.com",
-};
-
-const PROVIDER_TYPES: Record<string, CitationType> = {
-  finnhub: "api",
-  fmp: "api",
-  reddit: "webpage",
-  stocktwits: "webpage",
-  twitter: "webpage",
-  "fmp social": "api",
-  technical: "api",
-  earnings: "api",
-  options: "api",
-};
-
-function faviconUrl(domain: string): string {
-  return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-}
-
 /** Extract _sources from a tool result, falling back to provider-only strings */
 function extractToolSources(result: Record<string, unknown>): SourceData[] {
   const raw = result._sources;
@@ -146,36 +124,81 @@ function extractToolSources(result: Record<string, unknown>): SourceData[] {
   return [];
 }
 
+const PROVIDER_DOMAINS: Record<string, string> = {
+  finnhub: "https://finnhub.io",
+  fmp: "https://financialmodelingprep.com",
+  reddit: "https://reddit.com",
+  stocktwits: "https://stocktwits.com",
+  twitter: "https://x.com",
+  "fmp social": "https://financialmodelingprep.com",
+  technical: "https://finnhub.io",
+  earnings: "https://finnhub.io",
+  options: "https://financialmodelingprep.com",
+  sec: "https://sec.gov",
+};
+
+/** Get a valid URL for a source (needed by InlineCitationCardTrigger) */
+function sourceUrl(s: SourceData): string {
+  if (s.url) return s.url;
+  const key = s.provider.toLowerCase().replace(/[^a-z ]/g, "");
+  return PROVIDER_DOMAINS[key] ?? `https://${s.provider.toLowerCase().replace(/[^a-z]/g, "")}.com`;
+}
+
+/** Favicon from a URL */
+function faviconFromUrl(url: string): string | null {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`;
+  } catch {
+    return null;
+  }
+}
+
+/** Provider row with favicon + name for carousel items */
+function ProviderRow({ provider, url }: { provider: string; url: string }) {
+  const favicon = faviconFromUrl(url);
+  return (
+    <div className="flex items-center gap-2 mb-1">
+      {favicon && (
+        <img src={favicon} alt="" width={16} height={16} className="size-4 shrink-0 rounded-sm" />
+      )}
+      <span className="text-xs font-medium text-muted-foreground">{provider}</span>
+    </div>
+  );
+}
+
 function SourceChips({ sources }: { sources: SourceData[] }) {
   if (!sources.length) return null;
-  return (
-    <Sources className="mt-1.5">
-      <SourcesTrigger count={sources.length} className="text-[10px]" />
-      <SourcesContent>
-        {sources.map((s, i) => {
-          const key = s.provider.toLowerCase().replace(/[^a-z]/g, "");
-          const domain =
-            s.url
-              ? (() => { try { return new URL(s.url).hostname.replace(/^www\./, ""); } catch { return PROVIDER_DOMAINS[key]; } })()
-              : PROVIDER_DOMAINS[key];
-          const type = PROVIDER_TYPES[key] ?? "webpage";
+  const urls = sources.map(sourceUrl);
 
-          return (
-            <Source key={`${s.provider}-${i}`} provider={s.provider}>
-              <Citation
-                href={s.url ?? `https://${domain ?? s.provider.toLowerCase() + ".com"}`}
-                title={s.title}
-                snippet={s.excerpt}
-                domain={domain ?? s.provider}
-                favicon={domain ? faviconUrl(domain) : undefined}
-                type={type}
-                variant="inline"
-              />
-            </Source>
-          );
-        })}
-      </SourcesContent>
-    </Sources>
+  return (
+    <div className="mt-1.5">
+      <InlineCitation>
+        <InlineCitationCard>
+          <InlineCitationCardTrigger sources={urls} />
+          <InlineCitationCardBody>
+            <InlineCitationCarousel>
+              <InlineCitationCarouselHeader>
+                <InlineCitationCarouselPrev />
+                <InlineCitationCarouselNext />
+                <InlineCitationCarouselIndex />
+              </InlineCitationCarouselHeader>
+              <InlineCitationCarouselContent>
+                {sources.map((s, i) => (
+                  <InlineCitationCarouselItem key={`${s.provider}-${i}`}>
+                    <ProviderRow provider={s.provider} url={urls[i]} />
+                    <InlineCitationSource
+                      title={s.title}
+                      url={s.url}
+                      description={s.excerpt}
+                    />
+                  </InlineCitationCarouselItem>
+                ))}
+              </InlineCitationCarouselContent>
+            </InlineCitationCarousel>
+          </InlineCitationCardBody>
+        </InlineCitationCard>
+      </InlineCitation>
+    </div>
   );
 }
 
