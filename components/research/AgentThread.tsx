@@ -10,7 +10,7 @@
  * so users can ask questions, place trades, and manage positions.
  */
 
-import { useMemo, useEffect, useRef, useCallback } from "react";
+import { useMemo, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
@@ -45,6 +45,8 @@ interface AgentThreadProps {
   config: Record<string, unknown>;
   autoStart?: boolean;
   initialMessages?: UIMessage[];
+  /** Optional action element rendered in the tabs bar (right side) */
+  headerAction?: ReactNode;
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────
@@ -56,6 +58,7 @@ export function AgentThread({
   config,
   autoStart = true,
   initialMessages,
+  headerAction,
 }: AgentThreadProps) {
   // Live runs use the agent route; completed runs use followup route
   const isFollowupMode = !autoStart && !!initialMessages;
@@ -83,6 +86,7 @@ export function AgentThread({
         analystName={analystName}
         autoStart={autoStart}
         isFollowupMode={isFollowupMode}
+        headerAction={headerAction}
       />
     </AssistantRuntimeProvider>
   );
@@ -127,11 +131,13 @@ function AgentThreadInner({
   analystName,
   autoStart,
   isFollowupMode,
+  headerAction,
 }: {
   runId: string;
   analystName: string;
   autoStart: boolean;
   isFollowupMode: boolean;
+  headerAction?: ReactNode;
 }) {
   useRegisterResearchToolUIs(runId);
   useRegisterFollowupToolUIs();
@@ -153,11 +159,14 @@ function AgentThreadInner({
 
   return (
     <Tabs defaultValue={0} className="flex h-full flex-col">
-      <div className="shrink-0 border-b px-4">
+      <div className="shrink-0 px-4 flex items-center">
         <TabsList>
           <TabsTrigger value={0}>Chat</TabsTrigger>
           <TabsTrigger value={1}>Sources</TabsTrigger>
         </TabsList>
+        {headerAction && (
+          <div className="ml-auto">{headerAction}</div>
+        )}
       </div>
 
       <TabsContent value={0} className="flex-1 min-h-0">

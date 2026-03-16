@@ -24,6 +24,7 @@ import {
   Landmark,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   Sheet,
@@ -358,12 +359,7 @@ export function HowItWorksSheet({
   return (
     <Sheet>
       <SheetTrigger
-        render={
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors border bg-background hover:bg-muted text-muted-foreground hover:text-foreground"
-          />
-        }
+        render={<Button variant="ghost" size="sm" />}
       >
         {children}
       </SheetTrigger>

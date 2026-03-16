@@ -4,6 +4,7 @@ import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MarketStatusPill } from "@/components/MarketPulseStrip";
 import SearchCommand from "@/components/SearchCommand";
+import { DynamicBreadcrumb } from "@/components/DynamicBreadcrumb";
 import { createClient } from "@/lib/supabase/server";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { redirect } from "next/navigation";
@@ -53,6 +54,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                 <header className="flex w-full h-12 items-center gap-2 border-b px-4 shrink-0">
                     <SidebarTrigger className="-ml-1" />
                     <Separator orientation="vertical" className="h-8" />
+                    <DynamicBreadcrumb />
                     <div className="flex-1 flex items-center justify-center">
                         <SearchCommand renderAs="icon" label="Search stocks" initialStocks={initialStocks} />
                     </div>
