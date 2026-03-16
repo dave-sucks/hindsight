@@ -716,6 +716,68 @@ export async function removeFromWatchlist(
   return updated;
 }
 
+// ── deleteAnalyst (cascade delete all related data) ─────────────────────────
+
+export async function deleteAnalyst(analystId: string): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  // Verify ownership
+  const config = await prisma.agentConfig.findFirst({
+    where: { id: analystId, userId },
+  });
+  if (!config) throw new Error("Analyst not found");
+
+  // 1. Find all runs for this analyst
+  const runs = await prisma.researchRun.findMany({
+    where: { agentConfigId: analystId },
+    select: { id: true },
+  });
+  const runIds = runs.map((r) => r.id);
+
+  // 2. Find all theses from those runs
+  const theses = await prisma.thesis.findMany({
+    where: { researchRunId: { in: runIds } },
+    select: { id: true },
+  });
+  const thesisIds = theses.map((t) => t.id);
+
+  // 3. Find all trades from those theses
+  const trades = await prisma.trade.findMany({
+    where: { thesisId: { in: thesisIds } },
+    select: { id: true, alpacaOrderId: true, status: true, ticker: true },
+  });
+  const tradeIds = trades.map((t) => t.id);
+
+  // 4. Cancel any open Alpaca orders and close open positions
+  const { cancelOrder, closePosition } = await import("@/lib/alpaca");
+  for (const trade of trades) {
+    if (trade.status === "OPEN") {
+      try {
+        if (trade.alpacaOrderId) {
+          await cancelOrder(trade.alpacaOrderId).catch(() => {});
+        }
+        await closePosition(trade.ticker).catch(() => {});
+      } catch {
+        // Best effort — position may not exist
+      }
+    }
+  }
+
+  // 5. Delete in dependency order (deepest first)
+  await prisma.tradeEvent.deleteMany({ where: { tradeId: { in: tradeIds } } });
+  await prisma.trade.deleteMany({ where: { id: { in: tradeIds } } });
+  await prisma.thesis.deleteMany({ where: { id: { in: thesisIds } } });
+  // RunEvent and RunMessage cascade from ResearchRun (onDelete: Cascade)
+  await prisma.analystBriefing.deleteMany({ where: { analystId } });
+  await prisma.researchRun.deleteMany({ where: { id: { in: runIds } } });
+  await prisma.agentConfig.delete({ where: { id: analystId } });
+
+  revalidatePath("/analysts");
+  revalidatePath("/trades");
+  revalidatePath("/");
+}
+
 // ── updateAnalystFromBuilder (apply AI-suggested config to existing analyst) ──
 
 export async function updateAnalystFromBuilder(

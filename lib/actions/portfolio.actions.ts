@@ -184,12 +184,30 @@ export async function getDashboardData(): Promise<DashboardData> {
   const [dbOpenTrades, dbClosedTrades] = await Promise.all([
     prisma.trade.findMany({
       where: { userId, status: "OPEN" },
-      include: { thesis: { select: { confidenceScore: true } } },
+      include: {
+        thesis: {
+          select: {
+            confidenceScore: true,
+            researchRun: {
+              select: { agentConfig: { select: { name: true } } },
+            },
+          },
+        },
+      },
       orderBy: { openedAt: "desc" },
     }),
     prisma.trade.findMany({
       where: { userId, status: "CLOSED" },
-      include: { thesis: { select: { confidenceScore: true } } },
+      include: {
+        thesis: {
+          select: {
+            confidenceScore: true,
+            researchRun: {
+              select: { agentConfig: { select: { name: true } } },
+            },
+          },
+        },
+      },
       orderBy: { closedAt: "desc" },
       take: 50,
     }),
@@ -263,6 +281,8 @@ export async function getDashboardData(): Promise<DashboardData> {
       closedAt: undefined,
       thesis: "",
       shares: t.shares,
+      analystName: t.thesis?.researchRun?.agentConfig?.name ?? undefined,
+      alpacaOrderId: t.alpacaOrderId ?? undefined,
     };
   });
 
@@ -287,6 +307,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       closedAt: t.closedAt?.toISOString(),
       thesis: "",
       shares: t.shares,
+      analystName: t.thesis?.researchRun?.agentConfig?.name ?? undefined,
     };
   });
 

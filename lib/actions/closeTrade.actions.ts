@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { closePosition, getLatestPrice } from "@/lib/alpaca";
+import { closePosition, getLatestPrice, cancelOrder } from "@/lib/alpaca";
 import { inngest } from "@/lib/inngest/client";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
@@ -134,4 +134,45 @@ export async function closeTrade(
   });
 
   return { tradeId, closePrice, realizedPnl, outcome };
+}
+
+// ─── Cancel Trade (pending orders that haven't been filled) ──────────────────
+
+export async function cancelTrade(tradeId: string): Promise<void> {
+  const trade = await prisma.trade.findUniqueOrThrow({
+    where: { id: tradeId },
+  });
+
+  if (trade.status !== "OPEN") {
+    throw new Error(`Trade ${tradeId} is not OPEN (status: ${trade.status})`);
+  }
+
+  // Cancel the Alpaca order if it exists
+  if (trade.alpacaOrderId) {
+    try {
+      await cancelOrder(trade.alpacaOrderId);
+    } catch {
+      // Order may already be filled or cancelled — proceed with DB update
+    }
+  }
+
+  await prisma.trade.update({
+    where: { id: tradeId },
+    data: {
+      status: "CANCELLED",
+      closedAt: new Date(),
+      closeReason: "MANUAL",
+      realizedPnl: 0,
+    },
+  });
+
+  await prisma.tradeEvent.create({
+    data: {
+      tradeId,
+      eventType: "CLOSED",
+      description: `Trade cancelled manually. Order was cancelled before market fill.`,
+      priceAt: trade.entryPrice,
+      pnlAt: 0,
+    },
+  });
 }

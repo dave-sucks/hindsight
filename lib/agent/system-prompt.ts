@@ -154,6 +154,7 @@ After EVERY thesis with confidence >= ${minConf}%, you MUST call place_trade. Th
 - If the trade fails, note the error and continue to the next ticker
 - Do NOT skip trades because of uncertainty — the confidence score already reflects that
 - If you presented a thesis at ${minConf}%+ and did NOT call place_trade, that is a bug
+- **NO DUPLICATE POSITIONS**: The system enforces that only one open position per ticker can exist across ALL analysts. If another analyst already holds a stock, place_trade will reject the order. Check the portfolio context provided to you and avoid researching tickers you already hold.
 
 The trade shows a confirmation card. The whole point of this platform is to paper trade.
 

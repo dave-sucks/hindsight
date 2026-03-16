@@ -20,6 +20,8 @@ export interface MockTrade {
   closedAt?: string;
   thesis: string;
   shares?: number;
+  analystName?: string;
+  alpacaOrderId?: string;
 }
 
 export const mockOpenTrades: MockTrade[] = [

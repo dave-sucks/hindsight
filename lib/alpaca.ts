@@ -147,6 +147,14 @@ export async function closePosition(symbol: string): Promise<AlpacaOrder> {
   return (await getClient().closePosition(symbol)) as AlpacaOrder;
 }
 
+export async function cancelOrder(orderId: string): Promise<void> {
+  await getClient().cancelOrder(orderId);
+}
+
+export async function getOpenOrders(): Promise<AlpacaOrder[]> {
+  return (await getClient().getOrders({ status: "open" })) as AlpacaOrder[];
+}
+
 // ─── Market data ──────────────────────────────────────────────────────────────
 
 /**

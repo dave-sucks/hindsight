@@ -1597,12 +1597,32 @@ export function createResearchTools(ctx: ToolContext) {
 
     place_trade: tool({
       description:
-        "Place a paper trade on Alpaca. Only call this after presenting a thesis and explaining your reasoning. The trade will be executed immediately.",
+        "Place a paper trade on Alpaca. Only call this after presenting a thesis and explaining your reasoning. The trade will be executed immediately. Will fail if any analyst already holds an open position in this ticker.",
       inputSchema: tradeParams,
       execute: async (args: TradeInput) => {
         console.log(`[tool] place_trade ticker=${args.ticker} direction=${args.direction} shares=${args.shares} runId=${ctx.runId}`);
 
         try {
+          // 0. Check for existing open position in this ticker across ALL analysts
+          const existingTrade = await prisma.trade.findFirst({
+            where: {
+              userId: ctx.userId,
+              ticker: args.ticker,
+              status: "OPEN",
+            },
+            select: { id: true, ticker: true },
+          });
+
+          if (existingTrade) {
+            console.warn(`[tool] place_trade BLOCKED: open position already exists for ${args.ticker}`);
+            return {
+              ...args,
+              status: "failed" as const,
+              error: `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`,
+              note: `Trade blocked: You already have an open ${args.ticker} position. The thesis has been saved but no duplicate trade was placed.`,
+            };
+          }
+
           // 1. Place Alpaca paper order
           const alpacaOrder = await placeMarketOrder({
             symbol: args.ticker,
