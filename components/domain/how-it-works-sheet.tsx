@@ -160,7 +160,7 @@ const AGENT_RUN_STEPS: FlowStep[] = [
   {
     title: "Scan for catalysts",
     icon: Calendar,
-    sources: ["Finnhub", "FMP", "SEC"],
+    sources: ["Finnhub", "FMP"],
     summary:
       "Builds a pipeline of upcoming price-moving events: earnings dates, economic releases, insider buying clusters, and analyst upgrades/downgrades. Catalysts within 3 days get priority — a stock reporting tomorrow is more urgent than one reporting in two weeks.",
   },
