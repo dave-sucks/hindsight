@@ -845,68 +845,6 @@ function extractTicker(args: Record<string, unknown>): string {
   return (args.ticker as string) ?? (args.symbol as string) ?? "";
 }
 
-/** Discovery-phase tools — these run before per-ticker research */
-const DISCOVERY_TOOLS = new Set([
-  "get_market_overview",
-  "detect_market_themes",
-  "scan_catalysts",
-  "scan_candidates",
-]);
-
-interface StepPart {
-  toolName: string;
-  config: ResearchStepConfig;
-  args: Record<string, unknown>;
-  result: Record<string, unknown> | undefined;
-  key: string;
-}
-
-/** A phase is a group of steps rendered as one ChainOfThought block */
-interface Phase {
-  id: string;
-  header: string;
-  steps: StepPart[];
-}
-
-/** Render a single ChainOfThought phase block */
-function PhaseBlock({ phase }: { phase: Phase }) {
-  const anyLoading = phase.steps.some((s) => s.result === undefined);
-
-  return (
-    <ChainOfThought defaultOpen={anyLoading}>
-      <ChainOfThoughtHeader>{phase.header}</ChainOfThoughtHeader>
-      <ChainOfThoughtContent>
-        {phase.steps.map((step) => {
-          const ticker = extractTicker(step.args);
-          const isComplete = step.result !== undefined;
-          const label = isComplete
-            ? step.config.completeLabel(ticker, step.result!)
-            : step.config.loadingLabel(ticker);
-          const status = isComplete ? "complete" : "active";
-
-          const description = isComplete && step.config.completeDescription
-            ? step.config.completeDescription(ticker, step.result!)
-            : undefined;
-
-          return (
-            <ChainOfThoughtStep
-              key={step.key}
-              icon={step.config.icon}
-              label={label}
-              description={description}
-              status={status}
-            >
-              {isComplete && step.config.sources && step.config.sources.length > 0 && (
-                <SourceBadges sources={step.config.sources} />
-              )}
-            </ChainOfThoughtStep>
-          );
-        })}
-      </ChainOfThoughtContent>
-    </ChainOfThought>
-  );
-}
-
 // ── ToolGroup Component ─────────────────────────────────────────────────────
 
 interface ToolGroupProps {
@@ -922,9 +860,15 @@ export function ResearchToolGroup({
 }: ToolGroupProps) {
   const content = useMessage((m) => m.content);
 
-  // Parse all research-step tool calls in this group
   const stepParts = useMemo(() => {
-    const steps: StepPart[] = [];
+    const steps: Array<{
+      toolName: string;
+      config: ResearchStepConfig;
+      args: Record<string, unknown>;
+      result: Record<string, unknown> | undefined;
+      key: string;
+    }> = [];
+
     for (let i = startIndex; i <= endIndex; i++) {
       const part = (content as unknown[])[i] as Record<string, unknown>;
       if (part?.type !== "tool-call") continue;
@@ -939,58 +883,65 @@ export function ResearchToolGroup({
       const ticker = extractTicker(args);
       steps.push({ toolName, config, args, result, key: `${toolName}-${ticker}-${i}` });
     }
+
     return steps;
   }, [content, startIndex, endIndex]);
-
-  // Split steps into phases: Discovery → per-ticker research groups
-  const phases = useMemo(() => {
-    const result: Phase[] = [];
-
-    // Phase 1: Discovery (market overview, themes, catalysts, candidates)
-    const discoverySteps = stepParts.filter((s) => DISCOVERY_TOOLS.has(s.toolName));
-    if (discoverySteps.length > 0) {
-      result.push({
-        id: "discovery",
-        header: "Phase 1: Market Discovery",
-        steps: discoverySteps,
-      });
-    }
-
-    // Phase 2+: Per-ticker research, grouped by ticker in order of appearance
-    const tickerSteps = stepParts.filter((s) => !DISCOVERY_TOOLS.has(s.toolName));
-    const tickerOrder: string[] = [];
-    const tickerGroups = new Map<string, StepPart[]>();
-
-    for (const step of tickerSteps) {
-      const ticker = extractTicker(step.args) || "unknown";
-      if (!tickerGroups.has(ticker)) {
-        tickerOrder.push(ticker);
-        tickerGroups.set(ticker, []);
-      }
-      tickerGroups.get(ticker)!.push(step);
-    }
-
-    for (const ticker of tickerOrder) {
-      const steps = tickerGroups.get(ticker)!;
-      result.push({
-        id: `ticker-${ticker}`,
-        header: `Phase ${result.length + 1}: Deep Research — ${ticker}`,
-        steps,
-      });
-    }
-
-    return result;
-  }, [stepParts]);
 
   if (stepParts.length === 0) {
     return <>{children}</>;
   }
 
+  // Dynamic header based on what tools are actually in this group
+  const tickers = [
+    ...new Set(stepParts.map((s) => extractTicker(s.args)).filter(Boolean)),
+  ];
+  const hasMarketTools = stepParts.some(
+    (s) => s.toolName === "get_market_overview" || s.toolName === "scan_candidates",
+  );
+  const headerLabel =
+    tickers.length === 1
+      ? `Researching ${tickers[0]}`
+      : tickers.length > 1
+        ? `Researching ${tickers.join(", ")}`
+        : hasMarketTools
+          ? "Market scan"
+          : "Research";
+
+  const anyLoading = stepParts.some((s) => s.result === undefined);
+
   return (
     <>
-      {phases.map((phase) => (
-        <PhaseBlock key={phase.id} phase={phase} />
-      ))}
+      <ChainOfThought defaultOpen={anyLoading}>
+        <ChainOfThoughtHeader>{headerLabel}</ChainOfThoughtHeader>
+        <ChainOfThoughtContent>
+          {stepParts.map((step) => {
+            const ticker = extractTicker(step.args);
+            const isComplete = step.result !== undefined;
+            const label = isComplete
+              ? step.config.completeLabel(ticker, step.result!)
+              : step.config.loadingLabel(ticker);
+            const status = isComplete ? "complete" : "active";
+
+            const description = isComplete && step.config.completeDescription
+              ? step.config.completeDescription(ticker, step.result!)
+              : undefined;
+
+            return (
+              <ChainOfThoughtStep
+                key={step.key}
+                icon={step.config.icon}
+                label={label}
+                description={description}
+                status={status}
+              >
+                {isComplete && step.config.sources && step.config.sources.length > 0 && (
+                  <SourceBadges sources={step.config.sources} />
+                )}
+              </ChainOfThoughtStep>
+            );
+          })}
+        </ChainOfThoughtContent>
+      </ChainOfThought>
       {children}
     </>
   );
