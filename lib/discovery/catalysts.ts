@@ -82,7 +82,22 @@ async function fetchEarningsCatalysts(
     return { catalysts: [], source: null };
   }
 
-  const catalysts: Catalyst[] = data.earningsCalendar.map((e) => {
+  // Prioritize: companies with analyst coverage (have estimates) are more
+  // relevant than unknown micro-caps. Sort by whether they have estimates,
+  // then by date proximity. Cap at 50 to avoid blowing up context.
+  const sorted = [...data.earningsCalendar].sort((a, b) => {
+    // Companies with estimates first
+    const aHasEst = a.epsEstimate != null ? 0 : 1;
+    const bHasEst = b.epsEstimate != null ? 0 : 1;
+    if (aHasEst !== bHasEst) return aHasEst - bHasEst;
+    // Then by date (sooner first)
+    return a.date.localeCompare(b.date);
+  });
+
+  const totalRaw = sorted.length;
+  const capped = sorted.slice(0, 50);
+
+  const catalysts: Catalyst[] = capped.map((e) => {
     const isPast = e.date < isoDate(new Date());
     const hasBeat = e.epsActual != null && e.epsEstimate != null && e.epsActual > e.epsEstimate;
 
@@ -113,7 +128,7 @@ async function fetchEarningsCatalysts(
       provider: "Finnhub",
       title: "Earnings Calendar",
       url: "https://finnhub.io/docs/api/earnings-calendar",
-      excerpt: `${catalysts.length} earnings events (${from} to ${to})`,
+      excerpt: `${catalysts.length} earnings events shown (${totalRaw} total, ${from} to ${to})`,
     },
   };
 }
@@ -341,13 +356,14 @@ export async function scanCatalysts(
     shouldFetch("ANALYST_ACTION") ? fetchAnalystCatalysts(lookbackDays) : { catalysts: [], source: null },
   ]);
 
-  // Combine and sort by date
+  // Combine, sort by date, and cap total to keep context window manageable
   const allCatalysts = [
     ...earnings.catalysts,
     ...economic.catalysts,
     ...insider.catalysts,
     ...analyst.catalysts,
-  ].sort((a, b) => a.date.localeCompare(b.date));
+  ].sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 75);
 
   // Build summary
   const byType: Record<CatalystType, number> = {
