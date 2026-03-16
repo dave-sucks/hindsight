@@ -368,6 +368,18 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
+  // ── Detect market themes — rendered as CoT step by ResearchToolGroup ────
+  useAssistantToolUI({
+    toolName: "detect_market_themes",
+    render: () => null,
+  });
+
+  // ── Scan catalysts — rendered as CoT step by ResearchToolGroup ────
+  useAssistantToolUI({
+    toolName: "scan_catalysts",
+    render: () => null,
+  });
+
   // ── Stock data → StockCard (CoT step via ResearchToolGroup, news in Sources tab) ─
   useAssistantToolUI({
     toolName: "get_stock_data",

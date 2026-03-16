@@ -145,6 +145,7 @@ export async function POST(req: Request) {
 
     const {
       get_market_overview,
+      detect_market_themes,
       get_stock_data,
       get_earnings_data,
       get_reddit_sentiment,
@@ -168,6 +169,7 @@ export async function POST(req: Request) {
 
         // Agent research tools (same data, same format, same domain cards)
         get_market_overview,
+        detect_market_themes,
         get_stock_data,
         get_earnings_data,
         get_reddit_sentiment,

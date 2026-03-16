@@ -247,7 +247,7 @@ export const morningResearch = inngest.createFunction(
             system: systemPrompt,
             prompt: "Begin your research session. Follow all phases in order.",
             tools,
-            stopWhen: stepCountIs(25),
+            stopWhen: stepCountIs(30),
           });
 
           const toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
