@@ -1,7 +1,5 @@
 import AppSidebar from "@/components/Sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { MarketStatusPill } from "@/components/MarketPulseStrip";
 import SearchCommand from "@/components/SearchCommand";
 import { DynamicBreadcrumb } from "@/components/DynamicBreadcrumb";
@@ -51,15 +49,17 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             <AppSidebar user={userObj} initialStocks={initialStocks} portfolioValue={portfolioValue} openTradeTickers={openTradeTickers} />
             <SidebarInset>
                 {/* Top bar — sidebar toggle + search + theme */}
-                <header className="flex w-full h-12 items-center gap-2 border-b px-4 shrink-0">
-                    <SidebarTrigger className="-ml-1" />
-                    <Separator orientation="vertical" className="h-8" />
-                    <DynamicBreadcrumb />
-                    <div className="flex-1 flex items-center justify-center">
+                <header className="flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+                    <div className="flex items-center gap-2 px-4">
+                        <SidebarTrigger className="-ml-1" />
+                        <DynamicBreadcrumb />
+                    </div>
+                    <div className="flex-1 flex items-center justify-center px-4">
                         <SearchCommand renderAs="icon" label="Search stocks" initialStocks={initialStocks} />
                     </div>
-                    <MarketStatusPill open={marketOpen} />
-                    <ThemeToggle />
+                    <div className="flex items-center gap-2 px-4">
+                        <MarketStatusPill open={marketOpen} />
+                    </div>
                 </header>
                 <main className="flex-1">
                     {children}

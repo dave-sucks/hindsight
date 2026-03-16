@@ -48,7 +48,8 @@ export function MarketStatusPill({ open }: { open: boolean }) {
           open ? "text-positive" : "text-muted-foreground"
         )}
       >
-        {open ? "OPEN" : "CLOSED"} · {dateStr}
+        {open ? "OPEN" : "CLOSED"}
+        <span className="hidden md:inline"> · {dateStr}</span>
       </span>
     </div>
   );

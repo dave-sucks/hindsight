@@ -213,37 +213,38 @@ const AGENT_RUN_STEPS: FlowStep[] = [
 
 const ANALYST_BUILDER_STEPS: FlowStep[] = [
   {
-    phase: "Conversation",
-    title: "Understand your trading vision",
+    phase: "Phase 1 — Understand Vision",
+    title: "Ask about trading interests",
     icon: MessageCircle,
     sources: ["You"],
     summary:
-      "The builder asks what excites you about trading — what patterns catch your eye, what sectors interest you, how much risk you're comfortable with. It's like brainstorming with a hedge fund PM who pushes you to think deeper about your edge.",
+      "The builder asks what excites you about trading — what patterns catch your eye, what sectors interest you, how much risk you're comfortable with. It's like brainstorming with a hedge fund PM who pushes you to think deeper about your edge. Typically 1–2 exchanges.",
   },
   {
-    title: "Research the current market",
+    phase: "Phase 2 — Research & Brainstorm",
+    title: "Read the market regime",
     icon: BarChart3,
-    sources: ["Finnhub", "FMP", "Reddit"],
+    sources: ["Finnhub", "FMP"],
     summary:
-      "Before suggesting anything, the builder pulls live market data — today's regime, sector performance, trending themes, and real stock candidates. It uses the same tools the analyst will use on its daily runs, so the strategy is grounded in what's actually happening.",
+      "Before suggesting anything, the builder calls get_market_overview — SPY, VIX, 11 sector ETFs, macro events. This is mandatory: the builder must call at least 2–3 research tools before proposing any strategy. It uses the same 13 research tools the agent uses on daily runs.",
   },
   {
-    title: "Detect themes & opportunities",
+    title: "Detect themes & scan candidates",
     icon: TrendingUp,
-    sources: ["Finnhub News", "Reddit"],
+    sources: ["Finnhub News", "Reddit", "StockTwits"],
     summary:
-      "Identifies the dominant market narratives right now — AI, biotech catalysts, rate cuts, meme momentum. Shows you which themes are strong and how they align with your interests. A great strategy exploits themes, not just individual stocks.",
+      "Calls detect_market_themes and scan_candidates to find dominant narratives (AI, biotech, rate cuts) and real candidate stocks. This grounds the strategy in what's actually moving — a momentum strategy needs active momentum, an earnings strategy needs upcoming reports.",
   },
   {
-    title: "Scan for real candidates",
-    icon: Search,
-    sources: ["Finnhub", "FMP", "StockTwits"],
+    title: "Deep-dive specific stocks",
+    icon: LineChart,
+    sources: ["Finnhub", "FMP", "Reddit", "SEC"],
     summary:
-      "Finds actual stocks that fit the emerging strategy — earnings movers, sector leaders, social buzz. This lets you see what kind of opportunities your analyst would find on a typical morning, before you've even finished building it.",
+      "For promising candidates, the builder can call any of the 13 research tools — get_stock_data, get_technical_analysis, get_earnings_data, get_reddit_sentiment, search_reddit, get_news_deep_dive, get_analyst_targets, get_company_peers, get_sec_filings. Shows you what your analyst would actually find on a typical morning.",
   },
   {
-    phase: "Strategy Design",
-    title: "Craft the strategy prompt",
+    phase: "Phase 3 — Craft Strategy",
+    title: "Write the strategy prompt",
     icon: Brain,
     sources: ["Market context", "Your input"],
     summary:
@@ -254,15 +255,22 @@ const ANALYST_BUILDER_STEPS: FlowStep[] = [
     icon: Wrench,
     sources: ["Strategy logic"],
     summary:
-      "Sets the dials: direction bias (long/short/both), hold duration (day/swing/position), sector focus, signal types, confidence threshold, position sizing, and max open trades. Each parameter has trade-offs — the builder explains them so you make informed choices.",
+      "Sets the dials: directionBias (LONG/SHORT/BOTH), holdDurations (DAY/SWING/POSITION), sectors, signalTypes, minConfidence (0–100), maxPositionSize ($), maxOpenPositions, minMarketCapTier (LARGE/MID/SMALL), watchlist, and exclusionList.",
   },
   {
-    phase: "Output",
-    title: "Deliver complete analyst config",
+    title: "Submit config via suggest_config",
     icon: CheckCircle2,
     sources: ["All above"],
     summary:
-      "Produces a full analyst configuration ready to deploy. Includes the strategy name, detailed prompt, all trading parameters, optional watchlist, and exclusion list. You can refine any part through conversation before saving.",
+      "Calls the suggest_config tool with the complete AgentConfig. The UI renders a confirmation card with all fields. You can refine any part through conversation — the builder calls suggest_config again with updates. Click 'Create Analyst' to save.",
+  },
+  {
+    phase: "Phase 4 — Refine",
+    title: "Iterate on changes",
+    icon: MessageCircle,
+    sources: ["Your input"],
+    summary:
+      "After the initial config, you can request changes to any field. The builder calls suggest_config again with the updated values. This loop continues until you're happy and click Create. Max 15 tool calls per response.",
   },
 ];
 
@@ -342,7 +350,7 @@ const FLOW_CONFIG: Record<
   "analyst-builder": {
     title: "How the Analyst Builder Works",
     description:
-      "The builder uses live market data and AI to help you design a unique trading strategy from scratch.",
+      "GPT-4o with 14 tools (suggest_config + 13 research tools). 4-phase workflow: understand → research → craft → refine. Max 15 tool steps per response.",
     steps: ANALYST_BUILDER_STEPS,
   },
 };
