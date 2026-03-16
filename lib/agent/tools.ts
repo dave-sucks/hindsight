@@ -273,6 +273,8 @@ const scanParams = z.object({
 });
 const thesisParams = z.object({
   ticker: z.string(),
+  company_name: z.string().optional().describe("Company name from get_stock_data"),
+  exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
   direction: z.enum(["LONG", "SHORT", "PASS"]),
   confidence_score: z.number().min(0).max(100),
   reasoning_summary: z
@@ -305,6 +307,8 @@ const thesisParams = z.object({
 });
 const tradeParams = z.object({
   ticker: z.string(),
+  company_name: z.string().optional().describe("Company name from get_stock_data"),
+  exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
   direction: z.enum(["LONG", "SHORT"]),
   entry_price: z.number(),
   target_price: z.number(),

@@ -5,6 +5,7 @@ import type { ComponentProps } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { PnlBadge } from "@/components/ui/pnl-badge";
 import {
   Sheet,
   SheetContent,
@@ -13,13 +14,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import {
-  ArrowDownRight,
-  ArrowUpRight,
-  Building2,
-  ChevronRight,
-  Minus,
-} from "lucide-react";
+import { Building2 } from "lucide-react";
+import { StockLogo } from "@/components/StockLogo";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,7 +96,6 @@ export function StockCard({
 }: StockCardProps) {
   const [open, setOpen] = useState(false);
   const isUp = (changePct ?? 0) >= 0;
-  const ChangeIcon = isUp ? ArrowUpRight : (changePct ?? 0) < 0 ? ArrowDownRight : Minus;
 
   const totalRatings = analystConsensus
     ? analystConsensus.strongBuy + analystConsensus.buy + analystConsensus.hold + analystConsensus.sell + analystConsensus.strongSell
@@ -116,120 +111,112 @@ export function StockCard({
         render={
           <Card
             className={cn(
-              "overflow-hidden p-0 cursor-pointer transition-colors hover:bg-accent/30",
+              "overflow-hidden p-0 cursor-pointer transition-colors hover:border-foreground/25",
               className,
             )}
             {...cardProps}
           />
         }
       >
-          <div className="flex items-center gap-3 px-4 py-3">
-            {/* Ticker + company */}
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm font-semibold font-mono">{ticker}</span>
-              {companyName && (
-                <span className="text-xs text-muted-foreground truncate hidden sm:inline">
-                  {companyName}
-                </span>
-              )}
-            </div>
+          {/* ── Header: Logo + name + price ────────────────────────── */}
+          <div className="p-3">
+            <div className="flex items-start justify-between gap-4">
+              {/* Left: logo + company name + ticker subhead */}
+              <div className="flex items-center gap-2.5 min-w-0">
+                <StockLogo ticker={ticker} size="lg" />
+                <div className="min-w-0">
+                  <p className="text-lg font-brand font-bold text-foreground truncate leading-tight">
+                    {companyName ?? ticker}
+                  </p>
+                  <div className="font-mono text-[11px] text-muted-foreground leading-tight mt-0.5 flex items-center gap-1 flex-wrap">
+                    <span>{ticker}</span>
+                    {exchange && (
+                      <>
+                        <span className="opacity-30">&middot;</span>
+                        <span>{exchange}</span>
+                      </>
+                    )}
+                    {sector && (
+                      <>
+                        <span className="opacity-30">&middot;</span>
+                        <span>{sector}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-            {/* Right: price + change + arrow */}
-            <div className="ml-auto flex items-center gap-3 shrink-0">
-              {sector && (
-                <Badge variant="outline" className="text-[10px] gap-1 hidden sm:inline-flex">
-                  <Building2 className="h-2.5 w-2.5" />
-                  {sector}
-                </Badge>
-              )}
-              {price != null && (
-                <span className="text-sm tabular-nums font-semibold">
-                  ${price.toFixed(2)}
-                </span>
-              )}
-              {changePct != null && (
-                <span
-                  className={cn(
-                    "flex items-center gap-0.5 text-xs tabular-nums font-medium",
-                    isUp ? "text-positive" : "text-negative",
+              {/* Right: price + change + PnlBadge */}
+              <div className="shrink-0 text-right">
+                <div className="flex items-center gap-2">
+                  {price != null && (
+                    <p className="text-lg font-medium tabular-nums text-foreground leading-none">
+                      ${price.toFixed(2)}
+                    </p>
                   )}
-                >
-                  <ChangeIcon className="h-3 w-3" />
-                  {changePct >= 0 ? "+" : ""}
-                  {changePct.toFixed(2)}%
-                </span>
-              )}
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
+                  {change != null && (
+                    <span
+                      className={cn(
+                        "text-lg tabular-nums font-light",
+                        isUp ? "text-positive" : "text-negative",
+                      )}
+                    >
+                      {change >= 0 ? "+" : "\u2212"}${Math.abs(change).toFixed(2)}
+                    </span>
+                  )}
+                  {changePct != null && <PnlBadge value={changePct} />}
+                </div>
+                {/* Compact fundamentals under price */}
+                {(marketCap != null || peRatio != null) && (
+                  <div className="flex items-center gap-2 mt-1 justify-end text-[10px] text-muted-foreground">
+                    {marketCap != null && (
+                      <span className="tabular-nums">{fmtCap(marketCap)}</span>
+                    )}
+                    {peRatio != null && (
+                      <span className="tabular-nums">P/E {peRatio.toFixed(1)}x</span>
+                    )}
+                    {buyPct != null && (
+                      <span
+                        className={cn(
+                          "tabular-nums font-medium",
+                          buyPct >= 60 ? "text-positive" : buyPct >= 40 ? "text-amber-500" : "text-negative",
+                        )}
+                      >
+                        {buyPct.toFixed(0)}% Buy
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-
-          {/* Compact key metrics row */}
-          <div className="flex items-center gap-4 px-4 pb-3 text-[10px] text-muted-foreground">
-            {marketCap != null && (
-              <span>
-                <span className="uppercase tracking-wide">MCap</span>{" "}
-                <span className="tabular-nums font-medium text-foreground/70">
-                  {fmtCap(marketCap)}
-                </span>
-              </span>
-            )}
-            {peRatio != null && (
-              <span>
-                <span className="uppercase tracking-wide">P/E</span>{" "}
-                <span className="tabular-nums font-medium text-foreground/70">
-                  {peRatio.toFixed(1)}x
-                </span>
-              </span>
-            )}
-            {buyPct != null && (
-              <span>
-                <span className="uppercase tracking-wide">Buy</span>{" "}
-                <span
-                  className={cn(
-                    "tabular-nums font-medium",
-                    buyPct >= 60 ? "text-positive" : buyPct >= 40 ? "text-amber-500" : "text-negative",
-                  )}
-                >
-                  {buyPct.toFixed(0)}%
-                </span>
-              </span>
-            )}
-            {avgVolume != null && (
-              <span>
-                <span className="uppercase tracking-wide">Vol</span>{" "}
-                <span className="tabular-nums font-medium text-foreground/70">
-                  {fmtVol(avgVolume)}
-                </span>
-              </span>
-            )}
           </div>
       </SheetTrigger>
 
       <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader className="border-b pb-4">
           <div className="flex items-center gap-3">
-            <SheetTitle className="font-mono text-xl font-bold">
-              {ticker}
-            </SheetTitle>
-            {companyName && (
-              <span className="text-sm text-muted-foreground truncate">
-                {companyName}
+            <StockLogo ticker={ticker} size="lg" />
+            <div>
+              <SheetTitle className="text-lg font-bold">
+                {companyName ?? ticker}
+              </SheetTitle>
+              <span className="text-xs font-mono text-muted-foreground">
+                {ticker}{exchange ? ` · ${exchange}` : ""}
               </span>
-            )}
+            </div>
           </div>
           {price != null && (
-            <div className="flex items-end gap-2 mt-1">
+            <div className="flex items-end gap-2 mt-2">
               <span className="text-2xl tabular-nums font-bold">
                 ${price.toFixed(2)}
               </span>
               {changePct != null && (
                 <span
                   className={cn(
-                    "flex items-center gap-0.5 text-sm font-semibold tabular-nums pb-0.5",
+                    "flex items-center gap-1 text-sm font-semibold tabular-nums pb-0.5",
                     isUp ? "text-positive" : "text-negative",
                   )}
                 >
-                  <ChangeIcon className="h-4 w-4" />
                   {change != null && (
                     <span>
                       {change >= 0 ? "+" : ""}
@@ -250,13 +237,13 @@ export function StockCard({
           {/* Tags */}
           <div className="flex flex-wrap gap-1.5">
             {sector && (
-              <Badge variant="outline" className="text-[10px] gap-1">
-                <Building2 className="h-2.5 w-2.5" />
+              <Badge variant="outline">
+                <Building2 />
                 {sector}
               </Badge>
             )}
             {exchange && (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline">
                 {exchange}
               </Badge>
             )}
