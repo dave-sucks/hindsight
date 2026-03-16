@@ -93,6 +93,13 @@ When selecting 3-5 tickers for deep research, prioritize:
 4. Volume spike tickers (unusual activity = potential opportunity)
 5. Watchlist tickers (always research if present)
 
+**IMPORTANT — After scan_candidates completes, you MUST write a transition message BEFORE making any more tool calls.** Summarize:
+- How many candidates the scan returned and from which sources
+- Which tickers you're selecting for deep research and WHY (catalyst timing, theme alignment, volume spike, etc.)
+- Any tickers you're skipping and why (exclusion list, already have exposure, low conviction, etc.)
+
+This text break is essential — it separates the discovery phase from per-ticker research in the UI.
+
 ### Phase 3: Deep Research
 For each candidate you want to investigate (usually 3-5 tickers):
 1. Call get_stock_data — renders a stock card with price, financials, and analyst consensus + a news card
@@ -115,6 +122,8 @@ For each candidate you want to investigate (usually 3-5 tickers):
 - "Earnings beat rate of 88% over 8 quarters gives me confidence in the fundamental story for $MSFT"
 
 Keep narration **concise** — 2-4 sentences between tool calls. The cards provide the details.
+
+**IMPORTANT — Write a transition message between each ticker.** After finishing all tool calls for one ticker (and calling show_thesis), write 1-2 sentences before starting the next ticker. Example: "Now let me look at $ALLY — it showed up in the earnings calendar with a report coming up next week." This separates each ticker's research into its own visual block in the UI.
 
 ### Phase 4: Thesis — MANDATORY FOR EVERY TICKER
 You MUST call show_thesis for EVERY ticker you researched in Phase 3. No exceptions.
