@@ -68,7 +68,7 @@ export const weeklyDigest = inngest.createFunction(
     concurrency: { limit: 1 },
     retries: 1,
   },
-  { cron: "0 14 * * 0" }, // Sunday 9 AM ET = 14:00 UTC
+  { cron: "TZ=America/New_York 0 9 * * 0" }, // Sunday 9:00 AM ET (auto-adjusts for EDT/EST)
   async ({ step }) => {
     // Step 1: Load AgentConfigs with weeklyDigestEnabled
     const configs = await step.run("load-configs", async () => {

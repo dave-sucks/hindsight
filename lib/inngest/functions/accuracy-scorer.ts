@@ -77,7 +77,7 @@ export const accuracyScorer = inngest.createFunction(
     concurrency: { limit: 1 },
     retries: 1,
   },
-  { cron: "0 15 * * 0" }, // Sunday 10 AM ET = 15:00 UTC (after weekly digest at 14:00)
+  { cron: "TZ=America/New_York 0 10 * * 0" }, // Sunday 10:00 AM ET (after weekly digest at 9:00)
   async ({ step }) => {
     // Step 1: Find users with at least 3 closed trades
     const userIds = await step.run("find-eligible-users", async () => {
