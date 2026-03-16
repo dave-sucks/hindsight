@@ -15,6 +15,13 @@ import {
   Brain,
   Wrench,
   CheckCircle2,
+  Globe,
+  Newspaper,
+  Users,
+  Database,
+  User,
+  Cpu,
+  Landmark,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -26,6 +33,102 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
+
+// ── Source definitions ──────────────────────────────────────────────────────
+
+interface SourceDef {
+  icon: LucideIcon;
+  description: string;
+}
+
+const SOURCE_REGISTRY: Record<string, SourceDef> = {
+  Finnhub: {
+    icon: BarChart3,
+    description: "Real-time stock quotes, company metrics, earnings calendar, and market news from Finnhub API.",
+  },
+  "Finnhub News": {
+    icon: Newspaper,
+    description: "Financial news headlines aggregated by Finnhub from major business publications.",
+  },
+  FMP: {
+    icon: Database,
+    description: "Financial Modeling Prep — market movers, analyst ratings, SEC filings, economic calendar, and insider transactions.",
+  },
+  Reddit: {
+    icon: MessageSquare,
+    description: "Retail trader sentiment from r/wallstreetbets, r/stocks, r/options, and r/investing.",
+  },
+  StockTwits: {
+    icon: TrendingUp,
+    description: "Trending tickers and social momentum from the StockTwits trader community.",
+  },
+  SEC: {
+    icon: Landmark,
+    description: "SEC EDGAR filings — 10-K, 10-Q, 8-K, and insider Form 4 transaction reports.",
+  },
+  Alpaca: {
+    icon: ShoppingCart,
+    description: "Alpaca paper trading API — places simulated market orders and tracks positions.",
+  },
+  Internal: {
+    icon: Cpu,
+    description: "Hindsight's internal analytics — portfolio exposure, trade history, and performance tracking.",
+  },
+  "All research": {
+    icon: Globe,
+    description: "Synthesizes all data gathered in previous steps into a single analysis.",
+  },
+  "All above": {
+    icon: Globe,
+    description: "Combines everything from all previous steps into the final output.",
+  },
+  You: {
+    icon: User,
+    description: "Your input — trading interests, risk preferences, and strategy ideas.",
+  },
+  "Market context": {
+    icon: BarChart3,
+    description: "Live market data gathered from earlier research steps.",
+  },
+  "Your input": {
+    icon: User,
+    description: "Your preferences and feedback from the conversation.",
+  },
+  "Strategy logic": {
+    icon: Brain,
+    description: "Derived from the strategy prompt and market research above.",
+  },
+};
+
+// ── Source badge with tooltip ───────────────────────────────────────────────
+
+function SourceBadge({ name }: { name: string }) {
+  const def = SOURCE_REGISTRY[name];
+  const Icon = def?.icon ?? Globe;
+  const description = def?.description ?? name;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span className="inline-flex" />}
+      >
+        <Badge variant="secondary">
+          <Icon className="h-3 w-3" data-icon="inline-start" />
+          {name}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-56">
+        {description}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 // ── Flow step data ──────────────────────────────────────────────────────────
 
@@ -166,55 +269,58 @@ const ANALYST_BUILDER_STEPS: FlowStep[] = [
 
 function FlowDiagram({ steps }: { steps: FlowStep[] }) {
   return (
-    <div className="relative flex flex-col items-center gap-0 py-2">
-      {steps.map((step, i) => {
-        const Icon = step.icon;
-        const isLast = i === steps.length - 1;
-        const showPhase = step.phase !== undefined;
+    <TooltipProvider>
+      <div className="relative flex flex-col items-center gap-0 py-2">
+        {steps.map((step, i) => {
+          const Icon = step.icon;
+          const isLast = i === steps.length - 1;
+          const showPhase = step.phase !== undefined;
 
-        return (
-          <div key={i} className="flex flex-col items-center w-full">
-            {/* Phase label */}
-            {showPhase && (
-              <div className="mb-2 mt-1">
-                <Badge variant="outline">{step.phase}</Badge>
-              </div>
-            )}
+          return (
+            <div key={i} className="flex flex-col items-center w-full">
+              {/* Phase label */}
+              {showPhase && (
+                <div className="mb-2 mt-1">
+                  <Badge variant="outline">{step.phase}</Badge>
+                </div>
+              )}
 
-            {/* Card */}
-            <Card className="w-full max-w-sm p-0 overflow-hidden">
-              {/* Header row */}
-              <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40">
-                <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="text-xs font-medium flex-1 truncate">
-                  {step.title}
-                </span>
-                <div className="flex gap-1 shrink-0">
+              {/* Card */}
+              <Card className="w-full max-w-sm p-0 overflow-hidden">
+                {/* Title row */}
+                <div className="flex items-center gap-2 px-3 py-1.5">
+                  <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="text-xs font-medium">
+                    {step.title}
+                  </span>
+                </div>
+                {/* Source badges row */}
+                <div className="flex flex-wrap gap-1 px-3 pb-1.5">
                   {step.sources.map((s) => (
-                    <Badge key={s} variant="secondary">
-                      {s}
-                    </Badge>
+                    <SourceBadge key={s} name={s} />
                   ))}
                 </div>
-              </div>
-              {/* Summary */}
-              <p className="px-3 py-2 text-xs text-muted-foreground leading-relaxed">
-                {step.summary}
-              </p>
-            </Card>
+                {/* Summary */}
+                <div className="border-t border-border/40">
+                  <p className="px-3 py-2 text-xs text-muted-foreground leading-relaxed">
+                    {step.summary}
+                  </p>
+                </div>
+              </Card>
 
-            {/* Connector */}
-            {!isLast && (
-              <div className="flex flex-col items-center">
-                <div className="w-px h-4 bg-border" />
-                <div className="h-1.5 w-1.5 rounded-full border border-border bg-background" />
-                <div className="w-px h-4 bg-border" />
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+              {/* Connector */}
+              {!isLast && (
+                <div className="flex flex-col items-center">
+                  <div className="w-px h-4 bg-border" />
+                  <div className="h-1.5 w-1.5 rounded-full border border-border bg-background" />
+                  <div className="w-px h-4 bg-border" />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </TooltipProvider>
   );
 }
 
