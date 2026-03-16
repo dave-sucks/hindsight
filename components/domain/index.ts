@@ -27,6 +27,7 @@ export {
   type TradeConfirmationProps,
 } from "./trade-confirmation";
 export { StockCard, type StockCardData, type StockCardProps } from "./stock-card";
+export { PriceGauge } from "./price-gauge";
 export {
   TechnicalCard,
   type TechnicalCardData,

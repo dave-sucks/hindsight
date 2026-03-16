@@ -7,19 +7,11 @@ import {
   ArrowRight,
   Check,
   BarChart3,
-  Search,
-  Newspaper,
-  LineChart as LineChartIcon,
-  Calendar,
   Activity,
-  MessageSquareText,
   CheckCircle2,
-  Target,
-  Users,
   TrendingUp,
   TrendingDown,
   FileText,
-  MessageSquare,
   Briefcase,
   GitCompare,
   HelpCircle,
@@ -43,21 +35,12 @@ import {
   type ThesisCardData,
   TradeCard,
   TradeConfirmation,
-  MarketContextCard,
-  type MarketContextData,
   StockCard,
-  TechnicalCard,
-  EarningsCard,
-  ScanResultsCard,
   RunSummaryCard,
-  SecFilingsCard,
-  PeersCard,
 } from "@/components/domain";
 
 // ─── Chat UI Components ─────────────────────────────────────────────────────
 
-import { ThesisArtifactSheet } from "@/components/research/ThesisArtifactSheet";
-import { PostList } from "@/components/manifest-ui/post-list";
 import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
 import {
   ChainOfThought,
@@ -370,167 +353,28 @@ SuggestConfigEditorRender.displayName = "SuggestConfigEditorRender";
 /**
  * Register all 14 research tool UIs used by the agent.
  * Extracted from AgentThread.tsx so any chat context can render the same
- * rich domain cards with ChainOfThought loading + SourceChips attribution.
+ * rich domain cards. Sources aggregated in Sources tab.
  */
 export function useRegisterResearchToolUIs(_runId?: string) {
-  // ── Market overview → MarketContextCard ─────────────────────────────
+  // ── Market overview — rendered as CoT step by ResearchToolGroup ────
   useAssistantToolUI({
     toolName: "get_market_overview",
-    render: ({ result }) => {
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Market conditions</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={TrendingUp} label="Fetching S&P 500, VIX" status="active" />
-              <ChainOfThoughtStep icon={BarChart3} label="Loading sector performance" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-
-      const spy = result.spy as {
-        price: number;
-        change_pct: number;
-        day_high: number;
-        day_low: number;
-      } | null;
-      const rawVix = result.vix as {
-        level: number;
-        change_pct: number;
-      } | null;
-      const vix = rawVix && rawVix.level > 0.1 ? rawVix : null;
-      const sectors = (result.sectors ?? []) as {
-        symbol: string;
-        price: number;
-        change_pct: number;
-      }[];
-
-      const topSectors = sectors
-        .filter((s) => s.change_pct > 0)
-        .slice(0, 3)
-        .map((s) => ({ name: s.symbol, change: s.change_pct }));
-      const bottomSectors = sectors
-        .filter((s) => s.change_pct < 0)
-        .slice(-3)
-        .reverse()
-        .map((s) => ({ name: s.symbol, change: s.change_pct }));
-
-      const regime: MarketContextData["regime"] =
-        vix && vix.level > 25
-          ? "volatile"
-          : spy && spy.change_pct > 0.5
-            ? "trending_up"
-            : spy && spy.change_pct < -0.5
-              ? "trending_down"
-              : "range_bound";
-
-      const apiErrors = result.api_errors as string[] | undefined;
-
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Market conditions</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={TrendingUp} label="Fetched S&P 500, VIX" status="complete" />
-              <ChainOfThoughtStep icon={BarChart3} label={`Loaded ${sectors.length} sector ETFs`} status="complete" />
-              {apiErrors?.length ? (
-                <ChainOfThoughtStep icon={Activity} label={`Data issues: ${apiErrors.slice(0, 2).join("; ")}`} status="active" />
-              ) : null}
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          <MarketContextCard
-            regime={regime}
-            spxChange={spy?.change_pct}
-            vixLevel={vix?.level}
-            topSectors={topSectors}
-            bottomSectors={bottomSectors}
-            todaysApproach={apiErrors?.length ? `Data issues: ${apiErrors.slice(0, 2).join("; ")}` : ""}
-          />
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
-  // ── Scan candidates → ScanResultsCard ─────────────────────────────
+  // ── Scan candidates — rendered as CoT step by ResearchToolGroup ────
   useAssistantToolUI({
     toolName: "scan_candidates",
-    render: ({ result }) => {
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Scanning for candidates</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Search} label="Checking earnings calendar" status="active" />
-              <ChainOfThoughtStep icon={TrendingUp} label="Scanning gainers & losers" status="pending" />
-              <ChainOfThoughtStep icon={Activity} label="Social trends (StockTwits)" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-
-      const earnings = (result.earnings ?? []) as {
-        ticker: string;
-        source: string;
-        date?: string;
-        eps_estimate?: number | null;
-      }[];
-      const movers = (result.movers ?? []) as {
-        ticker: string;
-        source: string;
-        change_pct?: number;
-        price?: number;
-      }[];
-
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Scanning for candidates</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Search} label={`Found ${earnings.length} earnings catalysts`} status="complete" />
-              <ChainOfThoughtStep icon={TrendingUp} label={`Found ${movers.length} top movers`} status="complete" />
-              <ChainOfThoughtStep icon={Activity} label="Checked StockTwits trending" status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          <ScanResultsCard
-            earnings={earnings.map((e) => ({
-              ticker: e.ticker,
-              source: e.source,
-              date: e.date,
-              epsEstimate: e.eps_estimate,
-            }))}
-            movers={movers.map((m) => ({
-              ticker: m.ticker,
-              source: m.source,
-              changePct: m.change_pct,
-              price: m.price,
-            }))}
-            totalFound={result.total_found as number}
-          />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
-  // ── Stock data → StockCard + PostList (news carousel) ──────────────
+  // ── Stock data → StockCard (CoT step via ResearchToolGroup, news in Sources tab) ─
   useAssistantToolUI({
     toolName: "get_stock_data",
     render: ({ args, result }) => {
       const ticker = (args as { ticker?: string })?.ticker ?? "";
 
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Researching {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Search} label={`Fetching quote for ${ticker}`} status="active" />
-              <ChainOfThoughtStep icon={BarChart3} label="Loading financials" status="pending" />
-              <ChainOfThoughtStep icon={Newspaper} label="Scanning news" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
+      if (!result) return null;
 
       const quote = result.quote as {
         price: number;
@@ -560,24 +404,9 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         strong_buy: number;
         strong_sell: number;
       } | null;
-      const news = (result.news ?? []) as {
-        headline: string;
-        summary: string;
-        source: string;
-        url: string;
-        date: string;
-      }[];
 
       return (
         <div className="my-2 space-y-1.5">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Researched {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Search} label={`Quote: $${quote?.price?.toFixed(2) ?? "—"} (${quote?.change_pct != null ? (quote.change_pct >= 0 ? "+" : "") + quote.change_pct.toFixed(2) + "%" : "—"})`} status="complete" />
-              <ChainOfThoughtStep icon={BarChart3} label={company?.name ? `${company.name} — ${company.sector ?? "Unknown sector"}` : "Company profile loaded"} status="complete" />
-              <ChainOfThoughtStep icon={Newspaper} label={`${news.length} news article${news.length !== 1 ? "s" : ""} found`} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
           <StockCard
             ticker={ticker}
             companyName={company?.name}
@@ -610,146 +439,22 @@ export function useRegisterResearchToolUIs(_runId?: string) {
                 : null
             }
           />
-          {news.length > 0 && (
-            <PostList
-              data={{
-                posts: news.slice(0, 5).map((article) => ({
-                  title: article.headline,
-                  excerpt: article.summary || undefined,
-                  category: article.source,
-                  publishedAt: article.date,
-                  url: article.url,
-                })),
-              }}
-              actions={{
-                onReadMore: (post) => {
-                  if (post.url) window.open(post.url, "_blank", "noopener,noreferrer");
-                },
-              }}
-              appearance={{ variant: "carousel", showAuthor: false }}
-            />
-          )}
           <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
         </div>
       );
     },
   });
 
-  // ── Technical analysis → TechnicalCard ──────────────────────────────
+  // ── Technical analysis — rendered as CoT step by ResearchToolGroup ──
   useAssistantToolUI({
     toolName: "get_technical_analysis",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Technical analysis — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={LineChartIcon} label="Computing RSI, MACD, Bollinger" status="active" />
-              <ChainOfThoughtStep icon={Activity} label="SMA crossover analysis" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-
-      if (result.error) {
-        return null;
-      }
-
-      const rsi = result.rsi_14 as number | null;
-      const trend = result.trend as string | null;
-
-      // Hide card entirely when no meaningful data (micro-cap/ADR with no candles)
-      const hasData = rsi != null || (result.sma_20 != null) || (result.sma_50 != null);
-      if (!hasData) return null;
-
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Technical analysis — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={LineChartIcon} label={rsi != null ? `RSI-14: ${rsi.toFixed(1)}` : "RSI computed"} status="complete" />
-              <ChainOfThoughtStep icon={Activity} label={trend ? `Trend: ${trend}` : "SMA crossover analysis"} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          <TechnicalCard
-            ticker={ticker}
-            currentPrice={result.current_price as number}
-            rsi14={rsi}
-            sma20={result.sma_20 as number | null}
-            sma50={result.sma_50 as number | null}
-            priceVsSma20={result.price_vs_sma20 as string | null}
-            priceVsSma50={result.price_vs_sma50 as string | null}
-            positionIn52wRange={result.position_in_52w_range as string | null}
-            volumeRatio={result.volume_ratio as string | null}
-            trend={trend}
-          />
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
-  // ── Earnings data → EarningsCard ────────────────────────────────────
+  // ── Earnings data — rendered as CoT step by ResearchToolGroup ───────
   useAssistantToolUI({
     toolName: "get_earnings_data",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Earnings intelligence — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Calendar} label="Checking earnings calendar" status="active" />
-              <ChainOfThoughtStep icon={BarChart3} label="Loading beat/miss history" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-
-      const nextEarnings = result.next_earnings as {
-        date: string;
-        eps_estimate: number | null;
-      } | null;
-      const quarters = (result.recent_quarters ?? []) as {
-        period: string;
-        actual_eps: number | null;
-        estimated_eps: number | null;
-        surprise: number | null;
-        surprise_pct: number | null;
-      }[];
-
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Earnings intelligence — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Calendar} label={nextEarnings ? `Next earnings: ${nextEarnings.date}` : "No upcoming earnings"} status="complete" />
-              <ChainOfThoughtStep icon={BarChart3} label={`${quarters.length} quarters analyzed — beat rate: ${result.beat_rate ?? "—"}`} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          <EarningsCard
-            ticker={ticker}
-            nextEarnings={
-              nextEarnings
-                ? { date: nextEarnings.date, epsEstimate: nextEarnings.eps_estimate }
-                : null
-            }
-            beatRate={result.beat_rate as string}
-            recentQuarters={quarters.map((q) => ({
-              period: q.period,
-              actualEps: q.actual_eps,
-              estimatedEps: q.estimated_eps,
-              surprise: q.surprise,
-              surprisePct: q.surprise_pct,
-            }))}
-          />
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
   // ── Options flow — rendered as CoT step by ResearchToolGroup ────────
@@ -758,160 +463,22 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
-  // ── Reddit sentiment → XPost cards ──────────────────────────────────
+  // ── Reddit sentiment — rendered as CoT step by ResearchToolGroup ────
   useAssistantToolUI({
     toolName: "get_reddit_sentiment",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Reddit sentiment — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={MessageSquareText} label="Scanning WSB, r/stocks, r/options" status="active" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-
-      if (!result.available) {
-        return null;
-      }
-
-      const sources = (result.sources ?? []) as {
-        provider: string;
-        title?: string;
-        url?: string;
-        score?: number;
-      }[];
-      const sentiment = result.sentiment as string | undefined;
-      const mentionCount = result.mention_count as number | undefined;
-
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Reddit sentiment — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={MessageSquareText} label={`Scanned WSB, r/stocks, r/options, r/investing`} status="complete" />
-              <ChainOfThoughtStep icon={Search} label={`${mentionCount ?? 0} mentions — sentiment: ${sentiment ?? "unknown"}`} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          {sources.length > 0 && (
-            <PostList
-              data={{
-                posts: sources.slice(0, 5).map((s) => ({
-                  title: s.title || "Untitled post",
-                  excerpt: `Posted in ${s.provider || "Reddit"}${s.score != null ? ` · ${s.score} points` : ""}`,
-                  category: s.provider || "Reddit",
-                  url: s.url,
-                })),
-              }}
-              actions={{
-                onReadMore: (post) => {
-                  if (post.url) window.open(post.url, "_blank", "noopener,noreferrer");
-                },
-              }}
-              appearance={{ variant: "carousel", showAuthor: false }}
-            />
-          )}
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
-  // ── StockTwits sentiment → XPost cards ──────────────────────────────
+  // ── StockTwits sentiment — rendered as CoT step by ResearchToolGroup
   useAssistantToolUI({
     toolName: "get_twitter_sentiment",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>StockTwits sentiment — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={MessageSquareText} label="Scanning StockTwits feed" status="active" />
-              <ChainOfThoughtStep icon={Search} label="Checking FMP social sentiment" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-
-      if (!result.available) {
-        return null;
-      }
-
-      const postsList = (result.posts ?? []) as {
-        body: string;
-        username: string;
-        created_at?: string;
-        likes?: number;
-      }[];
-      const sentiment = result.sentiment as string | undefined;
-      const mentionCount = result.mention_count as number | undefined;
-
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>StockTwits sentiment — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={MessageSquareText} label="Scanned StockTwits feed" status="complete" />
-              <ChainOfThoughtStep icon={Search} label={`${mentionCount ?? 0} posts — sentiment: ${sentiment ?? "unknown"}`} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          {postsList.length > 0 && (
-            <PostList
-              data={{
-                posts: postsList.slice(0, 5).map((p) => ({
-                  title: p.body.length > 120 ? p.body.slice(0, 120) + "…" : p.body,
-                  excerpt: `@${p.username}${p.likes != null && p.likes > 0 ? ` · ${p.likes} likes` : ""}`,
-                  category: "StockTwits",
-                  publishedAt: p.created_at,
-                })),
-              }}
-              appearance={{ variant: "carousel", showAuthor: false }}
-            />
-          )}
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
-  // ── SEC Filings → SecFilingsCard ────────────────────────────────────
+  // ── SEC Filings — rendered as CoT step by ResearchToolGroup ─────────
   useAssistantToolUI({
     toolName: "get_sec_filings",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>SEC filings — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={FileText} label="Looking up CIK on EDGAR" status="active" />
-              <ChainOfThoughtStep icon={Search} label="Fetching recent filings" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-      const filings = (result.filings ?? result) as { type: string; date: string; description: string; url?: string | null }[];
-      const filingsArr = Array.isArray(filings) ? filings : [];
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>SEC filings — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={FileText} label="Looked up CIK on EDGAR" status="complete" />
-              <ChainOfThoughtStep icon={Search} label={`Found ${filingsArr.length} recent filings`} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          <SecFilingsCard ticker={ticker} filings={filingsArr} />
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
   // ── Analyst Targets — rendered as CoT step by ResearchToolGroup ─────
@@ -920,103 +487,19 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
-  // ── Company Peers → PeersCard ──────────────────────────────────────
+  // ── Company Peers — rendered as CoT step by ResearchToolGroup ───────
   useAssistantToolUI({
     toolName: "get_company_peers",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Company peers — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Users} label="Fetching peer companies" status="active" />
-              <ChainOfThoughtStep icon={BarChart3} label="Loading comparison metrics" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-      const peers = (result.peers ?? []) as { ticker: string; name?: string; price?: number | null; change_pct?: number | null; pe_ratio?: number | null; market_cap?: number | null }[];
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Company peers — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Users} label={`Found ${peers.length} peer companies`} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          <PeersCard
-            ticker={ticker}
-            peers={peers}
-            sector={result.sector as string | undefined}
-          />
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
-  // ── News Deep Dive → PostList (carousel) ───────────────────────────
+  // ── News Deep Dive — CoT step via ResearchToolGroup, articles in Sources tab ─
   useAssistantToolUI({
     toolName: "get_news_deep_dive",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>News deep dive — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Newspaper} label="Fetching stock news" status="active" />
-              <ChainOfThoughtStep icon={FileText} label="Loading press releases" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-      const stockNews = (result.stock_news ?? []) as { headline: string; source: string; url?: string; published_at?: string }[];
-      const pressReleases = (result.press_releases ?? []) as { headline: string; source: string; url?: string; published_at?: string }[];
-      const allNews = [...stockNews, ...pressReleases].map((n) => ({
-        headline: n.headline,
-        source: n.source,
-        url: n.url,
-        date: n.published_at,
-      }));
-
-      if (allNews.length === 0) {
-        return null;
-      }
-
-      return (
-        <div className="my-2">
-          <ChainOfThought>
-            <ChainOfThoughtHeader>News deep dive — {ticker}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Newspaper} label={`${stockNews.length} news articles`} status="complete" />
-              <ChainOfThoughtStep icon={FileText} label={`${pressReleases.length} press releases`} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-          <PostList
-            data={{
-              posts: allNews.slice(0, 5).map((article) => ({
-                title: article.headline,
-                category: article.source,
-                publishedAt: article.date,
-                url: article.url,
-              })),
-            }}
-            actions={{
-              onReadMore: (post) => {
-                if (post.url) window.open(post.url, "_blank", "noopener,noreferrer");
-              },
-            }}
-            appearance={{ variant: "carousel", showAuthor: false }}
-          />
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
-  // ── Thesis → slim pill + ThesisArtifactSheet ──────────────────────
+  // ── Thesis → ThesisCard (compact preview, opens sheet on click) ────
   useAssistantToolUI({
     toolName: "show_thesis",
     render: ({ result }) => {
@@ -1033,6 +516,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
+      const sources = extractToolSources(result as Record<string, unknown>);
       const thesis: ThesisCardData = {
         ticker: result.ticker as string,
         direction: result.direction as "LONG" | "SHORT" | "PASS",
@@ -1045,95 +529,19 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         stop_loss: (result.stop_loss as number) ?? null,
         hold_duration: (result.hold_duration as string) ?? "SWING",
         signal_types: (result.signal_types ?? []) as string[],
+        company_name: (result.company_name as string) ?? null,
+        exchange: (result.exchange as string) ?? null,
+        sources: sources.map((s) => ({
+          provider: s.provider,
+          title: s.title,
+          url: s.url,
+          excerpt: s.excerpt,
+        })),
       };
-
-      const isLong = thesis.direction === "LONG";
-      const isPass = thesis.direction === "PASS";
-      const DirIcon = isLong ? TrendingUp : TrendingDown;
 
       return (
         <div className="my-2">
-          {/* Slim thesis pill — inline summary */}
-          <Card className="overflow-hidden p-0">
-            <div className="flex items-center gap-2.5 px-4 py-2.5">
-              <span className="text-sm font-semibold font-mono">{thesis.ticker}</span>
-              {!isPass ? (
-                <Badge variant={isLong ? "positive" : "negative"}>
-                  <DirIcon className="h-2.5 w-2.5" />
-                  {thesis.direction}
-                </Badge>
-              ) : (
-                <Badge variant="secondary">
-                  PASS
-                </Badge>
-              )}
-
-              {thesis.hold_duration && (
-                <span className="text-[10px] text-muted-foreground">
-                  {thesis.hold_duration}
-                </span>
-              )}
-
-              <span
-                className={cn(
-                  "ml-auto flex items-center justify-center rounded-full size-7 text-[11px] font-bold tabular-nums",
-                  thesis.confidence_score >= 80
-                    ? "bg-positive/10 text-positive"
-                    : thesis.confidence_score >= 60
-                      ? "bg-amber-500/15 text-amber-500"
-                      : "bg-muted text-muted-foreground",
-                )}
-              >
-                {thesis.confidence_score}
-              </span>
-            </div>
-
-            {/* Entry/Target/Stop compact row */}
-            {thesis.entry_price != null && !isPass && (
-              <div className="flex items-center gap-4 px-4 pb-2.5 text-[10px]">
-                <span>
-                  <span className="text-muted-foreground uppercase tracking-wide">Entry</span>{" "}
-                  <span className="tabular-nums font-medium">${thesis.entry_price!.toFixed(2)}</span>
-                </span>
-                {thesis.target_price != null && (
-                  <span>
-                    <span className="text-muted-foreground uppercase tracking-wide">Target</span>{" "}
-                    <span className="tabular-nums font-medium text-positive">
-                      ${thesis.target_price!.toFixed(2)}
-                    </span>
-                  </span>
-                )}
-                {thesis.stop_loss != null && (
-                  <span>
-                    <span className="text-muted-foreground uppercase tracking-wide">Stop</span>{" "}
-                    <span className="tabular-nums font-medium text-negative">
-                      ${thesis.stop_loss!.toFixed(2)}
-                    </span>
-                  </span>
-                )}
-              </div>
-            )}
-
-            {isPass && thesis.reasoning_summary && (
-              <div className="px-4 pb-2.5">
-                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                  {thesis.reasoning_summary}
-                </p>
-              </div>
-            )}
-          </Card>
-
-          {/* Open sheet for full detail */}
-          {!isPass && (
-            <div className="mt-1">
-              <ThesisArtifactSheet thesis={thesis}>
-                <span className="flex items-center gap-1">
-                  <FileText className="h-3 w-3" />
-                  Full analysis
-                </span>
-              </ThesisArtifactSheet>
-            </div>
-          )}
+          <ThesisCard {...thesis} />
         </div>
       );
     },
@@ -1176,6 +584,8 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             shares={result.shares as number}
             targetPrice={result.target_price as number | undefined}
             stopLoss={result.stop_loss as number | undefined}
+            companyName={(result.company_name as string) ?? undefined}
+            exchange={(result.exchange as string) ?? undefined}
             status="OPEN"
           />
         </div>
