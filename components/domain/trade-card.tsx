@@ -2,17 +2,21 @@
 
 import type { ComponentProps } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PnlBadge } from "@/components/ui/pnl-badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
-  ArrowDownRight,
-  ArrowUpRight,
   CheckCircle2,
   Clock,
   XCircle,
 } from "lucide-react";
+import { StockLogo } from "@/components/StockLogo";
+import { PriceGauge } from "@/components/domain/price-gauge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +31,8 @@ export type TradeCardData = {
   realizedPnl?: number | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
+  companyName?: string | null;
+  exchange?: string | null;
 };
 
 export type TradeCardProps = ComponentProps<typeof Card> & TradeCardData;
@@ -39,7 +45,7 @@ const STATUS_CONFIG: Record<
 > = {
   OPEN: {
     label: "Open",
-    dotClass: "bg-positive animate-pulse",
+    dotClass: "bg-blue-400 animate-pulse",
     icon: Clock,
   },
   CLOSED: { label: "Closed", dotClass: "bg-muted-foreground", icon: CheckCircle2 },
@@ -49,6 +55,17 @@ const STATUS_CONFIG: Record<
     icon: XCircle,
   },
 };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatTarget(target: number | null | undefined, stop: number | null | undefined): string {
+  if (target != null && stop != null) {
+    return `Target $${target.toFixed(2)} with stop limit $${stop.toFixed(2)}`;
+  }
+  if (target != null) return `Target $${target.toFixed(2)}`;
+  if (stop != null) return `Stop limit $${stop.toFixed(2)}`;
+  return "";
+}
 
 // ─── TradeCard ────────────────────────────────────────────────────────────────
 
@@ -63,133 +80,127 @@ export function TradeCard({
   realizedPnl,
   targetPrice,
   stopLoss,
+  companyName,
+  exchange,
   className,
   ...cardProps
 }: TradeCardProps) {
   const isLong = direction === "LONG";
-  const DirIcon = isLong ? ArrowUpRight : ArrowDownRight;
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.OPEN;
   const isClosed = status === "CLOSED";
 
-  const pnlPct =
+  // For open trades, show entry price. For closed, show close price as "current".
+  const displayPrice = isClosed && closePrice != null ? closePrice : entryPrice;
+
+  // Delta from entry
+  const deltaAmount =
     isClosed && closePrice != null
-      ? ((closePrice - entryPrice) / entryPrice) * 100 * (isLong ? 1 : -1)
+      ? (closePrice - entryPrice) * (isLong ? 1 : -1)
       : null;
+  const deltaPct =
+    deltaAmount != null && entryPrice > 0
+      ? (deltaAmount / entryPrice) * 100
+      : null;
+  const deltaPositive = deltaAmount != null ? deltaAmount >= 0 : null;
+
+  const targetLine = !isClosed ? formatTarget(targetPrice, stopLoss) : "";
 
   return (
     <Card className={cn("overflow-hidden p-0", className)} {...cardProps}>
-      {/* ── Header ───────────────────────────────────────────────────── */}
-      <div className="px-5 py-4 flex items-center justify-between border-b">
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-semibold font-mono">{ticker}</span>
-          <Badge variant={isLong ? "positive" : "negative"}>
-            <DirIcon className="h-3.5 w-3.5" />
-            {direction}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5">
-            <div
-              className={cn("h-2 w-2 rounded-full", statusCfg.dotClass)}
-            />
-            <span className="text-xs text-muted-foreground font-medium">
-              {statusCfg.label}
-            </span>
+      {/* ── TOP: logo · name · status · price — IDENTICAL to ThesisCard ── */}
+      <div className="p-3 border-b">
+        <div className="flex items-start justify-between gap-4">
+
+          {/* Left: logo + company name + status badge + ticker subhead */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <StockLogo ticker={ticker} size="lg" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-lg font-brand font-bold text-foreground truncate leading-tight">
+                  {companyName ?? ticker}
+                </p>
+                {/* Status badge inline */}
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground bg-transparent shrink-0">
+                  <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusCfg.dotClass)} />
+                  {statusCfg.label}
+                </span>
+              </div>
+              {/* Ticker · Exchange · Confidence */}
+              <div className="font-mono text-[11px] text-muted-foreground leading-tight mt-0.5 flex items-center gap-1 flex-wrap">
+                <span>{ticker}</span>
+                {exchange && (
+                  <>
+                    <span className="opacity-30">&middot;</span>
+                    <span>{exchange}</span>
+                  </>
+                )}
+                <span className="opacity-30">&middot;</span>
+                <Tooltip>
+                  <TooltipTrigger render={<span className="cursor-default" />}>
+                    {shares != null ? `${shares} shares` : direction}
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    {isLong ? "Long" : "Short"} position{shares != null ? ` — ${shares} shares` : ""}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
           </div>
-          {outcome && (
-            <Badge
-              variant={
-                outcome === "WIN"
-                  ? "positive"
-                  : outcome === "LOSS"
-                    ? "negative"
-                    : "secondary"
-              }
-            >
-              {outcome}
-            </Badge>
-          )}
+
+          {/* Right: price + $delta + %badge — ALL ONE ROW, target below */}
+          <div className="shrink-0 text-right">
+            <div className="flex items-center gap-2">
+              <p className="text-lg font-medium tabular-nums text-foreground leading-none">
+                ${displayPrice.toFixed(2)}
+              </p>
+              {deltaAmount != null && (
+                <span
+                  className={cn(
+                    "text-lg tabular-nums font-light",
+                    deltaPositive ? "text-positive" : "text-negative",
+                  )}
+                >
+                  {deltaPositive ? "+" : "\u2212"}${Math.abs(deltaAmount).toFixed(2)}
+                </span>
+              )}
+              {deltaPct != null && <PnlBadge value={deltaPct} />}
+            </div>
+            {targetLine && (
+              <p className="text-xs text-muted-foreground mt-1 text-right">
+                {targetLine}
+              </p>
+            )}
+            {isClosed && closePrice != null && (
+              <p className="text-xs text-muted-foreground mt-1 text-right">
+                Closed at ${closePrice.toFixed(2)}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ── Price grid ───────────────────────────────────────────────── */}
-      <div className="px-5 py-4">
-        <div
-          className={cn(
-            "grid gap-3 rounded-xl bg-muted/40 p-4 text-center",
-            isClosed ? "grid-cols-4" : "grid-cols-3"
-          )}
-        >
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-              Entry
-            </p>
-            <p className="text-base tabular-nums font-bold">
-              ${entryPrice.toFixed(2)}
-            </p>
-          </div>
-
+      {/* ── SECOND: entry sentence + gauge ── */}
+      <div className="p-3 space-y-3">
+        {/* Entry sentence */}
+        <p className="text-sm text-foreground font-medium">
+          {isLong ? "Bought" : "Sold short"} {shares != null ? `${shares} shares` : "shares"} at{" "}
+          <span className="tabular-nums">${entryPrice.toFixed(2)}</span> entry
           {shares != null && (
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                Shares
-              </p>
-              <p className="text-base tabular-nums font-bold">{shares}</p>
-            </div>
+            <span className="text-muted-foreground font-normal">
+              {" "}&middot; <span className="tabular-nums">${(shares * entryPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> total
+            </span>
           )}
+        </p>
 
-          {targetPrice != null && !isClosed && (
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                Target
-              </p>
-              <p className="text-base tabular-nums font-bold text-positive">
-                ${targetPrice.toFixed(2)}
-              </p>
-            </div>
-          )}
-
-          {stopLoss != null && !isClosed && (
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                Stop
-              </p>
-              <p className="text-base tabular-nums font-bold text-negative">
-                ${stopLoss.toFixed(2)}
-              </p>
-            </div>
-          )}
-
-          {isClosed && closePrice != null && (
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                Exit
-              </p>
-              <p className="text-base tabular-nums font-bold">
-                ${closePrice.toFixed(2)}
-              </p>
-            </div>
-          )}
-
-          {isClosed && realizedPnl != null && (
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                P&L
-              </p>
-              <div className="flex items-center justify-center gap-1.5">
-                <span
-                  className={cn(
-                    "text-base tabular-nums font-bold",
-                    realizedPnl >= 0 ? "text-positive" : "text-negative"
-                  )}
-                >
-                  {realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}
-                </span>
-                {pnlPct != null && <PnlBadge value={pnlPct} />}
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Price gauge (OPEN trades only) */}
+        {!isClosed && (targetPrice != null || stopLoss != null) && (
+          <PriceGauge
+            entry={entryPrice}
+            target={targetPrice}
+            stop={stopLoss}
+            direction={direction}
+          />
+        )}
       </div>
     </Card>
   );

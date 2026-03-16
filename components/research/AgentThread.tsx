@@ -3,17 +3,8 @@
 /**
  * AgentThread — the REAL agent UI.
  *
- * Compact tool UIs render tight data cards for every tool call:
- * - Market overview → MarketContextCard (compact)
- * - Scan candidates → ScanResultsCard (chip grid)
- * - Stock data → StockCard (inline → sheet) + NewsCard (post-list)
- * - Technical analysis → TechnicalCard (reasoning block)
- * - Earnings data → EarningsCard (compact rows)
- * - Options flow → CoT step (via ResearchToolGroup)
- * - Reddit sentiment → collapsible reasoning block
- * - show_thesis → slim pill → ThesisArtifactSheet
- * - place_trade → TradeCard (server-side execution)
- * - summarize_run → RunSummaryCard
+ * Two tabs at the top: Chat (the thread) and Sources (Perplexity-style
+ * aggregated list of all news, social, and filing links from the run).
  *
  * After a run completes, the composer switches to the followup transport
  * so users can ask questions, place trades, and manage positions.
@@ -37,6 +28,13 @@ import {
   QuickReply,
   type QuickReply as QuickReplyType,
 } from "@/components/manifest-ui/quick-reply";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
+import { RunSourcesPanel } from "@/components/research/run-sources-panel";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -154,26 +152,41 @@ function AgentThreadInner({
   }, [autoStart, threadRuntime]);
 
   return (
-    <Thread
-      welcomeConfig={{
-        title: analystName,
-        subtitle: isFollowupMode
-          ? "Run complete — ask follow-up questions or place trades"
-          : "Autonomous research agent",
-      }}
-      composerSlot={
-        <div className="space-y-2">
-          <HindsightComposer
-            features={{
-              placeholder: isFollowupMode
-                ? "Ask about the run, research a ticker, or place a trade…"
-                : "Ask a follow-up question…",
-              tickerSearch: true,
-              slashCommands: true,
-            }}
-          />
-        </div>
-      }
-    />
+    <Tabs defaultValue={0} className="flex h-full flex-col">
+      <div className="shrink-0 border-b px-4">
+        <TabsList>
+          <TabsTrigger value={0}>Chat</TabsTrigger>
+          <TabsTrigger value={1}>Sources</TabsTrigger>
+        </TabsList>
+      </div>
+
+      <TabsContent value={0} className="flex-1 min-h-0">
+        <Thread
+          welcomeConfig={{
+            title: analystName,
+            subtitle: isFollowupMode
+              ? "Run complete — ask follow-up questions or place trades"
+              : "Autonomous research agent",
+          }}
+          composerSlot={
+            <div className="space-y-2">
+              <HindsightComposer
+                features={{
+                  placeholder: isFollowupMode
+                    ? "Ask about the run, research a ticker, or place a trade…"
+                    : "Ask a follow-up question…",
+                  tickerSearch: true,
+                  slashCommands: true,
+                }}
+              />
+            </div>
+          }
+        />
+      </TabsContent>
+
+      <TabsContent value={1} className="flex-1 min-h-0 overflow-y-auto">
+        <RunSourcesPanel />
+      </TabsContent>
+    </Tabs>
   );
 }

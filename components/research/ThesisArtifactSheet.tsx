@@ -8,29 +8,17 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { ThesisCardData } from "@/components/domain";
+import { PriceGauge } from "@/components/domain/price-gauge";
 import {
   AlertCircle,
   CheckCircle2,
   FileText,
-  Target,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function pct(from: number, to: number): string {
-  return (((to - from) / from) * 100).toFixed(1);
-}
-
-function rrRatio(entry: number, target: number, stop: number): string {
-  const risk = entry - stop;
-  if (risk === 0) return "\u2014";
-  return ((target - entry) / risk).toFixed(1);
-}
+import { StockLogo } from "@/components/StockLogo";
 
 // ─── ThesisArtifactSheet ──────────────────────────────────────────────────────
 
@@ -42,22 +30,12 @@ export function ThesisArtifactSheet({
   children?: React.ReactNode;
 }) {
   const isLong = thesis.direction === "LONG";
-  const isShort = thesis.direction === "SHORT";
   const isPass = thesis.direction === "PASS";
   const DirIcon = isLong ? TrendingUp : TrendingDown;
 
   const hasEntry = thesis.entry_price != null;
   const hasTarget = thesis.target_price != null;
   const hasStop = thesis.stop_loss != null;
-
-  const gainPct =
-    hasEntry && hasTarget ? pct(thesis.entry_price!, thesis.target_price!) : null;
-  const lossPct =
-    hasEntry && hasStop ? pct(thesis.stop_loss!, thesis.entry_price!) : null;
-  const rr =
-    hasEntry && hasTarget && hasStop
-      ? rrRatio(thesis.entry_price!, thesis.target_price!, thesis.stop_loss!)
-      : null;
 
   return (
     <Sheet>
@@ -79,32 +57,32 @@ export function ThesisArtifactSheet({
         side="right"
         className="w-full sm:max-w-xl overflow-y-auto"
       >
+        {/* ── Header: Logo + name + direction + confidence ──────── */}
         <SheetHeader className="border-b pb-4">
           <div className="flex items-center gap-3">
-            <SheetTitle className="font-mono text-xl font-bold">
-              {thesis.ticker}
-            </SheetTitle>
+            <StockLogo ticker={thesis.ticker} size="lg" />
+            <div>
+              <SheetTitle className="text-lg font-bold">
+                {thesis.company_name ?? thesis.ticker}
+              </SheetTitle>
+              <span className="text-xs font-mono text-muted-foreground">
+                {thesis.ticker}
+                {thesis.exchange ? ` · ${thesis.exchange}` : ""}
+              </span>
+            </div>
             {!isPass && (
-              <Badge
-                variant="secondary"
-                className={cn(
-                  "gap-1 text-xs font-semibold",
-                  isLong
-                    ? "bg-positive/10 text-positive"
-                    : "bg-negative/10 text-negative",
-                )}
-              >
+              <Badge variant={isLong ? "positive" : "negative"}>
                 <DirIcon className="h-3.5 w-3.5" />
                 {thesis.direction}
               </Badge>
             )}
             {isPass && (
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary">
                 PASS
               </Badge>
             )}
             {thesis.hold_duration && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline">
                 {thesis.hold_duration}
               </Badge>
             )}
@@ -131,7 +109,6 @@ export function ThesisArtifactSheet({
                 <Badge
                   key={s}
                   variant="outline"
-                  className="text-[10px] text-muted-foreground"
                 >
                   {s.replace(/_/g, " ")}
                 </Badge>
@@ -139,77 +116,64 @@ export function ThesisArtifactSheet({
             </div>
           )}
 
-          {/* Price grid — larger in artifact view */}
+          {/* Price gauge — visual overview */}
+          {hasEntry && !isPass && (hasTarget || hasStop) && (
+            <PriceGauge
+              entry={thesis.entry_price!}
+              target={thesis.target_price}
+              stop={thesis.stop_loss}
+              direction={thesis.direction === "SHORT" ? "SHORT" : "LONG"}
+            />
+          )}
+
+          {/* Price details row */}
           {hasEntry && !isPass && (
-            <Card className="p-0 overflow-hidden">
-              <div className="px-4 py-3 border-b bg-muted/20">
-                <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Price Levels
+            <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+              <span>
+                <span className="uppercase tracking-wide">Entry</span>{" "}
+                <span className="tabular-nums font-medium text-foreground/70">
+                  ${thesis.entry_price!.toFixed(2)}
+                </span>
+              </span>
+              {hasTarget && (
+                <span>
+                  <span className="uppercase tracking-wide">Target</span>{" "}
+                  <span className="tabular-nums font-medium text-positive">
+                    ${thesis.target_price!.toFixed(2)}
                   </span>
-                </div>
-              </div>
-              <div className="grid grid-cols-4 gap-4 p-5 text-center">
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                    Entry
-                  </p>
-                  <p className="text-lg tabular-nums font-bold">
-                    ${thesis.entry_price!.toFixed(2)}
-                  </p>
-                </div>
-                {hasTarget && (
-                  <div>
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                      Target
-                    </p>
-                    <p className="text-lg tabular-nums font-bold text-positive">
-                      ${thesis.target_price!.toFixed(2)}
-                    </p>
-                    {gainPct && (
-                      <p className="text-xs text-positive/70 tabular-nums">
-                        +{gainPct}%
-                      </p>
-                    )}
-                  </div>
-                )}
-                {hasStop && (
-                  <div>
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                      Stop Loss
-                    </p>
-                    <p className="text-lg tabular-nums font-bold text-negative">
-                      ${thesis.stop_loss!.toFixed(2)}
-                    </p>
-                    {lossPct && (
-                      <p className="text-xs text-negative/70 tabular-nums">
-                        &minus;{lossPct}%
-                      </p>
-                    )}
-                  </div>
-                )}
-                {rr != null && (
-                  <div>
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                      R:R Ratio
-                    </p>
-                    <p
-                      className={cn(
-                        "text-lg tabular-nums font-bold",
-                        parseFloat(rr) >= 2
-                          ? "text-positive"
-                          : parseFloat(rr) >= 1
-                            ? "text-foreground"
-                            : "text-negative",
-                      )}
-                    >
-                      {rr}&times;
-                    </p>
-                  </div>
-                )}
-              </div>
-            </Card>
+                </span>
+              )}
+              {hasStop && (
+                <span>
+                  <span className="uppercase tracking-wide">Stop</span>{" "}
+                  <span className="tabular-nums font-medium text-negative">
+                    ${thesis.stop_loss!.toFixed(2)}
+                  </span>
+                </span>
+              )}
+              {hasEntry && hasTarget && hasStop && (thesis.entry_price! - thesis.stop_loss!) !== 0 && (
+                <span>
+                  <span className="uppercase tracking-wide">R:R</span>{" "}
+                  {(() => {
+                    const rr = ((thesis.target_price! - thesis.entry_price!) / (thesis.entry_price! - thesis.stop_loss!)).toFixed(1);
+                    return (
+                      <span
+                        className={cn(
+                          "tabular-nums font-medium",
+                          parseFloat(rr) >= 2
+                            ? "text-positive"
+                            : parseFloat(rr) >= 1
+                              ? "text-foreground/70"
+                              : "text-negative",
+                        )}
+                      >
+                        {rr}&times;
+                      </span>
+                    );
+                  })()}
+                </span>
+              )}
+            </div>
           )}
 
           {/* Reasoning summary */}
