@@ -75,3 +75,4 @@ export {
   type CatalystTimelineData,
   type CatalystTimelineCardProps,
 } from "./catalyst-timeline-card";
+export { HowItWorksSheet } from "./how-it-works-sheet";

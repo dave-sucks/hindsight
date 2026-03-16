@@ -2,8 +2,9 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { ArrowLeft, Bot, Clock } from "lucide-react";
+import { ArrowLeft, Bot, Clock, Sparkles } from "lucide-react";
 import { AgentThread } from "@/components/research/AgentThread";
+import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 import type { UIMessage } from "ai";
 
@@ -101,10 +102,16 @@ export default async function RunPage({
           <span className="text-sm font-medium truncate">{analystName}</span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground ml-auto tabular-nums">
-          <Clock className="h-3 w-3" />
-          <span>{startedAt}</span>
-          {duration != null && <span>· {duration}s</span>}
+        <div className="flex items-center gap-2 ml-auto">
+          <HowItWorksSheet flow="agent-run">
+            <Sparkles className="h-3 w-3" />
+            How it works
+          </HowItWorksSheet>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+            <Clock className="h-3 w-3" />
+            <span>{startedAt}</span>
+            {duration != null && <span>· {duration}s</span>}
+          </div>
         </div>
       </div>
 

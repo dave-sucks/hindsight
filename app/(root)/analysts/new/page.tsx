@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import { AnalystBuilderChat } from "@/components/analysts/AnalystBuilderChat";
+import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 
 export default function NewAnalystPage() {
   return (
@@ -14,6 +15,12 @@ export default function NewAnalystPage() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <span className="text-sm font-medium">New Analyst</span>
+        <div className="ml-auto">
+          <HowItWorksSheet flow="analyst-builder">
+            <Sparkles className="h-3 w-3" />
+            How it works
+          </HowItWorksSheet>
+        </div>
       </div>
 
       {/* Chat */}
