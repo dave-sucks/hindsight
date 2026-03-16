@@ -159,7 +159,7 @@ function AgentThreadInner({
 
   return (
     <Tabs defaultValue={0} className="flex h-full flex-col">
-      <div className="shrink-0 px-4 flex items-center">
+      <div className="shrink-0 px-4 pt-2 flex items-center">
         <TabsList>
           <TabsTrigger value={0}>Chat</TabsTrigger>
           <TabsTrigger value={1}>Sources</TabsTrigger>

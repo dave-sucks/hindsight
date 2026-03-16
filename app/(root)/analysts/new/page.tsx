@@ -17,8 +17,7 @@ export default function NewAnalystPage() {
         <span className="text-sm font-medium">New Analyst</span>
         <div className="ml-auto">
           <HowItWorksSheet flow="analyst-builder">
-            <Sparkles className="h-3 w-3" />
-            How it works
+            <Sparkles className="h-4 w-4" />
           </HowItWorksSheet>
         </div>
       </div>

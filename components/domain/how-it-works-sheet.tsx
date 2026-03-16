@@ -359,7 +359,7 @@ export function HowItWorksSheet({
   return (
     <Sheet>
       <SheetTrigger
-        render={<Button variant="ghost" size="sm" />}
+        render={<Button variant="ghost" size="icon" />}
       >
         {children}
       </SheetTrigger>
