@@ -33,7 +33,7 @@ export const priceMonitor = inngest.createFunction(
     // Retry config: don't retry price checks (stale data not useful)
     retries: 0,
   },
-  { cron: "0 10-20 * * 1-5" }, // every hour, 10am–8pm UTC (covers 9:30–4pm ET + buffer)
+  { cron: "TZ=America/New_York 0 9-17 * * 1-5" }, // every hour 9 AM–5 PM ET Mon–Fri (auto-adjusts for EDT/EST)
   async ({ step }) => {
     // Step 1: Fetch all OPEN + SHADOW trades
     const openTrades = await step.run("fetch-open-trades", async () => {

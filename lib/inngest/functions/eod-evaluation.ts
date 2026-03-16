@@ -32,7 +32,7 @@ export const eodEvaluation = inngest.createFunction(
     concurrency: { limit: 1 },
     retries: 1,
   },
-  { cron: "0 22 * * 1-5" }, // 5 PM ET = 22:00 UTC Mon–Fri
+  { cron: "TZ=America/New_York 0 17 * * 1-5" }, // 5:00 PM ET Mon–Fri (auto-adjusts for EDT/EST)
   async ({ step }) => {
     // Step 1: Load all open trades
     const openTrades = await step.run("load-open-trades", async () => {

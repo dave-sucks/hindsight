@@ -16,7 +16,7 @@ export const morningResearch = inngest.createFunction(
     retries: 1,
   },
   [
-    { cron: "0 13 * * 1-5" }, // 8:00 AM ET = 13:00 UTC, Mon–Fri
+    { cron: "TZ=America/New_York 0 8 * * 1-5" }, // 8:00 AM ET Mon–Fri (auto-adjusts for EDT/EST)
     { event: "app/research.run.manual" },
   ],
   async ({ event, step }) => {
@@ -47,16 +47,17 @@ export const morningResearch = inngest.createFunction(
       const result = await step.run(`research-${config.id}`, async () => {
         const t0 = Date.now();
 
-        // 2a. Check open positions cap
+        // 2a. Check open positions for THIS analyst (not all analysts combined)
         const openCount = await prisma.trade.count({
-          where: { userId: config.userId, status: "OPEN" },
+          where: {
+            userId: config.userId,
+            status: "OPEN",
+            thesis: { researchRun: { agentConfigId: config.id } },
+          },
         });
-        const slotsRemaining = config.maxOpenPositions - openCount;
-
-        if (slotsRemaining <= 0) {
-          console.log(`[morning-research] Skipping ${config.name}: max open positions reached (${openCount}/${config.maxOpenPositions})`);
-          return { skipped: true, reason: "max-open-positions-reached" };
-        }
+        const slotsRemaining = Math.max(0, config.maxOpenPositions - openCount);
+        // Never skip the run — the agent should always research.
+        // slotsRemaining=0 just means it won't place new trades.
 
         // 2b. Create ResearchRun record (status: RUNNING)
         const run = await prisma.researchRun.create({
