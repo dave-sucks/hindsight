@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bot, ExternalLink } from "lucide-react";
+import { Bot, BookOpen, ExternalLink } from "lucide-react";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -63,6 +63,34 @@ export default async function SettingsPage() {
               variant="outline"
               size="sm"
               render={<Link href="/analysts" />}
+              className="shrink-0"
+            >
+              Open
+              <ExternalLink className="h-3 w-3 ml-1" />
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+      {/* System Reference */}
+      <div className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          System
+        </p>
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">System Reference</p>
+                <p className="text-xs text-muted-foreground">
+                  How agents, runs, crons, and the learning loop work
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href="/settings/system" />}
               className="shrink-0"
             >
               Open
