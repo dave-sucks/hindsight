@@ -15,20 +15,60 @@ import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
 
-// ── API helpers (with logging + error detail) ───────────────────────────────
+// ── API call tracking (per-run visibility) ──────────────────────────────────
+
+const apiCallStats = {
+  finnhub: 0,
+  fmp: 0,
+  other: 0,
+  errors: 0,
+  startTime: Date.now(),
+  reset() {
+    this.finnhub = 0;
+    this.fmp = 0;
+    this.other = 0;
+    this.errors = 0;
+    this.startTime = Date.now();
+  },
+  summary() {
+    const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(1);
+    return `finnhub=${this.finnhub} fmp=${this.fmp} other=${this.other} errors=${this.errors} elapsed=${elapsed}s`;
+  },
+};
+
+// Per-request timeout to prevent hung fetches from stalling the agent
+const API_TIMEOUT_MS = 10_000; // 10 seconds per request
+
+// ── API helpers (with logging + error detail + timeouts) ─────────────────────
 
 async function finnhub(path: string): Promise<{ data: unknown; error?: string }> {
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
+  const endpoint = path.split("?")[0];
+  const t0 = Date.now();
+  apiCallStats.finnhub++;
   try {
-    const res = await fetch(url, { next: { revalidate: 300 } });
+    const res = await fetch(url, {
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
+    const elapsed = Date.now() - t0;
     if (!res.ok) {
-      const msg = `Finnhub ${path.split("?")[0]} returned ${res.status}`;
+      apiCallStats.errors++;
+      const msg = `Finnhub ${endpoint} returned ${res.status} (${elapsed}ms)`;
       console.warn(`[finnhub] ${msg}`);
       return { data: null, error: msg };
     }
+    if (elapsed > 3000) {
+      console.warn(`[finnhub] SLOW ${endpoint} took ${elapsed}ms`);
+    }
     return { data: await res.json() };
   } catch (err) {
-    const msg = `Finnhub ${path.split("?")[0]} fetch failed: ${err instanceof Error ? err.message : "unknown"}`;
+    apiCallStats.errors++;
+    const elapsed = Date.now() - t0;
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    const msg = isTimeout
+      ? `Finnhub ${endpoint} TIMEOUT after ${elapsed}ms`
+      : `Finnhub ${endpoint} fetch failed (${elapsed}ms): ${err instanceof Error ? err.message : "unknown"}`;
     console.error(`[finnhub] ${msg}`);
     return { data: null, error: msg };
   }
@@ -40,28 +80,45 @@ async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
     ? `https://financialmodelingprep.com/api${path}`
     : `https://financialmodelingprep.com/api/v3${path}`;
   const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
+  const endpoint = path.split("?")[0];
+  const t0 = Date.now();
+  apiCallStats.fmp++;
   try {
-    const res = await fetch(url, { next: { revalidate: 300 } });
+    const res = await fetch(url, {
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
+    const elapsed = Date.now() - t0;
     if (!res.ok) {
+      apiCallStats.errors++;
       const body = await res.text().catch(() => "");
-      const msg = `FMP ${path.split("?")[0]} returned ${res.status}: ${body.slice(0, 200)}`;
+      const msg = `FMP ${endpoint} returned ${res.status} (${elapsed}ms): ${body.slice(0, 200)}`;
       console.warn(`[fmp] ${msg}`);
       return { data: null, error: msg };
+    }
+    if (elapsed > 3000) {
+      console.warn(`[fmp] SLOW ${endpoint} took ${elapsed}ms`);
     }
     const data = await res.json();
     // FMP returns { "Error Message": "..." } on bad API key or invalid endpoint
     if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in data) {
-      const msg = `FMP ${path.split("?")[0]}: ${(data as Record<string, string>)["Error Message"]}`;
+      apiCallStats.errors++;
+      const msg = `FMP ${endpoint}: ${(data as Record<string, string>)["Error Message"]}`;
       console.warn(`[fmp] ${msg}`);
       return { data: null, error: msg };
     }
     // FMP sometimes returns empty array for valid-but-unsupported symbols
     if (Array.isArray(data) && data.length === 0) {
-      console.warn(`[fmp] ${path.split("?")[0]} returned empty array`);
+      console.warn(`[fmp] ${endpoint} returned empty array`);
     }
     return { data };
   } catch (err) {
-    const msg = `FMP ${path.split("?")[0]} fetch failed: ${err instanceof Error ? err.message : "unknown"}`;
+    apiCallStats.errors++;
+    const elapsed = Date.now() - t0;
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    const msg = isTimeout
+      ? `FMP ${endpoint} TIMEOUT after ${elapsed}ms`
+      : `FMP ${endpoint} fetch failed (${elapsed}ms): ${err instanceof Error ? err.message : "unknown"}`;
     console.error(`[fmp] ${msg}`);
     return { data: null, error: msg };
   }
@@ -337,16 +394,37 @@ interface ToolContext {
   maxPositionSize?: number;
 }
 
+// ── Tool timing helpers ─────────────────────────────────────────────────────
+
+function logToolStart(name: string, runId: string, extra?: string) {
+  const ts = new Date().toISOString().slice(11, 23);
+  console.log(`[tool] ${ts} START ${name} runId=${runId}${extra ? ` ${extra}` : ""} | API calls so far: ${apiCallStats.summary()}`);
+}
+
+function logToolEnd(name: string, t0: number, runId: string, extra?: string) {
+  const elapsed = Date.now() - t0;
+  const ts = new Date().toISOString().slice(11, 23);
+  console.log(`[tool] ${ts} END ${name} ${elapsed}ms runId=${runId}${extra ? ` ${extra}` : ""} | API totals: ${apiCallStats.summary()}`);
+  if (elapsed > 15000) {
+    console.warn(`[tool] ⚠️ SLOW TOOL: ${name} took ${(elapsed / 1000).toFixed(1)}s`);
+  }
+}
+
 // ── Factory: creates tools with context ─────────────────────────────────────
 
 export function createResearchTools(ctx: ToolContext) {
+  // Reset API stats for this tool set (new run)
+  apiCallStats.reset();
+  console.log(`[tools] Creating research tools for runId=${ctx.runId} analystId=${ctx.analystId ?? "none"}`);
+
   return {
     get_market_overview: tool({
       description:
         "Get current market conditions: S&P 500, VIX, and sector ETF performance. Call this first to understand the market environment.",
       inputSchema: emptyParams,
       execute: async (): Promise<MarketOverviewResult> => {
-        console.log(`[tool] get_market_overview runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("get_market_overview", ctx.runId);
         const errors: string[] = [];
 
         const today = new Date().toISOString().slice(0, 10);
@@ -517,6 +595,7 @@ export function createResearchTools(ctx: ToolContext) {
           })
           .sort((a, b) => b.change_pct - a.change_pct);
 
+        logToolEnd("get_market_overview", _t0, ctx.runId, `SPY=${spyData ? `$${spyData.price}` : "null"} regime=${regime}`);
         return {
           spy: spyData
             ? {
@@ -585,7 +664,8 @@ export function createResearchTools(ctx: ToolContext) {
         "Scan the market for trading candidates. Returns scored tickers from multiple sources: earnings calendar (30 days), market movers, gainers/losers, social trends. Supports theme filtering, market cap/volume quality floors, and volume spike detection.",
       inputSchema: scanParams,
       execute: async ({ sectors, theme_filter, min_market_cap, min_avg_volume }: ScanInput): Promise<ScanCandidatesResult> => {
-        console.log(`[tool] scan_candidates sectors=${sectors?.join(",") ?? "all"} theme=${theme_filter ?? "none"} runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("scan_candidates", ctx.runId, `sectors=${sectors?.join(",") ?? "all"} theme=${theme_filter ?? "none"}`);
         const minCap = min_market_cap ?? 1_000_000_000; // $1B default
         const minVol = min_avg_volume ?? 500_000; // 500K shares default
         const today = new Date().toISOString().slice(0, 10);
@@ -859,6 +939,7 @@ export function createResearchTools(ctx: ToolContext) {
         if (volumeSpikeSet.size > 0) notes.push(`Volume spikes: ${[...volumeSpikeSet].join(", ")}.`);
         notes.push(`${filtered.length} candidates remain.`);
 
+        logToolEnd("scan_candidates", _t0, ctx.runId, `found=${filtered.length}`);
         return {
           earnings: earningsOut,
           movers,
@@ -923,7 +1004,8 @@ export function createResearchTools(ctx: ToolContext) {
         "Get comprehensive data for a stock: price quote, company profile, key financials, analyst ratings, and recent news. This is your primary research tool.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
-        console.log(`[tool] get_stock_data ticker=${ticker} runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("get_stock_data", ctx.runId, `ticker=${ticker}`);
         const [quoteResult, profileResult, financialsResult, newsResult, recsResult] =
           await Promise.all([
             finnhub(`/quote?symbol=${ticker}`),
@@ -969,6 +1051,7 @@ export function createResearchTools(ctx: ToolContext) {
         if (profileResult.error) errors.push(profileResult.error);
         if (financialsResult.error) errors.push(financialsResult.error);
 
+        logToolEnd("get_stock_data", _t0, ctx.runId, `ticker=${ticker}`);
         return {
           quote: quote && quote.c
             ? {
@@ -1060,7 +1143,8 @@ export function createResearchTools(ctx: ToolContext) {
         "Get technical indicators for a stock: RSI-14, 20-day and 50-day SMA, price position in 52-week range. Requires recent price history.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
-        console.log(`[tool] get_technical_analysis ticker=${ticker} runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("get_technical_analysis", ctx.runId, `ticker=${ticker}`);
         const now = Math.floor(Date.now() / 1000);
         const from = now - 90 * 86400;
 
@@ -1142,6 +1226,7 @@ export function createResearchTools(ctx: ToolContext) {
             ? Math.round((latestVol / avgVol20) * 100) / 100
             : null;
 
+        logToolEnd("get_technical_analysis", _t0, ctx.runId, `ticker=${ticker}`);
         return {
           current_price: currentPrice,
           rsi_14: rsi,
@@ -1182,6 +1267,8 @@ export function createResearchTools(ctx: ToolContext) {
         "Get Reddit sentiment for a stock from r/wallstreetbets, r/stocks, r/options, r/investing. Shows mention count, sentiment direction, and top posts with upvotes and comment counts.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
+        const _t0 = Date.now();
+        logToolStart("get_reddit_sentiment", ctx.runId, `ticker=${ticker}`);
         const data: RedditSentimentResult = await getRedditSentiment(ticker);
 
         if (!data.available || data.mention_count === 0) {
@@ -1198,6 +1285,7 @@ export function createResearchTools(ctx: ToolContext) {
           };
         }
 
+        logToolEnd("get_reddit_sentiment", _t0, ctx.runId, `ticker=${ticker}`);
         return {
           available: true,
           mention_count: data.mention_count,
@@ -1225,6 +1313,8 @@ export function createResearchTools(ctx: ToolContext) {
         "Get Twitter/X social sentiment for a stock. Shows trending status, sentiment direction, recent social posts, and watchlist popularity from StockTwits + FMP social data.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
+        const _t0 = Date.now();
+        logToolStart("get_twitter_sentiment", ctx.runId, `ticker=${ticker}`);
         const data = await twitterSentiment(ticker);
 
         if (!data.available) {
@@ -1240,6 +1330,7 @@ export function createResearchTools(ctx: ToolContext) {
           };
         }
 
+        logToolEnd("get_twitter_sentiment", _t0, ctx.runId, `ticker=${ticker}`);
         return {
           available: true,
           mention_count: data.mention_count,
@@ -1277,6 +1368,8 @@ export function createResearchTools(ctx: ToolContext) {
         "Get unusual options activity for a stock: put/call ratio, unusual volume contracts, and implied volatility signals.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
+        const _t0 = Date.now();
+        logToolStart("get_options_flow", ctx.runId, `ticker=${ticker}`);
         // Primary: FMP options chain
         const fmpResult = await fmp(`/options/chain/${ticker.toUpperCase()}`);
         const fmpData = fmpResult.data;
@@ -1318,6 +1411,7 @@ export function createResearchTools(ctx: ToolContext) {
 
           unusualContracts.sort((a, b) => b.premium - a.premium);
 
+          logToolEnd("get_options_flow", _t0, ctx.runId, `ticker=${ticker} src=fmp`);
           return {
             available: true,
             put_call_ratio:
@@ -1366,6 +1460,7 @@ export function createResearchTools(ctx: ToolContext) {
             0,
           );
 
+          logToolEnd("get_options_flow", _t0, ctx.runId, `ticker=${ticker} src=finnhub`);
           return {
             available: true,
             put_call_ratio:
@@ -1394,6 +1489,7 @@ export function createResearchTools(ctx: ToolContext) {
           };
         }
 
+        logToolEnd("get_options_flow", _t0, ctx.runId, `ticker=${ticker} no_data`);
         return {
           available: false,
           note: `No options data available for ${ticker}. This may be a smaller-cap stock without liquid options, or the options data providers may be temporarily unavailable.`,
@@ -1414,6 +1510,8 @@ export function createResearchTools(ctx: ToolContext) {
         "Get earnings estimates, historical beat rate, and upcoming earnings date for a stock.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
+        const _t0 = Date.now();
+        logToolStart("get_earnings_data", ctx.runId, `ticker=${ticker}`);
         const [earningsResult, surprisesResult] = await Promise.all([
           finnhub(`/calendar/earnings?symbol=${ticker}`),
           finnhub(`/stock/earnings?symbol=${ticker}&limit=8`),
@@ -1429,6 +1527,7 @@ export function createResearchTools(ctx: ToolContext) {
             e.actual != null && e.estimate != null && e.actual > e.estimate,
         );
 
+        logToolEnd("get_earnings_data", _t0, ctx.runId, `ticker=${ticker}`);
         return {
           next_earnings: upcoming
             ? {
@@ -1489,7 +1588,8 @@ export function createResearchTools(ctx: ToolContext) {
         "Display your research thesis as a formatted card. Call this after you've completed your analysis of a ticker to present your findings. The thesis will be saved to the database.",
       inputSchema: thesisParams,
       execute: async (args: ThesisInput) => {
-        console.log(`[tool] show_thesis ticker=${args.ticker} direction=${args.direction} confidence=${args.confidence_score} runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("show_thesis", ctx.runId, `ticker=${args.ticker} direction=${args.direction} confidence=${args.confidence_score}`);
         try {
           const thesis = await prisma.thesis.create({
             data: {
@@ -1567,8 +1667,10 @@ export function createResearchTools(ctx: ToolContext) {
             }
           }
 
+          logToolEnd("show_thesis", _t0, ctx.runId, `ticker=${args.ticker} id=${thesis.id}`);
           return { ...args, thesis_id: thesis.id };
         } catch {
+          logToolEnd("show_thesis", _t0, ctx.runId, `ticker=${args.ticker} FAILED`);
           return args;
         }
       },
@@ -1579,7 +1681,8 @@ export function createResearchTools(ctx: ToolContext) {
         "Place a paper trade on Alpaca. Only call this after presenting a thesis and explaining your reasoning. The trade will be executed immediately. Will fail if any analyst already holds an open position in this ticker.",
       inputSchema: tradeParams,
       execute: async (args: TradeInput) => {
-        console.log(`[tool] place_trade ticker=${args.ticker} direction=${args.direction} shares=${args.shares} runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("place_trade", ctx.runId, `ticker=${args.ticker} direction=${args.direction} shares=${args.shares}`);
 
         try {
           // 0. Check for existing open position in this ticker across ALL analysts
@@ -1711,6 +1814,7 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           console.log(`[tool] place_trade SUCCESS position=${position.id} fill=$${fillPrice.toFixed(2)}`);
+          logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`);
           return {
             ...args,
             status: "filled" as const,
@@ -1724,6 +1828,7 @@ export function createResearchTools(ctx: ToolContext) {
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Trade placement failed";
           console.error(`[tool] place_trade FAILED for ${args.ticker}: ${msg}`);
+          logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} FAILED`);
           return {
             ...args,
             status: "failed" as const,
@@ -1791,7 +1896,8 @@ export function createResearchTools(ctx: ToolContext) {
           ),
       }),
       execute: async (args) => {
-        console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("summarize_run", ctx.runId, `picks=${args.ranked_picks.length}`);
         // Mark the run as complete + persist summary as RunEvent
         try {
           const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
@@ -1837,6 +1943,7 @@ export function createResearchTools(ctx: ToolContext) {
         } catch {
           // Non-fatal
         }
+        logToolEnd("summarize_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`);
         return args;
       },
     }),
@@ -1850,6 +1957,8 @@ export function createResearchTools(ctx: ToolContext) {
         symbol: z.string().describe("Ticker symbol, e.g. AAPL"),
       }),
       execute: async (args) => {
+        const _t0 = Date.now();
+        logToolStart("get_sec_filings", ctx.runId, `symbol=${args.symbol}`);
         try {
           const res = await fetch(
             `https://data.sec.gov/submissions/CIK${await getCIK(args.symbol)}.json`,
@@ -1890,8 +1999,10 @@ export function createResearchTools(ctx: ToolContext) {
             });
             if (filings.length >= 8) break;
           }
+          logToolEnd("get_sec_filings", _t0, ctx.runId, `symbol=${args.symbol} count=${filings.length}`);
           return { filings, count: filings.length };
         } catch (err) {
+          logToolEnd("get_sec_filings", _t0, ctx.runId, `symbol=${args.symbol} FAILED`);
           return { filings: [], error: err instanceof Error ? err.message : "Failed" };
         }
       },
@@ -1905,6 +2016,8 @@ export function createResearchTools(ctx: ToolContext) {
         symbol: z.string().describe("Ticker symbol, e.g. NVDA"),
       }),
       execute: async (args) => {
+        const _t0 = Date.now();
+        logToolStart("get_analyst_targets", ctx.runId, `symbol=${args.symbol}`);
         const { data, error } = await fmp(
           `/v4/price-target-consensus?symbol=${args.symbol}`
         );
@@ -1912,6 +2025,7 @@ export function createResearchTools(ctx: ToolContext) {
         const arr = data as { targetConsensus?: number; targetHigh?: number; targetLow?: number; targetMedian?: number; numberOfAnalysts?: number }[];
         if (!Array.isArray(arr) || arr.length === 0) return { targets: null };
         const c = arr[0];
+        logToolEnd("get_analyst_targets", _t0, ctx.runId, `symbol=${args.symbol}`);
         return {
           targets: {
             consensus: c.targetConsensus,
@@ -1932,6 +2046,8 @@ export function createResearchTools(ctx: ToolContext) {
         symbol: z.string().describe("Ticker symbol, e.g. MSFT"),
       }),
       execute: async (args) => {
+        const _t0 = Date.now();
+        logToolStart("get_company_peers", ctx.runId, `symbol=${args.symbol}`);
         // Get peers from Finnhub
         const { data: peersData, error: peersErr } = await finnhub(
           `/stock/peers?symbol=${args.symbol}`
@@ -1964,6 +2080,7 @@ export function createResearchTools(ctx: ToolContext) {
           })
         );
 
+        logToolEnd("get_company_peers", _t0, ctx.runId, `symbol=${args.symbol} count=${peerQuotes.length}`);
         return { peers: peerQuotes };
       },
     }),
@@ -1976,6 +2093,8 @@ export function createResearchTools(ctx: ToolContext) {
         symbol: z.string().describe("Ticker symbol, e.g. TSLA"),
       }),
       execute: async (args) => {
+        const _t0 = Date.now();
+        logToolStart("get_news_deep_dive", ctx.runId, `symbol=${args.symbol}`);
         const [stockNews, pressReleases] = await Promise.all([
           fmp(`/stock_news?tickers=${args.symbol}&limit=10`),
           fmp(`/press-releases/${args.symbol}?limit=5`),
@@ -1999,6 +2118,7 @@ export function createResearchTools(ctx: ToolContext) {
           date: item.date ?? "",
         }));
 
+        logToolEnd("get_news_deep_dive", _t0, ctx.runId, `symbol=${args.symbol} total=${news.length + prs.length}`);
         return {
           stock_news: news,
           press_releases: prs,
@@ -2037,9 +2157,12 @@ export function createResearchTools(ctx: ToolContext) {
         lookback_days: z.number().optional().describe("Days to look back for news (default 3)"),
       }),
       execute: async ({ lookback_days }) => {
-        console.log(`[tool] detect_market_themes lookback=${lookback_days ?? 3} runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("detect_market_themes", ctx.runId, `lookback=${lookback_days ?? 3}`);
         const { detectThemes } = await import("@/lib/discovery/themes");
-        return detectThemes(lookback_days);
+        const result = await detectThemes(lookback_days);
+        logToolEnd("detect_market_themes", _t0, ctx.runId);
+        return result;
       },
     }),
 
@@ -2054,9 +2177,12 @@ export function createResearchTools(ctx: ToolContext) {
           .describe("Types of catalysts to scan for (default: all)"),
       }),
       execute: async ({ forward_days, catalyst_types }) => {
-        console.log(`[tool] scan_catalysts forward=${forward_days ?? 14} types=${catalyst_types?.join(",") ?? "all"} runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("scan_catalysts", ctx.runId, `forward=${forward_days ?? 14} types=${catalyst_types?.join(",") ?? "all"}`);
         const { scanCatalysts } = await import("@/lib/discovery/catalysts");
-        return scanCatalysts({ forwardDays: forward_days, catalystTypes: catalyst_types });
+        const result = await scanCatalysts({ forwardDays: forward_days, catalystTypes: catalyst_types });
+        logToolEnd("scan_catalysts", _t0, ctx.runId);
+        return result;
       },
     }),
   };

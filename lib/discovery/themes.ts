@@ -25,15 +25,24 @@ const BULLISH_WORDS = ["surge", "rally", "beat", "upgrade", "growth", "record", 
 
 async function finnhubFetch<T>(path: string): Promise<T | null> {
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
+  const endpoint = path.split("?")[0];
+  const t0 = Date.now();
   try {
-    const res = await fetch(url, { next: { revalidate: 300 } });
+    const res = await fetch(url, {
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const elapsed = Date.now() - t0;
     if (!res.ok) {
-      console.warn(`[themes] Finnhub ${path.split("?")[0]} returned ${res.status}`);
+      console.warn(`[themes] Finnhub ${endpoint} returned ${res.status} (${elapsed}ms)`);
       return null;
     }
+    if (elapsed > 3000) console.warn(`[themes] SLOW Finnhub ${endpoint} ${elapsed}ms`);
     return (await res.json()) as T;
   } catch (err) {
-    console.warn(`[themes] Finnhub ${path.split("?")[0]} failed:`, err instanceof Error ? err.message : err);
+    const elapsed = Date.now() - t0;
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    console.warn(`[themes] Finnhub ${endpoint} ${isTimeout ? "TIMEOUT" : "failed"} (${elapsed}ms):`, err instanceof Error ? err.message : err);
     return null;
   }
 }

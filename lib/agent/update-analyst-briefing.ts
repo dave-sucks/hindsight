@@ -57,7 +57,7 @@ export async function updateAnalystBriefing({
       runSummaryEvent,
       allRunsCount,
       previousBriefing,
-      recentShadowTrades,
+      recentPassDecisions,
     ] = await Promise.all([
       prisma.agentConfig.findFirst({
         where: { id: analystId, userId },
@@ -167,18 +167,20 @@ export async function updateAnalystBriefing({
         orderBy: { createdAt: "desc" },
         select: { narrative: true, strategyNotes: true, createdAt: true },
       }),
-      // Recent shadow-closed positions (pass tracking)
-      prisma.position.findMany({
+      // Recent PASS decisions (replaces old shadow trade tracking)
+      prisma.tradeDecision.findMany({
         where: {
           userId,
-          status: "SHADOW_CLOSED",
           analystId,
+          decision: "PASS",
         },
-        orderBy: { closedAt: "desc" },
+        orderBy: { createdAt: "desc" },
         take: 10,
         select: {
-          symbol: true, avgCost: true, closePrice: true,
-          realizedPnl: true, outcome: true,
+          symbol: true, reasoning: true, createdAt: true,
+          thesis: {
+            select: { entryPrice: true, confidenceScore: true },
+          },
         },
       }),
     ]);
@@ -322,14 +324,15 @@ Trades placed: ${runTrades.length}
 Run summary: ${runSummaryText}
 ${previousBriefingText}
 
-### Shadow Trades — Pass Tracking
-${recentShadowTrades.length > 0
-  ? recentShadowTrades.map((t) => {
-      const priceDelta = t.closePrice ? ((t.closePrice - t.avgCost) / t.avgCost * 100) : 0;
-      const label = t.outcome === "WIN" ? "GOOD PASS" : "BAD PASS";
-      return `- ${label}: $${t.symbol} passed at $${t.avgCost.toFixed(2)}, closed at $${(t.closePrice ?? 0).toFixed(2)} (${priceDelta >= 0 ? "+" : ""}${priceDelta.toFixed(1)}%)`;
+### Recent Pass Decisions
+${recentPassDecisions.length > 0
+  ? recentPassDecisions.map((d) => {
+      const entryPrice = d.thesis?.entryPrice;
+      const confidence = d.thesis?.confidenceScore;
+      const dateStr = d.createdAt.toISOString().slice(0, 10);
+      return `- PASS: $${d.symbol} on ${dateStr} (confidence: ${confidence ?? "?"}%, entry was $${entryPrice ? Number(entryPrice).toFixed(2) : "?"}) — ${d.reasoning?.slice(0, 100) ?? "no reason"}`;
     }).join("\n")
-  : "No shadow trades resolved yet."}
+  : "No pass decisions recorded yet."}
 
 ### Session Stats
 Total completed research sessions: ${allRunsCount}
@@ -342,7 +345,7 @@ Generate a structured briefing with two parts:
 1. Portfolio Status — Open positions, what we're holding and why
 2. Recent Activity — What we bought/sold recently, outcomes
 3. Performance Review — Win rate, P&L trends, what's working vs not
-4. Pass Accuracy — If shadow trades exist, comment on whether your pass decisions were good (avoided losses) or bad (missed gains)
+4. Pass Accuracy — If pass decisions exist, reflect on whether those passes were the right call
 5. Tomorrow's Focus — What to look for next session
 
 **strategyNotes**: Specific, data-driven strategy adjustments. What patterns do you see in wins vs losses? What should we do differently? Be honest and actionable.

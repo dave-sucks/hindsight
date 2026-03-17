@@ -265,6 +265,15 @@ export async function POST(req: Request) {
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(30),
+    onStepFinish({ stepNumber, toolCalls, text, finishReason, usage }) {
+      const elapsed = Date.now() - t0;
+      const ts = new Date().toISOString().slice(11, 23);
+      const toolNames = toolCalls.map((tc) => tc.toolName).join(", ") || "none";
+      const textPreview = text?.slice(0, 100)?.replace(/\n/g, " ") || "";
+      console.log(
+        `[agent] ${ts} STEP #${stepNumber} runId=${runId} elapsed=${elapsed}ms tools=[${toolNames}] finish=${finishReason} tokens=${usage?.totalTokens ?? "?"} text="${textPreview}${text && text.length > 100 ? "..." : ""}"`
+      );
+    },
     async onFinish({ response }) {
       const elapsed = Date.now() - t0;
       console.log(`[agent] onFinish runId=${runId} elapsed=${elapsed}ms responseMsgs=${response.messages.length}`);
