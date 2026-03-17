@@ -217,7 +217,7 @@ export function ThesisCard({
 
           {/* ── TOP: logo · name · status · price ── */}
           <div className="p-3 border-b">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col md:flex-row items-start md:justify-between md:gap-4 gap-2">
 
               {/* Left: logo + company name + status badge + ticker subhead */}
               <div className="flex items-center gap-2.5 min-w-0">
@@ -269,7 +269,7 @@ export function ThesisCard({
               </div>
 
               {/* Right: price + $delta + %badge — ALL ONE ROW, target below */}
-              <div className="shrink-0 text-right">
+              <div className="shrink-0 text-left md:text-right">
                 <div className="flex items-center gap-2">
                   <p className="text-lg font-medium tabular-nums text-foreground leading-none">
                     {displayPrice != null ? `$${displayPrice.toFixed(2)}` : "—"}
@@ -286,7 +286,7 @@ export function ThesisCard({
                   {deltaPct != null && <PnlBadge value={deltaPct} />}
                 </div>
                 {targetLine && (
-                  <p className="text-xs text-muted-foreground mt-1 text-right">
+                  <p className="text-xs text-muted-foreground mt-1 text-left md:text-right">
                     {targetLine}
                   </p>
                 )}

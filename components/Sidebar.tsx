@@ -16,6 +16,7 @@ import {
   Wallet,
   Sun,
   Moon,
+  Workflow,
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
 import { SidebarMarquee } from '@/components/MarketPulseStrip';
@@ -163,6 +164,11 @@ export default function AppSidebar({
                 <DropdownMenuItem onClick={() => router.push('/settings')}>
                   <Settings className="h-3.5 w-3.5" />
                   Settings
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => router.push('/agent-workflow')}>
+                  <Workflow className="h-3.5 w-3.5" />
+                  Agent Workflow
                 </DropdownMenuItem>
 
                 {/* Theme toggle */}

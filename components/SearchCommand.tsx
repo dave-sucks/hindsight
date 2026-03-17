@@ -72,16 +72,28 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
           {label}
         </span>
       ) : renderAs === 'icon' ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setOpen(true)}
-          className="w-full max-w-xs gap-2 rounded-md bg-muted/50 text-sm text-muted-foreground hover:bg-muted"
-        >
-          <Search className="h-4 w-4 shrink-0" />
-          <span className="flex-1 text-left">Search stocks</span>
-          <Kbd>⌘K</Kbd>
-        </Button>
+        <>
+          {/* Mobile: ghost icon button */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setOpen(true)}
+            className="md:hidden"
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+          {/* Desktop: full search bar */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(true)}
+            className="hidden md:flex w-full max-w-xs gap-2 rounded-md bg-muted/50 text-sm text-muted-foreground hover:bg-muted"
+          >
+            <Search className="h-4 w-4 shrink-0" />
+            <span className="flex-1 text-left">Search stocks</span>
+            <Kbd>⌘K</Kbd>
+          </Button>
+        </>
       ) : (
         <Button onClick={() => setOpen(true)}>
           {label}
