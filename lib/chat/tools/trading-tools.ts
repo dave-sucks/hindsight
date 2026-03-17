@@ -87,12 +87,24 @@ export function createTradingTools(userId: string) {
           return { error: "Must specify qty or dollarAmount" };
         }
 
-        // Check max open positions
+        // Check for existing open position in this ticker
+        const existingPosition = await prisma.position.findFirst({
+          where: { userId, symbol: ticker, status: "OPEN" },
+          select: { id: true },
+        });
+        if (existingPosition) {
+          return { error: `Already holding an open position in ${ticker}. Use add_to_position instead.` };
+        }
+
+        // Check max open positions — find a default analyst for chat trades
         const agentConfig = await prisma.agentConfig.findFirst({
           where: { userId, enabled: true },
         });
-        const maxOpen = agentConfig?.maxOpenPositions ?? 5;
-        const openCount = await prisma.trade.count({
+        if (!agentConfig) {
+          return { error: "No analyst configured. Create an analyst first." };
+        }
+        const maxOpen = agentConfig.maxOpenPositions ?? 5;
+        const openCount = await prisma.position.count({
           where: { userId, status: "OPEN" },
         });
         if (openCount >= maxOpen) {
@@ -122,31 +134,47 @@ export function createTradingTools(userId: string) {
 
         // Place Alpaca order
         try {
-          const order = await placeMarketOrder({ symbol: ticker, qty: shares, side });
-          const fillPrice = await waitForFill(order.id, ticker, currentPrice);
+          const alpacaOrder = await placeMarketOrder({ symbol: ticker, qty: shares, side });
+          const fillPrice = await waitForFill(alpacaOrder.id, ticker, currentPrice);
 
-          // Write Trade + TradeEvent
-          const trade = await prisma.trade.create({
+          // Create Position
+          const position = await prisma.position.create({
             data: {
-              thesisId: thesis.id,
+              analystId: agentConfig.id,
               userId,
-              ticker,
+              symbol: ticker,
               direction: side === "buy" ? "LONG" : "SHORT",
               status: "OPEN",
-              entryPrice: fillPrice,
-              shares,
+              quantity: shares,
+              avgCost: fillPrice,
               targetPrice: targetPrice ?? null,
               stopLoss: stopLoss ?? null,
               exitStrategy: targetPrice ? "PRICE_TARGET" : "MANUAL",
-              alpacaOrderId: order.id,
-              notes: "Placed via chat tool",
             },
           });
 
-          await prisma.tradeEvent.create({
+          // Create Order
+          await prisma.order.create({
             data: {
-              tradeId: trade.id,
-              eventType: "PLACED",
+              positionId: position.id,
+              userId,
+              symbol: ticker,
+              side: side === "buy" ? "BUY" : "SELL",
+              orderType: "MARKET",
+              quantity: shares,
+              status: "FILLED",
+              filledPrice: fillPrice,
+              filledQty: shares,
+              filledAt: new Date(),
+              alpacaOrderId: alpacaOrder.id,
+            },
+          });
+
+          // Write OPENED PositionEvent
+          await prisma.positionEvent.create({
+            data: {
+              positionId: position.id,
+              eventType: "OPENED",
               description: `${side === "buy" ? "LONG" : "SHORT"} ${shares} shares of ${ticker} at $${fillPrice.toFixed(2)} via chat`,
               priceAt: fillPrice,
             },
@@ -154,7 +182,7 @@ export function createTradingTools(userId: string) {
 
           return {
             success: true,
-            tradeId: trade.id,
+            tradeId: position.id,
             ticker,
             direction: side === "buy" ? "LONG" : "SHORT",
             shares,
@@ -171,7 +199,7 @@ export function createTradingTools(userId: string) {
 
     close_position: tool({
       description:
-        "Close an open paper trade position. Can identify by ticker symbol or trade ID. " +
+        "Close an open paper trade position. Can identify by ticker symbol or position ID. " +
         "Returns realized P&L and outcome.",
       inputSchema: z.object({
         symbol: z
@@ -181,48 +209,47 @@ export function createTradingTools(userId: string) {
         tradeId: z
           .string()
           .optional()
-          .describe("Prisma Trade ID (alternative to symbol)"),
+          .describe("Position ID (alternative to symbol)"),
         reason: z
           .enum(["TARGET", "STOP", "MANUAL"])
           .default("MANUAL")
           .describe("Reason for closing"),
       }),
       execute: async ({ symbol, tradeId, reason }) => {
-        // Find the trade
-        let trade;
+        // Find the position
+        let position;
         if (tradeId) {
-          trade = await prisma.trade.findUnique({ where: { id: tradeId } });
+          position = await prisma.position.findUnique({ where: { id: tradeId } });
         } else if (symbol) {
-          trade = await prisma.trade.findFirst({
-            where: { userId, ticker: symbol.toUpperCase(), status: "OPEN" },
+          position = await prisma.position.findFirst({
+            where: { userId, symbol: symbol.toUpperCase(), status: "OPEN" },
             orderBy: { openedAt: "desc" },
           });
         }
 
-        if (!trade) {
+        if (!position) {
           return { error: `No open position found for ${symbol || tradeId}` };
         }
-        if (trade.status !== "OPEN") {
-          return { error: `Trade is already ${trade.status}` };
+        if (position.status !== "OPEN") {
+          return { error: `Position is already ${position.status}` };
         }
 
-        // Use server action logic inline (can't call "use server" from tool)
-        const { closeTrade } = await import("@/lib/actions/closeTrade.actions");
+        const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
         try {
-          const result = await closeTrade(trade.id, reason);
+          const result = await closeOpenPosition(position.id, reason);
           const pnlPct =
-            trade.entryPrice > 0
-              ? ((result.closePrice - trade.entryPrice) / trade.entryPrice) * 100
+            position.avgCost > 0
+              ? ((result.closePrice - position.avgCost) / position.avgCost) * 100
               : 0;
 
           return {
             success: true,
-            tradeId: trade.id,
-            ticker: trade.ticker,
-            direction: trade.direction,
-            entryPrice: trade.entryPrice,
+            tradeId: position.id,
+            ticker: position.symbol,
+            direction: position.direction,
+            entryPrice: position.avgCost,
             closePrice: result.closePrice,
-            shares: trade.shares,
+            shares: position.quantity,
             realizedPnl: result.realizedPnl,
             pnlPct: Math.round(pnlPct * 100) / 100,
             outcome: result.outcome,
@@ -236,32 +263,32 @@ export function createTradingTools(userId: string) {
 
     modify_position: tool({
       description:
-        "Modify stop loss or target price on an open trade. Does not change position size.",
+        "Modify stop loss or target price on an open position. Does not change position size.",
       inputSchema: z.object({
         symbol: z
           .string()
           .optional()
           .describe("Ticker symbol of the position to modify"),
-        tradeId: z.string().optional().describe("Trade ID (alternative to symbol)"),
+        tradeId: z.string().optional().describe("Position ID (alternative to symbol)"),
         newStop: z.number().optional().describe("New stop loss price"),
         newTarget: z.number().optional().describe("New target price"),
       }),
       execute: async ({ symbol, tradeId, newStop, newTarget }) => {
-        let trade;
+        let position;
         if (tradeId) {
-          trade = await prisma.trade.findUnique({ where: { id: tradeId } });
+          position = await prisma.position.findUnique({ where: { id: tradeId } });
         } else if (symbol) {
-          trade = await prisma.trade.findFirst({
-            where: { userId, ticker: symbol.toUpperCase(), status: "OPEN" },
+          position = await prisma.position.findFirst({
+            where: { userId, symbol: symbol.toUpperCase(), status: "OPEN" },
             orderBy: { openedAt: "desc" },
           });
         }
 
-        if (!trade) {
+        if (!position) {
           return { error: `No open position found for ${symbol || tradeId}` };
         }
-        if (trade.status !== "OPEN") {
-          return { error: `Trade is already ${trade.status}` };
+        if (position.status !== "OPEN") {
+          return { error: `Position is already ${position.status}` };
         }
         if (!newStop && !newTarget) {
           return { error: "Must specify at least one of newStop or newTarget" };
@@ -271,33 +298,33 @@ export function createTradingTools(userId: string) {
         if (newStop !== undefined) updateData.stopLoss = newStop;
         if (newTarget !== undefined) updateData.targetPrice = newTarget;
 
-        await prisma.trade.update({
-          where: { id: trade.id },
+        await prisma.position.update({
+          where: { id: position.id },
           data: updateData,
         });
 
         const changes: string[] = [];
         if (newStop !== undefined)
-          changes.push(`stop: $${trade.stopLoss?.toFixed(2) ?? "none"} -> $${newStop.toFixed(2)}`);
+          changes.push(`stop: $${position.stopLoss?.toFixed(2) ?? "none"} -> $${newStop.toFixed(2)}`);
         if (newTarget !== undefined)
-          changes.push(`target: $${trade.targetPrice?.toFixed(2) ?? "none"} -> $${newTarget.toFixed(2)}`);
+          changes.push(`target: $${position.targetPrice?.toFixed(2) ?? "none"} -> $${newTarget.toFixed(2)}`);
 
-        await prisma.tradeEvent.create({
+        await prisma.positionEvent.create({
           data: {
-            tradeId: trade.id,
+            positionId: position.id,
             eventType: "PRICE_CHECK",
             description: `Position modified via chat: ${changes.join(", ")}`,
-            priceAt: trade.entryPrice,
+            priceAt: position.avgCost,
           },
         });
 
         return {
           success: true,
-          tradeId: trade.id,
-          ticker: trade.ticker,
-          direction: trade.direction,
-          stopLoss: newStop ?? trade.stopLoss,
-          targetPrice: newTarget ?? trade.targetPrice,
+          tradeId: position.id,
+          ticker: position.symbol,
+          direction: position.direction,
+          stopLoss: newStop ?? position.stopLoss,
+          targetPrice: newTarget ?? position.targetPrice,
           changes,
         };
       },
@@ -317,11 +344,11 @@ export function createTradingTools(userId: string) {
       execute: async ({ symbol, qty, dollarAmount }) => {
         const ticker = symbol.toUpperCase();
 
-        const trade = await prisma.trade.findFirst({
-          where: { userId, ticker, status: "OPEN" },
+        const position = await prisma.position.findFirst({
+          where: { userId, symbol: ticker, status: "OPEN" },
           orderBy: { openedAt: "desc" },
         });
-        if (!trade) {
+        if (!position) {
           return { error: `No open position in ${ticker}` };
         }
 
@@ -344,29 +371,46 @@ export function createTradingTools(userId: string) {
         }
 
         // Place additional order
-        const side = trade.direction === "LONG" ? "buy" : ("sell" as const);
+        const side = position.direction === "LONG" ? "buy" : ("sell" as const);
         try {
-          const order = await placeMarketOrder({ symbol: ticker, qty: addShares, side });
-          const fillPrice = await waitForFill(order.id, ticker, currentPrice);
+          const alpacaOrder = await placeMarketOrder({ symbol: ticker, qty: addShares, side });
+          const fillPrice = await waitForFill(alpacaOrder.id, ticker, currentPrice);
 
-          // Update trade: recalculate avg entry, add shares
-          const oldCost = trade.entryPrice * trade.shares;
+          // Update position: recalculate avg cost, add shares
+          const oldCost = position.avgCost * position.quantity;
           const newCost = fillPrice * addShares;
-          const totalShares = trade.shares + addShares;
+          const totalShares = position.quantity + addShares;
           const avgEntry = (oldCost + newCost) / totalShares;
 
-          await prisma.trade.update({
-            where: { id: trade.id },
+          await prisma.position.update({
+            where: { id: position.id },
             data: {
-              shares: totalShares,
-              entryPrice: Math.round(avgEntry * 100) / 100,
+              quantity: totalShares,
+              avgCost: Math.round(avgEntry * 100) / 100,
             },
           });
 
-          await prisma.tradeEvent.create({
+          // Create Order record for the addition
+          await prisma.order.create({
             data: {
-              tradeId: trade.id,
-              eventType: "PLACED",
+              positionId: position.id,
+              userId,
+              symbol: ticker,
+              side: position.direction === "LONG" ? "BUY" : "SELL",
+              orderType: "MARKET",
+              quantity: addShares,
+              status: "FILLED",
+              filledPrice: fillPrice,
+              filledQty: addShares,
+              filledAt: new Date(),
+              alpacaOrderId: alpacaOrder.id,
+            },
+          });
+
+          await prisma.positionEvent.create({
+            data: {
+              positionId: position.id,
+              eventType: "OPENED",
               description: `Added ${addShares} shares at $${fillPrice.toFixed(2)} (total: ${totalShares} shares, avg: $${avgEntry.toFixed(2)})`,
               priceAt: fillPrice,
             },
@@ -374,7 +418,7 @@ export function createTradingTools(userId: string) {
 
           return {
             success: true,
-            tradeId: trade.id,
+            tradeId: position.id,
             ticker,
             addedShares: addShares,
             fillPrice,

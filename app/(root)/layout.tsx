@@ -24,19 +24,19 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     // Load open trade tickers, stocks list, and portfolio value at request time
     const [initialStocks, openTrades, pnlAggregate] = await Promise.all([
         searchStocks(),
-        prisma.trade.findMany({
+        prisma.position.findMany({
             where: { userId: user.id, status: "OPEN" },
-            select: { thesis: { select: { ticker: true } } },
+            select: { symbol: true },
             take: 10,
         }),
-        prisma.trade.aggregate({
+        prisma.position.aggregate({
             where: { userId: user.id, status: "CLOSED" },
             _sum: { realizedPnl: true },
         }),
     ]);
 
     const openTradeTickers = openTrades
-        .map((t) => t.thesis?.ticker)
+        .map((t) => t.symbol)
         .filter((t): t is string => Boolean(t));
 
     const marketOpen = isMarketOpen();

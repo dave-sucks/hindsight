@@ -133,33 +133,66 @@ export async function triggerResearchRun(
     });
     thesisIds.push(row.id);
 
-    // Create a Trade for non-PASS theses above the confidence threshold
+    // Create a Position for non-PASS theses above the confidence threshold
     if (thesis.direction !== "PASS" && thesis.confidence_score >= minConfidence) {
       if (thesis.entry_price != null) {
-        const trade = await prisma.trade.create({
+        const analystIdForTrade = agentConfigId ?? agentConfig?.id;
+        if (!analystIdForTrade) continue;
+
+        const shares = Math.floor(
+          ((agentConfig?.maxPositionSize ?? 500) as number) / thesis.entry_price
+        );
+
+        const position = await prisma.position.create({
           data: {
-            thesisId: row.id,
+            analystId: analystIdForTrade,
             userId,
-            ticker: thesis.ticker,
+            symbol: thesis.ticker,
             direction: thesis.direction as "LONG" | "SHORT",
             status: "OPEN",
-            entryPrice: thesis.entry_price,
-            shares: Math.floor(
-              ((agentConfig?.maxPositionSize ?? 500) as number) / thesis.entry_price
-            ),
+            quantity: shares,
+            avgCost: thesis.entry_price,
             targetPrice: thesis.target_price,
             stopLoss: thesis.stop_loss,
             exitStrategy: "PRICE_TARGET",
           },
         });
-        tradeIds.push(trade.id);
+        tradeIds.push(position.id);
 
-        await prisma.tradeEvent.create({
+        await prisma.order.create({
           data: {
-            tradeId: trade.id,
-            eventType: "PLACED",
-            description: `Trade placed via ${source.toLowerCase()} research run`,
+            positionId: position.id,
+            userId,
+            symbol: thesis.ticker,
+            side: thesis.direction === "LONG" ? "BUY" : "SELL",
+            orderType: "MARKET",
+            quantity: shares,
+            status: "FILLED",
+            filledPrice: thesis.entry_price,
+            filledQty: shares,
+            filledAt: new Date(),
+          },
+        });
+
+        await prisma.positionEvent.create({
+          data: {
+            positionId: position.id,
+            eventType: "OPENED",
+            description: `Position opened via ${source.toLowerCase()} research run`,
             priceAt: thesis.entry_price,
+          },
+        });
+
+        await prisma.tradeDecision.create({
+          data: {
+            runId: researchRun.id,
+            analystId: analystIdForTrade,
+            userId,
+            symbol: thesis.ticker,
+            decision: "BUY",
+            reasoning: thesis.reasoning_summary,
+            thesisId: row.id,
+            positionId: position.id,
           },
         });
       }

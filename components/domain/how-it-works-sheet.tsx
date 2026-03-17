@@ -403,7 +403,7 @@ const CRON_RUN_DETAILS: DetailSection[] = [
   {
     heading: "Per-analyst: slot check (fixed in PR #86)",
     items: [
-      { label: "Open trade count", value: "prisma.trade.count({ userId, status: \"OPEN\", thesis: { researchRun: { agentConfigId: config.id } } }) — counts only OPEN trades belonging to THIS specific analyst" },
+      { label: "Open position count", value: "prisma.position.count({ userId, status: \"OPEN\", analystId: config.id }) — counts only OPEN positions belonging to THIS specific analyst" },
       { label: "Slots remaining", value: "Math.max(0, config.maxOpenPositions - openCount)" },
       { label: "Zero slots", value: "Never skips the run — agent still researches, just won't place new trades. maxOpenPositions in the system prompt is set to slotsRemaining (not the config max)." },
       { label: "PR #86 fix", value: "Before March 16, 2026, this query counted ALL open trades for the user (across all analysts). If Analyst A had 5 positions, Analyst B's cron would see 0 remaining slots and the system prompt would say max positions = 0. Fixed to filter by agentConfigId so each analyst only counts its own positions." },
@@ -461,7 +461,7 @@ const CRON_RUN_DETAILS: DetailSection[] = [
     heading: "After completion",
     items: [
       { label: "Stats logged", value: "steps.length, toolCalls count, elapsed time in ms" },
-      { label: "Trade count", value: "prisma.trade.count({ thesis.researchRunId: run.id }) — counts trades the agent placed via place_trade tool" },
+      { label: "Position count", value: "prisma.position.count({ decisions: { some: { thesis: { researchRunId: run.id } } } }) — counts positions the agent opened via place_trade tool" },
       { label: "Belt-and-suspenders", value: "If run.status is still RUNNING, marks it COMPLETE with completedAt + appends tradesPlaced, agentSteps, agentToolCalls, elapsedMs to parameters" },
       { label: "Message persistence", value: "Deletes existing RunMessage rows, creates one RunMessage with role=\"thread\" containing the user prompt + all response.messages" },
       { label: "Briefing update", value: "Calls updateAnalystBriefing({ analystId, runId, userId }) — same GPT-4o-mini briefing generation as manual" },
@@ -597,8 +597,8 @@ const CONTEXT_LOADING_DETAILS: DetailSection[] = [
   {
     heading: "3. Open positions (current holdings)",
     items: [
-      { label: "Query", value: "prisma.trade.findMany({ where: { userId, status: \"OPEN\", thesis: { researchRun: { agentConfigId } } } })" },
-      { label: "Fields", value: "ticker, direction, entryPrice, shares, targetPrice, stopLoss, createdAt" },
+      { label: "Query", value: "prisma.position.findMany({ where: { userId, status: \"OPEN\", analystId } })" },
+      { label: "Fields", value: "symbol, direction, avgCost, quantity, targetPrice, stopLoss, createdAt" },
       { label: "Format", value: "\"## Your Open Positions\" — each position as: LONG/SHORT shares $TICKER @ $price (target: $X, stop: $Y)" },
       { label: "Instruction", value: "Includes: \"Do NOT open duplicate positions in tickers you already hold.\" The agent sees exactly what it's holding and avoids doubling down." },
       { label: "Scope", value: "Filtered by agentConfigId — only this analyst's positions, not other analysts. This is critical for multi-analyst setups." },
@@ -607,8 +607,8 @@ const CONTEXT_LOADING_DETAILS: DetailSection[] = [
   {
     heading: "4. Closed trade history",
     items: [
-      { label: "Query", value: "prisma.trade.findMany({ where: { userId, status: \"CLOSED\", thesis: { researchRun: { agentConfigId } } }, orderBy: { closedAt: \"desc\" }, take: 20 })" },
-      { label: "Fields", value: "ticker, direction, outcome (WIN/LOSS), entryPrice, closePrice, shares, realizedPnl, closeReason, closedAt, agentEvaluation" },
+      { label: "Query", value: "prisma.position.findMany({ where: { userId, status: \"CLOSED\", analystId }, orderBy: { closedAt: \"desc\" }, take: 20 })" },
+      { label: "Fields", value: "symbol, direction, outcome (WIN/LOSS), avgCost, closePrice, quantity, realizedPnl, closeReason, closedAt, agentEvaluation" },
       { label: "Format", value: "\"## Recent Trade History\" — win/loss tally, then each trade: WIN/LOSS | LONG/SHORT $TICKER | entry → exit | P&L | Eval snippet (200 chars)" },
       { label: "Instruction", value: "\"Learn from these results. Avoid repeating losing patterns. Double down on what's working.\"" },
       { label: "Eval snippets", value: "The agentEvaluation field comes from the trade evaluator (GPT-4o post-trade analysis). So the agent reads what a different model said about why each trade won or lost." },
@@ -617,8 +617,8 @@ const CONTEXT_LOADING_DETAILS: DetailSection[] = [
   {
     heading: "5. Shadow trades (pass tracking)",
     items: [
-      { label: "Query", value: "prisma.trade.findMany({ where: { userId, status: \"SHADOW_CLOSED\", thesis: { researchRun: { agentConfigId } } }, orderBy: { closedAt: \"desc\" }, take: 10 })" },
-      { label: "Fields", value: "ticker, entryPrice, closePrice, realizedPnl, outcome, closedAt" },
+      { label: "Query", value: "prisma.position.findMany({ where: { userId, status: \"SHADOW_CLOSED\", analystId }, orderBy: { closedAt: \"desc\" }, take: 10 })" },
+      { label: "Fields", value: "symbol, avgCost, closePrice, realizedPnl, outcome, closedAt" },
       { label: "Format", value: "\"## Shadow Trade Results — Passes You Tracked\" — good/bad pass tally, then each: GOOD/BAD PASS | $TICKER | passed at $X, now $Y (+Z%) | Missed/Avoided $PnL" },
       { label: "How they're created", value: "When show_thesis is called with direction=PASS, it creates a shadow trade (status: SHADOW, direction: LONG, exits after 7 calendar days). The price monitor tracks it hourly and closes it as SHADOW_CLOSED with outcome WIN (good pass, price dropped) or LOSS (bad pass, price rose)." },
       { label: "Instruction", value: "\"Use these results to calibrate your pass decisions. If you're frequently making bad passes, consider being more aggressive.\"" },
