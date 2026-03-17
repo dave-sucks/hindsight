@@ -19,15 +19,24 @@ const FMP_KEY = process.env.FMP_API_KEY!;
 
 async function finnhubFetch<T>(path: string): Promise<T | null> {
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
+  const endpoint = path.split("?")[0];
+  const t0 = Date.now();
   try {
-    const res = await fetch(url, { next: { revalidate: 300 } });
+    const res = await fetch(url, {
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const elapsed = Date.now() - t0;
     if (!res.ok) {
-      console.warn(`[catalysts] Finnhub ${path.split("?")[0]} returned ${res.status}`);
+      console.warn(`[catalysts] Finnhub ${endpoint} returned ${res.status} (${elapsed}ms)`);
       return null;
     }
+    if (elapsed > 3000) console.warn(`[catalysts] SLOW Finnhub ${endpoint} ${elapsed}ms`);
     return (await res.json()) as T;
   } catch (err) {
-    console.warn(`[catalysts] Finnhub ${path.split("?")[0]} failed:`, err instanceof Error ? err.message : err);
+    const elapsed = Date.now() - t0;
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    console.warn(`[catalysts] Finnhub ${endpoint} ${isTimeout ? "TIMEOUT" : "failed"} (${elapsed}ms):`, err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -37,20 +46,29 @@ async function fmpFetch<T>(path: string): Promise<T | null> {
     ? `https://financialmodelingprep.com/api${path}`
     : `https://financialmodelingprep.com/api/v3${path}`;
   const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
+  const endpoint = path.split("?")[0];
+  const t0 = Date.now();
   try {
-    const res = await fetch(url, { next: { revalidate: 300 } });
+    const res = await fetch(url, {
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const elapsed = Date.now() - t0;
     if (!res.ok) {
-      console.warn(`[catalysts] FMP ${path.split("?")[0]} returned ${res.status}`);
+      console.warn(`[catalysts] FMP ${endpoint} returned ${res.status} (${elapsed}ms)`);
       return null;
     }
+    if (elapsed > 3000) console.warn(`[catalysts] SLOW FMP ${endpoint} ${elapsed}ms`);
     const data = await res.json();
     if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in data) {
-      console.warn(`[catalysts] FMP ${path.split("?")[0]}: ${(data as Record<string, string>)["Error Message"]}`);
+      console.warn(`[catalysts] FMP ${endpoint}: ${(data as Record<string, string>)["Error Message"]}`);
       return null;
     }
     return data as T;
   } catch (err) {
-    console.warn(`[catalysts] FMP ${path.split("?")[0]} failed:`, err instanceof Error ? err.message : err);
+    const elapsed = Date.now() - t0;
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    console.warn(`[catalysts] FMP ${endpoint} ${isTimeout ? "TIMEOUT" : "failed"} (${elapsed}ms):`, err instanceof Error ? err.message : err);
     return null;
   }
 }

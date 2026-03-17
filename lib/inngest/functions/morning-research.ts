@@ -238,6 +238,9 @@ export const morningResearch = inngest.createFunction(
         });
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)
+        // Use AbortSignal to kill the agent before Vercel's 300s timeout kills the process.
+        // Without this, a timeout leaves the run stuck in RUNNING status forever.
+        console.log(`[morning-research] Starting generateText for ${config.name} run=${run.id} systemPrompt=${systemPrompt.length}chars`);
         try {
           const { text, steps, response } = await generateText({
             model: openai("gpt-4.1"),
@@ -245,6 +248,16 @@ export const morningResearch = inngest.createFunction(
             prompt: "Begin your research session. Follow all phases in order.",
             tools,
             stopWhen: stepCountIs(30),
+            abortSignal: AbortSignal.timeout(240_000), // 4 min — leaves 1 min for cleanup before Vercel's 5 min limit
+            onStepFinish({ stepNumber, toolCalls: stepTools, text: stepText, finishReason, usage }) {
+              const elapsed = Date.now() - t0;
+              const ts = new Date().toISOString().slice(11, 23);
+              const toolNames = stepTools.map((tc) => tc.toolName).join(", ") || "none";
+              const textPreview = stepText?.slice(0, 120)?.replace(/\n/g, " ") || "";
+              console.log(
+                `[morning-research] ${ts} STEP #${stepNumber} ${config.name} run=${run.id} elapsed=${elapsed}ms tools=[${toolNames}] finish=${finishReason} tokens=${usage?.totalTokens ?? "?"} text="${textPreview}${stepText && stepText.length > 120 ? "..." : ""}"`
+              );
+            },
           });
 
           const toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
@@ -336,6 +349,28 @@ export const morningResearch = inngest.createFunction(
         totalTradesPlaced += (result as { tradesPlaced: number }).tradesPlaced;
       }
     }
+
+    // ── Step 3: Sweep stale RUNNING runs from this batch ──────────────────
+    // If any step.run timed out or was killed, the ResearchRun stays RUNNING.
+    // This catch-all ensures they get marked FAILED so they don't appear as live.
+    await step.run("sweep-stale-runs", async () => {
+      const staleThreshold = new Date(Date.now() - 10 * 60 * 1000); // 10 min
+      const staleRuns = await prisma.researchRun.updateMany({
+        where: {
+          status: "RUNNING",
+          source: "AGENT",
+          startedAt: { lt: staleThreshold },
+          agentConfigId: { in: configs.map((c) => c.id) },
+        },
+        data: {
+          status: "FAILED",
+          completedAt: new Date(),
+        },
+      });
+      if (staleRuns.count > 0) {
+        console.warn(`[morning-research] Swept ${staleRuns.count} stale RUNNING runs to FAILED`);
+      }
+    });
 
     return { ran: configs.length, totalTradesPlaced };
   }
