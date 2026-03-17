@@ -45,6 +45,7 @@ model ResearchRun {
   theses        Thesis[]
   events        RunEvent[]
   messages      RunMessage[]
+  decisions     TradeDecision[]
   agentConfig   AgentConfig?      @relation(fields: [agentConfigId], references: [id], onDelete: SetNull)
   briefing      AnalystBriefing?
   createdAt     DateTime          @default(now())
@@ -102,6 +103,7 @@ model Thesis {
   thoughtTrace     Json?       // [{type, data, timestamp_ms}] — per-ticker event log for replay
   researchRun      ResearchRun @relation(fields: [researchRunId], references: [id])
   trade            Trade?
+  decisions        TradeDecision[]
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 }
@@ -166,6 +168,8 @@ model AgentConfig {
   thesisPromptExtra     String?       // extra instructions for thesis system prompt
   researchRuns          ResearchRun[]
   briefings             AnalystBriefing[]
+  positions             Position[]
+  decisions             TradeDecision[]
   markets               String[] // ["US_EQUITIES", "CRYPTO", "ETFS"]
   exchanges             String[] // ["NASDAQ", "NYSE"]
   sectors               String[] // ["TECH", "FINANCE", ...]
@@ -193,6 +197,130 @@ model AgentConfig {
   digestEmail           String?  // override email for digest; uses auth email when null
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+// ─── NEW TRADING LAYER ─────────────────────────────────────────────────────
+// Separates what you OWN (Position) from what you DECIDED (TradeDecision)
+// from what you TOLD the broker (Order). The old Trade table conflated all three.
+
+/// What the analyst currently holds. One row per open holding per analyst.
+/// Closed positions stay for history. This is the "portfolio" view.
+model Position {
+  id              String          @id @default(cuid())
+  analystId       String          // FK to AgentConfig (the analyst who owns this)
+  userId          String
+  symbol          String
+  direction       String          // "LONG" | "SHORT"
+  status          String          // "OPEN" | "CLOSED" | "CANCELLED"
+  // Position sizing
+  quantity        Float           // total shares held
+  avgCost         Float           // weighted average entry price
+  // Targets & exit strategy
+  targetPrice     Float?
+  stopLoss        Float?
+  exitStrategy    String          // "PRICE_TARGET" | "TIME_BASED" | "TRAILING" | "MANUAL"
+  exitDate        DateTime?       // for TIME_BASED exits
+  trailingStopPct Float?          // for TRAILING exits
+  // Close data (populated when position is closed)
+  closePrice      Float?
+  closedAt        DateTime?
+  closeReason     String?         // "TARGET" | "STOP" | "TIME" | "MANUAL"
+  realizedPnl     Float?
+  outcome         String?         // "WIN" | "LOSS" | "BREAKEVEN"
+  // Evaluation
+  agentEvaluation String?         // post-trade GPT-4o evaluation narrative
+  // Monitoring
+  nearTargetAlertSent Boolean     @default(false)
+  // Relations
+  analyst         AgentConfig     @relation(fields: [analystId], references: [id])
+  orders          Order[]
+  events          PositionEvent[]
+  decisions       TradeDecision[]
+
+  openedAt        DateTime        @default(now())
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([analystId])
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+}
+
+/// Intent to buy/sell — what we told Alpaca.
+/// For paper trading, orders fill immediately (1:1 with fills).
+/// Fill data lives directly on the order (no separate Fill table needed for paper trading).
+model Order {
+  id              String          @id @default(cuid())
+  positionId      String          // FK to Position
+  userId          String
+  symbol          String
+  side            String          // "BUY" | "SELL"
+  orderType       String          @default("MARKET") // "MARKET" | "LIMIT" | "STOP"
+  quantity        Float
+  // Order status
+  status          String          // "PENDING" | "FILLED" | "CANCELLED" | "REJECTED"
+  // Fill data (populated when filled — for paper trading this is immediate)
+  filledPrice     Float?
+  filledQty       Float?
+  filledAt        DateTime?
+  // Alpaca
+  alpacaOrderId   String?
+  // Relations
+  position        Position        @relation(fields: [positionId], references: [id])
+  decision        TradeDecision?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([positionId])
+  @@index([userId])
+}
+
+/// Lifecycle events on a position — price checks, near-target alerts, close, evaluation.
+/// Replaces TradeEvent but scoped to Position instead of Trade.
+model PositionEvent {
+  id          String   @id @default(cuid())
+  positionId  String
+  eventType   String   // "OPENED" | "PRICE_CHECK" | "NEAR_TARGET" | "CLOSED" | "EVALUATED" | "EOD_CHECK"
+  description String
+  priceAt     Float?
+  pnlAt       Float?
+  position    Position @relation(fields: [positionId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([positionId])
+  @@index([positionId, createdAt])
+}
+
+/// Every decision made during a run about a ticker.
+/// This is the join between "what I thought" (Thesis) and "what I did" (Order/Position).
+/// Replaces the old shadow-trade hack — a PASS decision is just a decision with no order.
+model TradeDecision {
+  id          String        @id @default(cuid())
+  runId       String        // FK to ResearchRun
+  analystId   String        // FK to AgentConfig
+  userId      String
+  symbol      String
+  decision    String        // "BUY" | "SELL" | "HOLD" | "PASS"
+  reasoning   String?       // brief note on why this decision was made
+  // Links (all optional depending on decision type)
+  thesisId    String?       // FK to Thesis — the analysis behind this decision
+  positionId  String?       // FK to Position — null for PASS, set for BUY/SELL/HOLD
+  orderId     String?       @unique // FK to Order — null for PASS/HOLD, set for BUY/SELL
+  // Relations
+  run         ResearchRun   @relation(fields: [runId], references: [id])
+  analyst     AgentConfig   @relation(fields: [analystId], references: [id])
+  thesis      Thesis?       @relation(fields: [thesisId], references: [id])
+  position    Position?     @relation(fields: [positionId], references: [id])
+  order       Order?        @relation(fields: [orderId], references: [id])
+
+  createdAt   DateTime      @default(now())
+
+  @@index([runId])
+  @@index([analystId])
+  @@index([symbol])
+  @@index([userId, symbol])
 }
 
 model AnalystBriefing {

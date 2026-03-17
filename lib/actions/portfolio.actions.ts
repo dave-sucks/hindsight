@@ -15,7 +15,7 @@ export interface PortfolioStats {
   totalValue: number;
   unrealizedPnl: number;
   realizedPnl: number;
-  winRate: number | null; // 0–1 or null if no closed trades
+  winRate: number | null; // 0–1 or null if no closed positions
   openCount: number;
 }
 
@@ -106,35 +106,31 @@ function calcPnl(
 }
 
 function buildEquityCurve(
-  closedTrades: Array<{ closedAt: Date | null; realizedPnl: number | null }>,
+  closedPositions: Array<{ closedAt: Date | null; realizedPnl: number | null }>,
   startCapital: number,
   currentTotalValue: number,
   days = 365
 ): { date: string; value: number }[] {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  // Accumulate P&L per calendar day
   const byDay = new Map<string, number>();
-  for (const trade of closedTrades) {
-    if (!trade.closedAt || !trade.realizedPnl) continue;
-    if (trade.closedAt < cutoff) continue;
-    const day = trade.closedAt.toISOString().slice(0, 10);
-    byDay.set(day, (byDay.get(day) ?? 0) + trade.realizedPnl);
+  for (const pos of closedPositions) {
+    if (!pos.closedAt || !pos.realizedPnl) continue;
+    if (pos.closedAt < cutoff) continue;
+    const day = pos.closedAt.toISOString().slice(0, 10);
+    byDay.set(day, (byDay.get(day) ?? 0) + pos.realizedPnl);
   }
 
-  // Build running balance for each day in the window
   let balance = startCapital;
   const points: { date: string; value: number }[] = [];
 
   for (let d = days - 1; d >= 0; d--) {
     const date = new Date(Date.now() - d * 24 * 60 * 60 * 1000);
-    const iso = date.toISOString().slice(0, 10); // "YYYY-MM-DD" — full date for client filtering
+    const iso = date.toISOString().slice(0, 10);
     balance += byDay.get(iso) ?? 0;
     points.push({ date: iso, value: balance });
   }
 
-  // Override today's endpoint with the actual current value (incl. unrealized P&L)
-  // so the chart always terminates at the number shown in the header.
   if (points.length > 0) {
     points[points.length - 1] = {
       ...points[points.length - 1],
@@ -147,10 +143,6 @@ function buildEquityCurve(
 
 // ─── Main data loader ─────────────────────────────────────────────────────────
 
-/**
- * Fetches all trades, agent configs, recent runs, and today's picks for the
- * current user. Returns empty data if the user is not authenticated.
- */
 export async function getDashboardData(): Promise<DashboardData> {
   const supabase = await createClient();
   const {
@@ -180,33 +172,19 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const userId = user.id;
 
-  // ── 1. Fetch trades from DB ────────────────────────────────────────────────
-  const [dbOpenTrades, dbClosedTrades] = await Promise.all([
-    prisma.trade.findMany({
+  // ── 1. Fetch positions from DB ──────────────────────────────────────────────
+  const [dbOpenPositions, dbClosedPositions] = await Promise.all([
+    prisma.position.findMany({
       where: { userId, status: "OPEN" },
       include: {
-        thesis: {
-          select: {
-            confidenceScore: true,
-            researchRun: {
-              select: { agentConfig: { select: { name: true } } },
-            },
-          },
-        },
+        analyst: { select: { name: true } },
       },
       orderBy: { openedAt: "desc" },
     }),
-    prisma.trade.findMany({
+    prisma.position.findMany({
       where: { userId, status: "CLOSED" },
       include: {
-        thesis: {
-          select: {
-            confidenceScore: true,
-            researchRun: {
-              select: { agentConfig: { select: { name: true } } },
-            },
-          },
-        },
+        analyst: { select: { name: true } },
       },
       orderBy: { closedAt: "desc" },
       take: 50,
@@ -237,19 +215,26 @@ export async function getDashboardData(): Promise<DashboardData> {
       researchRun: {
         select: { agentConfig: { select: { name: true } } },
       },
-      trade: {
+      // Check if there's a trade decision with a position for this thesis
+      decisions: {
+        where: { decision: "BUY" },
+        take: 1,
         select: {
-          id: true,
-          status: true,
-          entryPrice: true,
-          openedAt: true,
+          position: {
+            select: {
+              id: true,
+              status: true,
+              avgCost: true,
+              openedAt: true,
+            },
+          },
         },
       },
     },
   });
 
-  // ── 3. Batch-fetch current prices (open trades + recent pick tickers) ─────
-  const openTickers = [...new Set(dbOpenTrades.map((t) => t.ticker))];
+  // ── 3. Batch-fetch current prices ───────────────────────────────────────────
+  const openTickers = [...new Set(dbOpenPositions.map((p) => p.symbol))];
   const pickTickers = [...new Set(dbRecentPicks.map((p) => p.ticker))];
   const allTickers = [...new Set([...openTickers, ...pickTickers])];
   let priceMap: Record<string, number> = {};
@@ -257,77 +242,76 @@ export async function getDashboardData(): Promise<DashboardData> {
     try {
       priceMap = await getLatestPrices(allTickers);
     } catch {
-      // Fall back to entry price — pnl will be 0 but trade still renders
+      // Fall back to entry price
     }
   }
 
-  // ── 4. Map open trades → MockTrade shape ──────────────────────────────────
-  const openTrades: MockTrade[] = dbOpenTrades.map((t) => {
-    const currentPrice = priceMap[t.ticker] ?? t.entryPrice;
-    const { dollars, pct } = calcPnl(t.direction, t.entryPrice, currentPrice, t.shares);
+  // ── 4. Map open positions → MockTrade shape ────────────────────────────────
+  const openTrades: MockTrade[] = dbOpenPositions.map((p) => {
+    const currentPrice = priceMap[p.symbol] ?? p.avgCost;
+    const { dollars, pct } = calcPnl(p.direction, p.avgCost, currentPrice, p.quantity);
     return {
-      id: t.id,
-      ticker: t.ticker,
-      direction: t.direction as "LONG" | "SHORT",
-      entryPrice: t.entryPrice,
+      id: p.id,
+      ticker: p.symbol,
+      direction: p.direction as "LONG" | "SHORT",
+      entryPrice: p.avgCost,
       currentPrice,
-      targetPrice: t.targetPrice ?? t.entryPrice * 1.1,
-      stopPrice: t.stopLoss ?? t.entryPrice * 0.9,
-      confidenceScore: t.thesis?.confidenceScore ?? 0,
+      targetPrice: p.targetPrice ?? p.avgCost * 1.1,
+      stopPrice: p.stopLoss ?? p.avgCost * 0.9,
+      confidenceScore: 0, // TODO: join via TradeDecision → Thesis
       status: "OPEN" as const,
       pnl: dollars,
       pnlPct: pct,
-      openedAt: t.openedAt.toISOString(),
+      openedAt: p.openedAt.toISOString(),
       closedAt: undefined,
       thesis: "",
-      shares: t.shares,
-      analystName: t.thesis?.researchRun?.agentConfig?.name ?? undefined,
-      alpacaOrderId: t.alpacaOrderId ?? undefined,
+      shares: p.quantity,
+      analystName: p.analyst?.name ?? undefined,
     };
   });
 
-  // ── 5. Map closed trades → MockTrade shape ────────────────────────────────
-  const closedTrades: MockTrade[] = dbClosedTrades.map((t) => {
-    const closePrice = t.closePrice ?? t.entryPrice;
-    const positionCost = t.entryPrice * t.shares;
-    const realizedPnl = t.realizedPnl ?? 0;
+  // ── 5. Map closed positions → MockTrade shape ──────────────────────────────
+  const closedTrades: MockTrade[] = dbClosedPositions.map((p) => {
+    const closePrice = p.closePrice ?? p.avgCost;
+    const positionCost = p.avgCost * p.quantity;
+    const realizedPnl = p.realizedPnl ?? 0;
     return {
-      id: t.id,
-      ticker: t.ticker,
-      direction: t.direction as "LONG" | "SHORT",
-      entryPrice: t.entryPrice,
+      id: p.id,
+      ticker: p.symbol,
+      direction: p.direction as "LONG" | "SHORT",
+      entryPrice: p.avgCost,
       currentPrice: closePrice,
-      targetPrice: t.targetPrice ?? t.entryPrice * 1.1,
-      stopPrice: t.stopLoss ?? t.entryPrice * 0.9,
-      confidenceScore: t.thesis?.confidenceScore ?? 0,
-      status: mapStatus(t.status, t.outcome),
+      targetPrice: p.targetPrice ?? p.avgCost * 1.1,
+      stopPrice: p.stopLoss ?? p.avgCost * 0.9,
+      confidenceScore: 0,
+      status: mapStatus(p.status, p.outcome),
       pnl: realizedPnl,
       pnlPct: positionCost > 0 ? (realizedPnl / positionCost) * 100 : 0,
-      openedAt: t.openedAt.toISOString(),
-      closedAt: t.closedAt?.toISOString(),
+      openedAt: p.openedAt.toISOString(),
+      closedAt: p.closedAt?.toISOString(),
       thesis: "",
-      shares: t.shares,
-      analystName: t.thesis?.researchRun?.agentConfig?.name ?? undefined,
+      shares: p.quantity,
+      analystName: p.analyst?.name ?? undefined,
     };
   });
 
   // ── 6. Portfolio stats ─────────────────────────────────────────────────────
-  const realizedPnl = dbClosedTrades.reduce((sum, t) => sum + (t.realizedPnl ?? 0), 0);
+  const realizedPnl = dbClosedPositions.reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0);
   const unrealizedPnl = openTrades.reduce((sum, t) => sum + t.pnl, 0);
   const totalValue = STARTING_CAPITAL + realizedPnl + unrealizedPnl;
 
-  const closedWithOutcome = dbClosedTrades.filter((t) => t.outcome);
+  const closedWithOutcome = dbClosedPositions.filter((p) => p.outcome);
   const winRate =
     closedWithOutcome.length > 0
-      ? closedWithOutcome.filter((t) => t.outcome === "WIN").length /
+      ? closedWithOutcome.filter((p) => p.outcome === "WIN").length /
         closedWithOutcome.length
       : null;
 
-  // ── 7. Equity curve (last 365 days, endpoint = current total value) ──────
-  const equityCurve = buildEquityCurve(dbClosedTrades, STARTING_CAPITAL, totalValue);
+  // ── 7. Equity curve ────────────────────────────────────────────────────────
+  const equityCurve = buildEquityCurve(dbClosedPositions, STARTING_CAPITAL, totalValue);
 
-  // ── 8. Agent configs with last-run info ───────────────────────────────────
-  const [dbAgentConfigs, tradesWithAgent] = await Promise.all([
+  // ── 8. Agent configs with last-run info ────────────────────────────────────
+  const [dbAgentConfigs, positionsWithAnalyst] = await Promise.all([
     prisma.agentConfig.findMany({
       where: { userId },
       orderBy: { createdAt: "asc" },
@@ -339,31 +323,18 @@ export async function getDashboardData(): Promise<DashboardData> {
         },
       },
     }),
-    // Count trades per agent via nested relation filter
-    prisma.trade.findMany({
-      where: {
-        userId,
-        thesis: {
-          researchRun: { agentConfigId: { not: null } },
-        },
-      },
+    prisma.position.findMany({
+      where: { userId },
       select: {
         id: true,
-        thesis: {
-          select: {
-            researchRun: { select: { agentConfigId: true } },
-          },
-        },
+        analystId: true,
       },
     }),
   ]);
 
   const tradeCountMap = new Map<string, number>();
-  for (const trade of tradesWithAgent) {
-    const agentId = trade.thesis.researchRun.agentConfigId;
-    if (agentId) {
-      tradeCountMap.set(agentId, (tradeCountMap.get(agentId) ?? 0) + 1);
-    }
+  for (const pos of positionsWithAnalyst) {
+    tradeCountMap.set(pos.analystId, (tradeCountMap.get(pos.analystId) ?? 0) + 1);
   }
 
   const agentConfigs: AgentConfigSummary[] = dbAgentConfigs.map((a) => ({
@@ -375,15 +346,17 @@ export async function getDashboardData(): Promise<DashboardData> {
     tradesPlaced: tradeCountMap.get(a.id) ?? 0,
   }));
 
-  // ── 9. Recent research runs (last 10) ─────────────────────────────────────
+  // ── 9. Recent research runs (last 10) ──────────────────────────────────────
   const dbRecentRuns = await prisma.researchRun.findMany({
     where: { userId },
     orderBy: { startedAt: "desc" },
     take: 10,
     include: {
       agentConfig: { select: { name: true } },
-      theses: {
-        select: { trade: { select: { id: true } } },
+      theses: { select: { id: true } },
+      decisions: {
+        where: { decision: "BUY" },
+        select: { id: true },
       },
     },
   });
@@ -394,11 +367,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     startedAt: r.startedAt.toISOString(),
     completedAt: r.completedAt?.toISOString() ?? null,
     thesisCount: r.theses.length,
-    tradesPlaced: r.theses.filter((t) => t.trade).length,
+    tradesPlaced: r.decisions.length,
     status: r.status,
   }));
 
-  // ── 10. Today's picks (DAV-85) ────────────────────────────────────────────
+  // ── 10. Today's picks ──────────────────────────────────────────────────────
   const todayMidnight = new Date();
   todayMidnight.setHours(0, 0, 0, 0);
 
@@ -427,30 +400,34 @@ export async function getDashboardData(): Promise<DashboardData> {
     signalTypes: t.signalTypes,
   }));
 
-  // ── 11. Map recentPicks ───────────────────────────────────────────────────
-  const recentPicks: RecentPick[] = dbRecentPicks.map((p) => ({
-    id: p.id,
-    ticker: p.ticker,
-    direction: p.direction,
-    confidenceScore: p.confidenceScore,
-    signalTypes: p.signalTypes,
-    reasoningSummary: p.reasoningSummary,
-    entryPrice: p.entryPrice,
-    targetPrice: p.targetPrice,
-    stopLoss: p.stopLoss,
-    createdAt: p.createdAt.toISOString(),
-    trade: p.trade
-      ? {
-          id: p.trade.id,
-          status: p.trade.status,
-          entryPrice: p.trade.entryPrice,
-          openedAt: p.trade.openedAt.toISOString(),
-        }
-      : null,
-    currentPrice: priceMap[p.ticker] ?? null,
-    analystName: p.researchRun?.agentConfig?.name ?? null,
-    sourcesUsed: p.sourcesUsed,
-  }));
+  // ── 11. Map recentPicks ────────────────────────────────────────────────────
+  const recentPicks: RecentPick[] = dbRecentPicks.map((p) => {
+    const decision = p.decisions[0];
+    const position = decision?.position;
+    return {
+      id: p.id,
+      ticker: p.ticker,
+      direction: p.direction,
+      confidenceScore: p.confidenceScore,
+      signalTypes: p.signalTypes,
+      reasoningSummary: p.reasoningSummary,
+      entryPrice: p.entryPrice,
+      targetPrice: p.targetPrice,
+      stopLoss: p.stopLoss,
+      createdAt: p.createdAt.toISOString(),
+      trade: position
+        ? {
+            id: position.id,
+            status: position.status,
+            entryPrice: position.avgCost,
+            openedAt: position.openedAt.toISOString(),
+          }
+        : null,
+      currentPrice: priceMap[p.ticker] ?? null,
+      analystName: p.researchRun?.agentConfig?.name ?? null,
+      sourcesUsed: p.sourcesUsed,
+    };
+  });
 
   return {
     openTrades,

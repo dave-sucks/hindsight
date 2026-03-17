@@ -1,11 +1,11 @@
 /**
- * Trade exit condition evaluation.
- * Called by the price-monitor Inngest cron for every OPEN trade.
- * closeTrade is implemented in DAV-34 (lib/actions/closeTrade.actions.ts).
+ * Position exit condition evaluation.
+ * Called by the price-monitor Inngest cron for every OPEN position.
+ * closeOpenPosition is in lib/actions/closeTrade.actions.ts.
  */
 
 import { prisma } from "@/lib/prisma";
-import type { TradeModel } from "@/lib/generated/prisma/models";
+import type { PositionModel } from "@/lib/generated/prisma/models";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,12 +18,12 @@ export interface ExitSignal {
 
 /**
  * Returns the highest (LONG) or lowest (SHORT) price seen in PRICE_CHECK events.
- * Falls back to entryPrice if no events yet.
+ * Falls back to avgCost if no events yet.
  */
-export async function getPeakPrice(trade: TradeModel): Promise<number> {
-  const events = await prisma.tradeEvent.findMany({
+export async function getPeakPrice(position: PositionModel): Promise<number> {
+  const events = await prisma.positionEvent.findMany({
     where: {
-      tradeId: trade.id,
+      positionId: position.id,
       eventType: "PRICE_CHECK",
       priceAt: { not: null },
     },
@@ -32,9 +32,9 @@ export async function getPeakPrice(trade: TradeModel): Promise<number> {
 
   const prices = events
     .map((e) => e.priceAt!)
-    .concat(trade.entryPrice);
+    .concat(position.avgCost);
 
-  return trade.direction === "LONG"
+  return position.direction === "LONG"
     ? Math.max(...prices)
     : Math.min(...prices);
 }
@@ -42,8 +42,8 @@ export async function getPeakPrice(trade: TradeModel): Promise<number> {
 // ─── Core evaluator (pure, synchronous, easily testable) ─────────────────────
 
 export function evaluateExitStrategy(
-  trade: Pick<
-    TradeModel,
+  position: Pick<
+    PositionModel,
     | "direction"
     | "exitStrategy"
     | "targetPrice"
@@ -54,23 +54,23 @@ export function evaluateExitStrategy(
   currentPrice: number,
   peakPrice: number
 ): ExitSignal | null {
-  const isLong = trade.direction === "LONG";
+  const isLong = position.direction === "LONG";
 
-  switch (trade.exitStrategy) {
+  switch (position.exitStrategy) {
     case "PRICE_TARGET": {
       // Target hit
-      if (isLong && trade.targetPrice && currentPrice >= trade.targetPrice) {
+      if (isLong && position.targetPrice && currentPrice >= position.targetPrice) {
         return { reason: "TARGET", label: "Target price reached" };
       }
-      if (!isLong && trade.targetPrice && currentPrice <= trade.targetPrice) {
+      if (!isLong && position.targetPrice && currentPrice <= position.targetPrice) {
         return { reason: "TARGET", label: "Target price reached" };
       }
       // Stop loss
-      if (trade.stopLoss) {
-        if (isLong && currentPrice <= trade.stopLoss) {
+      if (position.stopLoss) {
+        if (isLong && currentPrice <= position.stopLoss) {
           return { reason: "STOP", label: "Stop loss triggered" };
         }
-        if (!isLong && currentPrice >= trade.stopLoss) {
+        if (!isLong && currentPrice >= position.stopLoss) {
           return { reason: "STOP", label: "Stop loss triggered" };
         }
       }
@@ -78,14 +78,14 @@ export function evaluateExitStrategy(
     }
 
     case "TIME_BASED": {
-      if (trade.exitDate && new Date() >= new Date(trade.exitDate)) {
+      if (position.exitDate && new Date() >= new Date(position.exitDate)) {
         return { reason: "TIME", label: "Hold duration expired" };
       }
       return null;
     }
 
     case "TRAILING": {
-      const trailPct = trade.trailingStopPct ?? 5;
+      const trailPct = position.trailingStopPct ?? 5;
       const trailingStopPrice = isLong
         ? peakPrice * (1 - trailPct / 100)
         : peakPrice * (1 + trailPct / 100);
@@ -114,56 +114,56 @@ export function evaluateExitStrategy(
 // ─── NEAR_TARGET detection ────────────────────────────────────────────────────
 
 /**
- * Returns how close (0–1) the trade is to its target.
+ * Returns how close (0–1) the position is to its target.
  * 1.0 = at target, 0 = at entry.
  */
 export function targetProximity(
-  trade: Pick<TradeModel, "direction" | "entryPrice" | "targetPrice">,
+  position: Pick<PositionModel, "direction" | "avgCost" | "targetPrice">,
   currentPrice: number
 ): number {
-  if (!trade.targetPrice) return 0;
-  const totalRange = Math.abs(trade.targetPrice - trade.entryPrice);
+  if (!position.targetPrice) return 0;
+  const totalRange = Math.abs(position.targetPrice - position.avgCost);
   if (totalRange === 0) return 0;
   const progress =
-    trade.direction === "LONG"
-      ? currentPrice - trade.entryPrice
-      : trade.entryPrice - currentPrice;
+    position.direction === "LONG"
+      ? currentPrice - position.avgCost
+      : position.avgCost - currentPrice;
   return Math.max(0, Math.min(1, progress / totalRange));
 }
 
 // ─── Main export: called by price-monitor ────────────────────────────────────
 
 /**
- * Evaluates exit conditions for a trade.
+ * Evaluates exit conditions for a position.
  * Writes a NEAR_TARGET event if within 10% of target.
- * Calls closeTrade (imported lazily to avoid circular dep with DAV-34).
+ * Calls closeOpenPosition (imported lazily to avoid circular dep).
  */
 export async function checkExitConditions(
-  trade: TradeModel,
+  position: PositionModel,
   currentPrice: number
 ): Promise<void> {
-  const peak = await getPeakPrice(trade);
-  const signal = evaluateExitStrategy(trade, currentPrice, peak);
+  const peak = await getPeakPrice(position);
+  const signal = evaluateExitStrategy(position, currentPrice, peak);
 
   // Check near-target (write event if ≥90% of the way there, only once)
-  if (!signal && trade.targetPrice) {
-    const proximity = targetProximity(trade, currentPrice);
+  if (!signal && position.targetPrice) {
+    const proximity = targetProximity(position, currentPrice);
     if (proximity >= 0.9) {
       const pct = Math.round(proximity * 100);
-      // Only write NEAR_TARGET if we haven't already in the last price check
-      const recentNear = await prisma.tradeEvent.findFirst({
+      // Only write NEAR_TARGET if we haven't already in the last 2 hours
+      const recentNear = await prisma.positionEvent.findFirst({
         where: {
-          tradeId: trade.id,
+          positionId: position.id,
           eventType: "NEAR_TARGET",
-          createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) }, // last 2h
+          createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
         },
       });
       if (!recentNear) {
-        await prisma.tradeEvent.create({
+        await prisma.positionEvent.create({
           data: {
-            tradeId: trade.id,
+            positionId: position.id,
             eventType: "NEAR_TARGET",
-            description: `${trade.ticker} approaching target: $${currentPrice.toFixed(2)} (${pct}% to target $${trade.targetPrice.toFixed(2)})`,
+            description: `${position.symbol} approaching target: $${currentPrice.toFixed(2)} (${pct}% to target $${position.targetPrice.toFixed(2)})`,
             priceAt: currentPrice,
           },
         });
@@ -173,7 +173,7 @@ export async function checkExitConditions(
 
   if (!signal) return;
 
-  // Lazy import to avoid circular dependency with DAV-34
-  const { closeTrade } = await import("@/lib/actions/closeTrade.actions");
-  await closeTrade(trade.id, signal.reason, currentPrice);
+  // Lazy import to avoid circular dependency
+  const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
+  await closeOpenPosition(position.id, signal.reason, currentPrice);
 }
