@@ -23,28 +23,35 @@ const BULLISH_WORDS = ["surge", "rally", "beat", "upgrade", "growth", "record", 
 
 // ── Finnhub fetch helper ──────────────────────────────────────────────────
 
-async function finnhubFetch<T>(path: string): Promise<T | null> {
+async function finnhubFetch<T>(path: string, retries = 2): Promise<T | null> {
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
-  const endpoint = path.split("?")[0];
-  const t0 = Date.now();
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(10_000),
-    });
-    const elapsed = Date.now() - t0;
-    if (!res.ok) {
-      console.warn(`[themes] Finnhub ${endpoint} returned ${res.status} (${elapsed}ms)`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, { next: { revalidate: 300 } });
+      if (res.status === 429) {
+        if (attempt < retries) {
+          console.warn(`[themes] Finnhub 429 on ${path.split("?")[0]}, retry ${attempt + 1}/${retries}`);
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        console.warn(`[themes] Finnhub ${path.split("?")[0]} rate limited after ${retries} retries`);
+        return null;
+      }
+      if (!res.ok) {
+        console.warn(`[themes] Finnhub ${path.split("?")[0]} returned ${res.status}`);
+        return null;
+      }
+      return (await res.json()) as T;
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      console.warn(`[themes] Finnhub ${path.split("?")[0]} failed:`, err instanceof Error ? err.message : err);
       return null;
     }
-    if (elapsed > 3000) console.warn(`[themes] SLOW Finnhub ${endpoint} ${elapsed}ms`);
-    return (await res.json()) as T;
-  } catch (err) {
-    const elapsed = Date.now() - t0;
-    const isTimeout = err instanceof Error && err.name === "TimeoutError";
-    console.warn(`[themes] Finnhub ${endpoint} ${isTimeout ? "TIMEOUT" : "failed"} (${elapsed}ms):`, err instanceof Error ? err.message : err);
-    return null;
   }
+  return null;
 }
 
 // ── Core detection ────────────────────────────────────────────────────────

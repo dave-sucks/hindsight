@@ -8,6 +8,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getBars } from "@/lib/alpaca";
 import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult } from "@/lib/discovery/types";
 import { THEME_DEFINITIONS } from "@/lib/discovery/types";
@@ -41,37 +42,39 @@ const API_TIMEOUT_MS = 10_000; // 10 seconds per request
 
 // ── API helpers (with logging + error detail + timeouts) ─────────────────────
 
-async function finnhub(path: string): Promise<{ data: unknown; error?: string }> {
+async function finnhub(path: string, retries = 2): Promise<{ data: unknown; error?: string }> {
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
-  const endpoint = path.split("?")[0];
-  const t0 = Date.now();
-  apiCallStats.finnhub++;
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(API_TIMEOUT_MS),
-    });
-    const elapsed = Date.now() - t0;
-    if (!res.ok) {
-      apiCallStats.errors++;
-      const msg = `Finnhub ${endpoint} returned ${res.status} (${elapsed}ms)`;
-      console.warn(`[finnhub] ${msg}`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, { next: { revalidate: 300 } });
+      if (res.status === 429) {
+        if (attempt < retries) {
+          console.warn(`[finnhub] 429 on ${path.split("?")[0]}, retry ${attempt + 1}/${retries} after 1s`);
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        const msg = `Finnhub ${path.split("?")[0]} rate limited (429) after ${retries} retries`;
+        console.warn(`[finnhub] ${msg}`);
+        return { data: null, error: msg };
+      }
+      if (!res.ok) {
+        const msg = `Finnhub ${path.split("?")[0]} returned ${res.status}`;
+        console.warn(`[finnhub] ${msg}`);
+        return { data: null, error: msg };
+      }
+      return { data: await res.json() };
+    } catch (err) {
+      if (attempt < retries) {
+        console.warn(`[finnhub] ${path.split("?")[0]} fetch error, retry ${attempt + 1}/${retries}`);
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      const msg = `Finnhub ${path.split("?")[0]} fetch failed: ${err instanceof Error ? err.message : "unknown"}`;
+      console.error(`[finnhub] ${msg}`);
       return { data: null, error: msg };
     }
-    if (elapsed > 3000) {
-      console.warn(`[finnhub] SLOW ${endpoint} took ${elapsed}ms`);
-    }
-    return { data: await res.json() };
-  } catch (err) {
-    apiCallStats.errors++;
-    const elapsed = Date.now() - t0;
-    const isTimeout = err instanceof Error && err.name === "TimeoutError";
-    const msg = isTimeout
-      ? `Finnhub ${endpoint} TIMEOUT after ${elapsed}ms`
-      : `Finnhub ${endpoint} fetch failed (${elapsed}ms): ${err instanceof Error ? err.message : "unknown"}`;
-    console.error(`[finnhub] ${msg}`);
-    return { data: null, error: msg };
   }
+  return { data: null, error: `Finnhub ${path.split("?")[0]} exhausted retries` };
 }
 
 async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
@@ -816,7 +819,7 @@ export function createResearchTools(ctx: ToolContext) {
 
         const ranked = [...scoreMap.entries()]
           .sort((a, b) => b[1].score - a[1].score)
-          .slice(0, 15);
+          .slice(0, 8);
 
         // ── Sector filtering ──────────────────────────────────────────────
         const configSectors = ctx.sectors ?? [];
@@ -1672,9 +1675,10 @@ export function createResearchTools(ctx: ToolContext) {
 
           logToolEnd("show_thesis", _t0, ctx.runId, `ticker=${args.ticker} id=${thesis.id}`);
           return { ...args, thesis_id: thesis.id };
-        } catch {
-          logToolEnd("show_thesis", _t0, ctx.runId, `ticker=${args.ticker} FAILED`);
-          return args;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Thesis save failed";
+          console.error(`[tool] show_thesis FAILED for ${args.ticker}: ${msg}`);
+          return { ...args, thesis_id: null, error: msg, note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker." };
         }
       },
     }),
@@ -1735,86 +1739,55 @@ export function createResearchTools(ctx: ToolContext) {
             try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry_price */ }
           }
 
-          // 3. Create Position
-          const analystId = ctx.analystId || "unknown";
-          const position = await prisma.position.create({
-            data: {
-              analystId,
-              userId: ctx.userId,
-              symbol: args.ticker,
-              direction: args.direction,
-              status: "OPEN",
-              quantity: args.shares,
-              avgCost: fillPrice,
-              targetPrice: args.target_price,
-              stopLoss: args.stop_loss,
-              exitStrategy: "PRICE_TARGET",
-            },
-          });
-
-          // 4. Create Order with fill data
-          const dbOrder = await prisma.order.create({
-            data: {
-              positionId: position.id,
-              userId: ctx.userId,
-              symbol: args.ticker,
-              side: args.direction === "LONG" ? "BUY" : "SELL",
-              orderType: "MARKET",
-              quantity: args.shares,
-              status: "FILLED",
-              filledPrice: fillPrice,
-              filledQty: args.shares,
-              filledAt: new Date(),
-              alpacaOrderId: alpacaOrder.id,
-            },
-          });
-
-          // 5. Write OPENED PositionEvent
-          await prisma.positionEvent.create({
-            data: {
-              positionId: position.id,
-              eventType: "OPENED",
-              description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
-              priceAt: fillPrice,
-            },
-          });
-
-          // 6. Write TradeDecision linking thesis → position → order
-          if (ctx.runId) {
-            await prisma.tradeDecision.create({
+          // 3. Create Trade + TradeEvent + RunEvent in a single transaction
+          const trade = await prisma.$transaction(async (tx: TransactionClient) => {
+            const t = await tx.trade.create({
               data: {
-                runId: ctx.runId,
-                analystId,
-                userId: ctx.userId,
-                symbol: args.ticker,
-                decision: "BUY",
-                reasoning: `${args.direction} ${args.shares} shares at $${fillPrice.toFixed(2)}`,
                 thesisId: args.thesis_id,
-                positionId: position.id,
-                orderId: dbOrder.id,
+                userId: ctx.userId,
+                ticker: args.ticker,
+                direction: args.direction,
+                status: "OPEN",
+                entryPrice: fillPrice,
+                shares: args.shares,
+                targetPrice: args.target_price,
+                stopLoss: args.stop_loss,
+                exitStrategy: "PRICE_TARGET",
+                alpacaOrderId: alpacaOrder.id,
               },
             });
 
-            // 7. Write RunEvent so trade is visible on run page
-            await prisma.runEvent.create({
+            await tx.tradeEvent.create({
               data: {
-                runId: ctx.runId,
-                type: "trade_placed",
-                title: `Trade placed: ${args.direction} ${args.ticker}`,
-                message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
-                payload: {
-                  ticker: args.ticker,
-                  direction: args.direction,
-                  entry: fillPrice,
-                  target_price: args.target_price,
-                  stop_loss: args.stop_loss,
-                  shares: args.shares,
-                  position_id: position.id,
-                  order_id: dbOrder.id,
-                } as object,
+                tradeId: t.id,
+                eventType: "PLACED",
+                description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+                priceAt: fillPrice,
               },
             });
-          }
+
+            if (ctx.runId) {
+              await tx.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "trade_placed",
+                  title: `Trade placed: ${args.direction} ${args.ticker}`,
+                  message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+                  payload: {
+                    ticker: args.ticker,
+                    direction: args.direction,
+                    entry: fillPrice,
+                    target_price: args.target_price,
+                    stop_loss: args.stop_loss,
+                    shares: args.shares,
+                    trade_id: t.id,
+                  } as object,
+                },
+              });
+            }
+
+            return t;
+          });
 
           console.log(`[tool] place_trade SUCCESS position=${position.id} fill=$${fillPrice.toFixed(2)}`);
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`);
@@ -1899,20 +1872,20 @@ export function createResearchTools(ctx: ToolContext) {
           ),
       }),
       execute: async (args) => {
-        const _t0 = Date.now();
-        logToolStart("summarize_run", ctx.runId, `picks=${args.ranked_picks.length}`);
-        // Mark the run as complete + persist summary as RunEvent
-        try {
-          const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
-          await prisma.researchRun.update({
-            where: { id: ctx.runId },
-            data: {
-              status: "COMPLETE",
-              completedAt: new Date(),
-            },
-          });
+        console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
+        const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
 
-          // Write run_summary + run_complete events for reload persistence
+        // Mark run COMPLETE — this MUST succeed, so let it throw
+        await prisma.researchRun.update({
+          where: { id: ctx.runId },
+          data: {
+            status: "COMPLETE",
+            completedAt: new Date(),
+          },
+        });
+
+        // Write run_summary + run_complete events (non-fatal — run is already marked COMPLETE)
+        try {
           if (ctx.runId) {
             await prisma.runEvent.create({
               data: {
@@ -1943,8 +1916,8 @@ export function createResearchTools(ctx: ToolContext) {
               },
             });
           }
-        } catch {
-          // Non-fatal
+        } catch (err) {
+          console.error(`[tool] summarize_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
         }
         logToolEnd("summarize_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`);
         return args;
@@ -1994,12 +1967,13 @@ export function createResearchTools(ctx: ToolContext) {
           const forms = recent.form ?? [];
           const dates = recent.filingDate ?? [];
           const descs = recent.primaryDocDescription ?? [];
+          const maxIdx = Math.min(forms.length, dates.length, descs.length, 50);
 
-          for (let i = 0; i < Math.min(forms.length, 50); i++) {
+          for (let i = 0; i < maxIdx; i++) {
             if (!relevantTypes.has(forms[i])) continue;
             filings.push({
               type: forms[i],
-              date: dates[i] ?? "",
+              date: dates[i],
               description: descs[i] ?? forms[i],
             });
             if (filings.length >= 8) break;
@@ -2061,7 +2035,7 @@ export function createResearchTools(ctx: ToolContext) {
 
         const peers = (peersData as string[])
           .filter((p) => p.toUpperCase() !== args.symbol.toUpperCase())
-          .slice(0, 6);
+          .slice(0, 3);
 
         if (peers.length === 0) return { peers: [] };
 
@@ -2073,7 +2047,8 @@ export function createResearchTools(ctx: ToolContext) {
               finnhub(`/stock/metric?symbol=${sym}&metric=all`),
             ]);
             const q = qRes.data as Record<string, number> | null;
-            const f = (fRes.data as Record<string, unknown>)?.metric as Record<string, number> | undefined;
+            const fRaw = fRes.data as { metric?: Record<string, number> } | null;
+            const f = fRaw?.metric;
             return {
               ticker: sym,
               name: sym,
