@@ -1648,12 +1648,13 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           // Record PASS decision in TradeDecision (replaces old shadow trade)
-          if (args.direction === "PASS" && ctx.runId && ctx.analystId) {
+          if (args.direction === "PASS" && ctx.runId) {
+            const analystId = ctx.analystId || "unknown";
             try {
               await prisma.tradeDecision.create({
                 data: {
                   runId: ctx.runId,
-                  analystId: ctx.analystId,
+                  analystId,
                   userId: ctx.userId,
                   symbol: args.ticker,
                   decision: "PASS",
@@ -1661,10 +1662,12 @@ export function createResearchTools(ctx: ToolContext) {
                   thesisId: thesis.id,
                 },
               });
-              console.log(`[tool] show_thesis recorded PASS decision for ${args.ticker}`);
+              console.log(`[tool] show_thesis recorded PASS decision for ${args.ticker} analystId=${analystId}`);
             } catch (passErr) {
-              console.warn("[tool] show_thesis PASS decision creation failed (non-fatal):", passErr);
+              console.error("[tool] show_thesis PASS decision creation FAILED:", passErr);
             }
+          } else if (args.direction === "PASS") {
+            console.warn(`[tool] show_thesis SKIPPED PASS decision — missing runId=${ctx.runId}`);
           }
 
           logToolEnd("show_thesis", _t0, ctx.runId, `ticker=${args.ticker} id=${thesis.id}`);
@@ -1960,13 +1963,15 @@ export function createResearchTools(ctx: ToolContext) {
         const _t0 = Date.now();
         logToolStart("get_sec_filings", ctx.runId, `symbol=${args.symbol}`);
         try {
+          const cik = await getCIK(args.symbol);
           const res = await fetch(
-            `https://data.sec.gov/submissions/CIK${await getCIK(args.symbol)}.json`,
+            `https://data.sec.gov/submissions/CIK${cik}.json`,
             {
               headers: {
                 "User-Agent": "Hindsight Research Bot research@hindsight.app",
                 Accept: "application/json",
               },
+              signal: AbortSignal.timeout(API_TIMEOUT_MS),
             }
           );
           if (!res.ok) return { filings: [], error: `SEC returned ${res.status}` };
@@ -2195,6 +2200,7 @@ async function getCIK(ticker: string): Promise<string> {
       "User-Agent": "Hindsight Research Bot research@hindsight.app",
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`SEC tickers lookup failed: ${res.status}`);
   const data = (await res.json()) as Record<
