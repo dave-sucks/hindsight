@@ -27,7 +27,7 @@ async function finnhubFetch<T>(path: string, retries = 2): Promise<T | null> {
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { next: { revalidate: 300 } });
+      const res = await fetch(url, { next: { revalidate: 300 }, signal: AbortSignal.timeout(10_000) });
       if (res.status === 429) {
         if (attempt < retries) {
           console.warn(`[themes] Finnhub 429 on ${path.split("?")[0]}, retry ${attempt + 1}/${retries}`);
