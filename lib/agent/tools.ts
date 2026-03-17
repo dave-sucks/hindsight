@@ -46,7 +46,7 @@ async function finnhub(path: string, retries = 2): Promise<{ data: unknown; erro
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { next: { revalidate: 300 } });
+      const res = await fetch(url, { next: { revalidate: 300 }, signal: AbortSignal.timeout(API_TIMEOUT_MS) });
       if (res.status === 429) {
         if (attempt < retries) {
           console.warn(`[finnhub] 429 on ${path.split("?")[0]}, retry ${attempt + 1}/${retries} after 1s`);
@@ -1739,33 +1739,72 @@ export function createResearchTools(ctx: ToolContext) {
             try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry_price */ }
           }
 
-          // 3. Create Trade + TradeEvent + RunEvent in a single transaction
-          const trade = await prisma.$transaction(async (tx: TransactionClient) => {
-            const t = await tx.trade.create({
+          // 3. Create Position + Order + PositionEvent + TradeDecision + RunEvent in a single transaction
+          const analystId = ctx.analystId;
+          if (!analystId) {
+            throw new Error("Cannot place trade without an analyst ID. Ensure the run is linked to an analyst.");
+          }
+
+          const { position, order } = await prisma.$transaction(async (tx: TransactionClient) => {
+            // Create the position (what the analyst holds)
+            const pos = await tx.position.create({
               data: {
-                thesisId: args.thesis_id,
+                analystId,
                 userId: ctx.userId,
-                ticker: args.ticker,
+                symbol: args.ticker,
                 direction: args.direction,
                 status: "OPEN",
-                entryPrice: fillPrice,
-                shares: args.shares,
+                quantity: args.shares,
+                avgCost: fillPrice,
                 targetPrice: args.target_price,
                 stopLoss: args.stop_loss,
                 exitStrategy: "PRICE_TARGET",
+              },
+            });
+
+            // Create the order (what we told Alpaca)
+            const ord = await tx.order.create({
+              data: {
+                positionId: pos.id,
+                userId: ctx.userId,
+                symbol: args.ticker,
+                side: args.direction === "LONG" ? "BUY" : "SELL",
+                orderType: "MARKET",
+                quantity: args.shares,
+                status: "FILLED",
+                filledPrice: fillPrice,
+                filledQty: args.shares,
+                filledAt: new Date(),
                 alpacaOrderId: alpacaOrder.id,
               },
             });
 
-            await tx.tradeEvent.create({
+            // Create position lifecycle event
+            await tx.positionEvent.create({
               data: {
-                tradeId: t.id,
-                eventType: "PLACED",
+                positionId: pos.id,
+                eventType: "OPENED",
                 description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
                 priceAt: fillPrice,
               },
             });
 
+            // Create trade decision (links thesis → position → order)
+            await tx.tradeDecision.create({
+              data: {
+                runId: ctx.runId,
+                analystId,
+                userId: ctx.userId,
+                symbol: args.ticker,
+                decision: args.direction === "LONG" ? "BUY" : "SELL",
+                reasoning: `${args.direction} ${args.shares} shares at $${fillPrice.toFixed(2)} (target: $${args.target_price.toFixed(2)}, stop: $${args.stop_loss.toFixed(2)})`,
+                thesisId: args.thesis_id,
+                positionId: pos.id,
+                orderId: ord.id,
+              },
+            });
+
+            // Write RunEvent so trade is visible on run page
             if (ctx.runId) {
               await tx.runEvent.create({
                 data: {
@@ -1780,13 +1819,14 @@ export function createResearchTools(ctx: ToolContext) {
                     target_price: args.target_price,
                     stop_loss: args.stop_loss,
                     shares: args.shares,
-                    trade_id: t.id,
+                    position_id: pos.id,
+                    order_id: ord.id,
                   } as object,
                 },
               });
             }
 
-            return t;
+            return { position: pos, order: ord };
           });
 
           console.log(`[tool] place_trade SUCCESS position=${position.id} fill=$${fillPrice.toFixed(2)}`);
@@ -1795,9 +1835,9 @@ export function createResearchTools(ctx: ToolContext) {
             ...args,
             status: "filled" as const,
             fill_price: fillPrice,
-            trade_id: position.id,        // position ID used as trade ID for UI compatibility
+            trade_id: position.id,
             position_id: position.id,
-            order_id: dbOrder.id,
+            order_id: order.id,
             alpaca_order_id: alpacaOrder.id,
             note: `Trade executed: ${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
           };
@@ -1872,7 +1912,8 @@ export function createResearchTools(ctx: ToolContext) {
           ),
       }),
       execute: async (args) => {
-        console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
+        const _t0 = Date.now();
+        logToolStart("summarize_run", ctx.runId, `picks=${args.ranked_picks.length}`);
         const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
 
         // Mark run COMPLETE — this MUST succeed, so let it throw

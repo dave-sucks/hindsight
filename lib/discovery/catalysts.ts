@@ -21,7 +21,7 @@ async function finnhubFetch<T>(path: string, retries = 2): Promise<T | null> {
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { next: { revalidate: 300 } });
+      const res = await fetch(url, { next: { revalidate: 300 }, signal: AbortSignal.timeout(10_000) });
       if (res.status === 429) {
         if (attempt < retries) {
           console.warn(`[catalysts] Finnhub 429 on ${path.split("?")[0]}, retry ${attempt + 1}/${retries}`);
@@ -55,7 +55,7 @@ async function fmpFetch<T>(path: string, retries = 1): Promise<T | null> {
   const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { next: { revalidate: 300 } });
+      const res = await fetch(url, { next: { revalidate: 300 }, signal: AbortSignal.timeout(10_000) });
       if (res.status === 429 && attempt < retries) {
         console.warn(`[catalysts] FMP 429 on ${path.split("?")[0]}, retry ${attempt + 1}/${retries}`);
         await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
