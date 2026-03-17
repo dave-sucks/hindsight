@@ -73,11 +73,16 @@ export async function POST(req: Request) {
       agentConfig: true,
       theses: {
         include: {
-          trade: {
-            select: {
-              id: true, ticker: true, direction: true, status: true,
-              entryPrice: true, shares: true, targetPrice: true, stopLoss: true,
-              realizedPnl: true, closePrice: true, outcome: true,
+          decisions: {
+            take: 1,
+            include: {
+              position: {
+                select: {
+                  id: true, symbol: true, direction: true, status: true,
+                  avgCost: true, quantity: true, targetPrice: true, stopLoss: true,
+                  realizedPnl: true, closePrice: true, outcome: true,
+                },
+              },
             },
           },
         },
@@ -89,17 +94,17 @@ export async function POST(req: Request) {
 
   // Build context summary for the system prompt
   const thesesSummary = run.theses.map((t) => {
-    const trade = t.trade;
+    const pos = t.decisions[0]?.position;
     return `- ${t.direction} ${t.ticker} (confidence: ${t.confidenceScore}%): ${t.reasoningSummary}${
-      trade ? ` → Trade ${trade.status}: ${trade.shares} shares @ $${Number(trade.entryPrice).toFixed(2)}` : " → No trade placed"
+      pos ? ` → Position ${pos.status}: ${pos.quantity} shares @ $${Number(pos.avgCost).toFixed(2)}` : " → No trade placed"
     }`;
   }).join("\n");
 
   const tradeSummary = run.theses
-    .filter((t) => t.trade)
+    .filter((t) => t.decisions[0]?.position)
     .map((t) => {
-      const tr = t.trade!;
-      return `${tr.direction} ${tr.shares} ${tr.ticker} @ $${Number(tr.entryPrice).toFixed(2)} (target: $${tr.targetPrice ? Number(tr.targetPrice).toFixed(2) : "—"}, stop: $${tr.stopLoss ? Number(tr.stopLoss).toFixed(2) : "—"}) [${tr.status}]`;
+      const pos = t.decisions[0]!.position!;
+      return `${pos.direction} ${pos.quantity} ${pos.symbol} @ $${Number(pos.avgCost).toFixed(2)} (target: $${pos.targetPrice ? Number(pos.targetPrice).toFixed(2) : "—"}, stop: $${pos.stopLoss ? Number(pos.stopLoss).toFixed(2) : "—"}) [${pos.status}]`;
     }).join("\n");
 
   const analystName = run.agentConfig?.name ?? "Agent";
@@ -243,6 +248,7 @@ ${tradeSummary || "No trades placed in this run."}
                 researchRunId: runId,
                 userId: user.id,
                 ticker: args.ticker,
+                source: "MANUAL",
                 direction: args.direction,
                 confidenceScore: 70,
                 reasoningSummary: `Follow-up trade placed during post-run discussion`,
@@ -254,33 +260,76 @@ ${tradeSummary || "No trades placed in this run."}
                 holdDuration: "SWING",
                 signalTypes: ["FOLLOWUP"],
                 sourcesUsed: [],
+                modelUsed: "chat-followup",
               },
             });
             thesisId = thesis.id;
           }
 
-          const trade = await prisma.trade.create({
+          // Find analyst for this run
+          const runData = await prisma.researchRun.findUnique({
+            where: { id: runId },
+            select: { agentConfigId: true },
+          });
+          const analystId = runData?.agentConfigId;
+          if (!analystId) {
+            return { ...args, status: "failed" as const, error: "No analyst linked to this run" };
+          }
+
+          // Create Position
+          const position = await prisma.position.create({
             data: {
-              thesisId,
+              analystId,
               userId: user.id,
-              ticker: args.ticker,
+              symbol: args.ticker,
               direction: args.direction,
               status: "OPEN",
-              entryPrice: fillPrice,
-              shares: args.shares,
+              quantity: args.shares,
+              avgCost: fillPrice,
               targetPrice: args.target_price,
               stopLoss: args.stop_loss,
               exitStrategy: "PRICE_TARGET",
+            },
+          });
+
+          // Create Order
+          await prisma.order.create({
+            data: {
+              positionId: position.id,
+              userId: user.id,
+              symbol: args.ticker,
+              side: args.direction === "LONG" ? "BUY" : "SELL",
+              orderType: "MARKET",
+              quantity: args.shares,
+              status: "FILLED",
+              filledPrice: fillPrice,
+              filledQty: args.shares,
+              filledAt: new Date(),
               alpacaOrderId: alpacaOrder.id,
             },
           });
 
-          await prisma.tradeEvent.create({
+          // Write OPENED PositionEvent
+          await prisma.positionEvent.create({
             data: {
-              tradeId: trade.id,
-              eventType: "PLACED",
+              positionId: position.id,
+              eventType: "OPENED",
               description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)} (followup)`,
               priceAt: fillPrice,
+            },
+          });
+
+          // Write TradeDecision
+          await prisma.tradeDecision.create({
+            data: {
+              runId,
+              analystId,
+              userId: user.id,
+              symbol: args.ticker,
+              decision: "BUY",
+              reasoning: `Follow-up trade from post-run discussion`,
+              thesisId,
+              positionId: position.id,
             },
           });
 
@@ -288,7 +337,7 @@ ${tradeSummary || "No trades placed in this run."}
             ...args,
             status: "filled" as const,
             fill_price: fillPrice,
-            trade_id: trade.id,
+            trade_id: position.id,
             alpaca_order_id: alpacaOrder.id,
           };
         } catch (err) {
@@ -307,38 +356,60 @@ ${tradeSummary || "No trades placed in this run."}
         try {
           const order = await closePosition(ticker);
 
-          // Update DB trade record
-          const trade = await prisma.trade.findFirst({
-            where: { userId: user.id, ticker, status: "OPEN" },
+          // Update DB position record
+          const position = await prisma.position.findFirst({
+            where: { userId: user.id, symbol: ticker, status: "OPEN" },
             orderBy: { createdAt: "desc" },
           });
 
           let closePrice: number | null = null;
           try { closePrice = await getLatestPrice(ticker); } catch { /* ok */ }
 
-          if (trade) {
+          if (position) {
             const pnl = closePrice
-              ? (closePrice - Number(trade.entryPrice)) * trade.shares * (trade.direction === "LONG" ? 1 : -1)
+              ? (closePrice - position.avgCost) * position.quantity * (position.direction === "LONG" ? 1 : -1)
+              : null;
+            const positionCost = position.avgCost * position.quantity;
+            const outcome = pnl != null
+              ? (pnl > 0.01 * positionCost ? "WIN" : pnl < -0.01 * positionCost ? "LOSS" : "BREAKEVEN")
               : null;
 
-            await prisma.trade.update({
-              where: { id: trade.id },
+            // Create closing Order
+            await prisma.order.create({
+              data: {
+                positionId: position.id,
+                userId: user.id,
+                symbol: ticker,
+                side: position.direction === "LONG" ? "SELL" : "BUY",
+                orderType: "MARKET",
+                quantity: position.quantity,
+                status: "FILLED",
+                filledPrice: closePrice ?? position.avgCost,
+                filledQty: position.quantity,
+                filledAt: new Date(),
+                alpacaOrderId: order.id,
+              },
+            });
+
+            await prisma.position.update({
+              where: { id: position.id },
               data: {
                 status: "CLOSED",
                 closedAt: new Date(),
                 closePrice,
-                closeReason: "MANUAL_CLOSE",
+                closeReason: "MANUAL",
                 realizedPnl: pnl,
-                outcome: pnl != null ? (pnl >= 0 ? "WIN" : "LOSS") : null,
+                outcome,
               },
             });
 
-            await prisma.tradeEvent.create({
+            await prisma.positionEvent.create({
               data: {
-                tradeId: trade.id,
+                positionId: position.id,
                 eventType: "CLOSED",
                 description: `Position closed manually via followup chat`,
-                priceAt: closePrice ?? Number(trade.entryPrice),
+                priceAt: closePrice ?? position.avgCost,
+                pnlAt: pnl,
               },
             });
 
@@ -347,8 +418,8 @@ ${tradeSummary || "No trades placed in this run."}
               status: "closed" as const,
               close_price: closePrice,
               realized_pnl: pnl,
-              shares: trade.shares,
-              direction: trade.direction,
+              shares: position.quantity,
+              direction: position.direction,
               alpaca_order_id: order.id,
             };
           }
@@ -453,10 +524,10 @@ ${tradeSummary || "No trades placed in this run."}
           reasoning: thesis.reasoningSummary,
           bullets: thesis.thesisBullets,
           risk_flags: thesis.riskFlags,
-          trade_placed: !!thesis.trade,
-          trade_status: thesis.trade?.status ?? null,
-          explanation: thesis.trade
-            ? `A ${thesis.direction} trade was placed: ${thesis.trade.shares} shares at $${Number(thesis.trade.entryPrice).toFixed(2)} (confidence: ${thesis.confidenceScore}%). Reasoning: ${thesis.reasoningSummary}`
+          trade_placed: !!thesis.decisions[0]?.position,
+          trade_status: thesis.decisions[0]?.position?.status ?? null,
+          explanation: thesis.decisions[0]?.position
+            ? `A ${thesis.direction} trade was placed: ${thesis.decisions[0].position.quantity} shares at $${Number(thesis.decisions[0].position.avgCost).toFixed(2)} (confidence: ${thesis.confidenceScore}%). Reasoning: ${thesis.reasoningSummary}`
             : `${ticker} was analyzed (${thesis.direction}, ${thesis.confidenceScore}% confidence) but no trade was placed. Reasoning: ${thesis.reasoningSummary}`,
         };
       },

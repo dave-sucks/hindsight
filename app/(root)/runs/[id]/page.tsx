@@ -46,9 +46,25 @@ export default async function RunPage({
       ? (run.parameters as Record<string, unknown>)
       : {};
 
-  // Parse persisted messages for completed runs
+  // Detect stale RUNNING runs (likely crashed cron or timed-out agent).
+  // If RUNNING for over 10 minutes, treat as stale — don't auto-start a new agent.
+  const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+  const isStale =
+    run.status === "RUNNING" &&
+    Date.now() - new Date(run.startedAt).getTime() > STALE_THRESHOLD_MS;
+
+  // Mark stale runs as FAILED in the background so they don't keep appearing as live
+  if (isStale) {
+    await prisma.researchRun.update({
+      where: { id: run.id },
+      data: { status: "FAILED", completedAt: new Date() },
+    });
+    run.status = "FAILED";
+  }
+
+  // Parse persisted messages for completed/failed runs
   let persistedMessages: UIMessage[] | null = null;
-  if (run.status === "COMPLETE" && run.messages.length > 0) {
+  if ((run.status === "COMPLETE" || run.status === "FAILED") && run.messages.length > 0) {
     try {
       const raw = JSON.parse(run.messages[0].content);
       if (Array.isArray(raw) && raw.length > 0) {
@@ -83,10 +99,12 @@ export default async function RunPage({
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
             <div className="h-2.5 w-2.5 rounded-full bg-negative" />
             <p className="text-sm font-medium text-foreground">
-              No replay data available
+              {run.status === "FAILED" ? "Run failed" : "No replay data available"}
             </p>
             <p className="text-xs max-w-xs">
-              This run completed before message persistence was enabled.
+              {run.status === "FAILED"
+                ? "This run stopped before completing. It may have timed out or encountered an error."
+                : "This run completed before message persistence was enabled."}
             </p>
           </div>
         )}

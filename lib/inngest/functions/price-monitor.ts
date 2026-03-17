@@ -3,24 +3,24 @@ import { prisma } from "@/lib/prisma";
 import { getLatestPrices } from "@/lib/alpaca";
 import { isMarketOpen } from "@/lib/market-hours";
 import { checkExitConditions } from "@/lib/trade-exit";
-import type { TradeModel } from "@/lib/generated/prisma/models";
+import type { PositionModel } from "@/lib/generated/prisma/models";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { nearTargetHtml } from "@/lib/emails/near-target";
 
 // ─── P&L helpers ─────────────────────────────────────────────────────────────
 
 function calculatePnl(
-  trade: TradeModel,
+  position: PositionModel,
   currentPrice: number
 ): { dollars: number; pct: number } {
   const dollars =
-    trade.direction === "LONG"
-      ? (currentPrice - trade.entryPrice) * trade.shares
-      : (trade.entryPrice - currentPrice) * trade.shares;
+    position.direction === "LONG"
+      ? (currentPrice - position.avgCost) * position.quantity
+      : (position.avgCost - currentPrice) * position.quantity;
   const pct =
-    trade.direction === "LONG"
-      ? ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100
-      : ((trade.entryPrice - currentPrice) / trade.entryPrice) * 100;
+    position.direction === "LONG"
+      ? ((currentPrice - position.avgCost) / position.avgCost) * 100
+      : ((position.avgCost - currentPrice) / position.avgCost) * 100;
   return { dollars, pct };
 }
 
@@ -30,17 +30,16 @@ export const priceMonitor = inngest.createFunction(
   {
     id: "price-monitor",
     name: "Hourly Price Monitor",
-    // Retry config: don't retry price checks (stale data not useful)
     retries: 0,
   },
-  { cron: "TZ=America/New_York 0 9-17 * * 1-5" }, // every hour 9 AM–5 PM ET Mon–Fri (auto-adjusts for EDT/EST)
+  { cron: "TZ=America/New_York 0 9-17 * * 1-5" },
   async ({ step }) => {
-    // Step 1: Fetch all OPEN + SHADOW trades
-    const openTrades = await step.run("fetch-open-trades", async () => {
-      return prisma.trade.findMany({ where: { status: { in: ["OPEN", "SHADOW"] } } });
+    // Step 1: Fetch all OPEN positions
+    const openPositions = await step.run("fetch-open-positions", async () => {
+      return prisma.position.findMany({ where: { status: "OPEN" } });
     });
 
-    if (openTrades.length === 0) return { checked: 0, reason: "no-open-trades" };
+    if (openPositions.length === 0) return { checked: 0, reason: "no-open-positions" };
 
     // Step 2: Skip if market is closed
     const marketOpen = await step.run("check-market-hours", async () => {
@@ -52,32 +51,30 @@ export const priceMonitor = inngest.createFunction(
     }
 
     // Step 3: Batch fetch current prices via Alpaca Data API
-    const uniqueTickers = [...new Set(openTrades.map((t) => t.ticker))];
+    const uniqueTickers = [...new Set(openPositions.map((p) => p.symbol))];
 
     const priceMap = await step.run("fetch-prices", async () => {
       try {
         return await getLatestPrices(uniqueTickers);
       } catch {
-        // If batch fails, return empty — individual steps will handle gracefully
         return {} as Record<string, number>;
       }
     });
 
-    // Step 4: Per-trade price check + exit condition evaluation
+    // Step 4: Per-position price check + exit condition evaluation
     let checked = 0;
     let errors = 0;
 
-    for (const trade of openTrades) {
-      await step.run(`check-trade-${trade.id}`, async () => {
+    for (const position of openPositions) {
+      await step.run(`check-position-${position.id}`, async () => {
         try {
-          const currentPrice = priceMap[trade.ticker];
+          const currentPrice = priceMap[position.symbol];
           if (!currentPrice) {
-            // Write a note that price was unavailable
-            await prisma.tradeEvent.create({
+            await prisma.positionEvent.create({
               data: {
-                tradeId: trade.id,
+                positionId: position.id,
                 eventType: "PRICE_CHECK",
-                description: `Price unavailable for ${trade.ticker}`,
+                description: `Price unavailable for ${position.symbol}`,
                 priceAt: null,
                 pnlAt: null,
               },
@@ -85,97 +82,61 @@ export const priceMonitor = inngest.createFunction(
             return;
           }
 
-          const pnl = calculatePnl(trade as unknown as TradeModel, currentPrice);
+          const pnl = calculatePnl(position as unknown as PositionModel, currentPrice);
 
           // Write PRICE_CHECK event
-          await prisma.tradeEvent.create({
+          await prisma.positionEvent.create({
             data: {
-              tradeId: trade.id,
+              positionId: position.id,
               eventType: "PRICE_CHECK",
-              description: `${trade.status === "SHADOW" ? "SHADOW " : ""}Price check: $${currentPrice.toFixed(2)} (${pnl.pct >= 0 ? "+" : ""}${pnl.pct.toFixed(1)}%)`,
+              description: `Price check: $${currentPrice.toFixed(2)} (${pnl.pct >= 0 ? "+" : ""}${pnl.pct.toFixed(1)}%)`,
               priceAt: currentPrice,
               pnlAt: pnl.dollars,
             },
           });
 
-          // Shadow trade expiry check — close if observation window has passed
-          if (trade.status === "SHADOW" && trade.exitDate && new Date() >= new Date(trade.exitDate)) {
-            // For shadow trades: WIN = good pass (price dropped, you avoided a loss)
-            // LOSS = bad pass (price rose, you missed a gain)
-            const outcome = pnl.dollars <= 0 ? "WIN" : "LOSS";
-            await prisma.trade.update({
-              where: { id: trade.id },
-              data: {
-                status: "SHADOW_CLOSED",
-                closePrice: currentPrice,
-                realizedPnl: pnl.dollars,
-                outcome,
-                closeReason: "SHADOW_EXPIRY",
-                closedAt: new Date(),
-              },
-            });
-            await prisma.tradeEvent.create({
-              data: {
-                tradeId: trade.id,
-                eventType: "CLOSED",
-                description: `SHADOW CLOSED: ${outcome === "WIN" ? "Good pass" : "Bad pass"} — ${trade.ticker} moved ${pnl.pct >= 0 ? "+" : ""}${pnl.pct.toFixed(1)}% (${pnl.dollars >= 0 ? "+" : ""}$${pnl.dollars.toFixed(2)} hypothetical)`,
-                priceAt: currentPrice,
-                pnlAt: pnl.dollars,
-              },
-            });
-            checked++;
-            return;
-          }
-
-          // Skip exit conditions and alerts for shadow trades
-          if (trade.status === "SHADOW") {
-            checked++;
-            return;
-          }
-
-          // Check exit conditions — DAV-33 implements auto-close
-          await checkExitConditions(trade as unknown as TradeModel, currentPrice);
+          // Check exit conditions
+          await checkExitConditions(position as unknown as PositionModel, currentPrice);
 
           // Near-target alert — send once when ≥80% of the way to price target
           if (
-            trade.targetPrice &&
-            !trade.nearTargetAlertSent
+            position.targetPrice &&
+            !position.nearTargetAlertSent
           ) {
             const totalMove =
-              trade.direction === "LONG"
-                ? trade.targetPrice - trade.entryPrice
-                : trade.entryPrice - trade.targetPrice;
+              position.direction === "LONG"
+                ? position.targetPrice - position.avgCost
+                : position.avgCost - position.targetPrice;
             const currentMove =
-              trade.direction === "LONG"
-                ? currentPrice - trade.entryPrice
-                : trade.entryPrice - currentPrice;
+              position.direction === "LONG"
+                ? currentPrice - position.avgCost
+                : position.avgCost - currentPrice;
             const progress = totalMove > 0 ? currentMove / totalMove : 0;
 
             if (progress >= 0.8) {
-              // Mark flag first (idempotent) then send email
-              await prisma.trade.update({
-                where: { id: trade.id },
+              await prisma.position.update({
+                where: { id: position.id },
                 data: { nearTargetAlertSent: true },
               });
-              getUserEmail(trade.userId).then((toEmail) => {
+              getUserEmail(position.userId).then((toEmail) => {
                 if (!toEmail) return;
                 const unrealizedPnl =
-                  trade.direction === "LONG"
-                    ? (currentPrice - trade.entryPrice) * trade.shares
-                    : (trade.entryPrice - currentPrice) * trade.shares;
+                  position.direction === "LONG"
+                    ? (currentPrice - position.avgCost) * position.quantity
+                    : (position.avgCost - currentPrice) * position.quantity;
                 sendEmail({
                   to: toEmail,
-                  subject: `🎯 ${trade.ticker} is ${Math.round(progress * 100)}% to target`,
+                  subject: `🎯 ${position.symbol} is ${Math.round(progress * 100)}% to target`,
                   html: nearTargetHtml({
-                    ticker: trade.ticker,
-                    direction: trade.direction as "LONG" | "SHORT",
-                    entryPrice: trade.entryPrice,
+                    ticker: position.symbol,
+                    direction: position.direction as "LONG" | "SHORT",
+                    entryPrice: position.avgCost,
                     currentPrice,
-                    targetPrice: trade.targetPrice!,
+                    targetPrice: position.targetPrice!,
                     progressPct: progress * 100,
                     unrealizedPnl,
-                    unrealizedPnlPct: calculatePnl(trade as unknown as TradeModel, currentPrice).pct,
-                    tradeId: trade.id,
+                    unrealizedPnlPct: pnl.pct,
+                    tradeId: position.id,
                   }),
                 });
               });
@@ -184,12 +145,11 @@ export const priceMonitor = inngest.createFunction(
 
           checked++;
         } catch {
-          // Don't fail the whole batch on one bad trade
           errors++;
         }
       });
     }
 
-    return { checked, errors, total: openTrades.length };
+    return { checked, errors, total: openPositions.length };
   }
 );

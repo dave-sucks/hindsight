@@ -104,7 +104,7 @@ export async function placeMarketOrder(
     order.qty = params.qty;
   }
 
-  return (await getClient().createOrder(order)) as AlpacaOrder;
+  return (await withTimeout(getClient().createOrder(order), `placeMarketOrder(${params.symbol})`)) as AlpacaOrder;
 }
 
 export async function placeLimitOrder(
@@ -121,7 +121,7 @@ export async function placeLimitOrder(
 }
 
 export async function getOrder(orderId: string): Promise<AlpacaOrder> {
-  return (await getClient().getOrder(orderId)) as AlpacaOrder;
+  return (await withTimeout(getClient().getOrder(orderId), `getOrder(${orderId.slice(0, 8)})`)) as AlpacaOrder;
 }
 
 // ─── Positions ────────────────────────────────────────────────────────────────
@@ -147,6 +147,27 @@ export async function closePosition(symbol: string): Promise<AlpacaOrder> {
   return (await getClient().closePosition(symbol)) as AlpacaOrder;
 }
 
+export async function cancelOrder(orderId: string): Promise<void> {
+  await getClient().cancelOrder(orderId);
+}
+
+export async function getOpenOrders(): Promise<AlpacaOrder[]> {
+  return (await getClient().getOrders({ status: "open" })) as AlpacaOrder[];
+}
+
+// ─── Timeout helper (Alpaca SDK doesn't support AbortSignal) ─────────────────
+
+const ALPACA_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Alpaca ${label} TIMEOUT after ${ALPACA_TIMEOUT_MS}ms`)), ALPACA_TIMEOUT_MS)
+    ),
+  ]);
+}
+
 // ─── Market data ──────────────────────────────────────────────────────────────
 
 /**
@@ -154,7 +175,7 @@ export async function closePosition(symbol: string): Promise<AlpacaOrder> {
  * Uses Alpaca Data API v2 — real-time during market hours, last close after.
  */
 export async function getLatestPrice(symbol: string): Promise<number> {
-  const trade = await getClient().getLatestTrade(symbol);
+  const trade = await withTimeout(getClient().getLatestTrade(symbol), `getLatestPrice(${symbol})`);
   // SDK v3 returns PascalCase fields: { Price, Size, Timestamp, ... }
   const t = trade as { Price?: number; p?: number };
   const price = t.Price ?? t.p;
@@ -170,7 +191,7 @@ export async function getLatestPrice(symbol: string): Promise<number> {
 export async function getLatestPrices(
   symbols: string[]
 ): Promise<Record<string, number>> {
-  const trades = await getClient().getLatestTrades(symbols);
+  const trades = await withTimeout(getClient().getLatestTrades(symbols), `getLatestPrices(${symbols.length} symbols)`);
   const result: Record<string, number> = {};
   (trades as Map<string, { Price?: number; p?: number }>).forEach(
     (trade, symbol) => {
@@ -193,21 +214,25 @@ export async function getBars(
 ): Promise<{ close: number; volume: number }[]> {
   const bars: { close: number; volume: number }[] = [];
 
-  const barIterator = getClient().getBarsV2(symbol, {
-    start: options.start,
-    end: options.end,
-    timeframe: options.timeframe || "1Day",
-    limit: options.limit || 90,
-  });
+  // Wrap entire iteration in a timeout since Alpaca SDK async iterators can hang
+  const collectBars = async () => {
+    const barIterator = getClient().getBarsV2(symbol, {
+      start: options.start,
+      end: options.end,
+      timeframe: options.timeframe || "1Day",
+      limit: options.limit || 90,
+    });
 
-  for await (const bar of barIterator) {
-    const b = bar as { ClosePrice?: number; c?: number; Volume?: number; v?: number };
-    const close = b.ClosePrice ?? b.c;
-    const volume = b.Volume ?? b.v;
-    if (close !== undefined) {
-      bars.push({ close, volume: volume ?? 0 });
+    for await (const bar of barIterator) {
+      const b = bar as { ClosePrice?: number; c?: number; Volume?: number; v?: number };
+      const close = b.ClosePrice ?? b.c;
+      const volume = b.Volume ?? b.v;
+      if (close !== undefined) {
+        bars.push({ close, volume: volume ?? 0 });
+      }
     }
-  }
+    return bars;
+  };
 
-  return bars;
+  return withTimeout(collectBars(), `getBars(${symbol})`);
 }

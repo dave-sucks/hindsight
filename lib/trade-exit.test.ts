@@ -11,7 +11,7 @@ import { evaluateExitStrategy, targetProximity } from "./trade-exit";
 const baseLong = {
   direction: "LONG" as const,
   exitStrategy: "PRICE_TARGET" as const,
-  entryPrice: 100,
+  avgCost: 100,
   targetPrice: 120,
   stopLoss: 90,
   exitDate: null,
@@ -21,7 +21,7 @@ const baseLong = {
 const baseShort = {
   direction: "SHORT" as const,
   exitStrategy: "PRICE_TARGET" as const,
-  entryPrice: 100,
+  avgCost: 100,
   targetPrice: 80,
   stopLoss: 110,
   exitDate: null,
@@ -93,7 +93,7 @@ describe("TIME_BASED", () => {
   const timeTrade = {
     direction: "LONG" as const,
     exitStrategy: "TIME_BASED" as const,
-    entryPrice: 100,
+    avgCost: 100,
     targetPrice: null,
     stopLoss: null,
     trailingStopPct: null,
@@ -126,7 +126,7 @@ describe("TRAILING — LONG", () => {
   const trailingLong = {
     direction: "LONG" as const,
     exitStrategy: "TRAILING" as const,
-    entryPrice: 100,
+    avgCost: 100,
     targetPrice: null,
     stopLoss: null,
     exitDate: null,
@@ -160,7 +160,7 @@ describe("TRAILING — SHORT", () => {
   const trailingShort = {
     direction: "SHORT" as const,
     exitStrategy: "TRAILING" as const,
-    entryPrice: 100,
+    avgCost: 100,
     targetPrice: null,
     stopLoss: null,
     exitDate: null,
@@ -188,7 +188,7 @@ describe("MANUAL", () => {
     const manual = {
       direction: "LONG" as const,
       exitStrategy: "MANUAL" as const,
-      entryPrice: 100,
+      avgCost: 100,
       targetPrice: 50, // would normally trigger
       stopLoss: 200, // would normally trigger
       exitDate: new Date(Date.now() - 1000), // in the past
@@ -204,31 +204,31 @@ describe("MANUAL", () => {
 describe("targetProximity", () => {
   it("returns 1.0 when at target (LONG)", () => {
     expect(
-      targetProximity({ direction: "LONG", entryPrice: 100, targetPrice: 120 }, 120)
+      targetProximity({ direction: "LONG", avgCost: 100, targetPrice: 120 }, 120)
     ).toBe(1);
   });
 
   it("returns 0.5 halfway to target (LONG)", () => {
     expect(
-      targetProximity({ direction: "LONG", entryPrice: 100, targetPrice: 120 }, 110)
+      targetProximity({ direction: "LONG", avgCost: 100, targetPrice: 120 }, 110)
     ).toBe(0.5);
   });
 
   it("returns 0.9 for 90% to target (SHORT)", () => {
     expect(
-      targetProximity({ direction: "SHORT", entryPrice: 100, targetPrice: 80 }, 82)
+      targetProximity({ direction: "SHORT", avgCost: 100, targetPrice: 80 }, 82)
     ).toBeCloseTo(0.9);
   });
 
   it("returns 0 at entry price", () => {
     expect(
-      targetProximity({ direction: "LONG", entryPrice: 100, targetPrice: 120 }, 100)
+      targetProximity({ direction: "LONG", avgCost: 100, targetPrice: 120 }, 100)
     ).toBe(0);
   });
 
   it("clamps to 0 if price moves away from target", () => {
     expect(
-      targetProximity({ direction: "LONG", entryPrice: 100, targetPrice: 120 }, 90)
+      targetProximity({ direction: "LONG", avgCost: 100, targetPrice: 120 }, 90)
     ).toBe(0);
   });
 });

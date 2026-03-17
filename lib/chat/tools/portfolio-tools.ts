@@ -24,17 +24,25 @@ export function createPortfolioTools(userId: string) {
         "their positions, portfolio, or how they're doing.",
       inputSchema: z.object({}),
       execute: async () => {
-        // Fetch open trades
-        const openTrades = await prisma.trade.findMany({
+        // Fetch open positions
+        const openPositions = await prisma.position.findMany({
           where: { userId, status: "OPEN" },
-          include: { thesis: { select: { confidenceScore: true, sector: true } } },
+          include: {
+            analyst: { select: { name: true } },
+            decisions: {
+              take: 1,
+              include: {
+                thesis: { select: { confidenceScore: true, sector: true } },
+              },
+            },
+          },
           orderBy: { openedAt: "desc" },
         });
 
         // Batch-fetch live prices for open positions
         const tickers: string[] = Array.from(
-          new Set(openTrades.map((t: { ticker: string }) => t.ticker))
-        ) as string[];
+          new Set(openPositions.map((p) => p.symbol))
+        );
         let priceMap: Record<string, number> = {};
         if (tickers.length > 0) {
           try {
@@ -45,37 +53,39 @@ export function createPortfolioTools(userId: string) {
         }
 
         // Build position summaries
-        type OpenTrade = (typeof openTrades)[number];
-        const positions = openTrades.map((t: OpenTrade) => {
-          const currentPrice = priceMap[t.ticker] ?? t.entryPrice;
+        type OpenPos = (typeof openPositions)[number];
+        const positions = openPositions.map((p: OpenPos) => {
+          const currentPrice = priceMap[p.symbol] ?? p.avgCost;
+          const thesis = p.decisions[0]?.thesis;
           const pnlDollars =
-            t.direction === "LONG"
-              ? (currentPrice - t.entryPrice) * t.shares
-              : (t.entryPrice - currentPrice) * t.shares;
+            p.direction === "LONG"
+              ? (currentPrice - p.avgCost) * p.quantity
+              : (p.avgCost - currentPrice) * p.quantity;
           const pnlPct =
-            t.entryPrice > 0
-              ? ((t.direction === "LONG"
-                  ? currentPrice - t.entryPrice
-                  : t.entryPrice - currentPrice) /
-                  t.entryPrice) *
+            p.avgCost > 0
+              ? ((p.direction === "LONG"
+                  ? currentPrice - p.avgCost
+                  : p.avgCost - currentPrice) /
+                  p.avgCost) *
                 100
               : 0;
 
           return {
-            ticker: t.ticker,
-            direction: t.direction,
-            shares: t.shares,
-            entryPrice: t.entryPrice,
+            ticker: p.symbol,
+            direction: p.direction,
+            shares: p.quantity,
+            entryPrice: p.avgCost,
             currentPrice,
             pnlDollars: Math.round(pnlDollars * 100) / 100,
             pnlPct: Math.round(pnlPct * 100) / 100,
-            targetPrice: t.targetPrice,
-            stopLoss: t.stopLoss,
+            targetPrice: p.targetPrice,
+            stopLoss: p.stopLoss,
             daysHeld: Math.floor(
-              (Date.now() - t.openedAt.getTime()) / (1000 * 60 * 60 * 24)
+              (Date.now() - p.openedAt.getTime()) / (1000 * 60 * 60 * 24)
             ),
-            sector: t.thesis?.sector ?? null,
-            confidence: t.thesis?.confidenceScore ?? null,
+            sector: thesis?.sector ?? null,
+            confidence: thesis?.confidenceScore ?? null,
+            analystName: p.analyst?.name ?? null,
           };
         });
 
@@ -99,13 +109,13 @@ export function createPortfolioTools(userId: string) {
           ([name, count]: [string, number]) => ({ name, count })
         );
 
-        // Closed trade stats
-        const closedStats = await prisma.trade.aggregate({
+        // Closed position stats
+        const closedStats = await prisma.position.aggregate({
           where: { userId, status: "CLOSED" },
           _sum: { realizedPnl: true },
           _count: true,
         });
-        const winCount = await prisma.trade.count({
+        const winCount = await prisma.position.count({
           where: { userId, status: "CLOSED", outcome: "WIN" },
         });
         const closedCount = closedStats._count;
@@ -140,43 +150,39 @@ export function createPortfolioTools(userId: string) {
           ),
       }),
       execute: async ({ runId }) => {
-        const run = runId
-          ? await prisma.researchRun.findUnique({
-              where: { id: runId },
+        const runQuery = {
+          include: {
+            agentConfig: { select: { name: true } },
+            theses: {
               include: {
-                agentConfig: { select: { name: true } },
-                theses: {
-                  include: {
-                    trade: {
+                decisions: {
+                  take: 1,
+                  where: { decision: "BUY" },
+                  select: {
+                    position: {
                       select: {
                         id: true,
                         status: true,
-                        entryPrice: true,
+                        avgCost: true,
                       },
                     },
                   },
-                  orderBy: { confidenceScore: "desc" },
                 },
               },
+              orderBy: { confidenceScore: "desc" as const },
+            },
+          },
+        };
+
+        const run = runId
+          ? await prisma.researchRun.findUnique({
+              where: { id: runId },
+              ...runQuery,
             })
           : await prisma.researchRun.findFirst({
               where: { userId },
               orderBy: { startedAt: "desc" },
-              include: {
-                agentConfig: { select: { name: true } },
-                theses: {
-                  include: {
-                    trade: {
-                      select: {
-                        id: true,
-                        status: true,
-                        entryPrice: true,
-                      },
-                    },
-                  },
-                  orderBy: { confidenceScore: "desc" },
-                },
-              },
+              ...runQuery,
             });
 
         if (!run) {
@@ -184,19 +190,22 @@ export function createPortfolioTools(userId: string) {
         }
 
         type RunThesis = (typeof run.theses)[number];
-        const theses = run.theses.map((t: RunThesis) => ({
-          ticker: t.ticker,
-          direction: t.direction,
-          confidence: t.confidenceScore,
-          reasoning: t.reasoningSummary,
-          entryPrice: t.entryPrice,
-          targetPrice: t.targetPrice,
-          stopLoss: t.stopLoss,
-          signalTypes: t.signalTypes,
-          sector: t.sector,
-          traded: !!t.trade,
-          tradeStatus: t.trade?.status ?? null,
-        }));
+        const theses = run.theses.map((t: RunThesis) => {
+          const pos = t.decisions[0]?.position;
+          return {
+            ticker: t.ticker,
+            direction: t.direction,
+            confidence: t.confidenceScore,
+            reasoning: t.reasoningSummary,
+            entryPrice: t.entryPrice,
+            targetPrice: t.targetPrice,
+            stopLoss: t.stopLoss,
+            signalTypes: t.signalTypes,
+            sector: t.sector,
+            traded: !!pos,
+            tradeStatus: pos?.status ?? null,
+          };
+        });
 
         const actionable = theses.filter(
           (t: { direction: string }) => t.direction !== "PASS"
@@ -243,26 +252,24 @@ export function createPortfolioTools(userId: string) {
           orderBy: { weekStartDate: "desc" },
         });
 
-        // Get overall stats
+        // Get overall stats from positions
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const closedWhere: any = { userId, status: "CLOSED" };
         if (analystId) {
-          closedWhere.thesis = {
-            researchRun: { agentConfigId: analystId },
-          };
+          closedWhere.analystId = analystId;
         }
 
         const [totalClosed, wins, losses] = await Promise.all([
-          prisma.trade.count({ where: closedWhere }),
-          prisma.trade.count({
+          prisma.position.count({ where: closedWhere }),
+          prisma.position.count({
             where: { ...closedWhere, outcome: "WIN" },
           }),
-          prisma.trade.count({
+          prisma.position.count({
             where: { ...closedWhere, outcome: "LOSS" },
           }),
         ]);
 
-        const pnlAgg = await prisma.trade.aggregate({
+        const pnlAgg = await prisma.position.aggregate({
           where: closedWhere,
           _sum: { realizedPnl: true },
           _avg: { realizedPnl: true },
@@ -270,14 +277,14 @@ export function createPortfolioTools(userId: string) {
 
         // Get per-direction stats
         const [longWins, shortWins] = await Promise.all([
-          prisma.trade.count({
+          prisma.position.count({
             where: {
               ...closedWhere,
               direction: "LONG",
               outcome: "WIN",
             },
           }),
-          prisma.trade.count({
+          prisma.position.count({
             where: {
               ...closedWhere,
               direction: "SHORT",
@@ -286,10 +293,10 @@ export function createPortfolioTools(userId: string) {
           }),
         ]);
         const [totalLong, totalShort] = await Promise.all([
-          prisma.trade.count({
+          prisma.position.count({
             where: { ...closedWhere, direction: "LONG" },
           }),
-          prisma.trade.count({
+          prisma.position.count({
             where: { ...closedWhere, direction: "SHORT" },
           }),
         ]);

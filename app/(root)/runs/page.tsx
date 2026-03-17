@@ -38,8 +38,13 @@ export default async function RunsPage() {
           confidenceScore: true,
           entryPrice: true,
           reasoningSummary: true,
-          trade: {
-            select: { id: true, shares: true, entryPrice: true },
+          decisions: {
+            take: 1,
+            select: {
+              position: {
+                select: { id: true, quantity: true, avgCost: true },
+              },
+            },
           },
         },
         orderBy: { createdAt: "asc" },
@@ -75,7 +80,7 @@ export default async function RunsPage() {
           const recommended = run.theses.filter(
             (t) => t.direction !== "PASS"
           );
-          const tradesPlaced = run.theses.filter((t) => t.trade != null);
+          const tradesPlaced = run.theses.filter((t) => t.decisions[0]?.position != null);
 
           // Unique tickers for logo stack
           const tickers = [
@@ -93,8 +98,9 @@ export default async function RunsPage() {
 
           // Total capital deployed (from trades)
           const capitalDeployed = tradesPlaced.reduce((sum, t) => {
-            if (!t.trade) return sum;
-            return sum + t.trade.entryPrice * t.trade.shares;
+            const pos = t.decisions[0]?.position;
+            if (!pos) return sum;
+            return sum + pos.avgCost * pos.quantity;
           }, 0);
 
           // Build summary from top theses

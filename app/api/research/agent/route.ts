@@ -86,34 +86,34 @@ export async function POST(req: Request) {
   try {
     const configId = analystId || (agentConfig as Record<string, unknown>).id;
 
-    // Recent closed trades (last 20) with evaluation data
-    const recentTrades = await prisma.trade.findMany({
+    // Recent closed positions (last 20) with evaluation data
+    const recentTrades = await prisma.position.findMany({
       where: {
         userId: user.id,
         status: "CLOSED",
-        ...(configId ? { thesis: { researchRun: { agentConfigId: configId as string } } } : {}),
+        ...(configId ? { analystId: configId as string } : {}),
       },
       orderBy: { closedAt: "desc" },
       take: 20,
       select: {
         id: true,
-        ticker: true, direction: true, outcome: true,
-        entryPrice: true, closePrice: true, shares: true,
+        symbol: true, direction: true, outcome: true,
+        avgCost: true, closePrice: true, quantity: true,
         realizedPnl: true, closeReason: true, closedAt: true,
         agentEvaluation: true,
       },
     });
 
-    // Open trades
-    const openTrades = await prisma.trade.findMany({
+    // Open positions
+    const openTrades = await prisma.position.findMany({
       where: {
         userId: user.id,
         status: "OPEN",
-        ...(configId ? { thesis: { researchRun: { agentConfigId: configId as string } } } : {}),
+        ...(configId ? { analystId: configId as string } : {}),
       },
       select: {
-        ticker: true, direction: true, entryPrice: true,
-        shares: true, targetPrice: true, stopLoss: true,
+        symbol: true, direction: true, avgCost: true,
+        quantity: true, targetPrice: true, stopLoss: true,
         createdAt: true,
       },
     });
@@ -151,18 +151,20 @@ export async function POST(req: Request) {
       });
     }
 
-    // Recent shadow-closed trades (pass tracking results)
-    const shadowTrades = await prisma.trade.findMany({
+    // Recent PASS decisions (replaces shadow trades)
+    const passDecisions = await prisma.tradeDecision.findMany({
       where: {
         userId: user.id,
-        status: "SHADOW_CLOSED",
-        ...(configId ? { thesis: { researchRun: { agentConfigId: configId as string } } } : {}),
+        decision: "PASS",
+        ...(configId ? { analystId: configId as string } : {}),
       },
-      orderBy: { closedAt: "desc" },
+      orderBy: { createdAt: "desc" },
       take: 10,
       select: {
-        ticker: true, entryPrice: true, closePrice: true,
-        realizedPnl: true, outcome: true, closedAt: true,
+        symbol: true, reasoning: true, createdAt: true,
+        thesis: {
+          select: { entryPrice: true, confidenceScore: true },
+        },
       },
     });
 
@@ -188,7 +190,7 @@ export async function POST(req: Request) {
     if (openTrades.length > 0) {
       parts.push("\n## Your Open Positions");
       for (const t of openTrades) {
-        parts.push(`- ${t.direction} ${t.shares} shares $${t.ticker} @ $${Number(t.entryPrice).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
+        parts.push(`- ${t.direction} ${t.quantity} shares $${t.symbol} @ $${Number(t.avgCost).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
       }
       parts.push(`\nDo NOT open duplicate positions in tickers you already hold. Consider whether existing positions should be closed based on new information.`);
     }
@@ -196,28 +198,25 @@ export async function POST(req: Request) {
     if (recentTrades.length > 0) {
       const wins = recentTrades.filter((t) => t.outcome === "WIN").length;
       const losses = recentTrades.filter((t) => t.outcome === "LOSS").length;
-      parts.push(`\n## Recent Trade History (${recentTrades.length} trades)`);
+      parts.push(`\n## Recent Trade History (${recentTrades.length} positions)`);
       parts.push(`Win/Loss: ${wins}W / ${losses}L`);
       for (const t of recentTrades.slice(0, 10)) {
         const pnl = t.realizedPnl ?? 0;
         const evalSnippet = t.agentEvaluation ? ` | Eval: ${t.agentEvaluation.slice(0, 200)}` : "";
-        parts.push(`- ${t.outcome ?? "?"} | ${t.direction} $${t.ticker} | entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} | ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}${evalSnippet}`);
+        parts.push(`- ${t.outcome ?? "?"} | ${t.direction} $${t.symbol} | entry $${Number(t.avgCost).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} | ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}${evalSnippet}`);
       }
       parts.push(`\nLearn from these results and evaluations. Avoid repeating patterns that led to losses.`);
     }
 
-    if (shadowTrades.length > 0) {
-      const goodPasses = shadowTrades.filter((t) => t.outcome === "WIN").length;
-      const badPasses = shadowTrades.filter((t) => t.outcome === "LOSS").length;
-      parts.push(`\n## Shadow Trade Results — Passes You Tracked (${shadowTrades.length} resolved)`);
-      parts.push(`Good passes: ${goodPasses} | Bad passes: ${badPasses}`);
-      for (const t of shadowTrades) {
-        const priceDelta = t.closePrice ? ((t.closePrice - t.entryPrice) / t.entryPrice * 100) : 0;
-        const hypotheticalPnl = t.realizedPnl ?? 0;
-        const label = t.outcome === "WIN" ? "GOOD PASS" : "BAD PASS";
-        parts.push(`- ${label} | $${t.ticker} | passed at $${Number(t.entryPrice).toFixed(2)}, now $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} (${priceDelta >= 0 ? "+" : ""}${priceDelta.toFixed(1)}%) | ${hypotheticalPnl >= 0 ? "Missed" : "Avoided"} $${Math.abs(hypotheticalPnl).toFixed(2)}`);
+    if (passDecisions.length > 0) {
+      parts.push(`\n## Recent Pass Decisions (${passDecisions.length})`);
+      for (const d of passDecisions) {
+        const entryPrice = d.thesis?.entryPrice;
+        const confidence = d.thesis?.confidenceScore;
+        const dateStr = d.createdAt.toISOString().slice(0, 10);
+        parts.push(`- PASS | $${d.symbol} | ${dateStr} | confidence: ${confidence ?? "—"}% | entry was $${entryPrice ? Number(entryPrice).toFixed(2) : "—"} | reason: ${d.reasoning?.slice(0, 150) ?? "—"}`);
       }
-      parts.push(`\nUse these results to calibrate your pass decisions. If you're making too many bad passes, consider being more aggressive.`);
+      parts.push(`\nReview these passes. Were they the right call?`);
     }
 
     if (latestAccuracy) {
@@ -235,7 +234,7 @@ export async function POST(req: Request) {
     }
 
     historyBlock = parts.join("\n");
-    console.log(`[agent] History loaded: ${openTrades.length} open, ${recentTrades.length} closed, accuracy=${!!latestAccuracy}, briefings=${recentBriefings.length}`);
+    console.log(`[agent] History loaded: ${openTrades.length} open positions, ${recentTrades.length} closed, ${passDecisions.length} passes, accuracy=${!!latestAccuracy}, briefings=${recentBriefings.length}`);
   } catch (err) {
     console.warn("[agent] Failed to load history (non-fatal):", err);
   }
@@ -245,9 +244,15 @@ export async function POST(req: Request) {
   console.log(`[agent] Config loaded: name=${agentConfig.name || "default"} systemPrompt=${systemPrompt.length} chars`);
 
   // Create context-aware tools so show_thesis persists and summarize_run completes
+  const resolvedAnalystId = analystId || (runId ? (await prisma.researchRun.findFirst({
+    where: { id: runId },
+    select: { agentConfigId: true },
+  }))?.agentConfigId : null);
+
   const tools = createResearchTools({
     runId: runId || "",
     userId: user.id,
+    analystId: resolvedAnalystId || undefined,
     watchlist: (agentConfig.watchlist as string[]) ?? [],
     exclusionList: (agentConfig.exclusionList as string[]) ?? [],
     sectors: (agentConfig.sectors as string[]) ?? [],
@@ -260,6 +265,15 @@ export async function POST(req: Request) {
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(30),
+    onStepFinish({ stepNumber, toolCalls, text, finishReason, usage }) {
+      const elapsed = Date.now() - t0;
+      const ts = new Date().toISOString().slice(11, 23);
+      const toolNames = toolCalls.map((tc) => tc.toolName).join(", ") || "none";
+      const textPreview = text?.slice(0, 100)?.replace(/\n/g, " ") || "";
+      console.log(
+        `[agent] ${ts} STEP #${stepNumber} runId=${runId} elapsed=${elapsed}ms tools=[${toolNames}] finish=${finishReason} tokens=${usage?.totalTokens ?? "?"} text="${textPreview}${text && text.length > 100 ? "..." : ""}"`
+      );
+    },
     async onFinish({ response }) {
       const elapsed = Date.now() - t0;
       console.log(`[agent] onFinish runId=${runId} elapsed=${elapsed}ms responseMsgs=${response.messages.length}`);

@@ -48,11 +48,10 @@ export const morningResearch = inngest.createFunction(
         const t0 = Date.now();
 
         // 2a. Check open positions for THIS analyst (not all analysts combined)
-        const openCount = await prisma.trade.count({
+        const openCount = await prisma.position.count({
           where: {
-            userId: config.userId,
+            analystId: config.id,
             status: "OPEN",
-            thesis: { researchRun: { agentConfigId: config.id } },
           },
         });
         const slotsRemaining = Math.max(0, config.maxOpenPositions - openCount);
@@ -99,32 +98,30 @@ export const morningResearch = inngest.createFunction(
         // Load historical context (same as agent route)
         let historyBlock = "";
         try {
-          const recentTrades = await prisma.trade.findMany({
+          const recentTrades = await prisma.position.findMany({
             where: {
-              userId: config.userId,
+              analystId: config.id,
               status: "CLOSED",
-              thesis: { researchRun: { agentConfigId: config.id } },
             },
             orderBy: { closedAt: "desc" },
             take: 20,
             select: {
               id: true,
-              ticker: true, direction: true, outcome: true,
-              entryPrice: true, closePrice: true, shares: true,
+              symbol: true, direction: true, outcome: true,
+              avgCost: true, closePrice: true, quantity: true,
               realizedPnl: true, closeReason: true, closedAt: true,
               agentEvaluation: true,
             },
           });
 
-          const openTrades = await prisma.trade.findMany({
+          const openTrades = await prisma.position.findMany({
             where: {
-              userId: config.userId,
+              analystId: config.id,
               status: "OPEN",
-              thesis: { researchRun: { agentConfigId: config.id } },
             },
             select: {
-              ticker: true, direction: true, entryPrice: true,
-              shares: true, targetPrice: true, stopLoss: true,
+              symbol: true, direction: true, avgCost: true,
+              quantity: true, targetPrice: true, stopLoss: true,
               createdAt: true,
             },
           });
@@ -146,18 +143,19 @@ export const morningResearch = inngest.createFunction(
             select: { narrative: true, strategyNotes: true, createdAt: true },
           });
 
-          // Recent shadow-closed trades (pass tracking results)
-          const shadowTrades = await prisma.trade.findMany({
+          // Recent PASS decisions (replaces shadow trades)
+          const passDecisions = await prisma.tradeDecision.findMany({
             where: {
-              userId: config.userId,
-              status: "SHADOW_CLOSED",
-              thesis: { researchRun: { agentConfigId: config.id } },
+              analystId: config.id,
+              decision: "PASS",
             },
-            orderBy: { closedAt: "desc" },
+            orderBy: { createdAt: "desc" },
             take: 10,
             select: {
-              ticker: true, entryPrice: true, closePrice: true,
-              realizedPnl: true, outcome: true, closedAt: true,
+              symbol: true, reasoning: true, createdAt: true,
+              thesis: {
+                select: { entryPrice: true, confidenceScore: true },
+              },
             },
           });
 
@@ -182,7 +180,7 @@ export const morningResearch = inngest.createFunction(
           if (openTrades.length > 0) {
             parts.push("\n## Your Open Positions");
             for (const t of openTrades) {
-              parts.push(`- ${t.direction} ${t.shares} shares $${t.ticker} @ $${Number(t.entryPrice).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
+              parts.push(`- ${t.direction} ${t.quantity} shares $${t.symbol} @ $${Number(t.avgCost).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
             }
             parts.push(`\nDo NOT open duplicate positions in tickers you already hold. Consider whether existing positions should be closed based on new information.`);
           }
@@ -190,28 +188,25 @@ export const morningResearch = inngest.createFunction(
           if (recentTrades.length > 0) {
             const wins = recentTrades.filter((t) => t.outcome === "WIN").length;
             const losses = recentTrades.filter((t) => t.outcome === "LOSS").length;
-            parts.push(`\n## Recent Trade History (${recentTrades.length} trades)`);
+            parts.push(`\n## Recent Trade History (${recentTrades.length} positions)`);
             parts.push(`Win/Loss: ${wins}W / ${losses}L`);
             for (const t of recentTrades.slice(0, 10)) {
               const pnl = t.realizedPnl ?? 0;
               const evalSnippet = t.agentEvaluation ? ` | Eval: ${t.agentEvaluation.slice(0, 200)}` : "";
-              parts.push(`- ${t.outcome ?? "?"} | ${t.direction} $${t.ticker} | entry $${Number(t.entryPrice).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} | ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}${evalSnippet}`);
+              parts.push(`- ${t.outcome ?? "?"} | ${t.direction} $${t.symbol} | entry $${Number(t.avgCost).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} | ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}${evalSnippet}`);
             }
             parts.push(`\nLearn from these results and evaluations. Avoid repeating patterns that led to losses.`);
           }
 
-          if (shadowTrades.length > 0) {
-            const goodPasses = shadowTrades.filter((t) => t.outcome === "WIN").length;
-            const badPasses = shadowTrades.filter((t) => t.outcome === "LOSS").length;
-            parts.push(`\n## Shadow Trade Results — Passes You Tracked (${shadowTrades.length} resolved)`);
-            parts.push(`Good passes: ${goodPasses} | Bad passes: ${badPasses}`);
-            for (const t of shadowTrades) {
-              const priceDelta = t.closePrice ? ((t.closePrice - t.entryPrice) / t.entryPrice * 100) : 0;
-              const hypotheticalPnl = t.realizedPnl ?? 0;
-              const label = t.outcome === "WIN" ? "GOOD PASS" : "BAD PASS";
-              parts.push(`- ${label} | $${t.ticker} | passed at $${Number(t.entryPrice).toFixed(2)}, now $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} (${priceDelta >= 0 ? "+" : ""}${priceDelta.toFixed(1)}%) | ${hypotheticalPnl >= 0 ? "Missed" : "Avoided"} $${Math.abs(hypotheticalPnl).toFixed(2)}`);
+          if (passDecisions.length > 0) {
+            parts.push(`\n## Recent Pass Decisions (${passDecisions.length})`);
+            for (const d of passDecisions) {
+              const entryPrice = d.thesis?.entryPrice;
+              const confidence = d.thesis?.confidenceScore;
+              const dateStr = d.createdAt.toISOString().slice(0, 10);
+              parts.push(`- PASS | $${d.symbol} | ${dateStr} | confidence: ${confidence ?? "—"}% | entry was $${entryPrice ? Number(entryPrice).toFixed(2) : "—"} | reason: ${d.reasoning?.slice(0, 150) ?? "—"}`);
             }
-            parts.push(`\nUse these results to calibrate your pass decisions. If you're making too many bad passes, consider being more aggressive.`);
+            parts.push(`\nReview these passes. Were they the right call?`);
           }
 
           if (latestAccuracy) {
@@ -235,6 +230,7 @@ export const morningResearch = inngest.createFunction(
         const tools = createResearchTools({
           runId: run.id,
           userId: config.userId,
+          analystId: config.id,
           watchlist: config.watchlist ?? [],
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
@@ -242,6 +238,9 @@ export const morningResearch = inngest.createFunction(
         });
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)
+        // Use AbortSignal to kill the agent before Vercel's 300s timeout kills the process.
+        // Without this, a timeout leaves the run stuck in RUNNING status forever.
+        console.log(`[morning-research] Starting generateText for ${config.name} run=${run.id} systemPrompt=${systemPrompt.length}chars`);
         try {
           const { text, steps, response } = await generateText({
             model: openai("gpt-4.1"),
@@ -249,17 +248,27 @@ export const morningResearch = inngest.createFunction(
             prompt: "Begin your research session. Follow all phases in order.",
             tools,
             stopWhen: stepCountIs(30),
+            abortSignal: AbortSignal.timeout(240_000), // 4 min — leaves 1 min for cleanup before Vercel's 5 min limit
+            onStepFinish({ stepNumber, toolCalls: stepTools, text: stepText, finishReason, usage }) {
+              const elapsed = Date.now() - t0;
+              const ts = new Date().toISOString().slice(11, 23);
+              const toolNames = stepTools.map((tc) => tc.toolName).join(", ") || "none";
+              const textPreview = stepText?.slice(0, 120)?.replace(/\n/g, " ") || "";
+              console.log(
+                `[morning-research] ${ts} STEP #${stepNumber} ${config.name} run=${run.id} elapsed=${elapsed}ms tools=[${toolNames}] finish=${finishReason} tokens=${usage?.totalTokens ?? "?"} text="${textPreview}${stepText && stepText.length > 120 ? "..." : ""}"`
+              );
+            },
           });
 
           const toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
           const elapsed = Date.now() - t0;
           console.log(`[morning-research] Agent completed for ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`);
 
-          // Count trades placed by checking DB (the place_trade tool already created them)
-          const tradesPlaced = await prisma.trade.count({
+          // Count positions opened by checking DB (the place_trade tool already created them)
+          const tradesPlaced = await prisma.tradeDecision.count({
             where: {
-              userId: config.userId,
-              thesis: { researchRunId: run.id },
+              runId: run.id,
+              decision: "BUY",
             },
           });
 
@@ -340,6 +349,28 @@ export const morningResearch = inngest.createFunction(
         totalTradesPlaced += (result as { tradesPlaced: number }).tradesPlaced;
       }
     }
+
+    // ── Step 3: Sweep stale RUNNING runs from this batch ──────────────────
+    // If any step.run timed out or was killed, the ResearchRun stays RUNNING.
+    // This catch-all ensures they get marked FAILED so they don't appear as live.
+    await step.run("sweep-stale-runs", async () => {
+      const staleThreshold = new Date(Date.now() - 10 * 60 * 1000); // 10 min
+      const staleRuns = await prisma.researchRun.updateMany({
+        where: {
+          status: "RUNNING",
+          source: "AGENT",
+          startedAt: { lt: staleThreshold },
+          agentConfigId: { in: configs.map((c) => c.id) },
+        },
+        data: {
+          status: "FAILED",
+          completedAt: new Date(),
+        },
+      });
+      if (staleRuns.count > 0) {
+        console.warn(`[morning-research] Swept ${staleRuns.count} stale RUNNING runs to FAILED`);
+      }
+    });
 
     return { ran: configs.length, totalTradesPlaced };
   }

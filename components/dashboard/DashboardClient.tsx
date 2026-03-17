@@ -80,17 +80,17 @@ function pickToThesisCardData(pick: RecentPick): ThesisCardData {
     entryPrice: pick.entryPrice,
     targetPrice: pick.targetPrice,
     stopLoss: pick.stopLoss,
-    trade: pick.trade
+    position: pick.position
       ? {
-          id: pick.trade.id,
+          id: pick.position.id,
           realizedPnl: null,
-          status: pick.trade.status,
-          entryPrice: pick.trade.entryPrice,
+          status: pick.position.status,
+          avgCost: pick.position.avgCost,
           closePrice: null,
         }
       : null,
-    // Use trade entry time when available so the card shows "entry at 9:02 AM"
-    createdAt: pick.trade?.openedAt ?? pick.createdAt,
+    // Use position entry time when available so the card shows "entry at 9:02 AM"
+    createdAt: pick.position?.openedAt ?? pick.createdAt,
     currentPrice: pick.currentPrice,
     analystName: pick.analystName,
     sourcesUsed: pick.sourcesUsed,
@@ -111,8 +111,8 @@ function RecentPicksSection({ picks, profiles = {} }: { picks: RecentPick[]; pro
   const [filter, setFilter] = useState<PickFilter>('all');
 
   const filtered = picks.filter((p) => {
-    if (filter === 'open') return p.trade?.status === 'OPEN';
-    if (filter === 'passed') return p.trade === null;
+    if (filter === 'open') return p.position?.status === 'OPEN';
+    if (filter === 'passed') return p.position === null;
     return true;
   });
 
@@ -222,29 +222,29 @@ export default function DashboardClient({
   const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(new Set());
   const [flashIds, setFlashIds] = useState<Map<string, 'win' | 'loss'>>(new Map());
 
-  const handleTradeUpdate = useCallback((trade: RealtimeTrade) => {
-    if (trade.status === 'CLOSED' || trade.status.startsWith('CLOSED_')) {
-      const result = trade.outcome === 'WIN' ? 'win' : 'loss';
-      setFlashIds((prev) => new Map(prev).set(trade.id, result));
+  const handlePositionUpdate = useCallback((position: RealtimeTrade) => {
+    if (position.status === 'CLOSED' || position.status.startsWith('CLOSED_')) {
+      const result = position.outcome === 'WIN' ? 'win' : 'loss';
+      setFlashIds((prev) => new Map(prev).set(position.id, result));
       toast[result === 'win' ? 'success' : 'error'](
-        `${trade.ticker} closed — ${result === 'win' ? '✅ WIN' : '❌ LOSS'}`,
+        `${position.symbol} closed — ${result === 'win' ? '✅ WIN' : '❌ LOSS'}`,
         {
           description:
-            trade.realizedPnl != null ? `P&L: $${trade.realizedPnl.toFixed(2)}` : undefined,
+            position.realizedPnl != null ? `P&L: $${position.realizedPnl.toFixed(2)}` : undefined,
         },
       );
       setTimeout(() => {
         setFlashIds((prev) => {
           const m = new Map(prev);
-          m.delete(trade.id);
+          m.delete(position.id);
           return m;
         });
-        setRealtimeClosedIds((prev) => new Set(prev).add(trade.id));
+        setRealtimeClosedIds((prev) => new Set(prev).add(position.id));
       }, 1200);
     }
   }, []);
 
-  useTradeRealtime({ userId: userId ?? '', onTradeUpdate: handleTradeUpdate });
+  useTradeRealtime({ userId: userId ?? '', onPositionUpdate: handlePositionUpdate });
 
   // ── Derived data ────────────────────────────────────────────────────────────
   const openTrades = (data?.openTrades ?? mockOpenTrades).filter(

@@ -3,19 +3,19 @@
 import { useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export type RealtimeTrade = {
+export type RealtimePosition = {
   id: string;
   status: string;
-  ticker: string;
+  symbol: string;
   direction: string;
   realizedPnl: number | null;
   closeReason: string | null;
   outcome: string | null;
 };
 
-export type RealtimeTradeEvent = {
+export type RealtimePositionEvent = {
   id: string;
-  tradeId: string;
+  positionId: string;
   eventType: string;
   description: string;
   priceAt: number | null;
@@ -23,53 +23,53 @@ export type RealtimeTradeEvent = {
   createdAt: string;
 };
 
-interface UseTradeRealtimeOptions {
+interface UsePositionRealtimeOptions {
   userId: string;
-  /** Called when a trade row is updated (status change, P&L update, close) */
-  onTradeUpdate?: (trade: RealtimeTrade) => void;
-  /** Called when a new TradeEvent is inserted (price check, near target, closed) */
-  onTradeEvent?: (event: RealtimeTradeEvent) => void;
+  /** Called when a Position row is updated (status change, P&L update, close) */
+  onPositionUpdate?: (position: RealtimePosition) => void;
+  /** Called when a new PositionEvent is inserted (price check, near target, closed) */
+  onPositionEvent?: (event: RealtimePositionEvent) => void;
 }
 
 /**
- * DAV-37: Supabase Realtime subscription for Trade and TradeEvent tables.
+ * Supabase Realtime subscription for Position and PositionEvent tables.
  *
- * ⚠️ PREREQUISITE: Run this in Supabase Dashboard → SQL Editor before this works:
- *   ALTER TABLE "Trade" REPLICA IDENTITY FULL;
- *   ALTER TABLE "TradeEvent" REPLICA IDENTITY FULL;
+ * PREREQUISITE: Run this in Supabase Dashboard → SQL Editor before this works:
+ *   ALTER TABLE "Position" REPLICA IDENTITY FULL;
+ *   ALTER TABLE "PositionEvent" REPLICA IDENTITY FULL;
  *   Then add both tables to the realtime publication in
  *   Dashboard → Database → Replication → supabase_realtime → Tables.
  */
-export function useTradeRealtime({
+export function usePositionRealtime({
   userId,
-  onTradeUpdate,
-  onTradeEvent,
-}: UseTradeRealtimeOptions) {
+  onPositionUpdate,
+  onPositionEvent,
+}: UsePositionRealtimeOptions) {
   const supabase = createClient();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  const handleTradeUpdate = useCallback(
+  const handlePositionUpdate = useCallback(
     (payload: { new: Record<string, unknown> }) => {
       const row = payload.new;
-      onTradeUpdate?.({
+      onPositionUpdate?.({
         id: row.id as string,
         status: row.status as string,
-        ticker: row.ticker as string,
+        symbol: row.symbol as string,
         direction: row.direction as string,
         realizedPnl: row.realizedPnl as number | null,
         closeReason: row.closeReason as string | null,
         outcome: row.outcome as string | null,
       });
     },
-    [onTradeUpdate]
+    [onPositionUpdate]
   );
 
-  const handleTradeEvent = useCallback(
+  const handlePositionEvent = useCallback(
     (payload: { new: Record<string, unknown> }) => {
       const row = payload.new;
-      onTradeEvent?.({
+      onPositionEvent?.({
         id: row.id as string,
-        tradeId: row.tradeId as string,
+        positionId: row.positionId as string,
         eventType: row.eventType as string,
         description: row.description as string,
         priceAt: row.priceAt as number | null,
@@ -77,32 +77,32 @@ export function useTradeRealtime({
         createdAt: row.createdAt as string,
       });
     },
-    [onTradeEvent]
+    [onPositionEvent]
   );
 
   useEffect(() => {
     if (!userId) return;
 
     const channel = supabase
-      .channel(`trades-realtime:${userId}`)
+      .channel(`positions-realtime:${userId}`)
       .on(
         "postgres_changes",
         {
           event: "UPDATE",
           schema: "public",
-          table: "Trade",
+          table: "Position",
           filter: `userId=eq.${userId}`,
         },
-        handleTradeUpdate
+        handlePositionUpdate
       )
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
-          table: "TradeEvent",
+          table: "PositionEvent",
         },
-        handleTradeEvent
+        handlePositionEvent
       )
       .subscribe();
 
@@ -112,5 +112,10 @@ export function useTradeRealtime({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [userId, supabase, handleTradeUpdate, handleTradeEvent]);
+  }, [userId, supabase, handlePositionUpdate, handlePositionEvent]);
 }
+
+// Legacy alias for backwards compatibility
+export const useTradeRealtime = usePositionRealtime;
+export type RealtimeTrade = RealtimePosition;
+export type RealtimeTradeEvent = RealtimePositionEvent;

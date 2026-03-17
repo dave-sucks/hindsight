@@ -86,14 +86,14 @@ function streaks(outcomes: string[]): { win: number; loss: number } {
 // ─── Main function ───────────────────────────────────────────────────────────
 
 /**
- * Compute calibration + signal accuracy for all closed trades for a user.
+ * Compute calibration + signal accuracy for all closed positions for a user.
  * Optionally scope to a date range (e.g. last 30 days).
  */
 export async function getAccuracyStats(
   userId: string,
   since?: Date
 ): Promise<AccuracyStats> {
-  const trades = await prisma.trade.findMany({
+  const positions = await prisma.position.findMany({
     where: {
       userId,
       status: "CLOSED",
@@ -101,14 +101,19 @@ export async function getAccuracyStats(
       ...(since ? { closedAt: { gte: since } } : {}),
     },
     include: {
-      thesis: {
-        select: { confidenceScore: true, signalTypes: true },
+      decisions: {
+        take: 1,
+        include: {
+          thesis: {
+            select: { confidenceScore: true, signalTypes: true },
+          },
+        },
       },
     },
     orderBy: { closedAt: "asc" },
   });
 
-  const n = trades.length;
+  const n = positions.length;
   if (n === 0) {
     return {
       tradesAnalyzed: 0,
@@ -129,17 +134,20 @@ export async function getAccuracyStats(
     };
   }
 
+  // Helper to get thesis from position via TradeDecision
+  const getThesis = (p: (typeof positions)[number]) => p.decisions[0]?.thesis;
+
   // ── Overall win rate ──────────────────────────────────────────────────────
-  const wins = trades.filter((t) => t.outcome === "WIN").length;
+  const wins = positions.filter((p) => p.outcome === "WIN").length;
   const overallWinRate = winRateFrom(wins, n);
 
   // ── Calibration buckets ───────────────────────────────────────────────────
   const calibration: CalibrationBucket[] = CONFIDENCE_BUCKETS.map((b) => {
-    const inBucket = trades.filter((t) => {
-      const conf = t.thesis?.confidenceScore ?? 0;
+    const inBucket = positions.filter((p) => {
+      const conf = getThesis(p)?.confidenceScore ?? 0;
       return conf >= b.min && conf <= b.max;
     });
-    const bucketWins = inBucket.filter((t) => t.outcome === "WIN").length;
+    const bucketWins = inBucket.filter((p) => p.outcome === "WIN").length;
     return {
       label: b.label,
       minConf: b.min,
@@ -152,12 +160,12 @@ export async function getAccuracyStats(
 
   // ── Signal-type accuracy ──────────────────────────────────────────────────
   const signalMap = new Map<string, { wins: number; total: number }>();
-  for (const trade of trades) {
-    const signals: string[] = trade.thesis?.signalTypes ?? [];
+  for (const pos of positions) {
+    const signals: string[] = getThesis(pos)?.signalTypes ?? [];
     for (const sig of signals) {
       const entry = signalMap.get(sig) ?? { wins: 0, total: 0 };
       entry.total++;
-      if (trade.outcome === "WIN") entry.wins++;
+      if (pos.outcome === "WIN") entry.wins++;
       signalMap.set(sig, entry);
     }
   }
@@ -171,8 +179,8 @@ export async function getAccuracyStats(
 
   // ── Direction stats ───────────────────────────────────────────────────────
   const directionStats: DirectionStats[] = (["LONG", "SHORT"] as const).map((dir) => {
-    const group = trades.filter((t) => t.direction === dir);
-    const groupWins = group.filter((t) => t.outcome === "WIN").length;
+    const group = positions.filter((p) => p.direction === dir);
+    const groupWins = group.filter((p) => p.outcome === "WIN").length;
     return {
       direction: dir,
       count: group.length,
@@ -182,39 +190,14 @@ export async function getAccuracyStats(
 
   // ── Streaks ───────────────────────────────────────────────────────────────
   const { win: longestWinStreak, loss: longestLossStreak } = streaks(
-    trades.map((t) => t.outcome ?? "")
+    positions.map((p) => p.outcome ?? "")
   );
 
-  // ── Shadow trade stats (pass accuracy) ───────────────────────────────────
-  let shadowStats: ShadowStats | null = null;
-  const shadowTrades = await prisma.trade.findMany({
-    where: {
-      userId,
-      status: "SHADOW_CLOSED",
-      outcome: { in: ["WIN", "LOSS"] },
-      ...(since ? { closedAt: { gte: since } } : {}),
-    },
-    select: { outcome: true, realizedPnl: true },
-  });
-
-  if (shadowTrades.length > 0) {
-    const goodPasses = shadowTrades.filter((t) => t.outcome === "WIN");
-    const badPasses = shadowTrades.filter((t) => t.outcome === "LOSS");
-    const avgAvoidedLoss = goodPasses.length > 0
-      ? goodPasses.reduce((sum, t) => sum + Math.abs(t.realizedPnl ?? 0), 0) / goodPasses.length
-      : 0;
-    const avgMissedGain = badPasses.length > 0
-      ? badPasses.reduce((sum, t) => sum + Math.abs(t.realizedPnl ?? 0), 0) / badPasses.length
-      : 0;
-    shadowStats = {
-      totalPasses: shadowTrades.length,
-      goodPasses: goodPasses.length,
-      badPasses: badPasses.length,
-      passAccuracy: winRateFrom(goodPasses.length, shadowTrades.length),
-      avgMissedGain,
-      avgAvoidedLoss,
-    };
-  }
+  // ── Shadow / pass accuracy (from PASS decisions) ──────────────────────────
+  // PASS decisions don't create positions — shadow stats are no longer tracked
+  // in the new Position/Order schema. Return null until a separate pass-tracking
+  // mechanism is built.
+  const shadowStats: ShadowStats | null = null;
 
   return {
     tradesAnalyzed: n,

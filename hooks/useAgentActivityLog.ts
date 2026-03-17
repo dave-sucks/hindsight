@@ -26,8 +26,9 @@ export interface AgentEvent {
 // Map Prisma eventType → AgentEventType
 function mapEventType(et: string): AgentEventType {
   switch (et) {
-    case "PLACED": return "TRADE_PLACED";
+    case "OPENED": return "TRADE_PLACED";
     case "PRICE_CHECK": return "PRICE_CHECK";
+    case "EOD_CHECK": return "EOD_CHECK";
     case "NEAR_TARGET": return "NEAR_TARGET";
     case "CLOSED": return "TRADE_CLOSED";
     case "EVALUATED": return "EVALUATED";
@@ -35,8 +36,8 @@ function mapEventType(et: string): AgentEventType {
   }
 }
 
-// Build human-readable detail from a TradeEvent row
-function tradeEventToAgentEvent(row: Record<string, unknown>): AgentEvent {
+// Build human-readable detail from a PositionEvent row
+function positionEventToAgentEvent(row: Record<string, unknown>): AgentEvent {
   return {
     id: row.id as string,
     type: mapEventType(row.eventType as string),
@@ -105,8 +106,8 @@ export function useAgentActivityLog(userId: string) {
       .channel(`agent-activity:${userId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "TradeEvent" },
-        (payload) => addEvent(tradeEventToAgentEvent(payload.new as Record<string, unknown>))
+        { event: "INSERT", schema: "public", table: "PositionEvent" },
+        (payload) => addEvent(positionEventToAgentEvent(payload.new as Record<string, unknown>))
       )
       .on(
         "postgres_changes",

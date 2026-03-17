@@ -13,13 +13,13 @@ export async function GET(request: NextRequest) {
   const userId = user.id;
 
   try {
-    // Load last 30 trade events, 15 theses, 10 research runs in parallel
-    const [tradeEvents, theses, runs] = await Promise.all([
-      prisma.tradeEvent.findMany({
-        where: { trade: { userId } },
+    // Load last 30 position events, 15 theses, 10 research runs in parallel
+    const [positionEvents, theses, runs] = await Promise.all([
+      prisma.positionEvent.findMany({
+        where: { position: { userId } },
         orderBy: { createdAt: "desc" },
         take: 30,
-        include: { trade: { select: { ticker: true, direction: true } } },
+        include: { position: { select: { symbol: true, direction: true } } },
       }),
       prisma.thesis.findMany({
         where: { userId },
@@ -52,14 +52,14 @@ export async function GET(request: NextRequest) {
     };
 
     const events: AgentEvent[] = [
-      ...tradeEvents.map((e) => ({
+      ...positionEvents.map((e) => ({
         id: e.id,
         type: mapEventType(e.eventType),
-        ticker: e.trade?.ticker,
+        ticker: e.position?.symbol,
         detail: e.description,
         timestamp: e.createdAt.toISOString(),
         pnlPct: e.pnlAt ?? undefined,
-        direction: e.trade?.direction,
+        direction: e.position?.direction,
       })),
       ...theses.map((t) => ({
         id: `thesis-${t.id}`,
@@ -88,11 +88,12 @@ export async function GET(request: NextRequest) {
 
 function mapEventType(et: string): string {
   switch (et) {
-    case "PLACED": return "TRADE_PLACED";
+    case "OPENED": return "TRADE_PLACED";
     case "PRICE_CHECK": return "PRICE_CHECK";
     case "NEAR_TARGET": return "NEAR_TARGET";
     case "CLOSED": return "TRADE_CLOSED";
     case "EVALUATED": return "EVALUATED";
+    case "EOD_CHECK": return "PRICE_CHECK";
     default: return "PRICE_CHECK";
   }
 }

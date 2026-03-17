@@ -57,53 +57,63 @@ export async function updateAnalystBriefing({
       runSummaryEvent,
       allRunsCount,
       previousBriefing,
-      recentShadowTrades,
+      recentPassDecisions,
     ] = await Promise.all([
       prisma.agentConfig.findFirst({
         where: { id: analystId, userId },
       }),
-      prisma.trade.findMany({
+      prisma.position.findMany({
         where: {
           userId,
           status: "OPEN",
-          thesis: { researchRun: { agentConfigId: analystId } },
+          analystId,
         },
         include: {
-          thesis: {
-            select: {
-              confidenceScore: true,
-              reasoningSummary: true,
-              direction: true,
-              signalTypes: true,
+          decisions: {
+            take: 1,
+            include: {
+              thesis: {
+                select: {
+                  confidenceScore: true,
+                  reasoningSummary: true,
+                  direction: true,
+                  signalTypes: true,
+                },
+              },
             },
           },
         },
         orderBy: { openedAt: "desc" },
       }),
-      prisma.trade.findMany({
+      prisma.position.findMany({
         where: {
           userId,
           status: "CLOSED",
-          thesis: { researchRun: { agentConfigId: analystId } },
+          analystId,
         },
         orderBy: { closedAt: "desc" },
         take: 30,
         select: {
-          ticker: true,
+          symbol: true,
           direction: true,
-          entryPrice: true,
+          avgCost: true,
           closePrice: true,
-          shares: true,
+          quantity: true,
           realizedPnl: true,
           outcome: true,
           openedAt: true,
           closedAt: true,
           closeReason: true,
-          thesis: {
+          decisions: {
+            take: 1,
             select: {
-              confidenceScore: true,
-              reasoningSummary: true,
-              signalTypes: true,
+              thesis: {
+                select: {
+                  confidenceScore: true,
+                  reasoningSummary: true,
+                  signalTypes: true,
+                },
+              },
             },
           },
         },
@@ -126,17 +136,17 @@ export async function updateAnalystBriefing({
           sector: true,
         },
       }),
-      // Trades from THIS run (for structured data capture)
-      prisma.trade.findMany({
+      // Positions from THIS run (for structured data capture)
+      prisma.position.findMany({
         where: {
           userId,
-          thesis: { researchRunId: runId },
+          decisions: { some: { thesis: { researchRunId: runId } } },
         },
         select: {
-          ticker: true,
+          symbol: true,
           direction: true,
-          entryPrice: true,
-          shares: true,
+          avgCost: true,
+          quantity: true,
           status: true,
           targetPrice: true,
           stopLoss: true,
@@ -157,18 +167,20 @@ export async function updateAnalystBriefing({
         orderBy: { createdAt: "desc" },
         select: { narrative: true, strategyNotes: true, createdAt: true },
       }),
-      // Recent shadow-closed trades (pass tracking)
-      prisma.trade.findMany({
+      // Recent PASS decisions (replaces old shadow trade tracking)
+      prisma.tradeDecision.findMany({
         where: {
           userId,
-          status: "SHADOW_CLOSED",
-          thesis: { researchRun: { agentConfigId: analystId } },
+          analystId,
+          decision: "PASS",
         },
-        orderBy: { closedAt: "desc" },
+        orderBy: { createdAt: "desc" },
         take: 10,
         select: {
-          ticker: true, entryPrice: true, closePrice: true,
-          realizedPnl: true, outcome: true,
+          symbol: true, reasoning: true, createdAt: true,
+          thesis: {
+            select: { entryPrice: true, confidenceScore: true },
+          },
         },
       }),
     ]);
@@ -180,7 +192,7 @@ export async function updateAnalystBriefing({
 
     // ── Compute portfolio stats ──────────────────────────────────────────────
     const totalInvested = openTrades.reduce(
-      (sum, t) => sum + t.entryPrice * t.shares,
+      (sum, t) => sum + t.avgCost * t.quantity,
       0
     );
     const closedPnl = recentClosedTrades.reduce(
@@ -227,12 +239,12 @@ export async function updateAnalystBriefing({
       signal_types: t.signalTypes,
     }));
 
-    // Trades from this run — shape matches TradeCardData
+    // Positions from this run — shape matches TradeCardData
     const tradesData = runTrades.map((t) => ({
-      ticker: t.ticker,
+      ticker: t.symbol,
       direction: t.direction,
-      entryPrice: t.entryPrice,
-      shares: t.shares,
+      entryPrice: t.avgCost,
+      shares: t.quantity,
       status: t.status,
       targetPrice: t.targetPrice,
       stopLoss: t.stopLoss,
@@ -255,8 +267,10 @@ export async function updateAnalystBriefing({
       openTrades.length > 0
         ? openTrades
             .map(
-              (t) =>
-                `- $${t.ticker}: ${t.direction} ${t.shares} shares @ $${t.entryPrice.toFixed(2)} (confidence: ${t.thesis?.confidenceScore ?? "?"}%, thesis: "${t.thesis?.reasoningSummary?.slice(0, 100) ?? "—"}")`
+              (t) => {
+                const thesis = t.decisions[0]?.thesis;
+                return `- $${t.symbol}: ${t.direction} ${t.quantity} shares @ $${t.avgCost.toFixed(2)} (confidence: ${thesis?.confidenceScore ?? "?"}%, thesis: "${thesis?.reasoningSummary?.slice(0, 100) ?? "—"}")`;
+              }
             )
             .join("\n")
         : "No open positions.";
@@ -271,7 +285,7 @@ export async function updateAnalystBriefing({
                 pnl >= 0
                   ? `+$${pnl.toFixed(2)}`
                   : `-$${Math.abs(pnl).toFixed(2)}`;
-              return `- ${t.outcome ?? "?"} $${t.ticker}: ${t.direction} entry $${t.entryPrice.toFixed(2)} → exit $${(t.closePrice ?? 0).toFixed(2)} (${pnlStr}, closed: ${t.closeReason ?? "?"})`;
+              return `- ${t.outcome ?? "?"} $${t.symbol}: ${t.direction} entry $${t.avgCost.toFixed(2)} → exit $${(t.closePrice ?? 0).toFixed(2)} (${pnlStr}, closed: ${t.closeReason ?? "?"})`;
             })
             .join("\n")
         : "No closed trades yet.";
@@ -310,14 +324,15 @@ Trades placed: ${runTrades.length}
 Run summary: ${runSummaryText}
 ${previousBriefingText}
 
-### Shadow Trades — Pass Tracking
-${recentShadowTrades.length > 0
-  ? recentShadowTrades.map((t) => {
-      const priceDelta = t.closePrice ? ((t.closePrice - t.entryPrice) / t.entryPrice * 100) : 0;
-      const label = t.outcome === "WIN" ? "GOOD PASS" : "BAD PASS";
-      return `- ${label}: $${t.ticker} passed at $${t.entryPrice.toFixed(2)}, closed at $${(t.closePrice ?? 0).toFixed(2)} (${priceDelta >= 0 ? "+" : ""}${priceDelta.toFixed(1)}%)`;
+### Recent Pass Decisions
+${recentPassDecisions.length > 0
+  ? recentPassDecisions.map((d) => {
+      const entryPrice = d.thesis?.entryPrice;
+      const confidence = d.thesis?.confidenceScore;
+      const dateStr = d.createdAt.toISOString().slice(0, 10);
+      return `- PASS: $${d.symbol} on ${dateStr} (confidence: ${confidence ?? "?"}%, entry was $${entryPrice ? Number(entryPrice).toFixed(2) : "?"}) — ${d.reasoning?.slice(0, 100) ?? "no reason"}`;
     }).join("\n")
-  : "No shadow trades resolved yet."}
+  : "No pass decisions recorded yet."}
 
 ### Session Stats
 Total completed research sessions: ${allRunsCount}
@@ -330,7 +345,7 @@ Generate a structured briefing with two parts:
 1. Portfolio Status — Open positions, what we're holding and why
 2. Recent Activity — What we bought/sold recently, outcomes
 3. Performance Review — Win rate, P&L trends, what's working vs not
-4. Pass Accuracy — If shadow trades exist, comment on whether your pass decisions were good (avoided losses) or bad (missed gains)
+4. Pass Accuracy — If pass decisions exist, reflect on whether those passes were the right call
 5. Tomorrow's Focus — What to look for next session
 
 **strategyNotes**: Specific, data-driven strategy adjustments. What patterns do you see in wins vs losses? What should we do differently? Be honest and actionable.
