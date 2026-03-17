@@ -330,6 +330,7 @@ type TradeInput = z.infer<typeof tradeParams>;
 interface ToolContext {
   runId: string;
   userId: string;
+  analystId?: string;       // FK to AgentConfig — needed for Position + TradeDecision
   watchlist?: string[];
   exclusionList?: string[];
   sectors?: string[];
@@ -1546,45 +1547,23 @@ export function createResearchTools(ctx: ToolContext) {
             });
           }
 
-          // Create shadow trade for PASS theses to track what would have happened
-          if (args.direction === "PASS" && args.entry_price) {
+          // Record PASS decision in TradeDecision (replaces old shadow trade)
+          if (args.direction === "PASS" && ctx.runId && ctx.analystId) {
             try {
-              const posSize = ctx.maxPositionSize ?? 10000;
-              const shadowShares = Math.floor(posSize / args.entry_price);
-              if (shadowShares > 0) {
-                // 5 trading days from now (roughly 7 calendar days to account for weekends)
-                const exitDate = new Date();
-                exitDate.setDate(exitDate.getDate() + 7);
-
-                const shadowTrade = await prisma.trade.create({
-                  data: {
-                    thesisId: thesis.id,
-                    userId: ctx.userId,
-                    ticker: args.ticker,
-                    direction: "LONG", // default: "what if we'd gone long?"
-                    status: "SHADOW",
-                    entryPrice: args.entry_price,
-                    shares: shadowShares,
-                    targetPrice: null,
-                    stopLoss: null,
-                    exitStrategy: "TIME_BASED",
-                    exitDate,
-                    alpacaOrderId: null,
-                  },
-                });
-
-                await prisma.tradeEvent.create({
-                  data: {
-                    tradeId: shadowTrade.id,
-                    eventType: "PLACED",
-                    description: `SHADOW: Passed on ${args.ticker} at $${args.entry_price.toFixed(2)}, tracking ${shadowShares} hypothetical shares for 5 trading days`,
-                    priceAt: args.entry_price,
-                  },
-                });
-                console.log(`[tool] show_thesis created shadow trade for PASS on ${args.ticker}`);
-              }
-            } catch (shadowErr) {
-              console.warn("[tool] show_thesis shadow trade creation failed (non-fatal):", shadowErr);
+              await prisma.tradeDecision.create({
+                data: {
+                  runId: ctx.runId,
+                  analystId: ctx.analystId,
+                  userId: ctx.userId,
+                  symbol: args.ticker,
+                  decision: "PASS",
+                  reasoning: args.reasoning_summary,
+                  thesisId: thesis.id,
+                },
+              });
+              console.log(`[tool] show_thesis recorded PASS decision for ${args.ticker}`);
+            } catch (passErr) {
+              console.warn("[tool] show_thesis PASS decision creation failed (non-fatal):", passErr);
             }
           }
 
@@ -1597,12 +1576,32 @@ export function createResearchTools(ctx: ToolContext) {
 
     place_trade: tool({
       description:
-        "Place a paper trade on Alpaca. Only call this after presenting a thesis and explaining your reasoning. The trade will be executed immediately.",
+        "Place a paper trade on Alpaca. Only call this after presenting a thesis and explaining your reasoning. The trade will be executed immediately. Will fail if any analyst already holds an open position in this ticker.",
       inputSchema: tradeParams,
       execute: async (args: TradeInput) => {
         console.log(`[tool] place_trade ticker=${args.ticker} direction=${args.direction} shares=${args.shares} runId=${ctx.runId}`);
 
         try {
+          // 0. Check for existing open position in this ticker across ALL analysts
+          const existingPosition = await prisma.position.findFirst({
+            where: {
+              userId: ctx.userId,
+              symbol: args.ticker,
+              status: "OPEN",
+            },
+            select: { id: true, symbol: true },
+          });
+
+          if (existingPosition) {
+            console.warn(`[tool] place_trade BLOCKED: open position already exists for ${args.ticker}`);
+            return {
+              ...args,
+              status: "failed" as const,
+              error: `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`,
+              note: `Trade blocked: You already have an open ${args.ticker} position. The thesis has been saved but no duplicate trade was placed.`,
+            };
+          }
+
           // 1. Place Alpaca paper order
           const alpacaOrder = await placeMarketOrder({
             symbol: args.ticker,
@@ -1630,35 +1629,67 @@ export function createResearchTools(ctx: ToolContext) {
             try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry_price */ }
           }
 
-          // 3. Create Trade in DB
-          const trade = await prisma.trade.create({
+          // 3. Create Position
+          const analystId = ctx.analystId || "unknown";
+          const position = await prisma.position.create({
             data: {
-              thesisId: args.thesis_id,
+              analystId,
               userId: ctx.userId,
-              ticker: args.ticker,
+              symbol: args.ticker,
               direction: args.direction,
               status: "OPEN",
-              entryPrice: fillPrice,
-              shares: args.shares,
+              quantity: args.shares,
+              avgCost: fillPrice,
               targetPrice: args.target_price,
               stopLoss: args.stop_loss,
               exitStrategy: "PRICE_TARGET",
+            },
+          });
+
+          // 4. Create Order with fill data
+          const dbOrder = await prisma.order.create({
+            data: {
+              positionId: position.id,
+              userId: ctx.userId,
+              symbol: args.ticker,
+              side: args.direction === "LONG" ? "BUY" : "SELL",
+              orderType: "MARKET",
+              quantity: args.shares,
+              status: "FILLED",
+              filledPrice: fillPrice,
+              filledQty: args.shares,
+              filledAt: new Date(),
               alpacaOrderId: alpacaOrder.id,
             },
           });
 
-          // 4. Write PLACED TradeEvent
-          await prisma.tradeEvent.create({
+          // 5. Write OPENED PositionEvent
+          await prisma.positionEvent.create({
             data: {
-              tradeId: trade.id,
-              eventType: "PLACED",
+              positionId: position.id,
+              eventType: "OPENED",
               description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
               priceAt: fillPrice,
             },
           });
 
-          // 5. Write RunEvent so trade is visible on run page
+          // 6. Write TradeDecision linking thesis → position → order
           if (ctx.runId) {
+            await prisma.tradeDecision.create({
+              data: {
+                runId: ctx.runId,
+                analystId,
+                userId: ctx.userId,
+                symbol: args.ticker,
+                decision: "BUY",
+                reasoning: `${args.direction} ${args.shares} shares at $${fillPrice.toFixed(2)}`,
+                thesisId: args.thesis_id,
+                positionId: position.id,
+                orderId: dbOrder.id,
+              },
+            });
+
+            // 7. Write RunEvent so trade is visible on run page
             await prisma.runEvent.create({
               data: {
                 runId: ctx.runId,
@@ -1672,18 +1703,21 @@ export function createResearchTools(ctx: ToolContext) {
                   target_price: args.target_price,
                   stop_loss: args.stop_loss,
                   shares: args.shares,
-                  trade_id: trade.id,
+                  position_id: position.id,
+                  order_id: dbOrder.id,
                 } as object,
               },
             });
           }
 
-          console.log(`[tool] place_trade SUCCESS trade=${trade.id} fill=$${fillPrice.toFixed(2)}`);
+          console.log(`[tool] place_trade SUCCESS position=${position.id} fill=$${fillPrice.toFixed(2)}`);
           return {
             ...args,
             status: "filled" as const,
             fill_price: fillPrice,
-            trade_id: trade.id,
+            trade_id: position.id,        // position ID used as trade ID for UI compatibility
+            position_id: position.id,
+            order_id: dbOrder.id,
             alpaca_order_id: alpacaOrder.id,
             note: `Trade executed: ${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
           };

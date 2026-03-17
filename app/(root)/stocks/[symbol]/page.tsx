@@ -117,8 +117,8 @@ export default async function StockDetailPage({ params }: Props) {
     getStockQuote(upperSymbol),
     getStockMetrics(upperSymbol),
     userId
-      ? prisma.trade.findMany({
-          where: { userId, ticker: upperSymbol },
+      ? prisma.position.findMany({
+          where: { userId, symbol: upperSymbol },
           orderBy: { openedAt: "desc" },
           take: 20,
           select: {
@@ -126,10 +126,10 @@ export default async function StockDetailPage({ params }: Props) {
             direction: true,
             status: true,
             outcome: true,
-            entryPrice: true,
+            avgCost: true,
             closePrice: true,
             realizedPnl: true,
-            shares: true,
+            quantity: true,
             openedAt: true,
           },
         })
@@ -418,7 +418,7 @@ export default async function StockDetailPage({ params }: Props) {
                                 )}
                               </div>
                               <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
-                                Entry {fmtCur(trade.entryPrice)}
+                                Entry {fmtCur(trade.avgCost)}
                                 {trade.closePrice && ` → ${fmtCur(trade.closePrice)}`}
                               </p>
                             </div>
@@ -497,7 +497,7 @@ export default async function StockDetailPage({ params }: Props) {
                 const isWin = trade.outcome === "WIN";
                 const isLoss = trade.outcome === "LOSS";
                 const pnl = trade.realizedPnl ?? 0;
-                const positionCost = trade.entryPrice * trade.shares;
+                const positionCost = trade.avgCost * trade.quantity;
                 const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
                 const pnlPos = pnl >= 0;
                 return (
@@ -534,7 +534,7 @@ export default async function StockDetailPage({ params }: Props) {
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                        Entry ${trade.entryPrice.toFixed(2)}
+                        Entry ${trade.avgCost.toFixed(2)}
                         {trade.closePrice && ` → Close $${trade.closePrice.toFixed(2)}`}
                       </p>
                     </div>

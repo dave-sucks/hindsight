@@ -20,31 +20,38 @@ export const evaluateTrade = inngest.createFunction(
   },
   { event: "trade/closed" },
   async ({ event, step }) => {
-    const { tradeId } = event.data as { tradeId: string };
+    const { positionId } = event.data as { positionId: string };
 
-    // Step 1: Fetch trade + thesis from DB
-    const trade = await step.run("fetch-trade", async () => {
-      return prisma.trade.findUnique({
-        where: { id: tradeId },
+    // Step 1: Fetch position + thesis from DB
+    const position = await step.run("fetch-position", async () => {
+      return prisma.position.findUnique({
+        where: { id: positionId },
         include: {
-          thesis: {
-            select: {
-              reasoningSummary: true,
-              signalTypes: true,
-              thesisBullets: true,
+          decisions: {
+            take: 1,
+            include: {
+              thesis: {
+                select: {
+                  reasoningSummary: true,
+                  signalTypes: true,
+                  thesisBullets: true,
+                },
+              },
             },
           },
         },
       });
     });
 
-    if (!trade) {
-      return { skipped: true, reason: "trade-not-found" };
+    if (!position) {
+      return { skipped: true, reason: "position-not-found" };
     }
 
-    if (!trade.closePrice || !trade.outcome) {
-      return { skipped: true, reason: "trade-not-closed" };
+    if (!position.closePrice || !position.outcome) {
+      return { skipped: true, reason: "position-not-closed" };
     }
+
+    const thesis = position.decisions[0]?.thesis;
 
     // Step 2: Call Python service for GPT-4o evaluation
     const evaluation = await step.run("run-evaluation", async () => {
@@ -55,7 +62,7 @@ export const evaluateTrade = inngest.createFunction(
         throw new Error("PYTHON_SERVICE_URL not configured");
       }
 
-      const holdDays = daysBetween(trade.openedAt as unknown as string, trade.closedAt as unknown as string | null);
+      const holdDays = daysBetween(position.openedAt as unknown as string, position.closedAt as unknown as string | null);
 
       const response = await fetch(`${pythonUrl}/research/evaluate`, {
         method: "POST",
@@ -64,14 +71,14 @@ export const evaluateTrade = inngest.createFunction(
           "X-Service-Secret": secret ?? "",
         },
         body: JSON.stringify({
-          ticker: trade.ticker,
-          direction: trade.direction,
-          entry_price: trade.entryPrice,
-          close_price: trade.closePrice,
-          outcome: trade.outcome,
-          close_reason: trade.closeReason ?? "MANUAL",
-          thesis_summary: trade.thesis?.reasoningSummary ?? null,
-          signal_types: trade.thesis?.signalTypes ?? [],
+          ticker: position.symbol,
+          direction: position.direction,
+          entry_price: position.avgCost,
+          close_price: position.closePrice,
+          outcome: position.outcome,
+          close_reason: position.closeReason ?? "MANUAL",
+          thesis_summary: thesis?.reasoningSummary ?? null,
+          signal_types: thesis?.signalTypes ?? [],
           hold_days: holdDays,
         }),
       });
@@ -84,16 +91,16 @@ export const evaluateTrade = inngest.createFunction(
       return data.evaluation_text;
     });
 
-    // Step 3: Store evaluation + write EVALUATED TradeEvent
+    // Step 3: Store evaluation + write EVALUATED PositionEvent
     await step.run("store-evaluation", async () => {
-      await prisma.trade.update({
-        where: { id: tradeId },
+      await prisma.position.update({
+        where: { id: positionId },
         data: { agentEvaluation: evaluation },
       });
 
-      await prisma.tradeEvent.create({
+      await prisma.positionEvent.create({
         data: {
-          tradeId,
+          positionId,
           eventType: "EVALUATED",
           description: evaluation,
           priceAt: null,
@@ -102,6 +109,6 @@ export const evaluateTrade = inngest.createFunction(
       });
     });
 
-    return { tradeId, evaluated: true };
+    return { positionId, evaluated: true };
   }
 );

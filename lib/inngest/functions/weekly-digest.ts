@@ -91,17 +91,17 @@ export const weeklyDigest = inngest.createFunction(
           prisma.researchRun.count({
             where: { userId: config.userId, createdAt: { gte: weekAgo } },
           }),
-          prisma.trade.findMany({
+          prisma.position.findMany({
             where: {
               userId: config.userId,
               status: "CLOSED",
               closedAt: { gte: weekAgo },
             },
             select: {
-              ticker: true,
+              symbol: true,
               direction: true,
-              entryPrice: true,
-              shares: true,
+              avgCost: true,
+              quantity: true,
               closePrice: true,
               realizedPnl: true,
               outcome: true,
@@ -109,13 +109,13 @@ export const weeklyDigest = inngest.createFunction(
               closedAt: true,
             },
           }),
-          prisma.trade.findMany({
+          prisma.position.findMany({
             where: { userId: config.userId, status: "OPEN" },
             select: {
-              ticker: true,
+              symbol: true,
               direction: true,
-              entryPrice: true,
-              shares: true,
+              avgCost: true,
+              quantity: true,
             },
           }),
           prisma.thesis.count({
@@ -137,7 +137,7 @@ export const weeklyDigest = inngest.createFunction(
       const prices = await step.run(`prices-${config.userId}`, async () => {
         const tickers = [
           ...new Set(
-            (stats.open as Array<{ ticker: string }>).map((t) => t.ticker)
+            (stats.open as Array<{ symbol: string }>).map((t) => t.symbol)
           ),
         ];
         if (tickers.length === 0) return {} as Record<string, number>;
@@ -194,9 +194,10 @@ export const weeklyDigest = inngest.createFunction(
         if (!toEmail) return { skipped: true, reason: "no-email" };
 
         const closed = stats.closed as Array<{
-          ticker: string;
+          symbol: string;
           direction: string;
-          entryPrice: number;
+          avgCost: number;
+          quantity: number;
           closePrice: number | null;
           realizedPnl: number | null;
           outcome: string | null;
@@ -205,42 +206,42 @@ export const weeklyDigest = inngest.createFunction(
         }>;
 
         const open = stats.open as Array<{
-          ticker: string;
+          symbol: string;
           direction: string;
-          entryPrice: number;
-          shares: number;
+          avgCost: number;
+          quantity: number;
         }>;
 
         const priceMap = prices as Record<string, number>;
 
-        const closedTrades: DigestTrade[] = closed.map((t) => {
-          const closePrice = t.closePrice ?? t.entryPrice;
-          const pnl = t.realizedPnl ?? 0;
-          const positionCost = t.entryPrice * 1; // approx
+        const closedTrades: DigestTrade[] = closed.map((p) => {
+          const closePrice = p.closePrice ?? p.avgCost;
+          const pnl = p.realizedPnl ?? 0;
+          const positionCost = p.avgCost * p.quantity;
           const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
           return {
-            ticker: t.ticker,
-            direction: t.direction as "LONG" | "SHORT",
-            entryPrice: t.entryPrice,
+            ticker: p.symbol,
+            direction: p.direction as "LONG" | "SHORT",
+            entryPrice: p.avgCost,
             closePrice,
             realizedPnl: pnl,
             pnlPct,
-            outcome: t.outcome ?? "BREAKEVEN",
-            daysHeld: daysBetween(t.openedAt, t.closedAt),
+            outcome: p.outcome ?? "BREAKEVEN",
+            daysHeld: daysBetween(p.openedAt, p.closedAt),
           };
         });
 
-        const openTrades: DigestOpenTrade[] = open.map((t) => {
-          const currentPrice = priceMap[t.ticker] ?? t.entryPrice;
+        const openTrades: DigestOpenTrade[] = open.map((p) => {
+          const currentPrice = priceMap[p.symbol] ?? p.avgCost;
           const pnl =
-            t.direction === "LONG"
-              ? (currentPrice - t.entryPrice) * t.shares
-              : (t.entryPrice - currentPrice) * t.shares;
-          const pnlPct = calcPnlPct(t.direction, t.entryPrice, currentPrice);
+            p.direction === "LONG"
+              ? (currentPrice - p.avgCost) * p.quantity
+              : (p.avgCost - currentPrice) * p.quantity;
+          const pnlPct = calcPnlPct(p.direction, p.avgCost, currentPrice);
           return {
-            ticker: t.ticker,
-            direction: t.direction as "LONG" | "SHORT",
-            entryPrice: t.entryPrice,
+            ticker: p.symbol,
+            direction: p.direction as "LONG" | "SHORT",
+            entryPrice: p.avgCost,
             currentPrice,
             unrealizedPnl: pnl,
             pnlPct,

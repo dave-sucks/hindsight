@@ -81,13 +81,13 @@ export interface RunWithTheses {
   }[];
 }
 
-export interface TradeWithThesis {
+export interface PositionWithThesis {
   id: string;
-  ticker: string;
+  symbol: string;
   direction: string;
   status: string;
-  entryPrice: number;
-  shares: number;
+  avgCost: number;
+  quantity: number;
   closePrice: number | null;
   realizedPnl: number | null;
   outcome: string | null;
@@ -116,7 +116,7 @@ export interface AnalystStats {
 export interface AnalystDetail {
   config: AnalystConfig;
   recentRuns: RunWithTheses[];
-  recentTrades: TradeWithThesis[];
+  recentTrades: PositionWithThesis[];
   stats: AnalystStats;
   briefings: AnalystBriefingItem[];
 }
@@ -171,8 +171,8 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
 
   if (configs.length === 0) return [];
 
-  // Load all runs and trades for this user, group in JS
-  const [allRuns, allTrades] = await Promise.all([
+  // Load all runs and positions for this user, group in JS
+  const [allRuns, allPositions] = await Promise.all([
     prisma.researchRun.findMany({
       where: { userId },
       orderBy: { startedAt: "desc" },
@@ -183,24 +183,18 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
         startedAt: true,
       },
     }),
-    prisma.trade.findMany({
+    prisma.position.findMany({
       where: { userId },
       select: {
         id: true,
-        ticker: true,
+        symbol: true,
         direction: true,
         status: true,
-        entryPrice: true,
-        shares: true,
+        avgCost: true,
+        quantity: true,
         outcome: true,
         realizedPnl: true,
-        thesis: {
-          select: {
-            researchRun: {
-              select: { agentConfigId: true },
-            },
-          },
-        },
+        analystId: true,
       },
     }),
   ]);
@@ -209,27 +203,27 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
     const configRuns = allRuns.filter((r) => r.agentConfigId === config.id);
     const lastRun = configRuns[0] ?? null;
 
-    const configTrades = allTrades.filter(
-      (t) => t.thesis?.researchRun?.agentConfigId === config.id
+    const configPositions = allPositions.filter(
+      (p) => p.analystId === config.id
     );
 
-    const closedTrades = configTrades.filter((t) => t.outcome != null);
-    const wins = closedTrades.filter((t) => t.outcome === "WIN").length;
-    const winRate = closedTrades.length > 0 ? wins / closedTrades.length : null;
-    const totalPnl = closedTrades.reduce(
-      (sum, t) => sum + (t.realizedPnl ?? 0),
+    const closedPositions = configPositions.filter((p) => p.outcome != null);
+    const wins = closedPositions.filter((p) => p.outcome === "WIN").length;
+    const winRate = closedPositions.length > 0 ? wins / closedPositions.length : null;
+    const totalPnl = closedPositions.reduce(
+      (sum, p) => sum + (p.realizedPnl ?? 0),
       0
     );
 
-    const openTrades: AnalystOpenTrade[] = configTrades
-      .filter((t) => t.status === "OPEN")
+    const openTrades: AnalystOpenTrade[] = configPositions
+      .filter((p) => p.status === "OPEN")
       .slice(0, 3)
-      .map((t) => ({
-        id: t.id,
-        ticker: t.ticker,
-        direction: t.direction,
-        entryPrice: t.entryPrice,
-        shares: t.shares,
+      .map((p) => ({
+        id: p.id,
+        ticker: p.symbol,
+        direction: p.direction,
+        entryPrice: p.avgCost,
+        shares: p.quantity,
       }));
 
     return {
@@ -245,7 +239,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       minConfidence: config.minConfidence,
       lastRunAt: lastRun?.startedAt ?? null,
       lastRunStatus: lastRun?.status ?? null,
-      tradeCount: configTrades.length,
+      tradeCount: configPositions.length,
       winRate,
       totalPnl,
       openTrades,
@@ -266,8 +260,8 @@ export async function getAnalystDetail(
   });
   if (!config) return null;
 
-  const [recentRuns, recentTrades, totalRuns, totalTheses, briefings] = await Promise.all([
-    // Last 20 runs with their theses
+  const [recentRuns, recentPositions, totalRuns, totalTheses, briefings] = await Promise.all([
+    // Last 20 runs with their theses (join trade info via decisions)
     prisma.researchRun.findMany({
       where: { agentConfigId: analystId, userId },
       orderBy: { startedAt: "desc" },
@@ -288,12 +282,18 @@ export async function getAnalystDetail(
             holdDuration: true,
             signalTypes: true,
             sourcesUsed: true,
-            trade: {
+            decisions: {
+              take: 1,
+              where: { decision: "BUY" },
               select: {
-                id: true,
-                status: true,
-                realizedPnl: true,
-                outcome: true,
+                position: {
+                  select: {
+                    id: true,
+                    status: true,
+                    realizedPnl: true,
+                    outcome: true,
+                  },
+                },
               },
             },
           },
@@ -301,31 +301,33 @@ export async function getAnalystDetail(
         },
       },
     }),
-    // Last 20 trades attributed to this analyst
-    prisma.trade.findMany({
-      where: {
-        userId,
-        thesis: { researchRun: { agentConfigId: analystId } },
-      },
+    // Last 20 positions attributed to this analyst
+    prisma.position.findMany({
+      where: { userId, analystId },
       orderBy: { openedAt: "desc" },
       take: 20,
       select: {
         id: true,
-        ticker: true,
+        symbol: true,
         direction: true,
         status: true,
-        entryPrice: true,
-        shares: true,
+        avgCost: true,
+        quantity: true,
         closePrice: true,
         realizedPnl: true,
         outcome: true,
         openedAt: true,
         closedAt: true,
-        thesis: {
+        decisions: {
+          take: 1,
           select: {
-            id: true,
-            confidenceScore: true,
-            reasoningSummary: true,
+            thesis: {
+              select: {
+                id: true,
+                confidenceScore: true,
+                reasoningSummary: true,
+              },
+            },
           },
         },
       },
@@ -353,13 +355,10 @@ export async function getAnalystDetail(
     }),
   ]);
 
-  // Compute stats from all trades
-  const [allTrades, avgConfAgg] = await Promise.all([
-    prisma.trade.findMany({
-      where: {
-        userId,
-        thesis: { researchRun: { agentConfigId: analystId } },
-      },
+  // Compute stats from all positions for this analyst
+  const [allPositions, avgConfAgg] = await Promise.all([
+    prisma.position.findMany({
+      where: { userId, analystId },
       select: { outcome: true, realizedPnl: true },
     }),
     prisma.thesis.aggregate({
@@ -368,27 +367,27 @@ export async function getAnalystDetail(
     }),
   ]);
 
-  const closedTrades = allTrades.filter((t) => t.outcome != null);
-  const wins = closedTrades.filter((t) => t.outcome === "WIN").length;
-  const losses = closedTrades.filter((t) => t.outcome === "LOSS").length;
-  const winRate = closedTrades.length > 0 ? wins / closedTrades.length : null;
-  const totalPnl = closedTrades.reduce(
-    (sum, t) => sum + (t.realizedPnl ?? 0),
+  const closedPositions = allPositions.filter((p) => p.outcome != null);
+  const wins = closedPositions.filter((p) => p.outcome === "WIN").length;
+  const losses = closedPositions.filter((p) => p.outcome === "LOSS").length;
+  const winRate = closedPositions.length > 0 ? wins / closedPositions.length : null;
+  const totalPnl = closedPositions.reduce(
+    (sum, p) => sum + (p.realizedPnl ?? 0),
     0
   );
-  const winTrades = closedTrades.filter(
-    (t) => t.outcome === "WIN" && t.realizedPnl != null
+  const winPositions = closedPositions.filter(
+    (p) => p.outcome === "WIN" && p.realizedPnl != null
   );
-  const lossTrades = closedTrades.filter(
-    (t) => t.outcome === "LOSS" && t.realizedPnl != null
+  const lossPositions = closedPositions.filter(
+    (p) => p.outcome === "LOSS" && p.realizedPnl != null
   );
   const bestWin =
-    winTrades.length > 0
-      ? Math.max(...winTrades.map((t) => t.realizedPnl!))
+    winPositions.length > 0
+      ? Math.max(...winPositions.map((p) => p.realizedPnl!))
       : null;
   const worstLoss =
-    lossTrades.length > 0
-      ? Math.min(...lossTrades.map((t) => t.realizedPnl!))
+    lossPositions.length > 0
+      ? Math.min(...lossPositions.map((p) => p.realizedPnl!))
       : null;
   const avgConfidence = avgConfAgg._avg.confidenceScore ?? null;
 
@@ -417,15 +416,55 @@ export async function getAnalystDetail(
     updatedAt: config.updatedAt,
   };
 
+  // Map runs: transform theses.decisions[0].position → trade shape for backwards compat
+  const mappedRuns: RunWithTheses[] = recentRuns.map((r) => ({
+    id: r.id,
+    status: r.status,
+    source: r.source,
+    startedAt: r.startedAt,
+    completedAt: r.completedAt,
+    theses: r.theses.map((th) => {
+      const pos = th.decisions[0]?.position;
+      return {
+        id: th.id,
+        ticker: th.ticker,
+        direction: th.direction,
+        confidenceScore: th.confidenceScore,
+        reasoningSummary: th.reasoningSummary,
+        holdDuration: th.holdDuration,
+        signalTypes: th.signalTypes,
+        sourcesUsed: th.sourcesUsed,
+        trade: pos
+          ? { id: pos.id, status: pos.status, realizedPnl: pos.realizedPnl, outcome: pos.outcome }
+          : null,
+      };
+    }),
+  }));
+
+  const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => ({
+    id: p.id,
+    symbol: p.symbol,
+    direction: p.direction,
+    status: p.status,
+    avgCost: p.avgCost,
+    quantity: p.quantity,
+    closePrice: p.closePrice,
+    realizedPnl: p.realizedPnl,
+    outcome: p.outcome,
+    openedAt: p.openedAt,
+    closedAt: p.closedAt,
+    thesis: p.decisions[0]?.thesis ?? { id: "", confidenceScore: 0, reasoningSummary: "" },
+  }));
+
   return {
     config: mappedConfig,
-    recentRuns,
-    recentTrades,
+    recentRuns: mappedRuns,
+    recentTrades: mappedTrades,
     briefings,
     stats: {
       totalRuns,
       totalTheses,
-      totalTrades: allTrades.length,
+      totalTrades: allPositions.length,
       winRate,
       totalPnl,
       wins,
@@ -459,8 +498,14 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
           ticker: true,
           direction: true,
           confidenceScore: true,
-          trade: {
-            select: { id: true, status: true, realizedPnl: true },
+          decisions: {
+            take: 1,
+            where: { decision: "BUY" },
+            select: {
+              position: {
+                select: { id: true, status: true, realizedPnl: true },
+              },
+            },
           },
         },
         orderBy: { confidenceScore: "desc" },
@@ -476,7 +521,15 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
     source: r.source,
     startedAt: r.startedAt,
     completedAt: r.completedAt,
-    theses: r.theses,
+    theses: r.theses.map((th) => {
+      const pos = th.decisions[0]?.position;
+      return {
+        ticker: th.ticker,
+        direction: th.direction,
+        confidenceScore: th.confidenceScore,
+        trade: pos ? { id: pos.id, status: pos.status, realizedPnl: pos.realizedPnl } : null,
+      };
+    }),
   }));
 }
 
@@ -714,6 +767,67 @@ export async function removeFromWatchlist(
 
   revalidatePath(`/analysts/${id}`);
   return updated;
+}
+
+// ── deleteAnalyst (cascade delete all related data) ─────────────────────────
+
+export async function deleteAnalyst(analystId: string): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  // Verify ownership
+  const config = await prisma.agentConfig.findFirst({
+    where: { id: analystId, userId },
+  });
+  if (!config) throw new Error("Analyst not found");
+
+  // 1. Find all runs for this analyst
+  const runs = await prisma.researchRun.findMany({
+    where: { agentConfigId: analystId },
+    select: { id: true },
+  });
+  const runIds = runs.map((r) => r.id);
+
+  // 2. Find all positions for this analyst
+  const positions = await prisma.position.findMany({
+    where: { analystId },
+    select: { id: true, symbol: true, status: true },
+  });
+  const positionIds = positions.map((p) => p.id);
+
+  // 3. Close any open Alpaca positions
+  const { closePosition: closeAlpacaPos } = await import("@/lib/alpaca");
+  for (const pos of positions) {
+    if (pos.status === "OPEN") {
+      try {
+        await closeAlpacaPos(pos.symbol).catch(() => {});
+      } catch {
+        // Best effort — position may not exist
+      }
+    }
+  }
+
+  // 4. Find theses from those runs
+  const theses = await prisma.thesis.findMany({
+    where: { researchRunId: { in: runIds } },
+    select: { id: true },
+  });
+  const thesisIds = theses.map((t) => t.id);
+
+  // 5. Delete in dependency order (deepest first)
+  await prisma.positionEvent.deleteMany({ where: { positionId: { in: positionIds } } });
+  await prisma.tradeDecision.deleteMany({ where: { analystId } });
+  await prisma.order.deleteMany({ where: { positionId: { in: positionIds } } });
+  await prisma.position.deleteMany({ where: { id: { in: positionIds } } });
+  await prisma.thesis.deleteMany({ where: { id: { in: thesisIds } } });
+  // RunEvent and RunMessage cascade from ResearchRun (onDelete: Cascade)
+  await prisma.analystBriefing.deleteMany({ where: { analystId } });
+  await prisma.researchRun.deleteMany({ where: { id: { in: runIds } } });
+  await prisma.agentConfig.delete({ where: { id: analystId } });
+
+  revalidatePath("/analysts");
+  revalidatePath("/trades");
+  revalidatePath("/");
 }
 
 // ── updateAnalystFromBuilder (apply AI-suggested config to existing analyst) ──

@@ -122,28 +122,30 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 
   const userId = user?.id;
 
-  // ── Fetch trades, open count, agent config, and recent runs ──────────────
-  const [closedTrades, openCount, agentConfig, completedRuns] = await Promise.all([
+  // ── Fetch positions, open count, agent config, and recent runs ────────────
+  const [closedPositions, openCount, agentConfig, completedRuns] = await Promise.all([
     userId
-      ? prisma.trade.findMany({
+      ? prisma.position.findMany({
           where: { userId, status: "CLOSED" },
           select: {
             direction: true,
             outcome: true,
             realizedPnl: true,
             closedAt: true,
-            entryPrice: true,
-            shares: true,
-            thesis: {
-              select: {
-                confidenceScore: true,
-                sector: true,
-                holdDuration: true,
-                ticker: true,
-                researchRun: {
+            avgCost: true,
+            quantity: true,
+            symbol: true,
+            analystId: true,
+            analyst: { select: { name: true } },
+            decisions: {
+              take: 1,
+              include: {
+                thesis: {
                   select: {
-                    agentConfigId: true,
-                    agentConfig: { select: { name: true } },
+                    confidenceScore: true,
+                    sector: true,
+                    holdDuration: true,
+                    ticker: true,
                   },
                 },
               },
@@ -153,7 +155,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
         })
       : Promise.resolve([]),
     userId
-      ? prisma.trade.count({ where: { userId, status: "OPEN" } })
+      ? prisma.position.count({ where: { userId, status: "OPEN" } })
       : Promise.resolve(0),
     userId
       ? prisma.agentConfig.findFirst({ where: { userId } })
@@ -168,9 +170,10 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
             startedAt: true,
             source: true,
             agentConfig: { select: { name: true } },
-            theses: {
+            decisions: {
+              where: { decision: "BUY" },
               select: {
-                trade: {
+                position: {
                   select: { outcome: true, realizedPnl: true, status: true },
                 },
               },
@@ -182,32 +185,36 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 
   // ── Equity curve ──────────────────────────────────────────────────────────
 
-  const equityCurve = buildEquityCurve(closedTrades);
+  const equityCurve = buildEquityCurve(closedPositions);
+
+  // Helper to get thesis from position via TradeDecision
+  type ClosedPos = (typeof closedPositions)[number];
+  const getThesis = (p: ClosedPos) => p.decisions[0]?.thesis;
 
   // ── P&L stats ─────────────────────────────────────────────────────────────
 
-  const totalReturn = closedTrades.reduce((s, t) => s + (t.realizedPnl ?? 0), 0);
+  const totalReturn = closedPositions.reduce((s, p) => s + (p.realizedPnl ?? 0), 0);
   const totalReturnPct = (totalReturn / STARTING_CAPITAL) * 100;
 
-  const tradesWithOutcome = closedTrades.filter((t) => t.outcome);
-  const wins = tradesWithOutcome.filter((t) => t.outcome === "WIN");
-  const winRate = tradesWithOutcome.length > 0 ? (wins.length / tradesWithOutcome.length) * 100 : 0;
+  const positionsWithOutcome = closedPositions.filter((p) => p.outcome);
+  const wins = positionsWithOutcome.filter((p) => p.outcome === "WIN");
+  const winRate = positionsWithOutcome.length > 0 ? (wins.length / positionsWithOutcome.length) * 100 : 0;
 
   const avgReturnPerTrade =
-    closedTrades.length > 0
-      ? closedTrades.reduce((s, t) => {
-          const cost = t.entryPrice * t.shares;
-          return s + (cost > 0 ? ((t.realizedPnl ?? 0) / cost) * 100 : 0);
-        }, 0) / closedTrades.length
+    closedPositions.length > 0
+      ? closedPositions.reduce((s, p) => {
+          const cost = p.avgCost * p.quantity;
+          return s + (cost > 0 ? ((p.realizedPnl ?? 0) / cost) * 100 : 0);
+        }, 0) / closedPositions.length
       : 0;
 
   // ── Direction breakdown ───────────────────────────────────────────────────
 
   const dirMap = new Map<string, { wins: number; losses: number }>();
-  for (const t of tradesWithOutcome) {
-    const key = t.direction;
+  for (const p of positionsWithOutcome) {
+    const key = p.direction;
     const entry = dirMap.get(key) ?? { wins: 0, losses: 0 };
-    if (t.outcome === "WIN") entry.wins++;
+    if (p.outcome === "WIN") entry.wins++;
     else entry.losses++;
     dirMap.set(key, entry);
   }
@@ -217,10 +224,10 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   // ── Hold duration breakdown ───────────────────────────────────────────────
 
   const durMap = new Map<string, number[]>();
-  for (const t of closedTrades) {
-    const dur = t.thesis?.holdDuration ?? "SWING";
-    const cost = t.entryPrice * t.shares;
-    const ret = cost > 0 ? ((t.realizedPnl ?? 0) / cost) * 100 : 0;
+  for (const p of closedPositions) {
+    const dur = getThesis(p)?.holdDuration ?? "SWING";
+    const cost = p.avgCost * p.quantity;
+    const ret = cost > 0 ? ((p.realizedPnl ?? 0) / cost) * 100 : 0;
     const arr = durMap.get(dur) ?? [];
     arr.push(ret);
     durMap.set(dur, arr);
@@ -233,10 +240,10 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   // ── Sector breakdown ──────────────────────────────────────────────────────
 
   const secMap = new Map<string, number[]>();
-  for (const t of closedTrades) {
-    const sec = t.thesis?.sector ?? "Unknown";
-    const cost = t.entryPrice * t.shares;
-    const ret = cost > 0 ? ((t.realizedPnl ?? 0) / cost) * 100 : 0;
+  for (const p of closedPositions) {
+    const sec = getThesis(p)?.sector ?? "Unknown";
+    const cost = p.avgCost * p.quantity;
+    const ret = cost > 0 ? ((p.realizedPnl ?? 0) / cost) * 100 : 0;
     const arr = secMap.get(sec) ?? [];
     arr.push(ret);
     secMap.set(sec, arr);
@@ -250,14 +257,15 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 
   // ── Confidence scatter ────────────────────────────────────────────────────
 
-  const confidenceScatter: ConfidencePoint[] = closedTrades
-    .filter((t) => t.thesis?.confidenceScore != null)
-    .map((t) => {
-      const cost = t.entryPrice * t.shares;
-      const ret = cost > 0 ? ((t.realizedPnl ?? 0) / cost) * 100 : 0;
+  const confidenceScatter: ConfidencePoint[] = closedPositions
+    .filter((p) => getThesis(p)?.confidenceScore != null)
+    .map((p) => {
+      const thesis = getThesis(p)!;
+      const cost = p.avgCost * p.quantity;
+      const ret = cost > 0 ? ((p.realizedPnl ?? 0) / cost) * 100 : 0;
       return {
-        ticker: t.thesis!.ticker,
-        confidence: t.thesis!.confidenceScore,
+        ticker: thesis.ticker,
+        confidence: thesis.confidenceScore,
         return: ret,
       };
     });
@@ -273,12 +281,12 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     winRate,
     avgReturnPerTrade,
     openTrades: openCount,
-    closedTrades: closedTrades.length,
-    totalTrades: openCount + closedTrades.length,
+    closedTrades: closedPositions.length,
+    totalTrades: openCount + closedPositions.length,
     graduation: {
       currentWinRate: winRate,
       winRateTarget,
-      currentClosedTrades: closedTrades.length,
+      currentClosedTrades: closedPositions.length,
       closedTradesRequired,
     },
   };
@@ -292,16 +300,15 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   }
   const analystMap = new Map<string, AnalystAccum>();
 
-  for (const t of tradesWithOutcome) {
-    const runConfig = (t.thesis as { researchRun?: { agentConfigId: string | null; agentConfig: { name: string } | null } } | undefined)?.researchRun;
-    const analystId = runConfig?.agentConfigId ?? "__unassigned__";
-    const analystName = runConfig?.agentConfig?.name ?? "Unassigned";
+  for (const p of positionsWithOutcome) {
+    const analystId = p.analystId ?? "__unassigned__";
+    const analystName = p.analyst?.name ?? "Unassigned";
     const acc = analystMap.get(analystId) ?? { name: analystName, wins: 0, losses: 0, totalPnl: 0, bestTrade: null, worstTrade: null };
-    if (t.outcome === "WIN") acc.wins++;
-    else if (t.outcome === "LOSS") acc.losses++;
-    const pnl = t.realizedPnl ?? 0;
+    if (p.outcome === "WIN") acc.wins++;
+    else if (p.outcome === "LOSS") acc.losses++;
+    const pnl = p.realizedPnl ?? 0;
     acc.totalPnl += pnl;
-    const ticker = t.thesis?.ticker ?? "???";
+    const ticker = p.symbol;
     if (!acc.bestTrade || pnl > acc.bestTrade.pnl) acc.bestTrade = { ticker, pnl };
     if (!acc.worstTrade || pnl < acc.worstTrade.pnl) acc.worstTrade = { ticker, pnl };
     analystMap.set(analystId, acc);
@@ -324,17 +331,17 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   // ── Research run summaries ────────────────────────────────────────────────
 
   const recentRuns: ResearchRunSummary[] = completedRuns.map((run) => {
-    const allTrades = run.theses.flatMap((th) => (th.trade ? [th.trade] : []));
-    const closed = allTrades.filter((tr) => tr.status === "CLOSED");
-    const runWins = closed.filter((tr) => tr.outcome === "WIN").length;
-    const runLosses = closed.filter((tr) => tr.outcome === "LOSS").length;
-    const pnl = closed.reduce((s, tr) => s + (tr.realizedPnl ?? 0), 0);
+    const allPositions = run.decisions.flatMap((d) => (d.position ? [d.position] : []));
+    const closed = allPositions.filter((pos) => pos.status === "CLOSED");
+    const runWins = closed.filter((pos) => pos.outcome === "WIN").length;
+    const runLosses = closed.filter((pos) => pos.outcome === "LOSS").length;
+    const pnl = closed.reduce((s, pos) => s + (pos.realizedPnl ?? 0), 0);
     return {
       id: run.id,
       startedAt: run.startedAt,
       analystName: run.agentConfig?.name ?? (run.source === "MANUAL" ? "Manual" : "Agent"),
-      thesesCount: run.theses.length,
-      tradesPlaced: allTrades.length,
+      thesesCount: run.decisions.length,
+      tradesPlaced: allPositions.length,
       closedTrades: closed.length,
       pnl,
       wins: runWins,

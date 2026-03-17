@@ -16,6 +16,7 @@ import { StockLogo } from "@/components/StockLogo";
 import {
   addToWatchlist,
   removeFromWatchlist,
+  deleteAnalyst,
 } from "@/lib/actions/analyst.actions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
@@ -27,6 +28,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Settings2,
@@ -34,11 +36,22 @@ import {
   Eye,
   X,
   Pencil,
+  Trash2,
+  Loader2,
   EllipsisVertical,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 import type {
   AnalystDetail,
-  TradeWithThesis,
+  PositionWithThesis,
 } from "@/lib/actions/analyst.actions";
 import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
@@ -71,21 +84,21 @@ function sliceByRange(
 
 // ── Sidebar trade row (uses shared TradeRow component) ───────────────────────
 
-function AnalystTradeRow({ trade }: { trade: TradeWithThesis }) {
+function AnalystTradeRow({ trade }: { trade: PositionWithThesis }) {
   const pnl = trade.realizedPnl ?? 0;
-  const price = trade.closePrice ?? trade.entryPrice;
+  const price = trade.closePrice ?? trade.avgCost;
   const pnlPct =
-    trade.entryPrice > 0
-      ? ((price - trade.entryPrice) / trade.entryPrice) * 100 *
+    trade.avgCost > 0
+      ? ((price - trade.avgCost) / trade.avgCost) * 100 *
         (trade.direction === "SHORT" ? -1 : 1)
       : 0;
 
   return (
     <TradeRow
       id={trade.id}
-      ticker={trade.ticker}
+      ticker={trade.symbol}
       currentPrice={price}
-      shares={trade.shares}
+      shares={trade.quantity}
       pnl={pnl}
       pnlPct={pnlPct}
       status={trade.status}
@@ -197,6 +210,20 @@ export default function AnalystDetailClient({
   const [range, setRange] = useState<Range>("Max");
   const [watchlist, setWatchlist] = useState(config.watchlist);
   const [, startTransition] = useTransition();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  async function handleDelete() {
+    setDeleteLoading(true);
+    try {
+      await deleteAnalyst(config.id);
+      toast.success("Analyst deleted");
+      router.push("/analysts");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
+      setDeleteLoading(false);
+    }
+  }
 
   const handleAddStock = (symbol: string) => {
     const upper = symbol.toUpperCase();
@@ -296,7 +323,7 @@ export default function AnalystDetailClient({
                 ))}
               </div>
             </div>
-            {/* Right Side Settings and Run Research Button */}
+            {/* Right Side Settings, Menu, and Run Research Button */}
             <div className="flex items-center gap-1 shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -312,6 +339,14 @@ export default function AnalystDetailClient({
                   <DropdownMenuItem onClick={() => setConfigOpen(true)}>
                     <Settings2 />
                     Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-negative focus:text-negative"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-2" />
+                    Delete analyst
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -557,6 +592,39 @@ export default function AnalystDetailClient({
         onOpenChange={setConfigOpen}
         config={config}
       />
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Delete {config.name}</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this analyst and all associated data:
+              runs, theses, trades, events, and briefings. Any open Alpaca
+              positions will be closed. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleteLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDelete}
+              disabled={deleteLoading}
+              className="gap-2"
+            >
+              {deleteLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {deleteLoading ? "Deleting…" : "Delete Analyst"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

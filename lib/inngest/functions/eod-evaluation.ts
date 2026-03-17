@@ -34,28 +34,28 @@ export const eodEvaluation = inngest.createFunction(
   },
   { cron: "TZ=America/New_York 0 17 * * 1-5" }, // 5:00 PM ET Mon–Fri (auto-adjusts for EDT/EST)
   async ({ step }) => {
-    // Step 1: Load all open trades
-    const openTrades = await step.run("load-open-trades", async () => {
-      return prisma.trade.findMany({
+    // Step 1: Load all open positions
+    const openPositions = await step.run("load-open-positions", async () => {
+      return prisma.position.findMany({
         where: { status: "OPEN" },
         select: {
           id: true,
-          ticker: true,
+          symbol: true,
           direction: true,
-          entryPrice: true,
-          shares: true,
+          avgCost: true,
+          quantity: true,
           userId: true,
         },
       });
     });
 
-    if (openTrades.length === 0) {
+    if (openPositions.length === 0) {
       return { openChecks: 0, closedEvaluations: 0 };
     }
 
     // Step 2: Batch-fetch current prices for all open tickers
     const prices = await step.run("fetch-eod-prices", async () => {
-      const uniqueTickers = [...new Set(openTrades.map((t) => t.ticker))];
+      const uniqueTickers = [...new Set(openPositions.map((p) => p.symbol))];
       try {
         return await getLatestPrices(uniqueTickers);
       } catch {
@@ -63,21 +63,21 @@ export const eodEvaluation = inngest.createFunction(
       }
     });
 
-    // Step 3: Write EOD_CHECK TradeEvent for each open trade (idempotent)
+    // Step 3: Write EOD_CHECK PositionEvent for each open position (idempotent)
     let openChecks = 0;
 
-    for (const trade of openTrades) {
-      const currentPrice = (prices as Record<string, number>)[trade.ticker];
+    for (const position of openPositions) {
+      const currentPrice = (prices as Record<string, number>)[position.symbol];
       if (currentPrice === undefined) continue;
 
-      await step.run(`eod-check-${trade.id}`, async () => {
-        // Idempotency: skip if an EOD_CHECK already exists for this trade today
+      await step.run(`eod-check-${position.id}`, async () => {
+        // Idempotency: skip if an EOD_CHECK already exists for this position today
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 
-        const existing = await prisma.tradeEvent.findFirst({
+        const existing = await prisma.positionEvent.findFirst({
           where: {
-            tradeId: trade.id,
+            positionId: position.id,
             eventType: "EOD_CHECK",
             createdAt: { gte: todayStart },
           },
@@ -86,63 +86,63 @@ export const eodEvaluation = inngest.createFunction(
 
         if (existing) return { skipped: true };
 
-        const pnlPct = calcPnlPct(trade.direction, trade.entryPrice, currentPrice);
+        const pnlPct = calcPnlPct(position.direction, position.avgCost, currentPrice);
         const pnlDollars = calcPnlDollars(
-          trade.direction,
-          trade.entryPrice,
+          position.direction,
+          position.avgCost,
           currentPrice,
-          trade.shares
+          position.quantity
         );
         const sign = pnlPct >= 0 ? "+" : "";
 
-        await prisma.tradeEvent.create({
+        await prisma.positionEvent.create({
           data: {
-            tradeId: trade.id,
+            positionId: position.id,
             eventType: "EOD_CHECK",
-            description: `EOD | ${trade.ticker} | ${sign}${pnlPct.toFixed(2)}% | $${currentPrice.toFixed(2)}`,
+            description: `EOD | ${position.symbol} | ${sign}${pnlPct.toFixed(2)}% | $${currentPrice.toFixed(2)}`,
             priceAt: currentPrice,
             pnlAt: pnlDollars,
           },
         });
 
-        return { written: true, ticker: trade.ticker, pnlPct };
+        return { written: true, ticker: position.symbol, pnlPct };
       });
 
       openChecks++;
     }
 
-    // Step 4: Find trades closed TODAY and fire trade/closed event for any
-    //         that haven't been evaluated yet (no EVALUATED TradeEvent)
+    // Step 4: Find positions closed TODAY and fire trade/closed event for any
+    //         that haven't been evaluated yet (no EVALUATED PositionEvent)
     const closedToday = await step.run("load-closed-today", async () => {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      return prisma.trade.findMany({
+      return prisma.position.findMany({
         where: {
           status: "CLOSED",
           closedAt: { gte: todayStart },
         },
         select: {
           id: true,
-          ticker: true,
+          symbol: true,
           events: { where: { eventType: "EVALUATED" }, select: { id: true } },
         },
       });
     });
 
-    // Fire trade/closed for trades that haven't been evaluated yet
+    // Fire trade/closed for positions that haven't been evaluated yet
     const unevaluated = (
       closedToday as Array<{
         id: string;
-        ticker: string;
+        symbol: string;
         events: { id: string }[];
       }>
-    ).filter((t) => t.events.length === 0);
+    ).filter((p) => p.events.length === 0);
 
-    for (const trade of unevaluated) {
-      await step.sendEvent(`evaluate-${trade.id}`, {
+    for (const position of unevaluated) {
+      await step.sendEvent(`evaluate-${position.id}`, {
         name: "trade/closed",
-        data: { tradeId: trade.id },
+        data: { positionId: position.id },
       });
     }
 

@@ -12,8 +12,9 @@ import { tradePlacedHtml } from "@/lib/emails/trade-placed";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface CreateTradeInput {
+export interface OpenPositionInput {
   thesisId: string;
+  analystId: string;        // FK to AgentConfig — which analyst is trading
   ticker: string;
   direction: "LONG" | "SHORT";
   entryPrice: number;
@@ -21,14 +22,14 @@ export interface CreateTradeInput {
   targetPrice?: number;
   stopLoss?: number;
   exitStrategy: "PRICE_TARGET" | "TIME_BASED" | "TRAILING" | "MANUAL";
-  exitDate?: string; // ISO date string, only for TIME_BASED
+  exitDate?: string;        // ISO date string, only for TIME_BASED
   trailingStopPct?: number; // only for TRAILING
-  notes?: string;
-  researchRunId?: string; // When set, writes a RunEvent so trade appears on run page reload
+  researchRunId?: string;   // When set, writes a RunEvent + TradeDecision
 }
 
-export interface CreateTradeResult {
-  tradeId: string;
+export interface OpenPositionResult {
+  positionId: string;
+  orderId: string;
   alpacaOrderId: string;
   fillPrice: number;
   error?: string;
@@ -71,9 +72,9 @@ async function waitForFill(
 
 // ─── Server Action ────────────────────────────────────────────────────────────
 
-export async function createTrade(
-  input: CreateTradeInput
-): Promise<CreateTradeResult> {
+export async function openPosition(
+  input: OpenPositionInput
+): Promise<OpenPositionResult> {
   // 1. Auth check
   const supabase = await createClient();
   const {
@@ -81,29 +82,47 @@ export async function createTrade(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { tradeId: "", alpacaOrderId: "", fillPrice: 0, error: "Not authenticated" };
+    return { positionId: "", orderId: "", alpacaOrderId: "", fillPrice: 0, error: "Not authenticated" };
   }
 
-  // 2. Max open positions check
-  const agentConfig = await prisma.agentConfig.findFirst({
-    where: { userId: user.id, enabled: true },
+  // 2. Check for existing open position in this ticker (across all analysts)
+  const existingPosition = await prisma.position.findFirst({
+    where: { userId: user.id, symbol: input.ticker, status: "OPEN" },
+    select: { id: true },
+  });
+
+  if (existingPosition) {
+    return {
+      positionId: "",
+      orderId: "",
+      alpacaOrderId: "",
+      fillPrice: 0,
+      error: `Already holding an open position in ${input.ticker}. Cannot open duplicate positions.`,
+    };
+  }
+
+  // 3. Max open positions check for this analyst
+  const agentConfig = await prisma.agentConfig.findUnique({
+    where: { id: input.analystId },
+    select: { maxOpenPositions: true },
   });
   const maxOpenPositions = agentConfig?.maxOpenPositions ?? 5;
 
-  const openCount = await prisma.trade.count({
-    where: { userId: user.id, status: "OPEN" },
+  const openCount = await prisma.position.count({
+    where: { analystId: input.analystId, status: "OPEN" },
   });
 
   if (openCount >= maxOpenPositions) {
     return {
-      tradeId: "",
+      positionId: "",
+      orderId: "",
       alpacaOrderId: "",
       fillPrice: 0,
-      error: `Max open positions reached (${maxOpenPositions}). Close a trade before opening a new one.`,
+      error: `Max open positions reached (${maxOpenPositions}). Close a position before opening a new one.`,
     };
   }
 
-  // 3. Place Alpaca paper order
+  // 4. Place Alpaca paper order
   let alpacaOrder;
   try {
     alpacaOrder = await placeMarketOrder({
@@ -113,51 +132,80 @@ export async function createTrade(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Alpaca order failed";
-    return { tradeId: "", alpacaOrderId: "", fillPrice: 0, error: msg };
+    return { positionId: "", orderId: "", alpacaOrderId: "", fillPrice: 0, error: msg };
   }
 
-  // 4. Wait for fill (or use entry price if market closed)
+  // 5. Wait for fill (or use entry price if market closed)
   let fillPrice = input.entryPrice;
   try {
     fillPrice = await waitForFill(alpacaOrder.id, input.ticker, input.entryPrice);
   } catch (err) {
-    // Cancelled/rejected — bail out, don't write DB
     const msg = err instanceof Error ? err.message : "Order failed";
-    return { tradeId: "", alpacaOrderId: alpacaOrder.id, fillPrice: 0, error: msg };
+    return { positionId: "", orderId: alpacaOrder.id, alpacaOrderId: alpacaOrder.id, fillPrice: 0, error: msg };
   }
 
-  // 5. Write Trade to Prisma
-  const trade = await prisma.trade.create({
+  // 6. Create Position
+  const position = await prisma.position.create({
     data: {
-      thesisId: input.thesisId,
+      analystId: input.analystId,
       userId: user.id,
-      ticker: input.ticker,
+      symbol: input.ticker,
       direction: input.direction,
       status: "OPEN",
-      entryPrice: fillPrice,
-      shares: input.shares,
+      quantity: input.shares,
+      avgCost: fillPrice,
       targetPrice: input.targetPrice ?? null,
       stopLoss: input.stopLoss ?? null,
       exitStrategy: input.exitStrategy,
       exitDate: input.exitDate ? new Date(input.exitDate) : null,
       trailingStopPct: input.trailingStopPct ?? null,
-      alpacaOrderId: alpacaOrder.id,
-      notes: input.notes ?? null,
     },
   });
 
-  // 6. Write PLACED TradeEvent
-  await prisma.tradeEvent.create({
+  // 7. Create Order (with fill data — paper trading fills immediately)
+  const order = await prisma.order.create({
     data: {
-      tradeId: trade.id,
-      eventType: "PLACED",
+      positionId: position.id,
+      userId: user.id,
+      symbol: input.ticker,
+      side: input.direction === "LONG" ? "BUY" : "SELL",
+      orderType: "MARKET",
+      quantity: input.shares,
+      status: "FILLED",
+      filledPrice: fillPrice,
+      filledQty: input.shares,
+      filledAt: new Date(),
+      alpacaOrderId: alpacaOrder.id,
+    },
+  });
+
+  // 8. Write OPENED PositionEvent
+  await prisma.positionEvent.create({
+    data: {
+      positionId: position.id,
+      eventType: "OPENED",
       description: `${input.direction} ${input.shares} shares of ${input.ticker} placed via Alpaca Paper at $${fillPrice.toFixed(2)}`,
       priceAt: fillPrice,
     },
   });
 
-  // 7. Write RunEvent so trade persists on run page reload
+  // 9. Write TradeDecision linking thesis → position → order
   if (input.researchRunId) {
+    await prisma.tradeDecision.create({
+      data: {
+        runId: input.researchRunId,
+        analystId: input.analystId,
+        userId: user.id,
+        symbol: input.ticker,
+        decision: "BUY",
+        reasoning: `${input.direction} ${input.shares} shares at $${fillPrice.toFixed(2)}`,
+        thesisId: input.thesisId,
+        positionId: position.id,
+        orderId: order.id,
+      },
+    });
+
+    // 10. Write RunEvent so trade appears on run page reload
     await prisma.runEvent.create({
       data: {
         runId: input.researchRunId,
@@ -171,13 +219,14 @@ export async function createTrade(
           target_price: input.targetPrice ?? null,
           stop_loss: input.stopLoss ?? null,
           shares: input.shares,
-          trade_id: trade.id,
+          position_id: position.id,
+          order_id: order.id,
         } as object,
       },
     });
   }
 
-  // 8. Send trade-placed email alert (fire-and-forget)
+  // 11. Send trade-placed email alert (fire-and-forget)
   if (user.email) {
     const thesis = await prisma.thesis.findUnique({
       where: { id: input.thesisId },
@@ -196,14 +245,78 @@ export async function createTrade(
         signalTypes: thesis?.signalTypes ?? [],
         confidenceScore: thesis?.confidenceScore,
         reasoningSummary: thesis?.reasoningSummary,
-        tradeId: trade.id,
+        tradeId: position.id, // Use position ID for trade link
       }),
     });
   }
 
   return {
-    tradeId: trade.id,
+    positionId: position.id,
+    orderId: order.id,
     alpacaOrderId: alpacaOrder.id,
     fillPrice,
+  };
+}
+
+// ─── Legacy createTrade wrapper (for old UI code paths during migration) ─────
+
+export interface CreateTradeInput {
+  thesisId: string;
+  ticker: string;
+  direction: "LONG" | "SHORT";
+  entryPrice: number;
+  shares: number;
+  targetPrice?: number;
+  stopLoss?: number;
+  exitStrategy: "PRICE_TARGET" | "TIME_BASED" | "TRAILING" | "MANUAL";
+  exitDate?: string;
+  trailingStopPct?: number;
+  notes?: string;
+  researchRunId?: string;
+}
+
+export interface CreateTradeResult {
+  tradeId: string;
+  alpacaOrderId: string;
+  fillPrice: number;
+  error?: string;
+}
+
+/**
+ * Legacy wrapper — maps old createTrade interface to new openPosition.
+ * Used by TradeReviewSheet and other UI components until Phase 2 migration.
+ */
+export async function createTrade(input: CreateTradeInput): Promise<CreateTradeResult> {
+  // Find the analyst linked to this thesis
+  const thesis = await prisma.thesis.findUnique({
+    where: { id: input.thesisId },
+    select: { researchRun: { select: { agentConfigId: true } } },
+  });
+
+  const analystId = thesis?.researchRun?.agentConfigId;
+  if (!analystId) {
+    return { tradeId: "", alpacaOrderId: "", fillPrice: 0, error: "Could not determine analyst for this thesis" };
+  }
+
+  const result = await openPosition({
+    thesisId: input.thesisId,
+    analystId,
+    ticker: input.ticker,
+    direction: input.direction,
+    entryPrice: input.entryPrice,
+    shares: input.shares,
+    targetPrice: input.targetPrice,
+    stopLoss: input.stopLoss,
+    exitStrategy: input.exitStrategy,
+    exitDate: input.exitDate,
+    trailingStopPct: input.trailingStopPct,
+    researchRunId: input.researchRunId,
+  });
+
+  return {
+    tradeId: result.positionId,
+    alpacaOrderId: result.alpacaOrderId,
+    fillPrice: result.fillPrice,
+    error: result.error,
   };
 }

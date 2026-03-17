@@ -81,7 +81,7 @@ export const accuracyScorer = inngest.createFunction(
   async ({ step }) => {
     // Step 1: Find users with at least 3 closed trades
     const userIds = await step.run("find-eligible-users", async () => {
-      const rows = await prisma.trade.groupBy({
+      const rows = await prisma.position.groupBy({
         by: ["userId"],
         where: { status: "CLOSED", outcome: { in: ["WIN", "LOSS", "BREAKEVEN"] } },
         _count: { id: true },

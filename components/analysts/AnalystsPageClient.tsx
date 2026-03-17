@@ -1,17 +1,31 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Plus, MoreHorizontal } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Plus, MoreHorizontal, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { StockLogo } from "@/components/StockLogo";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
+import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
 
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
@@ -50,7 +64,7 @@ function WinRateBar({ winRate, tradeCount }: { winRate: number | null; tradeCoun
 
 // ── AnalystCard ───────────────────────────────────────────────────────────────
 
-function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
+function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete: (id: string) => void }) {
   const configSubhead = [
     analyst.directionBias,
     analyst.holdDurations.length > 0 ? analyst.holdDurations.join("/") : null,
@@ -115,6 +129,16 @@ function AnalystCard({ analyst }: { analyst: AnalystListItem }) {
                     <Link href={`/analysts/${analyst.id}/edit`} className="w-full">
                       Edit config
                     </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-negative focus:text-negative pointer-events-auto"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(analyst.id);
+                    }}
+                  >
+                    Delete analyst
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -210,6 +234,27 @@ export default function AnalystsPageClient({
 }: {
   analysts: AnalystListItem[];
 }) {
+  const router = useRouter();
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const targetAnalyst = analysts.find((a) => a.id === deleteTarget);
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      await deleteAnalyst(deleteTarget);
+      toast.success("Analyst deleted");
+      setDeleteTarget(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete analyst");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-semibold">Analysts</h1>
@@ -219,11 +264,47 @@ export default function AnalystsPageClient({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {analysts.map((analyst) => (
-            <AnalystCard key={analyst.id} analyst={analyst} />
+            <AnalystCard key={analyst.id} analyst={analyst} onDelete={setDeleteTarget} />
           ))}
           <NewAnalystCard />
         </div>
       )}
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+      >
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Delete {targetAnalyst?.name ?? "Analyst"}</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this analyst and all associated data:
+              runs, theses, trades, events, and briefings. Any open Alpaca
+              positions will be closed. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDelete}
+              disabled={deleteLoading}
+              className="gap-2"
+            >
+              {deleteLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {deleteLoading ? "Deleting…" : "Delete Analyst"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

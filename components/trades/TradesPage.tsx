@@ -32,7 +32,7 @@ import { StockLogo } from '@/components/StockLogo';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PnlArrow } from '@/components/ui/pnl-arrow';
 import { cn } from '@/lib/utils';
-import { closeTrade } from '@/lib/actions/closeTrade.actions';
+import { closeTrade, cancelTrade } from '@/lib/actions/closeTrade.actions';
 import {
   mockOpenTrades,
   mockClosedTrades,
@@ -152,8 +152,11 @@ export default function TradesPage({
   const [tab, setTab] = useState<FilterTab>('ALL');
   const [closeTarget, setCloseTarget] = useState<string | null>(null);
   const [closeLoading, setCloseLoading] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const closeTargetTrade = allTrades.find((t) => t.id === closeTarget);
+  const cancelTargetTrade = allTrades.find((t) => t.id === cancelTarget);
 
   async function handleCloseTrade() {
     if (!closeTarget) return;
@@ -167,6 +170,21 @@ export default function TradesPage({
       toast.error(err instanceof Error ? err.message : 'Failed to close trade');
     } finally {
       setCloseLoading(false);
+    }
+  }
+
+  async function handleCancelTrade() {
+    if (!cancelTarget) return;
+    setCancelLoading(true);
+    try {
+      await cancelTrade(cancelTarget);
+      toast.success('Trade cancelled');
+      setCancelTarget(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to cancel trade');
+    } finally {
+      setCancelLoading(false);
     }
   }
 
@@ -252,7 +270,7 @@ export default function TradesPage({
 
               return (
                 <TableRow key={trade.id} className="cursor-pointer">
-                  {/* Name: logo + company name + ticker/confidence subhead */}
+                  {/* Name: logo + company name + ticker/confidence/analyst subhead */}
                   <TableCell className="pl-6">
                     <Link href={`/trades/${trade.id}`} className="flex items-center gap-2.5">
                       <StockLogo ticker={trade.ticker} size="sm" />
@@ -260,6 +278,12 @@ export default function TradesPage({
                         <p className="text-sm font-medium leading-tight">{trade.companyName ?? trade.ticker}</p>
                         <p className="text-[10px] text-muted-foreground font-mono leading-tight">
                           {trade.ticker} <span className="opacity-30">·</span> {trade.confidenceScore}%
+                          {trade.analystName && (
+                            <>
+                              <span className="opacity-30"> · </span>
+                              {trade.analystName}
+                            </>
+                          )}
                         </p>
                       </div>
                     </Link>
@@ -356,15 +380,26 @@ export default function TradesPage({
                           </Link>
                         </DropdownMenuItem>
                         {isOpen && (
-                          <DropdownMenuItem
-                            className="text-negative focus:text-negative"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCloseTarget(trade.id);
-                            }}
-                          >
-                            Close trade
-                          </DropdownMenuItem>
+                          <>
+                            <DropdownMenuItem
+                              className="text-amber-500 focus:text-amber-500"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCancelTarget(trade.id);
+                              }}
+                            >
+                              Cancel order
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-negative focus:text-negative"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCloseTarget(trade.id);
+                              }}
+                            >
+                              Close trade
+                            </DropdownMenuItem>
+                          </>
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -416,6 +451,45 @@ export default function TradesPage({
             >
               {closeLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {closeLoading ? 'Closing…' : 'Close Trade'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel order dialog */}
+      <Dialog
+        open={!!cancelTarget}
+        onOpenChange={(open) => {
+          if (!open) setCancelTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Cancel Order — {cancelTargetTrade?.ticker}</DialogTitle>
+            <DialogDescription>
+              This will cancel the pending Alpaca order and mark the trade as
+              cancelled. Use this for orders that haven&apos;t been filled yet
+              (e.g. submitted after market close).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCancelTarget(null)}
+              disabled={cancelLoading}
+            >
+              Keep Order
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleCancelTrade}
+              disabled={cancelLoading}
+              className="gap-2"
+            >
+              {cancelLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {cancelLoading ? 'Cancelling…' : 'Cancel Order'}
             </Button>
           </DialogFooter>
         </DialogContent>

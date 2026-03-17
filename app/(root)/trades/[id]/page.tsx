@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Target,
 } from 'lucide-react';
+import { TradeActions } from '@/components/trades/TradeActions';
 
 // ─── Event icon map ─────────────────────────────────────────────────────────
 
@@ -57,16 +58,19 @@ export default async function TradeDetailPage({
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const trade = await prisma.trade.findUnique({
+  const position = await prisma.position.findUnique({
     where: { id },
     include: {
       events: { orderBy: { createdAt: 'asc' } },
-      thesis: {
+      analyst: { select: { id: true, name: true } },
+      decisions: {
+        take: 1,
         include: {
-          researchRun: {
-            select: {
-              id: true,
-              agentConfig: { select: { id: true, name: true } },
+          thesis: {
+            include: {
+              researchRun: {
+                select: { id: true },
+              },
             },
           },
         },
@@ -74,54 +78,64 @@ export default async function TradeDetailPage({
     },
   });
 
-  if (!trade || trade.userId !== user?.id) notFound();
+  if (!position || position.userId !== user?.id) notFound();
+
+  // Alias for backwards-compat with template
+  const trade = {
+    ...position,
+    ticker: position.symbol,
+    entryPrice: position.avgCost,
+    shares: position.quantity,
+    thesis: position.decisions[0]?.thesis ?? null,
+    events: position.events,
+  };
 
   const stockProfile = await getStockProfile(trade.ticker);
   const companyName = stockProfile?.name ?? null;
   const exchange = stockProfile?.exchange ?? null;
 
-  const isOpen = trade.status === 'OPEN';
-  const currentPrice = trade.closePrice ?? trade.entryPrice;
+  const isOpen = position.status === 'OPEN';
+  const currentPrice = position.closePrice ?? position.avgCost;
 
   // P&L
-  const realizedPnl = trade.realizedPnl ?? 0;
+  const realizedPnl = position.realizedPnl ?? 0;
   const unrealizedDollars = isOpen
-    ? trade.direction === 'LONG'
-      ? (currentPrice - trade.entryPrice) * trade.shares
-      : (trade.entryPrice - currentPrice) * trade.shares
+    ? position.direction === 'LONG'
+      ? (currentPrice - position.avgCost) * position.quantity
+      : (position.avgCost - currentPrice) * position.quantity
     : realizedPnl;
-  const positionCost = trade.entryPrice * trade.shares;
+  const positionCost = position.avgCost * position.quantity;
   const pnl = isOpen ? unrealizedDollars : realizedPnl;
   const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
   const isPos = pnl >= 0;
 
-  const status = getStatusDisplay(trade.status, trade.outcome ?? null);
-  const targetPrice = trade.targetPrice ?? trade.entryPrice * 1.1;
-  const stopPrice = trade.stopLoss ?? trade.entryPrice * 0.9;
+  const status = getStatusDisplay(position.status, position.outcome ?? null);
+  const targetPrice = position.targetPrice ?? position.avgCost * 1.1;
+  const stopPrice = position.stopLoss ?? position.avgCost * 0.9;
 
   // Progress to target
   const totalMove = Math.abs(
-    trade.direction === 'LONG' ? targetPrice - trade.entryPrice : trade.entryPrice - targetPrice
+    position.direction === 'LONG' ? targetPrice - position.avgCost : position.avgCost - targetPrice
   );
   const actualMove = Math.abs(
-    trade.direction === 'LONG' ? currentPrice - trade.entryPrice : trade.entryPrice - currentPrice
+    position.direction === 'LONG' ? currentPrice - position.avgCost : position.avgCost - currentPrice
   );
   const progressPct = totalMove > 0
     ? Math.min(100, Math.max(0, Math.round((actualMove / totalMove) * 100)))
     : 0;
 
   const riskMove = Math.abs(
-    trade.direction === 'LONG' ? trade.entryPrice - stopPrice : stopPrice - trade.entryPrice
+    position.direction === 'LONG' ? position.avgCost - stopPrice : stopPrice - position.avgCost
   );
   const riskReward = riskMove > 0 ? totalMove / riskMove : 0;
 
   // Analyst + run info
-  const analystName = trade.thesis?.researchRun?.agentConfig?.name ?? null;
-  const analystId = trade.thesis?.researchRun?.agentConfig?.id ?? null;
+  const analystName = position.analyst?.name ?? null;
+  const analystIdVal = position.analyst?.id ?? null;
   const runId = trade.thesis?.researchRun?.id ?? null;
 
   // Post-mortem eval event
-  const evalEvent = trade.events.find((e) => e.eventType === 'EVALUATED');
+  const evalEvent = position.events.find((e) => e.eventType === 'EVALUATED');
 
   const thesisBullets = (trade.thesis?.thesisBullets ?? []) as string[];
   const riskFlags = (trade.thesis?.riskFlags ?? []) as string[];
@@ -149,44 +163,57 @@ export default async function TradeDetailPage({
         {/* ════ LEFT column ════ */}
         <div className="flex-1 min-w-0 space-y-6">
 
-          {/* Header: StockLogo + ticker + status */}
-          <div className="flex items-center gap-3">
-            <StockLogo ticker={trade.ticker} size="lg" />
-            <div>
-              <h1 className="font-brand font-bold text-2xl leading-tight">
-                {companyName ?? trade.ticker}
-              </h1>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs font-mono text-muted-foreground">
-                  {trade.ticker}{exchange ? ` · ${exchange}` : ''} · {trade.direction}
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground">
-                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status.dotClass}`} />
-                  {status.label}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                {analystName && analystId && (
-                  <Link href={`/analysts/${analystId}`} className="hover:text-foreground transition-colors">
-                    {analystName}
-                  </Link>
-                )}
-                {analystName && <span className="opacity-30">·</span>}
-                <span>
-                  {new Date(trade.openedAt).toLocaleDateString('en-US', {
-                    month: 'short', day: 'numeric', year: 'numeric',
-                  })}
-                </span>
-                {runId && (
-                  <>
-                    <span className="opacity-30">·</span>
-                    <Link href={`/runs/${runId}`} className="hover:text-foreground transition-colors inline-flex items-center gap-0.5">
-                      View run <ExternalLink className="h-3 w-3" />
+          {/* Header: StockLogo + ticker + status + actions */}
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <StockLogo ticker={trade.ticker} size="lg" />
+              <div>
+                <h1 className="font-brand font-bold text-2xl leading-tight">
+                  {companyName ?? trade.ticker}
+                </h1>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {trade.ticker}{exchange ? ` · ${exchange}` : ''} · {trade.direction}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground">
+                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status.dotClass}`} />
+                    {status.label}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                  {analystName && analystIdVal && (
+                    <Link href={`/analysts/${analystIdVal}`} className="hover:text-foreground transition-colors">
+                      {analystName}
                     </Link>
-                  </>
-                )}
+                  )}
+                  {analystName && <span className="opacity-30">·</span>}
+                  <span>
+                    Submitted {new Date(trade.createdAt).toLocaleDateString('en-US', {
+                      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+                  {trade.openedAt.getTime() !== trade.createdAt.getTime() && (
+                    <>
+                      <span className="opacity-30">·</span>
+                      <span>
+                        Filled {new Date(trade.openedAt).toLocaleDateString('en-US', {
+                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                        })}
+                      </span>
+                    </>
+                  )}
+                  {runId && (
+                    <>
+                      <span className="opacity-30">·</span>
+                      <Link href={`/runs/${runId}`} className="hover:text-foreground transition-colors inline-flex items-center gap-0.5">
+                        View run <ExternalLink className="h-3 w-3" />
+                      </Link>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
+            <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} />
           </div>
 
           {/* Closed result banner */}
@@ -396,6 +423,8 @@ export default async function TradeDetailPage({
                 { label: 'Shares', value: String(trade.shares) },
                 { label: 'Position Cost', value: `$${positionCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
                 { label: 'Market Value', value: `$${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
+                ...(analystName ? [{ label: 'Analyst', value: analystName }] : []),
+                { label: 'Submitted', value: new Date(trade.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
                   <span className="text-muted-foreground">{label}</span>
