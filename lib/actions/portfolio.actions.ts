@@ -57,10 +57,10 @@ export interface RecentPick {
   targetPrice: number | null;
   stopLoss: number | null;
   createdAt: string; // ISO
-  trade: {
+  position: {
     id: string;
     status: string;
-    entryPrice: number;
+    avgCost: number;
     openedAt: string; // ISO
   } | null;
   currentPrice: number | null;
@@ -415,11 +415,11 @@ export async function getDashboardData(): Promise<DashboardData> {
       targetPrice: p.targetPrice,
       stopLoss: p.stopLoss,
       createdAt: p.createdAt.toISOString(),
-      trade: position
+      position: position
         ? {
             id: position.id,
             status: position.status,
-            entryPrice: position.avgCost,
+            avgCost: position.avgCost,
             openedAt: position.openedAt.toISOString(),
           }
         : null,

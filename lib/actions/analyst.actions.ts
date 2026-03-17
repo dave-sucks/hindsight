@@ -81,13 +81,13 @@ export interface RunWithTheses {
   }[];
 }
 
-export interface TradeWithThesis {
+export interface PositionWithThesis {
   id: string;
-  ticker: string;
+  symbol: string;
   direction: string;
   status: string;
-  entryPrice: number;
-  shares: number;
+  avgCost: number;
+  quantity: number;
   closePrice: number | null;
   realizedPnl: number | null;
   outcome: string | null;
@@ -116,7 +116,7 @@ export interface AnalystStats {
 export interface AnalystDetail {
   config: AnalystConfig;
   recentRuns: RunWithTheses[];
-  recentTrades: TradeWithThesis[];
+  recentTrades: PositionWithThesis[];
   stats: AnalystStats;
   briefings: AnalystBriefingItem[];
 }
@@ -441,14 +441,13 @@ export async function getAnalystDetail(
     }),
   }));
 
-  // Map positions → TradeWithThesis shape for backwards compat
-  const mappedTrades: TradeWithThesis[] = recentPositions.map((p) => ({
+  const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => ({
     id: p.id,
-    ticker: p.symbol,
+    symbol: p.symbol,
     direction: p.direction,
     status: p.status,
-    entryPrice: p.avgCost,
-    shares: p.quantity,
+    avgCost: p.avgCost,
+    quantity: p.quantity,
     closePrice: p.closePrice,
     realizedPnl: p.realizedPnl,
     outcome: p.outcome,

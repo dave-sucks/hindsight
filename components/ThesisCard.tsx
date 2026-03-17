@@ -22,11 +22,11 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ThesisCardTrade = {
+export type ThesisCardPosition = {
   id: string;
   realizedPnl: number | null;
   status: string;
-  entryPrice: number;
+  avgCost: number;
   closePrice: number | null;
 };
 
@@ -47,7 +47,7 @@ export type ThesisCardData = {
   entryPrice: number | null;
   targetPrice: number | null;
   stopLoss: number | null;
-  trade: ThesisCardTrade | null;
+  position: ThesisCardPosition | null;
   // Optional enrichment (degrades gracefully if omitted)
   analystName?: string | null;
   createdAt?: string | null;
@@ -138,7 +138,7 @@ export function ThesisCard({
 
   const isLong = thesis.direction === "LONG";
   const isPass = thesis.direction === "PASS";
-  const trade = thesis.trade;
+  const trade = thesis.position;
 
   // ── Status badge (outline only, colored dot inside) ──
   const tradeStatus = trade?.status;
@@ -298,7 +298,7 @@ export function ThesisCard({
           <div className="p-3 border-b space-y-1">
             {/* Entry sentence — bigger, foreground */}
             {(() => {
-              const ep = trade?.entryPrice ?? thesis.entryPrice;
+              const ep = trade?.avgCost ?? thesis.entryPrice;
               if (ep == null) return null;
               const verb = isLong ? "Bought" : "Sold short";
               const sharesText = thesis.sharesHeld != null ? `${thesis.sharesHeld} shares` : "shares";

@@ -4,14 +4,6 @@ import { useCallback } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ThesisCard, type ThesisCardProfile } from "@/components/ThesisCard";
 
-type Trade = {
-  id: string;
-  realizedPnl: number | null;
-  status: string;
-  entryPrice: number;
-  closePrice: number | null;
-};
-
 type Thesis = {
   id: string;
   ticker: string;
@@ -25,8 +17,14 @@ type Thesis = {
   targetPrice: number | null;
   stopLoss: number | null;
   createdAt: Date;
-  trade: Trade | null;
-  researchRun: { source: string } | null;
+  position?: {
+    id: string;
+    realizedPnl: number | null;
+    status: string;
+    avgCost: number;
+    closePrice: number | null;
+  } | null;
+  researchRun?: { source: string } | null;
 };
 
 const FILTERS = [
@@ -99,7 +97,7 @@ export default function ResearchFeed({
           {theses.map((thesis) => (
             <ThesisCard
               key={thesis.id}
-              thesis={{ ...thesis, createdAt: thesis.createdAt.toISOString() }}
+              thesis={{ ...thesis, position: thesis.position ?? null, createdAt: thesis.createdAt.toISOString() }}
               profile={profiles[thesis.ticker]}
             />
           ))}

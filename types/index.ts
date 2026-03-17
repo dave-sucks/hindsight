@@ -1,14 +1,11 @@
 // Re-export Prisma-generated types for convenience
-// Note: Prisma v7 generates types with a "Model" suffix (e.g. TradeModel, not Trade)
+// Note: Prisma v7 generates types with a "Model" suffix (e.g. PositionModel, not Position)
 export type {
   ResearchRunModel as ResearchRun,
   ThesisModel as Thesis,
-  TradeModel as Trade,
-  TradeEventModel as TradeEvent,
   AgentConfigModel as AgentConfig,
   UserModel as User,
   WatchlistItemModel as WatchlistItem,
-  // New trading layer
   PositionModel as Position,
   OrderModel as Order,
   PositionEventModel as PositionEvent,
@@ -26,16 +23,7 @@ export type ExitStrategy = "PRICE_TARGET" | "TIME_BASED" | "TRAILING" | "MANUAL"
 export type CloseReason = "TARGET" | "STOP" | "TIME" | "MANUAL";
 export type TradeOutcome = "WIN" | "LOSS" | "BREAKEVEN";
 
-// ─── Legacy Trade types (kept for old UI code until Phase 2) ─────────────────
-export type TradeStatus = "OPEN" | "CLOSED" | "CANCELLED";
-export type TradeEventType =
-  | "PLACED"
-  | "PRICE_CHECK"
-  | "NEAR_TARGET"
-  | "CLOSED"
-  | "EVALUATED";
-
-// ─── New Position types ──────────────────────────────────────────────────────
+// ─── Position types ──────────────────────────────────────────────────────────
 export type PositionStatus = "OPEN" | "CLOSED" | "CANCELLED";
 export type OrderSide = "BUY" | "SELL";
 export type OrderType = "MARKET" | "LIMIT" | "STOP";
@@ -54,28 +42,22 @@ export type DecisionType = "BUY" | "SELL" | "HOLD" | "PASS";
 import type {
   ResearchRunModel,
   ThesisModel,
-  TradeModel,
-  TradeEventModel,
   PositionModel,
   OrderModel,
   PositionEventModel,
   TradeDecisionModel,
 } from "@/lib/generated/prisma/models";
 
-// Legacy composites (kept for old UI code until Phase 2)
-export type ThesisWithTrade = ThesisModel & {
-  trade: TradeModel | null;
-};
-
-export type TradeWithEvents = TradeModel & {
-  events: TradeEventModel[];
+export type ThesisWithPosition = ThesisModel & {
+  decisions: (TradeDecisionModel & { position: PositionModel | null })[];
 };
 
 export type ResearchRunWithTheses = ResearchRunModel & {
-  theses: ThesisWithTrade[];
+  theses: (ThesisModel & {
+    decisions: (TradeDecisionModel & { position: PositionModel | null })[];
+  })[];
 };
 
-// New composites
 export type PositionWithOrders = PositionModel & {
   orders: OrderModel[];
 };

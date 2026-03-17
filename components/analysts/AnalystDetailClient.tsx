@@ -28,6 +28,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Settings2,
@@ -40,13 +41,6 @@ import {
   EllipsisVertical,
 } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -57,7 +51,7 @@ import {
 import { toast } from "sonner";
 import type {
   AnalystDetail,
-  TradeWithThesis,
+  PositionWithThesis,
 } from "@/lib/actions/analyst.actions";
 import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
@@ -90,21 +84,21 @@ function sliceByRange(
 
 // ── Sidebar trade row (uses shared TradeRow component) ───────────────────────
 
-function AnalystTradeRow({ trade }: { trade: TradeWithThesis }) {
+function AnalystTradeRow({ trade }: { trade: PositionWithThesis }) {
   const pnl = trade.realizedPnl ?? 0;
-  const price = trade.closePrice ?? trade.entryPrice;
+  const price = trade.closePrice ?? trade.avgCost;
   const pnlPct =
-    trade.entryPrice > 0
-      ? ((price - trade.entryPrice) / trade.entryPrice) * 100 *
+    trade.avgCost > 0
+      ? ((price - trade.avgCost) / trade.avgCost) * 100 *
         (trade.direction === "SHORT" ? -1 : 1)
       : 0;
 
   return (
     <TradeRow
       id={trade.id}
-      ticker={trade.ticker}
+      ticker={trade.symbol}
       currentPrice={price}
-      shares={trade.shares}
+      shares={trade.quantity}
       pnl={pnl}
       pnlPct={pnlPct}
       status={trade.status}

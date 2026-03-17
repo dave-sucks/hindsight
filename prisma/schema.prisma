@@ -102,51 +102,9 @@ model Thesis {
   fullResearch     Json?
   thoughtTrace     Json?       // [{type, data, timestamp_ms}] — per-ticker event log for replay
   researchRun      ResearchRun @relation(fields: [researchRunId], references: [id])
-  trade            Trade?
   decisions        TradeDecision[]
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
-}
-
-model Trade {
-  id              String       @id @default(cuid())
-  thesisId        String       @unique
-  userId          String
-  ticker          String
-  direction       String       // "LONG" | "SHORT"
-  status          String       // "OPEN" | "CLOSED" | "CANCELLED" | "SHADOW" | "SHADOW_CLOSED"
-  entryPrice      Float
-  shares          Float
-  targetPrice     Float?
-  stopLoss        Float?
-  exitStrategy    String       // "PRICE_TARGET" | "TIME_BASED" | "TRAILING" | "MANUAL"
-  exitDate        DateTime?
-  trailingStopPct Float?
-  closePrice      Float?
-  closeReason     String?      // "TARGET" | "STOP" | "TIME" | "MANUAL" | "SHADOW_EXPIRY"
-  realizedPnl     Float?
-  outcome         String?      // "WIN" | "LOSS" | "BREAKEVEN"
-  agentEvaluation      String?
-  alpacaOrderId        String?
-  notes                String?
-  nearTargetAlertSent  Boolean  @default(false)
-  thesis          Thesis       @relation(fields: [thesisId], references: [id])
-  events          TradeEvent[]
-  openedAt        DateTime     @default(now())
-  closedAt        DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-}
-
-model TradeEvent {
-  id          String   @id @default(cuid())
-  tradeId     String
-  eventType   String   // "PLACED" | "PRICE_CHECK" | "NEAR_TARGET" | "CLOSED" | "EVALUATED"
-  description String
-  priceAt     Float?
-  pnlAt       Float?
-  trade       Trade    @relation(fields: [tradeId], references: [id])
-  createdAt   DateTime @default(now())
 }
 
 model AgentConfig {

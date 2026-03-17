@@ -1,4 +1,4 @@
-// Mock data — structure matches the real Prisma schema shape for easy swap-in
+// Mock data — structure matches the real Prisma Position schema shape for easy swap-in
 
 export type TradeDirection = 'LONG' | 'SHORT';
 export type TradeStatus = 'OPEN' | 'CLOSED_WIN' | 'CLOSED_LOSS' | 'CLOSED_EXPIRED';
@@ -197,7 +197,7 @@ export const mockClosedTrades: MockTrade[] = [
   },
 ];
 
-// Portfolio summary derived from trades
+// Portfolio summary derived from positions
 export const mockPortfolio = {
   totalValue: 100_000 + mockOpenTrades.reduce((sum, t) => sum + t.pnl, 0) * 100,
   dayChange: 312.50,

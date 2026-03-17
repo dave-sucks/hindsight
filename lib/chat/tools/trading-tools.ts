@@ -111,9 +111,21 @@ export function createTradingTools(userId: string) {
           return { error: `Max open positions reached (${maxOpen}). Close a position first.` };
         }
 
-        // Create a stub thesis for the trade
+        // Create a stub run + thesis for the trade
+        const stubRun = await prisma.researchRun.create({
+          data: {
+            userId,
+            source: "MANUAL",
+            status: "COMPLETE",
+            parameters: {},
+            completedAt: new Date(),
+            ...(agentConfig ? { agentConfigId: agentConfig.id } : {}),
+          },
+        });
+
         const thesis = await prisma.thesis.create({
           data: {
+            researchRunId: stubRun.id,
             userId,
             ticker,
             source: "MANUAL",

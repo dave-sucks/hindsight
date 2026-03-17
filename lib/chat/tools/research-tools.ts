@@ -54,9 +54,20 @@ export function createResearchTools(userId: string) {
             return { error: `No thesis generated for ${ticker}` };
           }
 
-          // Store thesis in DB
+          // Create a stub run + store thesis in DB
+          const stubRun = await prisma.researchRun.create({
+            data: {
+              userId,
+              source: "MANUAL",
+              status: "COMPLETE",
+              parameters: {},
+              completedAt: new Date(),
+            },
+          });
+
           await prisma.thesis.create({
             data: {
+              researchRunId: stubRun.id,
               userId,
               ticker: thesis.ticker,
               source: "MANUAL",
@@ -251,7 +262,12 @@ export function createResearchTools(userId: string) {
         const thesis = await prisma.thesis.findFirst({
           where,
           orderBy: { createdAt: "desc" },
-          include: { trade: true },
+          include: {
+            decisions: {
+              take: 1,
+              include: { position: true },
+            },
+          },
         });
 
         if (!thesis) {
@@ -260,9 +276,10 @@ export function createResearchTools(userId: string) {
           };
         }
 
-        const traded = !!thesis.trade;
-        const tradeStatus = thesis.trade?.status || null;
-        const tradeOutcome = thesis.trade?.outcome || null;
+        const position = thesis.decisions[0]?.position;
+        const traded = !!position;
+        const tradeStatus = position?.status || null;
+        const tradeOutcome = position?.outcome || null;
 
         return {
           ticker: thesis.ticker,
@@ -275,8 +292,8 @@ export function createResearchTools(userId: string) {
           was_traded: traded,
           trade_status: tradeStatus,
           trade_outcome: tradeOutcome,
-          trade_entry: thesis.trade?.entryPrice || null,
-          trade_pnl: thesis.trade?.realizedPnl || null,
+          trade_entry: position?.avgCost || null,
+          trade_pnl: position?.realizedPnl || null,
           explanation: traded
             ? `Trade was placed because confidence (${thesis.confidenceScore}%) met threshold. ${
                 tradeOutcome ? `Outcome: ${tradeOutcome}` : `Currently ${tradeStatus}`
