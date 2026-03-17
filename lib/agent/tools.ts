@@ -558,44 +558,16 @@ export function createResearchTools(ctx: ToolContext) {
           // non-fatal
         }
 
-        // ── Sector momentum (10-day SMA) ───────────────────────────────────
-        const tenDaysAgo = now - 10 * 86400;
-        let sectorCandleMap: Map<string, number[]> = new Map();
-        try {
-          const sectorCandleResults = await Promise.all(
-            SECTOR_ETFS.map(async (sym) => {
-              const res = await finnhub(`/stock/candle?symbol=${sym}&resolution=D&from=${tenDaysAgo}&to=${now}`);
-              const d = res.data as { c?: number[]; s?: string } | null;
-              if (d && d.s === "ok" && Array.isArray(d.c)) {
-                return [sym, d.c] as const;
-              }
-              return [sym, null] as const;
-            })
-          );
-          for (const [sym, closes] of sectorCandleResults) {
-            if (closes) sectorCandleMap.set(sym, closes);
-          }
-        } catch {
-          // non-fatal: skip sector momentum
-        }
-
+        // Sector quotes — sorted by daily change. Sector candle fetches removed
+        // to save 11 Finnhub API calls per run (~18% of rate limit budget).
+        // The daily change_pct is sufficient for regime classification.
         const sectors: SectorQuote[] = sectorsRaw
           .filter((s): s is NonNullable<typeof s> => s != null)
-          .map((s) => {
-            const entry: SectorQuote = {
-              symbol: s.symbol,
-              price: s.price,
-              change_pct: s.changesPercentage,
-            };
-            const closes = sectorCandleMap.get(s.symbol);
-            if (closes && closes.length >= 10) {
-              const sma10 = calcSMA(closes, 10);
-              if (sma10 !== null) {
-                entry.momentum = closes[closes.length - 1] >= sma10 ? "leading" : "lagging";
-              }
-            }
-            return entry;
-          })
+          .map((s) => ({
+            symbol: s.symbol,
+            price: s.price,
+            change_pct: s.changesPercentage,
+          }))
           .sort((a, b) => b.change_pct - a.change_pct);
 
         logToolEnd("get_market_overview", _t0, ctx.runId, `SPY=${spyData ? `$${spyData.price}` : "null"} regime=${regime}`);
@@ -1004,45 +976,24 @@ export function createResearchTools(ctx: ToolContext) {
 
     get_stock_data: tool({
       description:
-        "Get comprehensive data for a stock: price quote, company profile, key financials, analyst ratings, and recent news. This is your primary research tool.",
+        "Get comprehensive data for a stock: price quote, company profile, key financials, and analyst ratings. Use get_news_deep_dive separately if you need news.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
         const _t0 = Date.now();
         logToolStart("get_stock_data", ctx.runId, `ticker=${ticker}`);
-        const [quoteResult, profileResult, financialsResult, newsResult, recsResult] =
+        // News removed — saves 1 Finnhub call per ticker. Use get_news_deep_dive if needed.
+        const [quoteResult, profileResult, financialsResult, recsResult] =
           await Promise.all([
             finnhub(`/quote?symbol=${ticker}`),
             finnhub(`/stock/profile2?symbol=${ticker}`),
             finnhub(`/stock/metric?symbol=${ticker}&metric=all`),
-            finnhub(
-              `/company-news?symbol=${ticker}&from=${new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)}&to=${new Date().toISOString().slice(0, 10)}`,
-            ),
             finnhub(`/stock/recommendation?symbol=${ticker}`),
           ]);
 
         const quote = quoteResult.data as Record<string, number> | null;
         const profile = profileResult.data as Record<string, unknown> | null;
         const financials = financialsResult.data as { metric?: Record<string, unknown> } | null;
-        const news = newsResult.data;
         const recommendations = recsResult.data;
-
-        const recentNews = Array.isArray(news)
-          ? news.slice(0, 5).map(
-              (n: {
-                headline: string;
-                summary: string;
-                source: string;
-                url: string;
-                datetime: number;
-              }) => ({
-                headline: n.headline,
-                summary: n.summary?.slice(0, 200),
-                source: n.source,
-                url: n.url,
-                date: new Date(n.datetime * 1000).toISOString().slice(0, 10),
-              }),
-            )
-          : [];
 
         const latestRec = Array.isArray(recommendations)
           ? (recommendations as Record<string, number>[])[0]
@@ -1099,43 +1050,22 @@ export function createResearchTools(ctx: ToolContext) {
                 strong_sell: latestRec.strongSell,
               }
             : null,
-          news: recentNews,
           ...(errors.length > 0 ? { api_errors: errors } : {}),
           _sources: [
             {
               provider: "Finnhub",
-              title: `${ticker} Real-Time Quote`,
-              url: "https://finnhub.io/docs/api/quote",
-              excerpt: quote && quote.c ? `$${quote.c} ${quote.dp > 0 ? "+" : ""}${quote.dp?.toFixed(2)}% | High $${quote.h} Low $${quote.l}` : "Quote unavailable",
-            },
-            {
-              provider: "Finnhub",
-              title: `${ticker} Company Profile`,
-              url: "https://finnhub.io/docs/api/company-profile2",
-              excerpt: profile && profile.name ? `${profile.name} | ${profile.finnhubIndustry} | ${profile.exchange}` : "Profile unavailable",
-            },
-            {
-              provider: "Finnhub",
-              title: `${ticker} Key Financials`,
-              url: "https://finnhub.io/docs/api/company-basic-financials",
-              excerpt: financials?.metric
-                ? `P/E ${(financials.metric.peNormalizedAnnual as number | null)?.toFixed(1) ?? "—"} | Beta ${(financials.metric.beta as number | null)?.toFixed(2) ?? "—"} | 52W $${(financials.metric["52WeekLow"] as number | null)?.toFixed(0) ?? "?"}-$${(financials.metric["52WeekHigh"] as number | null)?.toFixed(0) ?? "?"}`
-                : "Financials unavailable",
+              title: `${ticker} Quote + Profile + Financials`,
+              excerpt: quote && quote.c
+                ? `$${quote.c} ${quote.dp > 0 ? "+" : ""}${quote.dp?.toFixed(2)}% | ${profile?.name ?? ticker} | P/E ${(financials?.metric?.peNormalizedAnnual as number | null)?.toFixed(1) ?? "—"}`
+                : "Quote unavailable",
             },
             ...(latestRec
               ? [{
                   provider: "Finnhub",
                   title: `${ticker} Analyst Consensus`,
-                  url: "https://finnhub.io/docs/api/recommendation-trends",
                   excerpt: `Buy ${latestRec.buy + latestRec.strongBuy} | Hold ${latestRec.hold} | Sell ${latestRec.sell + latestRec.strongSell}`,
                 }]
               : []),
-            ...recentNews.map((n: { source: string; headline: string; url: string; summary: string }) => ({
-              provider: n.source,
-              title: n.headline,
-              url: n.url,
-              excerpt: n.summary,
-            })),
           ],
         };
       },
@@ -1674,11 +1604,11 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           logToolEnd("show_thesis", _t0, ctx.runId, `ticker=${args.ticker} id=${thesis.id}`);
-          return { ...args, thesis_id: thesis.id };
+          return { thesis_id: thesis.id, ticker: args.ticker, direction: args.direction, confidence_score: args.confidence_score };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Thesis save failed";
           console.error(`[tool] show_thesis FAILED for ${args.ticker}: ${msg}`);
-          return { ...args, thesis_id: null, error: msg, note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker." };
+          return { thesis_id: null, ticker: args.ticker, direction: args.direction, error: msg, note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker." };
         }
       },
     }),
@@ -1705,10 +1635,9 @@ export function createResearchTools(ctx: ToolContext) {
           if (existingPosition) {
             console.warn(`[tool] place_trade BLOCKED: open position already exists for ${args.ticker}`);
             return {
-              ...args,
               status: "failed" as const,
+              ticker: args.ticker,
               error: `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`,
-              note: `Trade blocked: You already have an open ${args.ticker} position. The thesis has been saved but no duplicate trade was placed.`,
             };
           }
 
@@ -1789,27 +1718,25 @@ export function createResearchTools(ctx: ToolContext) {
             return t;
           });
 
-          console.log(`[tool] place_trade SUCCESS position=${position.id} fill=$${fillPrice.toFixed(2)}`);
+          console.log(`[tool] place_trade SUCCESS trade=${trade.id} fill=$${fillPrice.toFixed(2)}`);
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`);
           return {
-            ...args,
             status: "filled" as const,
+            ticker: args.ticker,
+            direction: args.direction,
             fill_price: fillPrice,
-            trade_id: position.id,        // position ID used as trade ID for UI compatibility
-            position_id: position.id,
-            order_id: dbOrder.id,
+            shares: args.shares,
+            trade_id: trade.id,
             alpaca_order_id: alpacaOrder.id,
-            note: `Trade executed: ${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Trade placement failed";
           console.error(`[tool] place_trade FAILED for ${args.ticker}: ${msg}`);
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} FAILED`);
           return {
-            ...args,
             status: "failed" as const,
+            ticker: args.ticker,
             error: msg,
-            note: `Trade failed: ${msg}. The thesis has been saved but no position was opened.`,
           };
         }
       },
@@ -1829,7 +1756,7 @@ export function createResearchTools(ctx: ToolContext) {
             z.object({
               rank: z.number(),
               ticker: z.string(),
-              direction: z.enum(["LONG", "SHORT"]),
+              direction: z.enum(["LONG", "SHORT", "PASS"]),
               confidence: z.number(),
               reasoning: z
                 .string()
@@ -1872,6 +1799,7 @@ export function createResearchTools(ctx: ToolContext) {
           ),
       }),
       execute: async (args) => {
+        const _t0 = Date.now();
         console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
         const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
 
@@ -1920,7 +1848,7 @@ export function createResearchTools(ctx: ToolContext) {
           console.error(`[tool] summarize_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
         }
         logToolEnd("summarize_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`);
-        return args;
+        return { status: "complete", analyzed: args.ranked_picks.length, traded };
       },
     }),
     // ── DAV-167: Extended data tools ──────────────────────────────────────
