@@ -214,7 +214,7 @@ export default async function StockDetailPage({ params }: Props) {
               <span className="text-sm text-muted-foreground">{profile.name}</span>
             )}
             {profile?.exchange && (
-              <Badge variant="outline" className="text-xs font-normal">
+              <Badge variant="outline">
                 {profile.exchange}
               </Badge>
             )}
@@ -236,14 +236,14 @@ export default async function StockDetailPage({ params }: Props) {
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5 shrink-0 mt-1">
-          <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8" render={<Link href={`/research?ticker=${upperSymbol}`} />}>
-            <FlaskConical className="h-3.5 w-3.5" />
+          <Button variant="outline" size="sm" render={<Link href={`/research?ticker=${upperSymbol}`} />}>
+            <FlaskConical />
             Research
           </Button>
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" />}>
-                <BookmarkPlus className="h-4 w-4" />
+              <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
+                <BookmarkPlus />
               </TooltipTrigger>
               <TooltipContent>Add to Watchlist</TooltipContent>
             </Tooltip>
@@ -253,16 +253,11 @@ export default async function StockDetailPage({ params }: Props) {
 
       {/* Tabs */}
       <Tabs defaultValue="overview">
-        <TabsList className="h-8 gap-0 rounded-none border-b bg-transparent p-0 w-full justify-start">
-          {["overview", "financials", "news", "hindsight"].map((tab) => (
-            <TabsTrigger
-              key={tab}
-              value={tab}
-              className="rounded-none border-b-2 border-transparent px-4 py-1.5 text-xs font-medium capitalize data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-            >
-              {tab === "hindsight" ? "Hindsight" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </TabsTrigger>
-          ))}
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="financials">Financials</TabsTrigger>
+          <TabsTrigger value="news">News</TabsTrigger>
+          <TabsTrigger value="hindsight">Hindsight</TabsTrigger>
         </TabsList>
 
         {/* ── OVERVIEW ─────────────────────────────────────────────────── */}

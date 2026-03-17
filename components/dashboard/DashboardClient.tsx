@@ -25,11 +25,10 @@ import {
   type MockTrade,
 } from '@/lib/mock-data/trades';
 import type { DashboardData, RecentPick } from '@/lib/actions/portfolio.actions';
-import type { DashboardRun } from '@/lib/actions/analyst.actions';
 import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
-import { formatCurrency, formatDateLabel, formatRelativeTime } from '@/lib/format';
+import { formatCurrency, formatDateLabel } from '@/lib/format';
 
 // ─── Time range ───────────────────────────────────────────────────────────────
 
@@ -195,61 +194,6 @@ function DashboardTradeRow({
   );
 }
 
-// ─── Recent research run card (below picks) ───────────────────────────────────
-
-function DashboardRunCard({ run }: { run: DashboardRun }) {
-  const href = run.analystId ? `/runs/${run.id}` : '/analysts';
-
-  return (
-    <Link
-      href={href}
-      className="flex items-start gap-3 px-4 py-3 rounded-lg border hover:bg-accent/30 transition-colors"
-    >
-      <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center shrink-0 mt-0.5">
-        <Bot className="h-3 w-3 text-muted-foreground" />
-      </div>
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-sm font-medium truncate">
-              {run.analystName ?? 'Manual Research'}
-            </span>
-            <Badge variant="secondary" className="text-[10px] h-4 px-1.5 shrink-0">
-              {run.source}
-            </Badge>
-          </div>
-          <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-            {formatRelativeTime(new Date(run.startedAt))}
-          </span>
-        </div>
-        {run.theses.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No theses generated</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {run.theses.map((thesis, i) => {
-              const cls =
-                thesis.direction === 'LONG'
-                  ? 'text-positive border-positive/30 bg-positive/10'
-                  : thesis.direction === 'SHORT'
-                    ? 'text-negative border-negative/30 bg-negative/10'
-                    : 'text-muted-foreground border-border bg-muted/50';
-              return (
-                <span
-                  key={i}
-                  className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium tabular-nums ${cls}`}
-                >
-                  {thesis.ticker}
-                  <span className="opacity-60">{thesis.confidenceScore}%</span>
-                </span>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </Link>
-  );
-}
-
 // ─── Empty ────────────────────────────────────────────────────────────────────
 
 function Empty({ text, subtext }: { text: string; subtext?: string }) {
@@ -265,14 +209,12 @@ function Empty({ text, subtext }: { text: string; subtext?: string }) {
 
 interface DashboardClientProps {
   data?: DashboardData;
-  recentRuns?: DashboardRun[];
   userId?: string;
   profiles?: Record<string, ThesisCardProfile>;
 }
 
 export default function DashboardClient({
   data,
-  recentRuns = [],
   userId,
   profiles = {},
 }: DashboardClientProps) {
@@ -471,19 +413,6 @@ export default function DashboardClient({
               <RecentPicksSection picks={recentPicks} profiles={profiles} />
             )}
 
-            {/* ── Recent research runs ─────────────────────────────────────── */}
-            {recentRuns.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Recent Runs
-                </p>
-                <div className="space-y-2">
-                  {recentRuns.map((run) => (
-                    <DashboardRunCard key={run.id} run={run} />
-                  ))}
-                </div>
-              </div>
-            )}
 
           </div>
 

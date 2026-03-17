@@ -49,15 +49,13 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             <AppSidebar user={userObj} initialStocks={initialStocks} portfolioValue={portfolioValue} openTradeTickers={openTradeTickers} />
             <SidebarInset>
                 {/* Top bar — sidebar toggle + search + theme */}
-                <header className="flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-                    <div className="flex items-center gap-2 px-4">
+                <header className="flex h-12 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+                    <div className="flex flex-1 w-full items-center gap-2 px-4">
                         <SidebarTrigger className="-ml-1" />
                         <DynamicBreadcrumb />
-                    </div>
-                    <div className="flex-1 flex items-center justify-center px-4">
-                        <SearchCommand renderAs="icon" label="Search stocks" initialStocks={initialStocks} />
-                    </div>
-                    <div className="flex items-center gap-2 px-4">
+                        <div className="flex-1 flex items-center md:justify-center justify-end px-0 md:px-2 order-last md:order-none">
+                            <SearchCommand renderAs="icon" label="Search stocks" initialStocks={initialStocks} />
+                        </div>
                         <MarketStatusPill open={marketOpen} />
                     </div>
                 </header>
