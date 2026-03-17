@@ -8,6 +8,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getBars } from "@/lib/alpaca";
 import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult } from "@/lib/discovery/types";
 import { THEME_DEFINITIONS } from "@/lib/discovery/types";
@@ -17,21 +18,39 @@ const FMP_KEY = process.env.FMP_API_KEY!;
 
 // ── API helpers (with logging + error detail) ───────────────────────────────
 
-async function finnhub(path: string): Promise<{ data: unknown; error?: string }> {
+async function finnhub(path: string, retries = 2): Promise<{ data: unknown; error?: string }> {
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
-  try {
-    const res = await fetch(url, { next: { revalidate: 300 } });
-    if (!res.ok) {
-      const msg = `Finnhub ${path.split("?")[0]} returned ${res.status}`;
-      console.warn(`[finnhub] ${msg}`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, { next: { revalidate: 300 } });
+      if (res.status === 429) {
+        if (attempt < retries) {
+          console.warn(`[finnhub] 429 on ${path.split("?")[0]}, retry ${attempt + 1}/${retries} after 1s`);
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        const msg = `Finnhub ${path.split("?")[0]} rate limited (429) after ${retries} retries`;
+        console.warn(`[finnhub] ${msg}`);
+        return { data: null, error: msg };
+      }
+      if (!res.ok) {
+        const msg = `Finnhub ${path.split("?")[0]} returned ${res.status}`;
+        console.warn(`[finnhub] ${msg}`);
+        return { data: null, error: msg };
+      }
+      return { data: await res.json() };
+    } catch (err) {
+      if (attempt < retries) {
+        console.warn(`[finnhub] ${path.split("?")[0]} fetch error, retry ${attempt + 1}/${retries}`);
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      const msg = `Finnhub ${path.split("?")[0]} fetch failed: ${err instanceof Error ? err.message : "unknown"}`;
+      console.error(`[finnhub] ${msg}`);
       return { data: null, error: msg };
     }
-    return { data: await res.json() };
-  } catch (err) {
-    const msg = `Finnhub ${path.split("?")[0]} fetch failed: ${err instanceof Error ? err.message : "unknown"}`;
-    console.error(`[finnhub] ${msg}`);
-    return { data: null, error: msg };
   }
+  return { data: null, error: `Finnhub ${path.split("?")[0]} exhausted retries` };
 }
 
 async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
@@ -735,7 +754,7 @@ export function createResearchTools(ctx: ToolContext) {
 
         const ranked = [...scoreMap.entries()]
           .sort((a, b) => b[1].score - a[1].score)
-          .slice(0, 15);
+          .slice(0, 8);
 
         // ── Sector filtering ──────────────────────────────────────────────
         const configSectors = ctx.sectors ?? [];
@@ -1589,8 +1608,10 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           return { ...args, thesis_id: thesis.id };
-        } catch {
-          return args;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Thesis save failed";
+          console.error(`[tool] show_thesis FAILED for ${args.ticker}: ${msg}`);
+          return { ...args, thesis_id: null, error: msg, note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker." };
         }
       },
     }),
@@ -1630,53 +1651,55 @@ export function createResearchTools(ctx: ToolContext) {
             try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry_price */ }
           }
 
-          // 3. Create Trade in DB
-          const trade = await prisma.trade.create({
-            data: {
-              thesisId: args.thesis_id,
-              userId: ctx.userId,
-              ticker: args.ticker,
-              direction: args.direction,
-              status: "OPEN",
-              entryPrice: fillPrice,
-              shares: args.shares,
-              targetPrice: args.target_price,
-              stopLoss: args.stop_loss,
-              exitStrategy: "PRICE_TARGET",
-              alpacaOrderId: alpacaOrder.id,
-            },
-          });
-
-          // 4. Write PLACED TradeEvent
-          await prisma.tradeEvent.create({
-            data: {
-              tradeId: trade.id,
-              eventType: "PLACED",
-              description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
-              priceAt: fillPrice,
-            },
-          });
-
-          // 5. Write RunEvent so trade is visible on run page
-          if (ctx.runId) {
-            await prisma.runEvent.create({
+          // 3. Create Trade + TradeEvent + RunEvent in a single transaction
+          const trade = await prisma.$transaction(async (tx: TransactionClient) => {
+            const t = await tx.trade.create({
               data: {
-                runId: ctx.runId,
-                type: "trade_placed",
-                title: `Trade placed: ${args.direction} ${args.ticker}`,
-                message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
-                payload: {
-                  ticker: args.ticker,
-                  direction: args.direction,
-                  entry: fillPrice,
-                  target_price: args.target_price,
-                  stop_loss: args.stop_loss,
-                  shares: args.shares,
-                  trade_id: trade.id,
-                } as object,
+                thesisId: args.thesis_id,
+                userId: ctx.userId,
+                ticker: args.ticker,
+                direction: args.direction,
+                status: "OPEN",
+                entryPrice: fillPrice,
+                shares: args.shares,
+                targetPrice: args.target_price,
+                stopLoss: args.stop_loss,
+                exitStrategy: "PRICE_TARGET",
+                alpacaOrderId: alpacaOrder.id,
               },
             });
-          }
+
+            await tx.tradeEvent.create({
+              data: {
+                tradeId: t.id,
+                eventType: "PLACED",
+                description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+                priceAt: fillPrice,
+              },
+            });
+
+            if (ctx.runId) {
+              await tx.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "trade_placed",
+                  title: `Trade placed: ${args.direction} ${args.ticker}`,
+                  message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+                  payload: {
+                    ticker: args.ticker,
+                    direction: args.direction,
+                    entry: fillPrice,
+                    target_price: args.target_price,
+                    stop_loss: args.stop_loss,
+                    shares: args.shares,
+                    trade_id: t.id,
+                  } as object,
+                },
+              });
+            }
+
+            return t;
+          });
 
           console.log(`[tool] place_trade SUCCESS trade=${trade.id} fill=$${fillPrice.toFixed(2)}`);
           return {
@@ -1758,18 +1781,19 @@ export function createResearchTools(ctx: ToolContext) {
       }),
       execute: async (args) => {
         console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
-        // Mark the run as complete + persist summary as RunEvent
-        try {
-          const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
-          await prisma.researchRun.update({
-            where: { id: ctx.runId },
-            data: {
-              status: "COMPLETE",
-              completedAt: new Date(),
-            },
-          });
+        const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
 
-          // Write run_summary + run_complete events for reload persistence
+        // Mark run COMPLETE — this MUST succeed, so let it throw
+        await prisma.researchRun.update({
+          where: { id: ctx.runId },
+          data: {
+            status: "COMPLETE",
+            completedAt: new Date(),
+          },
+        });
+
+        // Write run_summary + run_complete events (non-fatal — run is already marked COMPLETE)
+        try {
           if (ctx.runId) {
             await prisma.runEvent.create({
               data: {
@@ -1800,8 +1824,8 @@ export function createResearchTools(ctx: ToolContext) {
               },
             });
           }
-        } catch {
-          // Non-fatal
+        } catch (err) {
+          console.error(`[tool] summarize_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
         }
         return args;
       },
@@ -1846,12 +1870,13 @@ export function createResearchTools(ctx: ToolContext) {
           const forms = recent.form ?? [];
           const dates = recent.filingDate ?? [];
           const descs = recent.primaryDocDescription ?? [];
+          const maxIdx = Math.min(forms.length, dates.length, descs.length, 50);
 
-          for (let i = 0; i < Math.min(forms.length, 50); i++) {
+          for (let i = 0; i < maxIdx; i++) {
             if (!relevantTypes.has(forms[i])) continue;
             filings.push({
               type: forms[i],
-              date: dates[i] ?? "",
+              date: dates[i],
               description: descs[i] ?? forms[i],
             });
             if (filings.length >= 8) break;
@@ -1906,7 +1931,7 @@ export function createResearchTools(ctx: ToolContext) {
 
         const peers = (peersData as string[])
           .filter((p) => p.toUpperCase() !== args.symbol.toUpperCase())
-          .slice(0, 6);
+          .slice(0, 3);
 
         if (peers.length === 0) return { peers: [] };
 
@@ -1918,7 +1943,8 @@ export function createResearchTools(ctx: ToolContext) {
               finnhub(`/stock/metric?symbol=${sym}&metric=all`),
             ]);
             const q = qRes.data as Record<string, number> | null;
-            const f = (fRes.data as Record<string, unknown>)?.metric as Record<string, number> | undefined;
+            const fRaw = fRes.data as { metric?: Record<string, number> } | null;
+            const f = fRaw?.metric;
             return {
               ticker: sym,
               name: sym,
