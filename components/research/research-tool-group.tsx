@@ -179,12 +179,11 @@ function renderCompleteStep(
     }
 
     case "scan_candidates": {
-      const earnings = (result.earnings ?? []) as unknown[];
-      const movers = (result.movers ?? []) as unknown[];
-      const total = (result.total_found as number) ?? earnings.length + movers.length;
+      const candidates = (result.candidates ?? []) as unknown[];
+      const total = (result.total_found as number) ?? candidates.length;
       return {
         icon: Search,
-        label: `Found ${total} candidates — ${earnings.length} from earnings calendar, ${movers.length} from market movers and social trending`,
+        label: `Found ${total} candidates from earnings calendar, market movers, and social trending`,
         badges: ["finnhub.io", "financialmodelingprep.com", "stocktwits.com"],
         status: "complete",
       };
@@ -334,12 +333,11 @@ function renderCompleteStep(
     }
 
     case "get_company_peers": {
-      const peers = (result.peers ?? []) as { ticker?: string }[];
-      const tickers = peers.slice(0, 6).map(p => p.ticker).filter(Boolean).join(", ");
-      const sector = result.sector as string | null;
+      const peers = (result.peers ?? []) as string[];
+      const peerList = peers.slice(0, 6).join(", ");
       return {
         icon: Users,
-        label: `Peers for ${ticker}${sector ? ` (${sector})` : ""} — ${peers.length} companies${tickers ? `: ${tickers}` : ""}${peers.length > 6 ? "..." : ""}`,
+        label: `Peers for ${ticker} — ${peers.length} companies${peerList ? `: ${peerList}` : ""}`,
         badges: ["finnhub.io"],
         status: "complete",
       };

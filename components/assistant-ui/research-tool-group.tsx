@@ -315,63 +315,31 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
     loadingLabel: () =>
       "Scanning for trade candidates — checking earnings calendar, market movers, and social trends",
     completeLabel: (_ticker, result) => {
-      const earnings = (result.earnings ?? []) as unknown[];
-      const movers = (result.movers ?? []) as unknown[];
-      const total = (result.total_found as number) ?? earnings.length + movers.length;
-      return `Found ${total} candidates — ${earnings.length} from earnings, ${movers.length} movers`;
+      const candidates = (result.candidates ?? []) as unknown[];
+      const total = (result.total_found as number) ?? candidates.length;
+      return `Found ${total} candidates from earnings, movers, and social trends`;
     },
     completeDescription: (_ticker, result) => {
-      const earnings = (result.earnings ?? []) as { ticker: string; source: string; date?: string; epsEstimate?: number | null }[];
-      const movers = (result.movers ?? []) as { ticker: string; source: string; change_pct?: number; price?: number; volume_spike?: boolean }[];
-      const filters = result.filters_applied as { min_market_cap?: number; min_avg_volume?: number; dropped_count?: number; theme_filter?: string | null } | undefined;
-      const volumeSpikes = (result.volume_spikes ?? []) as string[];
+      const candidates = (result.candidates ?? []) as { ticker: string; score: number; sources: string[]; change_pct?: number; date?: string }[];
       const sourcesQueried = (result.sources_queried ?? []) as string[];
 
       return (
         <div className="space-y-1.5">
-          {/* Earnings candidates */}
-          {earnings.length > 0 && (
+          {candidates.length > 0 && (
             <div>
-              <span className="text-foreground">Earnings plays:</span>{" "}
-              {earnings.map((e, i) => (
-                <span key={i}>
-                  {i > 0 && ", "}
-                  <span className="text-foreground">{e.ticker}</span>
-                  {e.date && <span className="text-muted-foreground"> ({e.date})</span>}
-                  {e.epsEstimate != null && <span className="text-muted-foreground"> est ${e.epsEstimate.toFixed(2)}</span>}
-                </span>
-              ))}
-            </div>
-          )}
-          {/* Mover candidates */}
-          {movers.length > 0 && (
-            <div>
-              <span className="text-foreground">Movers:</span>{" "}
-              {movers.map((m, i) => {
-                const changeColor = (m.change_pct ?? 0) >= 0 ? "text-emerald-500" : "text-red-500";
+              <span className="text-foreground">Top candidates:</span>{" "}
+              {candidates.map((c, i) => {
+                const changeColor = (c.change_pct ?? 0) >= 0 ? "text-emerald-500" : "text-red-500";
                 return (
                   <span key={i}>
                     {i > 0 && ", "}
-                    <span className="text-foreground">{m.ticker}</span>
-                    {m.change_pct != null && <span className={changeColor}> {fmtPct(m.change_pct)}</span>}
-                    {m.volume_spike && <span className="text-amber-500"> vol spike</span>}
+                    <span className="text-foreground">{c.ticker}</span>
+                    {c.change_pct != null && <span className={changeColor}> {fmtPct(c.change_pct)}</span>}
+                    {c.date && <span className="text-muted-foreground"> ({c.date})</span>}
+                    <span className="text-muted-foreground"> [{c.sources.join(", ")}]</span>
                   </span>
                 );
               })}
-            </div>
-          )}
-          {/* Volume spikes */}
-          {volumeSpikes.length > 0 && (
-            <div className="text-amber-500">
-              Volume spikes detected: {volumeSpikes.join(", ")}
-            </div>
-          )}
-          {/* Filters applied */}
-          {filters && (
-            <div className="text-muted-foreground">
-              Filters: min cap {fmtCompact(filters.min_market_cap)}, min vol {fmtVolume(filters.min_avg_volume)}
-              {filters.dropped_count != null && filters.dropped_count > 0 && ` — ${filters.dropped_count} dropped`}
-              {filters.theme_filter && ` — boosting "${filters.theme_filter}" theme`}
             </div>
           )}
           {/* Sources queried */}
@@ -767,35 +735,20 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
     loadingLabel: (ticker) =>
       `Finding peer companies for ${ticker} via Finnhub`,
     completeLabel: (ticker, result) => {
-      const peers = (result.peers ?? []) as { ticker: string }[];
+      const peers = (result.peers ?? []) as string[];
       if (peers.length === 0) return `No peer companies found for ${ticker}`;
-      const names = peers.slice(0, 5).map(p => p.ticker).join(", ");
+      const names = peers.slice(0, 5).join(", ");
       const extra = peers.length > 5 ? ` +${peers.length - 5} more` : "";
       return `Peers for ${ticker} — ${peers.length} companies: ${names}${extra}`;
     },
     completeDescription: (_ticker, result) => {
-      const peers = (result.peers ?? []) as { ticker: string; name?: string; price?: number | null; change_pct?: number | null; pe_ratio?: number | null; market_cap?: number | null }[];
+      const peers = (result.peers ?? []) as string[];
       if (peers.length === 0) return null;
 
-      // Show peers with price changes
-      const peersWithData = peers.filter(p => p.price != null).slice(0, 6);
-      if (peersWithData.length === 0) return null;
-
       return (
-        <div className="space-y-0.5">
-          {peersWithData.map((p, i) => {
-            const changeColor = (p.change_pct ?? 0) >= 0 ? "text-emerald-500" : "text-red-500";
-            return (
-              <div key={i}>
-                <span className="text-foreground">{p.ticker}</span>
-                {p.name && <span className="text-muted-foreground"> ({p.name})</span>}
-                {p.price != null && <span> {fmtPrice(p.price)}</span>}
-                {p.change_pct != null && <span className={changeColor}> {fmtPct(p.change_pct)}</span>}
-                {p.pe_ratio != null && <span className="text-muted-foreground"> · P/E {p.pe_ratio.toFixed(1)}</span>}
-                {p.market_cap != null && <span className="text-muted-foreground"> · {fmtCompact(p.market_cap)}</span>}
-              </div>
-            );
-          })}
+        <div>
+          <span className="text-foreground">{peers.join(", ")}</span>
+          {result.note && <div className="text-muted-foreground">{result.note as string}</div>}
         </div>
       );
     },
