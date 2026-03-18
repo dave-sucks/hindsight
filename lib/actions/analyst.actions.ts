@@ -645,6 +645,24 @@ export async function createAnalystFromBuilder(
 
   console.log(`[analyst] Creating analyst: name="${name}" sectors=${sectors.join(",") || "all"} bias=${bias} posSize=${posSize} minConf=${minConf}`);
 
+  // Parse watchlist: supports both old format (string[]) and new format ({symbol, reason, priority}[])
+  const rawWatchlist = Array.isArray(data.watchlist) ? data.watchlist : [];
+  const watchlistSymbols: string[] = [];
+  const structuredWatchlist: { symbol: string; reason: string; priority: string }[] = [];
+  for (const item of rawWatchlist) {
+    if (typeof item === "string") {
+      watchlistSymbols.push(item.toUpperCase());
+    } else if (item && typeof item === "object" && "symbol" in item) {
+      const sym = String((item as { symbol: string }).symbol).toUpperCase();
+      watchlistSymbols.push(sym);
+      structuredWatchlist.push({
+        symbol: sym,
+        reason: String((item as { reason?: string }).reason ?? "Added during analyst creation"),
+        priority: String((item as { priority?: string }).priority ?? "NORMAL"),
+      });
+    }
+  }
+
   const analyst = await prisma.agentConfig.create({
     data: {
       userId,
@@ -655,7 +673,7 @@ export async function createAnalystFromBuilder(
       markets: ["US_EQUITIES"],
       exchanges: ["NASDAQ", "NYSE"],
       sectors,
-      watchlist: Array.isArray(data.watchlist) ? data.watchlist : [],
+      watchlist: watchlistSymbols,
       exclusionList: Array.isArray(data.exclusionList) ? data.exclusionList : [],
       maxPositionSize: posSize,
       maxOpenPositions: maxPos,
@@ -678,6 +696,36 @@ export async function createAnalystFromBuilder(
       weeklyDigestEnabled: true,
     },
   });
+
+  // Create structured watchlist items in the new table
+  if (structuredWatchlist.length > 0) {
+    await prisma.analystWatchlistItem.createMany({
+      data: structuredWatchlist.map((w) => ({
+        analystId: analyst.id,
+        userId,
+        symbol: w.symbol,
+        reason: w.reason,
+        addedBy: "BUILDER",
+        priority: w.priority,
+        status: "ACTIVE",
+      })),
+    });
+    console.log(`[analyst] Created ${structuredWatchlist.length} watchlist items for analyst ${analyst.id}`);
+  } else if (watchlistSymbols.length > 0) {
+    // Legacy format: create items with generic reason
+    await prisma.analystWatchlistItem.createMany({
+      data: watchlistSymbols.map((sym) => ({
+        analystId: analyst.id,
+        userId,
+        symbol: sym,
+        reason: "Added during analyst creation",
+        addedBy: "BUILDER",
+        priority: "NORMAL",
+        status: "ACTIVE",
+      })),
+    });
+    console.log(`[analyst] Created ${watchlistSymbols.length} watchlist items (legacy format) for analyst ${analyst.id}`);
+  }
 
   console.log(`[analyst] Created analyst id=${analyst.id} name="${name}"`);
   revalidatePath("/analysts");
@@ -851,8 +899,63 @@ export async function updateAnalystFromBuilder(
   if (data.maxPositionSize !== undefined) updateData.maxPositionSize = data.maxPositionSize;
   if (data.maxOpenPositions !== undefined) updateData.maxOpenPositions = data.maxOpenPositions;
   if (data.minMarketCapTier !== undefined) updateData.minMarketCapTier = data.minMarketCapTier;
-  if (data.watchlist !== undefined) updateData.watchlist = data.watchlist;
   if (data.exclusionList !== undefined) updateData.exclusionList = data.exclusionList;
+
+  // Handle structured watchlist updates
+  if (data.watchlist !== undefined) {
+    const rawWatchlist = Array.isArray(data.watchlist) ? data.watchlist : [];
+    const watchlistSymbols: string[] = [];
+    const structuredItems: { symbol: string; reason: string; priority: string }[] = [];
+    for (const item of rawWatchlist) {
+      if (typeof item === "string") {
+        watchlistSymbols.push(item.toUpperCase());
+      } else if (item && typeof item === "object" && "symbol" in item) {
+        const sym = String((item as { symbol: string }).symbol).toUpperCase();
+        watchlistSymbols.push(sym);
+        structuredItems.push({
+          symbol: sym,
+          reason: String((item as { reason?: string }).reason ?? "Updated via editor"),
+          priority: String((item as { priority?: string }).priority ?? "NORMAL"),
+        });
+      }
+    }
+    updateData.watchlist = watchlistSymbols;
+
+    // Update the AnalystWatchlistItem table — mark old items REMOVED, create new ones
+    if (structuredItems.length > 0 || watchlistSymbols.length > 0) {
+      // Soft-remove existing items not in the new list
+      const existingItems = await prisma.analystWatchlistItem.findMany({
+        where: { analystId: id, status: "ACTIVE" },
+        select: { id: true, symbol: true },
+      });
+      const newSymbolSet = new Set(watchlistSymbols);
+      const toRemove = existingItems.filter((i) => !newSymbolSet.has(i.symbol));
+      if (toRemove.length > 0) {
+        await prisma.analystWatchlistItem.updateMany({
+          where: { id: { in: toRemove.map((i) => i.id) } },
+          data: { status: "REMOVED", removedAt: new Date(), removeReason: "Removed via editor" },
+        });
+      }
+
+      // Create new items that don't already exist
+      const existingSymbolSet = new Set(existingItems.map((i) => i.symbol));
+      const toCreate = (structuredItems.length > 0 ? structuredItems : watchlistSymbols.map((s) => ({ symbol: s, reason: "Updated via editor", priority: "NORMAL" })))
+        .filter((w) => !existingSymbolSet.has(w.symbol));
+      if (toCreate.length > 0) {
+        await prisma.analystWatchlistItem.createMany({
+          data: toCreate.map((w) => ({
+            analystId: id,
+            userId,
+            symbol: w.symbol,
+            reason: w.reason,
+            addedBy: "BUILDER",
+            priority: w.priority,
+            status: "ACTIVE",
+          })),
+        });
+      }
+    }
+  }
 
   await prisma.agentConfig.update({
     where: { id, userId },

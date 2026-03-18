@@ -1828,6 +1828,32 @@ export function createResearchTools(ctx: ToolContext) {
           });
 
           console.log(`[tool] place_trade SUCCESS position=${position.id} order=${order.id} fill=$${fillPrice.toFixed(2)}`);
+
+          // Graduate watchlist item if this ticker was on the watchlist
+          try {
+            const watchlistItem = await prisma.analystWatchlistItem.findFirst({
+              where: { analystId, symbol: args.ticker.toUpperCase(), status: "ACTIVE" },
+            });
+            if (watchlistItem) {
+              await prisma.analystWatchlistItem.update({
+                where: { id: watchlistItem.id },
+                data: { status: "GRADUATED", removeReason: "Promoted to active position", removedAt: new Date() },
+              });
+              // Sync legacy watchlist
+              const activeItems = await prisma.analystWatchlistItem.findMany({
+                where: { analystId, status: "ACTIVE" },
+                select: { symbol: true },
+              });
+              await prisma.agentConfig.update({
+                where: { id: analystId },
+                data: { watchlist: activeItems.map((i) => i.symbol) },
+              });
+              console.log(`[tool] place_trade graduated watchlist item ${args.ticker}`);
+            }
+          } catch (err) {
+            console.warn(`[tool] place_trade watchlist graduation failed (non-fatal):`, err instanceof Error ? err.message : err);
+          }
+
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`, stats);
           return {
             status: "filled" as const,
@@ -1985,6 +2011,193 @@ export function createResearchTools(ctx: ToolContext) {
         }
       },
     }),
+    // ── Watchlist management ──────────────────────────────────────────────
+
+    manage_watchlist: tool({
+      description:
+        "Add, remove, or update stocks on your watchlist. Use this to track interesting stocks that aren't ready to trade yet, or to remove stocks that are no longer relevant. " +
+        "When you PASS on a stock but find it interesting, add it to the watchlist with a reason. " +
+        "When a watchlist stock no longer fits your thesis, remove it. " +
+        "When new information changes the priority, update it.",
+      inputSchema: z.object({
+        action: z.enum(["ADD", "REMOVE", "UPDATE"]).describe("What to do with the watchlist item"),
+        symbol: z.string().describe("Stock ticker symbol, e.g. AAPL"),
+        reason: z.string().optional().describe("Why this stock is being added/removed/updated. Required for ADD."),
+        priority: z.enum(["HIGH", "NORMAL", "LOW"]).optional().describe("Priority level. HIGH = review every run. NORMAL = review when relevant. LOW = background monitoring."),
+        notes: z.string().optional().describe("Additional notes or conditions (e.g. 'Review if price drops below $150')"),
+      }),
+      execute: async (args: { action: string; symbol: string; reason?: string; priority?: string; notes?: string }) => {
+        const _t0 = Date.now();
+        logToolStart("manage_watchlist", ctx.runId, `action=${args.action} symbol=${args.symbol}`, stats);
+
+        if (!ctx.analystId) {
+          logToolEnd("manage_watchlist", _t0, ctx.runId, "FAILED: no analystId", stats);
+          return { status: "failed" as const, error: "Cannot manage watchlist without an analyst ID." };
+        }
+
+        const upper = args.symbol.toUpperCase();
+
+        try {
+          if (args.action === "ADD") {
+            if (!args.reason) {
+              return { status: "failed" as const, error: "Reason is required when adding to watchlist." };
+            }
+
+            // Check for existing active item
+            const existing = await prisma.analystWatchlistItem.findFirst({
+              where: { analystId: ctx.analystId, symbol: upper, status: "ACTIVE" },
+            });
+            if (existing) {
+              // Update instead of duplicate
+              await prisma.analystWatchlistItem.update({
+                where: { id: existing.id },
+                data: {
+                  ...(args.reason ? { reason: args.reason } : {}),
+                  ...(args.priority ? { priority: args.priority } : {}),
+                  ...(args.notes !== undefined ? { notes: args.notes } : {}),
+                  lastReviewedAt: new Date(),
+                },
+              });
+              logToolEnd("manage_watchlist", _t0, ctx.runId, `UPDATED existing ${upper}`, stats);
+              return {
+                status: "updated" as const,
+                symbol: upper,
+                message: `Updated existing watchlist item for $${upper}.`,
+              };
+            }
+
+            await prisma.analystWatchlistItem.create({
+              data: {
+                analystId: ctx.analystId,
+                userId: ctx.userId,
+                symbol: upper,
+                reason: args.reason,
+                notes: args.notes ?? null,
+                addedBy: "AGENT",
+                priority: args.priority ?? "NORMAL",
+                status: "ACTIVE",
+                lastReviewedAt: new Date(),
+              },
+            });
+
+            // Sync legacy watchlist
+            const activeItems = await prisma.analystWatchlistItem.findMany({
+              where: { analystId: ctx.analystId, status: "ACTIVE" },
+              select: { symbol: true },
+            });
+            await prisma.agentConfig.update({
+              where: { id: ctx.analystId },
+              data: { watchlist: activeItems.map((i) => i.symbol) },
+            });
+
+            // Write RunEvent for visibility
+            if (ctx.runId) {
+              await prisma.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "watchlist_add",
+                  title: `Added $${upper} to watchlist`,
+                  message: args.reason,
+                  payload: { symbol: upper, priority: args.priority ?? "NORMAL", reason: args.reason } as object,
+                },
+              });
+            }
+
+            logToolEnd("manage_watchlist", _t0, ctx.runId, `ADDED ${upper}`, stats);
+            return {
+              status: "added" as const,
+              symbol: upper,
+              priority: args.priority ?? "NORMAL",
+              message: `Added $${upper} to watchlist. Will be reviewed in future runs.`,
+            };
+          }
+
+          if (args.action === "REMOVE") {
+            const item = await prisma.analystWatchlistItem.findFirst({
+              where: { analystId: ctx.analystId, symbol: upper, status: "ACTIVE" },
+            });
+            if (!item) {
+              logToolEnd("manage_watchlist", _t0, ctx.runId, `${upper} not on watchlist`, stats);
+              return { status: "not_found" as const, symbol: upper, message: `$${upper} is not on the watchlist.` };
+            }
+
+            await prisma.analystWatchlistItem.update({
+              where: { id: item.id },
+              data: {
+                status: "REMOVED",
+                removedAt: new Date(),
+                removeReason: args.reason ?? "Removed by agent",
+              },
+            });
+
+            // Sync legacy watchlist
+            const activeItems = await prisma.analystWatchlistItem.findMany({
+              where: { analystId: ctx.analystId, status: "ACTIVE" },
+              select: { symbol: true },
+            });
+            await prisma.agentConfig.update({
+              where: { id: ctx.analystId },
+              data: { watchlist: activeItems.map((i) => i.symbol) },
+            });
+
+            if (ctx.runId) {
+              await prisma.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "watchlist_remove",
+                  title: `Removed $${upper} from watchlist`,
+                  message: args.reason ?? "No longer relevant",
+                  payload: { symbol: upper, reason: args.reason } as object,
+                },
+              });
+            }
+
+            logToolEnd("manage_watchlist", _t0, ctx.runId, `REMOVED ${upper}`, stats);
+            return {
+              status: "removed" as const,
+              symbol: upper,
+              message: `Removed $${upper} from watchlist.`,
+            };
+          }
+
+          if (args.action === "UPDATE") {
+            const item = await prisma.analystWatchlistItem.findFirst({
+              where: { analystId: ctx.analystId, symbol: upper, status: "ACTIVE" },
+            });
+            if (!item) {
+              logToolEnd("manage_watchlist", _t0, ctx.runId, `${upper} not on watchlist`, stats);
+              return { status: "not_found" as const, symbol: upper, message: `$${upper} is not on the watchlist.` };
+            }
+
+            await prisma.analystWatchlistItem.update({
+              where: { id: item.id },
+              data: {
+                ...(args.reason ? { reason: args.reason } : {}),
+                ...(args.priority ? { priority: args.priority } : {}),
+                ...(args.notes !== undefined ? { notes: args.notes } : {}),
+                lastReviewedAt: new Date(),
+              },
+            });
+
+            logToolEnd("manage_watchlist", _t0, ctx.runId, `UPDATED ${upper}`, stats);
+            return {
+              status: "updated" as const,
+              symbol: upper,
+              priority: args.priority ?? item.priority,
+              message: `Updated $${upper} watchlist entry.`,
+            };
+          }
+
+          return { status: "failed" as const, error: `Unknown action: ${args.action}` };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Watchlist operation failed";
+          console.error(`[tool] manage_watchlist FAILED: ${msg}`);
+          logToolEnd("manage_watchlist", _t0, ctx.runId, `FAILED: ${msg}`, stats);
+          return { status: "failed" as const, error: msg };
+        }
+      },
+    }),
+
     // ── DAV-167: Extended data tools ──────────────────────────────────────
 
     get_sec_filings: tool({

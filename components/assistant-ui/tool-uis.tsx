@@ -15,6 +15,7 @@ import {
   Briefcase,
   GitCompare,
   HelpCircle,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -620,6 +621,53 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             overallAssessment={result.overall_assessment as string}
           />
         </div>
+      );
+    },
+  });
+
+  // ── Watchlist management → inline status card ───────────────────────
+  useAssistantToolUI({
+    toolName: "manage_watchlist",
+    render: ({ args, result }) => {
+      const action = (args?.action as string) ?? "";
+      const symbol = (args?.symbol as string) ?? "";
+      const reason = (args?.reason as string) ?? "";
+
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>
+              {action === "ADD" ? `Adding $${symbol} to watchlist` : action === "REMOVE" ? `Removing $${symbol} from watchlist` : `Updating $${symbol} watchlist entry`}
+            </ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Eye} label={`${action} watchlist item`} status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const status = result.status as string;
+      const isSuccess = ["added", "removed", "updated"].includes(status);
+
+      return (
+        <Card className="p-4">
+          <div className="flex items-center gap-2">
+            {isSuccess ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            ) : (
+              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            )}
+            <span className="text-sm font-medium">
+              {action === "ADD" ? `Added $${symbol} to watchlist` : action === "REMOVE" ? `Removed $${symbol} from watchlist` : `Updated $${symbol}`}
+            </span>
+            {(result.priority as string) && (result.priority as string) !== "NORMAL" && (
+              <Badge variant="outline" className="text-[10px]">{result.priority as string}</Badge>
+            )}
+          </div>
+          {reason && (
+            <p className="text-xs text-muted-foreground mt-1.5 ml-6">{reason}</p>
+          )}
+        </Card>
       );
     },
   });

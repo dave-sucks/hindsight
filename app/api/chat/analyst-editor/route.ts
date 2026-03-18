@@ -52,9 +52,15 @@ const configSchema = z.object({
     .enum(["LARGE", "MID", "SMALL"])
     .describe("Minimum market cap. LARGE = $10B+, MID = $2-10B, SMALL = <$2B"),
   watchlist: z
-    .array(z.string())
+    .array(
+      z.object({
+        symbol: z.string().describe("Ticker symbol, e.g. NVDA"),
+        reason: z.string().describe("Why this stock should be watched"),
+        priority: z.enum(["HIGH", "NORMAL", "LOW"]).optional(),
+      }),
+    )
     .optional()
-    .describe("Explicit tickers to always analyze. Leave empty for discovery mode."),
+    .describe("Watchlist with structured tracking. Each item has a reason and priority."),
   exclusionList: z
     .array(z.string())
     .optional()
@@ -105,12 +111,11 @@ When you notice potential improvements, suggest them:
 - "You're scanning all sectors but your strategy prompt only discusses tech — consider narrowing sectors or broadening the prompt"
 
 ## Available Research Tools (same tools the agent uses during live runs)
-- **get_market_overview**: Get current SPY, VIX, and sector ETF performance
-- **get_stock_data**: Comprehensive stock data — price, company profile, financials, analyst ratings, news
-- **get_earnings_data**: Upcoming and recent earnings data
-- **get_reddit_sentiment**: Reddit sentiment for a specific ticker from major trading communities
-- **search_reddit**: Search Reddit by topic or keyword (e.g. "biotech FDA", "semiconductor earnings")
-- **get_news_deep_dive**: Deep dive into news for a ticker
+- **get_market_context** — SPY, VIX, 11 sector ETFs, regime classification, macro events, earnings density, market themes
+- **get_stock_data** — Comprehensive: price quote, company profile, financials, technicals (RSI/SMA/52W), analyst consensus, price targets, news
+- **get_earnings_data** — Upcoming earnings date, EPS estimates, beat rate, recent quarters
+- **get_social_sentiment** — Combined Reddit + StockTwits/Twitter sentiment for a specific ticker
+- **search_reddit** — Search Reddit trading communities by topic or keyword
 
 Use these tools when the user's request benefits from current market context, but you don't need to use them for straightforward config changes.
 

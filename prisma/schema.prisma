@@ -128,6 +128,7 @@ model AgentConfig {
   briefings             AnalystBriefing[]
   positions             Position[]
   decisions             TradeDecision[]
+  watchlistItems        AnalystWatchlistItem[]
   markets               String[] // ["US_EQUITIES", "CRYPTO", "ETFS"]
   exchanges             String[] // ["NASDAQ", "NYSE"]
   sectors               String[] // ["TECH", "FINANCE", ...]
@@ -155,6 +156,33 @@ model AgentConfig {
   digestEmail           String?  // override email for digest; uses auth email when null
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+// ─── ANALYST WATCHLIST ─────────────────────────────────────────────────────
+// Per-analyst watchlist with metadata, thesis history, and lifecycle tracking.
+// Replaces the flat watchlist String[] on AgentConfig for structured tracking.
+
+model AnalystWatchlistItem {
+  id             String    @id @default(cuid())
+  analystId      String
+  userId         String
+  symbol         String
+  reason         String    // Why this stock is being watched
+  notes          String?   // Free-text notes, updated over time
+  addedBy        String    // "AGENT" | "USER" | "BUILDER"
+  priority       String    @default("NORMAL") // "HIGH" | "NORMAL" | "LOW"
+  status         String    @default("ACTIVE") // "ACTIVE" | "REMOVED" | "GRADUATED"
+  lastReviewedAt DateTime? // Updated each time the agent reviews this item
+  removedAt      DateTime?
+  removeReason   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  analyst        AgentConfig @relation(fields: [analystId], references: [id], onDelete: Cascade)
+
+  @@unique([analystId, symbol, status]) // One active item per analyst per symbol
+  @@index([analystId, status])
+  @@index([userId])
 }
 
 // ─── NEW TRADING LAYER ─────────────────────────────────────────────────────
