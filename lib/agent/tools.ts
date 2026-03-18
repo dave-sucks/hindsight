@@ -44,37 +44,54 @@ const API_TIMEOUT_MS = 10_000; // 10 seconds per request
 
 async function finnhub(path: string, retries = 2): Promise<{ data: unknown; error?: string }> {
   const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
+  const endpoint = path.split("?")[0];
+  apiCallStats.finnhub++;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { next: { revalidate: 300 } });
+      const t0 = Date.now();
+      const res = await fetch(url, {
+        next: { revalidate: 300 },
+        signal: AbortSignal.timeout(API_TIMEOUT_MS),
+      });
+      const elapsed = Date.now() - t0;
       if (res.status === 429) {
         if (attempt < retries) {
-          console.warn(`[finnhub] 429 on ${path.split("?")[0]}, retry ${attempt + 1}/${retries} after 1s`);
+          console.warn(`[finnhub] 429 on ${endpoint}, retry ${attempt + 1}/${retries} after 1s`);
           await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
           continue;
         }
-        const msg = `Finnhub ${path.split("?")[0]} rate limited (429) after ${retries} retries`;
+        apiCallStats.errors++;
+        const msg = `Finnhub ${endpoint} rate limited (429) after ${retries} retries`;
         console.warn(`[finnhub] ${msg}`);
         return { data: null, error: msg };
       }
       if (!res.ok) {
-        const msg = `Finnhub ${path.split("?")[0]} returned ${res.status}`;
+        apiCallStats.errors++;
+        const msg = `Finnhub ${endpoint} returned ${res.status} (${elapsed}ms)`;
         console.warn(`[finnhub] ${msg}`);
         return { data: null, error: msg };
+      }
+      if (elapsed > 3000) {
+        console.warn(`[finnhub] SLOW ${endpoint} took ${elapsed}ms`);
       }
       return { data: await res.json() };
     } catch (err) {
       if (attempt < retries) {
-        console.warn(`[finnhub] ${path.split("?")[0]} fetch error, retry ${attempt + 1}/${retries}`);
+        console.warn(`[finnhub] ${endpoint} fetch error, retry ${attempt + 1}/${retries}`);
         await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
         continue;
       }
-      const msg = `Finnhub ${path.split("?")[0]} fetch failed: ${err instanceof Error ? err.message : "unknown"}`;
+      apiCallStats.errors++;
+      const elapsed = Date.now() - t0;
+      const isTimeout = err instanceof Error && err.name === "TimeoutError";
+      const msg = isTimeout
+        ? `Finnhub ${endpoint} TIMEOUT after ${elapsed}ms`
+        : `Finnhub ${endpoint} fetch failed (${elapsed}ms): ${err instanceof Error ? err.message : "unknown"}`;
       console.error(`[finnhub] ${msg}`);
       return { data: null, error: msg };
     }
   }
-  return { data: null, error: `Finnhub ${path.split("?")[0]} exhausted retries` };
+  return { data: null, error: `Finnhub ${endpoint} exhausted retries` };
 }
 
 async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
@@ -791,7 +808,7 @@ export function createResearchTools(ctx: ToolContext) {
 
         const ranked = [...scoreMap.entries()]
           .sort((a, b) => b[1].score - a[1].score)
-          .slice(0, 8);
+          .slice(0, 15);
 
         // ── Sector filtering ──────────────────────────────────────────────
         const configSectors = ctx.sectors ?? [];
@@ -976,24 +993,45 @@ export function createResearchTools(ctx: ToolContext) {
 
     get_stock_data: tool({
       description:
-        "Get comprehensive data for a stock: price quote, company profile, key financials, and analyst ratings. Use get_news_deep_dive separately if you need news.",
+        "Get comprehensive data for a stock: price quote, company profile, key financials, analyst ratings, and recent news. This is your primary research tool.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
         const _t0 = Date.now();
         logToolStart("get_stock_data", ctx.runId, `ticker=${ticker}`);
-        // News removed — saves 1 Finnhub call per ticker. Use get_news_deep_dive if needed.
-        const [quoteResult, profileResult, financialsResult, recsResult] =
+        const [quoteResult, profileResult, financialsResult, newsResult, recsResult] =
           await Promise.all([
             finnhub(`/quote?symbol=${ticker}`),
             finnhub(`/stock/profile2?symbol=${ticker}`),
             finnhub(`/stock/metric?symbol=${ticker}&metric=all`),
+            finnhub(
+              `/company-news?symbol=${ticker}&from=${new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)}&to=${new Date().toISOString().slice(0, 10)}`,
+            ),
             finnhub(`/stock/recommendation?symbol=${ticker}`),
           ]);
 
         const quote = quoteResult.data as Record<string, number> | null;
         const profile = profileResult.data as Record<string, unknown> | null;
         const financials = financialsResult.data as { metric?: Record<string, unknown> } | null;
+        const news = newsResult.data;
         const recommendations = recsResult.data;
+
+        const recentNews = Array.isArray(news)
+          ? news.slice(0, 5).map(
+              (n: {
+                headline: string;
+                summary: string;
+                source: string;
+                url: string;
+                datetime: number;
+              }) => ({
+                headline: n.headline,
+                summary: n.summary?.slice(0, 200),
+                source: n.source,
+                url: n.url,
+                date: new Date(n.datetime * 1000).toISOString().slice(0, 10),
+              }),
+            )
+          : [];
 
         const latestRec = Array.isArray(recommendations)
           ? (recommendations as Record<string, number>[])[0]
@@ -1050,14 +1088,25 @@ export function createResearchTools(ctx: ToolContext) {
                 strong_sell: latestRec.strongSell,
               }
             : null,
+          news: recentNews,
           ...(errors.length > 0 ? { api_errors: errors } : {}),
           _sources: [
             {
               provider: "Finnhub",
-              title: `${ticker} Quote + Profile + Financials`,
-              excerpt: quote && quote.c
-                ? `$${quote.c} ${quote.dp > 0 ? "+" : ""}${quote.dp?.toFixed(2)}% | ${profile?.name ?? ticker} | P/E ${(financials?.metric?.peNormalizedAnnual as number | null)?.toFixed(1) ?? "—"}`
-                : "Quote unavailable",
+              title: `${ticker} Real-Time Quote`,
+              excerpt: quote && quote.c ? `$${quote.c} ${quote.dp > 0 ? "+" : ""}${quote.dp?.toFixed(2)}% | High $${quote.h} Low $${quote.l}` : "Quote unavailable",
+            },
+            {
+              provider: "Finnhub",
+              title: `${ticker} Company Profile`,
+              excerpt: profile && profile.name ? `${profile.name} | ${profile.finnhubIndustry} | ${profile.exchange}` : "Profile unavailable",
+            },
+            {
+              provider: "Finnhub",
+              title: `${ticker} Key Financials`,
+              excerpt: financials?.metric
+                ? `P/E ${(financials.metric.peNormalizedAnnual as number | null)?.toFixed(1) ?? "—"} | Beta ${(financials.metric.beta as number | null)?.toFixed(2) ?? "—"} | 52W $${(financials.metric["52WeekLow"] as number | null)?.toFixed(0) ?? "?"}-$${(financials.metric["52WeekHigh"] as number | null)?.toFixed(0) ?? "?"}`
+                : "Financials unavailable",
             },
             ...(latestRec
               ? [{
@@ -1066,6 +1115,12 @@ export function createResearchTools(ctx: ToolContext) {
                   excerpt: `Buy ${latestRec.buy + latestRec.strongBuy} | Hold ${latestRec.hold} | Sell ${latestRec.sell + latestRec.strongSell}`,
                 }]
               : []),
+            ...recentNews.map((n: { source: string; headline: string; url: string; summary: string }) => ({
+              provider: n.source,
+              title: n.headline,
+              url: n.url,
+              excerpt: n.summary,
+            })),
           ],
         };
       },
@@ -1668,33 +1723,70 @@ export function createResearchTools(ctx: ToolContext) {
             try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry_price */ }
           }
 
-          // 3. Create Trade + TradeEvent + RunEvent in a single transaction
-          const trade = await prisma.$transaction(async (tx: TransactionClient) => {
-            const t = await tx.trade.create({
+          // 3. Create Position + Order + PositionEvent + TradeDecision + RunEvent in a transaction
+          const analystId = ctx.analystId || "unknown";
+          const { position, dbOrder } = await prisma.$transaction(async (tx: TransactionClient) => {
+            // Position — what the analyst holds
+            const pos = await tx.position.create({
               data: {
-                thesisId: args.thesis_id,
+                analystId,
                 userId: ctx.userId,
-                ticker: args.ticker,
+                symbol: args.ticker,
                 direction: args.direction,
                 status: "OPEN",
-                entryPrice: fillPrice,
-                shares: args.shares,
+                quantity: args.shares,
+                avgCost: fillPrice,
                 targetPrice: args.target_price,
                 stopLoss: args.stop_loss,
                 exitStrategy: "PRICE_TARGET",
+              },
+            });
+
+            // Order — what we told Alpaca
+            const ord = await tx.order.create({
+              data: {
+                positionId: pos.id,
+                userId: ctx.userId,
+                symbol: args.ticker,
+                side: args.direction === "LONG" ? "BUY" : "SELL",
+                orderType: "MARKET",
+                quantity: args.shares,
+                status: "FILLED",
+                filledPrice: fillPrice,
+                filledQty: args.shares,
+                filledAt: new Date(),
                 alpacaOrderId: alpacaOrder.id,
               },
             });
 
-            await tx.tradeEvent.create({
+            // PositionEvent — lifecycle log
+            await tx.positionEvent.create({
               data: {
-                tradeId: t.id,
-                eventType: "PLACED",
+                positionId: pos.id,
+                eventType: "OPENED",
                 description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
                 priceAt: fillPrice,
               },
             });
 
+            // TradeDecision — links thesis → position → order
+            if (ctx.runId) {
+              await tx.tradeDecision.create({
+                data: {
+                  runId: ctx.runId,
+                  analystId,
+                  userId: ctx.userId,
+                  symbol: args.ticker,
+                  decision: "BUY",
+                  reasoning: `${args.direction} ${args.shares} shares at $${fillPrice.toFixed(2)}`,
+                  thesisId: args.thesis_id,
+                  positionId: pos.id,
+                  orderId: ord.id,
+                },
+              });
+            }
+
+            // RunEvent — visible on run page
             if (ctx.runId) {
               await tx.runEvent.create({
                 data: {
@@ -1709,16 +1801,17 @@ export function createResearchTools(ctx: ToolContext) {
                     target_price: args.target_price,
                     stop_loss: args.stop_loss,
                     shares: args.shares,
-                    trade_id: t.id,
+                    position_id: pos.id,
+                    order_id: ord.id,
                   } as object,
                 },
               });
             }
 
-            return t;
+            return { position: pos, dbOrder: ord };
           });
 
-          console.log(`[tool] place_trade SUCCESS trade=${trade.id} fill=$${fillPrice.toFixed(2)}`);
+          console.log(`[tool] place_trade SUCCESS position=${position.id} order=${dbOrder.id} fill=$${fillPrice.toFixed(2)}`);
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`);
           return {
             status: "filled" as const,
@@ -1726,7 +1819,8 @@ export function createResearchTools(ctx: ToolContext) {
             direction: args.direction,
             fill_price: fillPrice,
             shares: args.shares,
-            trade_id: trade.id,
+            position_id: position.id,
+            order_id: dbOrder.id,
             alpaca_order_id: alpacaOrder.id,
           };
         } catch (err) {

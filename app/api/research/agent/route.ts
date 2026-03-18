@@ -7,7 +7,30 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { buildSystemPrompt } from "@/lib/agent/system-prompt";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 
-export const maxDuration = 120; // 2 min for multi-step agent
+export const maxDuration = 300; // 5 min for multi-step agent
+
+// Helper to mark a run as FAILED + write error event
+async function markRunFailed(runId: string | undefined, error: string) {
+  if (!runId) return;
+  try {
+    await prisma.researchRun.update({
+      where: { id: runId },
+      data: { status: "FAILED" },
+    });
+    await prisma.runEvent.create({
+      data: {
+        runId,
+        type: "run_error",
+        title: "Run failed",
+        message: error.slice(0, 500),
+        payload: { error } as object,
+      },
+    });
+    console.error(`[agent] Run ${runId} marked FAILED: ${error}`);
+  } catch (err) {
+    console.error(`[agent] Failed to mark run ${runId} as FAILED:`, err);
+  }
+}
 
 export async function POST(req: Request) {
   const t0 = Date.now();
@@ -265,6 +288,12 @@ export async function POST(req: Request) {
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(30),
+    onError({ error }) {
+      const elapsed = Date.now() - t0;
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[agent] onError runId=${runId} elapsed=${elapsed}ms: ${msg}`);
+      waitUntil(markRunFailed(runId, msg));
+    },
     onStepFinish({ stepNumber, toolCalls, text, finishReason, usage }) {
       const elapsed = Date.now() - t0;
       const ts = new Date().toISOString().slice(11, 23);
@@ -273,6 +302,9 @@ export async function POST(req: Request) {
       console.log(
         `[agent] ${ts} STEP #${stepNumber} runId=${runId} elapsed=${elapsed}ms tools=[${toolNames}] finish=${finishReason} tokens=${usage?.totalTokens ?? "?"} text="${textPreview}${text && text.length > 100 ? "..." : ""}"`
       );
+      if (elapsed > 240_000) {
+        console.warn(`[agent] ⚠️ Run ${runId} approaching timeout at ${(elapsed / 1000).toFixed(0)}s`);
+      }
     },
     async onFinish({ response }) {
       const elapsed = Date.now() - t0;
@@ -316,5 +348,12 @@ export async function POST(req: Request) {
     },
   });
 
-  return result.toUIMessageStreamResponse();
+  try {
+    return result.toUIMessageStreamResponse();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown agent error";
+    console.error(`[agent] Stream response failed for runId=${runId}: ${msg}`);
+    await markRunFailed(runId, msg);
+    return new Response(JSON.stringify({ error: msg }), { status: 500 });
+  }
 }
