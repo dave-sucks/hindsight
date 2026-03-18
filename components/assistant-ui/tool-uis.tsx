@@ -551,15 +551,21 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
+      const entryPrice = typeof result.fill_price === "number"
+        ? result.fill_price
+        : typeof result.entry_price === "number"
+          ? result.entry_price
+          : 0;
+
       return (
         <div className="my-2">
           <TradeCard
             ticker={result.ticker as string}
             direction={result.direction as "LONG" | "SHORT"}
-            entryPrice={(result.fill_price as number) ?? (result.entry_price as number)}
-            shares={result.shares as number}
-            targetPrice={result.target_price as number | undefined}
-            stopLoss={result.stop_loss as number | undefined}
+            entryPrice={entryPrice}
+            shares={typeof result.shares === "number" ? result.shares : undefined}
+            targetPrice={typeof result.target_price === "number" ? result.target_price : undefined}
+            stopLoss={typeof result.stop_loss === "number" ? result.stop_loss : undefined}
             companyName={(result.company_name as string) ?? undefined}
             exchange={(result.exchange as string) ?? undefined}
             status="OPEN"

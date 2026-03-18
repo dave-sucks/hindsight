@@ -324,23 +324,33 @@ export const morningResearch = inngest.createFunction(
 
           return { tradesPlaced, steps: steps.length, toolCalls, elapsedMs: elapsed };
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`[morning-research] Agent FAILED for ${config.name}: ${message}`);
+          const isTimeout = err instanceof Error && (err.name === "AbortError" || err.message.includes("aborted") || err.message.includes("timed out"));
+          const message = isTimeout
+            ? `Agent timed out after 4 minutes (${Math.round((Date.now() - t0) / 1000)}s elapsed). Any theses and trades completed before timeout are preserved.`
+            : err instanceof Error ? err.message : String(err);
+          console.error(`[morning-research] Agent ${isTimeout ? "TIMED OUT" : "FAILED"} for ${config.name}: ${message}`);
+
+          // Check if any theses/trades were placed before the timeout
+          const partialTheses = await prisma.thesis.count({ where: { researchRunId: run.id } });
+          const partialTrades = await prisma.tradeDecision.count({ where: { runId: run.id, decision: "BUY" } });
+          const hasPartialWork = partialTheses > 0 || partialTrades > 0;
 
           await prisma.researchRun.update({
             where: { id: run.id },
             data: {
-              status: "FAILED",
+              // Mark as COMPLETE if we got partial work (theses/trades preserved), FAILED otherwise
+              status: isTimeout && hasPartialWork ? "COMPLETE" : "FAILED",
               completedAt: new Date(),
               parameters: {
                 ...(run.parameters as object),
                 error: message,
                 failedAt: new Date().toISOString(),
+                ...(hasPartialWork ? { partialTheses, partialTrades, timedOut: true } : {}),
               } as object,
             },
           });
 
-          return { error: message };
+          return { error: message, partialTheses, partialTrades };
         }
       });
 
