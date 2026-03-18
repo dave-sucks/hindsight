@@ -24,3 +24,7 @@ export {
   type CatalystTimelineCardProps,
 } from "./catalyst-timeline-card";
 export { HowItWorksSheet } from "./how-it-works-sheet";
+export {
+  PortfolioReviewCard,
+  type PortfolioReviewData,
+} from "./portfolio-review-card";
