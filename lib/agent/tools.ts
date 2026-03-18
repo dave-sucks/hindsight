@@ -346,25 +346,6 @@ function formatShortDate(isoDate: string): string {
 
 // ── Sector filtering helper ──────────────────────────────────────────────────
 
-async function batchFetchProfiles(
-  tickers: string[],
-  stats: ApiCallStats = defaultStats,
-): Promise<Map<string, string | null>> {
-  const profiles = new Map<string, string | null>();
-  // Fetch in batches of 5 to stay under Finnhub 60 req/min
-  for (let i = 0; i < tickers.length; i += 5) {
-    const batch = tickers.slice(i, i + 5);
-    const results = await Promise.all(
-      batch.map(async (ticker) => {
-        const { data } = await finnhub(`/stock/profile2?symbol=${ticker}`, 2, stats);
-        const profile = data as { finnhubIndustry?: string } | null;
-        return [ticker, profile?.finnhubIndustry ?? null] as const;
-      }),
-    );
-    for (const [t, sector] of results) profiles.set(t, sector);
-  }
-  return profiles;
-}
 
 // ── Parameter schemas ───────────────────────────────────────────────────────
 
@@ -2112,9 +2093,3 @@ async function getCIK(ticker: string): Promise<string> {
   }
   throw new Error(`No CIK found for ${ticker}`);
 }
-
-// Backwards-compatible export for existing code that doesn't pass context
-export const researchAgentTools = createResearchTools({
-  runId: "",
-  userId: "",
-});
