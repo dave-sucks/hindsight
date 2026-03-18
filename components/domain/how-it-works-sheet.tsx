@@ -145,47 +145,33 @@ interface FlowStep {
 const AGENT_RUN_STEPS: FlowStep[] = [
   {
     phase: "Discovery",
-    title: "Read the market regime",
+    title: "Read the market context",
     icon: BarChart3,
     sources: ["Finnhub", "FMP"],
     summary:
-      "Fetches S&P 500, VIX, and 11 sector ETFs. Classifies the market as Risk-On, Risk-Off, or Neutral using VIX levels and SPY's trend vs its 20-day average. Also pulls today's macro events (FOMC, CPI, jobs) and upcoming earnings density.",
-  },
-  {
-    title: "Detect market themes",
-    icon: TrendingUp,
-    sources: ["Finnhub News", "Reddit"],
-    summary:
-      "Scans 50 recent headlines and Reddit trending tickers to identify dominant narratives — like AI infrastructure, biotech catalysts, or rate cut plays. Scores each theme by headline matches, social overlap, and sector momentum. Strong themes guide which stocks to research.",
-  },
-  {
-    title: "Scan for catalysts",
-    icon: Calendar,
-    sources: ["Finnhub", "FMP"],
-    summary:
-      "Builds a pipeline of upcoming price-moving events: earnings dates, economic releases, insider buying clusters, and analyst upgrades/downgrades. Catalysts within 3 days get priority — a stock reporting tomorrow is more urgent than one reporting in two weeks.",
+      "One call gets the full market picture: S&P 500, VIX, 11 sector ETFs, macro events (FOMC, CPI, jobs), earnings density, regime classification (Risk-On/Risk-Off/Neutral), AND dominant market themes and narratives detected from 50 news headlines. Themes like AI infrastructure or rate cut plays guide which stocks to research.",
   },
   {
     title: "Find candidate stocks",
     icon: Search,
     sources: ["Finnhub", "FMP", "StockTwits", "Reddit"],
     summary:
-      "Pulls from 5 sources: earnings calendar, top gainers/losers, StockTwits trending, and Reddit buzz. Filters out micro-caps and illiquid names. Boosts stocks matching the detected theme. Flags unusual volume spikes. Produces a ranked shortlist of 5–10 high-quality candidates.",
+      "Pulls from earnings calendar, top gainers/losers, StockTwits trending, Reddit buzz, insider buying, and analyst actions. Each candidate comes with attached catalysts (upcoming earnings, insider clusters, analyst upgrades). Watchlist tickers get priority. Produces a ranked shortlist of 5–15 candidates.",
   },
   {
-    phase: "Deep Research",
-    title: "Analyze each stock",
+    phase: "Per-Ticker Research",
+    title: "Get stock data + technicals",
     icon: LineChart,
-    sources: ["Finnhub", "FMP", "Reddit", "SEC"],
+    sources: ["Finnhub", "FMP"],
     summary:
-      "For the top 3–5 candidates: pulls price data, financials, analyst consensus, technical indicators (RSI, moving averages), social sentiment from Reddit, recent news, SEC filings, and peer comparisons. Every data point gets cited with its source.",
+      "The primary research tool — one call per ticker returns quote, company profile, financials, technicals (RSI, SMA-20/50, 52-week range, volume), analyst consensus, price targets, and 5 recent news articles. The agent researches each stock individually, narrating its analysis between calls.",
   },
   {
-    title: "Check social sentiment",
+    title: "Optional deep research",
     icon: MessageSquare,
-    sources: ["Reddit"],
+    sources: ["Reddit", "StockTwits", "SEC"],
     summary:
-      "Checks what retail traders are saying on r/wallstreetbets, r/stocks, and r/options via get_reddit_sentiment, plus Twitter/X buzz via get_twitter_sentiment. The system prompt requires checking BOTH for every candidate. Divergence between Reddit and Twitter sentiment is a signal worth noting.",
+      "The agent chooses what additional research each ticker needs. Social sentiment (Reddit + StockTwits combined), earnings deep-dive (EPS history, beat rate), options flow (put/call ratio, unusual contracts), or SEC filings. Not every stock needs every tool — the agent saves deep dives for its strongest leads.",
   },
   {
     phase: "Decision",
@@ -193,14 +179,14 @@ const AGENT_RUN_STEPS: FlowStep[] = [
     icon: FileText,
     sources: ["All research"],
     summary:
-      "Produces a detailed trade thesis for each researched stock — direction (long, short, or pass), confidence score, entry/target/stop prices, supporting bullets, and risk flags. Even stocks the analyst passes on get a thesis explaining why, so you can track whether the pass was right.",
+      "A structured thesis is MANDATORY for every researched stock — long, short, or pass. Each thesis includes direction, confidence score, entry/target/stop prices, supporting bullets, and risk flags. PASS theses document why a stock doesn't fit right now and what would change the analyst's mind. Every thesis is saved to the database for tracking.",
   },
   {
     title: "Execute paper trades",
     icon: ShoppingCart,
     sources: ["Alpaca"],
     summary:
-      "Any thesis above the confidence threshold automatically places a paper trade through Alpaca. Calculates position size based on your max position setting. Trade, TradeEvent, and RunEvent are created in a single database transaction to prevent orphaned records. This is simulated money — every trade gets tracked so you can measure real performance over time.",
+      "Any thesis above the confidence threshold places a paper trade through Alpaca. Position size is calculated from the max position setting. This is simulated money — every trade gets tracked so you can measure real performance over time.",
   },
   {
     phase: "Synthesis",
@@ -208,7 +194,7 @@ const AGENT_RUN_STEPS: FlowStep[] = [
     icon: Briefcase,
     sources: ["Internal"],
     summary:
-      "Reviews all positions for concentration risk, sector exposure, and correlation. Calls summarize_run which marks the ResearchRun as COMPLETE and produces a final summary card with ranked picks, exposure breakdown, risk notes, and an overall market assessment. Note: this is NOT the analyst briefing — the briefing is a separate post-run step that generates the memory for the next session.",
+      "Reviews all positions for concentration risk, sector exposure, and correlation. Marks the run as COMPLETE and produces a final summary card with ranked picks (trade/watch/pass), exposure breakdown, risk notes, and an overall market assessment. The analyst briefing is generated separately after this step — it creates the memory for the next session.",
   },
 ];
 
@@ -223,25 +209,25 @@ const ANALYST_BUILDER_STEPS: FlowStep[] = [
   },
   {
     phase: "Phase 2 — Research & Brainstorm",
-    title: "Read the market regime",
+    title: "Read the market context",
     icon: BarChart3,
     sources: ["Finnhub", "FMP"],
     summary:
-      "Before suggesting anything, the builder calls get_market_overview — SPY, VIX, 11 sector ETFs, macro events. This is mandatory: the builder must call at least 2–3 research tools before proposing any strategy. It has 13 of the agent's 18 research tools (excludes get_twitter_sentiment, get_options_flow, show_thesis, place_trade, summarize_run — the builder can't trade or persist theses).",
+      "Before suggesting anything, the builder calls get_market_context — SPY, VIX, 11 sector ETFs, macro events, market themes. This is mandatory: the builder must call at least 2–3 research tools before proposing any strategy. It has access to most of the agent's research tools (excludes show_thesis, place_trade, summarize_run — the builder can't trade).",
   },
   {
-    title: "Detect themes & scan candidates",
+    title: "Scan candidates",
     icon: TrendingUp,
-    sources: ["Finnhub News", "Reddit", "StockTwits"],
+    sources: ["Finnhub", "FMP", "StockTwits", "Reddit"],
     summary:
-      "Calls detect_market_themes and scan_candidates to find dominant narratives (AI, biotech, rate cuts) and real candidate stocks. This grounds the strategy in what's actually moving — a momentum strategy needs active momentum, an earnings strategy needs upcoming reports.",
+      "Calls scan_candidates to find real candidate stocks with attached catalysts. This grounds the strategy in what's actually moving — a momentum strategy needs active momentum, an earnings strategy needs upcoming reports.",
   },
   {
     title: "Deep-dive specific stocks",
     icon: LineChart,
     sources: ["Finnhub", "FMP", "Reddit", "SEC"],
     summary:
-      "For promising candidates, the builder can call any of the 13 research tools — get_stock_data, get_technical_analysis, get_earnings_data, get_reddit_sentiment, search_reddit, get_news_deep_dive, get_analyst_targets, get_company_peers, get_sec_filings. Shows you what your analyst would actually find on a typical morning.",
+      "For promising candidates, the builder can call get_stock_data (quote, profile, financials, technicals, news, price targets), get_social_sentiment (Reddit + StockTwits), get_earnings_data, get_options_flow, get_sec_filings, or search_reddit. Shows you what your analyst would actually find on a typical morning.",
   },
   {
     phase: "Phase 3 — Craft Strategy",
@@ -332,9 +318,9 @@ const MANUAL_RUN_DETAILS: DetailSection[] = [
       { label: "Method", value: "streamText() — streams response tokens to the UI in real time" },
       { label: "Max duration", value: "120 seconds (maxDuration = 120)" },
       { label: "Step limit", value: "stopWhen: stepCountIs(30) — max 30 tool call rounds" },
-      { label: "Tools", value: "18 tools from createResearchTools({ runId, userId, analystId, watchlist, exclusionList, sectors, maxPositionSize })" },
+      { label: "Tools", value: "11 tools from createResearchTools({ runId, userId, analystId, watchlist, exclusionList, sectors, maxPositionSize })" },
       { label: "API timeouts", value: "All Finnhub/FMP/SEC/Alpaca calls have 10-second AbortSignal timeouts to prevent hung fetches from stalling the agent" },
-      { label: "Rate limit retries", value: "Finnhub 429 responses retry up to 2 times with exponential backoff (1s, 2s). FMP has similar handling." },
+      { label: "Rate limit retries", value: "Finnhub 429 responses retry up to 2 times with exponential backoff (1s, 2s). FMP has similar handling. Finnhub responses cached 5 minutes to reduce duplicate calls." },
       { label: "Step logging", value: "onStepFinish callback logs step number, tool names, finish reason, token usage, and elapsed time for each step" },
       { label: "System prompt", value: "buildSystemPrompt(agentConfig) + historical context block appended" },
       { label: "Messages", value: "convertToModelMessages(messages) — converts UIMessage[] (AI SDK v6 parts) to ModelMessage[]" },
@@ -431,7 +417,7 @@ const CRON_RUN_DETAILS: DetailSection[] = [
       { label: "Prompt", value: "\"Begin your research session. Follow all phases in order.\"" },
       { label: "Step limit", value: "stopWhen: stepCountIs(30) — same 30-step limit as manual" },
       { label: "Abort timeout", value: "AbortSignal.timeout(240_000) — 4-minute hard kill. Leaves 1 minute for cleanup before Vercel/Railway's 5-minute limit." },
-      { label: "Tools", value: "18 tools from createResearchTools({ runId, userId, analystId, watchlist, exclusionList, sectors, maxPositionSize })" },
+      { label: "Tools", value: "11 tools from createResearchTools({ runId, userId, analystId, watchlist, exclusionList, sectors, maxPositionSize })" },
       { label: "API timeouts", value: "All Finnhub/FMP/SEC/Alpaca calls have 10-second AbortSignal timeouts to prevent hung fetches from stalling the agent" },
       { label: "Rate limit retries", value: "Finnhub 429 responses retry up to 2 times with exponential backoff (1s, 2s)" },
       { label: "Step logging", value: "onStepFinish callback logs step number, tool names, finish reason, token usage, and elapsed time per step" },
@@ -657,7 +643,7 @@ const CONTEXT_LOADING_DETAILS: DetailSection[] = [
       { label: "Same", value: "Both load: briefings, open positions, closed trades, pass decisions, accuracy stats. Both use buildSystemPrompt(config) + historyBlock. Both filter trades by agentConfigId (per-analyst)." },
       { label: "Manual only", value: "Loads last 5 completed ResearchRun IDs + timestamps. Passes full config.maxOpenPositions (no slot calculation)." },
       { label: "Cron only", value: "Calculates slotsRemaining = maxOpenPositions - currentOpenCount. Passes slotsRemaining as maxOpenPositions to the system prompt. So if the analyst already has 3 of 5 positions, the prompt says \"Max open positions: 2\"." },
-      { label: "Same model", value: "Both use GPT-4.1 via openai(\"gpt-4.1\"). Both get all 18 tools from createResearchTools(). Both have stopWhen: stepCountIs(30)." },
+      { label: "Same model", value: "Both use GPT-4.1 via openai(\"gpt-4.1\"). Both get all 11 tools from createResearchTools(). Both have stopWhen: stepCountIs(30)." },
     ],
   },
 ];
