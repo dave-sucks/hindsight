@@ -26,10 +26,22 @@ import {
 } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { PriceGauge } from "@/components/domain/price-gauge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import type { SourceChipData } from "../chat/SourceChip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export type FundamentalsData = {
+  market_cap?: number;
+  pe_ratio?: number;
+  beta?: number;
+  avg_volume?: number;
+  high_52w?: number;
+  low_52w?: number;
+  sector?: string;
+  analyst_consensus?: { buy: number; hold: number; sell: number };
+};
 
 export type ThesisCardData = {
   ticker: string;
@@ -47,6 +59,7 @@ export type ThesisCardData = {
   pass_reason?: string;
   company_name?: string | null;
   exchange?: string | null;
+  fundamentals?: FundamentalsData | null;
 };
 
 export type ThesisCardProps = ComponentProps<typeof Card> & ThesisCardData;
@@ -94,6 +107,7 @@ export function ThesisCard({
   pass_reason,
   company_name,
   exchange,
+  fundamentals,
   className,
   ...cardProps
 }: ThesisCardProps) {
@@ -271,123 +285,271 @@ export function ThesisCard({
           </div>
         </SheetHeader>
 
-        <div className="p-4 space-y-6">
-          {/* Signal type badges */}
-          {signal_types.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {signal_types.map((s) => (
-                <Badge key={s} variant="outline">
-                  {s.replace(/_/g, " ")}
-                </Badge>
-              ))}
-            </div>
-          )}
-
-          {/* Price gauge */}
-          {hasEntry && (hasTarget || hasStop) && (
-            <PriceGauge
-              entry={entry_price!}
-              target={target_price}
-              stop={stop_loss}
-              direction={direction === "SHORT" ? "SHORT" : "LONG"}
+        {fundamentals ? (
+          <Tabs defaultValue="analysis" className="p-4">
+            <TabsList variant="line">
+              <TabsTrigger value="analysis">Analysis</TabsTrigger>
+              <TabsTrigger value="data">Data</TabsTrigger>
+            </TabsList>
+            <TabsContent value="analysis" className="space-y-6 pt-4">
+              <AnalysisContent
+                signal_types={signal_types}
+                hasEntry={hasEntry}
+                hasTarget={hasTarget}
+                hasStop={hasStop}
+                entry_price={entry_price}
+                target_price={target_price}
+                stop_loss={stop_loss}
+                direction={direction}
+                rr={rr}
+                reasoning_summary={reasoning_summary}
+                thesis_bullets={thesis_bullets}
+                risk_flags={risk_flags}
+              />
+            </TabsContent>
+            <TabsContent value="data" className="space-y-4 pt-4">
+              <FundamentalsContent fundamentals={fundamentals} />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="p-4 space-y-6">
+            <AnalysisContent
+              signal_types={signal_types}
+              hasEntry={hasEntry}
+              hasTarget={hasTarget}
+              hasStop={hasStop}
+              entry_price={entry_price}
+              target_price={target_price}
+              stop_loss={stop_loss}
+              direction={direction}
+              rr={rr}
+              reasoning_summary={reasoning_summary}
+              thesis_bullets={thesis_bullets}
+              risk_flags={risk_flags}
             />
-          )}
-
-          {/* Price details row */}
-          {hasEntry && (
-            <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-              <span>
-                <span className="uppercase tracking-wide">Entry</span>{" "}
-                <span className="tabular-nums font-medium text-foreground/70">
-                  ${entry_price!.toFixed(2)}
-                </span>
-              </span>
-              {hasTarget && (
-                <span>
-                  <span className="uppercase tracking-wide">Target</span>{" "}
-                  <span className="tabular-nums font-medium text-positive">
-                    ${target_price!.toFixed(2)}
-                  </span>
-                </span>
-              )}
-              {hasStop && (
-                <span>
-                  <span className="uppercase tracking-wide">Stop</span>{" "}
-                  <span className="tabular-nums font-medium text-negative">
-                    ${stop_loss!.toFixed(2)}
-                  </span>
-                </span>
-              )}
-              {rr != null && (
-                <span>
-                  <span className="uppercase tracking-wide">R:R</span>{" "}
-                  <span
-                    className={cn(
-                      "tabular-nums font-medium",
-                      parseFloat(rr) >= 2
-                        ? "text-positive"
-                        : parseFloat(rr) >= 1
-                          ? "text-foreground/70"
-                          : "text-negative",
-                    )}
-                  >
-                    {rr}&times;
-                  </span>
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Full reasoning summary */}
-          {reasoning_summary && (
-            <div className="space-y-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Summary
-              </span>
-              <p className="text-sm leading-relaxed text-foreground/80">
-                {reasoning_summary}
-              </p>
-            </div>
-          )}
-
-          {/* Thesis bullets — single column */}
-          {thesis_bullets.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-positive">
-                Bull Case
-              </span>
-              <div className="space-y-2">
-                {thesis_bullets.map((b, i) => (
-                  <div key={i} className="flex items-start gap-2 text-sm">
-                    <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-positive" />
-                    <span className="leading-relaxed">{b}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Risk flags — single column */}
-          {risk_flags.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-amber-500">
-                Risk Factors
-              </span>
-              <div className="space-y-2">
-                {risk_flags.map((r, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-2 text-sm text-muted-foreground"
-                  >
-                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
-                    <span className="leading-relaxed">{r}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ── Private: Analysis tab content ─────────────────────────────────────────────
+
+function AnalysisContent({
+  signal_types,
+  hasEntry,
+  hasTarget,
+  hasStop,
+  entry_price,
+  target_price,
+  stop_loss,
+  direction,
+  rr,
+  reasoning_summary,
+  thesis_bullets,
+  risk_flags,
+}: {
+  signal_types: string[];
+  hasEntry: boolean;
+  hasTarget: boolean;
+  hasStop: boolean;
+  entry_price?: number | null;
+  target_price?: number | null;
+  stop_loss?: number | null;
+  direction: string;
+  rr: string | null;
+  reasoning_summary?: string;
+  thesis_bullets: string[];
+  risk_flags: string[];
+}) {
+  return (
+    <>
+      {signal_types.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {signal_types.map((s) => (
+            <Badge key={s} variant="outline">
+              {s.replace(/_/g, " ")}
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      {hasEntry && (hasTarget || hasStop) && (
+        <PriceGauge
+          entry={entry_price!}
+          target={target_price}
+          stop={stop_loss}
+          direction={direction === "SHORT" ? "SHORT" : "LONG"}
+        />
+      )}
+
+      {hasEntry && (
+        <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+          <span>
+            <span className="uppercase tracking-wide">Entry</span>{" "}
+            <span className="tabular-nums font-medium text-foreground/70">${entry_price!.toFixed(2)}</span>
+          </span>
+          {hasTarget && (
+            <span>
+              <span className="uppercase tracking-wide">Target</span>{" "}
+              <span className="tabular-nums font-medium text-positive">${target_price!.toFixed(2)}</span>
+            </span>
+          )}
+          {hasStop && (
+            <span>
+              <span className="uppercase tracking-wide">Stop</span>{" "}
+              <span className="tabular-nums font-medium text-negative">${stop_loss!.toFixed(2)}</span>
+            </span>
+          )}
+          {rr != null && (
+            <span>
+              <span className="uppercase tracking-wide">R:R</span>{" "}
+              <span
+                className={cn(
+                  "tabular-nums font-medium",
+                  parseFloat(rr) >= 2
+                    ? "text-positive"
+                    : parseFloat(rr) >= 1
+                      ? "text-foreground/70"
+                      : "text-negative",
+                )}
+              >
+                {rr}&times;
+              </span>
+            </span>
+          )}
+        </div>
+      )}
+
+      {reasoning_summary && (
+        <div className="space-y-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Summary</span>
+          <p className="text-sm leading-relaxed text-foreground/80">{reasoning_summary}</p>
+        </div>
+      )}
+
+      {thesis_bullets.length > 0 && (
+        <div className="space-y-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-positive">Bull Case</span>
+          <div className="space-y-2">
+            {thesis_bullets.map((b, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm">
+                <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-positive" />
+                <span className="leading-relaxed">{b}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {risk_flags.length > 0 && (
+        <div className="space-y-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-amber-500">Risk Factors</span>
+          <div className="space-y-2">
+            {risk_flags.map((r, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                <span className="leading-relaxed">{r}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Private: Fundamentals tab content ─────────────────────────────────────────
+
+function fmtCompact(n: number): string {
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+function fmtVol(n: number): string {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
+  return n.toFixed(0);
+}
+
+function FundamentalsContent({ fundamentals }: { fundamentals: FundamentalsData }) {
+  const { market_cap, pe_ratio, beta, avg_volume, high_52w, low_52w, sector, analyst_consensus } = fundamentals;
+  const total = analyst_consensus
+    ? analyst_consensus.buy + analyst_consensus.hold + analyst_consensus.sell
+    : 0;
+  const buyPct = total > 0 ? Math.round((analyst_consensus!.buy / total) * 100) : 0;
+
+  return (
+    <>
+      {sector && (
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{sector}</Badge>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+        {market_cap != null && (
+          <div>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Market Cap</span>
+            <p className="text-sm tabular-nums font-medium">{fmtCompact(market_cap)}</p>
+          </div>
+        )}
+        {pe_ratio != null && (
+          <div>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">P/E Ratio</span>
+            <p className="text-sm tabular-nums font-medium">{pe_ratio.toFixed(1)}x</p>
+          </div>
+        )}
+        {beta != null && (
+          <div>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Beta</span>
+            <p className="text-sm tabular-nums font-medium">{beta.toFixed(2)}</p>
+          </div>
+        )}
+        {avg_volume != null && (
+          <div>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Avg Volume (10d)</span>
+            <p className="text-sm tabular-nums font-medium">{fmtVol(avg_volume)}</p>
+          </div>
+        )}
+        {high_52w != null && (
+          <div>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">52W High</span>
+            <p className="text-sm tabular-nums font-medium">${high_52w.toFixed(2)}</p>
+          </div>
+        )}
+        {low_52w != null && (
+          <div>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">52W Low</span>
+            <p className="text-sm tabular-nums font-medium">${low_52w.toFixed(2)}</p>
+          </div>
+        )}
+      </div>
+
+      {analyst_consensus && total > 0 && (
+        <div className="space-y-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Analyst Consensus
+          </span>
+          <div className="flex h-2 w-full overflow-hidden rounded-full">
+            <div className="bg-positive" style={{ width: `${(analyst_consensus.buy / total) * 100}%` }} />
+            <div className="bg-muted-foreground/30" style={{ width: `${(analyst_consensus.hold / total) * 100}%` }} />
+            <div className="bg-negative" style={{ width: `${(analyst_consensus.sell / total) * 100}%` }} />
+          </div>
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span>{analyst_consensus.buy} Buy</span>
+            <span>{analyst_consensus.hold} Hold</span>
+            <span>{analyst_consensus.sell} Sell</span>
+            <span className={cn("font-medium", buyPct >= 60 ? "text-positive" : buyPct >= 40 ? "text-amber-500" : "text-negative")}>
+              {buyPct}% Buy
+            </span>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

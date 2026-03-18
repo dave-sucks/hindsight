@@ -235,6 +235,7 @@ export const morningResearch = inngest.createFunction(
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
           maxPositionSize: Number(config.maxPositionSize),
+          maxOpenPositions: config.maxOpenPositions,
         });
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)

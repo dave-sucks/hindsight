@@ -35,8 +35,9 @@ import {
   type ThesisCardData,
   TradeCard,
   TradeConfirmation,
-  StockCard,
   RunSummaryCard,
+  PortfolioReviewCard,
+  type PortfolioReviewData,
 } from "@/components/domain";
 
 // ─── Chat UI Components ─────────────────────────────────────────────────────
@@ -368,81 +369,10 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
-  // ── Stock data → StockCard (CoT step via ResearchToolGroup, news in Sources tab) ─
+  // ── Stock data → CoT only (rendered by ResearchToolGroup, no separate card) ──
   useAssistantToolUI({
     toolName: "get_stock_data",
-    render: ({ args, result }) => {
-      const ticker = (args as { ticker?: string })?.ticker ?? "";
-
-      if (!result) return null;
-
-      const quote = result.quote as {
-        price: number;
-        change: number;
-        change_pct: number;
-        high: number;
-        low: number;
-      } | null;
-      const company = result.company as {
-        name: string;
-        sector: string;
-        market_cap: number | null;
-        exchange: string;
-      } | null;
-      const financials = result.financials as {
-        pe_ratio: number | null;
-        pb_ratio: number | null;
-        high_52w: number | null;
-        low_52w: number | null;
-        avg_volume_10d: number | null;
-        beta: number | null;
-      } | null;
-      const consensus = result.analyst_consensus as {
-        buy: number;
-        hold: number;
-        sell: number;
-        strong_buy: number;
-        strong_sell: number;
-      } | null;
-
-      return (
-        <div className="my-2 space-y-1.5">
-          <StockCard
-            ticker={ticker}
-            companyName={company?.name}
-            price={quote?.price}
-            change={quote?.change}
-            changePct={quote?.change_pct}
-            sector={company?.sector}
-            marketCap={company?.market_cap}
-            exchange={company?.exchange}
-            dayHigh={quote?.high}
-            dayLow={quote?.low}
-            peRatio={financials?.pe_ratio}
-            beta={financials?.beta}
-            high52w={financials?.high_52w}
-            low52w={financials?.low_52w}
-            avgVolume={
-              financials?.avg_volume_10d
-                ? financials.avg_volume_10d * 1_000_000
-                : null
-            }
-            analystConsensus={
-              consensus
-                ? {
-                    buy: consensus.buy,
-                    hold: consensus.hold,
-                    sell: consensus.sell,
-                    strongBuy: consensus.strong_buy,
-                    strongSell: consensus.strong_sell,
-                  }
-                : null
-            }
-          />
-          <SourceChips sources={extractToolSources(result as Record<string, unknown>)} />
-        </div>
-      );
-    },
+    render: () => null,
   });
 
   // ── Earnings data — rendered as CoT step by ResearchToolGroup ───────
@@ -513,11 +443,88 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           url: s.url,
           excerpt: s.excerpt,
         })),
+        fundamentals: (result.fundamentals as ThesisCardData["fundamentals"]) ?? null,
       };
 
       return (
         <div className="my-2">
           <ThesisCard {...thesis} />
+        </div>
+      );
+    },
+  });
+
+  // ── Portfolio review → PortfolioReviewCard ───────────────────────
+  useAssistantToolUI({
+    toolName: "review_portfolio",
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Reviewing portfolio</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={BarChart3} label="Loading theses and positions" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="Evaluating portfolio allocation" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      if (result.error) {
+        return (
+          <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
+            Portfolio review failed: {String(result.error)}
+          </div>
+        );
+      }
+
+      return (
+        <div className="my-2">
+          <PortfolioReviewCard
+            run_theses={(result.run_theses ?? []) as PortfolioReviewData["run_theses"]}
+            open_positions={(result.open_positions ?? []) as PortfolioReviewData["open_positions"]}
+            account={(result.account ?? { cash: 0, buying_power: 0, portfolio_value: 0 }) as PortfolioReviewData["account"]}
+          />
+        </div>
+      );
+    },
+  });
+
+  // ── Close position → inline result card ─────────────────────────
+  useAssistantToolUI({
+    toolName: "close_position",
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
+            Closing position…
+          </div>
+        );
+      }
+
+      if (result.status === "failed") {
+        return (
+          <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
+            Close failed: {String(result.error)}
+          </div>
+        );
+      }
+
+      const pnl = typeof result.realized_pnl === "number" ? result.realized_pnl : 0;
+      const isWin = pnl > 0;
+
+      return (
+        <div className="my-2">
+          <TradeCard
+            ticker={result.ticker as string}
+            direction={result.direction as "LONG" | "SHORT"}
+            entryPrice={typeof result.entry_price === "number" ? result.entry_price : 0}
+            shares={typeof result.shares === "number" ? result.shares : undefined}
+            closePrice={typeof result.close_price === "number" ? result.close_price : undefined}
+            realizedPnl={pnl}
+            outcome={(result.outcome as "WIN" | "LOSS" | "BREAKEVEN") ?? null}
+            status="CLOSED"
+          />
         </div>
       );
     },
