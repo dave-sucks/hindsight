@@ -170,30 +170,34 @@ export function ThesisCard({
     >
       {header}
       {/* ── Price rows ────────────────────────────────────────── */}
-      <div className="flex flex-col">
-        <div className="px-3 py-1 flex items-center border-b">
-          <span className="text-sm font-light text-muted-foreground grow">Entry</span>
-          <span className="text-sm font-medium tabular-nums text-foreground">${entry_price!.toFixed(2)}</span>
+      {(hasEntry || hasTarget || hasStop) && (
+        <div className="flex flex-col">
+          {hasEntry && (
+            <div className="px-3 py-1 flex items-center border-b">
+              <span className="text-sm font-light text-muted-foreground grow">Entry</span>
+              <span className="text-sm font-medium tabular-nums text-foreground">${entry_price!.toFixed(2)}</span>
+            </div>
+          )}
+          {hasTarget && (
+            <div className="px-3 py-1 flex items-center gap-2 border-b">
+              <span className="text-sm font-light text-muted-foreground grow">Target</span>
+              {hasEntry && (
+                <PnlBadge value={((target_price! - entry_price!) / entry_price!) * 100} />
+              )}
+              <span className="text-sm font-medium tabular-nums text-positive">${target_price!.toFixed(2)}</span>
+            </div>
+          )}
+          {hasStop && (
+            <div className="px-3 py-1 flex items-center gap-2 border-b">
+              <span className="text-sm font-light text-muted-foreground grow">Stop</span>
+              {hasEntry && (
+                <PnlBadge value={((stop_loss! - entry_price!) / entry_price!) * 100} />
+              )}
+              <span className="text-sm font-medium tabular-nums text-negative">${stop_loss!.toFixed(2)}</span>
+            </div>
+          )}
         </div>
-        {hasTarget && (
-          <div className="px-3 py-1 flex items-center gap-2 border-b">
-            <span className="text-sm font-light text-muted-foreground grow">Target</span>
-            {hasEntry && (
-              <PnlBadge value={((target_price! - entry_price!) / entry_price!) * 100} />
-            )}
-            <span className="text-sm font-medium tabular-nums text-positive">${target_price!.toFixed(2)}</span>
-          </div>
-        )}
-        {hasStop && (
-          <div className="px-3 py-1 flex items-center gap-2 border-b">
-            <span className="text-sm font-light text-muted-foreground grow">Stop</span>
-            {hasEntry && (
-              <PnlBadge value={((stop_loss! - entry_price!) / entry_price!) * 100} />
-            )}
-            <span className="text-sm font-medium tabular-nums text-negative">${stop_loss!.toFixed(2)}</span>
-          </div>
-        )}
-      </div>
+      )}
       {/* ── Meta line + reasoning preview ─────────────────────── */}
       <div className="px-3 pt-2 pb-0">
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">

@@ -384,9 +384,9 @@ const thesisParams = z.object({
     .array(z.string())
     .describe("3-5 key points supporting the thesis. For PASS: include what you learned, why it doesn't fit, and what would change your mind."),
   risk_flags: z.array(z.string()).describe("2-4 key risks. For PASS: note the risks that made you pass."),
-  entry_price: z.number().optional(),
-  target_price: z.number().optional(),
-  stop_loss: z.number().optional(),
+  entry_price: z.number().optional().describe("Current price for entry. REQUIRED for LONG/SHORT — use the price from get_stock_data. Also include for PASS to enable shadow tracking."),
+  target_price: z.number().optional().describe("Price target. REQUIRED for LONG/SHORT."),
+  stop_loss: z.number().optional().describe("Stop-loss price. REQUIRED for LONG/SHORT."),
   hold_duration: z.enum(["DAY", "SWING", "POSITION"]),
   signal_types: z
     .array(z.string())
@@ -1671,7 +1671,24 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           logToolEnd("show_thesis", _t0, ctx.runId, `ticker=${args.ticker} id=${thesis.id}`, stats);
-          return { thesis_id: thesis.id, ticker: args.ticker, direction: args.direction, confidence_score: args.confidence_score };
+          // Return ALL args so the UI can render the full thesis card
+          return {
+            thesis_id: thesis.id,
+            ticker: args.ticker,
+            company_name: args.company_name ?? null,
+            exchange: args.exchange ?? null,
+            direction: args.direction,
+            confidence_score: args.confidence_score,
+            reasoning_summary: args.reasoning_summary,
+            thesis_bullets: args.thesis_bullets,
+            risk_flags: args.risk_flags,
+            entry_price: args.entry_price ?? null,
+            target_price: args.target_price ?? null,
+            stop_loss: args.stop_loss ?? null,
+            hold_duration: args.hold_duration,
+            signal_types: args.signal_types,
+            _sources: args.sources_used ?? [],
+          };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Thesis save failed";
           console.error(`[tool] show_thesis FAILED for ${args.ticker}: ${msg}`);
@@ -1834,7 +1851,12 @@ export function createResearchTools(ctx: ToolContext) {
             ticker: args.ticker,
             direction: args.direction,
             fill_price: fillPrice,
+            entry_price: fillPrice,
             shares: args.shares,
+            target_price: args.target_price,
+            stop_loss: args.stop_loss,
+            company_name: args.company_name ?? null,
+            exchange: args.exchange ?? null,
             trade_id: position.id,
             position_id: position.id,
             order_id: order.id,
