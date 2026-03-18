@@ -379,11 +379,11 @@ const thesisParams = z.object({
   confidence_score: z.number().min(0).max(100),
   reasoning_summary: z
     .string()
-    .describe("2-3 sentence summary of your thesis"),
+    .describe("2-3 sentence summary of your thesis. For PASS: explain what you found AND why it doesn't fit your strategy right now."),
   thesis_bullets: z
     .array(z.string())
-    .describe("3-5 key points supporting the thesis"),
-  risk_flags: z.array(z.string()).describe("2-4 key risks"),
+    .describe("3-5 key points supporting the thesis. For PASS: include what you learned, why it doesn't fit, and what would change your mind."),
+  risk_flags: z.array(z.string()).describe("2-4 key risks. For PASS: note the risks that made you pass."),
   entry_price: z.number().optional(),
   target_price: z.number().optional(),
   stop_loss: z.number().optional(),
@@ -1585,7 +1585,7 @@ export function createResearchTools(ctx: ToolContext) {
 
     show_thesis: tool({
       description:
-        "Display your research thesis as a formatted card. Call this after you've completed your analysis of a ticker to present your findings. The thesis will be saved to the database.",
+        "MANDATORY for every ticker you researched. Display your thesis as a formatted card and save it to the database. Call this for EVERY ticker — LONG, SHORT, and PASS. PASS theses are just as important: they document why a stock doesn't fit and build institutional memory. Never skip this tool or write a verdict as text instead.",
       inputSchema: thesisParams,
       execute: async (args: ThesisInput) => {
         const _t0 = Date.now();
