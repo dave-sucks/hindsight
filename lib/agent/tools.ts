@@ -1737,10 +1737,14 @@ export function createResearchTools(ctx: ToolContext) {
             try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry_price */ }
           }
 
-          // 3. Create Position + Order + PositionEvent + TradeDecision + RunEvent in a transaction
-          const analystId = ctx.analystId || "unknown";
-          const { position, dbOrder } = await prisma.$transaction(async (tx: TransactionClient) => {
-            // Position — what the analyst holds
+          // 3. Create Position + Order + PositionEvent + TradeDecision + RunEvent in a single transaction
+          const analystId = ctx.analystId;
+          if (!analystId) {
+            throw new Error("Cannot place trade without an analyst ID. Ensure the run is linked to an analyst.");
+          }
+
+          const { position, order } = await prisma.$transaction(async (tx: TransactionClient) => {
+            // Create the position (what the analyst holds)
             const pos = await tx.position.create({
               data: {
                 analystId,
@@ -1756,7 +1760,7 @@ export function createResearchTools(ctx: ToolContext) {
               },
             });
 
-            // Order — what we told Alpaca
+            // Create the order (what we told Alpaca)
             const ord = await tx.order.create({
               data: {
                 positionId: pos.id,
@@ -1773,7 +1777,7 @@ export function createResearchTools(ctx: ToolContext) {
               },
             });
 
-            // PositionEvent — lifecycle log
+            // Create position lifecycle event
             await tx.positionEvent.create({
               data: {
                 positionId: pos.id,
@@ -1783,24 +1787,22 @@ export function createResearchTools(ctx: ToolContext) {
               },
             });
 
-            // TradeDecision — links thesis → position → order
-            if (ctx.runId) {
-              await tx.tradeDecision.create({
-                data: {
-                  runId: ctx.runId,
-                  analystId,
-                  userId: ctx.userId,
-                  symbol: args.ticker,
-                  decision: "BUY",
-                  reasoning: `${args.direction} ${args.shares} shares at $${fillPrice.toFixed(2)}`,
-                  thesisId: args.thesis_id,
-                  positionId: pos.id,
-                  orderId: ord.id,
-                },
-              });
-            }
+            // Create trade decision (links thesis → position → order)
+            await tx.tradeDecision.create({
+              data: {
+                runId: ctx.runId,
+                analystId,
+                userId: ctx.userId,
+                symbol: args.ticker,
+                decision: args.direction === "LONG" ? "BUY" : "SELL",
+                reasoning: `${args.direction} ${args.shares} shares at $${fillPrice.toFixed(2)} (target: $${args.target_price.toFixed(2)}, stop: $${args.stop_loss.toFixed(2)})`,
+                thesisId: args.thesis_id,
+                positionId: pos.id,
+                orderId: ord.id,
+              },
+            });
 
-            // RunEvent — visible on run page
+            // Write RunEvent so trade is visible on run page
             if (ctx.runId) {
               await tx.runEvent.create({
                 data: {
@@ -1822,10 +1824,10 @@ export function createResearchTools(ctx: ToolContext) {
               });
             }
 
-            return { position: pos, dbOrder: ord };
+            return { position: pos, order: ord };
           });
 
-          console.log(`[tool] place_trade SUCCESS position=${position.id} order=${dbOrder.id} fill=$${fillPrice.toFixed(2)}`);
+          console.log(`[tool] place_trade SUCCESS position=${position.id} order=${order.id} fill=$${fillPrice.toFixed(2)}`);
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`, stats);
           return {
             status: "filled" as const,
@@ -1833,8 +1835,9 @@ export function createResearchTools(ctx: ToolContext) {
             direction: args.direction,
             fill_price: fillPrice,
             shares: args.shares,
+            trade_id: position.id,
             position_id: position.id,
-            order_id: dbOrder.id,
+            order_id: order.id,
             alpaca_order_id: alpacaOrder.id,
           };
         } catch (err) {
