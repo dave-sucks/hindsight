@@ -145,47 +145,33 @@ interface FlowStep {
 const AGENT_RUN_STEPS: FlowStep[] = [
   {
     phase: "Discovery",
-    title: "Read the market regime",
+    title: "Read the market context",
     icon: BarChart3,
     sources: ["Finnhub", "FMP"],
     summary:
-      "Fetches S&P 500, VIX, and 11 sector ETFs. Classifies the market as Risk-On, Risk-Off, or Neutral using VIX levels and SPY's trend vs its 20-day average. Also pulls today's macro events (FOMC, CPI, jobs) and upcoming earnings density.",
-  },
-  {
-    title: "Detect market themes",
-    icon: TrendingUp,
-    sources: ["Finnhub News", "Reddit"],
-    summary:
-      "Scans 50 recent headlines and Reddit trending tickers to identify dominant narratives — like AI infrastructure, biotech catalysts, or rate cut plays. Scores each theme by headline matches, social overlap, and sector momentum. Strong themes guide which stocks to research.",
-  },
-  {
-    title: "Scan for catalysts",
-    icon: Calendar,
-    sources: ["Finnhub", "FMP"],
-    summary:
-      "Builds a pipeline of upcoming price-moving events: earnings dates, economic releases, insider buying clusters, and analyst upgrades/downgrades. Catalysts within 3 days get priority — a stock reporting tomorrow is more urgent than one reporting in two weeks.",
+      "One call gets the full market picture: S&P 500, VIX, 11 sector ETFs, macro events (FOMC, CPI, jobs), earnings density, regime classification (Risk-On/Risk-Off/Neutral), AND dominant market themes and narratives detected from 50 news headlines. Themes like AI infrastructure or rate cut plays guide which stocks to research.",
   },
   {
     title: "Find candidate stocks",
     icon: Search,
     sources: ["Finnhub", "FMP", "StockTwits", "Reddit"],
     summary:
-      "Pulls from 5 sources: earnings calendar, top gainers/losers, StockTwits trending, and Reddit buzz. Filters out micro-caps and illiquid names. Boosts stocks matching the detected theme. Flags unusual volume spikes. Produces a ranked shortlist of 5–10 high-quality candidates.",
+      "Pulls from earnings calendar, top gainers/losers, StockTwits trending, Reddit buzz, insider buying, and analyst actions. Each candidate comes with attached catalysts (upcoming earnings, insider clusters, analyst upgrades). Watchlist tickers get priority. Produces a ranked shortlist of 5–15 candidates.",
   },
   {
-    phase: "Deep Research",
-    title: "Analyze each stock",
+    phase: "Per-Ticker Research",
+    title: "Get stock data + technicals",
     icon: LineChart,
-    sources: ["Finnhub", "FMP", "Reddit", "SEC"],
+    sources: ["Finnhub", "FMP"],
     summary:
-      "For the top 3–5 candidates: pulls price data, financials, analyst consensus, technical indicators (RSI, moving averages), social sentiment from Reddit, recent news, SEC filings, and peer comparisons. Every data point gets cited with its source.",
+      "The primary research tool — one call per ticker returns quote, company profile, financials, technicals (RSI, SMA-20/50, 52-week range, volume), analyst consensus, price targets, and 5 recent news articles. The agent researches each stock individually, narrating its analysis between calls.",
   },
   {
-    title: "Check social sentiment",
+    title: "Optional deep research",
     icon: MessageSquare,
-    sources: ["Reddit"],
+    sources: ["Reddit", "StockTwits", "SEC"],
     summary:
-      "Checks what retail traders are saying on r/wallstreetbets, r/stocks, and r/options via get_reddit_sentiment, plus Twitter/X buzz via get_twitter_sentiment. The system prompt requires checking BOTH for every candidate. Divergence between Reddit and Twitter sentiment is a signal worth noting.",
+      "The agent chooses what additional research each ticker needs. Social sentiment (Reddit + StockTwits combined), earnings deep-dive (EPS history, beat rate), options flow (put/call ratio, unusual contracts), or SEC filings. Not every stock needs every tool — the agent saves deep dives for its strongest leads.",
   },
   {
     phase: "Decision",
@@ -193,14 +179,14 @@ const AGENT_RUN_STEPS: FlowStep[] = [
     icon: FileText,
     sources: ["All research"],
     summary:
-      "Produces a detailed trade thesis for each researched stock — direction (long, short, or pass), confidence score, entry/target/stop prices, supporting bullets, and risk flags. Even stocks the analyst passes on get a thesis explaining why, so you can track whether the pass was right.",
+      "A structured thesis is MANDATORY for every researched stock — long, short, or pass. Each thesis includes direction, confidence score, entry/target/stop prices, supporting bullets, and risk flags. PASS theses document why a stock doesn't fit right now and what would change the analyst's mind. Every thesis is saved to the database for tracking.",
   },
   {
     title: "Execute paper trades",
     icon: ShoppingCart,
     sources: ["Alpaca"],
     summary:
-      "Any thesis above the confidence threshold automatically places a paper trade through Alpaca. Calculates position size based on your max position setting. This is simulated money — every trade gets tracked so you can measure real performance over time.",
+      "Any thesis above the confidence threshold places a paper trade through Alpaca. Position size is calculated from the max position setting. This is simulated money — every trade gets tracked so you can measure real performance over time.",
   },
   {
     phase: "Synthesis",
@@ -208,7 +194,7 @@ const AGENT_RUN_STEPS: FlowStep[] = [
     icon: Briefcase,
     sources: ["Internal"],
     summary:
-      "Reviews all positions for concentration risk, sector exposure, and correlation. Calls summarize_run which marks the ResearchRun as COMPLETE and produces a final summary card with ranked picks, exposure breakdown, risk notes, and an overall market assessment. Note: this is NOT the analyst briefing — the briefing is a separate post-run step that generates the memory for the next session.",
+      "Reviews all positions for concentration risk, sector exposure, and correlation. Marks the run as COMPLETE and produces a final summary card with ranked picks (trade/watch/pass), exposure breakdown, risk notes, and an overall market assessment. The analyst briefing is generated separately after this step — it creates the memory for the next session.",
   },
 ];
 
@@ -223,25 +209,25 @@ const ANALYST_BUILDER_STEPS: FlowStep[] = [
   },
   {
     phase: "Phase 2 — Research & Brainstorm",
-    title: "Read the market regime",
+    title: "Read the market context",
     icon: BarChart3,
     sources: ["Finnhub", "FMP"],
     summary:
-      "Before suggesting anything, the builder calls get_market_overview — SPY, VIX, 11 sector ETFs, macro events. This is mandatory: the builder must call at least 2–3 research tools before proposing any strategy. It has 13 of the agent's 18 research tools (excludes get_twitter_sentiment, get_options_flow, show_thesis, place_trade, summarize_run — the builder can't trade or persist theses).",
+      "Before suggesting anything, the builder calls get_market_context — SPY, VIX, 11 sector ETFs, macro events, market themes. This is mandatory: the builder must call at least 2–3 research tools before proposing any strategy. It has access to most of the agent's research tools (excludes show_thesis, place_trade, summarize_run — the builder can't trade).",
   },
   {
-    title: "Detect themes & scan candidates",
+    title: "Scan candidates",
     icon: TrendingUp,
-    sources: ["Finnhub News", "Reddit", "StockTwits"],
+    sources: ["Finnhub", "FMP", "StockTwits", "Reddit"],
     summary:
-      "Calls detect_market_themes and scan_candidates to find dominant narratives (AI, biotech, rate cuts) and real candidate stocks. This grounds the strategy in what's actually moving — a momentum strategy needs active momentum, an earnings strategy needs upcoming reports.",
+      "Calls scan_candidates to find real candidate stocks with attached catalysts. This grounds the strategy in what's actually moving — a momentum strategy needs active momentum, an earnings strategy needs upcoming reports.",
   },
   {
     title: "Deep-dive specific stocks",
     icon: LineChart,
     sources: ["Finnhub", "FMP", "Reddit", "SEC"],
     summary:
-      "For promising candidates, the builder can call any of the 13 research tools — get_stock_data, get_technical_analysis, get_earnings_data, get_reddit_sentiment, search_reddit, get_news_deep_dive, get_analyst_targets, get_company_peers, get_sec_filings. Shows you what your analyst would actually find on a typical morning.",
+      "For promising candidates, the builder can call get_stock_data (quote, profile, financials, technicals, news, price targets), get_social_sentiment (Reddit + StockTwits), get_earnings_data, get_options_flow, get_sec_filings, or search_reddit. Shows you what your analyst would actually find on a typical morning.",
   },
   {
     phase: "Phase 3 — Craft Strategy",
@@ -332,7 +318,10 @@ const MANUAL_RUN_DETAILS: DetailSection[] = [
       { label: "Method", value: "streamText() — streams response tokens to the UI in real time" },
       { label: "Max duration", value: "120 seconds (maxDuration = 120)" },
       { label: "Step limit", value: "stopWhen: stepCountIs(30) — max 30 tool call rounds" },
-      { label: "Tools", value: "18 tools from createResearchTools({ runId, userId, watchlist, exclusionList, sectors, maxPositionSize })" },
+      { label: "Tools", value: "11 tools from createResearchTools({ runId, userId, analystId, watchlist, exclusionList, sectors, maxPositionSize })" },
+      { label: "API timeouts", value: "All Finnhub/FMP/SEC/Alpaca calls have 10-second AbortSignal timeouts to prevent hung fetches from stalling the agent" },
+      { label: "Rate limit retries", value: "Finnhub 429 responses retry up to 2 times with exponential backoff (1s, 2s). FMP has similar handling. Finnhub responses cached 5 minutes to reduce duplicate calls." },
+      { label: "Step logging", value: "onStepFinish callback logs step number, tool names, finish reason, token usage, and elapsed time for each step" },
       { label: "System prompt", value: "buildSystemPrompt(agentConfig) + historical context block appended" },
       { label: "Messages", value: "convertToModelMessages(messages) — converts UIMessage[] (AI SDK v6 parts) to ModelMessage[]" },
       { label: "Response", value: "result.toUIMessageStreamResponse() — SSE stream to client" },
@@ -352,7 +341,7 @@ const MANUAL_RUN_DETAILS: DetailSection[] = [
       { label: "Briefings", value: "Last 3 AnalystBriefing rows for this analyst — narrative + strategyNotes, each capped at 600/300 chars" },
       { label: "Open positions", value: "All OPEN trades for this analyst (filtered by agentConfigId) — ticker, direction, shares, entry, target, stop. Includes instruction: \"Do NOT open duplicate positions\"" },
       { label: "Closed trades", value: "Last 20 CLOSED trades (filtered by agentConfigId) — ticker, direction, outcome (WIN/LOSS), entry/exit prices, P&L, agentEvaluation snippet (200 chars)" },
-      { label: "Shadow trades", value: "Last 10 SHADOW_CLOSED trades — pass tracking results with GOOD PASS/BAD PASS labels, price delta, hypothetical P&L" },
+      { label: "Pass decisions", value: "Last 10 TradeDecision rows with decision=\"PASS\" — the analyst's pass history with thesis entry price, confidence score, reasoning. Replaces the old SHADOW_CLOSED position tracking." },
       { label: "Accuracy stats", value: "Latest AccuracyReport — winRate, tradesAnalyzed, narrativeSummary (300 chars)" },
       { label: "Recent runs", value: "Last 5 completed ResearchRun IDs + completedAt timestamps" },
       { label: "No slot check", value: "Unlike cron runs, manual runs pass the full config.maxOpenPositions to the system prompt — no pre-check of how many positions are already open. The agent relies on seeing its open positions in the context to self-regulate." },
@@ -375,7 +364,7 @@ const CRON_RUN_DETAILS: DetailSection[] = [
     heading: "What it does (plain English)",
     items: [
       { label: "When", value: "Every weekday at 8:00 AM Eastern Time, automatically via Inngest cron. Can also be triggered manually via POST /api/research/trigger." },
-      { label: "What happens", value: "Finds all enabled analysts and runs each one sequentially. For each analyst: checks how many open positions it already has, creates a ResearchRun, loads full historical context (briefings, trades, accuracy), and calls GPT-4.1 with generateText(). The agent does the same research, thesis, and trade flow as a manual run — it just runs on the server with no UI." },
+      { label: "What happens", value: "Finds all enabled analysts and runs each one sequentially. For each analyst: checks how many open positions it already has, creates a ResearchRun, loads full historical context (briefings, trades, accuracy), and calls GPT-4.1 with generateText(). The agent does the same research, thesis, and trade flow as a manual run — it just runs on the server with no UI. Each run has a 240-second abort timeout, and a post-run sweep marks any stale RUNNING runs as FAILED." },
       { label: "Key difference from manual", value: "Uses generateText() instead of streamText() (no client to stream to). Also calculates remaining position slots per-analyst — if an analyst has 3 of its 5 max positions filled, the system prompt tells it it can only open 2 more. This was fixed in PR #86 (March 16, 2026) — previously the slot check was portfolio-level across ALL analysts, causing crons to skip when any analyst had positions." },
       { label: "Concurrency", value: "Only one morning-research function runs at a time. If it's still running from a previous trigger, the new one waits." },
     ],
@@ -427,7 +416,11 @@ const CRON_RUN_DETAILS: DetailSection[] = [
       { label: "Method", value: "generateText() — NOT streaming (no client to stream to). Returns { text, steps, response }" },
       { label: "Prompt", value: "\"Begin your research session. Follow all phases in order.\"" },
       { label: "Step limit", value: "stopWhen: stepCountIs(30) — same 30-step limit as manual" },
-      { label: "Tools", value: "18 tools from createResearchTools({ runId, userId, watchlist, exclusionList, sectors, maxPositionSize })" },
+      { label: "Abort timeout", value: "AbortSignal.timeout(240_000) — 4-minute hard kill. Leaves 1 minute for cleanup before Vercel/Railway's 5-minute limit." },
+      { label: "Tools", value: "11 tools from createResearchTools({ runId, userId, analystId, watchlist, exclusionList, sectors, maxPositionSize })" },
+      { label: "API timeouts", value: "All Finnhub/FMP/SEC/Alpaca calls have 10-second AbortSignal timeouts to prevent hung fetches from stalling the agent" },
+      { label: "Rate limit retries", value: "Finnhub 429 responses retry up to 2 times with exponential backoff (1s, 2s)" },
+      { label: "Step logging", value: "onStepFinish callback logs step number, tool names, finish reason, token usage, and elapsed time per step" },
       { label: "System prompt", value: "buildSystemPrompt(agentConfig) + identical historical context block" },
     ],
   },
@@ -453,7 +446,7 @@ const CRON_RUN_DETAILS: DetailSection[] = [
       { label: "Briefings", value: "Last 3 AnalystBriefing rows for this analyst — narrative + strategyNotes" },
       { label: "Open positions", value: "All OPEN trades for this analyst — with \"Do NOT open duplicate positions\" instruction" },
       { label: "Closed trades", value: "Last 20 CLOSED trades — outcome, P&L, agentEvaluation snippets" },
-      { label: "Shadow trades", value: "Last 10 SHADOW_CLOSED trades — pass tracking with GOOD/BAD PASS labels" },
+      { label: "Pass decisions", value: "Last 10 TradeDecision rows with decision=\"PASS\" — pass tracking with thesis entry price, confidence, reasoning" },
       { label: "Accuracy stats", value: "Latest AccuracyReport — winRate, tradesAnalyzed, narrativeSummary" },
     ],
   },
@@ -461,7 +454,7 @@ const CRON_RUN_DETAILS: DetailSection[] = [
     heading: "After completion",
     items: [
       { label: "Stats logged", value: "steps.length, toolCalls count, elapsed time in ms" },
-      { label: "Position count", value: "prisma.position.count({ decisions: { some: { thesis: { researchRunId: run.id } } } }) — counts positions the agent opened via place_trade tool" },
+      { label: "Trades placed count", value: "prisma.tradeDecision.count({ where: { runId, decision: \"BUY\" } }) — counts trade decisions the agent made via place_trade tool" },
       { label: "Belt-and-suspenders", value: "If run.status is still RUNNING, marks it COMPLETE with completedAt + appends tradesPlaced, agentSteps, agentToolCalls, elapsedMs to parameters" },
       { label: "Message persistence", value: "Deletes existing RunMessage rows, creates one RunMessage with role=\"thread\" containing the user prompt + all response.messages" },
       { label: "Briefing update", value: "Calls updateAnalystBriefing({ analystId, runId, userId }) — same GPT-4o-mini briefing generation as manual" },
@@ -472,6 +465,7 @@ const CRON_RUN_DETAILS: DetailSection[] = [
     heading: "Return value",
     items: [
       { label: "Per analyst", value: "{ tradesPlaced, steps, toolCalls, elapsedMs } on success, or { error: message } on failure" },
+      { label: "Stale run sweep", value: "After all analysts finish, sweeps any RUNNING runs older than 10 minutes and marks them FAILED. Safety net for runs that timed out or were killed mid-execution." },
       { label: "Final return", value: "{ ran: configs.length, totalTradesPlaced } — aggregate across all analysts" },
     ],
   },
@@ -511,7 +505,7 @@ const LEARNING_LOOP_DETAILS: DetailSection[] = [
       { label: "Run summary event", value: "The run_summary RunEvent (if the agent called summarize_run) — contains market summary, ranked picks, risk notes, overall assessment" },
       { label: "Total run count", value: "Count of all COMPLETE ResearchRuns for this analyst — used as \"session number\" in the briefing" },
       { label: "Previous briefing", value: "Most recent AnalystBriefing for this analyst — narrative + strategyNotes + createdAt, used for continuity" },
-      { label: "Shadow trades", value: "Last 10 SHADOW_CLOSED trades — stocks the analyst passed on, with outcome (WIN = good pass, avoided a loss; LOSS = bad pass, missed a gain)" },
+      { label: "Pass decisions", value: "Last 10 TradeDecision rows with decision=\"PASS\" — stocks the analyst passed on, with thesis entry price, confidence score, and reasoning. Replaced the old SHADOW_CLOSED position tracking." },
     ],
   },
   {
@@ -615,13 +609,13 @@ const CONTEXT_LOADING_DETAILS: DetailSection[] = [
     ],
   },
   {
-    heading: "5. Shadow trades (pass tracking)",
+    heading: "5. Pass decisions (pass tracking)",
     items: [
-      { label: "Query", value: "prisma.position.findMany({ where: { userId, status: \"SHADOW_CLOSED\", analystId }, orderBy: { closedAt: \"desc\" }, take: 10 })" },
-      { label: "Fields", value: "symbol, avgCost, closePrice, realizedPnl, outcome, closedAt" },
-      { label: "Format", value: "\"## Shadow Trade Results — Passes You Tracked\" — good/bad pass tally, then each: GOOD/BAD PASS | $TICKER | passed at $X, now $Y (+Z%) | Missed/Avoided $PnL" },
-      { label: "How they're created", value: "When show_thesis is called with direction=PASS, it creates a shadow trade (status: SHADOW, direction: LONG, exits after 7 calendar days). The price monitor tracks it hourly and closes it as SHADOW_CLOSED with outcome WIN (good pass, price dropped) or LOSS (bad pass, price rose)." },
-      { label: "Instruction", value: "\"Use these results to calibrate your pass decisions. If you're frequently making bad passes, consider being more aggressive.\"" },
+      { label: "Query", value: "prisma.tradeDecision.findMany({ where: { userId, decision: \"PASS\", analystId }, orderBy: { createdAt: \"desc\" }, take: 10 })" },
+      { label: "Fields", value: "symbol, reasoning, createdAt, thesis.entryPrice, thesis.confidenceScore" },
+      { label: "Format", value: "\"## Recent Pass Decisions\" — each: PASS | $TICKER | date | confidence: X% | entry was $Y | reason: ..." },
+      { label: "How they're created", value: "When show_thesis is called with direction=PASS, it creates a TradeDecision row with decision=\"PASS\", linked to the thesis via thesisId. This replaced the old SHADOW_CLOSED position approach." },
+      { label: "Instruction", value: "\"Review these passes. Were they the right call?\"" },
     ],
   },
   {
@@ -646,10 +640,10 @@ const CONTEXT_LOADING_DETAILS: DetailSection[] = [
   {
     heading: "Differences between manual and cron context loading",
     items: [
-      { label: "Same", value: "Both load: briefings, open positions, closed trades, shadow trades, accuracy stats. Both use buildSystemPrompt(config) + historyBlock. Both filter trades by agentConfigId (per-analyst)." },
+      { label: "Same", value: "Both load: briefings, open positions, closed trades, pass decisions, accuracy stats. Both use buildSystemPrompt(config) + historyBlock. Both filter trades by agentConfigId (per-analyst)." },
       { label: "Manual only", value: "Loads last 5 completed ResearchRun IDs + timestamps. Passes full config.maxOpenPositions (no slot calculation)." },
       { label: "Cron only", value: "Calculates slotsRemaining = maxOpenPositions - currentOpenCount. Passes slotsRemaining as maxOpenPositions to the system prompt. So if the analyst already has 3 of 5 positions, the prompt says \"Max open positions: 2\"." },
-      { label: "Same model", value: "Both use GPT-4.1 via openai(\"gpt-4.1\"). Both get all 18 tools from createResearchTools(). Both have stopWhen: stepCountIs(30)." },
+      { label: "Same model", value: "Both use GPT-4.1 via openai(\"gpt-4.1\"). Both get all 11 tools from createResearchTools(). Both have stopWhen: stepCountIs(30)." },
     ],
   },
 ];

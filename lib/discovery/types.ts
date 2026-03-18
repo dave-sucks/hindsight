@@ -95,6 +95,11 @@ export interface MarketOverviewResult {
   _sources: ToolSource[];
 }
 
+/** MarketContextResult — extends MarketOverviewResult with inline theme detection */
+export interface MarketContextResult extends MarketOverviewResult {
+  themes: MarketTheme[];
+}
+
 // ─── Tool 2: detect_market_themes ────────────────────────────────────────────
 
 export interface MarketTheme {
@@ -141,39 +146,22 @@ export interface ScanCatalystsResult {
   _sources: ToolSource[];
 }
 
-// ─── Tool 4: scan_candidates (enhanced) ──────────────────────────────────────
+// ─── Tool 4: scan_candidates (simplified — quality filtering deferred to get_stock_data) ──
 
-export interface ScanEarningsCandidate {
+export interface ScanCandidate {
   ticker: string;
-  source: string;                   // comma-joined sources: "earnings_calendar, watchlist"
-  date?: string;                    // earnings date
-  epsEstimate?: number | null;
-}
-
-export interface ScanMoverCandidate {
-  ticker: string;
-  source: string;
-  change_pct?: number;
-  price?: number;
-  volume_spike?: boolean;           // true if volume > 2x 10d avg
+  score: number;                    // multi-source ranking score
+  sources: string[];                // which data sources surfaced this ticker
+  change_pct?: number;              // daily change if from movers
+  date?: string;                    // earnings date if from earnings calendar
+  catalysts?: { type: string; date: string; details: string }[];
 }
 
 export interface ScanCandidatesResult {
-  // Existing fields (preserved)
-  earnings: ScanEarningsCandidate[];
-  movers: ScanMoverCandidate[];
+  candidates: ScanCandidate[];
   total_found: number;
   sources_queried: string[];
   note: string;
-
-  // v1 additions
-  filters_applied: {
-    min_market_cap: number;         // applied floor in dollars
-    min_avg_volume: number;         // applied floor in shares
-    theme_filter: string | null;    // theme name if used
-    dropped_count: number;          // how many candidates were filtered out
-  };
-  volume_spikes: string[];          // tickers with >2x avg volume
 
   _sources: ToolSource[];
 }

@@ -356,27 +356,15 @@ SuggestConfigEditorRender.displayName = "SuggestConfigEditorRender";
  * rich domain cards. Sources aggregated in Sources tab.
  */
 export function useRegisterResearchToolUIs(_runId?: string) {
-  // ── Market overview — rendered as CoT step by ResearchToolGroup ────
+  // ── Market context (was: market_overview + detect_market_themes) ────
   useAssistantToolUI({
-    toolName: "get_market_overview",
+    toolName: "get_market_context",
     render: () => null,
   });
 
-  // ── Scan candidates — rendered as CoT step by ResearchToolGroup ────
+  // ── Scan candidates (now includes catalysts) ────
   useAssistantToolUI({
     toolName: "scan_candidates",
-    render: () => null,
-  });
-
-  // ── Detect market themes — rendered as CoT step by ResearchToolGroup ────
-  useAssistantToolUI({
-    toolName: "detect_market_themes",
-    render: () => null,
-  });
-
-  // ── Scan catalysts — rendered as CoT step by ResearchToolGroup ────
-  useAssistantToolUI({
-    toolName: "scan_catalysts",
     render: () => null,
   });
 
@@ -457,12 +445,6 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Technical analysis — rendered as CoT step by ResearchToolGroup ──
-  useAssistantToolUI({
-    toolName: "get_technical_analysis",
-    render: () => null,
-  });
-
   // ── Earnings data — rendered as CoT step by ResearchToolGroup ───────
   useAssistantToolUI({
     toolName: "get_earnings_data",
@@ -475,15 +457,9 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
-  // ── Reddit sentiment — rendered as CoT step by ResearchToolGroup ────
+  // ── Social sentiment (was: reddit + twitter) — CoT step ─────────────
   useAssistantToolUI({
-    toolName: "get_reddit_sentiment",
-    render: () => null,
-  });
-
-  // ── StockTwits sentiment — rendered as CoT step by ResearchToolGroup
-  useAssistantToolUI({
-    toolName: "get_twitter_sentiment",
+    toolName: "get_social_sentiment",
     render: () => null,
   });
 
@@ -493,21 +469,9 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
-  // ── Analyst Targets — rendered as CoT step by ResearchToolGroup ─────
+  // ── Reddit search — rendered as CoT step by ResearchToolGroup ───────
   useAssistantToolUI({
-    toolName: "get_analyst_targets",
-    render: () => null,
-  });
-
-  // ── Company Peers — rendered as CoT step by ResearchToolGroup ───────
-  useAssistantToolUI({
-    toolName: "get_company_peers",
-    render: () => null,
-  });
-
-  // ── News Deep Dive — CoT step via ResearchToolGroup, articles in Sources tab ─
-  useAssistantToolUI({
-    toolName: "get_news_deep_dive",
+    toolName: "search_reddit",
     render: () => null,
   });
 

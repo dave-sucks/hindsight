@@ -144,12 +144,10 @@ export async function POST(req: Request) {
     });
 
     const {
-      get_market_overview,
-      detect_market_themes,
+      get_market_context,
       get_stock_data,
       get_earnings_data,
-      get_reddit_sentiment,
-      get_news_deep_dive,
+      get_social_sentiment,
       search_reddit,
     } = agentTools;
 
@@ -168,12 +166,10 @@ export async function POST(req: Request) {
         }),
 
         // Agent research tools (same data, same format, same domain cards)
-        get_market_overview,
-        detect_market_themes,
+        get_market_context,
         get_stock_data,
         get_earnings_data,
-        get_reddit_sentiment,
-        get_news_deep_dive,
+        get_social_sentiment,
         search_reddit,
       },
       stopWhen: stepCountIs(10),

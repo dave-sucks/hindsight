@@ -21,14 +21,9 @@ import {
   BarChart3,
   Calendar,
   FileText,
-  LineChart as LineChartIcon,
-  MessageSquare,
-  MessageSquareText,
-  Newspaper,
+  MessageCircle,
   Search,
-  Target,
   TrendingUp,
-  Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -108,8 +103,8 @@ interface ResearchStepConfig {
 
 export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
 
-  // ── Phase 1: Market Overview ──────────────────────────────────────────
-  get_market_overview: {
+  // ── Phase 1: Market Context ──────────────────────────────────────────
+  get_market_context: {
     icon: TrendingUp,
     sources: ["finnhub.io"],
     loadingLabel: () =>
@@ -137,8 +132,12 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
       const macroEvents = (result.macro_events_today ?? []) as { event: string; impact: string }[];
       const earningsDensity = result.earnings_density as { count?: number; period?: string } | undefined;
       const sectors = (result.sectors ?? []) as { symbol: string; change_pct: number; momentum?: string }[];
+      const themes = (result.themes ?? []) as {
+        label: string; strength: number; direction: string;
+        tickers: string[]; headline_matches: number;
+      }[];
 
-      const lines: string[] = [];
+      const lines: ReactNode[] = [];
 
       // Regime explanation
       if (regime) {
@@ -147,33 +146,33 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
           RISK_OFF: "Risk-off — Elevated VIX or SPY weakness. Favor defensive plays or shorts.",
           NEUTRAL: "Neutral regime — No strong directional bias in broad market.",
         };
-        lines.push(regimeMap[regime] ?? `Regime: ${regime}`);
+        lines.push(<div key="regime">{regimeMap[regime] ?? `Regime: ${regime}`}</div>);
       }
 
       // SPY trend detail
       if (spyTrend?.position && spyTrend.pct_from_sma != null) {
-        lines.push(`SPY is ${spyTrend.position} its 20-day SMA by ${Math.abs(spyTrend.pct_from_sma).toFixed(1)}%`);
+        lines.push(<div key="spy-trend">{`SPY is ${spyTrend.position} its 20-day SMA by ${Math.abs(spyTrend.pct_from_sma).toFixed(1)}%`}</div>);
       }
 
       // VIX context
       if (vix?.level) {
         const vixContext = vix.level > 30 ? "High fear" : vix.level > 20 ? "Elevated uncertainty" : "Low volatility";
-        lines.push(`${vixContext} (VIX ${vix.level.toFixed(1)})`);
+        lines.push(<div key="vix">{`${vixContext} (VIX ${vix.level.toFixed(1)})`}</div>);
       }
 
       // Macro events
       if (macroEvents.length > 0) {
         const highImpact = macroEvents.filter(e => e.impact === "HIGH");
         if (highImpact.length > 0) {
-          lines.push(`${highImpact.length} high-impact macro event${highImpact.length !== 1 ? "s" : ""} today: ${highImpact.slice(0, 3).map(e => e.event).join(", ")}`);
+          lines.push(<div key="macro">{`${highImpact.length} high-impact macro event${highImpact.length !== 1 ? "s" : ""} today: ${highImpact.slice(0, 3).map(e => e.event).join(", ")}`}</div>);
         } else {
-          lines.push(`${macroEvents.length} macro event${macroEvents.length !== 1 ? "s" : ""} today (none high-impact)`);
+          lines.push(<div key="macro">{`${macroEvents.length} macro event${macroEvents.length !== 1 ? "s" : ""} today (none high-impact)`}</div>);
         }
       }
 
       // Earnings density
       if (earningsDensity?.count) {
-        lines.push(`${earningsDensity.count} companies reporting earnings ${earningsDensity.period ?? "this week"}`);
+        lines.push(<div key="earnings">{`${earningsDensity.count} companies reporting earnings ${earningsDensity.period ?? "this week"}`}</div>);
       }
 
       // Sector detail
@@ -182,129 +181,40 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
         const sectorLine = sorted.map(s =>
           `${s.symbol} ${fmtPct(s.change_pct)}`
         ).join("  ·  ");
-        lines.push(`Sectors: ${sectorLine}`);
+        lines.push(<div key="sectors">{`Sectors: ${sectorLine}`}</div>);
+      }
+
+      // Themes (merged from detect_market_themes)
+      if (themes.length > 0) {
+        lines.push(
+          <div key="themes" className="space-y-1 pt-1">
+            <div className="font-medium text-foreground">Themes:</div>
+            {themes.map((t, i) => {
+              const dir = t.direction === "BULLISH" ? "bullish" : t.direction === "BEARISH" ? "bearish" : "neutral";
+              const dirColor = t.direction === "BULLISH" ? "text-emerald-500" : t.direction === "BEARISH" ? "text-red-500" : "";
+              const strengthPct = (t.strength * 100).toFixed(0);
+              return (
+                <div key={i}>
+                  <span className={dirColor}>{t.label}</span>
+                  {" — "}
+                  <span className={dirColor}>{dir}</span>
+                  {", "}
+                  strength {strengthPct}%
+                  {t.tickers.length > 0 && (
+                    <span className="text-muted-foreground"> · {t.tickers.slice(0, 5).join(", ")}</span>
+                  )}
+                  {t.headline_matches > 0 && (
+                    <span className="text-muted-foreground"> · {t.headline_matches} headlines</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
       }
 
       if (lines.length === 0) return null;
-      return lines.map((line, i) => <div key={i}>{line}</div>);
-    },
-  },
-
-  // ── Phase 2: Theme Detection ──────────────────────────────────────────
-  detect_market_themes: {
-    icon: Newspaper,
-    sources: ["finnhub.io", "reddit.com"],
-    loadingLabel: () =>
-      "Detecting market themes — analyzing headlines and Reddit trends",
-    completeLabel: (_ticker, result) => {
-      const themes = (result.themes ?? []) as { label: string; direction: string }[];
-      const meta = result.meta as { headlines_analyzed?: number } | undefined;
-      if (themes.length === 0) return "No strong market themes detected";
-      const headlineCount = meta?.headlines_analyzed ?? 0;
-      return `${themes.length} theme${themes.length !== 1 ? "s" : ""} detected from ${headlineCount} headlines`;
-    },
-    completeDescription: (_ticker, result) => {
-      const themes = (result.themes ?? []) as {
-        label: string; direction: string; strength: number;
-        tickers: string[]; headline_matches: number; reddit_overlap: number;
-        representative_headlines?: string[];
-      }[];
-      const meta = result.meta as { reddit_tickers_found?: number } | undefined;
-
-      if (themes.length === 0) return null;
-
-      return (
-        <div className="space-y-1.5">
-          {themes.map((t, i) => {
-            const dir = t.direction === "BULLISH" ? "bullish" : t.direction === "BEARISH" ? "bearish" : "neutral";
-            const dirColor = t.direction === "BULLISH" ? "text-emerald-500" : t.direction === "BEARISH" ? "text-red-500" : "";
-            const strengthPct = (t.strength * 100).toFixed(0);
-            return (
-              <div key={i}>
-                <span className={dirColor}>{t.label}</span>
-                {" — "}
-                <span className={dirColor}>{dir}</span>
-                {", "}
-                strength {strengthPct}%
-                {t.tickers.length > 0 && (
-                  <span className="text-muted-foreground"> · {t.tickers.slice(0, 5).join(", ")}</span>
-                )}
-                {t.headline_matches > 0 && (
-                  <span className="text-muted-foreground"> · {t.headline_matches} headlines</span>
-                )}
-                {t.reddit_overlap > 0 && (
-                  <span className="text-muted-foreground"> · {t.reddit_overlap} Reddit mentions</span>
-                )}
-              </div>
-            );
-          })}
-          {meta?.reddit_tickers_found != null && meta.reddit_tickers_found > 0 && (
-            <div className="text-muted-foreground">{meta.reddit_tickers_found} tickers trending on Reddit</div>
-          )}
-        </div>
-      );
-    },
-  },
-
-  // ── Phase 3: Catalyst Scan ────────────────────────────────────────────
-  scan_catalysts: {
-    icon: Calendar,
-    sources: ["finnhub.io", "financialmodelingprep.com"],
-    loadingLabel: () =>
-      "Scanning for catalysts — earnings, economic events, insider buying, analyst actions",
-    completeLabel: (_ticker, result) => {
-      const summary = result.summary as { total?: number; by_type?: Record<string, number>; next_high_impact?: string | null } | undefined;
-      if (!summary?.total) return "No upcoming catalysts found";
-      const parts: string[] = [];
-      const byType = summary.by_type ?? {};
-      if (byType.EARNINGS) parts.push(`${byType.EARNINGS} earnings`);
-      if (byType.ECONOMIC) parts.push(`${byType.ECONOMIC} economic`);
-      if (byType.INSIDER) parts.push(`${byType.INSIDER} insider`);
-      if (byType.ANALYST_ACTION) parts.push(`${byType.ANALYST_ACTION} analyst`);
-      let label = `${summary.total} catalysts — ${parts.join(", ")}`;
-      if (summary.next_high_impact) label += `. Next high-impact: ${summary.next_high_impact}`;
-      return label;
-    },
-    completeDescription: (_ticker, result) => {
-      const catalysts = (result.catalysts ?? []) as {
-        ticker: string | null; catalyst_type: string; date: string;
-        expected_impact: string; direction_bias: string; details: string;
-      }[];
-
-      if (catalysts.length === 0) return null;
-
-      // Show high-impact catalysts first, then a summary of the rest
-      const highImpact = catalysts.filter(c => c.expected_impact === "HIGH").slice(0, 5);
-      const mediumCount = catalysts.filter(c => c.expected_impact === "MEDIUM").length;
-      const lowCount = catalysts.filter(c => c.expected_impact === "LOW").length;
-
-      return (
-        <div className="space-y-1">
-          {highImpact.length > 0 && (
-            <>
-              <div className="font-medium text-foreground">High-impact upcoming:</div>
-              {highImpact.map((c, i) => {
-                const biasColor = c.direction_bias === "BULLISH" ? "text-emerald-500" : c.direction_bias === "BEARISH" ? "text-red-500" : "";
-                return (
-                  <div key={i}>
-                    {c.date} — {c.ticker ? `${c.ticker}: ` : ""}{c.details}
-                    {c.direction_bias !== "UNKNOWN" && (
-                      <span className={biasColor}> ({c.direction_bias.toLowerCase()})</span>
-                    )}
-                  </div>
-                );
-              })}
-            </>
-          )}
-          {(mediumCount > 0 || lowCount > 0) && (
-            <div className="text-muted-foreground">
-              Also: {mediumCount > 0 ? `${mediumCount} medium-impact` : ""}
-              {mediumCount > 0 && lowCount > 0 ? ", " : ""}
-              {lowCount > 0 ? `${lowCount} low-impact` : ""} events
-            </div>
-          )}
-        </div>
-      );
+      return <div className="space-y-1">{lines}</div>;
     },
   },
 
@@ -315,63 +225,31 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
     loadingLabel: () =>
       "Scanning for trade candidates — checking earnings calendar, market movers, and social trends",
     completeLabel: (_ticker, result) => {
-      const earnings = (result.earnings ?? []) as unknown[];
-      const movers = (result.movers ?? []) as unknown[];
-      const total = (result.total_found as number) ?? earnings.length + movers.length;
-      return `Found ${total} candidates — ${earnings.length} from earnings, ${movers.length} movers`;
+      const candidates = (result.candidates ?? []) as unknown[];
+      const total = (result.total_found as number) ?? candidates.length;
+      return `Found ${total} candidates from earnings, movers, and social trends`;
     },
     completeDescription: (_ticker, result) => {
-      const earnings = (result.earnings ?? []) as { ticker: string; source: string; date?: string; epsEstimate?: number | null }[];
-      const movers = (result.movers ?? []) as { ticker: string; source: string; change_pct?: number; price?: number; volume_spike?: boolean }[];
-      const filters = result.filters_applied as { min_market_cap?: number; min_avg_volume?: number; dropped_count?: number; theme_filter?: string | null } | undefined;
-      const volumeSpikes = (result.volume_spikes ?? []) as string[];
+      const candidates = (result.candidates ?? []) as { ticker: string; score: number; sources: string[]; change_pct?: number; date?: string }[];
       const sourcesQueried = (result.sources_queried ?? []) as string[];
 
       return (
         <div className="space-y-1.5">
-          {/* Earnings candidates */}
-          {earnings.length > 0 && (
+          {candidates.length > 0 && (
             <div>
-              <span className="text-foreground">Earnings plays:</span>{" "}
-              {earnings.map((e, i) => (
-                <span key={i}>
-                  {i > 0 && ", "}
-                  <span className="text-foreground">{e.ticker}</span>
-                  {e.date && <span className="text-muted-foreground"> ({e.date})</span>}
-                  {e.epsEstimate != null && <span className="text-muted-foreground"> est ${e.epsEstimate.toFixed(2)}</span>}
-                </span>
-              ))}
-            </div>
-          )}
-          {/* Mover candidates */}
-          {movers.length > 0 && (
-            <div>
-              <span className="text-foreground">Movers:</span>{" "}
-              {movers.map((m, i) => {
-                const changeColor = (m.change_pct ?? 0) >= 0 ? "text-emerald-500" : "text-red-500";
+              <span className="text-foreground">Top candidates:</span>{" "}
+              {candidates.map((c, i) => {
+                const changeColor = (c.change_pct ?? 0) >= 0 ? "text-emerald-500" : "text-red-500";
                 return (
                   <span key={i}>
                     {i > 0 && ", "}
-                    <span className="text-foreground">{m.ticker}</span>
-                    {m.change_pct != null && <span className={changeColor}> {fmtPct(m.change_pct)}</span>}
-                    {m.volume_spike && <span className="text-amber-500"> vol spike</span>}
+                    <span className="text-foreground">{c.ticker}</span>
+                    {c.change_pct != null && <span className={changeColor}> {fmtPct(c.change_pct)}</span>}
+                    {c.date && <span className="text-muted-foreground"> ({c.date})</span>}
+                    <span className="text-muted-foreground"> [{c.sources.join(", ")}]</span>
                   </span>
                 );
               })}
-            </div>
-          )}
-          {/* Volume spikes */}
-          {volumeSpikes.length > 0 && (
-            <div className="text-amber-500">
-              Volume spikes detected: {volumeSpikes.join(", ")}
-            </div>
-          )}
-          {/* Filters applied */}
-          {filters && (
-            <div className="text-muted-foreground">
-              Filters: min cap {fmtCompact(filters.min_market_cap)}, min vol {fmtVolume(filters.min_avg_volume)}
-              {filters.dropped_count != null && filters.dropped_count > 0 && ` — ${filters.dropped_count} dropped`}
-              {filters.theme_filter && ` — boosting "${filters.theme_filter}" theme`}
             </div>
           )}
           {/* Sources queried */}
@@ -395,9 +273,12 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
       const quote = result.quote as { price?: number; change_pct?: number } | null;
       const company = result.company as { name?: string } | null;
       const news = (result.news ?? []) as unknown[];
+      const technicals = result.technicals as { trend?: string; rsi_14?: number } | null;
       let label = `Got ${ticker}`;
       if (company?.name) label += ` — ${company.name}`;
       if (quote?.price != null) label += `, ${fmtPrice(quote.price)} (${fmtPct(quote.change_pct)})`;
+      if (technicals?.trend) label += `. Trend: ${technicals.trend}`;
+      if (technicals?.rsi_14 != null) label += `, RSI ${technicals.rsi_14.toFixed(1)}`;
       if (news.length > 0) label += `. ${news.length} news article${news.length !== 1 ? "s" : ""}`;
       return label;
     },
@@ -406,6 +287,12 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
       const financials = result.financials as { pe_ratio?: number; pb_ratio?: number; high_52w?: number; low_52w?: number; avg_volume_10d?: number; beta?: number } | null;
       const analyst = result.analyst_consensus as { buy?: number; hold?: number; sell?: number; strong_buy?: number; strong_sell?: number } | null;
       const news = (result.news ?? []) as { headline?: string; source?: string }[];
+      const technicals = result.technicals as {
+        rsi_14?: number; sma_20?: number; sma_50?: number;
+        price_vs_sma20?: string; price_vs_sma50?: string;
+        position_in_52w_range?: string; volume_ratio?: string;
+        current_price?: number; trend?: string;
+      } | null;
 
       const lines: ReactNode[] = [];
 
@@ -429,6 +316,25 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
         }
         if (financials.avg_volume_10d != null) parts.push(`Avg vol ${fmtVolume(financials.avg_volume_10d)}`);
         if (parts.length > 0) lines.push(<div key="fin">{parts.join("  ·  ")}</div>);
+      }
+
+      // Technicals (merged from get_technical_analysis)
+      if (technicals) {
+        const techParts: string[] = [];
+        if (technicals.rsi_14 != null) {
+          const rsi = technicals.rsi_14;
+          const level = rsi > 70 ? "overbought" : rsi < 30 ? "oversold" : rsi > 60 ? "bullish" : rsi < 40 ? "bearish" : "neutral";
+          techParts.push(`RSI ${rsi.toFixed(1)} (${level})`);
+        }
+        if (technicals.current_price != null && technicals.sma_20 != null) {
+          techParts.push(`SMA-20 ${fmtPrice(technicals.sma_20)} (${technicals.price_vs_sma20 ?? "—"})`);
+        }
+        if (technicals.sma_50 != null) {
+          techParts.push(`SMA-50 ${fmtPrice(technicals.sma_50)} (${technicals.price_vs_sma50 ?? "—"})`);
+        }
+        if (technicals.position_in_52w_range) techParts.push(`52W pos: ${technicals.position_in_52w_range}`);
+        if (technicals.volume_ratio) techParts.push(`Vol: ${technicals.volume_ratio}`);
+        if (techParts.length > 0) lines.push(<div key="tech">{techParts.join("  ·  ")}</div>);
       }
 
       // Analyst consensus
@@ -459,50 +365,6 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
 
       if (lines.length === 0) return null;
       return <div className="space-y-1">{lines}</div>;
-    },
-  },
-
-  // ── Per-ticker: Technical Analysis ────────────────────────────────────
-  get_technical_analysis: {
-    icon: LineChartIcon,
-    sources: ["financialmodelingprep.com"],
-    loadingLabel: (ticker) =>
-      `Running technical analysis on ${ticker} — RSI, moving averages, volume`,
-    completeLabel: (ticker, result) => {
-      if (result.error) return `No technical data available for ${ticker}`;
-      const trend = result.trend as string | null;
-      let label = `Technicals for ${ticker}`;
-      if (trend) label += ` — ${trend}`;
-      return label;
-    },
-    completeDescription: (ticker, result) => {
-      if (result.error) return result.note ? String(result.note) : null;
-
-      const rsi = result.rsi_14 as number | null;
-      const sma20 = result.sma_20 as number | null;
-      const sma50 = result.sma_50 as number | null;
-      const priceSma20 = result.price_vs_sma20 as string | null;
-      const priceSma50 = result.price_vs_sma50 as string | null;
-      const range52w = result.position_in_52w_range as string | null;
-      const volumeRatio = result.volume_ratio as string | null;
-      const currentPrice = result.current_price as number | null;
-
-      const lines: string[] = [];
-
-      if (rsi != null) {
-        const level = rsi > 70 ? "overbought — potential reversal" : rsi < 30 ? "oversold — potential bounce" : rsi > 60 ? "bullish momentum" : rsi < 40 ? "bearish momentum" : "neutral range";
-        lines.push(`RSI ${rsi.toFixed(1)} — ${level}`);
-      }
-
-      if (currentPrice != null && sma20 != null) {
-        lines.push(`Price ${fmtPrice(currentPrice)} vs SMA-20 ${fmtPrice(sma20)} (${priceSma20 ?? "—"}) · SMA-50 ${sma50 != null ? fmtPrice(sma50) : "—"} (${priceSma50 ?? "—"})`);
-      }
-
-      if (range52w) lines.push(`Position in 52-week range: ${range52w}`);
-      if (volumeRatio) lines.push(`Volume: ${volumeRatio}`);
-
-      if (lines.length === 0) return null;
-      return lines.map((line, i) => <div key={i}>{line}</div>);
     },
   },
 
@@ -604,94 +466,31 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
     },
   },
 
-  // ── Per-ticker: Reddit Sentiment ──────────────────────────────────────
-  get_reddit_sentiment: {
-    icon: MessageSquare,
-    sources: ["reddit.com"],
+  // ── Per-ticker: Social Sentiment (Reddit + StockTwits) ──────────────
+  get_social_sentiment: {
+    icon: MessageCircle,
+    sources: ["stocktwits.com", "reddit.com", "financialmodelingprep.com"],
     loadingLabel: (ticker) =>
-      `Scanning Reddit for ${ticker} mentions — WSB, r/stocks, r/options, r/investing`,
+      `Checking social sentiment for ${ticker}`,
     completeLabel: (ticker, result) => {
-      if (!result.available) return `No Reddit mentions found for ${ticker}`;
-      const mentions = result.mention_count as number | undefined;
-      const sentiment = result.sentiment as string | undefined;
-      let label = `Reddit for ${ticker}`;
-      if (mentions != null) label += ` — ${mentions} mention${mentions !== 1 ? "s" : ""}`;
-      if (sentiment) label += `, sentiment: ${sentiment}`;
-      return label;
-    },
-    completeDescription: (_ticker, result) => {
-      if (!result.available) return null;
-      const sources = (result.sources ?? []) as { provider: string; title: string; score: number; comments: number }[];
-      const trending = result.trending as boolean | undefined;
-      const sentimentScore = result.sentiment_score as number | undefined;
-
-      const lines: ReactNode[] = [];
-
-      if (sentimentScore != null) {
-        lines.push(<div key="score">Sentiment score: {sentimentScore.toFixed(2)}{trending ? " · Trending" : ""}</div>);
-      }
-
-      if (sources.length > 0) {
-        lines.push(
-          <div key="posts" className="space-y-0.5">
-            {sources.slice(0, 3).map((s, i) => (
-              <div key={i} className="truncate">
-                {s.provider}: {s.title} (+{s.score}, {s.comments} comments)
-              </div>
-            ))}
-          </div>
-        );
-      }
-
-      if (lines.length === 0) return null;
-      return <div className="space-y-1">{lines}</div>;
+      const reddit = result.reddit as { mentions?: number; sentiment?: string } | null;
+      const stocktwits = result.stocktwits as { mentions?: number; sentiment?: string } | null;
+      const parts: string[] = [];
+      if (reddit?.mentions) parts.push(`Reddit: ${reddit.mentions} mentions, ${reddit.sentiment}`);
+      if (stocktwits?.mentions) parts.push(`StockTwits: ${stocktwits.mentions} posts, ${stocktwits.sentiment}`);
+      return parts.length > 0 ? `Social sentiment for ${ticker} — ${parts.join(" · ")}` : `No social data for ${ticker}`;
     },
   },
 
-  // ── Per-ticker: StockTwits / Twitter Sentiment ────────────────────────
-  get_twitter_sentiment: {
-    icon: MessageSquareText,
-    sources: ["stocktwits.com", "financialmodelingprep.com"],
-    loadingLabel: (ticker) =>
-      `Checking StockTwits and social sentiment for ${ticker}`,
-    completeLabel: (ticker, result) => {
-      if (!result.available) return `No StockTwits data found for ${ticker}`;
-      const mentions = result.mention_count as number | undefined;
-      const sentiment = result.sentiment as string | undefined;
-      const watchlist = result.watchlist_count as number | undefined;
-      let label = `StockTwits for ${ticker}`;
-      if (mentions != null) label += ` — ${mentions} post${mentions !== 1 ? "s" : ""}`;
-      if (sentiment) label += `, sentiment: ${sentiment}`;
-      if (watchlist != null) label += `. ${fmtVolume(watchlist)} watchlist`;
-      return label;
-    },
-    completeDescription: (_ticker, result) => {
-      if (!result.available) return null;
-      const posts = (result.posts ?? []) as { body: string; username: string; likes?: number }[];
-      const fmpSentiment = result.fmp_sentiment as { sentiment: number; mentions: number } | null;
-      const sentimentScore = result.sentiment_score as number | undefined;
-
-      const lines: ReactNode[] = [];
-
-      if (sentimentScore != null || fmpSentiment) {
-        const parts: string[] = [];
-        if (sentimentScore != null) parts.push(`StockTwits score: ${sentimentScore.toFixed(2)}`);
-        if (fmpSentiment) parts.push(`FMP sentiment: ${fmpSentiment.sentiment.toFixed(2)} (${fmpSentiment.mentions} mentions)`);
-        lines.push(<div key="scores">{parts.join("  ·  ")}</div>);
-      }
-
-      if (posts.length > 0) {
-        lines.push(
-          <div key="posts" className="space-y-0.5">
-            {posts.slice(0, 2).map((p, i) => (
-              <div key={i} className="truncate">@{p.username}: {p.body.slice(0, 120)}{p.body.length > 120 ? "..." : ""}</div>
-            ))}
-          </div>
-        );
-      }
-
-      if (lines.length === 0) return null;
-      return <div className="space-y-1">{lines}</div>;
+  // ── Search Reddit ─────────────────────────────────────────────────────
+  search_reddit: {
+    icon: Search,
+    sources: ["reddit.com"],
+    loadingLabel: () => "Searching Reddit trading communities",
+    completeLabel: (_ticker, result) => {
+      const count = (result.results as unknown[] | undefined)?.length ?? 0;
+      const query = result.query as string || "topic";
+      return `Reddit search — ${count} results for "${query}"`;
     },
   },
 
@@ -728,114 +527,6 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
     },
   },
 
-  // ── Per-ticker: Analyst Targets ───────────────────────────────────────
-  get_analyst_targets: {
-    icon: Target,
-    sources: ["financialmodelingprep.com"],
-    loadingLabel: (ticker) =>
-      `Fetching Wall Street analyst consensus for ${ticker} via FMP`,
-    completeLabel: (ticker, result) => {
-      const hasTargets = result.consensus_target != null || result.high != null;
-      if (!hasTargets) return `No analyst coverage found for ${ticker}`;
-      const n = result.num_analysts ?? 0;
-      const consensus = (result.consensus_target as number)?.toFixed(2) ?? "N/A";
-      return `Analyst targets for ${ticker} — ${n} analysts, consensus $${consensus}`;
-    },
-    completeDescription: (_ticker, result) => {
-      const hasTargets = result.consensus_target != null || result.high != null;
-      if (!hasTargets) return null;
-
-      const consensus = result.consensus_target as number | undefined;
-      const high = result.high as number | undefined;
-      const low = result.low as number | undefined;
-      const median = result.median as number | undefined;
-
-      const parts: string[] = [];
-      if (low != null && high != null) parts.push(`Range: ${fmtPrice(low)} – ${fmtPrice(high)}`);
-      if (median != null) parts.push(`Median: ${fmtPrice(median)}`);
-      if (consensus != null) parts.push(`Consensus: ${fmtPrice(consensus)}`);
-
-      if (parts.length === 0) return null;
-      return <div>{parts.join("  ·  ")}</div>;
-    },
-  },
-
-  // ── Per-ticker: Peer Comparison ───────────────────────────────────────
-  get_company_peers: {
-    icon: Users,
-    sources: ["finnhub.io"],
-    loadingLabel: (ticker) =>
-      `Finding peer companies for ${ticker} via Finnhub`,
-    completeLabel: (ticker, result) => {
-      const peers = (result.peers ?? []) as { ticker: string }[];
-      if (peers.length === 0) return `No peer companies found for ${ticker}`;
-      const names = peers.slice(0, 5).map(p => p.ticker).join(", ");
-      const extra = peers.length > 5 ? ` +${peers.length - 5} more` : "";
-      return `Peers for ${ticker} — ${peers.length} companies: ${names}${extra}`;
-    },
-    completeDescription: (_ticker, result) => {
-      const peers = (result.peers ?? []) as { ticker: string; name?: string; price?: number | null; change_pct?: number | null; pe_ratio?: number | null; market_cap?: number | null }[];
-      if (peers.length === 0) return null;
-
-      // Show peers with price changes
-      const peersWithData = peers.filter(p => p.price != null).slice(0, 6);
-      if (peersWithData.length === 0) return null;
-
-      return (
-        <div className="space-y-0.5">
-          {peersWithData.map((p, i) => {
-            const changeColor = (p.change_pct ?? 0) >= 0 ? "text-emerald-500" : "text-red-500";
-            return (
-              <div key={i}>
-                <span className="text-foreground">{p.ticker}</span>
-                {p.name && <span className="text-muted-foreground"> ({p.name})</span>}
-                {p.price != null && <span> {fmtPrice(p.price)}</span>}
-                {p.change_pct != null && <span className={changeColor}> {fmtPct(p.change_pct)}</span>}
-                {p.pe_ratio != null && <span className="text-muted-foreground"> · P/E {p.pe_ratio.toFixed(1)}</span>}
-                {p.market_cap != null && <span className="text-muted-foreground"> · {fmtCompact(p.market_cap)}</span>}
-              </div>
-            );
-          })}
-        </div>
-      );
-    },
-  },
-
-  // ── Per-ticker: News Deep Dive ────────────────────────────────────────
-  get_news_deep_dive: {
-    icon: Newspaper,
-    sources: ["finnhub.io", "financialmodelingprep.com"],
-    loadingLabel: (ticker) =>
-      `Deep diving into news and press releases for ${ticker}`,
-    completeLabel: (ticker, result) => {
-      const stockNews = (result.stock_news ?? []) as unknown[];
-      const pressReleases = (result.press_releases ?? []) as unknown[];
-      const total = stockNews.length + pressReleases.length;
-      if (total === 0) return `No recent news found for ${ticker}`;
-      return `${stockNews.length} article${stockNews.length !== 1 ? "s" : ""} and ${pressReleases.length} press release${pressReleases.length !== 1 ? "s" : ""} for ${ticker}`;
-    },
-    completeDescription: (_ticker, result) => {
-      const stockNews = (result.stock_news ?? []) as { headline?: string; source?: string; date?: string }[];
-      const pressReleases = (result.press_releases ?? []) as { headline?: string; date?: string }[];
-
-      if (stockNews.length === 0 && pressReleases.length === 0) return null;
-
-      return (
-        <div className="space-y-0.5">
-          {stockNews.slice(0, 3).map((n, i) => (
-            <div key={`news-${i}`} className="truncate">
-              {n.source && <span className="text-foreground">{n.source}:</span>} {n.headline}
-            </div>
-          ))}
-          {pressReleases.slice(0, 2).map((p, i) => (
-            <div key={`pr-${i}`} className="truncate">
-              <span className="text-foreground">PR:</span> {p.headline}
-            </div>
-          ))}
-        </div>
-      );
-    },
-  },
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -896,7 +587,7 @@ export function ResearchToolGroup({
     ...new Set(stepParts.map((s) => extractTicker(s.args)).filter(Boolean)),
   ];
   const hasMarketTools = stepParts.some(
-    (s) => s.toolName === "get_market_overview" || s.toolName === "scan_candidates",
+    (s) => s.toolName === "get_market_context" || s.toolName === "scan_candidates",
   );
   const headerLabel =
     tickers.length === 1
