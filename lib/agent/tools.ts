@@ -10,7 +10,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getBars } from "@/lib/alpaca";
-import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult } from "@/lib/discovery/types";
+import type { MarketOverviewResult, MarketContextResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult, ScanCandidate, MarketTheme, ThemeDirection, DetectMarketThemesResult, ToolSource } from "@/lib/discovery/types";
 import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
@@ -380,7 +380,7 @@ const scanParams = z.object({
   theme_filter: z
     .string()
     .optional()
-    .describe("Theme name from detect_market_themes to boost matching tickers (e.g. 'AI Infrastructure')"),
+    .describe("Theme name from get_market_context to boost matching tickers (e.g. 'AI Infrastructure')"),
   min_market_cap: z
     .number()
     .optional()
@@ -480,13 +480,13 @@ export function createResearchTools(ctx: ToolContext) {
   console.log(`[tools] Creating research tools for runId=${ctx.runId} analystId=${ctx.analystId ?? "none"}`);
 
   return {
-    get_market_overview: tool({
+    get_market_context: tool({
       description:
-        "Get current market conditions: S&P 500, VIX, and sector ETF performance. Call this first to understand the market environment.",
+        "Get current market conditions: S&P 500, VIX, sector ETF performance, and dominant market themes/narratives. Call this first to understand the market environment and what stories are driving capital flows.",
       inputSchema: emptyParams,
-      execute: async (): Promise<MarketOverviewResult> => {
+      execute: async (): Promise<MarketContextResult> => {
         const _t0 = Date.now();
-        logToolStart("get_market_overview", ctx.runId, undefined, stats);
+        logToolStart("get_market_context", ctx.runId, undefined, stats);
         const errors: string[] = [];
 
         const today = new Date().toISOString().slice(0, 10);
@@ -500,7 +500,7 @@ export function createResearchTools(ctx: ToolContext) {
         // Fetch SPY + all sector ETFs from Finnhub in parallel,
         // plus SPY candles, macro calendar, and earnings density
         const allSymbols = ["SPY", ...SECTOR_ETFS];
-        const [quoteResults, spyCandleResult, macroCalResult, earningsDensityResult] = await Promise.all([
+        const [quoteResults, spyCandleResult, macroCalResult, earningsDensityResult, generalNewsResult] = await Promise.all([
           // All quotes in parallel
           Promise.all(
             allSymbols.map(async (sym) => {
@@ -519,12 +519,14 @@ export function createResearchTools(ctx: ToolContext) {
           fmp(`/economic_calendar?from=${today}&to=${today}`, stats),
           // Finnhub earnings calendar for next 5 days
           finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`, 2, stats),
+          // Finnhub general news for inline theme detection
+          finnhub(`/news?category=general&minId=0`, 2, stats),
         ]);
 
         const spyData = quoteResults[0];
         const sectorsRaw = quoteResults.slice(1).filter(Boolean);
 
-        console.log(`[tool] get_market_overview SPY=${spyData ? `$${spyData.price}` : "null"} sectors=${sectorsRaw.length}`);
+        console.log(`[tool] get_market_context SPY=${spyData ? `$${spyData.price}` : "null"} sectors=${sectorsRaw.length}`);
 
         // VIX: Finnhub first, then VIXY fallback
         let vixLevel: number | null = null;
@@ -629,7 +631,66 @@ export function createResearchTools(ctx: ToolContext) {
           }))
           .sort((a, b) => b.change_pct - a.change_pct);
 
-        logToolEnd("get_market_overview", _t0, ctx.runId, `SPY=${spyData ? `$${spyData.price}` : "null"} regime=${regime}`, stats);
+        // ── Inline theme detection (keyword-based, no extra API calls) ───
+        const BEARISH_WORDS = ["crash", "decline", "selloff", "warning", "downgrade", "risk", "fear", "plunge"];
+        const BULLISH_WORDS = ["surge", "rally", "beat", "upgrade", "growth", "record", "breakout", "soar"];
+
+        const newsArticlesRaw = generalNewsResult.data as { headline: string; summary: string; source: string; url: string; datetime: number }[] | null;
+        const newsArticles = Array.isArray(newsArticlesRaw) ? newsArticlesRaw.slice(0, 50) : [];
+        const headlineTexts = newsArticles.map((a) => a.headline);
+        const allTexts = newsArticles.map((a) => `${a.headline} ${a.summary ?? ""}`);
+        const topSectors = new Set(sectors.filter((s) => s.change_pct > 0.5).map((s) => s.symbol));
+
+        const scoredThemes: (MarketTheme & { rawScore: number })[] = [];
+        for (const [id, def] of Object.entries(THEME_DEFINITIONS)) {
+          let headlineMatches = 0;
+          const matchedHeadlines: string[] = [];
+          let bullishCount = 0;
+          let bearishCount = 0;
+
+          for (let i = 0; i < allTexts.length; i++) {
+            const text = allTexts[i].toLowerCase();
+            if (def.keywords.some((kw) => text.includes(kw.toLowerCase()))) {
+              headlineMatches++;
+              if (matchedHeadlines.length < 3) matchedHeadlines.push(headlineTexts[i]);
+              const hl = headlineTexts[i].toLowerCase();
+              for (const w of BULLISH_WORDS) { if (hl.includes(w)) bullishCount++; }
+              for (const w of BEARISH_WORDS) { if (hl.includes(w)) bearishCount++; }
+            }
+          }
+
+          const sectorBonus = def.sectors.filter((s) => topSectors.has(s)).length;
+          const rawScore = headlineMatches * 2 + sectorBonus * 2;
+          if (rawScore === 0) continue;
+
+          let direction: ThemeDirection = "NEUTRAL";
+          if (bullishCount > bearishCount) direction = "BULLISH";
+          else if (bearishCount > bullishCount) direction = "BEARISH";
+
+          scoredThemes.push({
+            id,
+            label: def.label,
+            strength: 0,
+            direction,
+            tickers: def.tickers.slice(0, 4),
+            headline_matches: headlineMatches,
+            reddit_overlap: 0,
+            representative_headlines: matchedHeadlines,
+            rawScore,
+          });
+        }
+
+        const maxThemeScore = Math.max(...scoredThemes.map((t) => t.rawScore), 1);
+        for (const theme of scoredThemes) {
+          theme.strength = Math.round((theme.rawScore / maxThemeScore) * 100) / 100;
+        }
+        const themes: MarketTheme[] = scoredThemes
+          .filter((t) => t.strength >= 0.1)
+          .sort((a, b) => b.strength - a.strength)
+          .slice(0, 8)
+          .map(({ rawScore: _, ...theme }) => theme);
+
+        logToolEnd("get_market_context", _t0, ctx.runId, `SPY=${spyData ? `$${spyData.price}` : "null"} regime=${regime} themes=${themes.length}`, stats);
         return {
           spy: spyData
             ? {
@@ -647,6 +708,7 @@ export function createResearchTools(ctx: ToolContext) {
           spy_trend: spyTrend,
           macro_events_today: macroEventsToday,
           earnings_density: earningsDensity,
+          themes,
           // Tell the agent exactly what failed so it can adapt
           ...(errors.length > 0 ? { api_errors: errors, note: `Some data sources failed: ${errors.join("; ")}. Analyze what's available and proceed.` } : {}),
           _sources: [
@@ -851,12 +913,43 @@ export function createResearchTools(ctx: ToolContext) {
           .slice(0, 15);
 
         // ── Build output (no per-ticker API calls — quality filtering deferred to get_stock_data) ──
-        const candidates = ranked.map(([ticker, v]) => ({
+        const candidatesRaw = ranked.map(([ticker, v]) => ({
           ticker,
           score: v.score,
           sources: v.sources,
           change_pct: (v.data as { change_pct?: number }).change_pct,
           date: (v.data as { date?: string }).date,
+          catalysts: undefined as { type: string; date: string; details: string }[] | undefined,
+        }));
+
+        // ── Inline catalyst fetch (merged from scan_catalysts) ─────────────
+        let catalystSources: ToolSource[] = [];
+        try {
+          const { scanCatalysts } = await import("@/lib/discovery/catalysts");
+          const catalystResult = await scanCatalysts({ forwardDays: 14 });
+          const catalystsByTicker = new Map<string, { type: string; date: string; details: string }[]>();
+          for (const c of catalystResult.catalysts) {
+            if (!c.ticker) continue;
+            const sym = c.ticker.toUpperCase();
+            if (!catalystsByTicker.has(sym)) catalystsByTicker.set(sym, []);
+            catalystsByTicker.get(sym)!.push({
+              type: c.catalyst_type,
+              date: c.date,
+              details: c.details,
+            });
+          }
+          for (const candidate of candidatesRaw) {
+            const matched = catalystsByTicker.get(candidate.ticker.toUpperCase());
+            if (matched) candidate.catalysts = matched;
+          }
+          catalystSources = catalystResult._sources ?? [];
+        } catch (err) {
+          console.warn(`[tool] scan_candidates catalyst fetch failed:`, err instanceof Error ? err.message : err);
+        }
+
+        const candidates: ScanCandidate[] = candidatesRaw.map((c) => ({
+          ...c,
+          catalysts: c.catalysts,
         }));
 
         const notes: string[] = [];
@@ -915,6 +1008,7 @@ export function createResearchTools(ctx: ToolContext) {
                   excerpt: `Watching: ${ctx.watchlist.join(", ")}`,
                 }]
               : []),
+            ...catalystSources,
           ],
         };
       },
@@ -922,12 +1016,22 @@ export function createResearchTools(ctx: ToolContext) {
 
     get_stock_data: tool({
       description:
-        "Get comprehensive data for a stock: price quote, company profile, key financials, analyst ratings, and recent news. This is your primary research tool.",
-      inputSchema: tickerParams,
-      execute: async ({ ticker }: TickerInput) => {
+        "Get comprehensive data for a stock: price quote, company profile, key financials, analyst ratings, recent news, technical indicators (RSI, SMA, volume), and analyst price targets. This is your primary research tool — includes everything you need for a single ticker.",
+      inputSchema: z.object({
+        ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
+        include_technicals: z.boolean().optional().describe("Include technical analysis (RSI, SMA, volume). Default true."),
+      }),
+      execute: async ({ ticker, include_technicals }: { ticker: string; include_technicals?: boolean }) => {
         const _t0 = Date.now();
-        logToolStart("get_stock_data", ctx.runId, `ticker=${ticker}`, stats);
-        const [quoteResult, profileResult, financialsResult, newsResult, recsResult] =
+        const doTechnicals = include_technicals !== false; // default true
+        logToolStart("get_stock_data", ctx.runId, `ticker=${ticker} technicals=${doTechnicals}`, stats);
+
+        const now = Math.floor(Date.now() / 1000);
+        const ninetyDaysAgo = now - 90 * 86400;
+
+        // Parallel fetch: quote, profile, financials, news, recommendations,
+        // + conditionally candles (for technicals) and price targets
+        const [quoteResult, profileResult, financialsResult, newsResult, recsResult, candleResult, priceTargetResult] =
           await Promise.all([
             finnhub(`/quote?symbol=${ticker}`, 2, stats),
             finnhub(`/stock/profile2?symbol=${ticker}`, 2, stats),
@@ -937,6 +1041,12 @@ export function createResearchTools(ctx: ToolContext) {
               2, stats,
             ),
             finnhub(`/stock/recommendation?symbol=${ticker}`, 2, stats),
+            // Candles for technical analysis
+            doTechnicals
+              ? finnhub(`/stock/candle?symbol=${ticker}&resolution=D&from=${ninetyDaysAgo}&to=${now}`, 2, stats)
+              : Promise.resolve({ data: null } as { data: unknown; error?: string }),
+            // FMP price target consensus
+            fmp(`/v4/price-target-consensus?symbol=${ticker}`, stats),
           ]);
 
         const quote = quoteResult.data as Record<string, number> | null;
@@ -972,6 +1082,99 @@ export function createResearchTools(ctx: ToolContext) {
         if (quoteResult.error) errors.push(quoteResult.error);
         if (profileResult.error) errors.push(profileResult.error);
         if (financialsResult.error) errors.push(financialsResult.error);
+
+        // ── Technical analysis (inline, merged from get_technical_analysis) ──
+        let technicals: {
+          current_price: number;
+          rsi_14: number | null;
+          sma_20: number | null;
+          sma_50: number | null;
+          price_vs_sma20: string | null;
+          price_vs_sma50: string | null;
+          position_in_52w_range: string;
+          volume_ratio: string | null;
+          trend: string;
+        } | null = null;
+        let techProvider = "Finnhub";
+
+        if (doTechnicals) {
+          let candles = candleResult.data as { s?: string; c?: number[]; v?: number[] } | null;
+
+          // Fallback: FMP historical prices
+          if (!candles || candles.s !== "ok" || !candles.c?.length) {
+            techProvider = "FMP";
+            const fmpResult = await fmp(`/historical-price-full/${ticker}?timeseries=90`, stats);
+            const fmpHistory = fmpResult.data as { historical?: { close: number; volume: number }[] } | null;
+            if (fmpHistory?.historical?.length) {
+              const sorted = fmpHistory.historical.reverse();
+              candles = { s: "ok", c: sorted.map((d) => d.close), v: sorted.map((d) => d.volume) };
+            }
+          }
+
+          // Fallback: Alpaca bars
+          if (!candles || candles.s !== "ok" || !candles.c?.length) {
+            try {
+              techProvider = "Alpaca";
+              const threeMonthsAgo = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
+              const today = new Date().toISOString().slice(0, 10);
+              const alpacaBars = await getBars(ticker, { start: threeMonthsAgo, end: today });
+              if (alpacaBars.length >= 14) {
+                candles = { s: "ok", c: alpacaBars.map((b) => b.close), v: alpacaBars.map((b) => b.volume) };
+              }
+            } catch (err) {
+              console.warn(`[tool] get_stock_data: Alpaca bars fallback failed for ${ticker}:`, err instanceof Error ? err.message : err);
+            }
+          }
+
+          if (candles && candles.s === "ok" && candles.c?.length) {
+            const closes = candles.c;
+            const currentPrice = closes[closes.length - 1];
+            const rsi = calcRSI(closes);
+            const sma20 = calcSMA(closes, 20);
+            const sma50 = calcSMA(closes, 50);
+            const high52 = Math.max(...closes);
+            const low52 = Math.min(...closes);
+            const position52w = high52 !== low52 ? Math.round(((currentPrice - low52) / (high52 - low52)) * 100) : 50;
+            const volumes: number[] = candles.v || [];
+            const avgVol20 = volumes.length >= 20 ? volumes.slice(-20).reduce((a: number, b: number) => a + b, 0) / 20 : null;
+            const latestVol = volumes[volumes.length - 1];
+            const volumeRatio = avgVol20 && avgVol20 > 0 ? Math.round((latestVol / avgVol20) * 100) / 100 : null;
+
+            technicals = {
+              current_price: currentPrice,
+              rsi_14: rsi,
+              sma_20: sma20,
+              sma_50: sma50,
+              price_vs_sma20: sma20 ? `${currentPrice > sma20 ? "above" : "below"} (${Math.round(((currentPrice - sma20) / sma20) * 10000) / 100}%)` : null,
+              price_vs_sma50: sma50 ? `${currentPrice > sma50 ? "above" : "below"} (${Math.round(((currentPrice - sma50) / sma50) * 10000) / 100}%)` : null,
+              position_in_52w_range: `${position52w}%`,
+              volume_ratio: volumeRatio ? `${volumeRatio}x average (${volumeRatio > 1.5 ? "elevated" : volumeRatio < 0.7 ? "low" : "normal"})` : null,
+              trend: sma20 && sma50 ? (sma20 > sma50 ? "bullish (SMA20 > SMA50)" : "bearish (SMA20 < SMA50)") : "unknown",
+            };
+          }
+        }
+
+        // ── Price targets (merged from get_analyst_targets) ─────────────────
+        let priceTargets: {
+          consensus: number | undefined;
+          high: number | undefined;
+          low: number | undefined;
+          median: number | undefined;
+          num_analysts: number | undefined;
+        } | null = null;
+
+        const ptData = priceTargetResult.data;
+        const ptArr = ptData as { targetConsensus?: number; targetHigh?: number; targetLow?: number; targetMedian?: number; numberOfAnalysts?: number }[];
+        if (Array.isArray(ptArr) && ptArr.length > 0) {
+          const c = ptArr[0];
+          priceTargets = {
+            consensus: c.targetConsensus,
+            high: c.targetHigh,
+            low: c.targetLow,
+            median: c.targetMedian,
+            num_analysts: c.numberOfAnalysts,
+          };
+        }
 
         logToolEnd("get_stock_data", _t0, ctx.runId, `ticker=${ticker}`, stats);
         return {
@@ -1019,6 +1222,8 @@ export function createResearchTools(ctx: ToolContext) {
               }
             : null,
           news: recentNews,
+          technicals,
+          price_targets: priceTargets,
           ...(errors.length > 0 ? { api_errors: errors } : {}),
           _sources: [
             {
@@ -1051,234 +1256,127 @@ export function createResearchTools(ctx: ToolContext) {
               url: n.url,
               excerpt: n.summary,
             })),
+            ...(technicals
+              ? [{
+                  provider: techProvider,
+                  title: `${ticker} 90-Day Price History`,
+                  url: techProvider === "Finnhub" ? "https://finnhub.io/docs/api/stock-candles" : `https://financialmodelingprep.com/financial-statements/${ticker}`,
+                  excerpt: `RSI ${technicals.rsi_14?.toFixed(1) ?? "—"} | SMA20 $${technicals.sma_20?.toFixed(2) ?? "—"} | SMA50 $${technicals.sma_50?.toFixed(2) ?? "—"} | 52W position ${technicals.position_in_52w_range}`,
+                }]
+              : []),
+            ...(priceTargets
+              ? [{
+                  provider: "FMP",
+                  title: `${ticker} Analyst Price Targets`,
+                  url: `https://financialmodelingprep.com/api/v4/price-target-consensus?symbol=${ticker}`,
+                  excerpt: `Consensus $${priceTargets.consensus ?? "—"} | High $${priceTargets.high ?? "—"} | Low $${priceTargets.low ?? "—"} | ${priceTargets.num_analysts ?? 0} analysts`,
+                }]
+              : []),
           ],
         };
       },
     }),
 
-    get_technical_analysis: tool({
+    get_social_sentiment: tool({
       description:
-        "Get technical indicators for a stock: RSI-14, 20-day and 50-day SMA, price position in 52-week range. Requires recent price history.",
+        "Get combined social sentiment for a stock from Reddit (r/wallstreetbets, r/stocks, r/options, r/investing) and StockTwits/Twitter. Shows mention counts, sentiment direction, top posts, and a combined signal.",
       inputSchema: tickerParams,
       execute: async ({ ticker }: TickerInput) => {
         const _t0 = Date.now();
-        logToolStart("get_technical_analysis", ctx.runId, `ticker=${ticker}`, stats);
-        const now = Math.floor(Date.now() / 1000);
-        const from = now - 90 * 86400;
+        logToolStart("get_social_sentiment", ctx.runId, `ticker=${ticker}`, stats);
 
-        // Try Finnhub first, fall back to FMP for historical prices
-        let priceProvider = "Finnhub";
-        const candleResult = await finnhub(
-          `/stock/candle?symbol=${ticker}&resolution=D&from=${from}&to=${now}`,
-          2, stats,
-        );
-        let candles = candleResult.data as { s?: string; c?: number[]; v?: number[] } | null;
+        // Fetch Reddit + StockTwits/Twitter sentiment in parallel
+        const [redditData, stocktwitsData] = await Promise.all([
+          getRedditSentiment(ticker),
+          twitterSentiment(ticker),
+        ]);
 
-        if (!candles || candles.s !== "ok" || !candles.c?.length) {
-          // Fallback: try FMP historical prices
-          priceProvider = "FMP";
-          const fmpResult = await fmp(
-            `/historical-price-full/${ticker}?timeseries=90`,
-            stats,
-          );
-          const fmpHistory = fmpResult.data as { historical?: { close: number; volume: number }[] } | null;
-          if (fmpHistory?.historical?.length) {
-            const sorted = fmpHistory.historical.reverse();
-            candles = {
-              s: "ok",
-              c: sorted.map((d) => d.close),
-              v: sorted.map((d) => d.volume),
-            };
+        // Compute combined signal from both sources
+        let combinedScore = 0;
+        let signalSources = 0;
+        if (redditData.available && redditData.mention_count > 0) {
+          combinedScore += redditData.sentiment_score;
+          signalSources++;
+        }
+        if (stocktwitsData.available) {
+          combinedScore += stocktwitsData.sentiment_score;
+          signalSources++;
+        }
+        const avgScore = signalSources > 0 ? combinedScore / signalSources : 0;
+        const combinedSignal = avgScore > 2 ? "bullish" : avgScore < -2 ? "bearish" : "neutral";
+
+        const _sources: ToolSource[] = [];
+
+        // Reddit sources
+        if (redditData.available && redditData.top_posts?.length > 0) {
+          for (const p of redditData.top_posts) {
+            _sources.push({
+              provider: `Reddit r/${p.subreddit}`,
+              title: p.title,
+              url: p.url,
+              excerpt: `Score: ${p.score}, ${p.num_comments} comments`,
+            });
           }
+        } else {
+          _sources.push({
+            provider: "Reddit",
+            title: `${ticker} Reddit Search`,
+            url: `https://www.reddit.com/search/?q=${ticker}&sort=new`,
+            excerpt: "No mentions found",
+          });
         }
 
-        // Fallback 3: Alpaca Data API bars
-        if (!candles || candles.s !== "ok" || !candles.c?.length) {
-          try {
-            priceProvider = "Alpaca";
-            const threeMonthsAgo = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
-            const today = new Date().toISOString().slice(0, 10);
-            const alpacaBars = await getBars(ticker, { start: threeMonthsAgo, end: today });
-
-            if (alpacaBars.length >= 14) {
-              candles = {
-                s: "ok",
-                c: alpacaBars.map((b) => b.close),
-                v: alpacaBars.map((b) => b.volume),
-              };
-              console.log(`[tool] get_technical_analysis: Alpaca fallback succeeded for ${ticker} (${alpacaBars.length} bars)`);
-            }
-          } catch (err) {
-            console.warn(`[tool] Alpaca bars fallback failed for ${ticker}:`, err instanceof Error ? err.message : err);
-          }
+        // StockTwits sources
+        _sources.push({
+          provider: "StockTwits",
+          title: `${ticker} Social Feed`,
+          url: `https://stocktwits.com/symbol/${ticker.toUpperCase()}`,
+          excerpt: stocktwitsData.available
+            ? `${stocktwitsData.mention_count} posts, sentiment: ${stocktwitsData.sentiment}`
+            : "No social data found",
+        });
+        if (stocktwitsData.fmp_sentiment) {
+          _sources.push({
+            provider: "FMP Social",
+            title: `${ticker} Twitter/Social Sentiment`,
+            url: `https://financialmodelingprep.com/api/v4/historical/social-sentiment?symbol=${ticker}`,
+            excerpt: `Sentiment score: ${stocktwitsData.fmp_sentiment.sentiment.toFixed(2)}, ${stocktwitsData.fmp_sentiment.mentions} mentions`,
+          });
         }
 
-        if (!candles || candles.s !== "ok" || !candles.c?.length) {
-          return {
-            error: null,
-            current_price: null,
-            note: `Technical analysis data unavailable for ${ticker}. Tried Finnhub, FMP, and Alpaca — this may be a non-US stock, recently IPO'd, or have limited trading history. Continue your analysis with fundamental data.`,
-          };
-        }
-
-        const closes: number[] = candles.c;
-        const currentPrice = closes[closes.length - 1];
-        const rsi = calcRSI(closes);
-        const sma20 = calcSMA(closes, 20);
-        const sma50 = calcSMA(closes, 50);
-
-        const high52 = Math.max(...closes);
-        const low52 = Math.min(...closes);
-        const position52w =
-          high52 !== low52
-            ? Math.round(((currentPrice - low52) / (high52 - low52)) * 100)
-            : 50;
-
-        const volumes: number[] = candles.v || [];
-        const avgVol20 =
-          volumes.length >= 20
-            ? volumes.slice(-20).reduce((a: number, b: number) => a + b, 0) /
-              20
-            : null;
-        const latestVol = volumes[volumes.length - 1];
-        const volumeRatio =
-          avgVol20 && avgVol20 > 0
-            ? Math.round((latestVol / avgVol20) * 100) / 100
-            : null;
-
-        logToolEnd("get_technical_analysis", _t0, ctx.runId, `ticker=${ticker}`, stats);
+        logToolEnd("get_social_sentiment", _t0, ctx.runId, `ticker=${ticker} combined=${combinedSignal}`, stats);
         return {
-          current_price: currentPrice,
-          rsi_14: rsi,
-          sma_20: sma20,
-          sma_50: sma50,
-          price_vs_sma20: sma20
-            ? `${currentPrice > sma20 ? "above" : "below"} (${Math.round(((currentPrice - sma20) / sma20) * 10000) / 100}%)`
-            : null,
-          price_vs_sma50: sma50
-            ? `${currentPrice > sma50 ? "above" : "below"} (${Math.round(((currentPrice - sma50) / sma50) * 10000) / 100}%)`
-            : null,
-          position_in_52w_range: `${position52w}%`,
-          volume_ratio: volumeRatio
-            ? `${volumeRatio}x average (${volumeRatio > 1.5 ? "elevated" : volumeRatio < 0.7 ? "low" : "normal"})`
-            : null,
-          trend:
-            sma20 && sma50
-              ? sma20 > sma50
-                ? "bullish (SMA20 > SMA50)"
-                : "bearish (SMA20 < SMA50)"
-              : "unknown",
-          _sources: [
-            {
-              provider: priceProvider,
-              title: `${ticker} 90-Day Price History`,
-              url: priceProvider === "Finnhub"
-                ? "https://finnhub.io/docs/api/stock-candles"
-                : `https://financialmodelingprep.com/financial-statements/${ticker}`,
-              excerpt: `RSI ${rsi?.toFixed(1) ?? "—"} | SMA20 $${sma20?.toFixed(2) ?? "—"} | SMA50 $${sma50?.toFixed(2) ?? "—"} | 52W position ${position52w}%`,
-            },
-          ],
-        };
-      },
-    }),
-
-    get_reddit_sentiment: tool({
-      description:
-        "Get Reddit sentiment for a stock from r/wallstreetbets, r/stocks, r/options, r/investing. Shows mention count, sentiment direction, and top posts with upvotes and comment counts.",
-      inputSchema: tickerParams,
-      execute: async ({ ticker }: TickerInput) => {
-        const _t0 = Date.now();
-        logToolStart("get_reddit_sentiment", ctx.runId, `ticker=${ticker}`, stats);
-        const data: RedditSentimentResult = await getRedditSentiment(ticker);
-
-        if (!data.available || data.mention_count === 0) {
-          return {
-            available: false,
-            reason: "no_mentions",
-            note: `No recent Reddit mentions found for ${ticker}. This doesn't necessarily mean anything negative — some stocks simply aren't discussed on Reddit.`,
-            _sources: [{
-              provider: "Reddit",
-              title: `${ticker} Reddit Search (No Results)`,
-              url: `https://www.reddit.com/search/?q=${ticker}&sort=new`,
-              excerpt: "No mentions found in r/wallstreetbets, r/stocks, r/options, r/investing",
-            }],
-          };
-        }
-
-        logToolEnd("get_reddit_sentiment", _t0, ctx.runId, `ticker=${ticker}`, stats);
-        return {
-          available: true,
-          mention_count: data.mention_count,
-          sentiment: data.sentiment,
-          sentiment_score: data.sentiment_score,
-          trending: data.trending,
-          sources: data.top_posts.map((p) => ({
-            provider: `r/${p.subreddit}`,
-            title: p.title,
-            url: p.url,
-            score: p.score,
-            comments: p.num_comments,
-          })),
-          _sources: data.top_posts.map((p) => ({
-            provider: `Reddit r/${p.subreddit}`,
-            title: p.title,
-            url: p.url,
-          })),
-        };
-      },
-    }),
-
-    get_twitter_sentiment: tool({
-      description:
-        "Get Twitter/X social sentiment for a stock. Shows trending status, sentiment direction, recent social posts, and watchlist popularity from StockTwits + FMP social data.",
-      inputSchema: tickerParams,
-      execute: async ({ ticker }: TickerInput) => {
-        const _t0 = Date.now();
-        logToolStart("get_twitter_sentiment", ctx.runId, `ticker=${ticker}`, stats);
-        const data = await twitterSentiment(ticker);
-
-        if (!data.available) {
-          return {
-            available: false,
-            note: `No Twitter/social data available for ${ticker}. The stock may not be actively discussed on social media.`,
-            _sources: [{
-              provider: "StockTwits",
-              title: `${ticker} Social Feed (No Data)`,
-              url: `https://stocktwits.com/symbol/${ticker.toUpperCase()}`,
-              excerpt: "No social sentiment data found",
-            }],
-          };
-        }
-
-        logToolEnd("get_twitter_sentiment", _t0, ctx.runId, `ticker=${ticker}`, stats);
-        return {
-          available: true,
-          mention_count: data.mention_count,
-          sentiment: data.sentiment,
-          sentiment_score: data.sentiment_score,
-          trending: data.trending,
-          watchlist_count: data.watchlist_count,
-          posts: data.posts.map((p) => ({
-            body: p.body,
-            username: p.username,
-            created_at: p.created_at,
-            likes: p.likes,
-          })),
-          fmp_sentiment: data.fmp_sentiment,
-          _sources: [
-            {
-              provider: "StockTwits",
-              title: `${ticker} Social Feed`,
-              url: `https://stocktwits.com/symbol/${ticker.toUpperCase()}`,
-              excerpt: `${data.mention_count} posts, sentiment: ${data.sentiment}`,
-            },
-            ...(data.fmp_sentiment ? [{
-              provider: "FMP Social",
-              title: `${ticker} Twitter/Social Sentiment`,
-              url: `https://financialmodelingprep.com/api/v4/historical/social-sentiment?symbol=${ticker}`,
-              excerpt: `Sentiment score: ${data.fmp_sentiment.sentiment.toFixed(2)}, ${data.fmp_sentiment.mentions} mentions`,
-            }] : []),
-          ],
+          reddit: {
+            available: redditData.available && redditData.mention_count > 0,
+            mention_count: redditData.mention_count,
+            sentiment: redditData.sentiment,
+            sentiment_score: redditData.sentiment_score,
+            trending: redditData.trending,
+            top_posts: redditData.available ? redditData.top_posts.map((p) => ({
+              subreddit: p.subreddit,
+              title: p.title,
+              url: p.url,
+              score: p.score,
+              comments: p.num_comments,
+            })) : [],
+          },
+          stocktwits: {
+            available: stocktwitsData.available,
+            mention_count: stocktwitsData.mention_count,
+            sentiment: stocktwitsData.sentiment,
+            sentiment_score: stocktwitsData.sentiment_score,
+            trending: stocktwitsData.trending,
+            watchlist_count: stocktwitsData.watchlist_count,
+            posts: stocktwitsData.posts.map((p) => ({
+              body: p.body,
+              username: p.username,
+              created_at: p.created_at,
+              likes: p.likes,
+            })),
+            fmp_sentiment: stocktwitsData.fmp_sentiment,
+          },
+          combined_signal: combinedSignal,
+          _sources,
         };
       },
     }),
@@ -1637,9 +1735,11 @@ export function createResearchTools(ctx: ToolContext) {
           });
           console.log(`[tool] place_trade Alpaca order placed: ${alpacaOrder.id}`);
 
-          // 2. Wait for fill (max 10s), fall back to entry price
+          // 2. Wait for fill (max 5s), fall back to entry price
+          // TODO: This should become async/non-blocking in future — fire-and-forget
+          // the order and use a webhook or polling job to update fill status.
           let fillPrice = args.entry_price;
-          const deadline = Date.now() + 10_000;
+          const deadline = Date.now() + 5_000;
           while (Date.now() < deadline) {
             const order = await getOrder(alpacaOrder.id);
             if (order.status === "filled" && order.filled_avg_price) {
@@ -1827,55 +1927,78 @@ export function createResearchTools(ctx: ToolContext) {
       }),
       execute: async (args) => {
         const _t0 = Date.now();
-        console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
-        const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
-
-        // Mark run COMPLETE — this MUST succeed, so let it throw
-        await prisma.researchRun.update({
-          where: { id: ctx.runId },
-          data: {
-            status: "COMPLETE",
-            completedAt: new Date(),
-          },
-        });
-
-        // Write run_summary + run_complete events (non-fatal — run is already marked COMPLETE)
         try {
-          if (ctx.runId) {
-            await prisma.runEvent.create({
+          console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
+          const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
+
+          // Idempotency check — if run is already COMPLETE, skip the update
+          const existingRun = await prisma.researchRun.findUnique({
+            where: { id: ctx.runId },
+            select: { status: true },
+          });
+
+          if (existingRun?.status !== "COMPLETE") {
+            // Mark run COMPLETE
+            await prisma.researchRun.update({
+              where: { id: ctx.runId },
               data: {
-                runId: ctx.runId,
-                type: "run_summary",
-                title: "Run Summary",
-                message: args.overall_assessment,
-                payload: {
-                  summary: args.market_summary,
-                  ranked_picks: args.ranked_picks,
-                  risk_notes: args.risk_notes,
-                  portfolio_review: args.portfolio_review,
-                  overall_assessment: args.overall_assessment,
-                } as object,
+                status: "COMPLETE",
+                completedAt: new Date(),
               },
             });
-            await prisma.runEvent.create({
-              data: {
-                runId: ctx.runId,
-                type: "run_complete",
-                title: `Run complete — ${args.ranked_picks.length} analyzed, ${traded} traded`,
-                message: null,
-                payload: {
-                  analyzed: args.ranked_picks.length,
-                  recommended: args.ranked_picks.filter((p) => p.action !== "PASS").length,
-                  placed: traded,
-                } as object,
-              },
-            });
+          } else {
+            console.log(`[tool] summarize_run: run ${ctx.runId} already COMPLETE, skipping status update`);
           }
+
+          // Write run_summary + run_complete events (non-fatal — run is already marked COMPLETE)
+          try {
+            if (ctx.runId) {
+              await prisma.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "run_summary",
+                  title: "Run Summary",
+                  message: args.overall_assessment,
+                  payload: {
+                    summary: args.market_summary,
+                    ranked_picks: args.ranked_picks,
+                    risk_notes: args.risk_notes,
+                    portfolio_review: args.portfolio_review,
+                    overall_assessment: args.overall_assessment,
+                  } as object,
+                },
+              });
+              await prisma.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "run_complete",
+                  title: `Run complete — ${args.ranked_picks.length} analyzed, ${traded} traded`,
+                  message: null,
+                  payload: {
+                    analyzed: args.ranked_picks.length,
+                    recommended: args.ranked_picks.filter((p) => p.action !== "PASS").length,
+                    placed: traded,
+                  } as object,
+                },
+              });
+            }
+          } catch (err) {
+            console.error(`[tool] summarize_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
+          }
+          logToolEnd("summarize_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);
+          return { status: "complete", analyzed: args.ranked_picks.length, traded };
         } catch (err) {
-          console.error(`[tool] summarize_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
+          console.error(`[tool] summarize_run FAILED:`, err instanceof Error ? err.message : err);
+          // Best-effort: try to mark run COMPLETE even if everything else failed
+          try {
+            await prisma.researchRun.update({
+              where: { id: ctx.runId },
+              data: { status: "COMPLETE", completedAt: new Date() },
+            });
+          } catch { /* already tried */ }
+          logToolEnd("summarize_run", _t0, ctx.runId, "FAILED", stats);
+          return { status: "complete", analyzed: args.ranked_picks.length, traded: 0, error: err instanceof Error ? err.message : "summarize_run failed" };
         }
-        logToolEnd("summarize_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);
-        return { status: "complete", analyzed: args.ranked_picks.length, traded };
       },
     }),
     // ── DAV-167: Extended data tools ──────────────────────────────────────
@@ -1942,115 +2065,10 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
-    get_analyst_targets: tool({
-      description:
-        "Fetch analyst price target consensus for a stock — consensus target, high, low, " +
-        "and number of analysts. Use to validate entry/target price levels.",
-      inputSchema: z.object({
-        symbol: z.string().describe("Ticker symbol, e.g. NVDA"),
-      }),
-      execute: async (args) => {
-        const _t0 = Date.now();
-        logToolStart("get_analyst_targets", ctx.runId, `symbol=${args.symbol}`, stats);
-        const { data, error } = await fmp(
-          `/v4/price-target-consensus?symbol=${args.symbol}`,
-          stats,
-        );
-        if (error || !data) return { targets: null, error };
-        const arr = data as { targetConsensus?: number; targetHigh?: number; targetLow?: number; targetMedian?: number; numberOfAnalysts?: number }[];
-        if (!Array.isArray(arr) || arr.length === 0) return { targets: null };
-        const c = arr[0];
-        logToolEnd("get_analyst_targets", _t0, ctx.runId, `symbol=${args.symbol}`, stats);
-        return {
-          targets: {
-            consensus: c.targetConsensus,
-            high: c.targetHigh,
-            low: c.targetLow,
-            median: c.targetMedian,
-            num_analysts: c.numberOfAnalysts,
-          },
-        };
-      },
-    }),
-
-    get_company_peers: tool({
-      description:
-        "Fetch peer/competitor companies for a stock with basic comparison metrics. " +
-        "Use for sector alternative analysis and relative valuation.",
-      inputSchema: z.object({
-        symbol: z.string().describe("Ticker symbol, e.g. MSFT"),
-      }),
-      execute: async (args) => {
-        const _t0 = Date.now();
-        logToolStart("get_company_peers", ctx.runId, `symbol=${args.symbol}`, stats);
-        const { data: peersData, error: peersErr } = await finnhub(
-          `/stock/peers?symbol=${args.symbol}`,
-          2, stats,
-        );
-        if (peersErr || !peersData) return { peers: [], error: peersErr };
-        const peers = (peersData as string[])
-          .filter((p) => p.toUpperCase() !== args.symbol.toUpperCase())
-          .slice(0, 6);
-        logToolEnd("get_company_peers", _t0, ctx.runId, `symbol=${args.symbol} count=${peers.length}`, stats);
-        return {
-          peers,
-          note: "Use get_stock_data on specific peers for detailed comparison.",
-          _sources: [{
-            provider: "Finnhub",
-            title: `${args.symbol} Peer Companies`,
-            url: "https://finnhub.io/docs/api/company-peers",
-            excerpt: peers.length > 0 ? `Peers: ${peers.join(", ")}` : "No peers found",
-          }],
-        };
-      },
-    }),
-
-    get_news_deep_dive: tool({
-      description:
-        "Fetch comprehensive news for a stock from multiple sources: stock-specific news, " +
-        "press releases, and general market articles. More thorough than basic news.",
-      inputSchema: z.object({
-        symbol: z.string().describe("Ticker symbol, e.g. TSLA"),
-      }),
-      execute: async (args) => {
-        const _t0 = Date.now();
-        logToolStart("get_news_deep_dive", ctx.runId, `symbol=${args.symbol}`, stats);
-        const [stockNews, pressReleases] = await Promise.all([
-          fmp(`/stock_news?tickers=${args.symbol}&limit=10`, stats),
-          fmp(`/press-releases/${args.symbol}?limit=5`, stats),
-        ]);
-
-        const news = (
-          (stockNews.data as { title?: string; text?: string; site?: string; url?: string; publishedDate?: string }[]) ?? []
-        ).map((item) => ({
-          headline: item.title ?? "",
-          summary: (item.text ?? "").slice(0, 500),
-          source: item.site ?? "",
-          url: item.url ?? "",
-          date: item.publishedDate ?? "",
-        }));
-
-        const prs = (
-          (pressReleases.data as { title?: string; text?: string; date?: string }[]) ?? []
-        ).map((item) => ({
-          headline: item.title ?? "",
-          summary: (item.text ?? "").slice(0, 500),
-          date: item.date ?? "",
-        }));
-
-        logToolEnd("get_news_deep_dive", _t0, ctx.runId, `symbol=${args.symbol} total=${news.length + prs.length}`, stats);
-        return {
-          stock_news: news,
-          press_releases: prs,
-          total: news.length + prs.length,
-        };
-      },
-    }),
-
     // ── Reddit topic search (broader than ticker-specific sentiment) ────
     search_reddit: tool({
       description:
-        "Search Reddit trading communities by topic or keyword. Searches r/wallstreetbets, r/stocks, r/options, r/investing. Use for broad topics like 'biotech FDA', 'momentum plays', 'semiconductor earnings'. For ticker-specific sentiment, use get_reddit_sentiment instead.",
+        "Search Reddit trading communities by topic or keyword. Searches r/wallstreetbets, r/stocks, r/options, r/investing. Use for broad topics like 'biotech FDA', 'momentum plays', 'semiconductor earnings'. For ticker-specific sentiment, use get_social_sentiment instead.",
       inputSchema: z.object({
         query: z.string().describe("Search query — topic or ticker. E.g. 'biotech FDA', 'NVDA earnings', 'momentum plays'"),
       }),
@@ -2070,41 +2088,6 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
-    detect_market_themes: tool({
-      description:
-        "Identify dominant market themes and narratives driving capital flows. Returns named themes with strength, direction, and representative tickers. Call this after get_market_overview to understand what stories are moving the market.",
-      inputSchema: z.object({
-        lookback_days: z.number().optional().describe("Days to look back for news (default 3)"),
-      }),
-      execute: async ({ lookback_days }) => {
-        const _t0 = Date.now();
-        logToolStart("detect_market_themes", ctx.runId, `lookback=${lookback_days ?? 3}`, stats);
-        const { detectThemes } = await import("@/lib/discovery/themes");
-        const result = await detectThemes(lookback_days);
-        logToolEnd("detect_market_themes", _t0, ctx.runId, undefined, stats);
-        return result;
-      },
-    }),
-
-    scan_catalysts: tool({
-      description:
-        "Find upcoming catalysts that could move stock prices: earnings reports, economic events (FOMC, CPI, jobs), insider buying clusters, and analyst upgrades/downgrades. Use this after detect_market_themes to find time-sensitive opportunities.",
-      inputSchema: z.object({
-        forward_days: z.number().optional().describe("Days to look forward (default 14)"),
-        catalyst_types: z
-          .array(z.enum(["EARNINGS", "ECONOMIC", "INSIDER", "ANALYST_ACTION"]))
-          .optional()
-          .describe("Types of catalysts to scan for (default: all)"),
-      }),
-      execute: async ({ forward_days, catalyst_types }) => {
-        const _t0 = Date.now();
-        logToolStart("scan_catalysts", ctx.runId, `forward=${forward_days ?? 14} types=${catalyst_types?.join(",") ?? "all"}`, stats);
-        const { scanCatalysts } = await import("@/lib/discovery/catalysts");
-        const result = await scanCatalysts({ forwardDays: forward_days, catalystTypes: catalyst_types });
-        logToolEnd("scan_catalysts", _t0, ctx.runId, undefined, stats);
-        return result;
-      },
-    }),
   };
 }
 

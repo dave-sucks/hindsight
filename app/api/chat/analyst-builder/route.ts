@@ -196,21 +196,15 @@ export async function POST(req: Request) {
 
     // Cherry-pick data-fetching tools (no DB writes, no trade execution)
     const {
-      get_market_overview,
+      get_market_context,
       scan_candidates,
-      detect_market_themes,
-      scan_catalysts,
       get_stock_data,
-      get_technical_analysis,
       get_earnings_data,
-      get_reddit_sentiment,
-      get_news_deep_dive,
-      get_company_peers,
-      get_analyst_targets,
+      get_social_sentiment,
       get_sec_filings,
       search_reddit,
       // Exclude: show_thesis, place_trade, summarize_run (need real run context)
-      // Exclude: get_options_flow, get_twitter_sentiment (less useful for builder)
+      // Exclude: get_options_flow (less useful for builder)
     } = agentTools;
 
     const result = streamText({
@@ -229,17 +223,11 @@ export async function POST(req: Request) {
         }),
 
         // Agent research tools (same data, same format, same domain cards)
-        get_market_overview,
-        detect_market_themes,
-        scan_catalysts,
+        get_market_context,
         scan_candidates,
         get_stock_data,
-        get_technical_analysis,
         get_earnings_data,
-        get_reddit_sentiment,
-        get_news_deep_dive,
-        get_company_peers,
-        get_analyst_targets,
+        get_social_sentiment,
         get_sec_filings,
         search_reddit,
       },

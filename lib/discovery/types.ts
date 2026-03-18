@@ -95,6 +95,11 @@ export interface MarketOverviewResult {
   _sources: ToolSource[];
 }
 
+/** MarketContextResult — extends MarketOverviewResult with inline theme detection */
+export interface MarketContextResult extends MarketOverviewResult {
+  themes: MarketTheme[];
+}
+
 // ─── Tool 2: detect_market_themes ────────────────────────────────────────────
 
 export interface MarketTheme {
@@ -149,6 +154,7 @@ export interface ScanCandidate {
   sources: string[];                // which data sources surfaced this ticker
   change_pct?: number;              // daily change if from movers
   date?: string;                    // earnings date if from earnings calendar
+  catalysts?: { type: string; date: string; details: string }[];
 }
 
 export interface ScanCandidatesResult {

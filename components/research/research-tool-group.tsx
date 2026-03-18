@@ -25,15 +25,10 @@ import {
   ChainOfThoughtSearchResult,
 } from "@/components/ai-elements/chain-of-thought";
 import {
-  BarChart3,
   Search,
-  Newspaper,
-  LineChart,
   Calendar,
   Activity,
   MessageSquareText,
-  Target,
-  Users,
   TrendingUp,
   FileText,
 } from "lucide-react";
@@ -43,16 +38,13 @@ import type { LucideIcon } from "lucide-react";
 
 /** Tools that render ONLY as CoT steps (no card) */
 const COT_ONLY_TOOLS = new Set([
-  "get_market_overview",
+  "get_market_context",
   "scan_candidates",
-  "get_technical_analysis",
   "get_earnings_data",
   "get_options_flow",
-  "get_reddit_sentiment",
-  "get_twitter_sentiment",
+  "get_social_sentiment",
+  "search_reddit",
   "get_sec_filings",
-  "get_analyst_targets",
-  "get_company_peers",
 ]);
 
 // ─── Step rendering ─────────────────────────────────────────────────────────
@@ -68,7 +60,7 @@ function renderPendingStep(toolName: string, args: Record<string, unknown>): Ste
   const ticker = (args?.ticker as string) ?? "";
 
   const steps: Record<string, StepInfo> = {
-    get_market_overview: {
+    get_market_context: {
       icon: TrendingUp,
       label: "Checking today's market conditions via Finnhub — fetching S&P 500, VIX, and sector ETFs",
       badges: ["finnhub.io"],
@@ -86,12 +78,6 @@ function renderPendingStep(toolName: string, args: Record<string, unknown>): Ste
       badges: ["finnhub.io"],
       status: "active",
     },
-    get_technical_analysis: {
-      icon: LineChart,
-      label: `Pulling price history from FMP for ${ticker} to calculate RSI, moving averages, and volume trends`,
-      badges: ["financialmodelingprep.com"],
-      status: "active",
-    },
     get_earnings_data: {
       icon: Calendar,
       label: `Checking Finnhub earnings calendar and EPS history for ${ticker}`,
@@ -104,40 +90,22 @@ function renderPendingStep(toolName: string, args: Record<string, unknown>): Ste
       badges: ["financialmodelingprep.com"],
       status: "active",
     },
-    get_reddit_sentiment: {
+    get_social_sentiment: {
       icon: MessageSquareText,
-      label: `Searching Reddit for ${ticker} mentions across r/wallstreetbets, r/stocks, r/options`,
-      badges: ["reddit.com"],
+      label: `Checking social sentiment for ${ticker} — Reddit and StockTwits`,
+      badges: ["stocktwits.com", "reddit.com", "financialmodelingprep.com"],
       status: "active",
     },
-    get_twitter_sentiment: {
-      icon: MessageSquareText,
-      label: `Checking StockTwits feed and FMP social sentiment for ${ticker}`,
-      badges: ["stocktwits.com", "financialmodelingprep.com"],
+    search_reddit: {
+      icon: Search,
+      label: "Searching Reddit trading communities",
+      badges: ["reddit.com"],
       status: "active",
     },
     get_sec_filings: {
       icon: FileText,
       label: `Looking up ${ticker} on SEC EDGAR for recent regulatory filings`,
       badges: ["sec.gov"],
-      status: "active",
-    },
-    get_analyst_targets: {
-      icon: Target,
-      label: `Fetching Wall Street analyst price targets from FMP for ${ticker}`,
-      badges: ["financialmodelingprep.com"],
-      status: "active",
-    },
-    get_company_peers: {
-      icon: Users,
-      label: `Getting peer companies from Finnhub for ${ticker} to compare valuations`,
-      badges: ["finnhub.io"],
-      status: "active",
-    },
-    get_news_deep_dive: {
-      icon: Newspaper,
-      label: `Deep diving into news for ${ticker} — checking FMP stock news and press releases`,
-      badges: ["financialmodelingprep.com"],
       status: "active",
     },
   };
@@ -158,7 +126,7 @@ function renderCompleteStep(
   const ticker = (args?.ticker as string) ?? "";
 
   switch (toolName) {
-    case "get_market_overview": {
+    case "get_market_context": {
       const spy = result.spy as { price?: number; change_pct?: number } | null;
       const rawVix = result.vix as { level?: number } | null;
       const vix = rawVix && rawVix.level && rawVix.level > 0.1 ? rawVix : null;
@@ -193,35 +161,16 @@ function renderCompleteStep(
       const quote = result.quote as { price?: number; change_pct?: number } | null;
       const company = result.company as { name?: string; sector?: string } | null;
       const news = (result.news ?? []) as unknown[];
+      const technicals = result.technicals as { trend?: string; rsi_14?: number } | null;
       const priceStr = quote?.price ? `$${quote.price.toFixed(2)} (${quote.change_pct != null ? (quote.change_pct >= 0 ? "+" : "") + quote.change_pct.toFixed(2) + "%" : ""})` : "";
+      let label = `Got ${ticker}${company?.name ? ` — ${company.name}` : ""}${priceStr ? `. ${priceStr}` : ""}${company?.sector ? `. ${company.sector}` : ""}`;
+      if (technicals?.trend) label += `. Trend: ${technicals.trend}`;
+      if (technicals?.rsi_14 != null) label += `, RSI ${technicals.rsi_14.toFixed(1)}`;
+      label += `. ${news.length} news articles.`;
       return {
         icon: Search,
-        label: `Got ${ticker}${company?.name ? ` — ${company.name}` : ""}${priceStr ? `. ${priceStr}` : ""}${company?.sector ? `. ${company.sector}` : ""}. ${news.length} news articles.`,
+        label,
         badges: ["finnhub.io"],
-        status: "complete",
-      };
-    }
-
-    case "get_technical_analysis": {
-      if (result.error) {
-        return {
-          icon: LineChart,
-          label: `Technicals for ${ticker} — could not get price data. ${String(result.error)}`,
-          badges: ["financialmodelingprep.com"],
-          status: "complete",
-        };
-      }
-      const rsi = result.rsi_14 as number | null;
-      const rsiLevel = rsi != null ? (rsi > 70 ? "overbought" : rsi < 30 ? "oversold" : "neutral") : "";
-      const trend = result.trend as string | null;
-      const sma20 = result.sma_20 as number | null;
-      const sma50 = result.sma_50 as number | null;
-      const vs20 = result.price_vs_sma20 as string | null;
-      const vs50 = result.price_vs_sma50 as string | null;
-      return {
-        icon: LineChart,
-        label: `Technicals for ${ticker} — ${rsi != null ? `RSI ${rsi.toFixed(1)} (${rsiLevel})` : "RSI unavailable"}. ${vs20 ? `${vs20} SMA-20${sma20 ? ` ($${sma20.toFixed(2)})` : ""}` : ""}${vs50 ? `, ${vs50} SMA-50${sma50 ? ` ($${sma50.toFixed(2)})` : ""}` : ""}. ${trend ? `Trend: ${trend}.` : ""}`.trim(),
-        badges: ["financialmodelingprep.com"],
         status: "complete",
       };
     }
@@ -258,45 +207,27 @@ function renderCompleteStep(
       };
     }
 
-    case "get_reddit_sentiment": {
-      if (!result.available) {
-        const reason = result.reason as string | undefined;
-        return {
-          icon: MessageSquareText,
-          label: reason === "blocked"
-            ? `Reddit for ${ticker} — API rate-limited, couldn't check sentiment`
-            : `Reddit for ${ticker} — no recent mentions found`,
-          badges: ["reddit.com"],
-          status: "complete",
-        };
-      }
-      const mentions = result.mention_count as number | null;
-      const sentiment = result.sentiment as string | null;
-      const trending = result.trending as boolean | null;
+    case "get_social_sentiment": {
+      const reddit = result.reddit as { mentions?: number; sentiment?: string } | null;
+      const stocktwits = result.stocktwits as { mentions?: number; sentiment?: string } | null;
+      const parts: string[] = [];
+      if (reddit?.mentions) parts.push(`Reddit: ${reddit.mentions} mentions, ${reddit.sentiment}`);
+      if (stocktwits?.mentions) parts.push(`StockTwits: ${stocktwits.mentions} posts, ${stocktwits.sentiment}`);
       return {
         icon: MessageSquareText,
-        label: `Reddit for ${ticker} — ${mentions ?? 0} mentions, sentiment: ${sentiment ?? "unknown"}${trending ? " (trending)" : ""}`,
-        badges: ["reddit.com"],
+        label: parts.length > 0 ? `Social sentiment for ${ticker} — ${parts.join(" · ")}` : `No social data for ${ticker}`,
+        badges: ["stocktwits.com", "reddit.com", "financialmodelingprep.com"],
         status: "complete",
       };
     }
 
-    case "get_twitter_sentiment": {
-      if (!result.available) {
-        return {
-          icon: MessageSquareText,
-          label: `StockTwits for ${ticker} — no data available`,
-          badges: ["stocktwits.com"],
-          status: "complete",
-        };
-      }
-      const mentions = result.mention_count as number | null;
-      const sentiment = result.sentiment as string | null;
-      const watchlist = result.watchlist_count as number | null;
+    case "search_reddit": {
+      const count = (result.results as unknown[] | undefined)?.length ?? 0;
+      const query = result.query as string || "topic";
       return {
-        icon: MessageSquareText,
-        label: `StockTwits for ${ticker} — ${mentions ?? 0} posts, sentiment: ${sentiment ?? "unknown"}${watchlist ? `. ${(watchlist / 1000).toFixed(0)}K watchlist` : ""}`,
-        badges: ["stocktwits.com", "financialmodelingprep.com"],
+        icon: Search,
+        label: `Reddit search — ${count} results for "${query}"`,
+        badges: ["reddit.com"],
         status: "complete",
       };
     }
@@ -309,47 +240,6 @@ function renderCompleteStep(
         icon: FileText,
         label: `SEC filings for ${ticker} — ${filingsArr.length} found${top ? `. Recent: ${top}` : ""}`,
         badges: ["sec.gov"],
-        status: "complete",
-      };
-    }
-
-    case "get_analyst_targets": {
-      const numAnalysts = result.num_analysts as number | null;
-      const consensus = result.consensus_target as number | null;
-      const currentPrice = result.current_price as number | null;
-      const high = result.high as number | null;
-      const low = result.low as number | null;
-      let upside = "";
-      if (consensus != null && currentPrice != null && currentPrice > 0) {
-        const pct = ((consensus - currentPrice) / currentPrice * 100).toFixed(1);
-        upside = ` (${Number(pct) >= 0 ? "+" : ""}${pct}% from current)`;
-      }
-      return {
-        icon: Target,
-        label: `Analyst targets for ${ticker} — ${numAnalysts ?? 0} analysts. Consensus: ${consensus != null ? `$${consensus.toFixed(2)}` : "—"}${upside}${high != null && low != null ? `. Range: $${low.toFixed(2)} — $${high.toFixed(2)}` : ""}`,
-        badges: ["financialmodelingprep.com"],
-        status: "complete",
-      };
-    }
-
-    case "get_company_peers": {
-      const peers = (result.peers ?? []) as string[];
-      const peerList = peers.slice(0, 6).join(", ");
-      return {
-        icon: Users,
-        label: `Peers for ${ticker} — ${peers.length} companies${peerList ? `: ${peerList}` : ""}`,
-        badges: ["finnhub.io"],
-        status: "complete",
-      };
-    }
-
-    case "get_news_deep_dive": {
-      const stockNews = (result.stock_news ?? []) as unknown[];
-      const press = (result.press_releases ?? []) as unknown[];
-      return {
-        icon: Newspaper,
-        label: `News for ${ticker} — ${stockNews.length} articles and ${press.length} press releases found`,
-        badges: ["financialmodelingprep.com"],
         status: "complete",
       };
     }
@@ -376,7 +266,7 @@ function getGroupHeader(parts: ToolCallMessagePart[]): string {
 
   // Check if this group is just market/scan (no ticker-specific tools)
   const toolNames = parts.map(p => p.toolName);
-  const isMarketScan = toolNames.every(n => n === "get_market_overview" || n === "scan_candidates");
+  const isMarketScan = toolNames.every(n => n === "get_market_context" || n === "scan_candidates");
 
   if (isMarketScan) return "Market scan";
   if (tickers.size === 1) return `Researching ${[...tickers][0]}`;
