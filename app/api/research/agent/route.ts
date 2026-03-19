@@ -327,6 +327,7 @@ export async function POST(req: Request) {
       exclusionList: (agentConfig.exclusionList as string[]) ?? [],
       sectors: (agentConfig.sectors as string[]) ?? [],
       maxPositionSize: (agentConfig.maxPositionSize as number) ?? undefined,
+      maxOpenPositions: (agentConfig.maxOpenPositions as number) ?? undefined,
     });
 
     const result = streamText({

@@ -9,7 +9,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
-import { placeMarketOrder, getOrder, getLatestPrice, getBars } from "@/lib/alpaca";
+import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount } from "@/lib/alpaca";
 import type { MarketOverviewResult, MarketContextResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult, ScanCandidate, MarketTheme, ThemeDirection, DetectMarketThemesResult, ToolSource } from "@/lib/discovery/types";
 import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 
@@ -384,9 +384,9 @@ const thesisParams = z.object({
     .array(z.string())
     .describe("3-5 key points supporting the thesis. For PASS: include what you learned, why it doesn't fit, and what would change your mind."),
   risk_flags: z.array(z.string()).describe("2-4 key risks. For PASS: note the risks that made you pass."),
-  entry_price: z.number().optional(),
-  target_price: z.number().optional(),
-  stop_loss: z.number().optional(),
+  entry_price: z.number().optional().describe("Current price for entry. REQUIRED for LONG/SHORT — use the price from get_stock_data. Also include for PASS to enable shadow tracking."),
+  target_price: z.number().optional().describe("Price target. REQUIRED for LONG/SHORT."),
+  stop_loss: z.number().optional().describe("Stop-loss price. REQUIRED for LONG/SHORT."),
   hold_duration: z.enum(["DAY", "SWING", "POSITION"]),
   signal_types: z
     .array(z.string())
@@ -404,6 +404,20 @@ const thesisParams = z.object({
     .describe(
       "Data sources used in your research — collect the _sources arrays from all tool calls for this ticker",
     ),
+  fundamentals: z.object({
+    market_cap: z.number().optional(),
+    pe_ratio: z.number().optional(),
+    beta: z.number().optional(),
+    avg_volume: z.number().optional(),
+    high_52w: z.number().optional(),
+    low_52w: z.number().optional(),
+    sector: z.string().optional(),
+    analyst_consensus: z.object({
+      buy: z.number(),
+      hold: z.number(),
+      sell: z.number(),
+    }).optional(),
+  }).optional().describe("Key fundamentals from get_stock_data — populates the Data tab in the thesis card."),
 });
 const tradeParams = z.object({
   ticker: z.string(),
@@ -435,6 +449,7 @@ interface ToolContext {
   exclusionList?: string[];
   sectors?: string[];
   maxPositionSize?: number;
+  maxOpenPositions?: number;
 }
 
 // ── Tool timing helpers ─────────────────────────────────────────────────────
@@ -1671,7 +1686,25 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           logToolEnd("show_thesis", _t0, ctx.runId, `ticker=${args.ticker} id=${thesis.id}`, stats);
-          return { thesis_id: thesis.id, ticker: args.ticker, direction: args.direction, confidence_score: args.confidence_score };
+          // Return ALL args so the UI can render the full thesis card
+          return {
+            thesis_id: thesis.id,
+            ticker: args.ticker,
+            company_name: args.company_name ?? null,
+            exchange: args.exchange ?? null,
+            direction: args.direction,
+            confidence_score: args.confidence_score,
+            reasoning_summary: args.reasoning_summary,
+            thesis_bullets: args.thesis_bullets,
+            risk_flags: args.risk_flags,
+            entry_price: args.entry_price ?? null,
+            target_price: args.target_price ?? null,
+            stop_loss: args.stop_loss ?? null,
+            hold_duration: args.hold_duration,
+            signal_types: args.signal_types,
+            _sources: args.sources_used ?? [],
+            fundamentals: args.fundamentals ?? null,
+          };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Thesis save failed";
           console.error(`[tool] show_thesis FAILED for ${args.ticker}: ${msg}`);
@@ -1680,9 +1713,108 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
+    // ── Portfolio Review ────────────────────────────────────────────────────
+    review_portfolio: tool({
+      description:
+        "MANDATORY before any trades. Shows all theses from this run alongside current open positions and account balance. Call this AFTER completing all research and theses, BEFORE placing any trades. Use the output to make portfolio-level decisions about what to BUY, SELL, HOLD, or PASS.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const _t0 = Date.now();
+        logToolStart("review_portfolio", ctx.runId, "", stats);
+        try {
+          // 1. All theses from this run
+          const theses = await prisma.thesis.findMany({
+            where: { researchRunId: ctx.runId },
+            orderBy: { confidenceScore: "desc" },
+          });
+
+          // 2. All open positions for this user
+          const openPositions = await prisma.position.findMany({
+            where: { userId: ctx.userId, status: "OPEN" },
+            include: { analyst: { select: { name: true } } },
+            orderBy: { openedAt: "desc" },
+          });
+
+          // 3. Batch-fetch live prices
+          const allTickers = [
+            ...theses.filter(t => t.direction !== "PASS").map(t => t.ticker),
+            ...openPositions.map(p => p.symbol),
+          ];
+          const uniqueTickers = [...new Set(allTickers)];
+          let priceMap: Record<string, number> = {};
+          if (uniqueTickers.length > 0) {
+            try {
+              priceMap = await getLatestPrices(uniqueTickers);
+            } catch (e) {
+              console.warn("[tool] review_portfolio price fetch failed:", e);
+            }
+          }
+
+          // 4. Account balance
+          let account = { cash: 0, buying_power: 0, portfolio_value: 0 };
+          try {
+            const acc = await getAccount();
+            account = {
+              cash: parseFloat(acc.cash),
+              buying_power: parseFloat(acc.buying_power),
+              portfolio_value: parseFloat(acc.portfolio_value),
+            };
+          } catch (e) {
+            console.warn("[tool] review_portfolio account fetch failed:", e);
+          }
+
+          const result = {
+            run_theses: theses.map(t => ({
+              thesis_id: t.id,
+              ticker: t.ticker,
+              direction: t.direction,
+              confidence: t.confidenceScore,
+              entry_price: t.entryPrice,
+              target_price: t.targetPrice,
+              stop_loss: t.stopLoss,
+              reasoning: t.reasoningSummary,
+              hold_duration: t.holdDuration,
+            })),
+            open_positions: openPositions.map(p => {
+              const currentPrice = priceMap[p.symbol] ?? p.avgCost;
+              const pnlDollars = p.direction === "LONG"
+                ? (currentPrice - p.avgCost) * p.quantity
+                : (p.avgCost - currentPrice) * p.quantity;
+              const pnlPct = p.avgCost > 0 ? (pnlDollars / (p.avgCost * p.quantity)) * 100 : 0;
+              return {
+                position_id: p.id,
+                ticker: p.symbol,
+                direction: p.direction,
+                shares: p.quantity,
+                entry_price: p.avgCost,
+                current_price: currentPrice,
+                pnl_dollars: Math.round(pnlDollars * 100) / 100,
+                pnl_pct: Math.round(pnlPct * 100) / 100,
+                target_price: p.targetPrice,
+                stop_loss: p.stopLoss,
+                analyst_name: p.analyst?.name ?? null,
+              };
+            }),
+            account,
+            max_position_size: ctx.maxPositionSize ?? 10000,
+            max_open_positions: ctx.maxOpenPositions ?? 5,
+            _sources: [{ provider: "Alpaca", title: "Portfolio & Account Data" }],
+          };
+
+          logToolEnd("review_portfolio", _t0, ctx.runId, `theses=${theses.length} positions=${openPositions.length}`, stats);
+          return result;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Portfolio review failed";
+          console.error(`[tool] review_portfolio FAILED: ${msg}`);
+          return { error: msg, run_theses: [], open_positions: [], account: { cash: 0, buying_power: 0, portfolio_value: 0 } };
+        }
+      },
+    }),
+
+    // ── Trade Execution ───────────────────────────────────────────────────
     place_trade: tool({
       description:
-        "Place a paper trade on Alpaca. Only call this after presenting a thesis and explaining your reasoning. The trade will be executed immediately. Will fail if any analyst already holds an open position in this ticker.",
+        "Place a paper trade on Alpaca. Only call this AFTER review_portfolio. The trade will be executed immediately. Will fail if any analyst already holds an open position in this ticker.",
       inputSchema: tradeParams,
       execute: async (args: TradeInput) => {
         const _t0 = Date.now();
@@ -1860,7 +1992,12 @@ export function createResearchTools(ctx: ToolContext) {
             ticker: args.ticker,
             direction: args.direction,
             fill_price: fillPrice,
+            entry_price: fillPrice,
             shares: args.shares,
+            target_price: args.target_price,
+            stop_loss: args.stop_loss,
+            company_name: args.company_name ?? null,
+            exchange: args.exchange ?? null,
             trade_id: position.id,
             position_id: position.id,
             order_id: order.id,
@@ -1879,6 +2016,104 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
+    // ── Close Position ──────────────────────────────────────────────────
+    close_position: tool({
+      description:
+        "Close an existing open position via Alpaca. Call this during the Execute phase when portfolio review indicates a position should be sold. Creates a SELL trade decision.",
+      inputSchema: z.object({
+        symbol: z.string().describe("Ticker symbol of the position to close"),
+        reason: z.enum(["TARGET", "STOP", "MANUAL"]).default("MANUAL")
+          .describe("TARGET if hit price target, STOP if risk management, MANUAL for portfolio rebalancing"),
+      }),
+      execute: async (args) => {
+        const _t0 = Date.now();
+        logToolStart("close_position", ctx.runId, `symbol=${args.symbol} reason=${args.reason}`, stats);
+        try {
+          // Find open position
+          const position = await prisma.position.findFirst({
+            where: { userId: ctx.userId, symbol: args.symbol, status: "OPEN" },
+            include: { analyst: { select: { name: true } } },
+          });
+
+          if (!position) {
+            return { status: "failed" as const, ticker: args.symbol, error: `No open position found for ${args.symbol}` };
+          }
+
+          // Lazy import to avoid circular deps (same pattern as trade-exit.ts)
+          const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
+          const result = await closeOpenPosition(position.id, args.reason);
+
+          // Record SELL decision
+          const analystId = ctx.analystId || position.analystId;
+          try {
+            await prisma.tradeDecision.create({
+              data: {
+                runId: ctx.runId,
+                analystId,
+                userId: ctx.userId,
+                symbol: args.symbol,
+                decision: "SELL",
+                reasoning: `Closed ${position.direction} position: ${args.reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})`,
+                positionId: position.id,
+              },
+            });
+          } catch (decisionErr) {
+            console.warn("[tool] close_position TradeDecision write failed:", decisionErr);
+          }
+
+          // Write RunEvent
+          if (ctx.runId) {
+            try {
+              await prisma.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "position_closed",
+                  title: `Closed ${position.direction} ${args.symbol}`,
+                  message: `Closed ${position.quantity} shares at $${result.closePrice.toFixed(2)} — ${result.outcome} ($${result.realizedPnl.toFixed(2)})`,
+                  payload: {
+                    ticker: args.symbol,
+                    direction: position.direction,
+                    shares: position.quantity,
+                    entry_price: position.avgCost,
+                    close_price: result.closePrice,
+                    realized_pnl: result.realizedPnl,
+                    outcome: result.outcome,
+                    reason: args.reason,
+                  } as object,
+                },
+              });
+            } catch (evtErr) {
+              console.warn("[tool] close_position RunEvent write failed:", evtErr);
+            }
+          }
+
+          const pnlPct = position.avgCost > 0
+            ? (result.realizedPnl / (position.avgCost * position.quantity)) * 100
+            : 0;
+
+          logToolEnd("close_position", _t0, ctx.runId, `${args.symbol} pnl=$${result.realizedPnl.toFixed(2)}`, stats);
+          return {
+            status: "closed" as const,
+            ticker: args.symbol,
+            direction: position.direction,
+            shares: position.quantity,
+            entry_price: position.avgCost,
+            close_price: result.closePrice,
+            realized_pnl: result.realizedPnl,
+            pnl_pct: Math.round(pnlPct * 100) / 100,
+            outcome: result.outcome,
+            reason: args.reason,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Position close failed";
+          console.error(`[tool] close_position FAILED for ${args.symbol}: ${msg}`);
+          logToolEnd("close_position", _t0, ctx.runId, `${args.symbol} FAILED`, stats);
+          return { status: "failed" as const, ticker: args.symbol, error: msg };
+        }
+      },
+    }),
+
+    // ── Run Summary ───────────────────────────────────────────────────────
     summarize_run: tool({
       description:
         "Present a final portfolio synthesis at the end of your research session. Call this LAST, after all theses and trades. Summarize market context, rank all picks, show exposure breakdown, and highlight risks.",
@@ -1996,7 +2231,18 @@ export function createResearchTools(ctx: ToolContext) {
             console.error(`[tool] summarize_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
           }
           logToolEnd("summarize_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);
-          return { status: "complete", analyzed: args.ranked_picks.length, traded };
+          // Return ALL args so RunSummaryCard can render them
+          return {
+            status: "complete",
+            analyzed: args.ranked_picks.length,
+            traded,
+            market_summary: args.market_summary,
+            ranked_picks: args.ranked_picks,
+            exposure_breakdown: args.exposure_breakdown ?? null,
+            risk_notes: args.risk_notes ?? [],
+            overall_assessment: args.overall_assessment,
+            portfolio_review: args.portfolio_review ?? null,
+          };
         } catch (err) {
           console.error(`[tool] summarize_run FAILED:`, err instanceof Error ? err.message : err);
           // Best-effort: try to mark run COMPLETE even if everything else failed

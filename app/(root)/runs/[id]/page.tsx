@@ -106,6 +106,11 @@ export default async function RunPage({
                 ? "This run stopped before completing. It may have timed out or encountered an error."
                 : "This run completed before message persistence was enabled."}
             </p>
+            {run.status === "FAILED" && typeof config.error === "string" && (
+              <p className="text-xs max-w-md font-mono text-negative mt-2 bg-negative/5 rounded-md px-3 py-2 border border-negative/10">
+                {config.error}
+              </p>
+            )}
           </div>
         )}
       </div>

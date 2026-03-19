@@ -527,6 +527,33 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
     },
   },
 
+  // ── Phase 3: Portfolio Review ──────────────────────────────────────────
+  review_portfolio: {
+    icon: BarChart3,
+    sources: ["alpaca.markets"],
+    loadingLabel: () => "Reviewing portfolio and account",
+    completeLabel: (_ticker, result) => {
+      const theses = (result.run_theses as unknown[] | undefined)?.length ?? 0;
+      const positions = (result.open_positions as unknown[] | undefined)?.length ?? 0;
+      return `Portfolio review — ${theses} theses, ${positions} open positions`;
+    },
+  },
+
+  // ── Phase 4: Close Position ───────────────────────────────────────────
+  close_position: {
+    icon: Activity,
+    sources: ["alpaca.markets"],
+    loadingLabel: (ticker) => `Closing position in ${ticker}`,
+    completeLabel: (ticker, result) => {
+      const pnl = result.realized_pnl as number | undefined;
+      const outcome = result.outcome as string | undefined;
+      if (pnl != null) {
+        return `Closed ${ticker} — ${outcome} ($${pnl.toFixed(2)})`;
+      }
+      return `Closed position in ${ticker}`;
+    },
+  },
+
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
