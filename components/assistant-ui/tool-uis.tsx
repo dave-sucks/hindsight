@@ -455,17 +455,17 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Portfolio review → PortfolioReviewCard ───────────────────────
+  // ── Portfolio state → PortfolioReviewCard ────────────────────────
   useAssistantToolUI({
-    toolName: "review_portfolio",
+    toolName: "get_portfolio_state",
     render: ({ result }) => {
       if (!result) {
         return (
           <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Reviewing portfolio</ChainOfThoughtHeader>
+            <ChainOfThoughtHeader>Loading portfolio state</ChainOfThoughtHeader>
             <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={BarChart3} label="Loading theses and positions" status="active" />
-              <ChainOfThoughtStep icon={Activity} label="Evaluating portfolio allocation" status="pending" />
+              <ChainOfThoughtStep icon={BarChart3} label="Fetching positions and theses" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="Loading account balances" status="pending" />
             </ChainOfThoughtContent>
           </ChainOfThought>
         );
@@ -474,7 +474,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       if (result.error) {
         return (
           <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-            Portfolio review failed: {String(result.error)}
+            Portfolio state failed: {String(result.error)}
           </div>
         );
       }
@@ -503,16 +503,24 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
-      if (result.status === "failed") {
+      // NO_POSITION or FAILED — clean inline message
+      if (result.status === "NO_POSITION") {
+        return (
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
+            {String(result.message)}
+          </div>
+        );
+      }
+
+      if (result.status === "FAILED" || result.success === false) {
         return (
           <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-            Close failed: {String(result.error)}
+            Close failed: {String(result.message)}
           </div>
         );
       }
 
       const pnl = typeof result.realized_pnl === "number" ? result.realized_pnl : 0;
-      const isWin = pnl > 0;
 
       return (
         <div className="my-2">
@@ -520,7 +528,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             ticker={result.ticker as string}
             direction={result.direction as "LONG" | "SHORT"}
             entryPrice={typeof result.entry_price === "number" ? result.entry_price : 0}
-            shares={typeof result.shares === "number" ? result.shares : undefined}
+            shares={typeof result.closed_qty === "number" ? result.closed_qty : undefined}
             closePrice={typeof result.close_price === "number" ? result.close_price : undefined}
             realizedPnl={pnl}
             outcome={(result.outcome as "WIN" | "LOSS" | "BREAKEVEN") ?? null}
@@ -643,14 +651,14 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     toolName: "manage_watchlist",
     render: ({ args, result }) => {
       const action = (args?.action as string) ?? "";
-      const symbol = (args?.symbol as string) ?? "";
+      const ticker = (args?.ticker as string) ?? "";
       const reason = (args?.reason as string) ?? "";
 
       if (!result) {
         return (
           <ChainOfThought defaultOpen>
             <ChainOfThoughtHeader>
-              {action === "ADD" ? `Adding $${symbol} to watchlist` : action === "REMOVE" ? `Removing $${symbol} from watchlist` : `Updating $${symbol} watchlist entry`}
+              {action === "ADD" ? `Adding $${ticker} to watchlist` : action === "REMOVE" ? `Removing $${ticker} from watchlist` : `Updating $${ticker} watchlist entry`}
             </ChainOfThoughtHeader>
             <ChainOfThoughtContent>
               <ChainOfThoughtStep icon={Eye} label={`${action} watchlist item`} status="active" />
@@ -659,26 +667,34 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
-      const status = result.status as string;
-      const isSuccess = ["added", "removed", "updated"].includes(status);
+      const success = result.success as boolean;
+      const changed = result.changed as boolean;
+      const watchlistItem = result.watchlist_item as Record<string, unknown> | undefined;
+      const priority = watchlistItem?.priority as string | undefined;
 
       return (
         <Card className="p-4">
           <div className="flex items-center gap-2">
-            {isSuccess ? (
+            {success && changed ? (
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
             ) : (
               <HelpCircle className="h-4 w-4 text-muted-foreground" />
             )}
             <span className="text-sm font-medium">
-              {action === "ADD" ? `Added $${symbol} to watchlist` : action === "REMOVE" ? `Removed $${symbol} from watchlist` : `Updated $${symbol}`}
+              {action === "ADD" ? `Added $${ticker} to watchlist` : action === "REMOVE" ? `Removed $${ticker} from watchlist` : `Updated $${ticker}`}
             </span>
-            {(result.priority as string) && (result.priority as string) !== "NORMAL" && (
-              <Badge variant="outline" className="text-[10px]">{result.priority as string}</Badge>
+            {priority && priority !== "NORMAL" && (
+              <Badge variant="outline" className="text-[10px]">{priority}</Badge>
+            )}
+            {!!watchlistItem?.thesis_direction && (
+              <Badge variant="outline" className="text-[10px]">{String(watchlistItem.thesis_direction)}</Badge>
             )}
           </div>
           {reason && (
             <p className="text-xs text-muted-foreground mt-1.5 ml-6">{reason}</p>
+          )}
+          {!!watchlistItem?.catalyst && (
+            <p className="text-xs text-muted-foreground mt-1 ml-6">Catalyst: {String(watchlistItem.catalyst)}</p>
           )}
         </Card>
       );

@@ -163,20 +163,25 @@ model AgentConfig {
 // Replaces the flat watchlist String[] on AgentConfig for structured tracking.
 
 model AnalystWatchlistItem {
-  id             String    @id @default(cuid())
-  analystId      String
-  userId         String
-  symbol         String
-  reason         String    // Why this stock is being watched
-  notes          String?   // Free-text notes, updated over time
-  addedBy        String    // "AGENT" | "USER" | "BUILDER"
-  priority       String    @default("NORMAL") // "HIGH" | "NORMAL" | "LOW"
-  status         String    @default("ACTIVE") // "ACTIVE" | "REMOVED" | "GRADUATED"
-  lastReviewedAt DateTime? // Updated each time the agent reviews this item
-  removedAt      DateTime?
-  removeReason   String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  analystId       String
+  userId          String
+  symbol          String
+  reason          String    // Why this stock is being watched
+  notes           String?   // Free-text notes, updated over time
+  addedBy         String    // "AGENT" | "USER" | "BUILDER"
+  priority        String    @default("NORMAL") // "HIGH" | "NORMAL" | "LOW"
+  status          String    @default("ACTIVE") // "ACTIVE" | "REMOVED" | "GRADUATED"
+  thesisDirection String?   // "LONG" | "SHORT" | "PASS" — agent's directional view
+  targetPrice     Float?    // Price target the agent is watching for
+  stopPrice       Float?    // Price level that invalidates the thesis
+  conviction      Int?      // 0-100 conviction score
+  catalyst        String?   // Key catalyst being monitored (e.g. "Q2 earnings Aug 1")
+  lastReviewedAt  DateTime? // Updated each time the agent reviews this item
+  removedAt       DateTime?
+  removeReason    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   analyst        AgentConfig @relation(fields: [analystId], references: [id], onDelete: Cascade)
 
