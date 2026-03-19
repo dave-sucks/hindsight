@@ -1713,14 +1713,17 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
-    // ── Portfolio Review ────────────────────────────────────────────────────
-    review_portfolio: tool({
+    // ── Portfolio State (retrieval only) ─────────────────────────────────
+    get_portfolio_state: tool({
       description:
-        "MANDATORY before any trades. Shows all theses from this run alongside current open positions and account balance. Call this AFTER completing all research and theses, BEFORE placing any trades. Use the output to make portfolio-level decisions about what to BUY, SELL, HOLD, or PASS.",
+        "Retrieve the current portfolio snapshot: open positions with live prices and P&L, " +
+        "account balances, watchlist items with metadata, and all theses from this run. " +
+        "This is a READ-ONLY state snapshot. It provides data only — not recommendations. " +
+        "Call once after all research is complete, before making trade decisions.",
       inputSchema: z.object({}),
       execute: async () => {
         const _t0 = Date.now();
-        logToolStart("review_portfolio", ctx.runId, "", stats);
+        logToolStart("get_portfolio_state", ctx.runId, "", stats);
         try {
           // 1. All theses from this run
           const theses = await prisma.thesis.findMany({
@@ -1735,7 +1738,39 @@ export function createResearchTools(ctx: ToolContext) {
             orderBy: { openedAt: "desc" },
           });
 
-          // 3. Batch-fetch live prices
+          // 3. Active watchlist items for this analyst
+          let watchlistItems: {
+            symbol: string;
+            reason: string;
+            priority: string;
+            notes: string | null;
+            thesisDirection: string | null;
+            targetPrice: number | null;
+            stopPrice: number | null;
+            conviction: number | null;
+            catalyst: string | null;
+            lastReviewedAt: Date | null;
+          }[] = [];
+          if (ctx.analystId) {
+            watchlistItems = await prisma.analystWatchlistItem.findMany({
+              where: { analystId: ctx.analystId, status: "ACTIVE" },
+              orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
+              select: {
+                symbol: true,
+                reason: true,
+                priority: true,
+                notes: true,
+                thesisDirection: true,
+                targetPrice: true,
+                stopPrice: true,
+                conviction: true,
+                catalyst: true,
+                lastReviewedAt: true,
+              },
+            });
+          }
+
+          // 4. Batch-fetch live prices for positions + non-PASS theses
           const allTickers = [
             ...theses.filter(t => t.direction !== "PASS").map(t => t.ticker),
             ...openPositions.map(p => p.symbol),
@@ -1746,11 +1781,11 @@ export function createResearchTools(ctx: ToolContext) {
             try {
               priceMap = await getLatestPrices(uniqueTickers);
             } catch (e) {
-              console.warn("[tool] review_portfolio price fetch failed:", e);
+              console.warn("[tool] get_portfolio_state price fetch failed:", e);
             }
           }
 
-          // 4. Account balance
+          // 5. Account balance
           let account = { cash: 0, buying_power: 0, portfolio_value: 0 };
           try {
             const acc = await getAccount();
@@ -1760,7 +1795,7 @@ export function createResearchTools(ctx: ToolContext) {
               portfolio_value: parseFloat(acc.portfolio_value),
             };
           } catch (e) {
-            console.warn("[tool] review_portfolio account fetch failed:", e);
+            console.warn("[tool] get_portfolio_state account fetch failed:", e);
           }
 
           const result = {
@@ -1795,18 +1830,31 @@ export function createResearchTools(ctx: ToolContext) {
                 analyst_name: p.analyst?.name ?? null,
               };
             }),
+            watchlist: watchlistItems.map(w => ({
+              ticker: w.symbol,
+              reason: w.reason,
+              priority: w.priority,
+              thesis_direction: w.thesisDirection,
+              target_price: w.targetPrice,
+              stop_price: w.stopPrice,
+              conviction: w.conviction,
+              catalyst: w.catalyst,
+              notes: w.notes,
+              last_reviewed: w.lastReviewedAt?.toISOString() ?? null,
+            })),
             account,
             max_position_size: ctx.maxPositionSize ?? 10000,
             max_open_positions: ctx.maxOpenPositions ?? 5,
+            as_of: new Date().toISOString(),
             _sources: [{ provider: "Alpaca", title: "Portfolio & Account Data" }],
           };
 
-          logToolEnd("review_portfolio", _t0, ctx.runId, `theses=${theses.length} positions=${openPositions.length}`, stats);
+          logToolEnd("get_portfolio_state", _t0, ctx.runId, `theses=${theses.length} positions=${openPositions.length} watchlist=${watchlistItems.length}`, stats);
           return result;
         } catch (err) {
-          const msg = err instanceof Error ? err.message : "Portfolio review failed";
-          console.error(`[tool] review_portfolio FAILED: ${msg}`);
-          return { error: msg, run_theses: [], open_positions: [], account: { cash: 0, buying_power: 0, portfolio_value: 0 } };
+          const msg = err instanceof Error ? err.message : "Portfolio state retrieval failed";
+          console.error(`[tool] get_portfolio_state FAILED: ${msg}`);
+          return { error: msg, run_theses: [], open_positions: [], watchlist: [], account: { cash: 0, buying_power: 0, portfolio_value: 0 }, as_of: new Date().toISOString() };
         }
       },
     }),
@@ -1814,7 +1862,7 @@ export function createResearchTools(ctx: ToolContext) {
     // ── Trade Execution ───────────────────────────────────────────────────
     place_trade: tool({
       description:
-        "Place a paper trade on Alpaca. Only call this AFTER review_portfolio. The trade will be executed immediately. Will fail if any analyst already holds an open position in this ticker.",
+        "Place a paper trade on Alpaca. Only call this AFTER get_portfolio_state. The trade will be executed immediately. Will fail if any analyst already holds an open position in this ticker.",
       inputSchema: tradeParams,
       execute: async (args: TradeInput) => {
         const _t0 = Date.now();
@@ -1834,9 +1882,10 @@ export function createResearchTools(ctx: ToolContext) {
           if (existingPosition) {
             console.warn(`[tool] place_trade BLOCKED: open position already exists for ${args.ticker}`);
             return {
-              status: "failed" as const,
+              success: false,
               ticker: args.ticker,
-              error: `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`,
+              status: "FAILED" as const,
+              message: `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`,
             };
           }
 
@@ -1960,31 +2009,57 @@ export function createResearchTools(ctx: ToolContext) {
           });
 
           console.log(`[tool] place_trade SUCCESS position=${position.id} order=${order.id} fill=$${fillPrice.toFixed(2)}`);
+
+          // Graduate watchlist item if this ticker was on the watchlist
+          try {
+            const watchlistItem = await prisma.analystWatchlistItem.findFirst({
+              where: { analystId, symbol: args.ticker.toUpperCase(), status: "ACTIVE" },
+            });
+            if (watchlistItem) {
+              await prisma.analystWatchlistItem.update({
+                where: { id: watchlistItem.id },
+                data: { status: "GRADUATED", removeReason: "Promoted to active position", removedAt: new Date() },
+              });
+              // Sync legacy watchlist
+              const activeItems = await prisma.analystWatchlistItem.findMany({
+                where: { analystId, status: "ACTIVE" },
+                select: { symbol: true },
+              });
+              await prisma.agentConfig.update({
+                where: { id: analystId },
+                data: { watchlist: activeItems.map((i) => i.symbol) },
+              });
+              console.log(`[tool] place_trade graduated watchlist item ${args.ticker}`);
+            }
+          } catch (err) {
+            console.warn(`[tool] place_trade watchlist graduation failed (non-fatal):`, err instanceof Error ? err.message : err);
+          }
+
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`, stats);
           return {
-            status: "filled" as const,
+            success: true,
             ticker: args.ticker,
+            status: "FILLED" as const,
             direction: args.direction,
-            fill_price: fillPrice,
-            entry_price: fillPrice,
             shares: args.shares,
+            entry_price: fillPrice,
             target_price: args.target_price,
             stop_loss: args.stop_loss,
-            company_name: args.company_name ?? null,
-            exchange: args.exchange ?? null,
-            trade_id: position.id,
             position_id: position.id,
             order_id: order.id,
             alpaca_order_id: alpacaOrder.id,
+            message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+            _sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }],
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Trade placement failed";
           console.error(`[tool] place_trade FAILED for ${args.ticker}: ${msg}`);
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} FAILED`, stats);
           return {
-            status: "failed" as const,
+            success: false,
             ticker: args.ticker,
-            error: msg,
+            status: "FAILED" as const,
+            message: msg,
           };
         }
       },
@@ -1993,24 +2068,29 @@ export function createResearchTools(ctx: ToolContext) {
     // ── Close Position ──────────────────────────────────────────────────
     close_position: tool({
       description:
-        "Close an existing open position via Alpaca. Call this during the Execute phase when portfolio review indicates a position should be sold. Creates a SELL trade decision.",
+        "Explicitly close an existing open position by symbol. " +
+        "This tool performs one action only: closing the position. " +
+        "Call this during the execution phase when your analysis indicates a position should be exited.",
       inputSchema: z.object({
-        symbol: z.string().describe("Ticker symbol of the position to close"),
+        ticker: z.string().describe("Ticker symbol of the position to close"),
         reason: z.enum(["TARGET", "STOP", "MANUAL"]).default("MANUAL")
           .describe("TARGET if hit price target, STOP if risk management, MANUAL for portfolio rebalancing"),
+        notes: z.string().optional().describe("Optional notes explaining the close decision"),
       }),
       execute: async (args) => {
         const _t0 = Date.now();
-        logToolStart("close_position", ctx.runId, `symbol=${args.symbol} reason=${args.reason}`, stats);
+        const ticker = args.ticker.toUpperCase().trim();
+        logToolStart("close_position", ctx.runId, `ticker=${ticker} reason=${args.reason}`, stats);
         try {
           // Find open position
           const position = await prisma.position.findFirst({
-            where: { userId: ctx.userId, symbol: args.symbol, status: "OPEN" },
+            where: { userId: ctx.userId, symbol: ticker, status: "OPEN" },
             include: { analyst: { select: { name: true } } },
           });
 
           if (!position) {
-            return { status: "failed" as const, ticker: args.symbol, error: `No open position found for ${args.symbol}` };
+            logToolEnd("close_position", _t0, ctx.runId, `${ticker} NO_POSITION`, stats);
+            return { success: true, ticker, reason: args.reason, status: "NO_POSITION" as const, message: `No open position in ${ticker}. No action taken.` };
           }
 
           // Lazy import to avoid circular deps (same pattern as trade-exit.ts)
@@ -2019,15 +2099,18 @@ export function createResearchTools(ctx: ToolContext) {
 
           // Record SELL decision
           const analystId = ctx.analystId || position.analystId;
+          const reasoningNote = args.notes
+            ? `Closed ${position.direction} position: ${args.reason}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})`
+            : `Closed ${position.direction} position: ${args.reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})`;
           try {
             await prisma.tradeDecision.create({
               data: {
                 runId: ctx.runId,
                 analystId,
                 userId: ctx.userId,
-                symbol: args.symbol,
+                symbol: ticker,
                 decision: "SELL",
-                reasoning: `Closed ${position.direction} position: ${args.reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})`,
+                reasoning: reasoningNote,
                 positionId: position.id,
               },
             });
@@ -2042,10 +2125,10 @@ export function createResearchTools(ctx: ToolContext) {
                 data: {
                   runId: ctx.runId,
                   type: "position_closed",
-                  title: `Closed ${position.direction} ${args.symbol}`,
+                  title: `Closed ${position.direction} ${ticker}`,
                   message: `Closed ${position.quantity} shares at $${result.closePrice.toFixed(2)} — ${result.outcome} ($${result.realizedPnl.toFixed(2)})`,
                   payload: {
-                    ticker: args.symbol,
+                    ticker,
                     direction: position.direction,
                     shares: position.quantity,
                     entry_price: position.avgCost,
@@ -2053,6 +2136,7 @@ export function createResearchTools(ctx: ToolContext) {
                     realized_pnl: result.realizedPnl,
                     outcome: result.outcome,
                     reason: args.reason,
+                    notes: args.notes ?? null,
                   } as object,
                 },
               });
@@ -2065,24 +2149,27 @@ export function createResearchTools(ctx: ToolContext) {
             ? (result.realizedPnl / (position.avgCost * position.quantity)) * 100
             : 0;
 
-          logToolEnd("close_position", _t0, ctx.runId, `${args.symbol} pnl=$${result.realizedPnl.toFixed(2)}`, stats);
+          logToolEnd("close_position", _t0, ctx.runId, `${ticker} pnl=$${result.realizedPnl.toFixed(2)}`, stats);
           return {
-            status: "closed" as const,
-            ticker: args.symbol,
+            success: true,
+            ticker,
+            reason: args.reason,
+            closed_qty: position.quantity,
+            status: "CLOSED" as const,
             direction: position.direction,
-            shares: position.quantity,
             entry_price: position.avgCost,
             close_price: result.closePrice,
             realized_pnl: result.realizedPnl,
             pnl_pct: Math.round(pnlPct * 100) / 100,
             outcome: result.outcome,
-            reason: args.reason,
+            message: `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${result.realizedPnl >= 0 ? "+" : ""}${result.realizedPnl.toFixed(2)}`,
+            _sources: [{ provider: "Alpaca", title: `Close ${ticker}` }],
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Position close failed";
-          console.error(`[tool] close_position FAILED for ${args.symbol}: ${msg}`);
-          logToolEnd("close_position", _t0, ctx.runId, `${args.symbol} FAILED`, stats);
-          return { status: "failed" as const, ticker: args.symbol, error: msg };
+          console.error(`[tool] close_position FAILED for ${ticker}: ${msg}`);
+          logToolEnd("close_position", _t0, ctx.runId, `${ticker} FAILED`, stats);
+          return { success: false, ticker, reason: args.reason, status: "FAILED" as const, message: msg };
         }
       },
     }),
@@ -2231,6 +2318,251 @@ export function createResearchTools(ctx: ToolContext) {
         }
       },
     }),
+    // ── Watchlist management ──────────────────────────────────────────────
+
+    manage_watchlist: tool({
+      description:
+        "Explicitly add, remove, or update a watchlist item during a run. " +
+        "This tool mutates watchlist state only. It does not research the stock, generate a thesis, or place trades. " +
+        "Use when you want to save an idea for later, remove a dead idea, change watch priority, or attach notes/catalysts/targets after research.",
+      inputSchema: z.object({
+        action: z.enum(["ADD", "REMOVE", "UPDATE"]).describe("What to do with the watchlist item"),
+        ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
+        reason: z.string().describe("Why this stock is being added/removed/updated"),
+        priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional().describe("LOW = background monitoring, MEDIUM = review when relevant, HIGH = review every run"),
+        notes: z.string().optional().describe("Additional notes or conditions (e.g. 'Review if price drops below $150')"),
+        thesis_direction: z.enum(["LONG", "SHORT", "PASS"]).optional().describe("Your directional view on this stock"),
+        target_price: z.number().optional().describe("Price target you're watching for"),
+        stop_price: z.number().optional().describe("Price level that would invalidate the thesis"),
+        conviction: z.number().min(0).max(100).optional().describe("Conviction score 0-100"),
+        catalyst: z.string().optional().describe("Key catalyst being monitored (e.g. 'Q2 earnings Aug 1')"),
+      }),
+      execute: async (args) => {
+        const _t0 = Date.now();
+        const ticker = args.ticker.toUpperCase().trim();
+        logToolStart("manage_watchlist", ctx.runId, `action=${args.action} ticker=${ticker}`, stats);
+
+        if (!ctx.analystId) {
+          logToolEnd("manage_watchlist", _t0, ctx.runId, "FAILED: no analystId", stats);
+          return { success: false, action: args.action, ticker, changed: false, message: "Cannot manage watchlist without an analyst ID." };
+        }
+
+        // Validate numeric fields
+        if (args.target_price !== undefined && args.target_price <= 0) {
+          return { success: false, action: args.action, ticker, changed: false, message: "target_price must be positive." };
+        }
+        if (args.stop_price !== undefined && args.stop_price <= 0) {
+          return { success: false, action: args.action, ticker, changed: false, message: "stop_price must be positive." };
+        }
+
+        // Map MEDIUM → NORMAL for DB compat (schema stores NORMAL, tool exposes MEDIUM for clarity)
+        const dbPriority = args.priority === "MEDIUM" ? "NORMAL" : args.priority;
+
+        try {
+          if (args.action === "ADD") {
+            // Check for existing active item
+            const existing = await prisma.analystWatchlistItem.findFirst({
+              where: { analystId: ctx.analystId, symbol: ticker, status: "ACTIVE" },
+            });
+            if (existing) {
+              // Idempotent: merge only provided metadata into existing item
+              const updated = await prisma.analystWatchlistItem.update({
+                where: { id: existing.id },
+                data: {
+                  reason: args.reason,
+                  ...(dbPriority ? { priority: dbPriority } : {}),
+                  ...(args.notes !== undefined ? { notes: args.notes } : {}),
+                  ...(args.thesis_direction ? { thesisDirection: args.thesis_direction } : {}),
+                  ...(args.target_price !== undefined ? { targetPrice: args.target_price } : {}),
+                  ...(args.stop_price !== undefined ? { stopPrice: args.stop_price } : {}),
+                  ...(args.conviction !== undefined ? { conviction: args.conviction } : {}),
+                  ...(args.catalyst !== undefined ? { catalyst: args.catalyst } : {}),
+                  lastReviewedAt: new Date(),
+                },
+              });
+              logToolEnd("manage_watchlist", _t0, ctx.runId, `MERGED existing ${ticker}`, stats);
+              return {
+                success: true,
+                action: "ADD" as const,
+                ticker,
+                changed: true,
+                watchlist_item: {
+                  ticker,
+                  priority: updated.priority as "LOW" | "NORMAL" | "HIGH",
+                  notes: updated.notes,
+                  thesis_direction: updated.thesisDirection as "LONG" | "SHORT" | "PASS" | null,
+                  target_price: updated.targetPrice,
+                  stop_price: updated.stopPrice,
+                  conviction: updated.conviction,
+                  catalyst: updated.catalyst,
+                  updated_at: updated.updatedAt.toISOString(),
+                },
+                message: `$${ticker} already on watchlist — merged updated metadata.`,
+              };
+            }
+
+            const created = await prisma.analystWatchlistItem.create({
+              data: {
+                analystId: ctx.analystId,
+                userId: ctx.userId,
+                symbol: ticker,
+                reason: args.reason,
+                notes: args.notes ?? null,
+                addedBy: "AGENT",
+                priority: dbPriority ?? "NORMAL",
+                status: "ACTIVE",
+                thesisDirection: args.thesis_direction ?? null,
+                targetPrice: args.target_price ?? null,
+                stopPrice: args.stop_price ?? null,
+                conviction: args.conviction ?? null,
+                catalyst: args.catalyst ?? null,
+                lastReviewedAt: new Date(),
+              },
+            });
+
+            // Sync legacy watchlist array
+            const activeItems = await prisma.analystWatchlistItem.findMany({
+              where: { analystId: ctx.analystId, status: "ACTIVE" },
+              select: { symbol: true },
+            });
+            await prisma.agentConfig.update({
+              where: { id: ctx.analystId },
+              data: { watchlist: activeItems.map((i) => i.symbol) },
+            });
+
+            // Write RunEvent for visibility
+            if (ctx.runId) {
+              await prisma.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "watchlist_add",
+                  title: `Added $${ticker} to watchlist`,
+                  message: args.reason,
+                  payload: { symbol: ticker, priority: dbPriority ?? "NORMAL", reason: args.reason } as object,
+                },
+              });
+            }
+
+            logToolEnd("manage_watchlist", _t0, ctx.runId, `ADDED ${ticker}`, stats);
+            return {
+              success: true,
+              action: "ADD" as const,
+              ticker,
+              changed: true,
+              watchlist_item: {
+                ticker,
+                priority: created.priority as "LOW" | "NORMAL" | "HIGH",
+                notes: created.notes,
+                thesis_direction: args.thesis_direction ?? null,
+                target_price: args.target_price ?? null,
+                stop_price: args.stop_price ?? null,
+                conviction: args.conviction ?? null,
+                catalyst: args.catalyst ?? null,
+                updated_at: created.updatedAt.toISOString(),
+              },
+              message: `Added $${ticker} to watchlist.`,
+            };
+          }
+
+          if (args.action === "REMOVE") {
+            const item = await prisma.analystWatchlistItem.findFirst({
+              where: { analystId: ctx.analystId, symbol: ticker, status: "ACTIVE" },
+            });
+            if (!item) {
+              logToolEnd("manage_watchlist", _t0, ctx.runId, `${ticker} not on watchlist`, stats);
+              return { success: true, action: "REMOVE" as const, ticker, changed: false, message: `$${ticker} is not on the watchlist. No action taken.` };
+            }
+
+            await prisma.analystWatchlistItem.update({
+              where: { id: item.id },
+              data: {
+                status: "REMOVED",
+                removedAt: new Date(),
+                removeReason: args.reason,
+              },
+            });
+
+            // Sync legacy watchlist
+            const activeItems = await prisma.analystWatchlistItem.findMany({
+              where: { analystId: ctx.analystId, status: "ACTIVE" },
+              select: { symbol: true },
+            });
+            await prisma.agentConfig.update({
+              where: { id: ctx.analystId },
+              data: { watchlist: activeItems.map((i) => i.symbol) },
+            });
+
+            if (ctx.runId) {
+              await prisma.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "watchlist_remove",
+                  title: `Removed $${ticker} from watchlist`,
+                  message: args.reason,
+                  payload: { symbol: ticker, reason: args.reason } as object,
+                },
+              });
+            }
+
+            logToolEnd("manage_watchlist", _t0, ctx.runId, `REMOVED ${ticker}`, stats);
+            return { success: true, action: "REMOVE" as const, ticker, changed: true, message: `Removed $${ticker} from watchlist.` };
+          }
+
+          if (args.action === "UPDATE") {
+            const item = await prisma.analystWatchlistItem.findFirst({
+              where: { analystId: ctx.analystId, symbol: ticker, status: "ACTIVE" },
+            });
+            if (!item) {
+              logToolEnd("manage_watchlist", _t0, ctx.runId, `${ticker} not on watchlist`, stats);
+              return { success: true, action: "UPDATE" as const, ticker, changed: false, message: `$${ticker} is not on the watchlist. No action taken.` };
+            }
+
+            const updated = await prisma.analystWatchlistItem.update({
+              where: { id: item.id },
+              data: {
+                ...(args.reason ? { reason: args.reason } : {}),
+                ...(dbPriority ? { priority: dbPriority } : {}),
+                ...(args.notes !== undefined ? { notes: args.notes } : {}),
+                ...(args.thesis_direction ? { thesisDirection: args.thesis_direction } : {}),
+                ...(args.target_price !== undefined ? { targetPrice: args.target_price } : {}),
+                ...(args.stop_price !== undefined ? { stopPrice: args.stop_price } : {}),
+                ...(args.conviction !== undefined ? { conviction: args.conviction } : {}),
+                ...(args.catalyst !== undefined ? { catalyst: args.catalyst } : {}),
+                lastReviewedAt: new Date(),
+              },
+            });
+
+            logToolEnd("manage_watchlist", _t0, ctx.runId, `UPDATED ${ticker}`, stats);
+            return {
+              success: true,
+              action: "UPDATE" as const,
+              ticker,
+              changed: true,
+              watchlist_item: {
+                ticker,
+                priority: updated.priority as "LOW" | "NORMAL" | "HIGH",
+                notes: updated.notes,
+                thesis_direction: updated.thesisDirection as "LONG" | "SHORT" | "PASS" | null,
+                target_price: updated.targetPrice,
+                stop_price: updated.stopPrice,
+                conviction: updated.conviction,
+                catalyst: updated.catalyst,
+                updated_at: updated.updatedAt.toISOString(),
+              },
+              message: `Updated $${ticker} watchlist entry.`,
+            };
+          }
+
+          return { success: false, action: args.action, ticker, changed: false, message: `Unknown action: ${args.action}` };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Watchlist operation failed";
+          console.error(`[tool] manage_watchlist FAILED: ${msg}`);
+          logToolEnd("manage_watchlist", _t0, ctx.runId, `FAILED: ${msg}`, stats);
+          return { success: false, action: args.action, ticker, changed: false, message: msg };
+        }
+      },
+    }),
+
     // ── DAV-167: Extended data tools ──────────────────────────────────────
 
     get_sec_filings: tool({

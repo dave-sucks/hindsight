@@ -183,6 +183,42 @@ export async function POST(req: Request) {
         });
       }
 
+      // Active watchlist items with metadata
+      let watchlistItems: {
+        symbol: string;
+        reason: string;
+        priority: string;
+        notes: string | null;
+        thesisDirection: string | null;
+        targetPrice: number | null;
+        stopPrice: number | null;
+        conviction: number | null;
+        catalyst: string | null;
+        lastReviewedAt: Date | null;
+        addedBy: string;
+        createdAt: Date;
+      }[] = [];
+      if (configId) {
+        watchlistItems = await prisma.analystWatchlistItem.findMany({
+          where: { analystId: configId as string, status: "ACTIVE" },
+          orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
+          select: {
+            symbol: true,
+            reason: true,
+            priority: true,
+            notes: true,
+            thesisDirection: true,
+            targetPrice: true,
+            stopPrice: true,
+            conviction: true,
+            catalyst: true,
+            lastReviewedAt: true,
+            addedBy: true,
+            createdAt: true,
+          },
+        });
+      }
+
       // Recent PASS decisions (replaces shadow trades)
       const passDecisions = await prisma.tradeDecision.findMany({
         where: {
@@ -220,11 +256,30 @@ export async function POST(req: Request) {
       }
 
       if (openTrades.length > 0) {
-        parts.push("\n## Your Open Positions");
+        parts.push("\n## Your Open Positions (REVIEW THESE FIRST)");
         for (const t of openTrades) {
           parts.push(`- ${t.direction} ${t.quantity} shares $${t.symbol} @ $${Number(t.avgCost).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
         }
-        parts.push(`\nDo NOT open duplicate positions in tickers you already hold. Consider whether existing positions should be closed based on new information.`);
+        parts.push(`\nYou MUST review each open position during Phase 2 (Portfolio Review). Call get_stock_data and show_thesis for each holding to assess whether to HOLD, update targets, or SELL.`);
+      }
+
+      if (watchlistItems.length > 0) {
+        parts.push(`\n## Your Watchlist (${watchlistItems.length} items)`);
+        for (const w of watchlistItems) {
+          const reviewed = w.lastReviewedAt
+            ? `last reviewed ${w.lastReviewedAt.toISOString().slice(0, 10)}`
+            : "never reviewed";
+          const priorityTag = w.priority === "HIGH" ? " [HIGH]" : w.priority === "LOW" ? " [LOW]" : "";
+          const dirTag = w.thesisDirection ? ` ${w.thesisDirection}` : "";
+          const convTag = w.conviction != null ? ` conviction=${w.conviction}%` : "";
+          const priceInfo = [
+            w.targetPrice != null ? `target=$${w.targetPrice.toFixed(2)}` : null,
+            w.stopPrice != null ? `stop=$${w.stopPrice.toFixed(2)}` : null,
+          ].filter(Boolean).join(", ");
+          const catalystTag = w.catalyst ? ` | Catalyst: ${w.catalyst}` : "";
+          parts.push(`- $${w.symbol}${priorityTag}${dirTag}${convTag} — "${w.reason}" (${reviewed}, added by ${w.addedBy.toLowerCase()})${priceInfo ? ` | ${priceInfo}` : ""}${catalystTag}${w.notes ? ` | Notes: ${w.notes}` : ""}`);
+        }
+        parts.push(`\nReview HIGH priority watchlist items during Phase 3. Use manage_watchlist to add interesting PASS stocks or remove stale items.`);
       }
 
       if (recentTrades.length > 0) {
@@ -266,7 +321,7 @@ export async function POST(req: Request) {
       }
 
       historyBlock = parts.join("\n");
-      console.log(`[agent] History loaded: ${openTrades.length} open positions, ${recentTrades.length} closed, ${passDecisions.length} passes, accuracy=${!!latestAccuracy}, briefings=${recentBriefings.length}`);
+      console.log(`[agent] History loaded: ${openTrades.length} open positions, ${watchlistItems.length} watchlist, ${recentTrades.length} closed, ${passDecisions.length} passes, accuracy=${!!latestAccuracy}, briefings=${recentBriefings.length}`);
     } catch (err) {
       console.warn("[agent] Failed to load history (non-fatal):", err);
     }

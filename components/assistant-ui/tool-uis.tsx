@@ -15,6 +15,7 @@ import {
   Briefcase,
   GitCompare,
   HelpCircle,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -454,17 +455,17 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Portfolio review → PortfolioReviewCard ───────────────────────
+  // ── Portfolio state → PortfolioReviewCard ────────────────────────
   useAssistantToolUI({
-    toolName: "review_portfolio",
+    toolName: "get_portfolio_state",
     render: ({ result }) => {
       if (!result) {
         return (
           <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Reviewing portfolio</ChainOfThoughtHeader>
+            <ChainOfThoughtHeader>Loading portfolio state</ChainOfThoughtHeader>
             <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={BarChart3} label="Loading theses and positions" status="active" />
-              <ChainOfThoughtStep icon={Activity} label="Evaluating portfolio allocation" status="pending" />
+              <ChainOfThoughtStep icon={BarChart3} label="Fetching positions and theses" status="active" />
+              <ChainOfThoughtStep icon={Activity} label="Loading account balances" status="pending" />
             </ChainOfThoughtContent>
           </ChainOfThought>
         );
@@ -473,7 +474,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       if (result.error) {
         return (
           <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-            Portfolio review failed: {String(result.error)}
+            Portfolio state failed: {String(result.error)}
           </div>
         );
       }
@@ -483,6 +484,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           <PortfolioReviewCard
             run_theses={(result.run_theses ?? []) as PortfolioReviewData["run_theses"]}
             open_positions={(result.open_positions ?? []) as PortfolioReviewData["open_positions"]}
+            watchlist={(result.watchlist ?? []) as PortfolioReviewData["watchlist"]}
             account={(result.account ?? { cash: 0, buying_power: 0, portfolio_value: 0 }) as PortfolioReviewData["account"]}
           />
         </div>
@@ -502,16 +504,24 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
-      if (result.status === "failed") {
+      // NO_POSITION or FAILED — clean inline message
+      if (result.status === "NO_POSITION") {
+        return (
+          <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
+            {String(result.message)}
+          </div>
+        );
+      }
+
+      if (result.status === "FAILED" || result.success === false) {
         return (
           <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-            Close failed: {String(result.error)}
+            Close failed: {String(result.message)}
           </div>
         );
       }
 
       const pnl = typeof result.realized_pnl === "number" ? result.realized_pnl : 0;
-      const isWin = pnl > 0;
 
       return (
         <div className="my-2">
@@ -519,7 +529,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             ticker={result.ticker as string}
             direction={result.direction as "LONG" | "SHORT"}
             entryPrice={typeof result.entry_price === "number" ? result.entry_price : 0}
-            shares={typeof result.shares === "number" ? result.shares : undefined}
+            shares={typeof result.closed_qty === "number" ? result.closed_qty : undefined}
             closePrice={typeof result.close_price === "number" ? result.close_price : undefined}
             realizedPnl={pnl}
             outcome={(result.outcome as "WIN" | "LOSS" | "BREAKEVEN") ?? null}
@@ -548,33 +558,23 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
-      const status = result.status as string;
-
-      if (status === "failed") {
+      if (result.status === "FAILED" || result.success === false) {
         return (
           <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-            Trade failed: {String(result.error || result.note || "Unknown error")}
+            Trade failed: {String(result.message)}
           </div>
         );
       }
-
-      const entryPrice = typeof result.fill_price === "number"
-        ? result.fill_price
-        : typeof result.entry_price === "number"
-          ? result.entry_price
-          : 0;
 
       return (
         <div className="my-2">
           <TradeCard
             ticker={result.ticker as string}
             direction={result.direction as "LONG" | "SHORT"}
-            entryPrice={entryPrice}
+            entryPrice={typeof result.entry_price === "number" ? result.entry_price : 0}
             shares={typeof result.shares === "number" ? result.shares : undefined}
             targetPrice={typeof result.target_price === "number" ? result.target_price : undefined}
             stopLoss={typeof result.stop_loss === "number" ? result.stop_loss : undefined}
-            companyName={(result.company_name as string) ?? undefined}
-            exchange={(result.exchange as string) ?? undefined}
             status="OPEN"
           />
         </div>
@@ -633,6 +633,61 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             overallAssessment={result.overall_assessment as string}
           />
         </div>
+      );
+    },
+  });
+
+  // ── Watchlist management → inline status card ───────────────────────
+  useAssistantToolUI({
+    toolName: "manage_watchlist",
+    render: ({ args, result }) => {
+      const action = (args?.action as string) ?? "";
+      const ticker = (args?.ticker as string) ?? "";
+      const reason = (args?.reason as string) ?? "";
+
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>
+              {action === "ADD" ? `Adding $${ticker} to watchlist` : action === "REMOVE" ? `Removing $${ticker} from watchlist` : `Updating $${ticker} watchlist entry`}
+            </ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Eye} label={`${action} watchlist item`} status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const success = result.success as boolean;
+      const changed = result.changed as boolean;
+      const watchlistItem = result.watchlist_item as Record<string, unknown> | undefined;
+      const priority = watchlistItem?.priority as string | undefined;
+
+      return (
+        <Card className="p-4">
+          <div className="flex items-center gap-2">
+            {success && changed ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            ) : (
+              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            )}
+            <span className="text-sm font-medium">
+              {action === "ADD" ? `Added $${ticker} to watchlist` : action === "REMOVE" ? `Removed $${ticker} from watchlist` : `Updated $${ticker}`}
+            </span>
+            {priority && priority !== "NORMAL" && (
+              <Badge variant="outline" className="text-[10px]">{priority}</Badge>
+            )}
+            {!!watchlistItem?.thesis_direction && (
+              <Badge variant="outline" className="text-[10px]">{String(watchlistItem.thesis_direction)}</Badge>
+            )}
+          </div>
+          {reason && (
+            <p className="text-xs text-muted-foreground mt-1.5 ml-6">{reason}</p>
+          )}
+          {!!watchlistItem?.catalyst && (
+            <p className="text-xs text-muted-foreground mt-1 ml-6">Catalyst: {String(watchlistItem.catalyst)}</p>
+          )}
+        </Card>
       );
     },
   });

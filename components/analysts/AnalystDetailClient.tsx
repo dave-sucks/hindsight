@@ -13,11 +13,12 @@ import { Button } from "@/components/ui/button";
 import { AnalystConfigSheet } from "@/components/analysts/AnalystConfigSheet";
 import { StockCombobox } from "@/components/analysts/StockCombobox";
 import { StockLogo } from "@/components/StockLogo";
+import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import {
-  addToWatchlist,
-  removeFromWatchlist,
-  deleteAnalyst,
-} from "@/lib/actions/analyst.actions";
+  addWatchlistItem,
+  removeWatchlistItem,
+  type WatchlistItemView,
+} from "@/lib/actions/watchlist.actions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import { TradeRow } from "@/components/ui/trade-row";
@@ -109,20 +110,54 @@ function AnalystTradeRow({ trade }: { trade: PositionWithThesis }) {
 // ── Watching row for sidebar ──────────────────────────────────────────────────
 
 function WatchingRow({
-  symbol,
+  item,
   onRemove,
 }: {
-  symbol: string;
+  item: WatchlistItemView;
   onRemove: (symbol: string) => void;
 }) {
+  const directionColor = item.thesisDirection === "LONG"
+    ? "text-emerald-500"
+    : item.thesisDirection === "SHORT"
+      ? "text-red-500"
+      : "text-muted-foreground";
+
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 last:border-0">
-      <StockLogo ticker={symbol} size="md" className="rounded-md" />
+      <StockLogo ticker={item.symbol} size="md" className="rounded-md" />
       <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium">{symbol}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-medium">{item.symbol}</span>
+          {item.thesisDirection && (
+            <span className={`text-[9px] font-medium uppercase ${directionColor}`}>{item.thesisDirection}</span>
+          )}
+          {item.priority === "HIGH" && (
+            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+          )}
+          {item.addedBy === "AGENT" && (
+            <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">AI</span>
+          )}
+          {item.conviction != null && (
+            <span className="text-[9px] text-muted-foreground tabular-nums">{item.conviction}%</span>
+          )}
+        </div>
+        <p className="text-[10px] text-muted-foreground truncate">{item.reason}</p>
+        {(item.targetPrice != null || item.stopPrice != null || item.catalyst) && (
+          <div className="flex items-center gap-2 mt-0.5">
+            {item.targetPrice != null && (
+              <span className="text-[9px] text-muted-foreground tabular-nums">T: ${item.targetPrice.toFixed(2)}</span>
+            )}
+            {item.stopPrice != null && (
+              <span className="text-[9px] text-muted-foreground tabular-nums">S: ${item.stopPrice.toFixed(2)}</span>
+            )}
+            {item.catalyst && (
+              <span className="text-[9px] text-muted-foreground truncate">{item.catalyst}</span>
+            )}
+          </div>
+        )}
       </div>
       <button
-        onClick={() => onRemove(symbol)}
+        onClick={() => onRemove(item.symbol)}
         className="p-1 rounded hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors"
       >
         <X className="h-3.5 w-3.5" />
@@ -188,9 +223,11 @@ function FloatingEditorComposer({ analystId }: { analystId: string }) {
 export default function AnalystDetailClient({
   detail,
   hasRunning,
+  initialWatchlist = [],
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
+  initialWatchlist?: WatchlistItemView[];
 }) {
   const { config: rawConfig, stats, recentTrades } = detail;
 
@@ -208,7 +245,7 @@ export default function AnalystDetailClient({
   const router = useRouter();
   const [configOpen, setConfigOpen] = useState(false);
   const [range, setRange] = useState<Range>("Max");
-  const [watchlist, setWatchlist] = useState(config.watchlist);
+  const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
   const [, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -227,17 +264,40 @@ export default function AnalystDetailClient({
 
   const handleAddStock = (symbol: string) => {
     const upper = symbol.toUpperCase();
-    if (watchlist.includes(upper)) return;
-    setWatchlist((prev) => [...prev, upper]);
+    if (watchlistItems.some((i) => i.symbol === upper)) return;
+    // Optimistic add
+    const tempItem: WatchlistItemView = {
+      id: `temp-${upper}`,
+      symbol: upper,
+      reason: "Added manually",
+      notes: null,
+      addedBy: "USER",
+      priority: "NORMAL",
+      status: "ACTIVE",
+      thesisDirection: null,
+      targetPrice: null,
+      stopPrice: null,
+      conviction: null,
+      catalyst: null,
+      lastReviewedAt: null,
+      createdAt: new Date(),
+      thesisCount: 0,
+      latestThesis: null,
+    };
+    setWatchlistItems((prev) => [...prev, tempItem]);
     startTransition(async () => {
-      await addToWatchlist(config.id, upper);
+      const item = await addWatchlistItem(config.id, upper);
+      // Replace temp item with real one
+      setWatchlistItems((prev) =>
+        prev.map((i) => (i.id === tempItem.id ? item : i)),
+      );
     });
   };
 
   const handleRemoveStock = (symbol: string) => {
-    setWatchlist((prev) => prev.filter((s) => s !== symbol));
+    setWatchlistItems((prev) => prev.filter((i) => i.symbol !== symbol));
     startTransition(async () => {
-      await removeFromWatchlist(config.id, symbol);
+      await removeWatchlistItem(config.id, symbol);
     });
   };
 
@@ -534,9 +594,9 @@ export default function AnalystDetailClient({
                   </TabsTrigger>
                   <TabsTrigger value={1}>
                     Watching
-                    {watchlist.length > 0 && (
+                    {watchlistItems.length > 0 && (
                       <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
-                        {watchlist.length}
+                        {watchlistItems.length}
                       </span>
                     )}
                   </TabsTrigger>
@@ -559,10 +619,10 @@ export default function AnalystDetailClient({
                 <div className="px-3 py-2 shrink-0">
                   <StockCombobox
                     onSelect={handleAddStock}
-                    excludeSymbols={watchlist}
+                    excludeSymbols={watchlistItems.map((i) => i.symbol)}
                   />
                 </div>
-                {watchlist.length === 0 ? (
+                {watchlistItems.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-6 px-4 space-y-2">
                     <Eye className="h-8 w-8 text-muted-foreground/30" />
                     <p className="text-[10px] text-muted-foreground text-center">
@@ -571,10 +631,10 @@ export default function AnalystDetailClient({
                     </p>
                   </div>
                 ) : (
-                  watchlist.map((symbol) => (
+                  watchlistItems.map((item) => (
                     <WatchingRow
-                      key={symbol}
-                      symbol={symbol}
+                      key={item.id}
+                      item={item}
                       onRemove={handleRemoveStock}
                     />
                   ))

@@ -6,6 +6,7 @@ export type {
   AgentConfigModel as AgentConfig,
   UserModel as User,
   WatchlistItemModel as WatchlistItem,
+  AnalystWatchlistItemModel as AnalystWatchlistItem,
   PositionModel as Position,
   OrderModel as Order,
   PositionEventModel as PositionEvent,
@@ -36,6 +37,11 @@ export type PositionEventType =
   | "EVALUATED"
   | "EOD_CHECK";
 export type DecisionType = "BUY" | "SELL" | "HOLD" | "PASS";
+
+// ─── Watchlist types ────────────────────────────────────────────────────────
+export type WatchlistItemStatus = "ACTIVE" | "REMOVED" | "GRADUATED";
+export type WatchlistItemPriority = "HIGH" | "NORMAL" | "LOW";
+export type WatchlistItemAddedBy = "AGENT" | "USER" | "BUILDER";
 
 // ─── Composite types ─────────────────────────────────────────────────────────
 
