@@ -183,12 +183,17 @@ export async function POST(req: Request) {
         });
       }
 
-      // Active watchlist items with thesis history
+      // Active watchlist items with metadata
       let watchlistItems: {
         symbol: string;
         reason: string;
         priority: string;
         notes: string | null;
+        thesisDirection: string | null;
+        targetPrice: number | null;
+        stopPrice: number | null;
+        conviction: number | null;
+        catalyst: string | null;
         lastReviewedAt: Date | null;
         addedBy: string;
         createdAt: Date;
@@ -202,6 +207,11 @@ export async function POST(req: Request) {
             reason: true,
             priority: true,
             notes: true,
+            thesisDirection: true,
+            targetPrice: true,
+            stopPrice: true,
+            conviction: true,
+            catalyst: true,
             lastReviewedAt: true,
             addedBy: true,
             createdAt: true,
@@ -260,7 +270,14 @@ export async function POST(req: Request) {
             ? `last reviewed ${w.lastReviewedAt.toISOString().slice(0, 10)}`
             : "never reviewed";
           const priorityTag = w.priority === "HIGH" ? " [HIGH]" : w.priority === "LOW" ? " [LOW]" : "";
-          parts.push(`- $${w.symbol}${priorityTag} — "${w.reason}" (${reviewed}, added by ${w.addedBy.toLowerCase()})${w.notes ? ` | Notes: ${w.notes}` : ""}`);
+          const dirTag = w.thesisDirection ? ` ${w.thesisDirection}` : "";
+          const convTag = w.conviction != null ? ` conviction=${w.conviction}%` : "";
+          const priceInfo = [
+            w.targetPrice != null ? `target=$${w.targetPrice.toFixed(2)}` : null,
+            w.stopPrice != null ? `stop=$${w.stopPrice.toFixed(2)}` : null,
+          ].filter(Boolean).join(", ");
+          const catalystTag = w.catalyst ? ` | Catalyst: ${w.catalyst}` : "";
+          parts.push(`- $${w.symbol}${priorityTag}${dirTag}${convTag} — "${w.reason}" (${reviewed}, added by ${w.addedBy.toLowerCase()})${priceInfo ? ` | ${priceInfo}` : ""}${catalystTag}${w.notes ? ` | Notes: ${w.notes}` : ""}`);
         }
         parts.push(`\nReview HIGH priority watchlist items during Phase 3. Use manage_watchlist to add interesting PASS stocks or remove stale items.`);
       }

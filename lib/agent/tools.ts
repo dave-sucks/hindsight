@@ -1838,9 +1838,10 @@ export function createResearchTools(ctx: ToolContext) {
           if (existingPosition) {
             console.warn(`[tool] place_trade BLOCKED: open position already exists for ${args.ticker}`);
             return {
-              status: "failed" as const,
+              success: false,
               ticker: args.ticker,
-              error: `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`,
+              status: "FAILED" as const,
+              message: `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`,
             };
           }
 
@@ -1992,29 +1993,29 @@ export function createResearchTools(ctx: ToolContext) {
 
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`, stats);
           return {
-            status: "filled" as const,
+            success: true,
             ticker: args.ticker,
+            status: "FILLED" as const,
             direction: args.direction,
-            fill_price: fillPrice,
-            entry_price: fillPrice,
             shares: args.shares,
+            entry_price: fillPrice,
             target_price: args.target_price,
             stop_loss: args.stop_loss,
-            company_name: args.company_name ?? null,
-            exchange: args.exchange ?? null,
-            trade_id: position.id,
             position_id: position.id,
             order_id: order.id,
             alpaca_order_id: alpacaOrder.id,
+            message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+            _sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }],
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Trade placement failed";
           console.error(`[tool] place_trade FAILED for ${args.ticker}: ${msg}`);
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} FAILED`, stats);
           return {
-            status: "failed" as const,
+            success: false,
             ticker: args.ticker,
-            error: msg,
+            status: "FAILED" as const,
+            message: msg,
           };
         }
       },

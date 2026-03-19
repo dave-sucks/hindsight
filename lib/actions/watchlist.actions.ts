@@ -24,6 +24,11 @@ export interface WatchlistItemView {
   addedBy: string;
   priority: string;
   status: string;
+  thesisDirection: string | null;
+  targetPrice: number | null;
+  stopPrice: number | null;
+  conviction: number | null;
+  catalyst: string | null;
   lastReviewedAt: Date | null;
   createdAt: Date;
   thesisCount: number;
@@ -121,6 +126,11 @@ export async function getWatchlistItems(
       addedBy: item.addedBy,
       priority: item.priority,
       status: item.status,
+      thesisDirection: item.thesisDirection,
+      targetPrice: item.targetPrice,
+      stopPrice: item.stopPrice,
+      conviction: item.conviction,
+      catalyst: item.catalyst,
       lastReviewedAt: item.lastReviewedAt,
       createdAt: item.createdAt,
       thesisCount: thesisData?.count ?? 0,
@@ -170,6 +180,11 @@ export async function addWatchlistItem(
       addedBy: existing.addedBy,
       priority: existing.priority,
       status: existing.status,
+      thesisDirection: existing.thesisDirection,
+      targetPrice: existing.targetPrice,
+      stopPrice: existing.stopPrice,
+      conviction: existing.conviction,
+      catalyst: existing.catalyst,
       lastReviewedAt: existing.lastReviewedAt,
       createdAt: existing.createdAt,
       thesisCount: 0,
@@ -202,6 +217,11 @@ export async function addWatchlistItem(
     addedBy: item.addedBy,
     priority: item.priority,
     status: item.status,
+    thesisDirection: item.thesisDirection,
+    targetPrice: item.targetPrice,
+    stopPrice: item.stopPrice,
+    conviction: item.conviction,
+    catalyst: item.catalyst,
     lastReviewedAt: item.lastReviewedAt,
     createdAt: item.createdAt,
     thesisCount: 0,

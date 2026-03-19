@@ -116,20 +116,45 @@ function WatchingRow({
   item: WatchlistItemView;
   onRemove: (symbol: string) => void;
 }) {
+  const directionColor = item.thesisDirection === "LONG"
+    ? "text-emerald-500"
+    : item.thesisDirection === "SHORT"
+      ? "text-red-500"
+      : "text-muted-foreground";
+
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 last:border-0">
       <StockLogo ticker={item.symbol} size="md" className="rounded-md" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium">{item.symbol}</span>
+          {item.thesisDirection && (
+            <span className={`text-[9px] font-medium uppercase ${directionColor}`}>{item.thesisDirection}</span>
+          )}
           {item.priority === "HIGH" && (
             <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
           )}
           {item.addedBy === "AGENT" && (
             <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">AI</span>
           )}
+          {item.conviction != null && (
+            <span className="text-[9px] text-muted-foreground tabular-nums">{item.conviction}%</span>
+          )}
         </div>
         <p className="text-[10px] text-muted-foreground truncate">{item.reason}</p>
+        {(item.targetPrice != null || item.stopPrice != null || item.catalyst) && (
+          <div className="flex items-center gap-2 mt-0.5">
+            {item.targetPrice != null && (
+              <span className="text-[9px] text-muted-foreground tabular-nums">T: ${item.targetPrice.toFixed(2)}</span>
+            )}
+            {item.stopPrice != null && (
+              <span className="text-[9px] text-muted-foreground tabular-nums">S: ${item.stopPrice.toFixed(2)}</span>
+            )}
+            {item.catalyst && (
+              <span className="text-[9px] text-muted-foreground truncate">{item.catalyst}</span>
+            )}
+          </div>
+        )}
       </div>
       <button
         onClick={() => onRemove(item.symbol)}
@@ -249,6 +274,11 @@ export default function AnalystDetailClient({
       addedBy: "USER",
       priority: "NORMAL",
       status: "ACTIVE",
+      thesisDirection: null,
+      targetPrice: null,
+      stopPrice: null,
+      conviction: null,
+      catalyst: null,
       lastReviewedAt: null,
       createdAt: new Date(),
       thesisCount: 0,

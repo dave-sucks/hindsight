@@ -557,33 +557,23 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
-      const status = result.status as string;
-
-      if (status === "failed") {
+      if (result.status === "FAILED" || result.success === false) {
         return (
           <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-            Trade failed: {String(result.error || result.note || "Unknown error")}
+            Trade failed: {String(result.message)}
           </div>
         );
       }
-
-      const entryPrice = typeof result.fill_price === "number"
-        ? result.fill_price
-        : typeof result.entry_price === "number"
-          ? result.entry_price
-          : 0;
 
       return (
         <div className="my-2">
           <TradeCard
             ticker={result.ticker as string}
             direction={result.direction as "LONG" | "SHORT"}
-            entryPrice={entryPrice}
+            entryPrice={typeof result.entry_price === "number" ? result.entry_price : 0}
             shares={typeof result.shares === "number" ? result.shares : undefined}
             targetPrice={typeof result.target_price === "number" ? result.target_price : undefined}
             stopLoss={typeof result.stop_loss === "number" ? result.stop_loss : undefined}
-            companyName={(result.company_name as string) ?? undefined}
-            exchange={(result.exchange as string) ?? undefined}
             status="OPEN"
           />
         </div>
