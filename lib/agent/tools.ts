@@ -1716,10 +1716,10 @@ export function createResearchTools(ctx: ToolContext) {
     // ── Portfolio State (retrieval only) ─────────────────────────────────
     get_portfolio_state: tool({
       description:
-        "Retrieve current account and portfolio context: open positions with live prices and unrealized P&L, " +
-        "account balances (cash, buying power, equity), and all theses generated during this run. " +
-        "This tool retrieves portfolio/account state only. It does not decide what action to take — " +
-        "you must synthesize that decision yourself based on the data returned.",
+        "Retrieve the current portfolio snapshot: open positions with live prices and P&L, " +
+        "account balances, watchlist items with metadata, and all theses from this run. " +
+        "This is a READ-ONLY state snapshot. It provides data only — not recommendations. " +
+        "Call once after all research is complete, before making trade decisions.",
       inputSchema: z.object({}),
       execute: async () => {
         const _t0 = Date.now();
@@ -1738,7 +1738,39 @@ export function createResearchTools(ctx: ToolContext) {
             orderBy: { openedAt: "desc" },
           });
 
-          // 3. Batch-fetch live prices
+          // 3. Active watchlist items for this analyst
+          let watchlistItems: {
+            symbol: string;
+            reason: string;
+            priority: string;
+            notes: string | null;
+            thesisDirection: string | null;
+            targetPrice: number | null;
+            stopPrice: number | null;
+            conviction: number | null;
+            catalyst: string | null;
+            lastReviewedAt: Date | null;
+          }[] = [];
+          if (ctx.analystId) {
+            watchlistItems = await prisma.analystWatchlistItem.findMany({
+              where: { analystId: ctx.analystId, status: "ACTIVE" },
+              orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
+              select: {
+                symbol: true,
+                reason: true,
+                priority: true,
+                notes: true,
+                thesisDirection: true,
+                targetPrice: true,
+                stopPrice: true,
+                conviction: true,
+                catalyst: true,
+                lastReviewedAt: true,
+              },
+            });
+          }
+
+          // 4. Batch-fetch live prices for positions + non-PASS theses
           const allTickers = [
             ...theses.filter(t => t.direction !== "PASS").map(t => t.ticker),
             ...openPositions.map(p => p.symbol),
@@ -1753,7 +1785,7 @@ export function createResearchTools(ctx: ToolContext) {
             }
           }
 
-          // 4. Account balance
+          // 5. Account balance
           let account = { cash: 0, buying_power: 0, portfolio_value: 0 };
           try {
             const acc = await getAccount();
@@ -1798,6 +1830,18 @@ export function createResearchTools(ctx: ToolContext) {
                 analyst_name: p.analyst?.name ?? null,
               };
             }),
+            watchlist: watchlistItems.map(w => ({
+              ticker: w.symbol,
+              reason: w.reason,
+              priority: w.priority,
+              thesis_direction: w.thesisDirection,
+              target_price: w.targetPrice,
+              stop_price: w.stopPrice,
+              conviction: w.conviction,
+              catalyst: w.catalyst,
+              notes: w.notes,
+              last_reviewed: w.lastReviewedAt?.toISOString() ?? null,
+            })),
             account,
             max_position_size: ctx.maxPositionSize ?? 10000,
             max_open_positions: ctx.maxOpenPositions ?? 5,
@@ -1805,12 +1849,12 @@ export function createResearchTools(ctx: ToolContext) {
             _sources: [{ provider: "Alpaca", title: "Portfolio & Account Data" }],
           };
 
-          logToolEnd("get_portfolio_state", _t0, ctx.runId, `theses=${theses.length} positions=${openPositions.length}`, stats);
+          logToolEnd("get_portfolio_state", _t0, ctx.runId, `theses=${theses.length} positions=${openPositions.length} watchlist=${watchlistItems.length}`, stats);
           return result;
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Portfolio state retrieval failed";
           console.error(`[tool] get_portfolio_state FAILED: ${msg}`);
-          return { error: msg, run_theses: [], open_positions: [], account: { cash: 0, buying_power: 0, portfolio_value: 0 }, as_of: new Date().toISOString() };
+          return { error: msg, run_theses: [], open_positions: [], watchlist: [], account: { cash: 0, buying_power: 0, portfolio_value: 0 }, as_of: new Date().toISOString() };
         }
       },
     }),

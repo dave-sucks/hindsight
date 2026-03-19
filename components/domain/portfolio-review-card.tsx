@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { StockLogo } from "@/components/StockLogo";
-import { Briefcase, TrendingUp, TrendingDown } from "lucide-react";
+import { Briefcase, TrendingUp, TrendingDown, Eye } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +29,15 @@ type PositionRow = {
   analyst_name?: string | null;
 };
 
+type WatchlistRow = {
+  ticker: string;
+  reason: string;
+  priority: string;
+  thesis_direction?: string | null;
+  conviction?: number | null;
+  catalyst?: string | null;
+};
+
 type AccountData = {
   cash: number;
   buying_power: number;
@@ -38,6 +47,7 @@ type AccountData = {
 export type PortfolioReviewData = {
   run_theses: ThesisRow[];
   open_positions: PositionRow[];
+  watchlist?: WatchlistRow[];
   account: AccountData;
   max_position_size?: number;
   max_open_positions?: number;
@@ -60,6 +70,7 @@ function fmtCompact(n: number): string {
 export function PortfolioReviewCard({
   run_theses,
   open_positions,
+  watchlist,
   account,
 }: PortfolioReviewData) {
   const longTheses = run_theses.filter((t) => t.direction === "LONG");
@@ -151,10 +162,43 @@ export function PortfolioReviewCard({
         </div>
       )}
 
+      {/* ── Watchlist section ──────────────────────────────────── */}
+      {watchlist && watchlist.length > 0 && (
+        <div className="border-t">
+          <div className="px-3 py-1.5">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Watchlist ({watchlist.length})
+            </span>
+          </div>
+          {watchlist.map((w) => (
+            <div key={w.ticker} className="px-3 py-1.5 flex items-center gap-2 border-t">
+              <Eye className="h-3 w-3 text-muted-foreground" />
+              <span className="text-sm font-medium">{w.ticker}</span>
+              {w.thesis_direction && (
+                <span className={`text-[9px] font-medium uppercase ${
+                  w.thesis_direction === "LONG" ? "text-emerald-500"
+                    : w.thesis_direction === "SHORT" ? "text-red-500"
+                      : "text-muted-foreground"
+                }`}>{w.thesis_direction}</span>
+              )}
+              {w.priority === "HIGH" && (
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+              )}
+              {w.conviction != null && (
+                <span className="text-[9px] text-muted-foreground tabular-nums">{w.conviction}%</span>
+              )}
+              <span className="ml-auto text-[10px] text-muted-foreground truncate max-w-[200px]">
+                {w.catalyst ?? w.reason}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Empty state ────────────────────────────────────────── */}
-      {run_theses.length === 0 && open_positions.length === 0 && (
+      {run_theses.length === 0 && open_positions.length === 0 && (!watchlist || watchlist.length === 0) && (
         <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-          No theses or positions to review.
+          No theses, positions, or watchlist items.
         </div>
       )}
     </Card>

@@ -484,6 +484,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           <PortfolioReviewCard
             run_theses={(result.run_theses ?? []) as PortfolioReviewData["run_theses"]}
             open_positions={(result.open_positions ?? []) as PortfolioReviewData["open_positions"]}
+            watchlist={(result.watchlist ?? []) as PortfolioReviewData["watchlist"]}
             account={(result.account ?? { cash: 0, buying_power: 0, portfolio_value: 0 }) as PortfolioReviewData["account"]}
           />
         </div>
