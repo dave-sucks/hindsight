@@ -10,6 +10,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount } from "@/lib/alpaca";
+import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import type { MarketOverviewResult, MarketContextResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult, ScanCandidate, MarketTheme, ThemeDirection, DetectMarketThemesResult, ToolSource } from "@/lib/discovery/types";
 import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 
@@ -1867,13 +1868,14 @@ export function createResearchTools(ctx: ToolContext) {
             });
 
             // Create trade decision (links thesis → position → order)
+            // V2: Use INITIATE (new position) instead of BUY/SELL
             await tx.tradeDecision.create({
               data: {
                 runId: ctx.runId,
                 analystId,
                 userId: ctx.userId,
                 symbol: args.ticker,
-                decision: args.direction === "LONG" ? "BUY" : "SELL",
+                decision: "INITIATE",
                 reasoning: `${args.direction} ${args.shares} shares at $${fillPrice.toFixed(2)} (target: $${args.target_price.toFixed(2)}, stop: $${args.stop_loss.toFixed(2)})`,
                 thesisId: args.thesis_id,
                 positionId: pos.id,
@@ -2012,7 +2014,7 @@ export function createResearchTools(ctx: ToolContext) {
           const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
           const result = await closeOpenPosition(position.id, args.reason);
 
-          // Record SELL decision
+          // Record EXIT decision (V2: was "SELL", now "EXIT")
           const analystId = ctx.analystId || position.analystId;
           const reasoningNote = args.notes
             ? `Closed ${position.direction} position: ${args.reason}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})`
@@ -2024,7 +2026,7 @@ export function createResearchTools(ctx: ToolContext) {
                 analystId,
                 userId: ctx.userId,
                 symbol: ticker,
-                decision: "SELL",
+                decision: "EXIT",
                 reasoning: reasoningNote,
                 positionId: position.id,
               },
@@ -2185,6 +2187,36 @@ export function createResearchTools(ctx: ToolContext) {
           .describe(
             "Portfolio review assessment from Phase 5.5 — total exposure analysis, sector concentration, correlation risk, and whether combined risk is acceptable",
           ),
+
+        // V2: Structured brief fields — agent produces these for the next run's context
+        market_posture: z
+          .string()
+          .optional()
+          .describe("Current market posture in 2-3 words, e.g. 'cautiously bullish', 'defensive', 'max long exposure'"),
+        watch_tomorrow: z
+          .array(z.object({
+            symbol: z.string(),
+            trigger: z.string().describe("Condition to watch, e.g. 'price < 145', 'RSI < 30'"),
+            suggested_action: z.string().describe("What to do if triggered, e.g. 'INITIATE LONG', 'EXIT'"),
+            priority: z.enum(["HIGH", "NORMAL"]).optional(),
+          }))
+          .optional()
+          .describe("Symbols to watch in the next session with specific triggers"),
+        unresolved_items: z
+          .array(z.object({
+            item: z.string().describe("What is unresolved"),
+            impact: z.string().describe("Why it matters"),
+            affected_positions: z.array(z.string()).optional(),
+          }))
+          .optional()
+          .describe("Things you couldn't resolve this session that need follow-up"),
+        self_corrections: z
+          .array(z.object({
+            observation: z.string().describe("What you noticed about your own behavior"),
+            adjustment: z.string().describe("What you'll do differently"),
+          }))
+          .optional()
+          .describe("Self-reflections on biases or mistakes to correct"),
       }),
       execute: async (args) => {
         const _t0 = Date.now();
@@ -2246,6 +2278,53 @@ export function createResearchTools(ctx: ToolContext) {
           } catch (err) {
             console.error(`[tool] complete_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
           }
+          // V2: Record HOLD decisions for positions not acted on
+          const holdPicks = args.ranked_picks.filter(
+            (p) => p.action.toUpperCase() === "HOLD"
+          );
+          if (holdPicks.length > 0 && ctx.analystId && ctx.runId) {
+            for (const pick of holdPicks) {
+              try {
+                const position = await prisma.position.findFirst({
+                  where: { analystId: ctx.analystId, symbol: pick.ticker.toUpperCase(), status: "OPEN" },
+                  select: { id: true },
+                });
+                await prisma.tradeDecision.create({
+                  data: {
+                    runId: ctx.runId,
+                    analystId: ctx.analystId,
+                    userId: ctx.userId,
+                    symbol: pick.ticker.toUpperCase(),
+                    decision: "HOLD",
+                    reasoning: pick.reasoning?.slice(0, 500) ?? null,
+                    positionId: position?.id ?? null,
+                  },
+                });
+              } catch (holdErr) {
+                console.warn(`[tool] complete_run HOLD decision failed for ${pick.ticker}:`, holdErr instanceof Error ? holdErr.message : holdErr);
+              }
+            }
+          }
+
+          // V2: Generate analyst briefing with structured fields directly from the tool
+          if (ctx.analystId && ctx.runId) {
+            try {
+              await updateAnalystBriefing({
+                analystId: ctx.analystId,
+                runId: ctx.runId,
+                userId: ctx.userId,
+                structuredBrief: {
+                  marketPosture: args.market_posture,
+                  watchTomorrow: args.watch_tomorrow,
+                  unresolvedItems: args.unresolved_items,
+                  selfCorrections: args.self_corrections,
+                },
+              });
+            } catch (briefErr) {
+              console.error("[tool] complete_run briefing generation failed (non-fatal):", briefErr instanceof Error ? briefErr.message : briefErr);
+            }
+          }
+
           logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);
           // Return ALL args so RunSummaryCard can render them
           return {
@@ -2291,6 +2370,10 @@ export function createResearchTools(ctx: ToolContext) {
         stop_price: z.number().optional().describe("Price level that would invalidate the thesis"),
         conviction: z.number().min(0).max(100).optional().describe("Conviction score 0-100"),
         catalyst: z.string().optional().describe("Key catalyst being monitored (e.g. 'Q2 earnings Aug 1')"),
+        trigger_condition: z.string().optional()
+          .describe("Machine-readable trigger: 'price < 145', 'RSI < 30', 'earnings this week'"),
+        review_frequency: z.enum(["DAILY", "WEEKLY", "ON_CATALYST"]).optional()
+          .describe("How often to review this item"),
       }),
       execute: async (args) => {
         const _t0 = Date.now();
@@ -2332,6 +2415,8 @@ export function createResearchTools(ctx: ToolContext) {
                   ...(args.stop_price !== undefined ? { stopPrice: args.stop_price } : {}),
                   ...(args.conviction !== undefined ? { conviction: args.conviction } : {}),
                   ...(args.catalyst !== undefined ? { catalyst: args.catalyst } : {}),
+                  ...(args.trigger_condition !== undefined ? { triggerCondition: args.trigger_condition } : {}),
+                  ...(args.review_frequency !== undefined ? { reviewFrequency: args.review_frequency } : {}),
                   lastReviewedAt: new Date(),
                 },
               });
@@ -2371,6 +2456,9 @@ export function createResearchTools(ctx: ToolContext) {
                 stopPrice: args.stop_price ?? null,
                 conviction: args.conviction ?? null,
                 catalyst: args.catalyst ?? null,
+                triggerCondition: args.trigger_condition ?? null,
+                reviewFrequency: args.review_frequency ?? null,
+                addedRunId: ctx.runId ?? null,
                 lastReviewedAt: new Date(),
               },
             });
@@ -2396,6 +2484,24 @@ export function createResearchTools(ctx: ToolContext) {
                   payload: { symbol: ticker, priority: dbPriority ?? "NORMAL", reason: args.reason } as object,
                 },
               });
+            }
+
+            // V2: Record WATCH decision
+            if (ctx.runId && ctx.analystId) {
+              try {
+                await prisma.tradeDecision.create({
+                  data: {
+                    runId: ctx.runId,
+                    analystId: ctx.analystId,
+                    userId: ctx.userId,
+                    symbol: ticker,
+                    decision: "WATCH",
+                    reasoning: args.reason?.slice(0, 500) ?? null,
+                  },
+                });
+              } catch (decisionErr) {
+                console.warn("[tool] manage_watchlist WATCH decision write failed:", decisionErr);
+              }
             }
 
             logToolEnd("manage_watchlist", _t0, ctx.runId, `ADDED ${ticker}`, stats);
@@ -2459,6 +2565,24 @@ export function createResearchTools(ctx: ToolContext) {
               });
             }
 
+            // V2: Record REMOVE_WATCH decision
+            if (ctx.runId && ctx.analystId) {
+              try {
+                await prisma.tradeDecision.create({
+                  data: {
+                    runId: ctx.runId,
+                    analystId: ctx.analystId,
+                    userId: ctx.userId,
+                    symbol: ticker,
+                    decision: "REMOVE_WATCH",
+                    reasoning: args.reason?.slice(0, 500) ?? null,
+                  },
+                });
+              } catch (decisionErr) {
+                console.warn("[tool] manage_watchlist REMOVE_WATCH decision write failed:", decisionErr);
+              }
+            }
+
             logToolEnd("manage_watchlist", _t0, ctx.runId, `REMOVED ${ticker}`, stats);
             return { success: true, action: "REMOVE" as const, ticker, changed: true, message: `Removed $${ticker} from watchlist.` };
           }
@@ -2483,6 +2607,8 @@ export function createResearchTools(ctx: ToolContext) {
                 ...(args.stop_price !== undefined ? { stopPrice: args.stop_price } : {}),
                 ...(args.conviction !== undefined ? { conviction: args.conviction } : {}),
                 ...(args.catalyst !== undefined ? { catalyst: args.catalyst } : {}),
+                ...(args.trigger_condition !== undefined ? { triggerCondition: args.trigger_condition } : {}),
+                ...(args.review_frequency !== undefined ? { reviewFrequency: args.review_frequency } : {}),
                 lastReviewedAt: new Date(),
               },
             });

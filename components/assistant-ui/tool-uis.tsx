@@ -409,7 +409,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
 
   // ── Thesis → ThesisCard (compact preview, opens sheet on click) ────
   // Shared render for record_thesis (new) and show_thesis (backward compat alias)
-  const thesisRender = ({ result }: { result: Record<string, unknown> | undefined }) => {
+  const thesisRender = ({ result }: { result?: Record<string, unknown> }) => {
     if (!result) {
       return (
         <ChainOfThought defaultOpen>
@@ -587,7 +587,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
 
   // ── Run summary → RunSummaryCard ──────────────────────────────────
   // Shared render for complete_run (new) and summarize_run (backward compat alias)
-  const runSummaryRender = ({ result }: { result: Record<string, unknown> | undefined }) => {
+  const runSummaryRender = ({ result }: { result?: Record<string, unknown> }) => {
     if (!result) {
       return (
         <ChainOfThought defaultOpen>
