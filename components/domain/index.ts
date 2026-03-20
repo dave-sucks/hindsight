@@ -28,3 +28,9 @@ export {
   PortfolioReviewCard,
   type PortfolioReviewData,
 } from "./portfolio-review-card";
+export {
+  DecisionSummaryCard,
+  type DecisionSummaryData,
+  type DecisionSummaryCardProps,
+  type DecisionPick,
+} from "./decision-summary-card";

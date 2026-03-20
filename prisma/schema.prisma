@@ -201,6 +201,13 @@ model AnalystWatchlistItem {
   conviction      Int?      // 0-100 conviction score
   catalyst        String?   // Key catalyst being monitored (e.g. "Q2 earnings Aug 1")
   lastReviewedAt  DateTime? // Updated each time the agent reviews this item
+
+  // V2: Enhanced watchlist metadata
+  triggerCondition  String?       // Machine-readable: "price < 145", "RSI < 30", "earnings this week"
+  reviewFrequency   String?       // "DAILY" | "WEEKLY" | "ON_CATALYST"
+  addedRunId        String?       // Which run added this item
+  lastThesisId      String?       // Most recent thesis for this symbol
+
   removedAt       DateTime?
   removeReason    String?
 
@@ -353,6 +360,13 @@ model AnalystBriefing {
   trades            Json?         // TradeCardData[] placed in this run (renders as TradeCards)
   portfolioSnapshot Json?        // { openPositions, totalPnl, winRate, totalInvested, closedPnl, wins, losses }
   strategyNotes     String?       // What's working, what to adjust, what to watch next
+
+  // V2: Structured brief fields — agent produces these directly
+  marketPosture     String?       // "cautiously bullish", "defensive", "max long exposure"
+  watchTomorrow     Json?         // Array<{symbol, trigger, suggestedAction, priority}>
+  unresolvedItems   Json?         // Array<{item, impact, affectedPositions}>
+  selfCorrections   Json?         // Array<{observation, adjustment}>
+
   createdAt         DateTime      @default(now())
   analyst           AgentConfig   @relation(fields: [analystId], references: [id], onDelete: Cascade)
   run               ResearchRun?  @relation(fields: [runId], references: [id], onDelete: SetNull)

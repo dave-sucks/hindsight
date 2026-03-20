@@ -39,6 +39,7 @@ import {
   RunSummaryCard,
   PortfolioReviewCard,
   type PortfolioReviewData,
+  DecisionSummaryCard,
 } from "@/components/domain";
 
 // ─── Chat UI Components ─────────────────────────────────────────────────────
@@ -615,8 +616,35 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       sector_concentration?: string;
     } | null;
 
+    // Decision picks for the V2 DecisionSummaryCard
+    const decisionPicks = rankedPicks.map((p) => ({
+      rank: p.rank,
+      ticker: p.ticker,
+      direction: p.direction,
+      confidence: p.confidence,
+      reasoning: p.reasoning,
+      action: p.action,
+    }));
+
     return (
-      <div className="my-2">
+      <div className="my-2 space-y-3">
+        {/* V2: Decision table above the narrative summary */}
+        <DecisionSummaryCard
+          rankedPicks={decisionPicks}
+          marketSummary={result.market_summary as string}
+          exposureBreakdown={
+            exposure
+              ? {
+                  longExposure: exposure.long_exposure,
+                  shortExposure: exposure.short_exposure,
+                  netExposure: exposure.net_exposure,
+                }
+              : undefined
+          }
+          riskNotes={(result.risk_notes ?? []) as string[]}
+          overallAssessment={result.overall_assessment as string}
+          portfolioReview={result.portfolio_review as string | undefined}
+        />
         <RunSummaryCard
           marketSummary={result.market_summary as string}
           rankedPicks={rankedPicks}
