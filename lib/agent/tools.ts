@@ -419,6 +419,9 @@ const thesisParams = z.object({
       sell: z.number(),
     }).optional(),
   }).optional().describe("Key fundamentals from get_stock_data — populates the Data tab in the thesis card."),
+  // V2 Phase 3: Thesis lifecycle
+  parent_thesis_id: z.string().optional()
+    .describe("ID of the prior thesis being updated or invalidated. Links thesis chain. Pass the activeThesisId from your portfolio context when updating a holding's thesis."),
 });
 const tradeParams = z.object({
   ticker: z.string(),
@@ -1625,8 +1628,49 @@ export function createResearchTools(ctx: ToolContext) {
               sourcesUsed: args.sources_used ?? [],
               source: "AGENT",
               modelUsed: "gpt-4o",
+              status: "ACTIVE",
+              parentThesisId: args.parent_thesis_id ?? null,
             },
           });
+
+          // V2 Phase 3: Handle parent thesis lifecycle transition
+          if (args.parent_thesis_id) {
+            try {
+              if (args.direction === "PASS") {
+                // PASS on existing thesis → parent is INVALIDATED
+                await prisma.thesis.update({
+                  where: { id: args.parent_thesis_id },
+                  data: {
+                    status: "INVALIDATED",
+                    invalidatedAt: new Date(),
+                    invalidReason: args.reasoning_summary?.slice(0, 500) || "Thesis invalidated by follow-up research",
+                  },
+                });
+              } else {
+                // Updated thesis (LONG/SHORT) → parent is SUPERSEDED
+                await prisma.thesis.update({
+                  where: { id: args.parent_thesis_id },
+                  data: { status: "SUPERSEDED" },
+                });
+              }
+            } catch (parentErr) {
+              console.warn(`[tool] record_thesis failed to update parent thesis ${args.parent_thesis_id}:`, parentErr);
+              // Non-fatal — the new thesis was still created
+            }
+          }
+
+          // V2 Phase 3: Update watchlist item's lastThesisId if applicable
+          const analystIdForWatchlist = ctx.analystId;
+          if (analystIdForWatchlist) {
+            try {
+              await prisma.analystWatchlistItem.updateMany({
+                where: { analystId: analystIdForWatchlist, symbol: args.ticker, status: "ACTIVE" },
+                data: { lastThesisId: thesis.id },
+              });
+            } catch {
+              // Non-fatal
+            }
+          }
 
           // Persist RunEvent so thesis is visible on page reload
           if (ctx.runId) {
@@ -1874,7 +1918,7 @@ export function createResearchTools(ctx: ToolContext) {
             if (watchlistItem) {
               await prisma.analystWatchlistItem.update({
                 where: { id: watchlistItem.id },
-                data: { status: "GRADUATED", removeReason: "Promoted to active position", removedAt: new Date() },
+                data: { status: "GRADUATED", removeReason: "Promoted to active position", removedAt: new Date(), promotedToPositionId: position.id },
               });
               // Sync legacy watchlist
               const activeItems = await prisma.analystWatchlistItem.findMany({
@@ -2016,6 +2060,29 @@ export function createResearchTools(ctx: ToolContext) {
             } catch (evtErr) {
               console.warn("[tool] close_position RunEvent write failed:", evtErr);
             }
+          }
+
+          // V2 Phase 3: Mark linked thesis as CLOSED
+          try {
+            const activeThesis = await prisma.thesis.findFirst({
+              where: {
+                ticker,
+                status: "ACTIVE",
+                direction: { not: "PASS" },
+                researchRun: { agentConfigId: analystId },
+              },
+              orderBy: { createdAt: "desc" },
+            });
+
+            if (activeThesis) {
+              await prisma.thesis.update({
+                where: { id: activeThesis.id },
+                data: { status: "CLOSED" },
+              });
+            }
+          } catch (thesisErr) {
+            console.warn(`[tool] close_position failed to mark thesis CLOSED for ${ticker}:`, thesisErr);
+            // Non-fatal
           }
 
           const pnlPct = position.avgCost > 0

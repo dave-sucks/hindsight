@@ -80,31 +80,54 @@ model RunMessage {
   @@index([runId])
 }
 
+enum ThesisStatus {
+  ACTIVE
+  INVALIDATED
+  CLOSED
+  SUPERSEDED
+}
+
 model Thesis {
-  id               String      @id @default(cuid())
+  id               String        @id @default(cuid())
   researchRunId    String
   userId           String
   ticker           String
-  source           String      // "AGENT" | "MANUAL"
-  direction        String      // "LONG" | "SHORT" | "PASS"
+  source           String        // "AGENT" | "MANUAL"
+  direction        String        // "LONG" | "SHORT" | "PASS"
   entryPrice       Float?
   targetPrice      Float?
   stopLoss         Float?
-  holdDuration     String      // "DAY" | "SWING" | "POSITION"
-  confidenceScore  Int         // 0-100
+  holdDuration     String        // "DAY" | "SWING" | "POSITION"
+  confidenceScore  Int           // 0-100
   reasoningSummary String
   thesisBullets    String[]
   riskFlags        String[]
-  signalTypes      String[]    // ["EARNINGS_BEAT", "SECTOR_ROTATION", etc.]
+  signalTypes      String[]      // ["EARNINGS_BEAT", "SECTOR_ROTATION", etc.]
   sector           String?
-  sourcesUsed      Json        // [{type, provider, title, url, publishedAt}]
+  sourcesUsed      Json          // [{type, provider, title, url, publishedAt}]
   modelUsed        String
   fullResearch     Json?
-  thoughtTrace     Json?       // [{type, data, timestamp_ms}] — per-ticker event log for replay
-  researchRun      ResearchRun @relation(fields: [researchRunId], references: [id])
+  thoughtTrace     Json?         // [{type, data, timestamp_ms}] — per-ticker event log for replay
+
+  // V2: Thesis lifecycle
+  status           ThesisStatus  @default(ACTIVE)
+  parentThesisId   String?       // Links to prior thesis on same ticker
+  invalidatedAt    DateTime?
+  invalidReason    String?
+
+  // Relations
+  researchRun      ResearchRun   @relation(fields: [researchRunId], references: [id])
   decisions        TradeDecision[]
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  parentThesis     Thesis?       @relation("ThesisChain", fields: [parentThesisId], references: [id])
+  childTheses      Thesis[]      @relation("ThesisChain")
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([researchRunId])
+  @@index([userId])
+  @@index([ticker])
+  @@index([userId, ticker, status])
 }
 
 model AgentConfig {
@@ -187,6 +210,10 @@ model AnalystWatchlistItem {
 
   removedAt       DateTime?
   removeReason    String?
+
+  // V2 Phase 3: Graduation tracking
+  promotedToPositionId  String?   // FK to Position that this watchlist item graduated into
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

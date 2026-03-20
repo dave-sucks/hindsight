@@ -87,6 +87,26 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 
   sections.push(portfolioSection);
 
+  // ── Section 3.5: Active Theses ───────────────────────────────────────
+  if (runInput.activeTheses && runInput.activeTheses.length > 0) {
+    let thesesSection = `## Active Theses\nThese are your current ACTIVE theses. Use parent_thesis_id when updating them.\n\n`;
+    thesesSection += `| Ticker | Direction | Confidence | Entry | Target | Stop | Created | Thesis ID |\n`;
+    thesesSection += `|--------|-----------|-----------|-------|--------|------|---------|----------|\n`;
+    for (const t of runInput.activeTheses) {
+      const entry = t.entryPrice != null ? `$${t.entryPrice.toFixed(2)}` : "—";
+      const target = t.targetPrice != null ? `$${t.targetPrice.toFixed(2)}` : "—";
+      const stop = t.stopLoss != null ? `$${t.stopLoss.toFixed(2)}` : "—";
+      const created = t.createdAt.slice(0, 10);
+      thesesSection += `| $${t.ticker} | ${t.direction} | ${t.confidence}% | ${entry} | ${target} | ${stop} | ${created} | ${t.id} |\n`;
+    }
+    thesesSection += `\nSummary per thesis:\n`;
+    for (const t of runInput.activeTheses) {
+      thesesSection += `- $${t.ticker} (${t.id}): "${t.reasoningSummary.slice(0, 150)}"\n`;
+    }
+    thesesSection += `\nWhen reviewing a holding, pass the thesis ID as parent_thesis_id to record_thesis to maintain the chain.`;
+    sections.push(thesesSection);
+  }
+
   // ── Section 4: Watchlist ─────────────────────────────────────────────
   if (runInput.watchlist.length > 0) {
     let watchSection = `## Watchlist (${runInput.watchlist.length} items)\n`;
@@ -180,6 +200,7 @@ You can see your portfolio above. Do NOT research every holding every day. TRIAG
 - **CAN SKIP:** healthy positions within thesis parameters, reviewed yesterday
 
 For positions needing review: get_stock_data → narrate → record_thesis (to update or confirm thesis)
+When updating a thesis on a position you're reviewing, pass the parent_thesis_id from the active thesis shown above. This creates a thesis chain for tracking how your view evolved.
 
 ### Phase 3: REVIEW WATCHLIST (1-4 steps)
 Triage your watchlist above:
