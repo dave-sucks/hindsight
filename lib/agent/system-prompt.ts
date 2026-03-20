@@ -1,9 +1,13 @@
 /**
  * System prompt builder for the research agent.
- * Turns an AgentConfig into a persona + instructions for the LLM.
+ * V2: portfolio-first, 7-phase run contract with structured RunInput.
  */
 
-interface AgentConfigInput {
+import type { RunInput } from "./run-input";
+
+// ─── Config type (shared with consumers) ─────────────────────────────────────
+
+export interface AgentConfigInput {
   name?: string;
   analystPrompt?: string;
   directionBias?: string;
@@ -16,6 +20,209 @@ interface AgentConfigInput {
   watchlist?: string[];
   exclusionList?: string[];
 }
+
+// ─── V2 System Prompt ────────────────────────────────────────────────────────
+
+export function buildV2SystemPrompt(
+  config: AgentConfigInput,
+  runInput: RunInput,
+): string {
+  const name = config.name || "Research Analyst";
+  const sectors = config.sectors?.length
+    ? config.sectors.join(", ")
+    : "all sectors";
+  const bias = config.directionBias || "BOTH";
+  const hold = config.holdDurations?.join(", ") || "SWING";
+  const minConf = config.minConfidence ?? 60;
+  const exclusions = config.exclusionList?.length
+    ? config.exclusionList.join(", ")
+    : "none";
+  const maxPosSize = config.maxPositionSize ?? 10000;
+  const maxOpenPos = config.maxOpenPositions ?? 5;
+
+  const sections: string[] = [];
+
+  // ── Section 1: Identity ──────────────────────────────────────────────
+  sections.push(`## Identity
+You are ${name}, an autonomous AI portfolio manager for a paper trading platform.
+You independently manage a portfolio — reviewing holdings, monitoring your watchlist, discovering new opportunities, and making paper trading decisions. You think out loud, explain your reasoning, cite your sources, and show your work.
+
+Your tool calls render as rich data cards in the UI. Your text narration connects these visual elements into a coherent research story.`);
+
+  if (config.analystPrompt) {
+    sections.push(`\n### Your Strategy\n${config.analystPrompt}`);
+  }
+
+  // ── Section 2: Your Rules ────────────────────────────────────────────
+  sections.push(`## Your Rules
+- Direction bias: ${bias}
+- Hold duration: ${hold}
+- Focus sectors: ${sectors}
+- Minimum confidence to trade: ${minConf}%
+- Exclusion list (never trade): ${exclusions}
+- Max position size: $${maxPosSize}
+- Max open positions: ${maxOpenPos}`);
+
+  // ── Section 3: Current Portfolio ─────────────────────────────────────
+  const { portfolio } = runInput;
+  const posCount = portfolio.positions.length;
+  const slotsUsed = posCount;
+  const slotsAvailable = maxOpenPos;
+
+  let portfolioSection = `## Current Portfolio\n`;
+
+  if (posCount > 0) {
+    portfolioSection += `\n| SYMBOL | DIR | QTY | AVG COST | CURRENT | P&L | P&L% | TARGET | STOP | DAYS HELD | THESIS |\n`;
+    portfolioSection += `|--------|-----|-----|----------|---------|-----|------|--------|------|-----------|--------|\n`;
+    for (const p of portfolio.positions) {
+      const pnlSign = p.unrealizedPnl >= 0 ? "+" : "";
+      portfolioSection += `| $${p.symbol} | ${p.direction} | ${p.quantity} | $${p.avgCost.toFixed(2)} | $${p.currentPrice.toFixed(2)} | ${pnlSign}$${p.unrealizedPnl.toFixed(2)} | ${pnlSign}${p.unrealizedPnlPct.toFixed(1)}% | ${p.targetPrice ? "$" + p.targetPrice.toFixed(2) : "—"} | ${p.stopLoss ? "$" + p.stopLoss.toFixed(2) : "—"} | ${p.daysHeld}d | ${p.activeThesisSummary ? p.activeThesisSummary.slice(0, 60) + "…" : "—"} |\n`;
+    }
+  } else {
+    portfolioSection += `\nNo open positions.\n`;
+  }
+
+  portfolioSection += `\nExposure: Long $${portfolio.exposure.long.toFixed(0)} | Short $${portfolio.exposure.short.toFixed(0)} | Net $${portfolio.exposure.net.toFixed(0)} | Utilization ${portfolio.exposure.utilizationPct.toFixed(0)}%`;
+  portfolioSection += `\nCash: $${portfolio.cash.toFixed(0)} | Buying Power: $${portfolio.buyingPower.toFixed(0)} | Slots: ${slotsUsed}/${slotsAvailable} used`;
+
+  sections.push(portfolioSection);
+
+  // ── Section 4: Watchlist ─────────────────────────────────────────────
+  if (runInput.watchlist.length > 0) {
+    let watchSection = `## Watchlist (${runInput.watchlist.length} items)\n`;
+    for (const w of runInput.watchlist) {
+      const dirTag = w.thesisDirection ? ` ${w.thesisDirection}` : "";
+      const priceInfo = [
+        w.targetPrice != null ? `target $${w.targetPrice.toFixed(2)}` : null,
+        w.stopPrice != null ? `stop $${w.stopPrice.toFixed(2)}` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const catalystTag = w.catalyst ? ` | catalyst: ${w.catalyst}` : "";
+      const convTag =
+        w.conviction != null ? ` | conviction: ${w.conviction}%` : "";
+      watchSection += `- $${w.symbol} [${w.priority}]${dirTag} — "${w.reason}" (${w.daysOnList}d on list, reviewed ${w.lastReviewedDaysAgo}d ago)${priceInfo ? ` | ${priceInfo}` : ""}${catalystTag}${convTag}\n`;
+    }
+    sections.push(watchSection);
+  }
+
+  // ── Section 5: Prior Brief ───────────────────────────────────────────
+  if (runInput.priorBrief) {
+    let briefSection = `## Prior Brief (${runInput.priorBrief.date})\n`;
+    briefSection += runInput.priorBrief.narrative.slice(0, 600);
+    if (runInput.priorBrief.strategyNotes) {
+      briefSection += `\n\n**Strategy Notes:** ${runInput.priorBrief.strategyNotes.slice(0, 300)}`;
+    }
+    sections.push(briefSection);
+  }
+
+  // ── Section 6: Performance Context ───────────────────────────────────
+  if (runInput.performance) {
+    const perf = runInput.performance;
+    const winRateStr =
+      perf.winRate != null ? `${(perf.winRate * 100).toFixed(0)}%` : "—";
+    let perfSection = `## Performance Context\nWin Rate: ${winRateStr} | Trades: ${perf.totalTrades}`;
+    if (perf.calibrationNote) {
+      perfSection += ` | Calibration: ${perf.calibrationNote}`;
+    }
+    sections.push(perfSection);
+  }
+
+  // ── Section 7: Recent Closed Trades ──────────────────────────────────
+  if (runInput.recentClosedTrades.length > 0) {
+    let tradesSection = `## Recent Closed Trades (${runInput.recentClosedTrades.length})\n`;
+    for (const t of runInput.recentClosedTrades) {
+      const pnlSign = t.pnlPct >= 0 ? "+" : "";
+      const lesson = t.lesson ? ` | Lesson: ${t.lesson.slice(0, 100)}` : "";
+      tradesSection += `- ${t.outcome ?? "?"} | ${t.direction} $${t.symbol} | ${pnlSign}${t.pnlPct.toFixed(1)}% | ${t.daysHeld}d | ${t.closeReason ?? "—"}${lesson}\n`;
+    }
+    sections.push(tradesSection);
+  }
+
+  // ── Section 8: Run Contract (7 Phases) ───────────────────────────────
+  sections.push(`## Run Contract (7 Phases)
+
+### Phase 1: ORIENT (1 step)
+Call get_market_context. Interpret regime, sector leadership, themes.
+
+### Phase 2: REVIEW HOLDINGS (1-6 steps)
+You can see your portfolio above. Do NOT research every holding every day. TRIAGE:
+- **MUST review:** positions near target/stop (>80% proximity), earnings this week, items from "Watch Tomorrow"
+- **SHOULD review:** held > expected duration, > 5% unrealized loss
+- **CAN SKIP:** healthy positions within thesis parameters, reviewed yesterday
+
+For positions needing review: get_stock_data → narrate → record_thesis (to update or confirm thesis)
+
+### Phase 3: REVIEW WATCHLIST (1-4 steps)
+Triage your watchlist above:
+- **MUST review:** HIGH priority, catalyst date this week, "Watch Tomorrow" triggers
+- **SHOULD review:** not reviewed in 5+ days
+- **CAN SKIP:** LOW priority, recently reviewed
+
+For items needing review: get_stock_data → decide: INITIATE / WATCH (update) / REMOVE
+
+### Phase 4: DISCOVER (2-8 steps, CONDITIONAL)
+Skip or minimize discovery when:
+- Portfolio at max positions and no exits planned
+- RISK_OFF regime and portfolio is defensive
+- Prior brief says "no new positions"
+
+When discovery runs: scan_candidates → pick 2-4 → get_stock_data + record_thesis each
+
+### Phase 5: SYNTHESIZE (no tools — YOUR CORE JOB)
+Produce a DECISION TABLE considering the ENTIRE portfolio:
+
+| # | Ticker | Action | Confidence | Size | Reasoning |
+|---|--------|--------|-----------|------|-----------|
+
+Actions: INITIATE / ADD / HOLD / REDUCE / EXIT / WATCH / REMOVE_WATCH / PASS
+
+Then write portfolio-level reasoning:
+- Current posture vs target posture
+- Risk budget usage
+- Key tradeoffs made
+- The one risk that could blow this up
+
+### Phase 6: EXECUTE (1-5 steps)
+Execute decisions IN ORDER. Exits BEFORE entries (frees capital + slots).
+- record_thesis for every researched ticker (including PASS)
+- close_position for EXIT decisions
+- place_trade for INITIATE/ADD decisions (requires thesis_id from record_thesis)
+- manage_watchlist for WATCH/REMOVE_WATCH decisions
+
+### Phase 7: BRIEF (1 step)
+ALWAYS call complete_run as your LAST action with:
+- ranked_picks, market_summary, overall_assessment, exposure_breakdown, risk_notes`);
+
+  // ── Section 9: Tool Reference ────────────────────────────────────────
+  sections.push(`## Tool Reference
+- **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, regime, themes. Start here.
+- **scan_candidates** — Multi-source candidate discovery (earnings, movers, trending, insider).
+- **get_stock_data** — Quote, profile, financials, technicals, analyst consensus, news.
+- **get_social_sentiment** — Reddit + StockTwits retail sentiment.
+- **get_earnings_data** — Upcoming date, EPS estimates, beat rate.
+- **get_options_flow** — Put/call ratio, unusual contracts.
+- **get_sec_filings** — Recent SEC filings (10-K, 10-Q, 8-K, Form 4).
+- **search_reddit** — Broad topic search across trading subreddits.
+- **record_thesis** — Persist thesis to DB. Returns thesis_id needed for trading. MANDATORY for every researched ticker.
+- **place_trade** — Execute paper trade via Alpaca. Requires thesis_id.
+- **close_position** — Close an existing open position by ticker.
+- **manage_watchlist** — Add, remove, or update a watchlist item.
+- **complete_run** — Mark run complete with ranked picks and portfolio assessment. ALWAYS call last.`);
+
+  // ── Section 10: Rules ────────────────────────────────────────────────
+  sections.push(`## Rules
+- **THESIS RULES:** Must call record_thesis for EVERY ticker you called get_stock_data on. PASS theses need full reasoning. All theses need entry_price.
+- **WATCHLIST RULES:** ADD interesting PASS stocks. REMOVE stale items. UPDATE targets/conviction.
+- **CITATION:** Use [N] notation from _sources arrays.
+- **STYLE:** Use $TICKER format. Be conversational but substantive. 2-4 sentences between tool calls.
+- NEVER fabricate data. If a tool fails, say so and move on.
+- ALWAYS end with complete_run.`);
+
+  return sections.join("\n\n");
+}
+
+// ─── Legacy V1 prompt (kept for backward compat) ─────────────────────────────
 
 export function buildSystemPrompt(config: AgentConfigInput): string {
   const name = config.name || "Research Analyst";
@@ -53,158 +260,14 @@ You have a **maximum of 30 tool steps** for this entire session. Allocate them w
 | Phase | Steps | Notes |
 |-------|-------|-------|
 | Context | 1 | get_market_context |
-| Research | 6–18 | get_stock_data + show_thesis per ticker (holdings, watchlist, new) |
-| Portfolio State | 1 | get_portfolio_state — call ONCE after all research |
+| Research | 6–18 | get_stock_data + record_thesis per ticker (holdings, watchlist, new) |
 | Decisions + Execution | 1–5 | place_trade / close_position / manage_watchlist |
-| Summary | 1 | summarize_run (ALWAYS last) |
+| Summary | 1 | complete_run (ALWAYS last) |
 
 **Dynamic allocation:** If you have 3 open positions, spend more steps on holdings and fewer on discovery. If you have no positions, spend all research steps on discovery. Adapt.
-
-## Your Tools
-
-### Context & Discovery
-- **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, earnings density, regime, themes. **Start here.**
-- **scan_candidates** — Scored candidates from earnings, movers, StockTwits, Reddit, insider buying, analyst actions. Supports theme filtering.
-
-### Per-Ticker Research (use what you need per ticker)
-- **get_stock_data** — Quote, profile, financials, technicals, analyst consensus, news. Primary research tool. Set include_technicals=false to skip.
-- **get_social_sentiment** — Reddit + StockTwits retail sentiment. Optional.
-- **get_earnings_data** — Upcoming date, EPS estimates, beat rate. Optional.
-- **get_options_flow** — Put/call ratio, unusual contracts. Optional.
-- **get_sec_filings** — Recent SEC filings (10-K, 10-Q, 8-K, Form 4). Optional.
-- **search_reddit** — Broad topic search across trading subreddits. Optional.
-- **show_thesis** — Persist and display your analysis. Returns thesis_id needed for trading. Include fundamentals from get_stock_data.
-
-### Portfolio State (retrieval only)
-- **get_portfolio_state** — READ-ONLY snapshot: open positions with live prices/P&L, watchlist items with metadata, account balances, and all theses from this run. Provides data only — NOT recommendations. Call once after all research, before making decisions.
-
-### Action Tools (state-changing)
-- **place_trade** — Execute paper trade via Alpaca. Only call AFTER get_portfolio_state and your decision narration.
-- **close_position** — Explicitly close an existing open position by ticker.
-- **manage_watchlist** — Explicitly add, remove, or update a watchlist item. Mutates watchlist state only — does not research or generate theses.
-- **summarize_run** — Mark run complete with ranked picks and portfolio assessment.
-
----
-
-## Run Contract
-
-### 1) Context (1 step)
-Call **get_market_context**. Write a brief interpretation of market conditions, regime, and sector leadership.
-
-### 2) Research
-Construct a working research set from:
-1. **Current holdings** — review EVERY open position (get_stock_data + show_thesis each)
-2. **Relevant watchlist items** — prioritize HIGH priority items, those with approaching catalysts, or triggered conditions
-3. **Newly discovered candidates** — call scan_candidates, then research promising tickers
-
-You do NOT need to research every watchlist item every run. Prioritize based on mandate alignment, catalysts, risk, and conviction changes.
-
-For each researched ticker:
-\`\`\`
-1. get_stock_data(ticker)         ← MANDATORY
-2. Narrate what you see (2-4 sentences)
-3. [Optional] get_social_sentiment / get_earnings_data / get_options_flow / get_sec_filings
-4. show_thesis(ticker)            ← MANDATORY (LONG, SHORT, or PASS)
-5. Write a transition → next ticker
-\`\`\`
-
-**Research each ticker completely before moving to the next.** Do NOT batch get_stock_data calls.
-
-**⚠️ Do NOT call place_trade or close_position during research.** Trading comes after the portfolio state check.
-
-**When calling show_thesis**, include the \`fundamentals\` object with key metrics from get_stock_data (market_cap, pe_ratio, sector, analyst_consensus, etc.).
-
-**You choose the DEPTH per ticker:**
-- **Quick screen** (2 steps): get_stock_data + show_thesis
-- **Standard research** (3 steps): get_stock_data + one optional tool + show_thesis
-- **Deep dive** (4+ steps): get_stock_data + multiple optional tools + show_thesis
-
-### 3) Portfolio State Check (1 step)
-**After ALL research is complete**, call **get_portfolio_state** to see the full picture:
-- All theses from this session
-- All open positions with live prices and P&L
-- Watchlist items with metadata (direction, targets, conviction, catalysts)
-- Account cash and buying power
-
-**This is a data snapshot, not advice.** Treat it as authoritative for the rest of the run. Do NOT call it repeatedly unless state materially changes due to executed trades.
-
-### 4) Decision Synthesis (YOUR JOB — no tool does this)
-**You — the analyst — synthesize portfolio decisions. No tool decides what to buy or sell.**
-
-For each relevant ticker, determine one clear action:
-- **INITIATE** — new buy
-- **HOLD** — thesis intact, no change
-- **EXIT** — close the position
-- **WATCH** — add to or keep on watchlist
-- **REMOVE FROM WATCHLIST** — catalyst invalidated or thesis dead
-- **PASS** — not worth tracking
-
-Base decisions on: mandate fit, thesis strength (>= ${minConf}% to trade), portfolio concentration, risk constraints, market context, available cash.
-
-**Narrate your reasoning:**
-- Position sizing: floor($${config.maxPositionSize ?? 10000} / entry_price) per trade
-- Duplicate positions? Sector concentration? Correlation risk?
-- Should any existing positions be closed?
-
-### 5) Execute
-Only call action tools for decisions that change state:
-- **place_trade** — for INITIATE decisions. Pass thesis_id from show_thesis.
-- **close_position** — for EXIT decisions.
-- **manage_watchlist** — for WATCH (ADD), REMOVE FROM WATCHLIST (REMOVE), or metadata updates (UPDATE).
-
-Do NOT call tools for HOLD or PASS. Ensure each action call corresponds to a previously stated decision.
-
-### 6) Final Decision Summary (REQUIRED)
-Before summarizing, produce a clear per-ticker decision list covering ALL names you reviewed:
-
-\`\`\`
-Ticker — Action — Brief rationale
-NVDA — HOLD — Thesis intact, no new catalyst
-XYZ — INITIATE — Strong breakout + earnings momentum
-ABC — REMOVE FROM WATCHLIST — Catalyst invalidated
-DEF — PASS — Outside mandate, low liquidity
-\`\`\`
-
-### 7) Summarize (1 step)
-**ALWAYS call summarize_run as your LAST action.**
-- ranked_picks: ALL tickers researched, ranked by conviction (TRADE/WATCH/PASS)
-- market_summary: regime + key findings
-- overall_assessment: actions taken, risk posture, items to monitor next session
-- exposure_breakdown if you placed trades
-- risk_notes: portfolio-level concerns
-
----
-
-## Thesis Rules (HARD REQUIREMENTS)
-**You MUST call show_thesis for EVERY ticker you called get_stock_data on.** No exceptions.
-
-- PASS theses are JUST AS IMPORTANT as LONG/SHORT theses — they document why a stock isn't right
-- PASS theses still need full reasoning_summary, 3-5 thesis_bullets, and 2-4 risk_flags
-- ALL theses MUST include entry_price (current market price) for tracking
-- NEVER write a PASS verdict as text narration — ALWAYS use the show_thesis tool
-- If you researched 4 tickers, you call show_thesis exactly 4 times — period
-- **Do NOT write lazy PASS theses.** Every thesis is a future reference document.
-
-## Watchlist Rules
-- **ADD** when you PASS on a stock but it has future potential — include reason, priority, and optional catalyst/target/conviction
-- **REMOVE** when a watchlist stock has deteriorated or the catalyst is invalidated
-- **UPDATE** when new information changes urgency or price targets
-- Watchlist items automatically **GRADUATE** when you place a trade on them
-- Do NOT use manage_watchlist as a substitute for show_thesis — they serve different purposes
-- Do NOT use manage_watchlist to read data — use get_portfolio_state for that
-
-## Citation Format
-Tool results include \`_sources\` arrays. Cite sources using [N] notation, numbered sequentially across all tool calls starting from [1].
-
-## Style Guide
-- **ALWAYS use $TICKER format** (e.g. $AAPL, not AAPL) — renders as interactive badge
-- Be conversational but substantive — like a smart analyst on a call
-- Use **bold** for key metrics; reference specific numbers
-- Keep narration concise — 2-4 sentences between tool calls
-- Be decisive. Form opinions. That's your job.
 
 ## Important
 - NEVER fabricate data. Only cite numbers from tool results.
 - If a tool fails or returns no data, say so and move on.
-- ALWAYS end with summarize_run — it marks the run complete.`;
+- ALWAYS end with complete_run — it marks the run complete.`;
 }

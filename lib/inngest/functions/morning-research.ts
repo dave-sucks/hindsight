@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
-import { buildSystemPrompt } from "@/lib/agent/system-prompt";
+import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
+import { buildRunInput } from "@/lib/agent/run-input";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ export const morningResearch = inngest.createFunction(
 
         console.log(`[morning-research] Starting agent run for ${config.name} (config=${config.id}, run=${run.id})`);
 
-        // 2c. Build system prompt with historical context
+        // 2c. Build system prompt with structured run input
         const agentConfig = {
           name: config.name,
           analystPrompt: config.analystPrompt ?? undefined,
@@ -95,136 +96,8 @@ export const morningResearch = inngest.createFunction(
           exclusionList: config.exclusionList,
         };
 
-        // Load historical context (same as agent route)
-        let historyBlock = "";
-        try {
-          const recentTrades = await prisma.position.findMany({
-            where: {
-              analystId: config.id,
-              status: "CLOSED",
-            },
-            orderBy: { closedAt: "desc" },
-            take: 20,
-            select: {
-              id: true,
-              symbol: true, direction: true, outcome: true,
-              avgCost: true, closePrice: true, quantity: true,
-              realizedPnl: true, closeReason: true, closedAt: true,
-              agentEvaluation: true,
-            },
-          });
-
-          const openTrades = await prisma.position.findMany({
-            where: {
-              analystId: config.id,
-              status: "OPEN",
-            },
-            select: {
-              symbol: true, direction: true, avgCost: true,
-              quantity: true, targetPrice: true, stopLoss: true,
-              createdAt: true,
-            },
-          });
-
-          const latestAccuracy = await prisma.accuracyReport.findFirst({
-            where: { userId: config.userId },
-            orderBy: { createdAt: "desc" },
-            select: {
-              winRate: true, tradesAnalyzed: true,
-              narrativeSummary: true,
-            },
-          });
-
-          // Load recent briefings from the AnalystBriefing table
-          const recentBriefings = await prisma.analystBriefing.findMany({
-            where: { analystId: config.id },
-            orderBy: { createdAt: "desc" },
-            take: 3,
-            select: { narrative: true, strategyNotes: true, createdAt: true },
-          });
-
-          // Recent PASS decisions (replaces shadow trades)
-          const passDecisions = await prisma.tradeDecision.findMany({
-            where: {
-              analystId: config.id,
-              decision: "PASS",
-            },
-            orderBy: { createdAt: "desc" },
-            take: 10,
-            select: {
-              symbol: true, reasoning: true, createdAt: true,
-              thesis: {
-                select: { entryPrice: true, confidenceScore: true },
-              },
-            },
-          });
-
-          const parts: string[] = [];
-
-          // Inject recent briefings for evolving context
-          if (recentBriefings.length > 0) {
-            parts.push("## Your Recent Briefings");
-            parts.push("These are your self-assessments from recent sessions. Use them to inform today's decisions.\n");
-            for (const [i, b] of recentBriefings.entries()) {
-              const dateStr = b.createdAt.toISOString().slice(0, 10);
-              const label = i === 0 ? "Latest" : `${i + 1} sessions ago`;
-              parts.push(`### ${label} (${dateStr})`);
-              parts.push(b.narrative.slice(0, 600));
-              if (b.strategyNotes) {
-                parts.push(`\n**Strategy Notes:** ${b.strategyNotes.slice(0, 300)}`);
-              }
-              parts.push("");
-            }
-          }
-
-          if (openTrades.length > 0) {
-            parts.push("\n## Your Open Positions");
-            for (const t of openTrades) {
-              parts.push(`- ${t.direction} ${t.quantity} shares $${t.symbol} @ $${Number(t.avgCost).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
-            }
-            parts.push(`\nDo NOT open duplicate positions in tickers you already hold. Consider whether existing positions should be closed based on new information.`);
-          }
-
-          if (recentTrades.length > 0) {
-            const wins = recentTrades.filter((t) => t.outcome === "WIN").length;
-            const losses = recentTrades.filter((t) => t.outcome === "LOSS").length;
-            parts.push(`\n## Recent Trade History (${recentTrades.length} positions)`);
-            parts.push(`Win/Loss: ${wins}W / ${losses}L`);
-            for (const t of recentTrades.slice(0, 10)) {
-              const pnl = t.realizedPnl ?? 0;
-              const evalSnippet = t.agentEvaluation ? ` | Eval: ${t.agentEvaluation.slice(0, 200)}` : "";
-              parts.push(`- ${t.outcome ?? "?"} | ${t.direction} $${t.symbol} | entry $${Number(t.avgCost).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} | ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}${evalSnippet}`);
-            }
-            parts.push(`\nLearn from these results and evaluations. Avoid repeating patterns that led to losses.`);
-          }
-
-          if (passDecisions.length > 0) {
-            parts.push(`\n## Recent Pass Decisions (${passDecisions.length})`);
-            for (const d of passDecisions) {
-              const entryPrice = d.thesis?.entryPrice;
-              const confidence = d.thesis?.confidenceScore;
-              const dateStr = d.createdAt.toISOString().slice(0, 10);
-              parts.push(`- PASS | $${d.symbol} | ${dateStr} | confidence: ${confidence ?? "—"}% | entry was $${entryPrice ? Number(entryPrice).toFixed(2) : "—"} | reason: ${d.reasoning?.slice(0, 150) ?? "—"}`);
-            }
-            parts.push(`\nReview these passes. Were they the right call?`);
-          }
-
-          if (latestAccuracy) {
-            parts.push(`\n## Your Performance Stats`);
-            parts.push(`- Win Rate: ${latestAccuracy.winRate != null ? (Number(latestAccuracy.winRate) * 100).toFixed(0) : "—"}%`);
-            parts.push(`- Trades Analyzed: ${latestAccuracy.tradesAnalyzed ?? "—"}`);
-            if (latestAccuracy.narrativeSummary) {
-              parts.push(`- Calibration: ${String(latestAccuracy.narrativeSummary).slice(0, 300)}`);
-            }
-            parts.push(`\nUse this data to calibrate your confidence. If your win rate is low, be more selective.`);
-          }
-
-          historyBlock = parts.join("\n");
-        } catch (err) {
-          console.warn("[morning-research] Failed to load history (non-fatal):", err);
-        }
-
-        const systemPrompt = buildSystemPrompt(agentConfig) + (historyBlock ? `\n\n${historyBlock}` : "");
+        const runInput = await buildRunInput(config.id, config.userId);
+        const systemPrompt = buildV2SystemPrompt(agentConfig, runInput);
 
         // 2d. Create tools with run context
         const tools = createResearchTools({
@@ -273,7 +146,7 @@ export const morningResearch = inngest.createFunction(
             },
           });
 
-          // Ensure run is marked COMPLETE (summarize_run tool should have done this,
+          // Ensure run is marked COMPLETE (complete_run tool should have done this,
           // but belt-and-suspenders in case the agent didn't call it)
           const currentRun = await prisma.researchRun.findUnique({ where: { id: run.id } });
           if (currentRun && currentRun.status === "RUNNING") {

@@ -1,0 +1,396 @@
+/**
+ * Run Input Model — consolidates all context loading for an agent run.
+ *
+ * Replaces the scattered history-block construction in:
+ *   - app/api/research/agent/route.ts
+ *   - lib/inngest/functions/morning-research.ts
+ *
+ * Zero schema changes — reads existing tables only.
+ */
+
+import { prisma } from "@/lib/prisma";
+import { getLatestPrices, getAccount } from "@/lib/alpaca";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface RunInput {
+  analyst: {
+    name: string;
+    mandate: string | null;
+    voice: string | null;
+    directionBias: string;
+    holdDurations: string[];
+    sectors: string[];
+    exclusionList: string[];
+    minConfidence: number;
+    maxPositionSize: number;
+    maxOpenPositions: number;
+  };
+  portfolio: {
+    cash: number;
+    buyingPower: number;
+    portfolioValue: number;
+    positions: Array<{
+      symbol: string;
+      direction: string;
+      quantity: number;
+      avgCost: number;
+      currentPrice: number;
+      unrealizedPnl: number;
+      unrealizedPnlPct: number;
+      targetPrice: number | null;
+      stopLoss: number | null;
+      exitStrategy: string;
+      daysHeld: number;
+      activeThesisId: string | null;
+      activeThesisSummary: string | null;
+    }>;
+    exposure: {
+      long: number;
+      short: number;
+      net: number;
+      utilizationPct: number;
+    };
+  };
+  watchlist: Array<{
+    symbol: string;
+    reason: string;
+    priority: string;
+    thesisDirection: string | null;
+    targetPrice: number | null;
+    stopPrice: number | null;
+    conviction: number | null;
+    catalyst: string | null;
+    daysOnList: number;
+    lastReviewedDaysAgo: number;
+  }>;
+  priorBrief: {
+    date: string;
+    narrative: string;
+    strategyNotes: string | null;
+  } | null;
+  performance: {
+    winRate: number | null;
+    totalTrades: number;
+    calibrationNote: string | null;
+  } | null;
+  recentClosedTrades: Array<{
+    symbol: string;
+    direction: string;
+    outcome: string | null;
+    pnlPct: number;
+    closeReason: string | null;
+    daysHeld: number;
+    lesson: string | null;
+  }>;
+}
+
+// ─── Builder ─────────────────────────────────────────────────────────────────
+
+export async function buildRunInput(
+  analystId: string,
+  userId: string,
+): Promise<RunInput> {
+  try {
+    // ── Analyst config ─────────────────────────────────────────────────
+    const config = await prisma.agentConfig.findFirst({
+      where: { id: analystId, userId },
+    });
+
+    if (!config) {
+      throw new Error(`AgentConfig not found: analystId=${analystId} userId=${userId}`);
+    }
+
+    // ── Open positions ─────────────────────────────────────────────────
+    const openPositions = await prisma.position.findMany({
+      where: { analystId, userId, status: "OPEN" },
+      select: {
+        id: true,
+        symbol: true,
+        direction: true,
+        quantity: true,
+        avgCost: true,
+        targetPrice: true,
+        stopLoss: true,
+        exitStrategy: true,
+        openedAt: true,
+      },
+    });
+
+    // Batch fetch live prices from Alpaca
+    const symbols = openPositions.map((p) => p.symbol);
+    let livePrices: Record<string, number> = {};
+    if (symbols.length > 0) {
+      try {
+        livePrices = await getLatestPrices(symbols);
+      } catch (err) {
+        console.warn("[buildRunInput] Failed to fetch live prices:", err);
+      }
+    }
+
+    // Build position array with P&L
+    const positions = openPositions.map((p) => {
+      const currentPrice = livePrices[p.symbol] ?? Number(p.avgCost);
+      const avgCost = Number(p.avgCost);
+      const unrealizedPnl =
+        (currentPrice - avgCost) *
+        p.quantity *
+        (p.direction === "SHORT" ? -1 : 1);
+      const unrealizedPnlPct =
+        avgCost > 0 ? (unrealizedPnl / (avgCost * p.quantity)) * 100 : 0;
+      const daysHeld = Math.floor(
+        (Date.now() - p.openedAt.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      return {
+        symbol: p.symbol,
+        direction: p.direction,
+        quantity: p.quantity,
+        avgCost,
+        currentPrice,
+        unrealizedPnl: Math.round(unrealizedPnl * 100) / 100,
+        unrealizedPnlPct: Math.round(unrealizedPnlPct * 100) / 100,
+        targetPrice: p.targetPrice ? Number(p.targetPrice) : null,
+        stopLoss: p.stopLoss ? Number(p.stopLoss) : null,
+        exitStrategy: p.exitStrategy,
+        daysHeld,
+        activeThesisId: null as string | null,
+        activeThesisSummary: null as string | null,
+      };
+    });
+
+    // Link active theses to positions
+    for (const pos of positions) {
+      const thesis = await prisma.thesis.findFirst({
+        where: {
+          ticker: pos.symbol,
+          userId,
+          researchRun: { agentConfigId: analystId },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, reasoningSummary: true },
+      });
+      if (thesis) {
+        pos.activeThesisId = thesis.id;
+        pos.activeThesisSummary = thesis.reasoningSummary.slice(0, 200);
+      }
+    }
+
+    // Calculate exposure
+    const longExposure = positions
+      .filter((p) => p.direction === "LONG")
+      .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
+    const shortExposure = positions
+      .filter((p) => p.direction === "SHORT")
+      .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
+
+    // ── Account balances ───────────────────────────────────────────────
+    let cash = 0;
+    let buyingPower = 0;
+    let portfolioValue = 0;
+    try {
+      const account = await getAccount();
+      cash = parseFloat(account.cash);
+      buyingPower = parseFloat(account.buying_power);
+      portfolioValue = parseFloat(account.portfolio_value);
+    } catch (err) {
+      console.warn("[buildRunInput] Failed to fetch account:", err);
+    }
+
+    const totalExposure = longExposure + shortExposure;
+    const utilizationPct =
+      portfolioValue > 0
+        ? Math.round((totalExposure / portfolioValue) * 100 * 100) / 100
+        : 0;
+
+    // ── Watchlist ──────────────────────────────────────────────────────
+    const watchlistItems = await prisma.analystWatchlistItem.findMany({
+      where: { analystId, status: "ACTIVE" },
+      orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
+      select: {
+        symbol: true,
+        reason: true,
+        priority: true,
+        thesisDirection: true,
+        targetPrice: true,
+        stopPrice: true,
+        conviction: true,
+        catalyst: true,
+        createdAt: true,
+        lastReviewedAt: true,
+      },
+    });
+
+    const now = Date.now();
+    const watchlist = watchlistItems.map((w) => ({
+      symbol: w.symbol,
+      reason: w.reason,
+      priority: w.priority,
+      thesisDirection: w.thesisDirection,
+      targetPrice: w.targetPrice,
+      stopPrice: w.stopPrice,
+      conviction: w.conviction,
+      catalyst: w.catalyst,
+      daysOnList: Math.floor(
+        (now - w.createdAt.getTime()) / (1000 * 60 * 60 * 24),
+      ),
+      lastReviewedDaysAgo: w.lastReviewedAt
+        ? Math.floor(
+            (now - w.lastReviewedAt.getTime()) / (1000 * 60 * 60 * 24),
+          )
+        : 999,
+    }));
+
+    // ── Prior brief (most recent 1) ────────────────────────────────────
+    const latestBriefing = await prisma.analystBriefing.findFirst({
+      where: { analystId },
+      orderBy: { createdAt: "desc" },
+      select: { narrative: true, strategyNotes: true, createdAt: true },
+    });
+
+    const priorBrief = latestBriefing
+      ? {
+          date: latestBriefing.createdAt.toISOString().slice(0, 10),
+          narrative: latestBriefing.narrative,
+          strategyNotes: latestBriefing.strategyNotes,
+        }
+      : null;
+
+    // ── Performance ────────────────────────────────────────────────────
+    const latestAccuracy = await prisma.accuracyReport.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        winRate: true,
+        tradesAnalyzed: true,
+        narrativeSummary: true,
+      },
+    });
+
+    const performance = latestAccuracy
+      ? {
+          winRate: latestAccuracy.winRate
+            ? Number(latestAccuracy.winRate)
+            : null,
+          totalTrades: latestAccuracy.tradesAnalyzed ?? 0,
+          calibrationNote: latestAccuracy.narrativeSummary
+            ? String(latestAccuracy.narrativeSummary).slice(0, 300)
+            : null,
+        }
+      : null;
+
+    // ── Recent closed trades (10) ──────────────────────────────────────
+    const recentTrades = await prisma.position.findMany({
+      where: { userId, status: "CLOSED", analystId },
+      orderBy: { closedAt: "desc" },
+      take: 10,
+      select: {
+        symbol: true,
+        direction: true,
+        outcome: true,
+        avgCost: true,
+        closePrice: true,
+        closeReason: true,
+        closedAt: true,
+        openedAt: true,
+        realizedPnl: true,
+        agentEvaluation: true,
+      },
+    });
+
+    const recentClosedTrades = recentTrades.map((t) => {
+      const avgCost = Number(t.avgCost);
+      const quantity = avgCost > 0 ? (t.realizedPnl ?? 0) / avgCost : 0;
+      const pnlPct =
+        avgCost > 0 && t.realizedPnl != null
+          ? (t.realizedPnl / avgCost) * 100
+          : 0;
+      const daysHeld =
+        t.closedAt && t.openedAt
+          ? Math.floor(
+              (t.closedAt.getTime() - t.openedAt.getTime()) /
+                (1000 * 60 * 60 * 24),
+            )
+          : 0;
+      return {
+        symbol: t.symbol,
+        direction: t.direction,
+        outcome: t.outcome,
+        pnlPct: Math.round(pnlPct * 100) / 100,
+        closeReason: t.closeReason,
+        daysHeld,
+        lesson: t.agentEvaluation
+          ? t.agentEvaluation.slice(0, 200)
+          : null,
+      };
+    });
+
+    console.log(
+      `[buildRunInput] analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} closedTrades=${recentClosedTrades.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance}`,
+    );
+
+    return {
+      analyst: {
+        name: config.name,
+        mandate: config.analystPrompt,
+        voice: null,
+        directionBias: config.directionBias,
+        holdDurations: config.holdDurations,
+        sectors: config.sectors,
+        exclusionList: config.exclusionList,
+        minConfidence: config.minConfidence,
+        maxPositionSize: Number(config.maxPositionSize),
+        maxOpenPositions: config.maxOpenPositions,
+      },
+      portfolio: {
+        cash,
+        buyingPower,
+        portfolioValue,
+        positions,
+        exposure: {
+          long: Math.round(longExposure * 100) / 100,
+          short: Math.round(shortExposure * 100) / 100,
+          net: Math.round((longExposure - shortExposure) * 100) / 100,
+          utilizationPct,
+        },
+      },
+      watchlist,
+      priorBrief,
+      performance,
+      recentClosedTrades,
+    };
+  } catch (err) {
+    console.error("[buildRunInput] FAILED:", err);
+    // Return a safe default so the run can still proceed
+    const config = await prisma.agentConfig
+      .findFirst({ where: { id: analystId, userId } })
+      .catch(() => null);
+
+    return {
+      analyst: {
+        name: config?.name ?? "Research Analyst",
+        mandate: config?.analystPrompt ?? null,
+        voice: null,
+        directionBias: config?.directionBias ?? "BOTH",
+        holdDurations: config?.holdDurations ?? ["SWING"],
+        sectors: config?.sectors ?? [],
+        exclusionList: config?.exclusionList ?? [],
+        minConfidence: config?.minConfidence ?? 60,
+        maxPositionSize: config?.maxPositionSize
+          ? Number(config.maxPositionSize)
+          : 10000,
+        maxOpenPositions: config?.maxOpenPositions ?? 5,
+      },
+      portfolio: {
+        cash: 0,
+        buyingPower: 0,
+        portfolioValue: 0,
+        positions: [],
+        exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 },
+      },
+      watchlist: [],
+      priorBrief: null,
+      performance: null,
+      recentClosedTrades: [],
+    };
+  }
+}
