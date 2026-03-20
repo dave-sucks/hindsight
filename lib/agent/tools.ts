@@ -430,7 +430,7 @@ const tradeParams = z.object({
   shares: z.number().describe("Number of shares to buy/sell"),
   thesis_id: z
     .string()
-    .describe("REQUIRED — the thesis_id returned by show_thesis. Every trade must link to a thesis."),
+    .describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
 });
 
 // Inferred types
@@ -475,7 +475,7 @@ export function createResearchTools(ctx: ToolContext) {
   const stats = createApiCallStats();
   console.log(`[tools] Creating research tools for runId=${ctx.runId} analystId=${ctx.analystId ?? "none"}`);
 
-  return {
+  const toolsBase = {
     get_market_context: tool({
       description:
         "Get current market conditions: S&P 500, VIX, sector ETF performance, and dominant market themes/narratives. Call this first to understand the market environment and what stories are driving capital flows.",
@@ -1598,13 +1598,13 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
-    show_thesis: tool({
+    record_thesis: tool({
       description:
-        "MANDATORY for every ticker you researched. Display your thesis as a formatted card and save it to the database. Call this for EVERY ticker — LONG, SHORT, and PASS. PASS theses are just as important: they document why a stock doesn't fit and build institutional memory. Never skip this tool or write a verdict as text instead.",
+        "MANDATORY for every ticker you researched. Persist your thesis to the database and display as a formatted card. Call this for EVERY ticker — LONG, SHORT, and PASS. PASS theses are just as important: they document why a stock doesn't fit and build institutional memory. Never skip this tool or write a verdict as text instead.",
       inputSchema: thesisParams,
       execute: async (args: ThesisInput) => {
         const _t0 = Date.now();
-        logToolStart("show_thesis", ctx.runId, `ticker=${args.ticker} direction=${args.direction} confidence=${args.confidence_score}`, stats);
+        logToolStart("record_thesis", ctx.runId, `ticker=${args.ticker} direction=${args.direction} confidence=${args.confidence_score}`, stats);
         try {
           const thesis = await prisma.thesis.create({
             data: {
@@ -1677,15 +1677,15 @@ export function createResearchTools(ctx: ToolContext) {
                   thesisId: thesis.id,
                 },
               });
-              console.log(`[tool] show_thesis recorded PASS decision for ${args.ticker} analystId=${analystId}`);
+              console.log(`[tool] record_thesis recorded PASS decision for ${args.ticker} analystId=${analystId}`);
             } catch (passErr) {
-              console.error("[tool] show_thesis PASS decision creation FAILED:", passErr);
+              console.error("[tool] record_thesis PASS decision creation FAILED:", passErr);
             }
           } else if (args.direction === "PASS") {
-            console.warn(`[tool] show_thesis SKIPPED PASS decision — missing runId=${ctx.runId}`);
+            console.warn(`[tool] record_thesis SKIPPED PASS decision — missing runId=${ctx.runId}`);
           }
 
-          logToolEnd("show_thesis", _t0, ctx.runId, `ticker=${args.ticker} id=${thesis.id}`, stats);
+          logToolEnd("record_thesis", _t0, ctx.runId, `ticker=${args.ticker} id=${thesis.id}`, stats);
           // Return ALL args so the UI can render the full thesis card
           return {
             thesis_id: thesis.id,
@@ -1707,154 +1707,8 @@ export function createResearchTools(ctx: ToolContext) {
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Thesis save failed";
-          console.error(`[tool] show_thesis FAILED for ${args.ticker}: ${msg}`);
+          console.error(`[tool] record_thesis FAILED for ${args.ticker}: ${msg}`);
           return { thesis_id: null, ticker: args.ticker, direction: args.direction, error: msg, note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker." };
-        }
-      },
-    }),
-
-    // ── Portfolio State (retrieval only) ─────────────────────────────────
-    get_portfolio_state: tool({
-      description:
-        "Retrieve the current portfolio snapshot: open positions with live prices and P&L, " +
-        "account balances, watchlist items with metadata, and all theses from this run. " +
-        "This is a READ-ONLY state snapshot. It provides data only — not recommendations. " +
-        "Call once after all research is complete, before making trade decisions.",
-      inputSchema: z.object({}),
-      execute: async () => {
-        const _t0 = Date.now();
-        logToolStart("get_portfolio_state", ctx.runId, "", stats);
-        try {
-          // 1. All theses from this run
-          const theses = await prisma.thesis.findMany({
-            where: { researchRunId: ctx.runId },
-            orderBy: { confidenceScore: "desc" },
-          });
-
-          // 2. All open positions for this user
-          const openPositions = await prisma.position.findMany({
-            where: { userId: ctx.userId, status: "OPEN" },
-            include: { analyst: { select: { name: true } } },
-            orderBy: { openedAt: "desc" },
-          });
-
-          // 3. Active watchlist items for this analyst
-          let watchlistItems: {
-            symbol: string;
-            reason: string;
-            priority: string;
-            notes: string | null;
-            thesisDirection: string | null;
-            targetPrice: number | null;
-            stopPrice: number | null;
-            conviction: number | null;
-            catalyst: string | null;
-            lastReviewedAt: Date | null;
-          }[] = [];
-          if (ctx.analystId) {
-            watchlistItems = await prisma.analystWatchlistItem.findMany({
-              where: { analystId: ctx.analystId, status: "ACTIVE" },
-              orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
-              select: {
-                symbol: true,
-                reason: true,
-                priority: true,
-                notes: true,
-                thesisDirection: true,
-                targetPrice: true,
-                stopPrice: true,
-                conviction: true,
-                catalyst: true,
-                lastReviewedAt: true,
-              },
-            });
-          }
-
-          // 4. Batch-fetch live prices for positions + non-PASS theses
-          const allTickers = [
-            ...theses.filter(t => t.direction !== "PASS").map(t => t.ticker),
-            ...openPositions.map(p => p.symbol),
-          ];
-          const uniqueTickers = [...new Set(allTickers)];
-          let priceMap: Record<string, number> = {};
-          if (uniqueTickers.length > 0) {
-            try {
-              priceMap = await getLatestPrices(uniqueTickers);
-            } catch (e) {
-              console.warn("[tool] get_portfolio_state price fetch failed:", e);
-            }
-          }
-
-          // 5. Account balance
-          let account = { cash: 0, buying_power: 0, portfolio_value: 0 };
-          try {
-            const acc = await getAccount();
-            account = {
-              cash: parseFloat(acc.cash),
-              buying_power: parseFloat(acc.buying_power),
-              portfolio_value: parseFloat(acc.portfolio_value),
-            };
-          } catch (e) {
-            console.warn("[tool] get_portfolio_state account fetch failed:", e);
-          }
-
-          const result = {
-            run_theses: theses.map(t => ({
-              thesis_id: t.id,
-              ticker: t.ticker,
-              direction: t.direction,
-              confidence: t.confidenceScore,
-              entry_price: t.entryPrice,
-              target_price: t.targetPrice,
-              stop_loss: t.stopLoss,
-              reasoning: t.reasoningSummary,
-              hold_duration: t.holdDuration,
-            })),
-            open_positions: openPositions.map(p => {
-              const currentPrice = priceMap[p.symbol] ?? p.avgCost;
-              const pnlDollars = p.direction === "LONG"
-                ? (currentPrice - p.avgCost) * p.quantity
-                : (p.avgCost - currentPrice) * p.quantity;
-              const pnlPct = p.avgCost > 0 ? (pnlDollars / (p.avgCost * p.quantity)) * 100 : 0;
-              return {
-                position_id: p.id,
-                ticker: p.symbol,
-                direction: p.direction,
-                shares: p.quantity,
-                entry_price: p.avgCost,
-                current_price: currentPrice,
-                pnl_dollars: Math.round(pnlDollars * 100) / 100,
-                pnl_pct: Math.round(pnlPct * 100) / 100,
-                target_price: p.targetPrice,
-                stop_loss: p.stopLoss,
-                analyst_name: p.analyst?.name ?? null,
-              };
-            }),
-            watchlist: watchlistItems.map(w => ({
-              ticker: w.symbol,
-              reason: w.reason,
-              priority: w.priority,
-              thesis_direction: w.thesisDirection,
-              target_price: w.targetPrice,
-              stop_price: w.stopPrice,
-              conviction: w.conviction,
-              catalyst: w.catalyst,
-              notes: w.notes,
-              last_reviewed: w.lastReviewedAt?.toISOString() ?? null,
-            })),
-            account,
-            max_position_size: ctx.maxPositionSize ?? 10000,
-            max_open_positions: ctx.maxOpenPositions ?? 5,
-            as_of: new Date().toISOString(),
-            _sources: [{ provider: "Alpaca", title: "Portfolio & Account Data" }],
-          };
-
-          logToolEnd("get_portfolio_state", _t0, ctx.runId, `theses=${theses.length} positions=${openPositions.length} watchlist=${watchlistItems.length}`, stats);
-          return result;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Portfolio state retrieval failed";
-          console.error(`[tool] get_portfolio_state FAILED: ${msg}`);
-          return { error: msg, run_theses: [], open_positions: [], watchlist: [], account: { cash: 0, buying_power: 0, portfolio_value: 0 }, as_of: new Date().toISOString() };
         }
       },
     }),
@@ -1862,7 +1716,7 @@ export function createResearchTools(ctx: ToolContext) {
     // ── Trade Execution ───────────────────────────────────────────────────
     place_trade: tool({
       description:
-        "Place a paper trade on Alpaca. Only call this AFTER get_portfolio_state. The trade will be executed immediately. Will fail if any analyst already holds an open position in this ticker.",
+        "Place a paper trade on Alpaca. The trade will be executed immediately. Requires thesis_id from record_thesis. Will fail if any analyst already holds an open position in this ticker.",
       inputSchema: tradeParams,
       execute: async (args: TradeInput) => {
         const _t0 = Date.now();
@@ -2035,6 +1889,22 @@ export function createResearchTools(ctx: ToolContext) {
             console.warn(`[tool] place_trade watchlist graduation failed (non-fatal):`, err instanceof Error ? err.message : err);
           }
 
+          // Fetch post-trade portfolio context
+          let portfolioUpdate: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number } | null = null;
+          try {
+            const currentOpenCount = await prisma.position.count({
+              where: { analystId: analystId, status: "OPEN" },
+            });
+            const postAccount = await getAccount();
+            portfolioUpdate = {
+              remainingSlots: (ctx.maxOpenPositions ?? 5) - currentOpenCount,
+              remainingBuyingPower: parseFloat(postAccount.buying_power),
+              openPositionCount: currentOpenCount,
+            };
+          } catch (portfolioErr) {
+            console.warn("[tool] place_trade portfolio update fetch failed:", portfolioErr);
+          }
+
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`, stats);
           return {
             success: true,
@@ -2050,6 +1920,7 @@ export function createResearchTools(ctx: ToolContext) {
             alpaca_order_id: alpacaOrder.id,
             message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
             _sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }],
+            ...(portfolioUpdate ? { portfolioUpdate } : {}),
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Trade placement failed";
@@ -2149,6 +2020,22 @@ export function createResearchTools(ctx: ToolContext) {
             ? (result.realizedPnl / (position.avgCost * position.quantity)) * 100
             : 0;
 
+          // Fetch post-close portfolio context
+          let portfolioUpdate: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number } | null = null;
+          try {
+            const currentOpenCount = await prisma.position.count({
+              where: { analystId: analystId, status: "OPEN" },
+            });
+            const postAccount = await getAccount();
+            portfolioUpdate = {
+              remainingSlots: (ctx.maxOpenPositions ?? 5) - currentOpenCount,
+              remainingBuyingPower: parseFloat(postAccount.buying_power),
+              openPositionCount: currentOpenCount,
+            };
+          } catch (portfolioErr) {
+            console.warn("[tool] close_position portfolio update fetch failed:", portfolioErr);
+          }
+
           logToolEnd("close_position", _t0, ctx.runId, `${ticker} pnl=$${result.realizedPnl.toFixed(2)}`, stats);
           return {
             success: true,
@@ -2164,6 +2051,7 @@ export function createResearchTools(ctx: ToolContext) {
             outcome: result.outcome,
             message: `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${result.realizedPnl >= 0 ? "+" : ""}${result.realizedPnl.toFixed(2)}`,
             _sources: [{ provider: "Alpaca", title: `Close ${ticker}` }],
+            ...(portfolioUpdate ? { portfolioUpdate } : {}),
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Position close failed";
@@ -2174,10 +2062,10 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
-    // ── Run Summary ───────────────────────────────────────────────────────
-    summarize_run: tool({
+    // ── Run Completion ──────────────────────────────────────────────────────
+    complete_run: tool({
       description:
-        "Present a final portfolio synthesis at the end of your research session. Call this LAST, after all theses and trades. Summarize market context, rank all picks, show exposure breakdown, and highlight risks.",
+        "Mark the run complete and present a final portfolio synthesis. Call this LAST, after all theses and trades. Summarize market context, rank all picks, show exposure breakdown, and highlight risks.",
       inputSchema: z.object({
         market_summary: z
           .string()
@@ -2234,7 +2122,7 @@ export function createResearchTools(ctx: ToolContext) {
       execute: async (args) => {
         const _t0 = Date.now();
         try {
-          console.log(`[tool] summarize_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
+          console.log(`[tool] complete_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
           const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
 
           // Idempotency check — if run is already COMPLETE, skip the update
@@ -2253,7 +2141,7 @@ export function createResearchTools(ctx: ToolContext) {
               },
             });
           } else {
-            console.log(`[tool] summarize_run: run ${ctx.runId} already COMPLETE, skipping status update`);
+            console.log(`[tool] complete_run: run ${ctx.runId} already COMPLETE, skipping status update`);
           }
 
           // Write run_summary + run_complete events (non-fatal — run is already marked COMPLETE)
@@ -2289,9 +2177,9 @@ export function createResearchTools(ctx: ToolContext) {
               });
             }
           } catch (err) {
-            console.error(`[tool] summarize_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
+            console.error(`[tool] complete_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
           }
-          logToolEnd("summarize_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);
+          logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);
           // Return ALL args so RunSummaryCard can render them
           return {
             status: "complete",
@@ -2305,7 +2193,7 @@ export function createResearchTools(ctx: ToolContext) {
             portfolio_review: args.portfolio_review ?? null,
           };
         } catch (err) {
-          console.error(`[tool] summarize_run FAILED:`, err instanceof Error ? err.message : err);
+          console.error(`[tool] complete_run FAILED:`, err instanceof Error ? err.message : err);
           // Best-effort: try to mark run COMPLETE even if everything else failed
           try {
             await prisma.researchRun.update({
@@ -2313,8 +2201,8 @@ export function createResearchTools(ctx: ToolContext) {
               data: { status: "COMPLETE", completedAt: new Date() },
             });
           } catch { /* already tried */ }
-          logToolEnd("summarize_run", _t0, ctx.runId, "FAILED", stats);
-          return { status: "complete", analyzed: args.ranked_picks.length, traded: 0, error: err instanceof Error ? err.message : "summarize_run failed" };
+          logToolEnd("complete_run", _t0, ctx.runId, "FAILED", stats);
+          return { status: "complete", analyzed: args.ranked_picks.length, traded: 0, error: err instanceof Error ? err.message : "complete_run failed" };
         }
       },
     }),
@@ -2650,6 +2538,16 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
+  };
+
+  // Backward-compat aliases for old persisted RunMessages that reference old tool names
+  const tools = toolsBase as Record<string, unknown>;
+  tools.show_thesis = toolsBase.record_thesis;
+  tools.summarize_run = toolsBase.complete_run;
+
+  return toolsBase as typeof toolsBase & {
+    show_thesis: typeof toolsBase.record_thesis;
+    summarize_run: typeof toolsBase.complete_run;
   };
 }
 

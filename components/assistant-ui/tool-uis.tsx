@@ -407,55 +407,57 @@ export function useRegisterResearchToolUIs(_runId?: string) {
   });
 
   // ── Thesis → ThesisCard (compact preview, opens sheet on click) ────
-  useAssistantToolUI({
-    toolName: "show_thesis",
-    render: ({ result }) => {
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Building thesis</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={CheckCircle2} label="Data collected" status="complete" />
-              <ChainOfThoughtStep icon={BarChart3} label="Generating direction + confidence" status="active" />
-              <ChainOfThoughtStep icon={FileText} label="Writing full analysis" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-
-      const sources = extractToolSources(result as Record<string, unknown>);
-      const thesis: ThesisCardData = {
-        ticker: result.ticker as string,
-        direction: result.direction as "LONG" | "SHORT" | "PASS",
-        confidence_score: result.confidence_score as number,
-        reasoning_summary: result.reasoning_summary as string,
-        thesis_bullets: (result.thesis_bullets ?? []) as string[],
-        risk_flags: (result.risk_flags ?? []) as string[],
-        entry_price: (result.entry_price as number) ?? null,
-        target_price: (result.target_price as number) ?? null,
-        stop_loss: (result.stop_loss as number) ?? null,
-        hold_duration: (result.hold_duration as string) ?? "SWING",
-        signal_types: (result.signal_types ?? []) as string[],
-        company_name: (result.company_name as string) ?? null,
-        exchange: (result.exchange as string) ?? null,
-        sources: sources.map((s) => ({
-          provider: s.provider,
-          title: s.title,
-          url: s.url,
-          excerpt: s.excerpt,
-        })),
-        fundamentals: (result.fundamentals as ThesisCardData["fundamentals"]) ?? null,
-      };
-
+  // Shared render for record_thesis (new) and show_thesis (backward compat alias)
+  const thesisRender = ({ result }: { result: Record<string, unknown> | undefined }) => {
+    if (!result) {
       return (
-        <div className="my-2">
-          <ThesisCard {...thesis} />
-        </div>
+        <ChainOfThought defaultOpen>
+          <ChainOfThoughtHeader>Building thesis</ChainOfThoughtHeader>
+          <ChainOfThoughtContent>
+            <ChainOfThoughtStep icon={CheckCircle2} label="Data collected" status="complete" />
+            <ChainOfThoughtStep icon={BarChart3} label="Generating direction + confidence" status="active" />
+            <ChainOfThoughtStep icon={FileText} label="Writing full analysis" status="pending" />
+          </ChainOfThoughtContent>
+        </ChainOfThought>
       );
-    },
-  });
+    }
 
-  // ── Portfolio state → PortfolioReviewCard ────────────────────────
+    const sources = extractToolSources(result as Record<string, unknown>);
+    const thesis: ThesisCardData = {
+      ticker: result.ticker as string,
+      direction: result.direction as "LONG" | "SHORT" | "PASS",
+      confidence_score: result.confidence_score as number,
+      reasoning_summary: result.reasoning_summary as string,
+      thesis_bullets: (result.thesis_bullets ?? []) as string[],
+      risk_flags: (result.risk_flags ?? []) as string[],
+      entry_price: (result.entry_price as number) ?? null,
+      target_price: (result.target_price as number) ?? null,
+      stop_loss: (result.stop_loss as number) ?? null,
+      hold_duration: (result.hold_duration as string) ?? "SWING",
+      signal_types: (result.signal_types ?? []) as string[],
+      company_name: (result.company_name as string) ?? null,
+      exchange: (result.exchange as string) ?? null,
+      sources: sources.map((s) => ({
+        provider: s.provider,
+        title: s.title,
+        url: s.url,
+        excerpt: s.excerpt,
+      })),
+      fundamentals: (result.fundamentals as ThesisCardData["fundamentals"]) ?? null,
+    };
+
+    return (
+      <div className="my-2">
+        <ThesisCard {...thesis} />
+      </div>
+    );
+  };
+
+  useAssistantToolUI({ toolName: "record_thesis", render: thesisRender });
+  // Backward compat alias for old persisted messages
+  useAssistantToolUI({ toolName: "show_thesis", render: thesisRender });
+
+  // ── Portfolio state → kept for backward compat with old persisted messages ──
   useAssistantToolUI({
     toolName: "get_portfolio_state",
     render: ({ result }) => {
@@ -583,59 +585,61 @@ export function useRegisterResearchToolUIs(_runId?: string) {
   });
 
   // ── Run summary → RunSummaryCard ──────────────────────────────────
-  useAssistantToolUI({
-    toolName: "summarize_run",
-    render: ({ result }) => {
-      if (!result) {
-        return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Portfolio synthesis</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={BarChart3} label="Ranking picks by conviction" status="active" />
-              <ChainOfThoughtStep icon={Activity} label="Calculating exposure" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        );
-      }
-
-      const rankedPicks = (result.ranked_picks ?? []) as {
-        rank: number;
-        ticker: string;
-        direction: "LONG" | "SHORT";
-        confidence: number;
-        reasoning: string;
-        action: "TRADE" | "WATCH" | "PASS";
-      }[];
-
-      const exposure = result.exposure_breakdown as {
-        long_exposure: number;
-        short_exposure: number;
-        net_exposure: number;
-        sector_concentration?: string;
-      } | null;
-
+  // Shared render for complete_run (new) and summarize_run (backward compat alias)
+  const runSummaryRender = ({ result }: { result: Record<string, unknown> | undefined }) => {
+    if (!result) {
       return (
-        <div className="my-2">
-          <RunSummaryCard
-            marketSummary={result.market_summary as string}
-            rankedPicks={rankedPicks}
-            exposureBreakdown={
-              exposure
-                ? {
-                    longExposure: exposure.long_exposure,
-                    shortExposure: exposure.short_exposure,
-                    netExposure: exposure.net_exposure,
-                    sectorConcentration: exposure.sector_concentration,
-                  }
-                : undefined
-            }
-            riskNotes={(result.risk_notes ?? []) as string[]}
-            overallAssessment={result.overall_assessment as string}
-          />
-        </div>
+        <ChainOfThought defaultOpen>
+          <ChainOfThoughtHeader>Portfolio synthesis</ChainOfThoughtHeader>
+          <ChainOfThoughtContent>
+            <ChainOfThoughtStep icon={BarChart3} label="Ranking picks by conviction" status="active" />
+            <ChainOfThoughtStep icon={Activity} label="Calculating exposure" status="pending" />
+          </ChainOfThoughtContent>
+        </ChainOfThought>
       );
-    },
-  });
+    }
+
+    const rankedPicks = (result.ranked_picks ?? []) as {
+      rank: number;
+      ticker: string;
+      direction: "LONG" | "SHORT";
+      confidence: number;
+      reasoning: string;
+      action: "TRADE" | "WATCH" | "PASS";
+    }[];
+
+    const exposure = result.exposure_breakdown as {
+      long_exposure: number;
+      short_exposure: number;
+      net_exposure: number;
+      sector_concentration?: string;
+    } | null;
+
+    return (
+      <div className="my-2">
+        <RunSummaryCard
+          marketSummary={result.market_summary as string}
+          rankedPicks={rankedPicks}
+          exposureBreakdown={
+            exposure
+              ? {
+                  longExposure: exposure.long_exposure,
+                  shortExposure: exposure.short_exposure,
+                  netExposure: exposure.net_exposure,
+                  sectorConcentration: exposure.sector_concentration,
+                }
+              : undefined
+          }
+          riskNotes={(result.risk_notes ?? []) as string[]}
+          overallAssessment={result.overall_assessment as string}
+        />
+      </div>
+    );
+  };
+
+  useAssistantToolUI({ toolName: "complete_run", render: runSummaryRender });
+  // Backward compat alias for old persisted messages
+  useAssistantToolUI({ toolName: "summarize_run", render: runSummaryRender });
 
   // ── Watchlist management → inline status card ───────────────────────
   useAssistantToolUI({

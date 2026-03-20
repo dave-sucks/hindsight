@@ -4,7 +4,9 @@ import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { createResearchTools } from "@/lib/agent/tools";
-import { buildSystemPrompt } from "@/lib/agent/system-prompt";
+import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
+import type { AgentConfigInput } from "@/lib/agent/system-prompt";
+import { buildRunInput } from "@/lib/agent/run-input";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 
 export const maxDuration = 300; // 5 min — agent makes 100+ API calls with retry logic
@@ -57,18 +59,23 @@ export async function POST(req: Request) {
 
     console.log(`[agent] POST runId=${runId} analystId=${analystId} messages=${messages?.length ?? 0}`);
 
-    // Load agent config — try analystId first, then from the run's linked config
-    let agentConfig: Record<string, unknown> = config || {};
+    // ── Load analyst config ─────────────────────────────────────────────
+    let agentConfig: AgentConfigInput = config || {};
 
-    // Direct analystId takes priority
-    if (analystId) {
+    // Resolve analyst ID: direct analystId > run's linked config
+    const resolvedAnalystId = analystId || (runId ? (await prisma.researchRun.findFirst({
+      where: { id: runId },
+      select: { agentConfigId: true },
+    }))?.agentConfigId : null);
+
+    if (resolvedAnalystId) {
       const ac = await prisma.agentConfig.findFirst({
-        where: { id: analystId, userId: user.id },
+        where: { id: resolvedAnalystId, userId: user.id },
       });
       if (ac) {
         agentConfig = {
           name: ac.name,
-          analystPrompt: ac.analystPrompt,
+          analystPrompt: ac.analystPrompt ?? undefined,
           directionBias: ac.directionBias,
           holdDurations: ac.holdDurations,
           sectors: ac.sectors,
@@ -82,260 +89,51 @@ export async function POST(req: Request) {
       }
     }
 
-    // Fall back to loading from the run's linked agentConfig
+    // Fall back to run parameters for name
     if (!agentConfig.name && runId) {
       const run = await prisma.researchRun.findFirst({
         where: { id: runId, userId: user.id },
-        include: { agentConfig: true },
+        select: { parameters: true },
       });
-      if (run?.agentConfig) {
-        agentConfig = {
-          name: run.agentConfig.name,
-          analystPrompt: run.agentConfig.analystPrompt,
-          directionBias: run.agentConfig.directionBias,
-          holdDurations: run.agentConfig.holdDurations,
-          sectors: run.agentConfig.sectors,
-          signalTypes: run.agentConfig.signalTypes,
-          minConfidence: run.agentConfig.minConfidence,
-          maxPositionSize: run.agentConfig.maxPositionSize
-            ? Number(run.agentConfig.maxPositionSize)
-            : undefined,
-          maxOpenPositions: run.agentConfig.maxOpenPositions,
-          watchlist: run.agentConfig.watchlist,
-          exclusionList: run.agentConfig.exclusionList,
-        };
-      }
       if (run?.parameters && typeof run.parameters === "object") {
         const params = run.parameters as Record<string, unknown>;
-        if (!agentConfig.name && params.analystName) {
-          agentConfig.name = params.analystName;
+        if (params.analystName) {
+          agentConfig.name = params.analystName as string;
         }
       }
     }
 
-    // ── Load historical context: recent trades + accuracy stats + briefing ────
-    let historyBlock = "";
-    try {
-      const configId = analystId || (agentConfig as Record<string, unknown>).id;
+    // ── Build structured run input + system prompt ────────────────────────
+    const runInput = resolvedAnalystId
+      ? await buildRunInput(resolvedAnalystId, user.id)
+      : null;
 
-      // Recent closed positions (last 20) with evaluation data
-      const recentTrades = await prisma.position.findMany({
-        where: {
-          userId: user.id,
-          status: "CLOSED",
-          ...(configId ? { analystId: configId as string } : {}),
-        },
-        orderBy: { closedAt: "desc" },
-        take: 20,
-        select: {
-          id: true,
-          symbol: true, direction: true, outcome: true,
-          avgCost: true, closePrice: true, quantity: true,
-          realizedPnl: true, closeReason: true, closedAt: true,
-          agentEvaluation: true,
-        },
-      });
-
-      // Open positions
-      const openTrades = await prisma.position.findMany({
-        where: {
-          userId: user.id,
-          status: "OPEN",
-          ...(configId ? { analystId: configId as string } : {}),
-        },
-        select: {
-          symbol: true, direction: true, avgCost: true,
-          quantity: true, targetPrice: true, stopLoss: true,
-          createdAt: true,
-        },
-      });
-
-      // Latest accuracy report
-      const latestAccuracy = await prisma.accuracyReport.findFirst({
-        where: { userId: user.id },
-        orderBy: { createdAt: "desc" },
-        select: {
-          winRate: true, tradesAnalyzed: true,
-          narrativeSummary: true,
-        },
-      });
-
-      // Recent run summaries (last 5)
-      const recentRuns = await prisma.researchRun.findMany({
-        where: {
-          userId: user.id,
-          status: "COMPLETE",
-          ...(configId ? { agentConfigId: configId as string } : {}),
-        },
-        orderBy: { completedAt: "desc" },
-        take: 5,
-        select: { id: true, completedAt: true },
-      });
-
-      // Load recent briefings from the new AnalystBriefing table (accumulating history)
-      let recentBriefings: { narrative: string; strategyNotes: string | null; createdAt: Date }[] = [];
-      if (configId) {
-        recentBriefings = await prisma.analystBriefing.findMany({
-          where: { analystId: configId as string },
-          orderBy: { createdAt: "desc" },
-          take: 3,
-          select: { narrative: true, strategyNotes: true, createdAt: true },
-        });
-      }
-
-      // Active watchlist items with metadata
-      let watchlistItems: {
-        symbol: string;
-        reason: string;
-        priority: string;
-        notes: string | null;
-        thesisDirection: string | null;
-        targetPrice: number | null;
-        stopPrice: number | null;
-        conviction: number | null;
-        catalyst: string | null;
-        lastReviewedAt: Date | null;
-        addedBy: string;
-        createdAt: Date;
-      }[] = [];
-      if (configId) {
-        watchlistItems = await prisma.analystWatchlistItem.findMany({
-          where: { analystId: configId as string, status: "ACTIVE" },
-          orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
-          select: {
-            symbol: true,
-            reason: true,
-            priority: true,
-            notes: true,
-            thesisDirection: true,
-            targetPrice: true,
-            stopPrice: true,
-            conviction: true,
-            catalyst: true,
-            lastReviewedAt: true,
-            addedBy: true,
-            createdAt: true,
+    const systemPrompt = runInput
+      ? buildV2SystemPrompt(agentConfig, runInput)
+      : buildV2SystemPrompt(agentConfig, {
+          analyst: {
+            name: (agentConfig.name as string) || "Research Analyst",
+            mandate: (agentConfig.analystPrompt as string) || null,
+            voice: null,
+            directionBias: (agentConfig.directionBias as string) || "BOTH",
+            holdDurations: (agentConfig.holdDurations as string[]) || ["SWING"],
+            sectors: (agentConfig.sectors as string[]) || [],
+            exclusionList: (agentConfig.exclusionList as string[]) || [],
+            minConfidence: (agentConfig.minConfidence as number) ?? 60,
+            maxPositionSize: (agentConfig.maxPositionSize as number) ?? 10000,
+            maxOpenPositions: (agentConfig.maxOpenPositions as number) ?? 5,
           },
+          portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
+          watchlist: [],
+          priorBrief: null,
+          performance: null,
+          recentClosedTrades: [],
         });
-      }
 
-      // Recent PASS decisions (replaces shadow trades)
-      const passDecisions = await prisma.tradeDecision.findMany({
-        where: {
-          userId: user.id,
-          decision: "PASS",
-          ...(configId ? { analystId: configId as string } : {}),
-        },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        select: {
-          symbol: true, reasoning: true, createdAt: true,
-          thesis: {
-            select: { entryPrice: true, confidenceScore: true },
-          },
-        },
-      });
-
-      // Build context
-      const parts: string[] = [];
-
-      // Inject recent briefings — the evolving "living memory" of past runs
-      if (recentBriefings.length > 0) {
-        parts.push("## Your Recent Briefings");
-        parts.push("These are your self-assessments from recent research sessions. Use them to inform today's decisions and track your evolving strategy.\n");
-        for (const [i, b] of recentBriefings.entries()) {
-          const dateStr = b.createdAt.toISOString().slice(0, 10);
-          const label = i === 0 ? "Latest" : `${i + 1} sessions ago`;
-          parts.push(`### ${label} (${dateStr})`);
-          parts.push(b.narrative.slice(0, 600));
-          if (b.strategyNotes) {
-            parts.push(`\n**Strategy Notes:** ${b.strategyNotes.slice(0, 300)}`);
-          }
-          parts.push("");
-        }
-      }
-
-      if (openTrades.length > 0) {
-        parts.push("\n## Your Open Positions (REVIEW THESE FIRST)");
-        for (const t of openTrades) {
-          parts.push(`- ${t.direction} ${t.quantity} shares $${t.symbol} @ $${Number(t.avgCost).toFixed(2)} (target: $${t.targetPrice ? Number(t.targetPrice).toFixed(2) : "—"}, stop: $${t.stopLoss ? Number(t.stopLoss).toFixed(2) : "—"})`);
-        }
-        parts.push(`\nYou MUST review each open position during Phase 2 (Portfolio Review). Call get_stock_data and show_thesis for each holding to assess whether to HOLD, update targets, or SELL.`);
-      }
-
-      if (watchlistItems.length > 0) {
-        parts.push(`\n## Your Watchlist (${watchlistItems.length} items)`);
-        for (const w of watchlistItems) {
-          const reviewed = w.lastReviewedAt
-            ? `last reviewed ${w.lastReviewedAt.toISOString().slice(0, 10)}`
-            : "never reviewed";
-          const priorityTag = w.priority === "HIGH" ? " [HIGH]" : w.priority === "LOW" ? " [LOW]" : "";
-          const dirTag = w.thesisDirection ? ` ${w.thesisDirection}` : "";
-          const convTag = w.conviction != null ? ` conviction=${w.conviction}%` : "";
-          const priceInfo = [
-            w.targetPrice != null ? `target=$${w.targetPrice.toFixed(2)}` : null,
-            w.stopPrice != null ? `stop=$${w.stopPrice.toFixed(2)}` : null,
-          ].filter(Boolean).join(", ");
-          const catalystTag = w.catalyst ? ` | Catalyst: ${w.catalyst}` : "";
-          parts.push(`- $${w.symbol}${priorityTag}${dirTag}${convTag} — "${w.reason}" (${reviewed}, added by ${w.addedBy.toLowerCase()})${priceInfo ? ` | ${priceInfo}` : ""}${catalystTag}${w.notes ? ` | Notes: ${w.notes}` : ""}`);
-        }
-        parts.push(`\nReview HIGH priority watchlist items during Phase 3. Use manage_watchlist to add interesting PASS stocks or remove stale items.`);
-      }
-
-      if (recentTrades.length > 0) {
-        const wins = recentTrades.filter((t) => t.outcome === "WIN").length;
-        const losses = recentTrades.filter((t) => t.outcome === "LOSS").length;
-        parts.push(`\n## Recent Trade History (${recentTrades.length} positions)`);
-        parts.push(`Win/Loss: ${wins}W / ${losses}L`);
-        for (const t of recentTrades.slice(0, 10)) {
-          const pnl = t.realizedPnl ?? 0;
-          const evalSnippet = t.agentEvaluation ? ` | Eval: ${t.agentEvaluation.slice(0, 200)}` : "";
-          parts.push(`- ${t.outcome ?? "?"} | ${t.direction} $${t.symbol} | entry $${Number(t.avgCost).toFixed(2)} → exit $${t.closePrice ? Number(t.closePrice).toFixed(2) : "—"} | ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}${evalSnippet}`);
-        }
-        parts.push(`\nLearn from these results and evaluations. Avoid repeating patterns that led to losses.`);
-      }
-
-      if (passDecisions.length > 0) {
-        parts.push(`\n## Recent Pass Decisions (${passDecisions.length})`);
-        for (const d of passDecisions) {
-          const entryPrice = d.thesis?.entryPrice;
-          const confidence = d.thesis?.confidenceScore;
-          const dateStr = d.createdAt.toISOString().slice(0, 10);
-          parts.push(`- PASS | $${d.symbol} | ${dateStr} | confidence: ${confidence ?? "—"}% | entry was $${entryPrice ? Number(entryPrice).toFixed(2) : "—"} | reason: ${d.reasoning?.slice(0, 150) ?? "—"}`);
-        }
-        parts.push(`\nReview these passes. Were they the right call?`);
-      }
-
-      if (latestAccuracy) {
-        parts.push(`\n## Your Performance Stats`);
-        parts.push(`- Win Rate: ${latestAccuracy.winRate != null ? (Number(latestAccuracy.winRate) * 100).toFixed(0) : "—"}%`);
-        parts.push(`- Trades Analyzed: ${latestAccuracy.tradesAnalyzed ?? "—"}`);
-        if (latestAccuracy.narrativeSummary) {
-          parts.push(`- Calibration: ${String(latestAccuracy.narrativeSummary).slice(0, 300)}`);
-        }
-        parts.push(`\nUse this data to calibrate your confidence. If your win rate is low, be more selective.`);
-      }
-
-      if (recentRuns.length > 0) {
-        parts.push(`\n## Recent Research Sessions: ${recentRuns.length} completed`);
-      }
-
-      historyBlock = parts.join("\n");
-      console.log(`[agent] History loaded: ${openTrades.length} open positions, ${watchlistItems.length} watchlist, ${recentTrades.length} closed, ${passDecisions.length} passes, accuracy=${!!latestAccuracy}, briefings=${recentBriefings.length}`);
-    } catch (err) {
-      console.warn("[agent] Failed to load history (non-fatal):", err);
-    }
-
-    const systemPrompt = buildSystemPrompt(agentConfig) + (historyBlock ? `\n\n${historyBlock}` : "");
     const modelMessages = await convertToModelMessages(messages);
-    console.log(`[agent] Config loaded: name=${agentConfig.name || "default"} systemPrompt=${systemPrompt.length} chars`);
+    console.log(`[agent] Config loaded: name=${agentConfig.name || "default"} analystId=${resolvedAnalystId} systemPrompt=${systemPrompt.length} chars`);
 
-    // Create context-aware tools so show_thesis persists and summarize_run completes
-    const resolvedAnalystId = analystId || (runId ? (await prisma.researchRun.findFirst({
-      where: { id: runId },
-      select: { agentConfigId: true },
-    }))?.agentConfigId : null);
-
+    // Create context-aware tools
     const tools = createResearchTools({
       runId: runId || "",
       userId: user.id,
@@ -395,14 +193,14 @@ export async function POST(req: Request) {
         }
 
         // If the agent was stopped early (e.g. step limit, or model decided to stop
-        // without calling summarize_run), check if the run is still RUNNING and mark it
+        // without calling complete_run), check if the run is still RUNNING and mark it
         const currentRun = await prisma.researchRun.findFirst({
           where: { id: runId },
           select: { status: true },
         });
         if (currentRun?.status === "RUNNING") {
-          console.warn(`[agent] ⚠️ Run ${runId} still RUNNING after onFinish (reason=${finishReason}). Agent may not have called summarize_run.`);
-          // Don't auto-fail here — the agent might have completed normally without summarize_run
+          console.warn(`[agent] ⚠️ Run ${runId} still RUNNING after onFinish (reason=${finishReason}). Agent may not have called complete_run.`);
+          // Don't auto-fail here — the agent might have completed normally without complete_run
           // But log it so we can investigate
         }
 
