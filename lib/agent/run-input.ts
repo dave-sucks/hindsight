@@ -68,6 +68,10 @@ export interface RunInput {
     date: string;
     narrative: string;
     strategyNotes: string | null;
+    marketPosture: string | null;
+    watchTomorrow: Array<{ symbol: string; trigger: string; suggestedAction: string; priority?: string }> | null;
+    unresolvedItems: Array<{ item: string; impact: string; affectedPositions?: string[] }> | null;
+    selfCorrections: Array<{ observation: string; adjustment: string }> | null;
   } | null;
   performance: {
     winRate: number | null;
@@ -244,7 +248,15 @@ export async function buildRunInput(
     const latestBriefing = await prisma.analystBriefing.findFirst({
       where: { analystId },
       orderBy: { createdAt: "desc" },
-      select: { narrative: true, strategyNotes: true, createdAt: true },
+      select: {
+        narrative: true,
+        strategyNotes: true,
+        marketPosture: true,
+        watchTomorrow: true,
+        unresolvedItems: true,
+        selfCorrections: true,
+        createdAt: true,
+      },
     });
 
     const priorBrief = latestBriefing
@@ -252,6 +264,10 @@ export async function buildRunInput(
           date: latestBriefing.createdAt.toISOString().slice(0, 10),
           narrative: latestBriefing.narrative,
           strategyNotes: latestBriefing.strategyNotes,
+          marketPosture: latestBriefing.marketPosture ?? null,
+          watchTomorrow: (latestBriefing.watchTomorrow as Array<{ symbol: string; trigger: string; suggestedAction: string; priority?: string }>) ?? null,
+          unresolvedItems: (latestBriefing.unresolvedItems as Array<{ item: string; impact: string; affectedPositions?: string[] }>) ?? null,
+          selfCorrections: (latestBriefing.selfCorrections as Array<{ observation: string; adjustment: string }>) ?? null,
         }
       : null;
 

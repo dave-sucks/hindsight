@@ -108,11 +108,39 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 
   // ── Section 5: Prior Brief ───────────────────────────────────────────
   if (runInput.priorBrief) {
-    let briefSection = `## Prior Brief (${runInput.priorBrief.date})\n`;
-    briefSection += runInput.priorBrief.narrative.slice(0, 600);
-    if (runInput.priorBrief.strategyNotes) {
-      briefSection += `\n\n**Strategy Notes:** ${runInput.priorBrief.strategyNotes.slice(0, 300)}`;
+    const brief = runInput.priorBrief;
+    let briefSection = `## Prior Brief (${brief.date})\n`;
+
+    if (brief.marketPosture) {
+      briefSection += `Market Posture: ${brief.marketPosture}\n`;
     }
+
+    if (brief.watchTomorrow?.length) {
+      briefSection += `\nWatch Tomorrow:\n`;
+      for (const w of brief.watchTomorrow) {
+        briefSection += `- $${w.symbol}: ${w.trigger} → ${w.suggestedAction}${w.priority === "HIGH" ? " [HIGH]" : ""}\n`;
+      }
+    }
+
+    if (brief.unresolvedItems?.length) {
+      briefSection += `\nUnresolved Items:\n`;
+      for (const u of brief.unresolvedItems) {
+        briefSection += `- ${u.item} — Impact: ${u.impact}${u.affectedPositions?.length ? ` — Affects: ${u.affectedPositions.map((s) => "$" + s).join(", ")}` : ""}\n`;
+      }
+    }
+
+    if (brief.selfCorrections?.length) {
+      briefSection += `\nSelf-Corrections:\n`;
+      for (const s of brief.selfCorrections) {
+        briefSection += `- Observation: ${s.observation} → Adjustment: ${s.adjustment}\n`;
+      }
+    }
+
+    if (brief.strategyNotes) {
+      briefSection += `\nStrategy Notes: ${brief.strategyNotes.slice(0, 300)}`;
+    }
+
+    briefSection += `\n\nNarrative (summary): ${brief.narrative.slice(0, 400)}`;
     sections.push(briefSection);
   }
 
@@ -192,7 +220,11 @@ Execute decisions IN ORDER. Exits BEFORE entries (frees capital + slots).
 
 ### Phase 7: BRIEF (1 step)
 ALWAYS call complete_run as your LAST action with:
-- ranked_picks, market_summary, overall_assessment, exposure_breakdown, risk_notes`);
+- ranked_picks, market_summary, overall_assessment, exposure_breakdown, risk_notes
+- market_posture (2-3 word summary of your current stance)
+- watch_tomorrow (symbols + triggers for next session to check first)
+- unresolved_items (things you couldn't resolve — data gaps, pending catalysts)
+- self_corrections (biases or mistakes you noticed and will adjust for)`);
 
   // ── Section 9: Tool Reference ────────────────────────────────────────
   sections.push(`## Tool Reference

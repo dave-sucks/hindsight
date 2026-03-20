@@ -15,10 +15,18 @@ import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
+export interface StructuredBriefInput {
+  marketPosture?: string;
+  watchTomorrow?: Array<{ symbol: string; trigger: string; suggested_action: string; priority?: string }>;
+  unresolvedItems?: Array<{ item: string; impact: string; affected_positions?: string[] }>;
+  selfCorrections?: Array<{ observation: string; adjustment: string }>;
+}
+
 interface BriefingContext {
   analystId: string;
   runId: string;
   userId: string;
+  structuredBrief?: StructuredBriefInput;
 }
 
 const briefingSchema = z.object({
@@ -43,6 +51,7 @@ export async function updateAnalystBriefing({
   analystId,
   runId,
   userId,
+  structuredBrief,
 }: BriefingContext): Promise<void> {
   try {
     const t0 = Date.now();
@@ -336,6 +345,10 @@ ${recentPassDecisions.length > 0
 
 ### Session Stats
 Total completed research sessions: ${allRunsCount}
+${structuredBrief?.marketPosture ? `\n### Agent's Market Posture\n${structuredBrief.marketPosture}` : ""}
+${structuredBrief?.watchTomorrow?.length ? `\n### Watch Tomorrow\n${structuredBrief.watchTomorrow.map((w) => `- $${w.symbol}: ${w.trigger} → ${w.suggested_action}${w.priority === "HIGH" ? " [HIGH]" : ""}`).join("\n")}` : ""}
+${structuredBrief?.unresolvedItems?.length ? `\n### Unresolved Items\n${structuredBrief.unresolvedItems.map((u) => `- ${u.item} — Impact: ${u.impact}${u.affected_positions?.length ? ` — Affects: ${u.affected_positions.join(", ")}` : ""}`).join("\n")}` : ""}
+${structuredBrief?.selfCorrections?.length ? `\n### Self-Corrections\n${structuredBrief.selfCorrections.map((s) => `- Observation: ${s.observation} → Adjustment: ${s.adjustment}`).join("\n")}` : ""}
 
 ## Instructions
 
@@ -376,6 +389,11 @@ Rules:
         trades: tradesData as object[],
         portfolioSnapshot: portfolioSnapshot as object,
         strategyNotes: object.strategyNotes,
+        // V2: Structured brief fields from agent
+        marketPosture: structuredBrief?.marketPosture ?? null,
+        watchTomorrow: (structuredBrief?.watchTomorrow as object[]) ?? null,
+        unresolvedItems: (structuredBrief?.unresolvedItems as object[]) ?? null,
+        selfCorrections: (structuredBrief?.selfCorrections as object[]) ?? null,
       },
     });
 
