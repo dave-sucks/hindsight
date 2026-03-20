@@ -64,6 +64,19 @@ export interface RunInput {
     daysOnList: number;
     lastReviewedDaysAgo: number;
   }>;
+  activeTheses: Array<{
+    id: string;
+    ticker: string;
+    direction: string;
+    confidence: number;
+    reasoningSummary: string;
+    entryPrice: number | null;
+    targetPrice: number | null;
+    stopLoss: number | null;
+    createdAt: string;
+    runId: string;
+    status: string;
+  }>;
   priorBrief: {
     date: string;
     narrative: string;
@@ -158,17 +171,40 @@ export async function buildRunInput(
       };
     });
 
+    // V2 Phase 3: Load active theses with status filter
+    const openSymbols = openPositions.map((p) => p.symbol);
+    const watchSymbols = watchlistItems.map((w) => w.symbol);
+    const allRelevantSymbols = [...new Set([...openSymbols, ...watchSymbols])];
+
+    const activeTheses =
+      allRelevantSymbols.length > 0
+        ? await prisma.thesis.findMany({
+            where: {
+              status: "ACTIVE",
+              ticker: { in: allRelevantSymbols },
+              researchRun: { agentConfigId: analystId },
+            },
+            orderBy: { createdAt: "desc" },
+            distinct: ["ticker"],
+            select: {
+              id: true,
+              ticker: true,
+              direction: true,
+              confidenceScore: true,
+              reasoningSummary: true,
+              entryPrice: true,
+              targetPrice: true,
+              stopLoss: true,
+              createdAt: true,
+              researchRunId: true,
+              status: true,
+            },
+          })
+        : [];
+
     // Link active theses to positions
     for (const pos of positions) {
-      const thesis = await prisma.thesis.findFirst({
-        where: {
-          ticker: pos.symbol,
-          userId,
-          researchRun: { agentConfigId: analystId },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, reasoningSummary: true },
-      });
+      const thesis = activeTheses.find((t) => t.ticker === pos.symbol);
       if (thesis) {
         pos.activeThesisId = thesis.id;
         pos.activeThesisSummary = thesis.reasoningSummary.slice(0, 200);
@@ -354,6 +390,19 @@ export async function buildRunInput(
         },
       },
       watchlist,
+      activeTheses: activeTheses.map((t) => ({
+        id: t.id,
+        ticker: t.ticker,
+        direction: t.direction,
+        confidence: t.confidenceScore,
+        reasoningSummary: t.reasoningSummary,
+        entryPrice: t.entryPrice,
+        targetPrice: t.targetPrice,
+        stopLoss: t.stopLoss,
+        createdAt: t.createdAt.toISOString(),
+        runId: t.researchRunId,
+        status: t.status,
+      })),
       priorBrief,
       performance,
       recentClosedTrades,
@@ -388,6 +437,7 @@ export async function buildRunInput(
         exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 },
       },
       watchlist: [],
+      activeTheses: [],
       priorBrief: null,
       performance: null,
       recentClosedTrades: [],
