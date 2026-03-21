@@ -56,18 +56,8 @@ export async function updateAnalystBriefing({
   try {
     const t0 = Date.now();
 
-    // Load everything we need in parallel
-    const [
-      config,
-      openTrades,
-      recentClosedTrades,
-      runTheses,
-      runTrades,
-      runSummaryEvent,
-      allRunsCount,
-      previousBriefing,
-      recentPassDecisions,
-    ] = await Promise.all([
+    // Load everything we need in parallel — use allSettled so one failure doesn't kill the rest
+    const results = await Promise.allSettled([
       prisma.agentConfig.findFirst({
         where: { id: analystId, userId },
       }),
@@ -127,7 +117,6 @@ export async function updateAnalystBriefing({
           },
         },
       }),
-      // Theses from THIS run (for structured data capture)
       prisma.thesis.findMany({
         where: { researchRunId: runId, userId },
         select: {
@@ -145,7 +134,6 @@ export async function updateAnalystBriefing({
           sector: true,
         },
       }),
-      // Positions from THIS run (for structured data capture)
       prisma.position.findMany({
         where: {
           userId,
@@ -161,22 +149,18 @@ export async function updateAnalystBriefing({
           stopLoss: true,
         },
       }),
-      // Run summary event (market context)
       prisma.runEvent.findFirst({
         where: { runId, type: "run_summary" },
         select: { payload: true },
       }),
-      // Total run count
       prisma.researchRun.count({
         where: { agentConfigId: analystId, userId, status: "COMPLETE" },
       }),
-      // Previous briefing for continuity
       prisma.analystBriefing.findFirst({
         where: { analystId },
         orderBy: { createdAt: "desc" },
         select: { narrative: true, strategyNotes: true, createdAt: true },
       }),
-      // Recent PASS decisions (replaces old shadow trade tracking)
       prisma.tradeDecision.findMany({
         where: {
           userId,
@@ -193,6 +177,25 @@ export async function updateAnalystBriefing({
         },
       }),
     ]);
+
+    // Extract values with safe fallbacks for any failed queries
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const val = (i: number, fallback: any) => {
+      const r = results[i];
+      if (r.status === "fulfilled") return r.value;
+      console.warn(`[briefing] Query ${i} failed:`, r.reason);
+      return fallback;
+    };
+
+    const config = val(0, null);
+    const openTrades = val(1, []);
+    const recentClosedTrades = val(2, []);
+    const runTheses = val(3, []);
+    const runTrades = val(4, []);
+    const runSummaryEvent = val(5, null);
+    const allRunsCount = val(6, 0);
+    const previousBriefing = val(7, null);
+    const recentPassDecisions = val(8, []);
 
     if (!config) {
       console.warn(`[briefing] Analyst ${analystId} not found, skipping`);
