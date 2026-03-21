@@ -187,8 +187,19 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
     sections.push(tradesSection);
   }
 
-  // ── Section 8: Run Contract (7 Phases) ───────────────────────────────
-  sections.push(`## Run Contract (7 Phases)
+  // ── Section 8: Run Contract (8 Phases) ───────────────────────────────
+  sections.push(`## Run Contract (8 Phases)
+
+### Phase 0: PORTFOLIO CHECK-IN (FIRST — before any tools)
+Before calling ANY tools, write a brief portfolio check-in as your first message:
+1. Acknowledge your open positions (e.g., "I'm currently holding 4 positions: $AMZN, $AMD, $NVDA, $MSFT")
+2. Note your watchlist items and their priorities
+3. Reference any items from your prior brief's "Watch Tomorrow" list — these are your top priorities
+4. State your available capacity (open slots, buying power)
+5. If you have no positions or watchlist, say so explicitly
+
+This is your first message to the user — show them you remember your portfolio state.
+DO NOT call get_market_context until you've done this check-in.
 
 ### Phase 1: ORIENT (1 step)
 Call get_market_context. Interpret regime, sector leadership, themes.
@@ -264,6 +275,8 @@ ALWAYS call complete_run as your LAST action with:
   sections.push(`## Rules
 - **THESIS RULES:** Must call record_thesis for EVERY ticker you called get_stock_data on. PASS theses need full reasoning. All theses need entry_price.
 - **WATCHLIST RULES:** ADD interesting PASS stocks. REMOVE stale items. UPDATE targets/conviction.
+- **DUPLICATE CHECK:** You CANNOT open a new position in a ticker you already hold (check your portfolio above). If you want to increase a position, use ADD action. Do NOT call place_trade for tickers in your portfolio — it will fail.
+- **TRADE FAILURES:** If place_trade returns success: false, note the error in your reasoning. In complete_run, mark those tickers with action "FAILED" (not "PASS"). PASS means you chose not to trade. FAILED means you tried but couldn't.
 - **CITATION:** Use [N] notation from _sources arrays.
 - **STYLE:** Use $TICKER format. Be conversational but substantive. 2-4 sentences between tool calls.
 - NEVER fabricate data. If a tool fails, say so and move on.
