@@ -381,7 +381,8 @@ Rules:
 
     // ── Persist the briefing row ─────────────────────────────────────────────
 
-    const briefingData = {
+    // Core briefing data (columns that exist in all environments)
+    const coreData = {
       analystId,
       runId,
       userId,
@@ -391,19 +392,37 @@ Rules:
       trades: tradesData as object[],
       portfolioSnapshot: portfolioSnapshot as object,
       strategyNotes: object.strategyNotes,
-      // V2: Structured brief fields from agent
+    };
+
+    // V2 structured brief fields (may not exist in DB yet)
+    const v2Data = {
       marketPosture: structuredBrief?.marketPosture ?? null,
       watchTomorrow: (structuredBrief?.watchTomorrow as object[]) ?? null,
       unresolvedItems: (structuredBrief?.unresolvedItems as object[]) ?? null,
       selfCorrections: (structuredBrief?.selfCorrections as object[]) ?? null,
     };
 
-    // Use upsert to handle retries (runId has unique constraint)
-    await prisma.analystBriefing.upsert({
-      where: { runId },
-      create: briefingData,
-      update: briefingData,
-    });
+    // Try with V2 fields first, fall back to core-only if columns don't exist
+    try {
+      const fullData = { ...coreData, ...v2Data };
+      await prisma.analystBriefing.upsert({
+        where: { runId },
+        create: fullData,
+        update: fullData,
+      });
+    } catch (v2Err: unknown) {
+      const errMsg = v2Err instanceof Error ? v2Err.message : String(v2Err);
+      if (errMsg.includes("marketPosture") || errMsg.includes("watchTomorrow") || errMsg.includes("unresolvedItems") || errMsg.includes("selfCorrections") || errMsg.includes("Unknown arg")) {
+        console.warn("[briefing] V2 columns not available, falling back to core schema");
+        await prisma.analystBriefing.upsert({
+          where: { runId },
+          create: coreData,
+          update: coreData,
+        });
+      } else {
+        throw v2Err;
+      }
+    }
 
     const elapsed = Date.now() - t0;
     console.log(
