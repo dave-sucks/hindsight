@@ -1749,11 +1749,34 @@ export function createResearchTools(ctx: ToolContext) {
             signal_types: args.signal_types,
             _sources: args.sources_used ?? [],
             fundamentals: args.fundamentals ?? null,
+            status: "ACTIVE",
+            parent_thesis_id: args.parent_thesis_id ?? null,
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Thesis save failed";
           console.error(`[tool] record_thesis FAILED for ${args.ticker}: ${msg}`);
-          return { thesis_id: null, ticker: args.ticker, direction: args.direction, error: msg, note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker." };
+          return {
+            thesis_id: null,
+            ticker: args.ticker,
+            company_name: args.company_name ?? null,
+            exchange: args.exchange ?? null,
+            direction: args.direction,
+            confidence_score: args.confidence_score,
+            reasoning_summary: args.reasoning_summary,
+            thesis_bullets: args.thesis_bullets,
+            risk_flags: args.risk_flags,
+            entry_price: args.entry_price ?? null,
+            target_price: args.target_price ?? null,
+            stop_loss: args.stop_loss ?? null,
+            hold_duration: args.hold_duration,
+            signal_types: args.signal_types,
+            fundamentals: args.fundamentals ?? null,
+            _sources: args.sources_used ?? [],
+            status: "ACTIVE",
+            parent_thesis_id: args.parent_thesis_id ?? null,
+            error: msg,
+            note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker.",
+          };
         }
       },
     }),
@@ -2151,11 +2174,11 @@ export function createResearchTools(ctx: ToolContext) {
               reasoning: z
                 .string()
                 .describe("One-line rationale for the ranking"),
-              action: z.enum(["TRADE", "WATCH", "PASS"]),
+              action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS"]),
             }),
           )
           .describe(
-            "All tickers researched, ranked by conviction. Mark TRADE for traded, WATCH for interesting but not traded, PASS for rejected.",
+            "All tickers researched, ranked by conviction. Use the action you took: INITIATE (new position), ADD (added to existing), HOLD (kept unchanged), REDUCE (trimmed), EXIT (closed), WATCH (added to watchlist), REMOVE_WATCH (removed from watchlist), PASS (rejected).",
           ),
         exposure_breakdown: z
           .object({
@@ -2222,7 +2245,10 @@ export function createResearchTools(ctx: ToolContext) {
         const _t0 = Date.now();
         try {
           console.log(`[tool] complete_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
-          const traded = args.ranked_picks.filter((p) => p.action === "TRADE").length;
+          const traded = args.ranked_picks.filter((p) => {
+            const a = p.action.toUpperCase();
+            return a === "INITIATE" || a === "ADD" || a === "TRADE";
+          }).length;
 
           // Idempotency check — if run is already COMPLETE, skip the update
           const existingRun = await prisma.researchRun.findUnique({
@@ -2307,6 +2333,9 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           // V2: Generate analyst briefing with structured fields directly from the tool
+          if (!ctx.analystId) {
+            console.warn(`[tool] complete_run SKIPPING briefing — no analystId in context (runId=${ctx.runId})`);
+          }
           if (ctx.analystId && ctx.runId) {
             try {
               await updateAnalystBriefing({
@@ -2326,7 +2355,7 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);
-          // Return ALL args so RunSummaryCard can render them
+          // Return ALL args so DecisionSummaryCard can render them
           return {
             status: "complete",
             analyzed: args.ranked_picks.length,

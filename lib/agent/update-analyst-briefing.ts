@@ -378,23 +378,28 @@ Rules:
 
     // ── Persist the briefing row ─────────────────────────────────────────────
 
-    await prisma.analystBriefing.create({
-      data: {
-        analystId,
-        runId,
-        userId,
-        narrative: object.narrative,
-        marketContext: marketContext as object | undefined,
-        theses: thesesData as object[],
-        trades: tradesData as object[],
-        portfolioSnapshot: portfolioSnapshot as object,
-        strategyNotes: object.strategyNotes,
-        // V2: Structured brief fields from agent
-        marketPosture: structuredBrief?.marketPosture ?? null,
-        watchTomorrow: (structuredBrief?.watchTomorrow as object[]) ?? null,
-        unresolvedItems: (structuredBrief?.unresolvedItems as object[]) ?? null,
-        selfCorrections: (structuredBrief?.selfCorrections as object[]) ?? null,
-      },
+    const briefingData = {
+      analystId,
+      runId,
+      userId,
+      narrative: object.narrative,
+      marketContext: marketContext as object | undefined,
+      theses: thesesData as object[],
+      trades: tradesData as object[],
+      portfolioSnapshot: portfolioSnapshot as object,
+      strategyNotes: object.strategyNotes,
+      // V2: Structured brief fields from agent
+      marketPosture: structuredBrief?.marketPosture ?? null,
+      watchTomorrow: (structuredBrief?.watchTomorrow as object[]) ?? null,
+      unresolvedItems: (structuredBrief?.unresolvedItems as object[]) ?? null,
+      selfCorrections: (structuredBrief?.selfCorrections as object[]) ?? null,
+    };
+
+    // Use upsert to handle retries (runId has unique constraint)
+    await prisma.analystBriefing.upsert({
+      where: { runId },
+      create: briefingData,
+      update: briefingData,
     });
 
     const elapsed = Date.now() - t0;

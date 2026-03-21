@@ -60,6 +60,7 @@ export type ThesisCardData = {
   company_name?: string | null;
   exchange?: string | null;
   fundamentals?: FundamentalsData | null;
+  status?: "ACTIVE" | "INVALIDATED" | "CLOSED" | "SUPERSEDED";
 };
 
 export type ThesisCardProps = ComponentProps<typeof Card> & ThesisCardData;
@@ -108,6 +109,7 @@ export function ThesisCard({
   company_name,
   exchange,
   fundamentals,
+  status,
   className,
   ...cardProps
 }: ThesisCardProps) {
@@ -146,11 +148,18 @@ export function ThesisCard({
           </TooltipContent>
         </Tooltip>
       </div>
-      {/* Right: verdict badge */}
-      <Badge variant={verdict.variant}>
-        {!isPass && <DirIcon className="h-3.5 w-3.5" />}
-        {verdict.label}
-      </Badge>
+      {/* Right: status + verdict badge */}
+      <div className="flex items-center gap-1.5">
+        {status && status !== "ACTIVE" && (
+          <Badge variant="outline">
+            {status}
+          </Badge>
+        )}
+        <Badge variant={verdict.variant}>
+          {!isPass && <DirIcon className="h-3.5 w-3.5" />}
+          {verdict.label}
+        </Badge>
+      </div>
     </div>
   );
 
