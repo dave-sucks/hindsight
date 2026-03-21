@@ -5,8 +5,6 @@ import { Sparkles } from "lucide-react";
 import { AgentThread } from "@/components/research/AgentThread";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
-import { buildRunInput } from "@/lib/agent/run-input";
-import type { RunContextData } from "@/components/domain/run-context-card";
 import type { UIMessage } from "ai";
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -80,41 +78,6 @@ export default async function RunPage({
   const isLive = run.status === "RUNNING";
   const hasReplay = persistedMessages !== null;
 
-  // Build RunInput context for live runs so the user can see what was passed to the agent
-  let runContext: RunContextData | null = null;
-  if (isLive && run.agentConfig?.id && userId) {
-    try {
-      const runInput = await buildRunInput(run.agentConfig.id, userId);
-      runContext = {
-        portfolio: runInput.portfolio,
-        watchlist: runInput.watchlist.map((w) => ({
-          symbol: w.symbol,
-          reason: w.reason,
-          priority: w.priority,
-          thesisDirection: w.thesisDirection,
-          conviction: w.conviction,
-          catalyst: w.catalyst,
-        })),
-        activeTheses: runInput.activeTheses.map((t) => ({
-          ticker: t.ticker,
-          direction: t.direction,
-          confidence: t.confidence,
-          reasoningSummary: t.reasoningSummary,
-        })),
-        priorBrief: runInput.priorBrief
-          ? {
-              date: runInput.priorBrief.date,
-              marketPosture: runInput.priorBrief.marketPosture,
-              narrative: runInput.priorBrief.narrative,
-            }
-          : null,
-        performance: runInput.performance,
-      };
-    } catch (err) {
-      console.error("[run-page] Failed to build run context:", err);
-    }
-  }
-
   return (
     <div className="flex flex-col h-[calc(100dvh-3rem)] overflow-hidden">
       <div className="flex-1 min-h-0">
@@ -126,7 +89,6 @@ export default async function RunPage({
             config={config}
             autoStart={isLive}
             initialMessages={persistedMessages ?? undefined}
-            runContext={runContext ?? undefined}
             headerAction={
               <HowItWorksSheet flow="agent-run">
                 <Sparkles className="h-4 w-4" />

@@ -7,6 +7,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount } from "@/lib/alpaca";
@@ -2533,6 +2534,9 @@ export function createResearchTools(ctx: ToolContext) {
               }
             }
 
+            // Invalidate analyst page cache so sidebar shows the new item
+            try { revalidatePath(`/analysts/${ctx.analystId}`); } catch { /* non-fatal */ }
+
             logToolEnd("manage_watchlist", _t0, ctx.runId, `ADDED ${ticker}`, stats);
             return {
               success: true,
@@ -2612,6 +2616,8 @@ export function createResearchTools(ctx: ToolContext) {
               }
             }
 
+            try { revalidatePath(`/analysts/${ctx.analystId}`); } catch { /* non-fatal */ }
+
             logToolEnd("manage_watchlist", _t0, ctx.runId, `REMOVED ${ticker}`, stats);
             return { success: true, action: "REMOVE" as const, ticker, changed: true, message: `Removed $${ticker} from watchlist.` };
           }
@@ -2641,6 +2647,8 @@ export function createResearchTools(ctx: ToolContext) {
                 lastReviewedAt: new Date(),
               },
             });
+
+            try { revalidatePath(`/analysts/${ctx.analystId}`); } catch { /* non-fatal */ }
 
             logToolEnd("manage_watchlist", _t0, ctx.runId, `UPDATED ${ticker}`, stats);
             return {
