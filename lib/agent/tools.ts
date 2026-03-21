@@ -1749,6 +1749,8 @@ export function createResearchTools(ctx: ToolContext) {
             signal_types: args.signal_types,
             _sources: args.sources_used ?? [],
             fundamentals: args.fundamentals ?? null,
+            status: "ACTIVE",
+            parent_thesis_id: args.parent_thesis_id ?? null,
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Thesis save failed";
@@ -1770,6 +1772,8 @@ export function createResearchTools(ctx: ToolContext) {
             signal_types: args.signal_types,
             fundamentals: args.fundamentals ?? null,
             _sources: args.sources_used ?? [],
+            status: "ACTIVE",
+            parent_thesis_id: args.parent_thesis_id ?? null,
             error: msg,
             note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker.",
           };
@@ -2329,6 +2333,9 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           // V2: Generate analyst briefing with structured fields directly from the tool
+          if (!ctx.analystId) {
+            console.warn(`[tool] complete_run SKIPPING briefing — no analystId in context (runId=${ctx.runId})`);
+          }
           if (ctx.analystId && ctx.runId) {
             try {
               await updateAnalystBriefing({

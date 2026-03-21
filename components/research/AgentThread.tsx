@@ -35,6 +35,7 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import { RunSourcesPanel } from "@/components/research/run-sources-panel";
+import { RunContextCard, type RunContextData } from "@/components/domain/run-context-card";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ interface AgentThreadProps {
   config: Record<string, unknown>;
   autoStart?: boolean;
   initialMessages?: UIMessage[];
+  /** Snapshot of portfolio/watchlist/theses/brief at run start */
+  runContext?: RunContextData;
   /** Optional action element rendered in the tabs bar (right side) */
   headerAction?: ReactNode;
 }
@@ -58,6 +61,7 @@ export function AgentThread({
   config,
   autoStart = true,
   initialMessages,
+  runContext,
   headerAction,
 }: AgentThreadProps) {
   // Live runs use the agent route; completed runs use followup route
@@ -86,6 +90,7 @@ export function AgentThread({
         analystName={analystName}
         autoStart={autoStart}
         isFollowupMode={isFollowupMode}
+        runContext={runContext}
         headerAction={headerAction}
       />
     </AssistantRuntimeProvider>
@@ -131,12 +136,14 @@ function AgentThreadInner({
   analystName,
   autoStart,
   isFollowupMode,
+  runContext,
   headerAction,
 }: {
   runId: string;
   analystName: string;
   autoStart: boolean;
   isFollowupMode: boolean;
+  runContext?: RunContextData;
   headerAction?: ReactNode;
 }) {
   useRegisterResearchToolUIs(runId);
@@ -169,7 +176,12 @@ function AgentThreadInner({
         )}
       </div>
 
-      <TabsContent value={0} className="flex-1 min-h-0">
+      <TabsContent value={0} className="flex-1 min-h-0 flex flex-col">
+        {runContext && (
+          <div className="shrink-0 px-4 pt-3">
+            <RunContextCard context={runContext} />
+          </div>
+        )}
         <Thread
           welcomeConfig={{
             title: analystName,

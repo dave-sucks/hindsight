@@ -444,6 +444,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         excerpt: s.excerpt,
       })),
       fundamentals: (result.fundamentals as ThesisCardData["fundamentals"]) ?? null,
+      status: (result.status as ThesisCardData["status"]) ?? undefined,
     };
 
     return (
