@@ -1753,7 +1753,26 @@ export function createResearchTools(ctx: ToolContext) {
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Thesis save failed";
           console.error(`[tool] record_thesis FAILED for ${args.ticker}: ${msg}`);
-          return { thesis_id: null, ticker: args.ticker, direction: args.direction, error: msg, note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker." };
+          return {
+            thesis_id: null,
+            ticker: args.ticker,
+            company_name: args.company_name ?? null,
+            exchange: args.exchange ?? null,
+            direction: args.direction,
+            confidence_score: args.confidence_score,
+            reasoning_summary: args.reasoning_summary,
+            thesis_bullets: args.thesis_bullets,
+            risk_flags: args.risk_flags,
+            entry_price: args.entry_price ?? null,
+            target_price: args.target_price ?? null,
+            stop_loss: args.stop_loss ?? null,
+            hold_duration: args.hold_duration,
+            signal_types: args.signal_types,
+            fundamentals: args.fundamentals ?? null,
+            _sources: args.sources_used ?? [],
+            error: msg,
+            note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker.",
+          };
         }
       },
     }),

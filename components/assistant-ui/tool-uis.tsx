@@ -36,7 +36,6 @@ import {
   type ThesisCardData,
   TradeCard,
   TradeConfirmation,
-  RunSummaryCard,
   PortfolioReviewCard,
   type PortfolioReviewData,
   DecisionSummaryCard,
@@ -627,8 +626,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     }));
 
     return (
-      <div className="my-2 space-y-3">
-        {/* V2: Decision table above the narrative summary */}
+      <div className="my-2">
         <DecisionSummaryCard
           rankedPicks={decisionPicks}
           marketSummary={result.market_summary as string}
@@ -644,22 +642,6 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           riskNotes={(result.risk_notes ?? []) as string[]}
           overallAssessment={result.overall_assessment as string}
           portfolioReview={result.portfolio_review as string | undefined}
-        />
-        <RunSummaryCard
-          marketSummary={result.market_summary as string}
-          rankedPicks={rankedPicks}
-          exposureBreakdown={
-            exposure
-              ? {
-                  longExposure: exposure.long_exposure,
-                  shortExposure: exposure.short_exposure,
-                  netExposure: exposure.net_exposure,
-                  sectorConcentration: exposure.sector_concentration,
-                }
-              : undefined
-          }
-          riskNotes={(result.risk_notes ?? []) as string[]}
-          overallAssessment={result.overall_assessment as string}
         />
       </div>
     );

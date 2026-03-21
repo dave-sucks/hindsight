@@ -219,18 +219,13 @@ Skip or minimize discovery when:
 When discovery runs: scan_candidates → pick 2-4 → get_stock_data + record_thesis each
 
 ### Phase 5: SYNTHESIZE (no tools — YOUR CORE JOB)
-Produce a DECISION TABLE considering the ENTIRE portfolio:
-
-| # | Ticker | Action | Confidence | Size | Reasoning |
-|---|--------|--------|-----------|------|-----------|
-
-Actions: INITIATE / ADD / HOLD / REDUCE / EXIT / WATCH / REMOVE_WATCH / PASS
-
-Then write portfolio-level reasoning:
+Write portfolio-level reasoning before executing:
 - Current posture vs target posture
 - Risk budget usage
 - Key tradeoffs made
 - The one risk that could blow this up
+
+Then state your decisions: what you will INITIATE / ADD / HOLD / REDUCE / EXIT / WATCH / REMOVE_WATCH / PASS.
 
 ### Phase 6: EXECUTE (1-5 steps)
 Execute decisions IN ORDER. Exits BEFORE entries (frees capital + slots).
@@ -241,7 +236,7 @@ Execute decisions IN ORDER. Exits BEFORE entries (frees capital + slots).
 
 ### Phase 7: BRIEF (1 step)
 ALWAYS call complete_run as your LAST action with:
-- ranked_picks, market_summary, overall_assessment, exposure_breakdown, risk_notes
+- ranked_picks (array with rank, ticker, action, direction, confidence, reasoning for EVERY ticker), market_summary, overall_assessment, exposure_breakdown, risk_notes, portfolio_review
 - market_posture (2-3 word summary of your current stance)
 - watch_tomorrow (symbols + triggers for next session to check first)
 - unresolved_items (things you couldn't resolve — data gaps, pending catalysts)
