@@ -175,6 +175,51 @@ export async function buildRunInput(
       };
     });
 
+    // Calculate exposure
+    const longExposure = positions
+      .filter((p) => p.direction === "LONG")
+      .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
+    const shortExposure = positions
+      .filter((p) => p.direction === "SHORT")
+      .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
+
+    // ── Account balances ───────────────────────────────────────────────
+    let cash = 0;
+    let buyingPower = 0;
+    let portfolioValue = 0;
+    try {
+      const account = await getAccount();
+      cash = parseFloat(account.cash);
+      buyingPower = parseFloat(account.buying_power);
+      portfolioValue = parseFloat(account.portfolio_value);
+    } catch (err) {
+      console.warn("[buildRunInput] Failed to fetch account:", err);
+    }
+
+    const totalExposure = longExposure + shortExposure;
+    const utilizationPct =
+      portfolioValue > 0
+        ? Math.round((totalExposure / portfolioValue) * 100 * 100) / 100
+        : 0;
+
+    // ── Watchlist (must be loaded before active theses which uses watchSymbols) ──
+    const watchlistItems = await prisma.analystWatchlistItem.findMany({
+      where: { analystId, status: "ACTIVE" },
+      orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
+      select: {
+        symbol: true,
+        reason: true,
+        priority: true,
+        thesisDirection: true,
+        targetPrice: true,
+        stopPrice: true,
+        conviction: true,
+        catalyst: true,
+        createdAt: true,
+        lastReviewedAt: true,
+      },
+    });
+
     // V2 Phase 3: Load active theses with status filter
     const openSymbols = openPositions.map((p) => p.symbol);
     const watchSymbols = watchlistItems.map((w) => w.symbol);
@@ -214,51 +259,6 @@ export async function buildRunInput(
         pos.activeThesisSummary = thesis.reasoningSummary.slice(0, 200);
       }
     }
-
-    // Calculate exposure
-    const longExposure = positions
-      .filter((p) => p.direction === "LONG")
-      .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
-    const shortExposure = positions
-      .filter((p) => p.direction === "SHORT")
-      .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
-
-    // ── Account balances ───────────────────────────────────────────────
-    let cash = 0;
-    let buyingPower = 0;
-    let portfolioValue = 0;
-    try {
-      const account = await getAccount();
-      cash = parseFloat(account.cash);
-      buyingPower = parseFloat(account.buying_power);
-      portfolioValue = parseFloat(account.portfolio_value);
-    } catch (err) {
-      console.warn("[buildRunInput] Failed to fetch account:", err);
-    }
-
-    const totalExposure = longExposure + shortExposure;
-    const utilizationPct =
-      portfolioValue > 0
-        ? Math.round((totalExposure / portfolioValue) * 100 * 100) / 100
-        : 0;
-
-    // ── Watchlist ──────────────────────────────────────────────────────
-    const watchlistItems = await prisma.analystWatchlistItem.findMany({
-      where: { analystId, status: "ACTIVE" },
-      orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
-      select: {
-        symbol: true,
-        reason: true,
-        priority: true,
-        thesisDirection: true,
-        targetPrice: true,
-        stopPrice: true,
-        conviction: true,
-        catalyst: true,
-        createdAt: true,
-        lastReviewedAt: true,
-      },
-    });
 
     const now = Date.now();
     const watchlist = watchlistItems.map((w) => ({
