@@ -38,11 +38,14 @@ export default async function AnalystDetailPage({
   }
 
   const [detail, runningCount, watchlistItems] = await Promise.all([
-    getAnalystDetail(id),
+    getAnalystDetail(id).catch((err) => {
+      console.error("[analyst-page] getAnalystDetail failed:", err);
+      return null;
+    }),
     userId
       ? prisma.researchRun.count({
           where: { userId, agentConfigId: id, status: "RUNNING" },
-        })
+        }).catch(() => 0)
       : Promise.resolve(0),
     getWatchlistItems(id).catch(() => []),
   ]);
