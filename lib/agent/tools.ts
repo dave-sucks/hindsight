@@ -2175,11 +2175,11 @@ export function createResearchTools(ctx: ToolContext) {
               reasoning: z
                 .string()
                 .describe("One-line rationale for the ranking"),
-              action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS"]),
+              action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS", "FAILED"]),
             }),
           )
           .describe(
-            "All tickers researched, ranked by conviction. Use the action you took: INITIATE (new position), ADD (added to existing), HOLD (kept unchanged), REDUCE (trimmed), EXIT (closed), WATCH (added to watchlist), REMOVE_WATCH (removed from watchlist), PASS (rejected).",
+            "All tickers researched, ranked by conviction. Use the action you took: INITIATE (new position), ADD (added to existing), HOLD (kept unchanged), REDUCE (trimmed), EXIT (closed), WATCH (added to watchlist), REMOVE_WATCH (removed from watchlist), PASS (intentionally chose not to trade), FAILED (wanted to trade but couldn't due to error/duplicate/insufficient funds).",
           ),
         exposure_breakdown: z
           .object({

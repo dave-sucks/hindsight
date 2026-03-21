@@ -6,6 +6,9 @@
  *   - lib/inngest/functions/morning-research.ts
  *
  * Zero schema changes — reads existing tables only.
+ *
+ * RESILIENCE: Each section has its own try/catch so one failure
+ * (e.g., Alpaca down) does NOT kill watchlist/theses/briefs.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -108,355 +111,340 @@ export async function buildRunInput(
   analystId: string,
   userId: string,
 ): Promise<RunInput> {
+  // ── Analyst config (REQUIRED — fail hard if missing) ───────────────
+  const config = await prisma.agentConfig.findFirst({
+    where: { id: analystId, userId },
+  });
+
+  if (!config) {
+    throw new Error(`AgentConfig not found: analystId=${analystId} userId=${userId}`);
+  }
+
+  // ── Each section loads with its own error handling ─────────────────
+  // One failure (e.g., Alpaca API down) does NOT kill other sections.
+
+  // 1. Open positions
+  let openPositions: Array<{
+    id: string; symbol: string; direction: string; quantity: number;
+    avgCost: number; targetPrice: number | null; stopLoss: number | null;
+    exitStrategy: string; openedAt: Date;
+  }> = [];
   try {
-    // ── Analyst config ─────────────────────────────────────────────────
-    const config = await prisma.agentConfig.findFirst({
-      where: { id: analystId, userId },
-    });
-
-    if (!config) {
-      throw new Error(`AgentConfig not found: analystId=${analystId} userId=${userId}`);
-    }
-
-    // ── Open positions ─────────────────────────────────────────────────
-    const openPositions = await prisma.position.findMany({
+    openPositions = await prisma.position.findMany({
       where: { analystId, userId, status: "OPEN" },
       select: {
-        id: true,
-        symbol: true,
-        direction: true,
-        quantity: true,
-        avgCost: true,
-        targetPrice: true,
-        stopLoss: true,
-        exitStrategy: true,
-        openedAt: true,
+        id: true, symbol: true, direction: true, quantity: true,
+        avgCost: true, targetPrice: true, stopLoss: true,
+        exitStrategy: true, openedAt: true,
       },
     });
+  } catch (err) {
+    console.error("[buildRunInput] FAILED positions:", err);
+  }
 
-    // Batch fetch live prices from Alpaca
-    const symbols = openPositions.map((p) => p.symbol);
-    let livePrices: Record<string, number> = {};
-    if (symbols.length > 0) {
-      try {
-        livePrices = await getLatestPrices(symbols);
-      } catch (err) {
-        console.warn("[buildRunInput] Failed to fetch live prices:", err);
-      }
-    }
-
-    // Build position array with P&L
-    const positions = openPositions.map((p) => {
-      const currentPrice = livePrices[p.symbol] ?? Number(p.avgCost);
-      const avgCost = Number(p.avgCost);
-      const unrealizedPnl =
-        (currentPrice - avgCost) *
-        p.quantity *
-        (p.direction === "SHORT" ? -1 : 1);
-      const unrealizedPnlPct =
-        avgCost > 0 ? (unrealizedPnl / (avgCost * p.quantity)) * 100 : 0;
-      const daysHeld = Math.floor(
-        (Date.now() - p.openedAt.getTime()) / (1000 * 60 * 60 * 24),
-      );
-      return {
-        symbol: p.symbol,
-        direction: p.direction,
-        quantity: p.quantity,
-        avgCost,
-        currentPrice,
-        unrealizedPnl: Math.round(unrealizedPnl * 100) / 100,
-        unrealizedPnlPct: Math.round(unrealizedPnlPct * 100) / 100,
-        targetPrice: p.targetPrice ? Number(p.targetPrice) : null,
-        stopLoss: p.stopLoss ? Number(p.stopLoss) : null,
-        exitStrategy: p.exitStrategy,
-        daysHeld,
-        activeThesisId: null as string | null,
-        activeThesisSummary: null as string | null,
-      };
-    });
-
-    // Calculate exposure
-    const longExposure = positions
-      .filter((p) => p.direction === "LONG")
-      .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
-    const shortExposure = positions
-      .filter((p) => p.direction === "SHORT")
-      .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
-
-    // ── Account balances ───────────────────────────────────────────────
-    let cash = 0;
-    let buyingPower = 0;
-    let portfolioValue = 0;
-    try {
-      const account = await getAccount();
-      cash = parseFloat(account.cash);
-      buyingPower = parseFloat(account.buying_power);
-      portfolioValue = parseFloat(account.portfolio_value);
-    } catch (err) {
-      console.warn("[buildRunInput] Failed to fetch account:", err);
-    }
-
-    const totalExposure = longExposure + shortExposure;
-    const utilizationPct =
-      portfolioValue > 0
-        ? Math.round((totalExposure / portfolioValue) * 100 * 100) / 100
-        : 0;
-
-    // ── Watchlist (must be loaded before active theses which uses watchSymbols) ──
-    const watchlistItems = await prisma.analystWatchlistItem.findMany({
+  // 2. Watchlist (must be loaded before active theses which uses watchSymbols)
+  let watchlistItems: Array<{
+    symbol: string; reason: string; priority: string;
+    thesisDirection: string | null; targetPrice: number | null;
+    stopPrice: number | null; conviction: number | null;
+    catalyst: string | null; createdAt: Date; lastReviewedAt: Date | null;
+  }> = [];
+  try {
+    watchlistItems = await prisma.analystWatchlistItem.findMany({
       where: { analystId, status: "ACTIVE" },
       orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
       select: {
-        symbol: true,
-        reason: true,
-        priority: true,
-        thesisDirection: true,
-        targetPrice: true,
-        stopPrice: true,
-        conviction: true,
-        catalyst: true,
-        createdAt: true,
-        lastReviewedAt: true,
+        symbol: true, reason: true, priority: true, thesisDirection: true,
+        targetPrice: true, stopPrice: true, conviction: true, catalyst: true,
+        createdAt: true, lastReviewedAt: true,
       },
     });
+  } catch (err) {
+    console.error("[buildRunInput] FAILED watchlist:", err);
+  }
 
-    // V2 Phase 3: Load active theses with status filter
-    const openSymbols = openPositions.map((p) => p.symbol);
-    const watchSymbols = watchlistItems.map((w) => w.symbol);
-    const allRelevantSymbols = [...new Set([...openSymbols, ...watchSymbols])];
+  // 3. Account balances (Alpaca — may be down)
+  let cash = 0;
+  let buyingPower = 0;
+  let portfolioValue = 0;
+  try {
+    const account = await getAccount();
+    cash = parseFloat(account.cash);
+    buyingPower = parseFloat(account.buying_power);
+    portfolioValue = parseFloat(account.portfolio_value);
+  } catch (err) {
+    console.error("[buildRunInput] FAILED account (Alpaca):", err);
+  }
 
-    const activeTheses =
-      allRelevantSymbols.length > 0
-        ? await prisma.thesis.findMany({
-            where: {
-              status: "ACTIVE",
-              ticker: { in: allRelevantSymbols },
-              researchRun: { agentConfigId: analystId },
-            },
-            orderBy: { createdAt: "desc" },
-            distinct: ["ticker"],
-            select: {
-              id: true,
-              ticker: true,
-              direction: true,
-              confidenceScore: true,
-              reasoningSummary: true,
-              entryPrice: true,
-              targetPrice: true,
-              stopLoss: true,
-              createdAt: true,
-              researchRunId: true,
-              status: true,
-            },
-          })
-        : [];
-
-    // Link active theses to positions
-    for (const pos of positions) {
-      const thesis = activeTheses.find((t) => t.ticker === pos.symbol);
-      if (thesis) {
-        pos.activeThesisId = thesis.id;
-        pos.activeThesisSummary = thesis.reasoningSummary.slice(0, 200);
-      }
+  // 4. Live prices for positions
+  const symbols = openPositions.map((p) => p.symbol);
+  let livePrices: Record<string, number> = {};
+  if (symbols.length > 0) {
+    try {
+      livePrices = await getLatestPrices(symbols);
+    } catch (err) {
+      console.warn("[buildRunInput] Failed to fetch live prices:", err);
     }
+  }
 
-    const now = Date.now();
-    const watchlist = watchlistItems.map((w) => ({
-      symbol: w.symbol,
-      reason: w.reason,
-      priority: w.priority,
-      thesisDirection: w.thesisDirection,
-      targetPrice: w.targetPrice,
-      stopPrice: w.stopPrice,
-      conviction: w.conviction,
-      catalyst: w.catalyst,
-      daysOnList: Math.floor(
-        (now - w.createdAt.getTime()) / (1000 * 60 * 60 * 24),
-      ),
-      lastReviewedDaysAgo: w.lastReviewedAt
-        ? Math.floor(
-            (now - w.lastReviewedAt.getTime()) / (1000 * 60 * 60 * 24),
-          )
-        : 999,
-    }));
+  // Build position array with P&L
+  const positions = openPositions.map((p) => {
+    const currentPrice = livePrices[p.symbol] ?? Number(p.avgCost);
+    const avgCost = Number(p.avgCost);
+    const unrealizedPnl =
+      (currentPrice - avgCost) *
+      p.quantity *
+      (p.direction === "SHORT" ? -1 : 1);
+    const unrealizedPnlPct =
+      avgCost > 0 ? (unrealizedPnl / (avgCost * p.quantity)) * 100 : 0;
+    const daysHeld = Math.floor(
+      (Date.now() - p.openedAt.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    return {
+      symbol: p.symbol,
+      direction: p.direction,
+      quantity: p.quantity,
+      avgCost,
+      currentPrice,
+      unrealizedPnl: Math.round(unrealizedPnl * 100) / 100,
+      unrealizedPnlPct: Math.round(unrealizedPnlPct * 100) / 100,
+      targetPrice: p.targetPrice ? Number(p.targetPrice) : null,
+      stopLoss: p.stopLoss ? Number(p.stopLoss) : null,
+      exitStrategy: p.exitStrategy,
+      daysHeld,
+      activeThesisId: null as string | null,
+      activeThesisSummary: null as string | null,
+    };
+  });
 
-    // ── Prior brief (most recent 1) ────────────────────────────────────
-    const latestBriefing = await prisma.analystBriefing.findFirst({
+  // Calculate exposure
+  const longExposure = positions
+    .filter((p) => p.direction === "LONG")
+    .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
+  const shortExposure = positions
+    .filter((p) => p.direction === "SHORT")
+    .reduce((sum, p) => sum + p.currentPrice * p.quantity, 0);
+
+  const totalExposure = longExposure + shortExposure;
+  const utilizationPct =
+    portfolioValue > 0
+      ? Math.round((totalExposure / portfolioValue) * 100 * 100) / 100
+      : 0;
+
+  // 5. Active theses (depends on positions + watchlist symbols)
+  const openSymbols = openPositions.map((p) => p.symbol);
+  const watchSymbols = watchlistItems.map((w) => w.symbol);
+  const allRelevantSymbols = [...new Set([...openSymbols, ...watchSymbols])];
+
+  let activeTheses: Array<{
+    id: string; ticker: string; direction: string; confidenceScore: number;
+    reasoningSummary: string; entryPrice: number | null; targetPrice: number | null;
+    stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
+  }> = [];
+
+  if (allRelevantSymbols.length > 0) {
+    try {
+      activeTheses = await prisma.thesis.findMany({
+        where: {
+          status: "ACTIVE",
+          ticker: { in: allRelevantSymbols },
+          researchRun: { agentConfigId: analystId },
+        },
+        orderBy: { createdAt: "desc" },
+        distinct: ["ticker"],
+        select: {
+          id: true, ticker: true, direction: true, confidenceScore: true,
+          reasoningSummary: true, entryPrice: true, targetPrice: true,
+          stopLoss: true, createdAt: true, researchRunId: true, status: true,
+        },
+      });
+    } catch (err) {
+      console.error("[buildRunInput] FAILED active theses:", err);
+    }
+  }
+
+  // Link active theses to positions
+  for (const pos of positions) {
+    const thesis = activeTheses.find((t) => t.ticker === pos.symbol);
+    if (thesis) {
+      pos.activeThesisId = thesis.id;
+      pos.activeThesisSummary = thesis.reasoningSummary.slice(0, 200);
+    }
+  }
+
+  const now = Date.now();
+  const watchlist = watchlistItems.map((w) => ({
+    symbol: w.symbol,
+    reason: w.reason,
+    priority: w.priority,
+    thesisDirection: w.thesisDirection,
+    targetPrice: w.targetPrice,
+    stopPrice: w.stopPrice,
+    conviction: w.conviction,
+    catalyst: w.catalyst,
+    daysOnList: Math.floor(
+      (now - w.createdAt.getTime()) / (1000 * 60 * 60 * 24),
+    ),
+    lastReviewedDaysAgo: w.lastReviewedAt
+      ? Math.floor(
+          (now - w.lastReviewedAt.getTime()) / (1000 * 60 * 60 * 24),
+        )
+      : 999,
+  }));
+
+  // 6. Prior brief
+  let latestBriefing: {
+    narrative: string; strategyNotes: string | null; marketPosture: string | null;
+    watchTomorrow: unknown; unresolvedItems: unknown; selfCorrections: unknown;
+    createdAt: Date;
+  } | null = null;
+  try {
+    latestBriefing = await prisma.analystBriefing.findFirst({
       where: { analystId },
       orderBy: { createdAt: "desc" },
       select: {
-        narrative: true,
-        strategyNotes: true,
-        marketPosture: true,
-        watchTomorrow: true,
-        unresolvedItems: true,
-        selfCorrections: true,
+        narrative: true, strategyNotes: true, marketPosture: true,
+        watchTomorrow: true, unresolvedItems: true, selfCorrections: true,
         createdAt: true,
       },
     });
+  } catch (err) {
+    console.error("[buildRunInput] FAILED brief:", err);
+  }
 
-    const priorBrief = latestBriefing
-      ? {
-          date: latestBriefing.createdAt.toISOString().slice(0, 10),
-          narrative: latestBriefing.narrative,
-          strategyNotes: latestBriefing.strategyNotes,
-          marketPosture: latestBriefing.marketPosture ?? null,
-          watchTomorrow: (latestBriefing.watchTomorrow as Array<{ symbol: string; trigger: string; suggestedAction: string; priority?: string }>) ?? null,
-          unresolvedItems: (latestBriefing.unresolvedItems as Array<{ item: string; impact: string; affectedPositions?: string[] }>) ?? null,
-          selfCorrections: (latestBriefing.selfCorrections as Array<{ observation: string; adjustment: string }>) ?? null,
-        }
-      : null;
+  const priorBrief = latestBriefing
+    ? {
+        date: latestBriefing.createdAt.toISOString().slice(0, 10),
+        narrative: latestBriefing.narrative,
+        strategyNotes: latestBriefing.strategyNotes,
+        marketPosture: latestBriefing.marketPosture ?? null,
+        watchTomorrow: (latestBriefing.watchTomorrow as Array<{ symbol: string; trigger: string; suggestedAction: string; priority?: string }>) ?? null,
+        unresolvedItems: (latestBriefing.unresolvedItems as Array<{ item: string; impact: string; affectedPositions?: string[] }>) ?? null,
+        selfCorrections: (latestBriefing.selfCorrections as Array<{ observation: string; adjustment: string }>) ?? null,
+      }
+    : null;
 
-    // ── Performance ────────────────────────────────────────────────────
-    const latestAccuracy = await prisma.accuracyReport.findFirst({
+  // 7. Performance
+  let latestAccuracy: {
+    winRate: number | null; tradesAnalyzed: number | null;
+    narrativeSummary: string | null;
+  } | null = null;
+  try {
+    latestAccuracy = await prisma.accuracyReport.findFirst({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      select: {
-        winRate: true,
-        tradesAnalyzed: true,
-        narrativeSummary: true,
-      },
+      select: { winRate: true, tradesAnalyzed: true, narrativeSummary: true },
     });
+  } catch (err) {
+    console.error("[buildRunInput] FAILED performance:", err);
+  }
 
-    const performance = latestAccuracy
-      ? {
-          winRate: latestAccuracy.winRate
-            ? Number(latestAccuracy.winRate)
-            : null,
-          totalTrades: latestAccuracy.tradesAnalyzed ?? 0,
-          calibrationNote: latestAccuracy.narrativeSummary
-            ? String(latestAccuracy.narrativeSummary).slice(0, 300)
-            : null,
-        }
-      : null;
+  const performance = latestAccuracy
+    ? {
+        winRate: latestAccuracy.winRate
+          ? Number(latestAccuracy.winRate)
+          : null,
+        totalTrades: latestAccuracy.tradesAnalyzed ?? 0,
+        calibrationNote: latestAccuracy.narrativeSummary
+          ? String(latestAccuracy.narrativeSummary).slice(0, 300)
+          : null,
+      }
+    : null;
 
-    // ── Recent closed trades (10) ──────────────────────────────────────
-    const recentTrades = await prisma.position.findMany({
+  // 8. Recent closed trades
+  let recentTrades: Array<{
+    symbol: string; direction: string; outcome: string | null;
+    avgCost: number; closePrice: number | null; closeReason: string | null;
+    closedAt: Date | null; openedAt: Date; realizedPnl: number | null;
+    agentEvaluation: string | null;
+  }> = [];
+  try {
+    recentTrades = await prisma.position.findMany({
       where: { userId, status: "CLOSED", analystId },
       orderBy: { closedAt: "desc" },
       take: 10,
       select: {
-        symbol: true,
-        direction: true,
-        outcome: true,
-        avgCost: true,
-        closePrice: true,
-        closeReason: true,
-        closedAt: true,
-        openedAt: true,
-        realizedPnl: true,
-        agentEvaluation: true,
+        symbol: true, direction: true, outcome: true, avgCost: true,
+        closePrice: true, closeReason: true, closedAt: true, openedAt: true,
+        realizedPnl: true, agentEvaluation: true,
       },
     });
-
-    const recentClosedTrades = recentTrades.map((t) => {
-      const avgCost = Number(t.avgCost);
-      const quantity = avgCost > 0 ? (t.realizedPnl ?? 0) / avgCost : 0;
-      const pnlPct =
-        avgCost > 0 && t.realizedPnl != null
-          ? (t.realizedPnl / avgCost) * 100
-          : 0;
-      const daysHeld =
-        t.closedAt && t.openedAt
-          ? Math.floor(
-              (t.closedAt.getTime() - t.openedAt.getTime()) /
-                (1000 * 60 * 60 * 24),
-            )
-          : 0;
-      return {
-        symbol: t.symbol,
-        direction: t.direction,
-        outcome: t.outcome,
-        pnlPct: Math.round(pnlPct * 100) / 100,
-        closeReason: t.closeReason,
-        daysHeld,
-        lesson: t.agentEvaluation
-          ? t.agentEvaluation.slice(0, 200)
-          : null,
-      };
-    });
-
-    console.log(
-      `[buildRunInput] analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} closedTrades=${recentClosedTrades.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance}`,
-    );
-
-    return {
-      analyst: {
-        name: config.name,
-        mandate: config.analystPrompt,
-        voice: null,
-        directionBias: config.directionBias,
-        holdDurations: config.holdDurations,
-        sectors: config.sectors,
-        exclusionList: config.exclusionList,
-        minConfidence: config.minConfidence,
-        maxPositionSize: Number(config.maxPositionSize),
-        maxOpenPositions: config.maxOpenPositions,
-      },
-      portfolio: {
-        cash,
-        buyingPower,
-        portfolioValue,
-        positions,
-        exposure: {
-          long: Math.round(longExposure * 100) / 100,
-          short: Math.round(shortExposure * 100) / 100,
-          net: Math.round((longExposure - shortExposure) * 100) / 100,
-          utilizationPct,
-        },
-      },
-      watchlist,
-      activeTheses: activeTheses.map((t) => ({
-        id: t.id,
-        ticker: t.ticker,
-        direction: t.direction,
-        confidence: t.confidenceScore,
-        reasoningSummary: t.reasoningSummary,
-        entryPrice: t.entryPrice,
-        targetPrice: t.targetPrice,
-        stopLoss: t.stopLoss,
-        createdAt: t.createdAt.toISOString(),
-        runId: t.researchRunId,
-        status: t.status,
-      })),
-      priorBrief,
-      performance,
-      recentClosedTrades,
-    };
   } catch (err) {
-    console.error("[buildRunInput] FAILED:", err);
-    // Return a safe default so the run can still proceed
-    const config = await prisma.agentConfig
-      .findFirst({ where: { id: analystId, userId } })
-      .catch(() => null);
-
-    return {
-      analyst: {
-        name: config?.name ?? "Research Analyst",
-        mandate: config?.analystPrompt ?? null,
-        voice: null,
-        directionBias: config?.directionBias ?? "BOTH",
-        holdDurations: config?.holdDurations ?? ["SWING"],
-        sectors: config?.sectors ?? [],
-        exclusionList: config?.exclusionList ?? [],
-        minConfidence: config?.minConfidence ?? 60,
-        maxPositionSize: config?.maxPositionSize
-          ? Number(config.maxPositionSize)
-          : 10000,
-        maxOpenPositions: config?.maxOpenPositions ?? 5,
-      },
-      portfolio: {
-        cash: 0,
-        buyingPower: 0,
-        portfolioValue: 0,
-        positions: [],
-        exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 },
-      },
-      watchlist: [],
-      activeTheses: [],
-      priorBrief: null,
-      performance: null,
-      recentClosedTrades: [],
-    };
+    console.error("[buildRunInput] FAILED closedTrades:", err);
   }
+
+  const recentClosedTrades = recentTrades.map((t) => {
+    const avgCost = Number(t.avgCost);
+    const pnlPct =
+      avgCost > 0 && t.realizedPnl != null
+        ? (t.realizedPnl / avgCost) * 100
+        : 0;
+    const daysHeld =
+      t.closedAt && t.openedAt
+        ? Math.floor(
+            (t.closedAt.getTime() - t.openedAt.getTime()) /
+              (1000 * 60 * 60 * 24),
+          )
+        : 0;
+    return {
+      symbol: t.symbol,
+      direction: t.direction,
+      outcome: t.outcome,
+      pnlPct: Math.round(pnlPct * 100) / 100,
+      closeReason: t.closeReason,
+      daysHeld,
+      lesson: t.agentEvaluation
+        ? t.agentEvaluation.slice(0, 200)
+        : null,
+    };
+  });
+
+  // ── Structured load summary ────────────────────────────────────────
+  console.log(
+    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)}`,
+  );
+
+  return {
+    analyst: {
+      name: config.name,
+      mandate: config.analystPrompt,
+      voice: null,
+      directionBias: config.directionBias,
+      holdDurations: config.holdDurations,
+      sectors: config.sectors,
+      exclusionList: config.exclusionList,
+      minConfidence: config.minConfidence,
+      maxPositionSize: Number(config.maxPositionSize),
+      maxOpenPositions: config.maxOpenPositions,
+    },
+    portfolio: {
+      cash,
+      buyingPower,
+      portfolioValue,
+      positions,
+      exposure: {
+        long: Math.round(longExposure * 100) / 100,
+        short: Math.round(shortExposure * 100) / 100,
+        net: Math.round((longExposure - shortExposure) * 100) / 100,
+        utilizationPct,
+      },
+    },
+    watchlist,
+    activeTheses: activeTheses.map((t) => ({
+      id: t.id,
+      ticker: t.ticker,
+      direction: t.direction,
+      confidence: t.confidenceScore,
+      reasoningSummary: t.reasoningSummary,
+      entryPrice: t.entryPrice,
+      targetPrice: t.targetPrice,
+      stopLoss: t.stopLoss,
+      createdAt: t.createdAt.toISOString(),
+      runId: t.researchRunId,
+      status: t.status,
+    })),
+    priorBrief,
+    performance,
+    recentClosedTrades,
+  };
 }
