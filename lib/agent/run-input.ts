@@ -12,7 +12,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { getLatestPrices, getAccount } from "@/lib/alpaca";
+import { getLatestPrices, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -110,6 +110,7 @@ export interface RunInput {
 export async function buildRunInput(
   analystId: string,
   userId: string,
+  alpacaCreds?: AlpacaCredentials,
 ): Promise<RunInput> {
   // ── Analyst config (REQUIRED — fail hard if missing) ───────────────
   const config = await prisma.agentConfig.findFirst({
@@ -168,7 +169,7 @@ export async function buildRunInput(
   let buyingPower = 0;
   let portfolioValue = 0;
   try {
-    const account = await getAccount();
+    const account = await getAccount(alpacaCreds);
     cash = parseFloat(account.cash);
     buyingPower = parseFloat(account.buying_power);
     portfolioValue = parseFloat(account.portfolio_value);
@@ -181,7 +182,7 @@ export async function buildRunInput(
   let livePrices: Record<string, number> = {};
   if (symbols.length > 0) {
     try {
-      livePrices = await getLatestPrices(symbols);
+      livePrices = await getLatestPrices(symbols, alpacaCreds);
     } catch (err) {
       console.warn("[buildRunInput] Failed to fetch live prices:", err);
     }

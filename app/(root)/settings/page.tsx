@@ -4,12 +4,16 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Bot, ExternalLink } from "lucide-react";
+import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
+import { AlpacaKeyForm } from "@/components/settings/AlpacaKeyForm";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  const alpacaStatus = await getApiKeyStatus("ALPACA");
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
@@ -41,6 +45,14 @@ export default async function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* API Keys */}
+      <div className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          API Keys
+        </p>
+        <AlpacaKeyForm initial={alpacaStatus} />
       </div>
 
       {/* Analysts → moved */}
