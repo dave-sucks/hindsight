@@ -130,6 +130,10 @@ export interface AnalystBriefingItem {
   trades: unknown;
   portfolioSnapshot: unknown;
   strategyNotes: string | null;
+  marketPosture: string | null;
+  watchTomorrow: unknown;
+  unresolvedItems: unknown;
+  selfCorrections: unknown;
   createdAt: Date;
 }
 
@@ -350,6 +354,10 @@ export async function getAnalystDetail(
         trades: true,
         portfolioSnapshot: true,
         strategyNotes: true,
+        marketPosture: true,
+        watchTomorrow: true,
+        unresolvedItems: true,
+        selfCorrections: true,
         createdAt: true,
       },
     }),

@@ -48,7 +48,7 @@ When reviewing a holding, pass the thesis ID as \`parent_thesis_id\` to \`record
 - *watchlist items injected here...*
 
 ## Prior Brief
-*Latest analyst briefing from previous run*
+*Written by the briefing agent (GPT-4o) after your last session — an external review of your research conversation*
 
 Market Posture: \`{marketPosture}\`
 
@@ -124,13 +124,16 @@ Execute IN ORDER — exits BEFORE entries (frees capital + slots):
 - \`place_trade\` for INITIATE/ADD decisions (requires \`thesis_id\`)
 - \`manage_watchlist\` for WATCH/REMOVE_WATCH decisions
 
-### Phase 7: BRIEF (1 step)
+### Phase 7: WRAP UP (1 step)
 ALWAYS call \`complete_run\` as your LAST action with:
-- \`ranked_picks\`, \`market_summary\`, \`overall_assessment\`, \`exposure_breakdown\`, \`risk_notes\`
-- \`market_posture\` (2-3 word stance)
-- \`watch_tomorrow\` (symbols + triggers for next session)
-- \`unresolved_items\` (data gaps, pending catalysts)
-- \`self_corrections\` (biases or mistakes to adjust for)
+- \`ranked_picks\` (array with rank, ticker, action, direction, confidence, reasoning for EVERY ticker researched)
+- \`market_summary\` (2-3 sentences on today's conditions)
+- \`overall_assessment\` (what went well, key risks)
+- \`exposure_breakdown\` (long/short/net exposure)
+- \`risk_notes\` (portfolio-level risk observations)
+- \`portfolio_review\` (from Phase 5 synthesis)
+
+A separate briefing agent reviews your full session afterward and writes the standup for your next run. You do NOT need to self-reflect, suggest what to watch tomorrow, or note self-corrections — just do your job and call \`complete_run\`.
 
 ## Tool Reference
 - **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, regime, themes. Start here.

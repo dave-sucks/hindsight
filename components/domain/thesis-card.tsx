@@ -163,11 +163,14 @@ export function ThesisCard({
     </div>
   );
 
-  // ── PASS state — same header, just reasoning below, no sheet ──
+  // ── PASS state — clickable card with sheet for full details ──
   if (isPass) {
-    return (
+    const passCardContent = (
       <Card
-        className={cn("overflow-hidden p-0 gap-0", className)}
+        className={cn(
+          "overflow-hidden p-0 gap-0 cursor-pointer transition-colors hover:border-foreground/25",
+          className,
+        )}
         {...cardProps}
       >
         {header}
@@ -175,10 +178,97 @@ export function ThesisCard({
           <div className="px-3 py-2">
             <p className="text-sm font-light text-muted-foreground leading-relaxed line-clamp-2">
               {pass_reason || reasoning_summary}
+              <span className="text-foreground/50 ml-1">&hellip; details</span>
             </p>
           </div>
         )}
       </Card>
+    );
+
+    return (
+      <Sheet>
+        <SheetTrigger render={passCardContent} />
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-xl overflow-y-auto"
+        >
+          <SheetHeader className="border-b pb-4">
+            <div className="flex items-center gap-3">
+              <StockLogo ticker={ticker} size="lg" />
+              <div>
+                <SheetTitle className="text-lg font-bold">
+                  {displayName}
+                </SheetTitle>
+                <span className="text-xs font-mono text-muted-foreground">
+                  {ticker}{exchange ? ` · ${exchange}` : ""}
+                </span>
+              </div>
+              <Badge variant={verdict.variant}>
+                {verdict.label}
+              </Badge>
+              <span
+                className={cn(
+                  "ml-auto flex items-center justify-center rounded-full size-12 text-base font-bold tabular-nums",
+                  "bg-muted text-muted-foreground",
+                )}
+              >
+                {confidence_score}
+              </span>
+            </div>
+          </SheetHeader>
+
+          <div className="p-4 space-y-6">
+            {signal_types.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {signal_types.map((s) => (
+                  <Badge key={s} variant="outline">
+                    {s.replace(/_/g, " ")}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            {(pass_reason || reasoning_summary) && (
+              <div className="space-y-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pass Reason</span>
+                <p className="text-sm leading-relaxed text-foreground/80">
+                  {pass_reason || reasoning_summary}
+                </p>
+              </div>
+            )}
+
+            {thesis_bullets.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Analysis</span>
+                <div className="space-y-2">
+                  {thesis_bullets.map((b, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <span className="leading-relaxed">{b}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {risk_flags.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-amber-500">Risk Factors</span>
+                <div className="space-y-2">
+                  {risk_flags.map((r, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                      <span className="leading-relaxed">{r}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {fundamentals && <FundamentalsContent fundamentals={fundamentals} />}
+          </div>
+        </SheetContent>
+      </Sheet>
     );
   }
 

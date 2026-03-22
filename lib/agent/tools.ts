@@ -11,7 +11,6 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount } from "@/lib/alpaca";
-import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import type { MarketOverviewResult, MarketContextResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult, ScanCandidate, MarketTheme, ThemeDirection, DetectMarketThemesResult, ToolSource } from "@/lib/discovery/types";
 import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 
@@ -791,6 +790,7 @@ export function createResearchTools(ctx: ToolContext) {
         const earningsTickers =
           (earnings as { earningsCalendar?: { symbol: string; date: string; epsEstimate: number | null }[] })
             ?.earningsCalendar
+            ?.filter((e) => isValidTicker(e.symbol))
             ?.slice(0, 30)
             ?.map((e) => ({
               ticker: e.symbol,
@@ -800,10 +800,19 @@ export function createResearchTools(ctx: ToolContext) {
               score: 3,
             })) ?? [];
 
+        // ── Quality filter: skip penny stocks, ADRs, special tickers ──
+        const MIN_PRICE = min_market_cap ? 1 : 5; // $5 floor unless user overrides
+        const isValidTicker = (sym: string, price?: number) => {
+          if (!sym || sym.length > 5) return false; // Skip long tickers (warrants, units)
+          if (/[^A-Z]/.test(sym)) return false; // Only uppercase alpha (no dots, dashes)
+          if (price != null && price < MIN_PRICE) return false; // Penny stock filter
+          return true;
+        };
+
         // Market movers
         const gainerTickers = Array.isArray(gainers)
           ? gainers
-              .slice(0, 8)
+              .slice(0, 15) // Scan more, filter down
               .map((m: unknown) => {
                 const mov = m as { symbol: string; changesPercentage: number; price: number };
                 return {
@@ -814,11 +823,13 @@ export function createResearchTools(ctx: ToolContext) {
                   score: 2,
                 };
               })
+              .filter((m) => isValidTicker(m.ticker, m.price))
+              .slice(0, 8)
           : [];
 
         const loserTickers = Array.isArray(losers)
           ? losers
-              .slice(0, 5)
+              .slice(0, 10) // Scan more, filter down
               .map((m: unknown) => {
                 const mov = m as { symbol: string; changesPercentage: number; price: number };
                 return {
@@ -829,22 +840,28 @@ export function createResearchTools(ctx: ToolContext) {
                   score: 2,
                 };
               })
+              .filter((m) => isValidTicker(m.ticker, m.price))
+              .slice(0, 5)
           : [];
 
         // StockTwits trending
-        const socialTickers = stTrending.map((t) => ({
-          ticker: t,
-          source: "stocktwits_trending" as const,
-          score: 1,
-        }));
+        const socialTickers = stTrending
+          .filter((t) => isValidTicker(t))
+          .map((t) => ({
+            ticker: t,
+            source: "stocktwits_trending" as const,
+            score: 1,
+          }));
 
         // Reddit trending (WSB + r/stocks + r/options + r/investing)
-        const redditTickers = redditTrending.map((t) => ({
-          ticker: t.ticker,
-          source: "reddit_trending" as const,
-          score: 2, // Reddit retail momentum signal
-          mentions: t.mentions,
-        }));
+        const redditTickers = redditTrending
+          .filter((t) => isValidTicker(t.ticker))
+          .map((t) => ({
+            ticker: t.ticker,
+            source: "reddit_trending" as const,
+            score: 2, // Reddit retail momentum signal
+            mentions: t.mentions,
+          }));
 
         // ── Theme filter boost (BEFORE dedup/ranking) ─────────────────────
         let themeBoostTickers = new Set<string>();
@@ -954,10 +971,11 @@ export function createResearchTools(ctx: ToolContext) {
         }));
 
         const notes: string[] = [];
+        notes.push(`Pre-filtered: penny stocks (<$${MIN_PRICE}), ADRs, warrants, and special tickers removed.`);
         const configSectors = ctx.sectors ?? [];
-        if (configSectors.length > 0) notes.push(`Analyst sectors: ${configSectors.join(", ")} (sector filtering deferred to get_stock_data).`);
+        if (configSectors.length > 0) notes.push(`Your focus sectors: ${configSectors.join(", ")}. SKIP tickers outside these sectors — check sector in get_stock_data before deep research.`);
         if (theme_filter) notes.push(`Theme boost applied: ${theme_filter}.`);
-        if (min_market_cap || min_avg_volume) notes.push(`Quality filtering (market cap, volume) deferred to get_stock_data.`);
+        if (min_market_cap) notes.push(`Min market cap requested: $${(min_market_cap / 1e9).toFixed(1)}B — verify in get_stock_data.`);
         notes.push(`${candidates.length} candidates ranked by multi-source score.`);
 
         logToolEnd("scan_candidates", _t0, ctx.runId, `found=${candidates.length}`, stats);
@@ -2225,36 +2243,6 @@ export function createResearchTools(ctx: ToolContext) {
           .describe(
             "Portfolio review assessment from Phase 5.5 — total exposure analysis, sector concentration, correlation risk, and whether combined risk is acceptable",
           ),
-
-        // V2: Structured brief fields — agent produces these for the next run's context
-        market_posture: z
-          .string()
-          .optional()
-          .describe("Current market posture in 2-3 words, e.g. 'cautiously bullish', 'defensive', 'max long exposure'"),
-        watch_tomorrow: z
-          .array(z.object({
-            symbol: z.string(),
-            trigger: z.string().describe("Condition to watch, e.g. 'price < 145', 'RSI < 30'"),
-            suggested_action: z.string().describe("What to do if triggered, e.g. 'INITIATE LONG', 'EXIT'"),
-            priority: z.enum(["HIGH", "NORMAL"]).optional(),
-          }))
-          .optional()
-          .describe("Symbols to watch in the next session with specific triggers"),
-        unresolved_items: z
-          .array(z.object({
-            item: z.string().describe("What is unresolved"),
-            impact: z.string().describe("Why it matters"),
-            affected_positions: z.array(z.string()).optional(),
-          }))
-          .optional()
-          .describe("Things you couldn't resolve this session that need follow-up"),
-        self_corrections: z
-          .array(z.object({
-            observation: z.string().describe("What you noticed about your own behavior"),
-            adjustment: z.string().describe("What you'll do differently"),
-          }))
-          .optional()
-          .describe("Self-reflections on biases or mistakes to correct"),
       }),
       execute: async (args) => {
         const _t0 = Date.now();
@@ -2347,26 +2335,10 @@ export function createResearchTools(ctx: ToolContext) {
             }
           }
 
-          // V2: Generate analyst briefing with structured fields directly from the tool
+          // Briefing is generated AFTER the run completes by a separate briefing agent
+          // (triggered in the route's onFinish callback, NOT here in the tool)
           if (!ctx.analystId) {
-            console.warn(`[tool] complete_run SKIPPING briefing — no analystId in context (runId=${ctx.runId})`);
-          }
-          if (ctx.analystId && ctx.runId) {
-            try {
-              await updateAnalystBriefing({
-                analystId: ctx.analystId,
-                runId: ctx.runId,
-                userId: ctx.userId,
-                structuredBrief: {
-                  marketPosture: args.market_posture,
-                  watchTomorrow: args.watch_tomorrow,
-                  unresolvedItems: args.unresolved_items,
-                  selfCorrections: args.self_corrections,
-                },
-              });
-            } catch (briefErr) {
-              console.error("[tool] complete_run briefing generation failed (non-fatal):", briefErr instanceof Error ? briefErr.message : briefErr);
-            }
+            console.warn(`[tool] complete_run: no analystId in context (runId=${ctx.runId}) — briefing will be skipped in onFinish`);
           }
 
           logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);

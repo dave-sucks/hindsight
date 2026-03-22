@@ -194,7 +194,7 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 Before calling ANY tools, write a brief portfolio check-in as your first message:
 1. Acknowledge your open positions (e.g., "I'm currently holding 4 positions: $AMZN, $AMD, $NVDA, $MSFT")
 2. Note your watchlist items and their priorities
-3. Reference any items from your prior brief's "Watch Tomorrow" list — these are your top priorities
+3. **EXPLICITLY reference your prior brief** — quote the "Watch Tomorrow" items by name and say what you plan to check. Quote any self-corrections you committed to. Example: "Last session I flagged $NVDA for breakout above $950 — checking that first. I also noted I was over-concentrating in semis, so I'll watch for diversification opportunities."
 4. State your available capacity (open slots, buying power)
 5. If you have no positions or watchlist, say so explicitly
 
@@ -226,6 +226,12 @@ Discovery is MANDATORY every session. Even in RISK_OFF or when at max positions,
 you must scan for opportunities — you may decide not to trade them, but you must
 know what's out there.
 
+**CRITICAL: Filter scan results BEFORE researching.** After scan_candidates returns:
+1. Check each ticker against your focus sectors — skip tickers outside your sectors unless there's overwhelming multi-source signal (score 5+)
+2. Skip micro-caps, ADRs, penny stocks — the scanner pre-filters some, but verify
+3. Prioritize tickers that align with your strategy and current market regime
+4. Do NOT waste tool calls on obviously irrelevant tickers (e.g., pest control stocks for a tech strategy)
+
 Reduced scope when cautious (RISK_OFF, near max positions):
 - scan_candidates → pick 1-2 highest-conviction → get_stock_data + record_thesis
 - Focus on defensive plays, hedges, or watchlist additions rather than entries
@@ -250,14 +256,16 @@ Execute decisions IN ORDER. Exits BEFORE entries (frees capital + slots).
 - place_trade for INITIATE/ADD decisions (requires thesis_id from record_thesis)
 - manage_watchlist for WATCH/REMOVE_WATCH decisions
 
-### Phase 7: BRIEF (1 step)
+### Phase 7: WRAP UP (1 step)
 ALWAYS call complete_run as your LAST action with:
 - ranked_picks (array with rank, ticker, action, direction, confidence, reasoning for EVERY ticker researched)
-- market_summary, overall_assessment, exposure_breakdown, risk_notes, portfolio_review
-- market_posture (2-3 word summary of your current stance)
-- watch_tomorrow (symbols + triggers for next session to check first)
-- unresolved_items (things you couldn't resolve — data gaps, pending catalysts)
-- self_corrections (biases or mistakes you noticed and will adjust for)`);
+- market_summary (2-3 sentences on today's conditions)
+- overall_assessment (what went well, key risks)
+- exposure_breakdown (long/short/net exposure)
+- risk_notes (portfolio-level risk observations)
+- portfolio_review (from Phase 5 synthesis)
+
+A separate briefing agent reviews your full session afterward and writes the standup for your next run. You do NOT need to self-reflect, suggest what to watch tomorrow, or note self-corrections — just do your job and call complete_run.`);
 
   // ── Section 9: Tool Reference ────────────────────────────────────────
   sections.push(`## Tool Reference

@@ -75,7 +75,7 @@ export const STAGE_META: Record<ToolStage, { label: string; summary: string }> =
   },
   Synthesis: {
     label: "Synthesis",
-    summary: "The final step of every session. The analyst writes a summary with ranked picks and a self-briefing memo — what it did today, what it's watching tomorrow, and what it wants to adjust. This memo feeds into the next session's context, giving the analyst memory across runs.",
+    summary: "The final step of every session. The analyst wraps up with a summary of ranked picks, market assessment, and risk notes. After the session ends, a separate briefing agent reviews the full conversation and writes the standup memo that feeds into the next run.",
   },
 };
 
@@ -585,8 +585,8 @@ export const TOOLS: ToolDef[] = [
     name: "complete_run",
     stage: "Synthesis",
     type: "Logging",
-    summary: "The analyst's final action — wraps up the session with a ranked pick list, portfolio assessment, and notes for its future self",
-    goal: "Close out the session, generate a briefing the analyst will read next time it runs, and save everything so the run can be replayed",
+    summary: "The analyst's final action — wraps up the session with a ranked pick list, market assessment, and risk notes",
+    goal: "Close the session, save the ranked picks and summary, and record HOLD decisions. A separate briefing agent runs afterward to write the standup memo.",
     phases: [7],
     tags: ["required", "always-last"],
     sources: ["internal"],
@@ -609,12 +609,11 @@ export const TOOLS: ToolDef[] = [
       },
       {
         source: "internal",
-        title: "Write the analyst briefing",
-        description: "The analyst writes itself a memo about this session — what it did, what it's watching tomorrow, what it got wrong, and what to adjust. This briefing gets loaded into the system prompt next time so the analyst remembers its portfolio and strategy evolution.",
-        type: "internal",
-        endpointOrPath: "updateAnalystBriefing()",
-        exampleOutput: "Briefing: 450-word narrative + watching AMD, COIN tomorrow + 2 self-corrections",
-        notes: ["This is the analyst's memory — without it, every session would start from scratch"],
+        title: "Record HOLD decisions",
+        description: "For positions the analyst reviewed but decided to keep unchanged, records a HOLD decision so we can track that the analyst actively chose to hold (not that it forgot).",
+        type: "db",
+        endpointOrPath: "prisma.tradeDecision.create({ HOLD })",
+        exampleOutput: "HOLD: AMZN (thesis intact, within parameters) · NVDA (near target, watching closely)",
       },
     ],
   },
@@ -638,7 +637,7 @@ export const RUN_PHASES: RunPhase[] = [
   { number: 4, name: "Discover", description: "Scan candidates from earnings, movers, social buzz. Research new opportunities. Reduced scope at max positions or RISK_OFF.", tools: ["scan_candidates", "get_stock_data", "get_social_sentiment", "get_options_flow", "get_earnings_data", "get_sec_filings", "search_reddit", "record_thesis"], stepBudget: "2–8 steps" },
   { number: 5, name: "Synthesize", description: "Pure reasoning. Output decision table: INITIATE, ADD, HOLD, REDUCE, EXIT, WATCH, REMOVE, PASS. Consider exposure, risk budget, conflicts.", tools: [], stepBudget: "0 steps" },
   { number: 6, name: "Execute", description: "Execute decisions in order (exits before entries). Place trades, close positions, manage watchlist.", tools: ["place_trade", "close_position", "manage_watchlist"], stepBudget: "1–5 steps" },
-  { number: 7, name: "Brief", description: "Wrap up with ranked picks, market summary, watch_tomorrow, unresolved_items, self_corrections.", tools: ["complete_run"], stepBudget: "1 step" },
+  { number: 7, name: "Wrap Up", description: "Call complete_run with ranked picks, market summary, overall assessment, exposure breakdown, and risk notes. The analyst does NOT self-reflect — a separate briefing agent handles that after the session.", tools: ["complete_run"], stepBudget: "1 step" },
 ];
 
 // ── Context model (not a tool, but part of the run) ────────────────────
@@ -653,7 +652,7 @@ export const INJECTED_CONTEXT: ContextSection[] = [
   { name: "Portfolio snapshot", description: "Open positions with live P&L, days held, active thesis summary, long/short/net exposure, utilization %", source: "internal + alpaca" },
   { name: "Watchlist", description: "Active items with priority, thesis direction, target price, conviction, catalyst, days on list", source: "internal" },
   { name: "Active theses", description: "Most recent thesis per ticker for open positions and watchlist symbols", source: "internal" },
-  { name: "Prior brief", description: "Latest analyst briefing: narrative, market posture, watchTomorrow, unresolvedItems, selfCorrections", source: "internal" },
+  { name: "Prior brief", description: "Latest analyst briefing from the post-run briefing agent: narrative, market posture, watchTomorrow, unresolvedItems, selfCorrections. Written by GPT-4o reviewing the full research conversation — not self-reported by the analyst.", source: "internal (briefing agent)" },
   { name: "Performance stats", description: "Latest AccuracyReport: win rate, total trades, calibration note", source: "internal" },
   { name: "Recent closed trades", description: "Last 10 closed positions: outcome, P&L %, days held, lesson learned", source: "internal" },
 ];

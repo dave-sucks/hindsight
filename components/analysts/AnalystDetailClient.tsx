@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useMemo, useCallback, useRef, useTransition } from "react";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@/lib/actions/watchlist.actions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
+import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { TradeRow } from "@/components/ui/trade-row";
 import { Markdown } from "@/components/ui/markdown";
 import { BriefingFeed } from "@/components/analysts/BriefingFeed";
@@ -40,6 +42,7 @@ import {
   Trash2,
   Loader2,
   EllipsisVertical,
+  BookOpen,
 } from "lucide-react";
 import {
   Dialog,
@@ -86,7 +89,7 @@ function sliceByRange(
 // ── Sidebar trade row (uses shared TradeRow component) ───────────────────────
 
 function AnalystTradeRow({ trade }: { trade: PositionWithThesis }) {
-  const pnl = trade.realizedPnl ?? 0;
+  const pnl = trade.status === "CLOSED" ? (trade.realizedPnl ?? 0) : 0;
   const price = trade.closePrice ?? trade.avgCost;
   const pnlPct =
     trade.avgCost > 0
@@ -103,6 +106,9 @@ function AnalystTradeRow({ trade }: { trade: PositionWithThesis }) {
       pnl={pnl}
       pnlPct={pnlPct}
       status={trade.status}
+      direction={trade.direction}
+      openedAt={trade.openedAt}
+      outcome={trade.outcome}
     />
   );
 }
@@ -122,17 +128,32 @@ function WatchingRow({
       ? "text-red-500"
       : "text-muted-foreground";
 
+  const priorityLabel = item.priority === "HIGH" ? "HIGH" : item.priority === "LOW" ? "LOW" : null;
+
+  const lastReviewedStr = item.lastReviewedAt
+    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
+        item.lastReviewedAt instanceof Date ? item.lastReviewedAt : new Date(item.lastReviewedAt),
+      )
+    : null;
+
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 last:border-0">
-      <StockLogo ticker={item.symbol} size="md" className="rounded-md" />
-      <div className="flex-1 min-w-0">
+    <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 last:border-0 group">
+      <Link href={`/stocks/${item.symbol}`} className="shrink-0">
+        <StockLogo ticker={item.symbol} size="md" className="rounded-md" />
+      </Link>
+      <Link href={`/stocks/${item.symbol}`} className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium">{item.symbol}</span>
           {item.thesisDirection && (
             <span className={`text-[9px] font-medium uppercase ${directionColor}`}>{item.thesisDirection}</span>
           )}
-          {item.priority === "HIGH" && (
-            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+          {priorityLabel && (
+            <Badge
+              variant={item.priority === "HIGH" ? "default" : "outline"}
+              className="text-[8px] px-1 py-0 h-3.5 leading-none"
+            >
+              {priorityLabel}
+            </Badge>
           )}
           {item.addedBy === "AGENT" && (
             <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">AI</span>
@@ -155,10 +176,22 @@ function WatchingRow({
             )}
           </div>
         )}
-      </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          {item.thesisCount > 0 && (
+            <span className="text-[9px] text-muted-foreground tabular-nums">
+              {item.thesisCount} {item.thesisCount === 1 ? "thesis" : "theses"}
+            </span>
+          )}
+          {lastReviewedStr && (
+            <span className="text-[9px] text-muted-foreground/60">
+              reviewed {lastReviewedStr}
+            </span>
+          )}
+        </div>
+      </Link>
       <button
-        onClick={() => onRemove(item.symbol)}
-        className="p-1 rounded hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors"
+        onClick={(e) => { e.preventDefault(); onRemove(item.symbol); }}
+        className="p-1 rounded hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -410,6 +443,9 @@ export default function AnalystDetailClient({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <HowItWorksSheet flow="learning-loop">
+                <BookOpen className="h-4 w-4" />
+              </HowItWorksSheet>
               <RunResearchButton
                 analystId={config.id}
                 hasRunning={hasRunning}

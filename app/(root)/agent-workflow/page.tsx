@@ -148,18 +148,18 @@ const POST_TRIGGER_STEPS: FlowStep[] = [
     phase: "Research Session",
     title: "8-phase research pipeline (13 tools)",
     icon: Search,
-    badges: ["Context", "Orient", "Holdings", "Watchlist", "Discover", "Synthesize", "Execute", "Brief"],
+    badges: ["Context", "Orient", "Holdings", "Watchlist", "Discover", "Synthesize", "Execute", "Wrap Up"],
     summary:
-      "Before the agent makes its first tool call, the system loads its full context: strategy rules, open positions with live P&L, watchlist, last briefing, trade history, and accuracy stats. Then the agent follows an 8-phase workflow — acknowledge portfolio, read the market, triage holdings, review watchlist, discover new opportunities, synthesize decisions at the portfolio level, execute trades and watchlist changes, and write a summary.",
+      "Before the agent makes its first tool call, the system loads its full context: strategy rules, open positions with live P&L, watchlist, last briefing, trade history, and accuracy stats. Then the agent follows an 8-phase workflow — acknowledge portfolio, read the market, triage holdings, review watchlist, discover new opportunities, synthesize decisions at the portfolio level, execute trades and watchlist changes, and wrap up with ranked picks.",
     detailSheet: "agent-run",
   },
   {
     phase: "Learning Loop",
-    title: "Write the analyst briefing (memory)",
+    title: "Post-run briefing agent (memory)",
     icon: RotateCcw,
-    badges: ["Post-run", "GPT-4o-mini", "Feeds next session"],
+    badges: ["Post-run", "GPT-4o", "Separate agent", "Feeds next session"],
     summary:
-      "After every session, the analyst writes itself a memo — a 400-600 word narrative covering: portfolio status, what it researched, what it traded, how recent trades performed, whether its passes were good calls, and what to focus on tomorrow. Plus strategy adjustment notes. The next time this analyst runs, it reads its last 3 briefings before doing anything. This is the memory loop — how the analyst learns and adapts across sessions.",
+      "After the research session ends, a separate briefing agent (GPT-4o) reads the full conversation transcript + portfolio state and writes a standup brief. It produces: narrative, strategy notes, market posture, watch-tomorrow items, unresolved items, and self-corrections. This is NOT self-reported by the analyst — it's an external review. The brief feeds into the next session's system prompt as the analyst's memory.",
     detailSheet: "learning-loop",
   },
 ];
