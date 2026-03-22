@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { useState } from "react";
+import HindsightLogo from "@/components/HindsightLogo";
 
 // ─── Provider metadata ──────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ interface ProviderMeta {
 const PROVIDER_META: Record<string, ProviderMeta> = {
   finnhub: {
     color: "bg-blue-500",
-    logo: "https://static2.finnhub.io/img/favicon.png",
+    logo: "https://www.google.com/s2/favicons?domain=finnhub.io&sz=32",
     domain: "finnhub.io",
   },
   reddit: {
@@ -34,18 +35,18 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
   },
   options: {
     color: "bg-purple-500",
-    logo: null,
+    logo: "https://www.google.com/s2/favicons?domain=cboe.com&sz=32",
     domain: "cboe.com",
   },
   earnings: {
     color: "bg-amber-500",
-    logo: null,
+    logo: "https://www.google.com/s2/favicons?domain=earningswhispers.com&sz=32",
     domain: "earningswhispers.com",
   },
   technical: {
     color: "bg-cyan-500",
-    logo: null,
-    domain: null,
+    logo: "https://www.google.com/s2/favicons?domain=tradingview.com&sz=32",
+    domain: "tradingview.com",
   },
   stocktwits: {
     color: "bg-green-500",
@@ -77,6 +78,16 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
     logo: "https://www.google.com/s2/favicons?domain=x.com&sz=32",
     domain: "x.com",
   },
+  alpaca: {
+    color: "bg-yellow-500",
+    logo: "https://www.google.com/s2/favicons?domain=alpaca.markets&sz=32",
+    domain: "alpaca.markets",
+  },
+  internal: {
+    color: "bg-zinc-500",
+    logo: "__hindsight__",
+    domain: null,
+  },
 };
 
 function getProviderMeta(provider: string): ProviderMeta {
@@ -106,7 +117,7 @@ function getFaviconUrl(sourceUrl?: string, providerDomain?: string | null): stri
 
 // ─── ProviderIcon — favicon with color dot fallback ──────────────────────────
 
-function ProviderIcon({
+export function ProviderIcon({
   provider,
   url,
   size = 14,
@@ -117,6 +128,11 @@ function ProviderIcon({
 }) {
   const meta = getProviderMeta(provider);
   const [imgError, setImgError] = useState(false);
+
+  // Hindsight's own logo for "internal" provider
+  if (meta.logo === "__hindsight__") {
+    return <HindsightLogo className="shrink-0 text-brand" style={{ width: size, height: size }} />;
+  }
 
   const faviconUrl = meta.logo ?? getFaviconUrl(url, meta.domain);
 
