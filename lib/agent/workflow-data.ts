@@ -143,7 +143,7 @@ export const MANUAL_RUN_DETAILS: DetailSection[] = [
     heading: "What happens after the session ends",
     items: [
       { label: "Messages saved", value: "The entire conversation (agent text + tool calls + results) is saved so the run can be replayed later." },
-      { label: "Briefing generated", value: "GPT-4o-mini writes a 400-600 word briefing memo based on everything the analyst did. This memo is read by the analyst at the start of its next session — it's the analyst's memory." },
+      { label: "Briefing agent runs", value: "A separate GPT-4o briefing agent reads the full research conversation transcript, reviews portfolio state, and writes a standup brief. This is NOT self-reported — it's an external review of what the analyst actually did." },
       { label: "Safety net", value: "If the agent ran out of time before calling complete_run, the system marks the session as complete and generates the briefing automatically." },
     ],
   },
@@ -172,44 +172,47 @@ export const CRON_RUN_DETAILS: DetailSection[] = [
       { label: "Time limit", value: "4-minute hard timeout per analyst. If it gets stuck, it's killed cleanly — any work done before the timeout (theses, trades) is preserved." },
       { label: "One at a time", value: "Only one morning research job runs at a time across all analysts. If it's still running from a previous trigger, the new one waits." },
       { label: "Stale run cleanup", value: "After all analysts finish, the system sweeps for any runs that got stuck in a \"running\" state for more than 10 minutes and marks them as failed. This catches edge cases like server restarts." },
-      { label: "Briefing fallback", value: "If an analyst times out before calling complete_run, the system generates the briefing automatically. The analyst still gets its memory for next time." },
+      { label: "Briefing always runs", value: "The briefing agent runs after every session regardless of how it ended — normal completion, timeout, or error. It reads the conversation that was persisted and writes the standup. The analyst always gets its memory for next time." },
     ],
   },
 ];
 
 export const LEARNING_LOOP_DETAILS: DetailSection[] = [
   {
-    heading: "The analyst's journal",
+    heading: "Two agents, not one",
     items: [
-      { label: "When", value: "Immediately after every session finishes — both manual runs and daily crons. It's always the last thing that happens." },
-      { label: "What it is", value: "Think of it like a trader's daily journal entry. The analyst writes itself a memo: what did I research, what did I trade, how's my portfolio doing, was I right about the stocks I passed on, what should I focus on tomorrow?" },
-      { label: "Why it matters", value: "Without this, every session would start from scratch. The briefing IS the analyst's memory. Over dozens of sessions, it builds up a track record, recognizes its own patterns, and adjusts its strategy based on actual outcomes." },
+      { label: "The key insight", value: "The research agent (GPT-4.1) does research and trading. A separate briefing agent (GPT-4o) reviews the session afterward and writes the standup. You don't ask the trader to write their own performance review — you ask a desk editor who read the full transcript." },
+      { label: "When", value: "Immediately after every session finishes — both manual runs and daily crons. Triggered in the route's onFinish callback after the conversation is persisted." },
+      { label: "Why not self-reported?", value: "When the analyst wrote its own brief, it wasted tool budget on self-reflection, produced self-serving assessments, and a dumber model (GPT-4o-mini) rewrote everything anyway. Now the analyst just does its job, and an external reviewer reads the full conversation to produce the brief." },
     ],
   },
   {
-    heading: "What goes into the briefing",
+    heading: "What the briefing agent reads",
     items: [
-      { label: "This session's work", value: "Every thesis written, every trade placed, the overall summary — what the analyst did today and why." },
-      { label: "Portfolio snapshot", value: "All currently open positions with unrealized P&L, total capital deployed, win rate, and recent trade outcomes." },
-      { label: "Pass tracking", value: "Stocks the analyst decided NOT to trade, recorded with the price at that moment. Later, we check if those stocks went up or down — this measures whether the analyst is too conservative." },
-      { label: "Previous briefing", value: "The last memo the analyst wrote to itself, for continuity. So the new briefing can say things like \"yesterday I said to watch AMD — here's what happened.\"" },
+      { label: "Full conversation transcript", value: "Every message the analyst wrote, every tool it called, every result it received — the entire research session conversation from RunMessage. Capped at ~12k chars but includes all the important reasoning and decisions." },
+      { label: "Portfolio state", value: "All currently open positions with unrealized P&L, total capital deployed, win rate, and recent trade outcomes." },
+      { label: "This session's theses and trades", value: "Every thesis generated, every trade placed or closed, PASS decisions with reasoning." },
+      { label: "Previous briefing", value: "The prior standup brief, for continuity. So the new briefing can reference whether the analyst followed through on last session's watch items and self-corrections." },
+      { label: "Pass tracking", value: "Stocks the analyst decided NOT to trade, recorded with the price and confidence. The briefing agent evaluates whether those passes were the right call." },
     ],
   },
   {
     heading: "What the briefing produces",
     items: [
-      { label: "Narrative", value: "A 400-600 word portfolio status update covering: current holdings and why they're held, recent buys/sells and outcomes, performance trends, pass accuracy, and tomorrow's focus areas." },
-      { label: "Strategy notes", value: "100-200 words of specific, data-driven adjustments: what patterns are emerging in wins vs losses, what to do differently, honest self-assessment of mistakes." },
-      { label: "Watch tomorrow", value: "Specific tickers with triggers — like \"watch AMD if it breaks above $180\" or \"check COIN before earnings Thursday.\" These get priority attention in the next session." },
-      { label: "Self-corrections", value: "Things the analyst noticed about its own behavior — like \"I've been too aggressive with momentum plays\" or \"my confidence scores for biotech are consistently too high.\" These feed back into the next session's reasoning." },
+      { label: "Narrative", value: "A 400-600 word summary of what the analyst actually DID this session — key findings, decisions made with rationale, portfolio state. Specific enough that the analyst can quote it next session." },
+      { label: "Strategy notes", value: "100-200 words of data-driven assessment: what patterns are emerging in wins vs losses, what should change. Written by the reviewer, not the analyst." },
+      { label: "Market posture", value: "2-3 word stance summary (e.g. 'cautiously bullish', 'defensive') based on the analyst's actual behavior, not just what it claimed." },
+      { label: "Watch tomorrow", value: "2-5 specific tickers with triggers — derived from positions near targets/stops, unresolved research, catalysts mentioned in conversation. e.g. 'AMD: breakout above $180 → INITIATE LONG [HIGH]'" },
+      { label: "Unresolved items", value: "Data gaps, pending catalysts, tickers the analyst wanted to research but ran out of steps for, failed tool calls — anything that needs follow-up." },
+      { label: "Self-corrections", value: "Behavioral patterns the reviewer noticed — over-concentration, momentum chasing, ignoring stop losses, skipping watchlist items. More honest than self-assessment because the reviewer has no ego." },
     ],
   },
   {
     heading: "How memory feeds forward",
     items: [
-      { label: "Next session reads it", value: "When this analyst runs again (tomorrow morning or when you click Run), the system loads the last 3 briefings into the system prompt. The analyst literally reads its own journal before starting." },
-      { label: "Continuity", value: "The analyst knows what it traded yesterday, what it's holding, what it said it would watch, and how its strategy has been evolving. Session 50 is informed by everything that happened in sessions 1-49." },
-      { label: "Model", value: "GPT-4o-mini writes the briefing. It's a smaller model optimized for structured output — cheaper and faster than the main research agent, but good enough for narrative generation." },
+      { label: "Next session reads it", value: "When this analyst runs again (tomorrow morning or when you click Run), the system loads the latest briefing into the system prompt. The analyst sees the prior brief in Phase 0 and must reference it." },
+      { label: "Accountability", value: "The analyst is required to quote Watch Tomorrow items by name in its Phase 0 check-in. If the prior brief said 'watch AMD for breakout,' the analyst must acknowledge that and check AMD first." },
+      { label: "Model", value: "GPT-4o writes the briefing. The briefing is the memory system — it's the most important artifact for run-to-run continuity. Using a capable model here is worth the extra cost." },
     ],
   },
 ];
@@ -244,7 +247,7 @@ export const CONTEXT_LOADING_DETAILS: DetailSection[] = [
   {
     heading: "Memory (prior briefings and trade history)",
     items: [
-      { label: "Last briefing", value: "The most recent briefing memo: market posture, what to watch today, unresolved items from last session, self-corrections. This is the analyst's primary memory." },
+      { label: "Last briefing", value: "The most recent standup brief from the post-run briefing agent: market posture, what to watch today, unresolved items, self-corrections. Written by GPT-4o reviewing the full conversation — this is the analyst's primary memory." },
       { label: "Closed trades", value: "The last 10 closed positions with outcome (win/loss), P&L percentage, days held, close reason, and the lesson learned. The analyst uses this to avoid repeating mistakes." },
       { label: "Pass decisions", value: "The last 10 stocks the analyst passed on, with the price at that moment and its confidence score. This lets it evaluate whether it's been too conservative or too aggressive with its passes." },
       { label: "Accuracy stats", value: "Win rate, total trades analyzed, and a calibration note from the weekly accuracy scorer. If the analyst is overconfident (high confidence but low win rate), it's told to recalibrate." },
