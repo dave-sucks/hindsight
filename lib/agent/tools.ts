@@ -1611,34 +1611,50 @@ export function createResearchTools(ctx: ToolContext) {
         const _t0 = Date.now();
         logToolStart("record_thesis", ctx.runId, `ticker=${args.ticker} direction=${args.direction} confidence=${args.confidence_score}`, stats);
         try {
-          const thesis = await prisma.thesis.create({
-            data: {
-              researchRunId: ctx.runId,
-              userId: ctx.userId,
-              ticker: args.ticker,
-              direction: args.direction,
-              confidenceScore: args.confidence_score,
-              reasoningSummary: args.reasoning_summary,
-              thesisBullets: args.thesis_bullets,
-              riskFlags: args.risk_flags,
-              entryPrice: args.entry_price ?? null,
-              targetPrice: args.target_price ?? null,
-              stopLoss: args.stop_loss ?? null,
-              holdDuration: args.hold_duration,
-              signalTypes: args.signal_types,
-              sourcesUsed: args.sources_used ?? [],
-              source: "AGENT",
-              modelUsed: "gpt-4o",
-              status: "ACTIVE",
-              parentThesisId: args.parent_thesis_id ?? null,
-            },
-          });
+          // Core thesis data (columns that exist in all environments)
+          const coreData = {
+            researchRunId: ctx.runId,
+            userId: ctx.userId,
+            ticker: args.ticker,
+            direction: args.direction,
+            confidenceScore: args.confidence_score,
+            reasoningSummary: args.reasoning_summary,
+            thesisBullets: args.thesis_bullets,
+            riskFlags: args.risk_flags,
+            entryPrice: args.entry_price ?? null,
+            targetPrice: args.target_price ?? null,
+            stopLoss: args.stop_loss ?? null,
+            holdDuration: args.hold_duration,
+            signalTypes: args.signal_types,
+            sourcesUsed: args.sources_used ?? [],
+            source: "AGENT",
+            modelUsed: "gpt-4o",
+          };
 
-          // V2 Phase 3: Handle parent thesis lifecycle transition
+          // Try with V2 fields first, fall back to core-only if columns don't exist
+          let thesis;
+          try {
+            thesis = await prisma.thesis.create({
+              data: {
+                ...coreData,
+                status: "ACTIVE",
+                parentThesisId: args.parent_thesis_id ?? null,
+              },
+            });
+          } catch (v2Err: unknown) {
+            const errMsg = v2Err instanceof Error ? v2Err.message : String(v2Err);
+            if (errMsg.includes("status") || errMsg.includes("parentThesisId") || errMsg.includes("Unknown arg")) {
+              console.warn("[tool] record_thesis: V2 columns not available, falling back to core schema");
+              thesis = await prisma.thesis.create({ data: coreData });
+            } else {
+              throw v2Err;
+            }
+          }
+
+          // V2 Phase 3: Handle parent thesis lifecycle transition (non-fatal)
           if (args.parent_thesis_id) {
             try {
               if (args.direction === "PASS") {
-                // PASS on existing thesis → parent is INVALIDATED
                 await prisma.thesis.update({
                   where: { id: args.parent_thesis_id },
                   data: {
@@ -1648,15 +1664,13 @@ export function createResearchTools(ctx: ToolContext) {
                   },
                 });
               } else {
-                // Updated thesis (LONG/SHORT) → parent is SUPERSEDED
                 await prisma.thesis.update({
                   where: { id: args.parent_thesis_id },
                   data: { status: "SUPERSEDED" },
                 });
               }
             } catch (parentErr) {
-              console.warn(`[tool] record_thesis failed to update parent thesis ${args.parent_thesis_id}:`, parentErr);
-              // Non-fatal — the new thesis was still created
+              console.warn(`[tool] record_thesis: parent thesis update skipped (V2 columns may not exist):`, parentErr);
             }
           }
 

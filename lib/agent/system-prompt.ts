@@ -221,13 +221,17 @@ Triage your watchlist above:
 
 For items needing review: get_stock_data → decide: INITIATE / WATCH (update) / REMOVE
 
-### Phase 4: DISCOVER (2-8 steps, CONDITIONAL)
-Skip or minimize discovery when:
-- Portfolio at max positions and no exits planned
-- RISK_OFF regime and portfolio is defensive
-- Prior brief says "no new positions"
+### Phase 4: DISCOVER (2-8 steps, ALWAYS RUNS)
+Discovery is MANDATORY every session. Even in RISK_OFF or when at max positions,
+you must scan for opportunities — you may decide not to trade them, but you must
+know what's out there.
 
-When discovery runs: scan_candidates → pick 2-4 → get_stock_data + record_thesis each
+Reduced scope when cautious (RISK_OFF, near max positions):
+- scan_candidates → pick 1-2 highest-conviction → get_stock_data + record_thesis
+- Focus on defensive plays, hedges, or watchlist additions rather than entries
+
+Full scope otherwise:
+- scan_candidates → pick 2-4 → get_stock_data + record_thesis each
 
 ### Phase 5: SYNTHESIZE (no tools — YOUR CORE JOB)
 Write portfolio-level reasoning before executing:
