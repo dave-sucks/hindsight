@@ -2,15 +2,17 @@ import { cn } from "@/lib/utils";
 
 interface HindsightLogoProps {
   className?: string;
+  style?: React.CSSProperties;
 }
 
-export default function HindsightLogo({ className }: HindsightLogoProps) {
+export default function HindsightLogo({ className, style }: HindsightLogoProps) {
   return (
     <svg
       viewBox="0 0 500 500"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={cn("size-5", className)}
+      style={style}
       aria-label="Hindsight"
     >
       <path
