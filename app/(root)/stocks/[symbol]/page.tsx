@@ -453,7 +453,39 @@ export default async function StockDetailPage({ params }: Props) {
         </TabsContent>
 
         {/* ── FINANCIALS ───────────────────────────────────────────────── */}
-        <TabsContent value="financials" className="mt-4">
+        <TabsContent value="financials" className="mt-4 space-y-4">
+          {/* Key financial metrics from Finnhub */}
+          {metrics && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {[
+                { label: "P/E Ratio", value: fmt(metrics["peBasicExclExtraTTM"]) },
+                { label: "Forward P/E", value: fmt(metrics["peTTM"]) },
+                { label: "P/B Ratio", value: fmt(metrics["pbAnnual"]) },
+                { label: "P/S Ratio", value: fmt(metrics["psTTM"]) },
+                { label: "EPS (TTM)", value: fmtCur(metrics["epsBasicExclExtraAnnual"]) },
+                { label: "ROE", value: metrics["roeRfy"] != null ? `${metrics["roeRfy"].toFixed(1)}%` : "—" },
+                { label: "ROA", value: metrics["roaRfy"] != null ? `${metrics["roaRfy"].toFixed(1)}%` : "—" },
+                { label: "Gross Margin", value: metrics["grossMarginTTM"] != null ? `${metrics["grossMarginTTM"].toFixed(1)}%` : "—" },
+                { label: "Operating Margin", value: metrics["operatingMarginTTM"] != null ? `${metrics["operatingMarginTTM"].toFixed(1)}%` : "—" },
+                { label: "Net Margin", value: metrics["netProfitMarginTTM"] != null ? `${metrics["netProfitMarginTTM"].toFixed(1)}%` : "—" },
+                { label: "Debt/Equity", value: fmt(metrics["totalDebt/totalEquityAnnual"]) },
+                { label: "Current Ratio", value: fmt(metrics["currentRatioAnnual"]) },
+                { label: "Dividend Yield", value: metrics["dividendYieldIndicatedAnnual"] != null ? `${metrics["dividendYieldIndicatedAnnual"].toFixed(2)}%` : "—" },
+                { label: "Beta", value: fmt(metrics["beta"]) },
+                { label: "52W High", value: fmtCur(metrics["52WeekHigh"]) },
+                { label: "52W Low", value: fmtCur(metrics["52WeekLow"]) },
+              ]
+                .filter((s) => s.value !== "—")
+                .map((stat) => (
+                  <div key={stat.label} className="bg-muted/30 rounded-lg p-3">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {stat.label}
+                    </p>
+                    <p className="text-sm font-medium tabular-nums mt-0.5">{stat.value}</p>
+                  </div>
+                ))}
+            </div>
+          )}
           <TradingViewWidget
             scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-financials.js"
             config={COMPANY_FINANCIALS_WIDGET_CONFIG(upperSymbol)}
@@ -527,6 +559,15 @@ export default async function StockDetailPage({ params }: Props) {
                           <p className="text-sm text-foreground/80 mt-1 leading-relaxed">
                             {active.reasoningSummary.slice(0, 150)}
                           </p>
+                          {(active.signalTypes as string[])?.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {(active.signalTypes as string[]).map((s) => (
+                                <Badge key={s} variant="outline" className="text-[9px] px-1 py-0">
+                                  {s.replace(/_/g, ' ')}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                           <div className="flex items-center gap-2 mt-1.5">
                             {active.researchRun?.agentConfig?.name && (
                               <span className="text-[10px] text-muted-foreground">
@@ -614,6 +655,15 @@ export default async function StockDetailPage({ params }: Props) {
                                 <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                                   {thesis.reasoningSummary.slice(0, 120)}
                                 </p>
+                                {(thesis.signalTypes as string[])?.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {(thesis.signalTypes as string[]).slice(0, 3).map((s) => (
+                                      <Badge key={s} variant="outline" className="text-[8px] px-1 py-0 h-3.5">
+                                        {s.replace(/_/g, ' ')}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
                                 {thesis.invalidReason && (
                                   <p className="text-[10px] text-red-500/70 mt-0.5 italic">
                                     {thesis.invalidReason}

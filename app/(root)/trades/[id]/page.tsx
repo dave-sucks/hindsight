@@ -5,6 +5,12 @@ import { Button } from '@/components/ui/button';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
 import { PnlBadge } from '@/components/ui/pnl-badge';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
 import TradingViewWidget from '@/components/TradingViewWidget';
 import { CANDLE_CHART_WIDGET_CONFIG } from '@/lib/constants';
 import { prisma } from '@/lib/prisma';
@@ -21,6 +27,7 @@ import {
   Brain,
   ExternalLink,
   Target,
+  GitBranch,
 } from 'lucide-react';
 import { TradeActions } from '@/components/trades/TradeActions';
 
@@ -41,10 +48,10 @@ function EventIcon({ type }: { type: string }) {
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
 function getStatusDisplay(status: string, outcome: string | null) {
-  if (status === 'OPEN') return { label: 'Open', dotClass: 'bg-blue-400 animate-pulse' };
-  if (outcome === 'WIN')  return { label: 'Won', dotClass: 'bg-positive' };
-  if (outcome === 'LOSS') return { label: 'Loss', dotClass: 'bg-negative' };
-  return { label: 'Closed', dotClass: 'bg-muted-foreground/40' };
+  if (status === 'OPEN') return { label: 'Held', dotClass: 'bg-blue-400 animate-pulse', tooltip: 'This position is actively held. P&L updates when the market is open.' };
+  if (outcome === 'WIN')  return { label: 'Won', dotClass: 'bg-positive', tooltip: 'Position closed with a profit.' };
+  if (outcome === 'LOSS') return { label: 'Loss', dotClass: 'bg-negative', tooltip: 'Position closed at a loss.' };
+  return { label: 'Closed', dotClass: 'bg-muted-foreground/40', tooltip: 'Position has been closed.' };
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -79,6 +86,31 @@ export default async function TradeDetailPage({
   });
 
   if (!position || position.userId !== user?.id) notFound();
+
+  // Load thesis chain for this stock (all theses by this analyst for this symbol)
+  const thesisChain = await prisma.thesis.findMany({
+    where: {
+      userId: user.id,
+      ticker: position.symbol,
+      researchRun: { agentConfigId: position.analystId },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    select: {
+      id: true,
+      direction: true,
+      confidenceScore: true,
+      reasoningSummary: true,
+      signalTypes: true,
+      status: true,
+      parentThesisId: true,
+      entryPrice: true,
+      targetPrice: true,
+      stopLoss: true,
+      createdAt: true,
+      researchRunId: true,
+    },
+  });
 
   // Alias for backwards-compat with template
   const trade = {
@@ -175,10 +207,19 @@ export default async function TradeDetailPage({
                   <span className="text-xs font-mono text-muted-foreground">
                     {trade.ticker}{exchange ? ` · ${exchange}` : ''} · {trade.direction}
                   </span>
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground">
-                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status.dotClass}`} />
-                    {status.label}
-                  </span>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default">
+                            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status.dotClass}`} />
+                            {status.label}
+                          </span>
+                        }
+                      />
+                      <TooltipContent side="bottom">{status.tooltip}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                   {analystName && analystIdVal && (
@@ -300,6 +341,15 @@ export default async function TradeDetailPage({
               <p className="text-base text-muted-foreground leading-relaxed">
                 {trade.thesis.reasoningSummary}
               </p>
+              {(trade.thesis.signalTypes as string[] ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {(trade.thesis.signalTypes as string[]).map((s) => (
+                    <Badge key={s} variant="outline" className="text-[10px]">
+                      {s.replace(/_/g, ' ')}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -346,6 +396,56 @@ export default async function TradeDetailPage({
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Thesis chain — all theses for this stock by this analyst */}
+          {thesisChain.length > 1 && (
+            <div className="space-y-3">
+              <h2 className="text-lg font-medium">Thesis History</h2>
+              <div className="space-y-0">
+                {thesisChain.map((t, i) => {
+                  const isCurrent = t.id === trade.thesis?.id;
+                  const dirColor = t.direction === 'LONG' ? 'text-emerald-500' : t.direction === 'SHORT' ? 'text-red-500' : 'text-muted-foreground';
+                  const statusColor = t.status === 'ACTIVE' ? 'text-blue-400' : t.status === 'INVALIDATED' ? 'text-red-400' : t.status === 'SUPERSEDED' ? 'text-amber-400' : 'text-muted-foreground';
+                  return (
+                    <div key={t.id} className="flex gap-3 pb-3 last:pb-0">
+                      <div className="flex flex-col items-center">
+                        <div className={cn(
+                          'h-2.5 w-2.5 rounded-full shrink-0 mt-1.5',
+                          isCurrent ? 'bg-blue-400 ring-2 ring-blue-400/30' :
+                          t.status === 'ACTIVE' ? 'bg-blue-400' :
+                          t.status === 'INVALIDATED' ? 'bg-red-400' :
+                          'bg-muted-foreground/40'
+                        )} />
+                        {i < thesisChain.length - 1 && (
+                          <div className="w-px flex-1 bg-border mt-1 min-h-[12px]" />
+                        )}
+                      </div>
+                      <Link href={`/runs/${t.researchRunId}`} className="hover:opacity-80 transition-opacity pb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn('text-[10px] font-medium uppercase', dirColor)}>{t.direction}</span>
+                          <span className="text-xs tabular-nums text-muted-foreground">{t.confidenceScore}%</span>
+                          {t.parentThesisId && <GitBranch className="h-3 w-3 text-muted-foreground/50" />}
+                          <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 leading-none">
+                            <span className={statusColor}>{t.status}</span>
+                          </Badge>
+                          {isCurrent && (
+                            <span className="text-[9px] text-blue-400 font-medium">current</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
+                          {t.reasoningSummary.slice(0, 120)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground/50 tabular-nums mt-0.5">
+                          {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          {t.entryPrice != null && <> · Entry ${Number(t.entryPrice).toFixed(2)}</>}
+                        </p>
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* Post-mortem evaluation */}
@@ -418,8 +518,6 @@ export default async function TradeDetailPage({
             <CardContent className="p-3 flex flex-col gap-1">
               {[
                 { label: 'Direction', value: trade.direction },
-                { label: 'Entry Price', value: `$${trade.entryPrice.toFixed(2)}` },
-                { label: 'Current Price', value: `$${currentPrice.toFixed(2)}` },
                 { label: 'Shares', value: String(trade.shares) },
                 { label: 'Position Cost', value: `$${positionCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
                 { label: 'Market Value', value: `$${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
@@ -454,6 +552,12 @@ export default async function TradeDetailPage({
                   <span className="text-muted-foreground">Exit Strategy</span>
                   <span className="font-medium text-xs">{trade.exitStrategy}</span>
                 </div>
+                {trade.closeReason && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Close Reason</span>
+                    <span className="font-medium text-xs">{trade.closeReason}</span>
+                  </div>
+                )}
                 {trade.closedAt && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Closed</span>
