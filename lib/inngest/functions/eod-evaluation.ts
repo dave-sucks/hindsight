@@ -1,6 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices } from "@/lib/alpaca";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
 // ─── P&L helper ───────────────────────────────────────────────────────────────
 
@@ -57,7 +58,9 @@ export const eodEvaluation = inngest.createFunction(
     const prices = await step.run("fetch-eod-prices", async () => {
       const uniqueTickers = [...new Set(openPositions.map((p) => p.symbol))];
       try {
-        return await getLatestPrices(uniqueTickers);
+        const firstUserId = openPositions[0]?.userId;
+        const creds = firstUserId ? await resolveAlpacaCredentials(firstUserId) ?? undefined : undefined;
+        return await getLatestPrices(uniqueTickers, creds);
       } catch {
         return {} as Record<string, number>;
       }

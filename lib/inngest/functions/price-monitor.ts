@@ -1,6 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices } from "@/lib/alpaca";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { isMarketOpen } from "@/lib/market-hours";
 import { checkExitConditions } from "@/lib/trade-exit";
 import type { PositionModel } from "@/lib/generated/prisma/models";
@@ -55,7 +56,10 @@ export const priceMonitor = inngest.createFunction(
 
     const priceMap = await step.run("fetch-prices", async () => {
       try {
-        return await getLatestPrices(uniqueTickers);
+        // Use the first user's creds for market data (same prices for all accounts)
+        const firstUserId = openPositions[0]?.userId;
+        const creds = firstUserId ? await resolveAlpacaCredentials(firstUserId) ?? undefined : undefined;
+        return await getLatestPrices(uniqueTickers, creds);
       } catch {
         return {} as Record<string, number>;
       }

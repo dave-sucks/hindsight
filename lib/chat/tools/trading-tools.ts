@@ -14,6 +14,7 @@ import {
   placeMarketOrder,
   getLatestPrice,
   getOrder,
+  type AlpacaCredentials,
 } from "@/lib/alpaca";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -22,11 +23,12 @@ async function waitForFill(
   orderId: string,
   symbol: string,
   fallbackPrice: number,
-  maxMs = 10_000
+  maxMs = 10_000,
+  creds?: AlpacaCredentials,
 ): Promise<number> {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
-    const order = await getOrder(orderId);
+    const order = await getOrder(orderId, creds);
     if (order.status === "filled" && order.filled_avg_price) {
       return parseFloat(order.filled_avg_price);
     }
@@ -36,7 +38,7 @@ async function waitForFill(
     await new Promise((r) => setTimeout(r, 1_000));
   }
   try {
-    return await getLatestPrice(symbol);
+    return await getLatestPrice(symbol, creds);
   } catch {
     return fallbackPrice;
   }
@@ -48,7 +50,7 @@ async function waitForFill(
  * Creates trading tools bound to the current user.
  * Must be called per-request with authenticated userId.
  */
-export function createTradingTools(userId: string) {
+export function createTradingTools(userId: string, alpacaCreds?: AlpacaCredentials) {
   return {
     place_trade: tool({
       description:
@@ -72,7 +74,7 @@ export function createTradingTools(userId: string) {
         let shares = qty;
         let currentPrice: number;
         try {
-          currentPrice = await getLatestPrice(ticker);
+          currentPrice = await getLatestPrice(ticker, alpacaCreds);
         } catch {
           return { error: `Could not get price for ${ticker}. Is it a valid US equity?` };
         }
@@ -146,8 +148,8 @@ export function createTradingTools(userId: string) {
 
         // Place Alpaca order
         try {
-          const alpacaOrder = await placeMarketOrder({ symbol: ticker, qty: shares, side });
-          const fillPrice = await waitForFill(alpacaOrder.id, ticker, currentPrice);
+          const alpacaOrder = await placeMarketOrder({ symbol: ticker, qty: shares, side }, alpacaCreds);
+          const fillPrice = await waitForFill(alpacaOrder.id, ticker, currentPrice, 10_000, alpacaCreds);
 
           // Create Position
           const position = await prisma.position.create({
@@ -366,7 +368,7 @@ export function createTradingTools(userId: string) {
 
         let currentPrice: number;
         try {
-          currentPrice = await getLatestPrice(ticker);
+          currentPrice = await getLatestPrice(ticker, alpacaCreds);
         } catch {
           return { error: `Could not get price for ${ticker}` };
         }
@@ -385,8 +387,8 @@ export function createTradingTools(userId: string) {
         // Place additional order
         const side = position.direction === "LONG" ? "buy" : ("sell" as const);
         try {
-          const alpacaOrder = await placeMarketOrder({ symbol: ticker, qty: addShares, side });
-          const fillPrice = await waitForFill(alpacaOrder.id, ticker, currentPrice);
+          const alpacaOrder = await placeMarketOrder({ symbol: ticker, qty: addShares, side }, alpacaCreds);
+          const fillPrice = await waitForFill(alpacaOrder.id, ticker, currentPrice, 10_000, alpacaCreds);
 
           // Update position: recalculate avg cost, add shares
           const oldCost = position.avgCost * position.quantity;

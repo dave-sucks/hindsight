@@ -8,6 +8,8 @@ import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { redirect } from "next/navigation";
 import { isMarketOpen } from "@/lib/market-hours";
 import { prisma } from "@/lib/prisma";
+import { AlpacaKeyGate } from "@/components/settings/AlpacaKeyGate";
+import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const supabase = await createClient();
@@ -22,7 +24,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     };
 
     // Load open trade tickers, stocks list, and portfolio value at request time
-    const [initialStocks, openTrades, pnlAggregate] = await Promise.all([
+    const [initialStocks, openTrades, pnlAggregate, alpacaStatus] = await Promise.all([
         searchStocks(),
         prisma.position.findMany({
             where: { userId: user.id, status: "OPEN" },
@@ -33,6 +35,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             where: { userId: user.id, status: "CLOSED" },
             _sum: { realizedPnl: true },
         }),
+        getApiKeyStatus("ALPACA"),
     ]);
 
     const openTradeTickers = openTrades
@@ -60,6 +63,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                     </div>
                 </header>
                 <main className="flex-1">
+                    <AlpacaKeyGate hasKey={alpacaStatus.hasKey} />
                     {children}
                 </main>
             </SidebarInset>

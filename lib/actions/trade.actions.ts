@@ -6,9 +6,11 @@ import {
   placeMarketOrder,
   getOrder,
   getLatestPrice,
+  type AlpacaCredentials,
 } from "@/lib/alpaca";
 import { sendEmail } from "@/lib/email";
 import { tradePlacedHtml } from "@/lib/emails/trade-placed";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,11 +47,12 @@ async function waitForFill(
   orderId: string,
   symbol: string,
   fallbackPrice: number,
-  maxMs = 10_000
+  maxMs = 10_000,
+  creds?: AlpacaCredentials,
 ): Promise<number> {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
-    const order = await getOrder(orderId);
+    const order = await getOrder(orderId, creds);
     if (order.status === "filled" && order.filled_avg_price) {
       return parseFloat(order.filled_avg_price);
     }
@@ -64,7 +67,7 @@ async function waitForFill(
   }
   // Market closed or fill took too long — use latest market price as fill estimate
   try {
-    return await getLatestPrice(symbol);
+    return await getLatestPrice(symbol, creds);
   } catch {
     return fallbackPrice;
   }
@@ -84,6 +87,9 @@ export async function openPosition(
   if (!user) {
     return { positionId: "", orderId: "", alpacaOrderId: "", fillPrice: 0, error: "Not authenticated" };
   }
+
+  // Resolve per-user Alpaca credentials
+  const creds = await resolveAlpacaCredentials(user.id) ?? undefined;
 
   // 2. Check for existing open position in this ticker (across all analysts)
   const existingPosition = await prisma.position.findFirst({
@@ -129,7 +135,7 @@ export async function openPosition(
       symbol: input.ticker,
       qty: input.shares,
       side: input.direction === "LONG" ? "buy" : "sell",
-    });
+    }, creds);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Alpaca order failed";
     return { positionId: "", orderId: "", alpacaOrderId: "", fillPrice: 0, error: msg };
@@ -138,7 +144,7 @@ export async function openPosition(
   // 5. Wait for fill (or use entry price if market closed)
   let fillPrice = input.entryPrice;
   try {
-    fillPrice = await waitForFill(alpacaOrder.id, input.ticker, input.entryPrice);
+    fillPrice = await waitForFill(alpacaOrder.id, input.ticker, input.entryPrice, 10_000, creds);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Order failed";
     return { positionId: "", orderId: alpacaOrder.id, alpacaOrderId: alpacaOrder.id, fillPrice: 0, error: msg };

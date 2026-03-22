@@ -6,6 +6,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
 
@@ -96,7 +97,10 @@ export const morningResearch = inngest.createFunction(
           exclusionList: config.exclusionList,
         };
 
-        const runInput = await buildRunInput(config.id, config.userId);
+        // Resolve per-user Alpaca credentials for this analyst's owner
+        const alpacaCreds = await resolveAlpacaCredentials(config.userId) ?? undefined;
+
+        const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
         const systemPrompt = buildV2SystemPrompt(agentConfig, runInput);
 
         // 2d. Create tools with run context
@@ -109,6 +113,7 @@ export const morningResearch = inngest.createFunction(
           sectors: config.sectors ?? [],
           maxPositionSize: Number(config.maxPositionSize),
           maxOpenPositions: config.maxOpenPositions,
+          alpacaCreds,
         });
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getLatestPrices } from "@/lib/alpaca";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -172,6 +173,9 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const userId = user.id;
 
+  // Resolve per-user Alpaca credentials
+  const alpacaCreds = await resolveAlpacaCredentials(userId) ?? undefined;
+
   // ── 1. Fetch positions from DB ──────────────────────────────────────────────
   const [dbOpenPositions, dbClosedPositions] = await Promise.all([
     prisma.position.findMany({
@@ -240,7 +244,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   let priceMap: Record<string, number> = {};
   if (allTickers.length > 0) {
     try {
-      priceMap = await getLatestPrices(allTickers);
+      priceMap = await getLatestPrices(allTickers, alpacaCreds);
     } catch {
       // Fall back to entry price
     }
