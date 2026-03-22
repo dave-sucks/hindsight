@@ -791,6 +791,7 @@ export function createResearchTools(ctx: ToolContext) {
         const earningsTickers =
           (earnings as { earningsCalendar?: { symbol: string; date: string; epsEstimate: number | null }[] })
             ?.earningsCalendar
+            ?.filter((e) => isValidTicker(e.symbol))
             ?.slice(0, 30)
             ?.map((e) => ({
               ticker: e.symbol,
@@ -800,10 +801,19 @@ export function createResearchTools(ctx: ToolContext) {
               score: 3,
             })) ?? [];
 
+        // ── Quality filter: skip penny stocks, ADRs, special tickers ──
+        const MIN_PRICE = min_market_cap ? 1 : 5; // $5 floor unless user overrides
+        const isValidTicker = (sym: string, price?: number) => {
+          if (!sym || sym.length > 5) return false; // Skip long tickers (warrants, units)
+          if (/[^A-Z]/.test(sym)) return false; // Only uppercase alpha (no dots, dashes)
+          if (price != null && price < MIN_PRICE) return false; // Penny stock filter
+          return true;
+        };
+
         // Market movers
         const gainerTickers = Array.isArray(gainers)
           ? gainers
-              .slice(0, 8)
+              .slice(0, 15) // Scan more, filter down
               .map((m: unknown) => {
                 const mov = m as { symbol: string; changesPercentage: number; price: number };
                 return {
@@ -814,11 +824,13 @@ export function createResearchTools(ctx: ToolContext) {
                   score: 2,
                 };
               })
+              .filter((m) => isValidTicker(m.ticker, m.price))
+              .slice(0, 8)
           : [];
 
         const loserTickers = Array.isArray(losers)
           ? losers
-              .slice(0, 5)
+              .slice(0, 10) // Scan more, filter down
               .map((m: unknown) => {
                 const mov = m as { symbol: string; changesPercentage: number; price: number };
                 return {
@@ -829,22 +841,28 @@ export function createResearchTools(ctx: ToolContext) {
                   score: 2,
                 };
               })
+              .filter((m) => isValidTicker(m.ticker, m.price))
+              .slice(0, 5)
           : [];
 
         // StockTwits trending
-        const socialTickers = stTrending.map((t) => ({
-          ticker: t,
-          source: "stocktwits_trending" as const,
-          score: 1,
-        }));
+        const socialTickers = stTrending
+          .filter((t) => isValidTicker(t))
+          .map((t) => ({
+            ticker: t,
+            source: "stocktwits_trending" as const,
+            score: 1,
+          }));
 
         // Reddit trending (WSB + r/stocks + r/options + r/investing)
-        const redditTickers = redditTrending.map((t) => ({
-          ticker: t.ticker,
-          source: "reddit_trending" as const,
-          score: 2, // Reddit retail momentum signal
-          mentions: t.mentions,
-        }));
+        const redditTickers = redditTrending
+          .filter((t) => isValidTicker(t.ticker))
+          .map((t) => ({
+            ticker: t.ticker,
+            source: "reddit_trending" as const,
+            score: 2, // Reddit retail momentum signal
+            mentions: t.mentions,
+          }));
 
         // ── Theme filter boost (BEFORE dedup/ranking) ─────────────────────
         let themeBoostTickers = new Set<string>();
@@ -954,10 +972,11 @@ export function createResearchTools(ctx: ToolContext) {
         }));
 
         const notes: string[] = [];
+        notes.push(`Pre-filtered: penny stocks (<$${MIN_PRICE}), ADRs, warrants, and special tickers removed.`);
         const configSectors = ctx.sectors ?? [];
-        if (configSectors.length > 0) notes.push(`Analyst sectors: ${configSectors.join(", ")} (sector filtering deferred to get_stock_data).`);
+        if (configSectors.length > 0) notes.push(`Your focus sectors: ${configSectors.join(", ")}. SKIP tickers outside these sectors — check sector in get_stock_data before deep research.`);
         if (theme_filter) notes.push(`Theme boost applied: ${theme_filter}.`);
-        if (min_market_cap || min_avg_volume) notes.push(`Quality filtering (market cap, volume) deferred to get_stock_data.`);
+        if (min_market_cap) notes.push(`Min market cap requested: $${(min_market_cap / 1e9).toFixed(1)}B — verify in get_stock_data.`);
         notes.push(`${candidates.length} candidates ranked by multi-source score.`);
 
         logToolEnd("scan_candidates", _t0, ctx.runId, `found=${candidates.length}`, stats);
