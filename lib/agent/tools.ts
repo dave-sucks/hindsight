@@ -11,7 +11,6 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount } from "@/lib/alpaca";
-import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import type { MarketOverviewResult, MarketContextResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult, ScanCandidate, MarketTheme, ThemeDirection, DetectMarketThemesResult, ToolSource } from "@/lib/discovery/types";
 import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 
@@ -2244,36 +2243,6 @@ export function createResearchTools(ctx: ToolContext) {
           .describe(
             "Portfolio review assessment from Phase 5.5 — total exposure analysis, sector concentration, correlation risk, and whether combined risk is acceptable",
           ),
-
-        // V2: Structured brief fields — agent produces these for the next run's context
-        market_posture: z
-          .string()
-          .optional()
-          .describe("Current market posture in 2-3 words, e.g. 'cautiously bullish', 'defensive', 'max long exposure'"),
-        watch_tomorrow: z
-          .array(z.object({
-            symbol: z.string(),
-            trigger: z.string().describe("Condition to watch, e.g. 'price < 145', 'RSI < 30'"),
-            suggested_action: z.string().describe("What to do if triggered, e.g. 'INITIATE LONG', 'EXIT'"),
-            priority: z.enum(["HIGH", "NORMAL"]).optional(),
-          }))
-          .optional()
-          .describe("Symbols to watch in the next session with specific triggers"),
-        unresolved_items: z
-          .array(z.object({
-            item: z.string().describe("What is unresolved"),
-            impact: z.string().describe("Why it matters"),
-            affected_positions: z.array(z.string()).optional(),
-          }))
-          .optional()
-          .describe("Things you couldn't resolve this session that need follow-up"),
-        self_corrections: z
-          .array(z.object({
-            observation: z.string().describe("What you noticed about your own behavior"),
-            adjustment: z.string().describe("What you'll do differently"),
-          }))
-          .optional()
-          .describe("Self-reflections on biases or mistakes to correct"),
       }),
       execute: async (args) => {
         const _t0 = Date.now();
@@ -2366,26 +2335,10 @@ export function createResearchTools(ctx: ToolContext) {
             }
           }
 
-          // V2: Generate analyst briefing with structured fields directly from the tool
+          // Briefing is generated AFTER the run completes by a separate briefing agent
+          // (triggered in the route's onFinish callback, NOT here in the tool)
           if (!ctx.analystId) {
-            console.warn(`[tool] complete_run SKIPPING briefing — no analystId in context (runId=${ctx.runId})`);
-          }
-          if (ctx.analystId && ctx.runId) {
-            try {
-              await updateAnalystBriefing({
-                analystId: ctx.analystId,
-                runId: ctx.runId,
-                userId: ctx.userId,
-                structuredBrief: {
-                  marketPosture: args.market_posture,
-                  watchTomorrow: args.watch_tomorrow,
-                  unresolvedItems: args.unresolved_items,
-                  selfCorrections: args.self_corrections,
-                },
-              });
-            } catch (briefErr) {
-              console.error("[tool] complete_run briefing generation failed (non-fatal):", briefErr instanceof Error ? briefErr.message : briefErr);
-            }
+            console.warn(`[tool] complete_run: no analystId in context (runId=${ctx.runId}) — briefing will be skipped in onFinish`);
           }
 
           logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);

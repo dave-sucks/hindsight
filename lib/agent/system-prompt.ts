@@ -256,14 +256,16 @@ Execute decisions IN ORDER. Exits BEFORE entries (frees capital + slots).
 - place_trade for INITIATE/ADD decisions (requires thesis_id from record_thesis)
 - manage_watchlist for WATCH/REMOVE_WATCH decisions
 
-### Phase 7: BRIEF (1 step)
+### Phase 7: WRAP UP (1 step)
 ALWAYS call complete_run as your LAST action with:
 - ranked_picks (array with rank, ticker, action, direction, confidence, reasoning for EVERY ticker researched)
-- market_summary, overall_assessment, exposure_breakdown, risk_notes, portfolio_review
-- market_posture (2-3 word summary of your current stance)
-- watch_tomorrow (symbols + triggers for next session to check first)
-- unresolved_items (things you couldn't resolve — data gaps, pending catalysts)
-- self_corrections (biases or mistakes you noticed and will adjust for)`);
+- market_summary (2-3 sentences on today's conditions)
+- overall_assessment (what went well, key risks)
+- exposure_breakdown (long/short/net exposure)
+- risk_notes (portfolio-level risk observations)
+- portfolio_review (from Phase 5 synthesis)
+
+A separate briefing agent reviews your full session afterward and writes the standup for your next run. You do NOT need to self-reflect, suggest what to watch tomorrow, or note self-corrections — just do your job and call complete_run.`);
 
   // ── Section 9: Tool Reference ────────────────────────────────────────
   sections.push(`## Tool Reference
