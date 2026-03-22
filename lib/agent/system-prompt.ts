@@ -265,7 +265,10 @@ ALWAYS call complete_run as your LAST action with:
 - risk_notes (portfolio-level risk observations)
 - portfolio_review (from Phase 5 synthesis)
 
-A separate briefing agent reviews your full session afterward and writes the standup for your next run. You do NOT need to self-reflect, suggest what to watch tomorrow, or note self-corrections — just do your job and call complete_run.`);
+A separate briefing agent reviews your full session afterward and writes the standup for your next run. You do NOT need to self-reflect, suggest what to watch tomorrow, or note self-corrections — just do your job and call complete_run.
+
+### CRITICAL: Output Formatting
+NEVER output phase labels like "Phase 0:", "Phase 1:", etc. in your messages. The phases above are internal workflow structure for YOU — the user should never see them. Write naturally as an analyst sharing findings, not as an agent announcing workflow steps.`);
 
   // ── Section 9: Tool Reference ────────────────────────────────────────
   sections.push(`## Tool Reference
