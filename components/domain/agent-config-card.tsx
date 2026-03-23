@@ -39,6 +39,31 @@ export type AgentConfigData = {
   minMarketCapTier?: string;
   watchlist?: string[];
   exclusionList?: string[];
+  // V3: Intelligence layer proposals (passed through from builder, not rendered in card)
+  sourcePackProposal?: {
+    name: string;
+    sources: Array<{
+      name: string;
+      domain: string;
+      category: string;
+      qualityScore: number;
+      reason: string;
+    }>;
+  };
+  intelligenceQueries?: Array<{
+    query: string;
+    category: string;
+    reason: string;
+  }>;
+  intelligencePolicy?: {
+    holdingsAttention: number;
+    watchlistAttention: number;
+    discoveryAttention: number;
+    maxSignalsPerRun?: number;
+    maxArtifactReads?: number;
+    allowLiveSearch?: boolean;
+    liveSearchBudget?: number;
+  };
 };
 
 export type AgentConfigCardProps = ComponentProps<typeof Card> &

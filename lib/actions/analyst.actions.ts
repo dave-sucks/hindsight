@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
+import type { SourceCategory, QueryCategory, IntelligencePolicy } from "@/lib/intelligence/types";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -628,6 +630,31 @@ interface BuilderConfig {
   minMarketCapTier: "LARGE" | "MID" | "SMALL";
   watchlist?: string[];
   exclusionList?: string[];
+  // V3: Intelligence layer proposals from the builder
+  sourcePackProposal?: {
+    name: string;
+    sources: Array<{
+      name: string;
+      domain: string;
+      category: string;
+      qualityScore: number;
+      reason: string;
+    }>;
+  };
+  intelligenceQueries?: Array<{
+    query: string;
+    category: string;
+    reason: string;
+  }>;
+  intelligencePolicy?: {
+    holdingsAttention: number;
+    watchlistAttention: number;
+    discoveryAttention: number;
+    maxSignalsPerRun?: number;
+    maxArtifactReads?: number;
+    allowLiveSearch?: boolean;
+    liveSearchBudget?: number;
+  };
 }
 
 export async function createAnalystFromBuilder(
@@ -672,6 +699,21 @@ export async function createAnalystFromBuilder(
     }
   }
 
+  // Build intelligence policy from builder proposal, merging with defaults
+  const policyInput = data.intelligencePolicy;
+  const intelligencePolicy: IntelligencePolicy = {
+    ...DEFAULT_INTELLIGENCE_POLICY,
+    ...(policyInput ? {
+      holdingsAttention: policyInput.holdingsAttention,
+      watchlistAttention: policyInput.watchlistAttention,
+      discoveryAttention: policyInput.discoveryAttention,
+      ...(policyInput.maxSignalsPerRun != null ? { maxSignalsPerRun: policyInput.maxSignalsPerRun } : {}),
+      ...(policyInput.maxArtifactReads != null ? { maxArtifactReads: policyInput.maxArtifactReads } : {}),
+      ...(policyInput.allowLiveSearch != null ? { allowLiveSearch: policyInput.allowLiveSearch } : {}),
+      ...(policyInput.liveSearchBudget != null ? { liveSearchBudget: policyInput.liveSearchBudget } : {}),
+    } : {}),
+  };
+
   const analyst = await prisma.agentConfig.create({
     data: {
       userId,
@@ -703,6 +745,7 @@ export async function createAnalystFromBuilder(
       realMaxPosition: posSize,
       emailAlerts: true,
       weeklyDigestEnabled: true,
+      intelligencePolicy: intelligencePolicy as unknown as object,
     },
   });
 
@@ -736,7 +779,93 @@ export async function createAnalystFromBuilder(
     console.log(`[analyst] Created ${watchlistSymbols.length} watchlist items (legacy format) for analyst ${analyst.id}`);
   }
 
-  console.log(`[analyst] Created analyst id=${analyst.id} name="${name}"`);
+  // ── V3: Create source pack from builder proposal ──────────────────────
+  if (data.sourcePackProposal && data.sourcePackProposal.sources.length > 0) {
+    try {
+      const proposal = data.sourcePackProposal;
+
+      // Create the SourcePack
+      const sourcePack = await prisma.sourcePack.create({
+        data: {
+          name: proposal.name || `${name} Intelligence Pack`,
+          scope: "ANALYST",
+          analystId: analyst.id,
+        },
+      });
+
+      // Create or find Sources, then link to pack
+      for (const src of proposal.sources) {
+        const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
+          .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
+
+        // Upsert source by domain (avoid duplicates across analysts)
+        let source = await prisma.source.findFirst({
+          where: { domain: src.domain },
+        });
+
+        if (!source) {
+          source = await prisma.source.create({
+            data: {
+              name: src.name,
+              type: "DOMAIN",
+              url: `https://${src.domain}`,
+              domain: src.domain,
+              category: validCategory,
+              qualityScore: Math.min(5, Math.max(1, Math.round(src.qualityScore))),
+              checkFrequency: "DAILY",
+              enabled: true,
+            },
+          });
+        }
+
+        // Link source to pack
+        await prisma.sourcePackSource.create({
+          data: {
+            packId: sourcePack.id,
+            sourceId: source.id,
+            priority: src.qualityScore >= 4 ? 1 : 2,
+          },
+        }).catch(() => {
+          // Ignore duplicate key errors (source already in pack)
+        });
+      }
+
+      // Link primary source pack to analyst config
+      await prisma.agentConfig.update({
+        where: { id: analyst.id },
+        data: { primarySourcePackId: sourcePack.id },
+      });
+
+      console.log(`[analyst] Created source pack "${sourcePack.name}" with ${proposal.sources.length} sources for analyst ${analyst.id}`);
+    } catch (spErr) {
+      console.error("[analyst] Failed to create source pack (non-fatal):", spErr);
+    }
+  }
+
+  // ── V3: Create intelligence queries from builder proposal ────────────
+  if (data.intelligenceQueries && data.intelligenceQueries.length > 0) {
+    try {
+      const queryRows = data.intelligenceQueries.map((q) => {
+        const validCategory = (["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"] as const)
+          .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
+        return {
+          scope: "ANALYST" as const,
+          analystId: analyst.id,
+          query: q.query,
+          category: validCategory,
+          enabled: true,
+          createdBy: "ANALYST_BUILDER" as const,
+        };
+      });
+
+      await prisma.intelligenceQuery.createMany({ data: queryRows });
+      console.log(`[analyst] Created ${queryRows.length} intelligence queries for analyst ${analyst.id}`);
+    } catch (iqErr) {
+      console.error("[analyst] Failed to create intelligence queries (non-fatal):", iqErr);
+    }
+  }
+
+  console.log(`[analyst] Created analyst id=${analyst.id} name="${name}" policy.holdingsAttn=${intelligencePolicy.holdingsAttention} policy.discoveryAttn=${intelligencePolicy.discoveryAttention}`);
   revalidatePath("/analysts");
   return { id: analyst.id };
 }

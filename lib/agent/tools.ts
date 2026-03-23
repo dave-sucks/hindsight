@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import type { IntelligencePolicy } from "@/lib/intelligence/types";
 import type { MarketOverviewResult, MarketContextResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult, ScanCandidate, MarketTheme, ThemeDirection, DetectMarketThemesResult, ToolSource } from "@/lib/discovery/types";
 import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 
@@ -456,6 +457,7 @@ interface ToolContext {
   maxPositionSize?: number;
   maxOpenPositions?: number;
   alpacaCreds?: AlpacaCredentials; // per-user Alpaca credentials (falls back to env vars)
+  intelligencePolicy?: IntelligencePolicy; // V3: controls signal budgets, quality floors, search limits
 }
 
 // ── Tool timing helpers ─────────────────────────────────────────────────────
@@ -2807,15 +2809,30 @@ export function createResearchTools(ctx: ToolContext) {
         tickers: z.array(z.string()).optional().describe("Filter to signals mentioning these tickers"),
         themes: z.array(z.string()).optional().describe("Filter to signals with these themes (e.g. AI_CAPEX, FED_RATE_CUT)"),
         urgency: z.enum(["LOW", "MEDIUM", "HIGH", "BREAKING"]).optional().describe("Minimum urgency level"),
-        limit: z.number().optional().describe("Max signals to return (default 20)"),
+        limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy)"),
       }),
       execute: async ({ tickers, themes, urgency, limit = 20 }) => {
         if (!ctx.analystId) return { error: "No analyst context — cannot read signals" };
-        logToolStart("read_signals", ctx.runId, `tickers=${tickers?.join(",") ?? "all"} limit=${limit}`, stats);
 
+        // ── Apply intelligence policy constraints ──────────────────────
+        const policy = ctx.intelligencePolicy;
+        const policyMaxSignals = policy?.maxSignalsPerRun ?? 30;
+        const effectiveLimit = Math.min(limit, policyMaxSignals);
+
+        // Policy-enforced urgency floor: use the higher of caller urgency or policy minimum
         const urgencyOrder = ["LOW", "MEDIUM", "HIGH", "BREAKING"];
-        const minUrgencyIdx = urgency ? urgencyOrder.indexOf(urgency) : 0;
-        const validUrgencies = urgencyOrder.slice(minUrgencyIdx);
+        const callerMinIdx = urgency ? urgencyOrder.indexOf(urgency) : 0;
+        const policyMinIdx = policy?.minUrgency ? urgencyOrder.indexOf(policy.minUrgency) : 0;
+        const effectiveMinIdx = Math.max(callerMinIdx, policyMinIdx);
+        const validUrgencies = urgencyOrder.slice(effectiveMinIdx);
+
+        // Policy-enforced source quality floor
+        const minSourceQuality = policy?.minSourceQuality ?? 2;
+
+        // Policy-enforced excluded source categories
+        const excludedCategories = policy?.excludedSourceCategories ?? [];
+
+        logToolStart("read_signals", ctx.runId, `tickers=${tickers?.join(",") ?? "all"} limit=${effectiveLimit} minUrgency=${urgencyOrder[effectiveMinIdx]} minQuality=${minSourceQuality}`, stats);
 
         const routes = await prisma.analystSignalRoute.findMany({
           where: {
@@ -2824,27 +2841,56 @@ export function createResearchTools(ctx: ToolContext) {
             signal: {
               ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
               ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
-              ...(urgency ? { urgency: { in: validUrgencies } } : {}),
+              urgency: { in: validUrgencies },
+              sourceQuality: { gte: minSourceQuality },
             },
           },
           include: {
-            signal: true,
+            signal: {
+              include: {
+                artifact: {
+                  include: {
+                    source: { select: { category: true } },
+                  },
+                },
+              },
+            },
           },
           orderBy: { relevanceScore: "desc" },
-          take: limit,
+          // Fetch extra to account for category filtering in JS
+          take: effectiveLimit + excludedCategories.length * 5,
         });
 
+        // Filter out excluded source categories in application code
+        // (Prisma doesn't support deep nested NOT-IN on optional relations cleanly)
+        let filtered = routes;
+        if (excludedCategories.length > 0) {
+          filtered = routes.filter((r) => {
+            const sourceCategory = r.signal.artifact?.source?.category;
+            return !sourceCategory || !(excludedCategories as string[]).includes(sourceCategory);
+          });
+        }
+
+        // Apply effective limit after category filtering
+        const finalRoutes = filtered.slice(0, effectiveLimit);
+
         // Mark as READ
-        if (routes.length > 0) {
+        if (finalRoutes.length > 0) {
           await prisma.analystSignalRoute.updateMany({
-            where: { id: { in: routes.map((r) => r.id) } },
+            where: { id: { in: finalRoutes.map((r) => r.id) } },
             data: { status: "READ" },
           });
         }
 
         return {
-          count: routes.length,
-          signals: routes.map((r) => ({
+          count: finalRoutes.length,
+          policyApplied: {
+            maxSignals: policyMaxSignals,
+            minUrgency: urgencyOrder[effectiveMinIdx],
+            minSourceQuality,
+            excludedCategories,
+          },
+          signals: finalRoutes.map((r) => ({
             signalId: r.signal.id,
             type: r.signal.type,
             headline: r.signal.headline,

@@ -13,6 +13,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
+import { parseIntelligencePolicy, type IntelligencePolicy } from "@/lib/intelligence/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ export interface RunInput {
     daysHeld: number;
     lesson: string | null;
   }>;
+  intelligencePolicy: IntelligencePolicy;
 }
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
@@ -400,9 +402,14 @@ export async function buildRunInput(
     };
   });
 
+  // 9. Intelligence policy
+  const intelligencePolicy = parseIntelligencePolicy(
+    (config as Record<string, unknown>).intelligencePolicy
+  );
+
   // ── Structured load summary ────────────────────────────────────────
   console.log(
-    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)}`,
+    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
   );
 
   return {
@@ -447,5 +454,6 @@ export async function buildRunInput(
     priorBrief,
     performance,
     recentClosedTrades,
+    intelligencePolicy,
   };
 }
