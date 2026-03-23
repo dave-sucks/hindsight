@@ -1,9 +1,6 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Bot, ExternalLink } from "lucide-react";
 import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
 import { AlpacaKeyForm } from "@/components/settings/AlpacaKeyForm";
 
@@ -14,6 +11,7 @@ export default async function SettingsPage() {
   } = await supabase.auth.getUser();
 
   const alpacaStatus = await getApiKeyStatus("ALPACA");
+  const displayName = user?.user_metadata?.full_name ?? user?.email ?? "—";
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
@@ -33,15 +31,13 @@ export default async function SettingsPage() {
         <Card>
           <CardContent className="p-4 space-y-3">
             <div className="flex justify-between items-center py-2">
-              <span className="text-sm text-muted-foreground">Email</span>
-              <span className="text-sm tabular-nums">{user?.email ?? "—"}</span>
+              <span className="text-sm text-muted-foreground">Name</span>
+              <span className="text-sm">{displayName}</span>
             </div>
             <Separator />
             <div className="flex justify-between items-center py-2">
-              <span className="text-sm text-muted-foreground">User ID</span>
-              <span className="text-xs font-mono text-muted-foreground truncate max-w-[200px]">
-                {user?.id ?? "—"}
-              </span>
+              <span className="text-sm text-muted-foreground">Email</span>
+              <span className="text-sm">{user?.email ?? "—"}</span>
             </div>
           </CardContent>
         </Card>
@@ -53,35 +49,6 @@ export default async function SettingsPage() {
           API Keys
         </p>
         <AlpacaKeyForm initial={alpacaStatus} />
-      </div>
-
-      {/* Analysts → moved */}
-      <div className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Analysts
-        </p>
-        <Card>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Bot className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium">Manage Analysts</p>
-                <p className="text-xs text-muted-foreground">
-                  Create, configure, and review your AI analysts
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              render={<Link href="/analysts" />}
-              className="shrink-0"
-            >
-              Open
-              <ExternalLink className="h-3 w-3 ml-1" />
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

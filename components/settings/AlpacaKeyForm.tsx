@@ -13,7 +13,7 @@ import {
   reverifyApiKey,
   type ApiKeyStatus,
 } from "@/lib/actions/api-keys.actions";
-import { Key, Trash2, RefreshCw, CheckCircle2, XCircle, Eye, EyeOff } from "lucide-react";
+import { Trash2, RefreshCw, CheckCircle2, XCircle, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
@@ -100,7 +100,7 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
       <Card>
         <CardContent className="p-4 space-y-4">
           <div className="flex items-center gap-3">
-            <Key className="h-4 w-4 text-muted-foreground" />
+            <img src="/assets/icons/alpaca.svg" alt="Alpaca" className="h-8 w-8 rounded" />
             <div>
               <p className="text-sm font-medium">Alpaca Paper Trading</p>
               <p className="text-xs text-muted-foreground">
@@ -144,12 +144,12 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
             <p className="text-xs text-muted-foreground">
               Get your keys from{" "}
               <a
-                href="https://app.alpaca.markets/paper/dashboard/overview"
+                href="https://app.alpaca.markets/paper/account/management"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline"
               >
-                Alpaca Paper Dashboard
+                Alpaca Account Management
               </a>
             </p>
           </div>
@@ -184,7 +184,7 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Key className="h-4 w-4 text-muted-foreground" />
+            <img src="/assets/icons/alpaca.svg" alt="Alpaca" className="h-8 w-8 rounded" />
             <div>
               <p className="text-sm font-medium">Alpaca Paper Trading</p>
               <p className="text-xs text-muted-foreground">
