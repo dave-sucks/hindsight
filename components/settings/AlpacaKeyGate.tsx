@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Key } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { saveApiKey } from "@/lib/actions/api-keys.actions";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -60,7 +60,7 @@ export function AlpacaKeyGate({ hasKey }: { hasKey: boolean }) {
         <DialogHeader>
           <DialogTitle>
             <span className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
+              <img src="/assets/icons/alpaca.svg" alt="Alpaca" className="h-6 w-6 rounded" />
               Connect Alpaca Paper Trading
             </span>
           </DialogTitle>
