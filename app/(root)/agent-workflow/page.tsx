@@ -111,26 +111,26 @@ const CONFIG_STEPS: FlowStep[] = [
     phase: "Configuration",
     title: "Create an Analyst",
     icon: Sparkles,
-    badges: ["AI Builder", "GPT-4o", "8 tools"],
+    badges: ["AI Builder", "GPT-4o", "8 research tools", "Intelligence Setup"],
     summary:
-      "You describe your trading style in conversation — what sectors interest you, how much risk you want, what patterns catch your eye. The builder researches live market data to ground the strategy in reality, then writes a full analyst persona: strategy document, direction bias, sectors, confidence threshold, position sizing, and watchlist. Think of it like onboarding a new PM.",
+      "You describe your trading style in conversation — sectors, risk appetite, patterns that catch your eye. The builder researches live market data, then writes a full analyst persona: strategy document, direction bias, sectors, confidence threshold, position sizing, and watchlist. It also proposes a source pack (4-6 curated domain sources for daily monitoring), 3-5 intelligence queries for the morning sweep, and an intelligence policy controlling signal budgets and attention weights. Think of it like onboarding a new PM and setting up their Bloomberg terminal.",
     detailSheet: "analyst-builder",
   },
   {
     title: "The Analyst (AgentConfig)",
     icon: Bot,
-    badges: ["7 config fields", "Strategy prompt", "Watchlist"],
+    badges: ["Strategy prompt", "Watchlist", "Intelligence policy", "Source pack", "Queries"],
     summary:
-      "The output of the builder is a saved analyst profile. It has a name, a multi-paragraph strategy document (its playbook), direction bias (long-only, short-only, or both), hold durations, sector focus, minimum confidence to trade, max position size, and a watchlist of stocks to monitor. Each analyst builds its own track record — separate trades, separate performance stats, separate memory.",
+      "The output is a saved analyst profile with a name, multi-paragraph strategy document, direction bias, hold durations, sector focus, minimum confidence to trade, max position size, and a watchlist. It also has an intelligence policy (signal budgets, attention weights, quality floors), a linked source pack (domain sources monitored daily), and intelligence queries (permanent searches run every morning). Each analyst builds its own track record — separate trades, performance stats, and memory.",
   },
 ];
 
 const MANUAL_TRIGGER: FlowStep = {
   title: "Manual Run (you click Run)",
   icon: Play,
-  badges: ["Real-time streaming", "30 tool steps", "120s max"],
+  badges: ["Real-time streaming", "30 tool steps", "5 min max"],
   summary:
-    "You click \"Run\" on an analyst's page. The agent starts immediately — you watch it think, research, and trade in real time. Every tool call renders as a data card in the chat: market overview, stock analysis, thesis, trade confirmation. The whole session runs in your browser with a 120-second time limit and up to 30 tool calls.",
+    "You click \"Run\" on an analyst's page. The agent starts immediately — you watch it think, research, and trade in real time. Every tool call renders as a data card in the chat: intelligence signals, stock analysis, thesis, trade confirmation. The agent reads its morning brief and pre-gathered signals first, then researches and trades. Up to 30 tool calls with a 5-minute time limit.",
   detailSheet: "manual-run",
 };
 
@@ -146,20 +146,20 @@ const CRON_TRIGGER: FlowStep = {
 const POST_TRIGGER_STEPS: FlowStep[] = [
   {
     phase: "Research Session",
-    title: "8-phase research pipeline (13 tools)",
+    title: "8-phase research pipeline (16 tools)",
     icon: Search,
-    badges: ["Context", "Orient", "Holdings", "Watchlist", "Discover", "Synthesize", "Execute", "Wrap Up"],
+    badges: ["Check-in", "Intelligence", "Orient", "Holdings", "Watchlist", "Discover", "Synthesize", "Execute", "Wrap Up"],
     summary:
-      "Before the agent makes its first tool call, the system loads its full context: strategy rules, open positions with live P&L, watchlist, last briefing, trade history, and accuracy stats. Then the agent follows an 8-phase workflow — acknowledge portfolio, read the market, triage holdings, review watchlist, discover new opportunities, synthesize decisions at the portfolio level, execute trades and watchlist changes, and wrap up with ranked picks.",
+      "Before the agent's first tool call, the system loads its full context: strategy rules, intelligence policy, open positions with live P&L, watchlist, last briefing, trade history, and accuracy stats. The agent follows an 8-phase workflow — check in on portfolio, read pre-gathered intelligence (morning brief + signals), optionally orient with live market data, triage holdings, review watchlist, discover from signal-surfaced opportunities, synthesize decisions, execute, and wrap up.",
     detailSheet: "agent-run",
   },
   {
     phase: "Learning Loop",
-    title: "Post-run briefing agent (memory)",
+    title: "Post-run briefing agent (memory + queries)",
     icon: RotateCcw,
-    badges: ["Post-run", "GPT-4o", "Separate agent", "Feeds next session"],
+    badges: ["Post-run", "GPT-4o", "Separate agent", "Dynamic queries", "Feeds next session"],
     summary:
-      "After the research session ends, a separate briefing agent (GPT-4o) reads the full conversation transcript + portfolio state and writes a standup brief. It produces: narrative, strategy notes, market posture, watch-tomorrow items, unresolved items, and self-corrections. This is NOT self-reported by the analyst — it's an external review. The brief feeds into the next session's system prompt as the analyst's memory.",
+      "After the session ends, a separate briefing agent (GPT-4o) reads the full conversation transcript + portfolio state and writes a standup brief: narrative, strategy notes, market posture, watch-tomorrow items, unresolved items, and self-corrections. It also proposes 0-5 dynamic intelligence queries for things that need monitoring — these get added to the morning sweep pipeline automatically with expiration dates. The brief feeds into the next session as the analyst's memory.",
     detailSheet: "learning-loop",
   },
 ];
