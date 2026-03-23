@@ -2756,6 +2756,144 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
+    // ── V3 Intelligence Layer Tools ───────────────────────────────────────
+
+    read_morning_brief: tool({
+      description:
+        "Read today's pre-generated intelligence brief. Contains market context, portfolio alerts, watchlist updates, new opportunities, and risk flags — all gathered by background jobs before your session started. Call this in Phase 0 to understand what happened overnight.",
+      inputSchema: emptyParams,
+      execute: async () => {
+        if (!ctx.analystId) return { error: "No analyst context — cannot read brief" };
+        logToolStart("read_morning_brief", ctx.runId, undefined, stats);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const brief = await prisma.morningBrief.findUnique({
+          where: {
+            analystId_date: {
+              analystId: ctx.analystId,
+              date: today,
+            },
+          },
+        });
+
+        if (!brief) {
+          return {
+            available: false,
+            message: "No morning brief available for today. Intelligence jobs may not have run yet. Proceed with live research tools.",
+          };
+        }
+
+        return {
+          available: true,
+          date: brief.date.toISOString().slice(0, 10),
+          marketContext: brief.marketContext,
+          portfolioAlerts: brief.portfolioAlerts,
+          watchlistUpdates: brief.watchlistUpdates,
+          newOpportunities: brief.newOpportunities,
+          attentionPriority: brief.attentionPriority,
+          riskFlags: brief.riskFlags,
+          signalCount: brief.signalCount,
+          generatedAt: brief.generatedAt.toISOString(),
+        };
+      },
+    }),
+
+    read_signals: tool({
+      description:
+        "Read intelligence signals routed to you by background discovery jobs. Returns pre-gathered news, filings, earnings, social, and macro signals matched to your mandate. Filter by tickers, themes, or urgency. Signals are marked as READ after retrieval. Use this to understand what the intelligence pipeline found for you today.",
+      inputSchema: z.object({
+        tickers: z.array(z.string()).optional().describe("Filter to signals mentioning these tickers"),
+        themes: z.array(z.string()).optional().describe("Filter to signals with these themes (e.g. AI_CAPEX, FED_RATE_CUT)"),
+        urgency: z.enum(["LOW", "MEDIUM", "HIGH", "BREAKING"]).optional().describe("Minimum urgency level"),
+        limit: z.number().optional().describe("Max signals to return (default 20)"),
+      }),
+      execute: async ({ tickers, themes, urgency, limit = 20 }) => {
+        if (!ctx.analystId) return { error: "No analyst context — cannot read signals" };
+        logToolStart("read_signals", ctx.runId, `tickers=${tickers?.join(",") ?? "all"} limit=${limit}`, stats);
+
+        const urgencyOrder = ["LOW", "MEDIUM", "HIGH", "BREAKING"];
+        const minUrgencyIdx = urgency ? urgencyOrder.indexOf(urgency) : 0;
+        const validUrgencies = urgencyOrder.slice(minUrgencyIdx);
+
+        const routes = await prisma.analystSignalRoute.findMany({
+          where: {
+            analystId: ctx.analystId,
+            status: "PENDING",
+            signal: {
+              ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
+              ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
+              ...(urgency ? { urgency: { in: validUrgencies } } : {}),
+            },
+          },
+          include: {
+            signal: true,
+          },
+          orderBy: { relevanceScore: "desc" },
+          take: limit,
+        });
+
+        // Mark as READ
+        if (routes.length > 0) {
+          await prisma.analystSignalRoute.updateMany({
+            where: { id: { in: routes.map((r) => r.id) } },
+            data: { status: "READ" },
+          });
+        }
+
+        return {
+          count: routes.length,
+          signals: routes.map((r) => ({
+            signalId: r.signal.id,
+            type: r.signal.type,
+            headline: r.signal.headline,
+            summary: r.signal.summary,
+            tickers: r.signal.tickers,
+            themes: r.signal.themes,
+            sentiment: r.signal.sentiment,
+            urgency: r.signal.urgency,
+            freshness: r.signal.freshness,
+            sourceNames: r.signal.sourceNames,
+            sourceUrls: r.signal.sourceUrls,
+            relevanceScore: r.relevanceScore,
+            routeReason: r.routeReason,
+            artifactId: r.signal.artifactId,
+          })),
+        };
+      },
+    }),
+
+    read_artifact: tool({
+      description:
+        "Read the full extracted content of an article or document behind a signal. Use when a signal's headline is interesting and you want the full text. Takes an artifactId from a signal's artifactId field.",
+      inputSchema: z.object({
+        artifactId: z.string().describe("The artifact ID from a signal"),
+      }),
+      execute: async ({ artifactId }) => {
+        logToolStart("read_artifact", ctx.runId, `artifact=${artifactId}`, stats);
+
+        const artifact = await prisma.artifact.findUnique({
+          where: { id: artifactId },
+        });
+
+        if (!artifact) {
+          return { error: `Artifact ${artifactId} not found` };
+        }
+
+        return {
+          title: artifact.title,
+          url: artifact.url,
+          publishedAt: artifact.publishedAt?.toISOString() ?? null,
+          contentSummary: artifact.contentSummary,
+          contentMarkdown: artifact.contentMarkdown?.slice(0, 4000) ?? null, // cap to avoid token bloat
+          _sources: artifact.url
+            ? [{ title: artifact.title ?? "Source", url: artifact.url, provider: "Firecrawl", excerpt: artifact.contentSummary ?? "" }]
+            : [],
+        };
+      },
+    }),
+
   };
 
   // Backward-compat aliases for old persisted RunMessages that reference old tool names

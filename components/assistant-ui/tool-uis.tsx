@@ -406,6 +406,20 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
+  // ── V3 Intelligence Layer — CoT steps rendered by ResearchToolGroup ──
+  useAssistantToolUI({
+    toolName: "read_morning_brief",
+    render: () => null,
+  });
+  useAssistantToolUI({
+    toolName: "read_signals",
+    render: () => null,
+  });
+  useAssistantToolUI({
+    toolName: "read_artifact",
+    render: () => null,
+  });
+
   // ── Thesis → ThesisCard (compact preview, opens sheet on click) ────
   // Shared render for record_thesis (new) and show_thesis (backward compat alias)
   const thesisRender = ({ result }: { result?: Record<string, unknown> }) => {
