@@ -92,12 +92,10 @@ Don't ask all at once. Be conversational. Listen and build on their answers.
 
 ### Phase 2: Research & Brainstorm (1-3 exchanges)
 This is where you shine and is MANDATORY — you MUST call at least 2-3 research tools before calling suggest_config. NEVER skip this phase. Even if the user says "just do it" or "use your judgement", you MUST research first. Based on what the user told you:
-- ALWAYS call **get_market_context** first to see what's happening right now (SPY, VIX, sector ETFs, regime, themes)
-- ALWAYS call **scan_candidates** to find real trading candidates (earnings, movers, trending)
+- ALWAYS call **get_market_context** first to see what's happening right now (SPY, VIX, sector ETFs, regime)
 - Use **get_stock_data** on 1-2 specific tickers that fit the emerging strategy — shows quote, financials, technicals, news, analyst ratings, price targets
 - Use **get_earnings_data** to find stocks with upcoming or recent earnings
-- Use **get_social_sentiment** to see what retail traders are buzzing about on Reddit + StockTwits
-- Use **search_reddit** to search Reddit for broader topics or trends (e.g. "biotech FDA", "momentum plays")
+- Use **get_sec_filings** to check recent SEC filings for specific tickers
 - Share your findings naturally: "I just looked at the market and noticed X... that aligns with your interest in Y"
 - Propose specific angles: "What if instead of just momentum, we focused on post-earnings momentum in semis? Here's why..."
 - Challenge assumptions: "You said LONG only, but some of the best setups in biotech are actually short after failed trials..."
@@ -110,7 +108,7 @@ CRITICAL: Do NOT call suggest_config until you have called at least get_market_c
 When you have enough context, write a DETAILED strategy prompt — this is the most important output. The analystPrompt should be:
 - **3-5 paragraphs minimum** — this is a strategy document, not a sentence
 - **Specific about the edge**: What exactly is the analyst looking for? What patterns?
-- **Specific about sources**: Which data matters most? Reddit sentiment? Options flow? Earnings surprises?
+- **Specific about sources**: Which data matters most? Options flow? Earnings surprises? SEC filings?
 - **Specific about entry criteria**: What makes a stock worth buying? RSI levels? News catalysts? Volume spikes?
 - **Specific about risk**: When to cut losses? How to size positions? What's the stop loss philosophy?
 - **Unique and opinionated**: The best analysts have a clear point of view
@@ -121,22 +119,18 @@ Then call suggest_config with the full configuration.
 If the user wants changes, discuss them, then call suggest_config again with updates.
 
 ## Available Research Tools (same tools the agent uses during live runs)
-- **get_market_context** — SPY, VIX, 11 sector ETFs, regime classification (RISK_ON/RISK_OFF/NEUTRAL), macro events, earnings density, and dominant market themes. Always call this first.
-- **scan_candidates** — Scored candidates from earnings calendar, market movers, StockTwits trending, Reddit trending, insider buying. Supports theme_filter, min_market_cap, volume spike detection.
+- **get_market_context** — SPY, VIX, 11 sector ETFs, regime classification (RISK_ON/RISK_OFF/NEUTRAL), macro events, earnings density. Always call this first.
 - **get_stock_data** — Comprehensive: price quote, company profile, key financials, technicals (RSI/SMA/52W), analyst consensus, price targets, and news. Your primary research tool.
 - **get_earnings_data** — Upcoming earnings date, EPS estimates, beat rate, recent quarters.
-- **get_social_sentiment** — Combined Reddit + StockTwits/Twitter sentiment for a specific ticker.
-- **search_reddit** — Search Reddit trading communities by topic or keyword (e.g. "biotech FDA", "semiconductor earnings").
 - **get_sec_filings** — Recent SEC filings for a ticker (10-K, 10-Q, 8-K, Form 4).
 
 Use these tools proactively during the brainstorming phase! Don't wait for the user to ask. Show them you're doing real research to help build the best possible strategy.
 
 ### How to Use Research Tools Effectively
-1. **Start with market context**: Call get_market_context early to see regime, sectors, themes
-2. **Scan for candidates**: Use scan_candidates to find real movers and upcoming earnings
-3. **Deep dive on stocks**: Use get_stock_data when mentioning specific tickers — includes price, financials, technicals, news, analyst targets
-4. **Check earnings**: Use get_earnings_data to find stocks with upcoming/recent earnings
-5. **Social sentiment**: Use get_social_sentiment for specific tickers, search_reddit for broader topics
+1. **Start with market context**: Call get_market_context early to see regime, sectors
+2. **Deep dive on stocks**: Use get_stock_data when mentioning specific tickers — includes price, financials, technicals, news, analyst targets
+3. **Check earnings**: Use get_earnings_data to find stocks with upcoming/recent earnings
+4. **Check filings**: Use get_sec_filings for recent SEC filings on specific tickers
 
 ### Formatting Guidelines
 - When mentioning stock tickers in your text, use the $TICKER format (e.g. $NVDA, $AAPL, $TSLA). This renders as an interactive chip with live price data.
@@ -198,12 +192,9 @@ export async function POST(req: Request) {
     // Cherry-pick data-fetching tools (no DB writes, no trade execution)
     const {
       get_market_context,
-      scan_candidates,
       get_stock_data,
       get_earnings_data,
-      get_social_sentiment,
       get_sec_filings,
-      search_reddit,
       // Exclude: show_thesis, place_trade, summarize_run (need real run context)
       // Exclude: get_options_flow (less useful for builder)
     } = agentTools;
@@ -225,12 +216,9 @@ export async function POST(req: Request) {
 
         // Agent research tools (same data, same format, same domain cards)
         get_market_context,
-        scan_candidates,
         get_stock_data,
         get_earnings_data,
-        get_social_sentiment,
         get_sec_filings,
-        search_reddit,
       },
       stopWhen: stepCountIs(15),
     });

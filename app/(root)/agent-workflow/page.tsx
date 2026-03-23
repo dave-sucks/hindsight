@@ -146,7 +146,7 @@ const CRON_TRIGGER: FlowStep = {
 const POST_TRIGGER_STEPS: FlowStep[] = [
   {
     phase: "Research Session",
-    title: "8-phase research pipeline (13 tools)",
+    title: "8-phase research pipeline (10 tools)",
     icon: Search,
     badges: ["Context", "Orient", "Holdings", "Watchlist", "Discover", "Synthesize", "Execute", "Wrap Up"],
     summary:

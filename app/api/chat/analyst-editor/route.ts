@@ -111,11 +111,9 @@ When you notice potential improvements, suggest them:
 - "You're scanning all sectors but your strategy prompt only discusses tech — consider narrowing sectors or broadening the prompt"
 
 ## Available Research Tools (same tools the agent uses during live runs)
-- **get_market_context** — SPY, VIX, 11 sector ETFs, regime classification, macro events, earnings density, market themes
+- **get_market_context** — SPY, VIX, 11 sector ETFs, regime classification, macro events, earnings density
 - **get_stock_data** — Comprehensive: price quote, company profile, financials, technicals (RSI/SMA/52W), analyst consensus, price targets, news
 - **get_earnings_data** — Upcoming earnings date, EPS estimates, beat rate, recent quarters
-- **get_social_sentiment** — Combined Reddit + StockTwits/Twitter sentiment for a specific ticker
-- **search_reddit** — Search Reddit trading communities by topic or keyword
 
 Use these tools when the user's request benefits from current market context, but you don't need to use them for straightforward config changes.
 
@@ -152,8 +150,6 @@ export async function POST(req: Request) {
       get_market_context,
       get_stock_data,
       get_earnings_data,
-      get_social_sentiment,
-      search_reddit,
     } = agentTools;
 
     const result = streamText({
@@ -174,8 +170,6 @@ export async function POST(req: Request) {
         get_market_context,
         get_stock_data,
         get_earnings_data,
-        get_social_sentiment,
-        search_reddit,
       },
       stopWhen: stepCountIs(10),
     });

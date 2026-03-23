@@ -364,12 +364,6 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
-  // ── Scan candidates (now includes catalysts) ────
-  useAssistantToolUI({
-    toolName: "scan_candidates",
-    render: () => null,
-  });
-
   // ── Stock data → CoT only (rendered by ResearchToolGroup, no separate card) ──
   useAssistantToolUI({
     toolName: "get_stock_data",
@@ -388,21 +382,9 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
-  // ── Social sentiment (was: reddit + twitter) — CoT step ─────────────
-  useAssistantToolUI({
-    toolName: "get_social_sentiment",
-    render: () => null,
-  });
-
   // ── SEC Filings — rendered as CoT step by ResearchToolGroup ─────────
   useAssistantToolUI({
     toolName: "get_sec_filings",
-    render: () => null,
-  });
-
-  // ── Reddit search — rendered as CoT step by ResearchToolGroup ───────
-  useAssistantToolUI({
-    toolName: "search_reddit",
     render: () => null,
   });
 

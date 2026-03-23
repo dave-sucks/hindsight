@@ -101,21 +101,25 @@ Built for one user now, marketed later.
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools (14 tools in lib/agent/tools.ts)
-1. get_market_overview — SPY/VIX/sector ETFs via Finnhub
-2. scan_candidates — earnings + movers + StockTwits trending
-3. get_stock_data — quote + company profile + metrics
-4. get_technical_analysis — RSI, SMA20/50, 52W range, volume
-5. get_earnings_data — earnings calendar, EPS, beat rate
-6. get_unusual_options_flow — unusual options activity
-7. get_reddit_sentiment — Reddit sentiment (WSB, r/stocks)
-8. show_thesis — persist thesis to DB, render ThesisCard
-9. place_trade — Alpaca market order, create Trade + TradeEvent
-10. get_sec_filings — SEC EDGAR filings
-11. get_analyst_targets — FMP analyst consensus targets
-12. get_company_peers — peer comparison via Finnhub
-13. get_news_deep_dive — multi-source news + press releases
-14. summarize_run — mark run COMPLETE, render summary card
+## Agent Tools (lib/agent/tools.ts)
+### Intelligence Tools (read pre-gathered data)
+1. read_morning_brief — today's pre-generated intelligence brief
+2. read_signals — signals routed by background discovery jobs
+3. read_artifact — full extracted article/document behind a signal
+
+### Research Tools (live data validation)
+4. get_market_context — SPY/VIX/sector ETFs, macro events, regime
+5. get_stock_data — quote + company profile + financials + technicals + news
+6. get_earnings_data — earnings calendar, EPS, beat rate
+7. get_options_flow — put/call ratio, unusual contracts
+8. get_sec_filings — SEC EDGAR filings
+
+### Action Tools
+9. record_thesis — persist thesis to DB (LONG/SHORT/PASS)
+10. place_trade — Alpaca market order, create Trade + TradeEvent
+11. close_position — close an existing open position
+12. manage_watchlist — add/remove/update watchlist items
+13. complete_run — mark run COMPLETE with ranked picks
 
 ## Domain Components (components/domain/)
 - ThesisCard / ThesisArtifactSheet — thesis display + detail sheet
@@ -173,22 +177,9 @@ The agent run page (`/runs/[id]`) renders via:
 1. **page.tsx** checks `agentMode` + `RUNNING` → renders `<AgentThread>`
 2. **AgentThread** creates `DefaultChatTransport({ api: "/api/research/agent" })`
    + `useChatRuntime`, wraps in `AssistantRuntimeProvider`
-3. **useRegisterAgentToolUIs()** registers `useAssistantToolUI` for every tool:
-   - get_market_overview → MarketContextCard
-   - scan_candidates → ScanResultsCard
-   - get_stock_data → StockCard + PostList (carousel) for news
-   - get_technical_analysis → TechnicalCard
-   - get_earnings_data → EarningsCard
-   - get_options_flow → OptionsFlowCard
-   - get_reddit_sentiment → XPost cards
-   - get_twitter_sentiment → XPost cards
-   - get_sec_filings → SecFilingsCard
-   - get_analyst_targets → AnalystTargetsCard
-   - get_company_peers → PeersCard
-   - get_news_deep_dive → PostList (carousel)
-   - show_thesis → thesis pill + ThesisArtifactSheet
-   - place_trade → OrderConfirm (pending) / TradeCard (filled)
-   - summarize_run → RunSummaryCard
+3. **useRegisterAgentToolUIs()** registers `useAssistantToolUI` for every tool.
+   All research tools render as ChainOfThought steps via ResearchToolGroup.
+   Action tools render domain cards: ThesisCard, TradeCard, etc.
 4. Every tool UI shows a **ChainOfThought** loading state (pending) and
    a **SourceChips** footer (complete) with provider-specific citations.
 5. Quick replies appear after run completes via **QuickReplyComponent**.

@@ -105,8 +105,8 @@ For items needing review: \`get_stock_data\` → decide: INITIATE / WATCH (updat
 ### Phase 4: DISCOVER (2-8 steps, ALWAYS RUNS)
 Discovery is MANDATORY every session. Even in RISK_OFF or at max positions.
 
-Reduced scope when cautious: \`scan_candidates\` → pick 1-2 → \`get_stock_data\` + \`record_thesis\`
-Full scope otherwise: \`scan_candidates\` → pick 2-4 → \`get_stock_data\` + \`record_thesis\` each
+Reduced scope when cautious: pick 1-2 from signals → \`get_stock_data\` + \`record_thesis\`
+Full scope otherwise: pick 2-4 from signals → \`get_stock_data\` + \`record_thesis\` each
 
 ### Phase 5: SYNTHESIZE (no tools — YOUR CORE JOB)
 Write portfolio-level reasoning:
@@ -136,14 +136,11 @@ ALWAYS call \`complete_run\` as your LAST action with:
 A separate briefing agent reviews your full session afterward and writes the standup for your next run. You do NOT need to self-reflect, suggest what to watch tomorrow, or note self-corrections — just do your job and call \`complete_run\`.
 
 ## Tool Reference
-- **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, regime, themes. Start here.
-- **scan_candidates** — Multi-source candidate discovery (earnings, movers, trending, insider).
+- **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, regime. SKIP if morning brief is available.
 - **get_stock_data** — Quote, profile, financials, technicals, analyst consensus, news.
-- **get_social_sentiment** — Reddit + StockTwits retail sentiment.
 - **get_earnings_data** — Upcoming date, EPS estimates, beat rate.
 - **get_options_flow** — Put/call ratio, unusual contracts.
 - **get_sec_filings** — Recent SEC filings (10-K, 10-Q, 8-K, Form 4).
-- **search_reddit** — Broad topic search across trading subreddits.
 - **record_thesis** — Persist thesis to DB. Returns thesis_id. MANDATORY for every researched ticker.
 - **place_trade** — Execute paper trade via Alpaca. Requires thesis_id.
 - **close_position** — Close an existing open position by ticker.

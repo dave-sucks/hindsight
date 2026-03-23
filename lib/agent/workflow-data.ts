@@ -80,16 +80,10 @@ export const ANALYST_BUILDER_STEPS: FlowStep[] = [
     summary: "Before suggesting anything, the builder reads the market — SPY, VIX, 11 sector ETFs, macro events, market themes. It must research live data before proposing any strategy. It has access to 7 of the agent's research tools (it can't trade or write theses — it's just researching to inform the strategy).",
   },
   {
-    title: "Scan candidates",
-    icon: TrendingUp,
-    sources: ["Finnhub", "FMP", "StockTwits", "Reddit"],
-    summary: "Finds real candidate stocks with attached catalysts. This grounds the strategy in what's actually moving — a momentum strategy needs active momentum, an earnings strategy needs upcoming reports.",
-  },
-  {
     title: "Deep-dive specific stocks",
     icon: LineChart,
-    sources: ["Finnhub", "FMP", "Reddit", "SEC"],
-    summary: "For promising candidates, the builder can pull full stock data, social sentiment, earnings data, SEC filings, or search Reddit. Shows you what your analyst would actually find on a typical morning.",
+    sources: ["Finnhub", "FMP", "SEC"],
+    summary: "For promising candidates, the builder can pull full stock data, earnings data, SEC filings, and options flow. Shows you what your analyst would actually find on a typical morning.",
   },
   {
     phase: "Phase 3 — Craft Strategy",
@@ -134,7 +128,7 @@ export const MANUAL_RUN_DETAILS: DetailSection[] = [
   {
     heading: "How it differs from the daily cron",
     items: [
-      { label: "Same agent", value: "Same model (GPT-4.1), same 13 tools, same system prompt, same analyst memory. The research quality is identical." },
+      { label: "Same agent", value: "Same model (GPT-4.1), same 10 tools, same system prompt, same analyst memory. The research quality is identical." },
       { label: "Streaming", value: "Manual runs stream to your browser so you watch it happen. Cron runs execute on the server with no UI — you see the results after." },
       { label: "Position limits", value: "Manual runs give the agent the full max positions setting (e.g. 5). Cron runs calculate how many slots are left and only allow that many new positions." },
     ],
@@ -155,7 +149,7 @@ export const CRON_RUN_DETAILS: DetailSection[] = [
     items: [
       { label: "Schedule", value: "Every weekday at 8:00 AM Eastern, before the US market opens. Runs automatically — no human needed." },
       { label: "What happens", value: "The system finds all enabled analysts and runs each one sequentially. Each analyst gets its own full research session — just like clicking Run manually, but unattended." },
-      { label: "Same agent", value: "Same GPT-4.1 model, same 13 tools, same 8-phase workflow, same analyst memory. The only differences: it runs on the server (no streaming UI), each analyst gets a 4-minute time limit, and position slots are calculated automatically." },
+      { label: "Same agent", value: "Same GPT-4.1 model, same 10 tools, same 8-phase workflow, same analyst memory. The only differences: it runs on the server (no streaming UI), each analyst gets a 4-minute time limit, and position slots are calculated automatically." },
     ],
   },
   {

@@ -21,7 +21,6 @@ import {
   BarChart3,
   Calendar,
   FileText,
-  MessageCircle,
   Search,
   TrendingUp,
 } from "lucide-react";
@@ -215,51 +214,6 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
 
       if (lines.length === 0) return null;
       return <div className="space-y-1">{lines}</div>;
-    },
-  },
-
-  // ── Phase 4: Candidate Scan ───────────────────────────────────────────
-  scan_candidates: {
-    icon: Search,
-    sources: ["finnhub.io", "financialmodelingprep.com", "stocktwits.com"],
-    loadingLabel: () =>
-      "Scanning for trade candidates — checking earnings calendar, market movers, and social trends",
-    completeLabel: (_ticker, result) => {
-      const candidates = (result.candidates ?? []) as unknown[];
-      const total = (result.total_found as number) ?? candidates.length;
-      return `Found ${total} candidates from earnings, movers, and social trends`;
-    },
-    completeDescription: (_ticker, result) => {
-      const candidates = (result.candidates ?? []) as { ticker: string; score: number; sources: string[]; change_pct?: number; date?: string }[];
-      const sourcesQueried = (result.sources_queried ?? []) as string[];
-
-      return (
-        <div className="space-y-1.5">
-          {candidates.length > 0 && (
-            <div>
-              <span className="text-foreground">Top candidates:</span>{" "}
-              {candidates.map((c, i) => {
-                const changeColor = (c.change_pct ?? 0) >= 0 ? "text-emerald-500" : "text-red-500";
-                return (
-                  <span key={i}>
-                    {i > 0 && ", "}
-                    <span className="text-foreground">{c.ticker}</span>
-                    {c.change_pct != null && <span className={changeColor}> {fmtPct(c.change_pct)}</span>}
-                    {c.date && <span className="text-muted-foreground"> ({c.date})</span>}
-                    <span className="text-muted-foreground"> [{c.sources.join(", ")}]</span>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-          {/* Sources queried */}
-          {sourcesQueried.length > 0 && (
-            <div className="text-muted-foreground">
-              Searched: {sourcesQueried.join(", ")}
-            </div>
-          )}
-        </div>
-      );
     },
   },
 
@@ -466,34 +420,6 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
     },
   },
 
-  // ── Per-ticker: Social Sentiment (Reddit + StockTwits) ──────────────
-  get_social_sentiment: {
-    icon: MessageCircle,
-    sources: ["stocktwits.com", "reddit.com", "financialmodelingprep.com"],
-    loadingLabel: (ticker) =>
-      `Checking social sentiment for ${ticker}`,
-    completeLabel: (ticker, result) => {
-      const reddit = result.reddit as { mentions?: number; sentiment?: string } | null;
-      const stocktwits = result.stocktwits as { mentions?: number; sentiment?: string } | null;
-      const parts: string[] = [];
-      if (reddit?.mentions) parts.push(`Reddit: ${reddit.mentions} mentions, ${reddit.sentiment}`);
-      if (stocktwits?.mentions) parts.push(`StockTwits: ${stocktwits.mentions} posts, ${stocktwits.sentiment}`);
-      return parts.length > 0 ? `Social sentiment for ${ticker} — ${parts.join(" · ")}` : `No social data for ${ticker}`;
-    },
-  },
-
-  // ── Search Reddit ─────────────────────────────────────────────────────
-  search_reddit: {
-    icon: Search,
-    sources: ["reddit.com"],
-    loadingLabel: () => "Searching Reddit trading communities",
-    completeLabel: (_ticker, result) => {
-      const count = (result.results as unknown[] | undefined)?.length ?? 0;
-      const query = result.query as string || "topic";
-      return `Reddit search — ${count} results for "${query}"`;
-    },
-  },
-
   // ── Per-ticker: SEC Filings ───────────────────────────────────────────
   get_sec_filings: {
     icon: FileText,
@@ -614,7 +540,7 @@ export function ResearchToolGroup({
     ...new Set(stepParts.map((s) => extractTicker(s.args)).filter(Boolean)),
   ];
   const hasMarketTools = stepParts.some(
-    (s) => s.toolName === "get_market_context" || s.toolName === "scan_candidates",
+    (s) => s.toolName === "get_market_context",
   );
   const headerLabel =
     tickers.length === 1
