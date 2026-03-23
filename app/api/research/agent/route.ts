@@ -212,13 +212,14 @@ export async function POST(req: Request) {
         });
         if (currentRun?.status === "RUNNING") {
           console.warn(`[agent] ⚠️ Run ${runId} still RUNNING after onFinish (reason=${finishReason}). Agent may not have called complete_run.`);
-          // Don't auto-fail here — the agent might have completed normally without complete_run
-          // But log it so we can investigate
         }
 
         // Briefing agent: runs AFTER the research agent finishes.
         // Reads the full conversation (just persisted above) + portfolio state
         // and writes the standup brief for the next run.
+        // IMPORTANT: await directly instead of waitUntil — onFinish is already
+        // post-stream, and waitUntil from inside async callbacks may not register
+        // with Vercel's runtime, causing briefings to silently never complete.
         const briefingAnalystId = analystId || (await prisma.researchRun.findFirst({
           where: { id: runId },
           select: { agentConfigId: true },
@@ -226,18 +227,26 @@ export async function POST(req: Request) {
 
         if (briefingAnalystId) {
           console.log(`[agent] Launching briefing agent for run ${runId} analyst=${briefingAnalystId}`);
-          waitUntil(
-            updateAnalystBriefing({
+          try {
+            await updateAnalystBriefing({
               analystId: briefingAnalystId,
               runId,
               userId: user.id,
-            }).catch((err) =>
-              console.error("[agent] Briefing agent failed (non-fatal):", err)
-            )
-          );
+            });
+            console.log(`[agent] ✅ Briefing written for run ${runId}`);
+          } catch (err) {
+            console.error("[agent] Briefing agent failed (non-fatal):", err);
+          }
+        } else {
+          console.warn(`[agent] No analystId found for run ${runId} — briefing skipped`);
         }
       },
     });
+
+    // Register the stream's completion promise with waitUntil so Vercel keeps
+    // the function alive for onFinish (message persistence + briefing generation)
+    // after the streaming response is sent to the client.
+    waitUntil(result.response);
 
     return result.toUIMessageStreamResponse();
   } catch (err) {

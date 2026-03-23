@@ -788,6 +788,15 @@ export function createResearchTools(ctx: ToolContext) {
           score: 4,
         }));
 
+        // ── Quality filter: skip penny stocks, ADRs, special tickers ──
+        const MIN_PRICE = min_market_cap ? 1 : 5; // $5 floor unless user overrides
+        const isValidTicker = (sym: string, price?: number) => {
+          if (!sym || sym.length > 5) return false; // Skip long tickers (warrants, units)
+          if (/[^A-Z]/.test(sym)) return false; // Only uppercase alpha (no dots, dashes)
+          if (price != null && price < MIN_PRICE) return false; // Penny stock filter
+          return true;
+        };
+
         // Earnings calendar (30 days forward)
         const earningsTickers =
           (earnings as { earningsCalendar?: { symbol: string; date: string; epsEstimate: number | null }[] })
@@ -801,15 +810,6 @@ export function createResearchTools(ctx: ToolContext) {
               eps_estimate: e.epsEstimate,
               score: 3,
             })) ?? [];
-
-        // ── Quality filter: skip penny stocks, ADRs, special tickers ──
-        const MIN_PRICE = min_market_cap ? 1 : 5; // $5 floor unless user overrides
-        const isValidTicker = (sym: string, price?: number) => {
-          if (!sym || sym.length > 5) return false; // Skip long tickers (warrants, units)
-          if (/[^A-Z]/.test(sym)) return false; // Only uppercase alpha (no dots, dashes)
-          if (price != null && price < MIN_PRICE) return false; // Penny stock filter
-          return true;
-        };
 
         // Market movers
         const gainerTickers = Array.isArray(gainers)
