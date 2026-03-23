@@ -17,6 +17,7 @@ import {
   Sun,
   Moon,
   Workflow,
+  Radar,
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
 import { SidebarMarquee } from '@/components/MarketPulseStrip';
@@ -51,6 +52,7 @@ const NAV_LINKS = [
   { href: '/trades', label: 'Trades', icon: ArrowLeftRight },
   { href: '/performance', label: 'Performance', icon: BarChart3 },
   { href: '/stocks', label: 'Stocks', icon: TrendingUp },
+  { href: '/intelligence', label: 'Intelligence', icon: Radar },
 ];
 
 export default function AppSidebar({
