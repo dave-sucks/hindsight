@@ -10,7 +10,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
-import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount } from "@/lib/alpaca";
+import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
+import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import type { MarketOverviewResult, MarketContextResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult, ScanCandidate, MarketTheme, ThemeDirection, DetectMarketThemesResult, ToolSource } from "@/lib/discovery/types";
 import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 
@@ -454,6 +455,7 @@ interface ToolContext {
   sectors?: string[];
   maxPositionSize?: number;
   maxOpenPositions?: number;
+  alpacaCreds?: AlpacaCredentials; // per-user Alpaca credentials (falls back to env vars)
 }
 
 // ── Tool timing helpers ─────────────────────────────────────────────────────
@@ -1136,7 +1138,7 @@ export function createResearchTools(ctx: ToolContext) {
               techProvider = "Alpaca";
               const threeMonthsAgo = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
               const today = new Date().toISOString().slice(0, 10);
-              const alpacaBars = await getBars(ticker, { start: threeMonthsAgo, end: today });
+              const alpacaBars = await getBars(ticker, { start: threeMonthsAgo, end: today }, ctx.alpacaCreds);
               if (alpacaBars.length >= 14) {
                 candles = { s: "ok", c: alpacaBars.map((b) => b.close), v: alpacaBars.map((b) => b.volume) };
               }
@@ -1849,7 +1851,7 @@ export function createResearchTools(ctx: ToolContext) {
             symbol: args.ticker,
             qty: args.shares,
             side: args.direction === "LONG" ? "buy" : "sell",
-          });
+          }, ctx.alpacaCreds);
           console.log(`[tool] place_trade Alpaca order placed: ${alpacaOrder.id}`);
 
           // 2. Wait for fill (max 5s), fall back to entry price
@@ -1858,7 +1860,7 @@ export function createResearchTools(ctx: ToolContext) {
           let fillPrice = args.entry_price;
           const deadline = Date.now() + 5_000;
           while (Date.now() < deadline) {
-            const order = await getOrder(alpacaOrder.id);
+            const order = await getOrder(alpacaOrder.id, ctx.alpacaCreds);
             if (order.status === "filled" && order.filled_avg_price) {
               fillPrice = parseFloat(order.filled_avg_price);
               break;
@@ -1870,7 +1872,7 @@ export function createResearchTools(ctx: ToolContext) {
           }
           // If still not filled, try latest price
           if (fillPrice === args.entry_price) {
-            try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry_price */ }
+            try { fillPrice = await getLatestPrice(args.ticker, ctx.alpacaCreds); } catch { /* keep entry_price */ }
           }
 
           // 3. Create Position + Order + PositionEvent + TradeDecision + RunEvent in a single transaction
@@ -1997,7 +1999,7 @@ export function createResearchTools(ctx: ToolContext) {
             const currentOpenCount = await prisma.position.count({
               where: { analystId: analystId, status: "OPEN" },
             });
-            const postAccount = await getAccount();
+            const postAccount = await getAccount(ctx.alpacaCreds);
             portfolioUpdate = {
               remainingSlots: (ctx.maxOpenPositions ?? 5) - currentOpenCount,
               remainingBuyingPower: parseFloat(postAccount.buying_power),
@@ -2151,7 +2153,7 @@ export function createResearchTools(ctx: ToolContext) {
             const currentOpenCount = await prisma.position.count({
               where: { analystId: analystId, status: "OPEN" },
             });
-            const postAccount = await getAccount();
+            const postAccount = await getAccount(ctx.alpacaCreds);
             portfolioUpdate = {
               remainingSlots: (ctx.maxOpenPositions ?? 5) - currentOpenCount,
               remainingBuyingPower: parseFloat(postAccount.buying_power),

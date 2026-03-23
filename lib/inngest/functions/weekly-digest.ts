@@ -1,6 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices } from "@/lib/alpaca";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { Resend } from "resend";
 import { buildWeeklyDigestHtml } from "@/lib/emails/weekly-digest";
 import type {
@@ -142,7 +143,8 @@ export const weeklyDigest = inngest.createFunction(
         ];
         if (tickers.length === 0) return {} as Record<string, number>;
         try {
-          return await getLatestPrices(tickers);
+          const creds = await resolveAlpacaCredentials(config.userId) ?? undefined;
+          return await getLatestPrices(tickers, creds);
         } catch {
           return {} as Record<string, number>;
         }

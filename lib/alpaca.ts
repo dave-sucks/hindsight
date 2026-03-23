@@ -1,12 +1,24 @@
 /**
  * Alpaca Paper Trading Client
  * Wraps @alpacahq/alpaca-trade-api with full TypeScript types.
- * All operations target paper-api.alpaca.markets (fake money, real prices).
+ *
+ * Supports two credential modes:
+ * 1. Per-user credentials (AlpacaCredentials passed explicitly)
+ * 2. Env-var fallback (ALPACA_API_KEY / ALPACA_API_SECRET / ALPACA_BASE_URL)
+ *
+ * All exported functions accept an optional `creds` parameter.
+ * When omitted, falls back to env vars (backward-compatible).
  */
 
 import AlpacaAPI from "@alpacahq/alpaca-trade-api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface AlpacaCredentials {
+  keyId: string;
+  secretKey: string;
+  baseUrl?: string; // defaults to paper-api.alpaca.markets
+}
 
 export interface AlpacaAccount {
   id: string;
@@ -62,34 +74,48 @@ export interface LimitOrderParams extends OrderParams {
   limitPrice: number;
 }
 
-// ─── Client singleton ─────────────────────────────────────────────────────────
+// ─── Client factory ──────────────────────────────────────────────────────────
 
-function createClient(): AlpacaAPI {
+const PAPER_BASE_URL = "https://paper-api.alpaca.markets";
+
+function createClient(creds?: AlpacaCredentials): AlpacaAPI {
+  if (creds) {
+    return new AlpacaAPI({
+      keyId: creds.keyId,
+      secretKey: creds.secretKey,
+      baseUrl: creds.baseUrl || PAPER_BASE_URL,
+      paper: true,
+    });
+  }
+  // Env-var fallback (backward-compatible for crons / single-user)
   return new AlpacaAPI({
     keyId: process.env.ALPACA_API_KEY!,
     secretKey: process.env.ALPACA_API_SECRET!,
-    baseUrl: process.env.ALPACA_BASE_URL!, // https://paper-api.alpaca.markets
+    baseUrl: process.env.ALPACA_BASE_URL || PAPER_BASE_URL,
     paper: true,
   });
 }
 
-// Lazy singleton — safe for serverless (each invocation creates one)
-let _client: AlpacaAPI | null = null;
-function getClient(): AlpacaAPI {
-  if (!_client) _client = createClient();
-  return _client;
+// Lazy singleton for env-var mode only — safe for serverless
+let _envClient: AlpacaAPI | null = null;
+
+function getClient(creds?: AlpacaCredentials): AlpacaAPI {
+  if (creds) return createClient(creds);
+  if (!_envClient) _envClient = createClient();
+  return _envClient;
 }
 
 // ─── Account ──────────────────────────────────────────────────────────────────
 
-export async function getAccount(): Promise<AlpacaAccount> {
-  return (await getClient().getAccount()) as AlpacaAccount;
+export async function getAccount(creds?: AlpacaCredentials): Promise<AlpacaAccount> {
+  return (await getClient(creds).getAccount()) as AlpacaAccount;
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
 export async function placeMarketOrder(
-  params: OrderParams
+  params: OrderParams,
+  creds?: AlpacaCredentials,
 ): Promise<AlpacaOrder> {
   const order: Record<string, unknown> = {
     symbol: params.symbol,
@@ -104,13 +130,14 @@ export async function placeMarketOrder(
     order.qty = params.qty;
   }
 
-  return (await withTimeout(getClient().createOrder(order), `placeMarketOrder(${params.symbol})`)) as AlpacaOrder;
+  return (await withTimeout(getClient(creds).createOrder(order), `placeMarketOrder(${params.symbol})`)) as AlpacaOrder;
 }
 
 export async function placeLimitOrder(
-  params: LimitOrderParams
+  params: LimitOrderParams,
+  creds?: AlpacaCredentials,
 ): Promise<AlpacaOrder> {
-  return (await getClient().createOrder({
+  return (await getClient(creds).createOrder({
     symbol: params.symbol,
     qty: params.qty,
     side: params.side,
@@ -120,17 +147,18 @@ export async function placeLimitOrder(
   })) as AlpacaOrder;
 }
 
-export async function getOrder(orderId: string): Promise<AlpacaOrder> {
-  return (await withTimeout(getClient().getOrder(orderId), `getOrder(${orderId.slice(0, 8)})`)) as AlpacaOrder;
+export async function getOrder(orderId: string, creds?: AlpacaCredentials): Promise<AlpacaOrder> {
+  return (await withTimeout(getClient(creds).getOrder(orderId), `getOrder(${orderId.slice(0, 8)})`)) as AlpacaOrder;
 }
 
 // ─── Positions ────────────────────────────────────────────────────────────────
 
 export async function getPosition(
-  symbol: string
+  symbol: string,
+  creds?: AlpacaCredentials,
 ): Promise<AlpacaPosition | null> {
   try {
-    return (await getClient().getPosition(symbol)) as AlpacaPosition;
+    return (await getClient(creds).getPosition(symbol)) as AlpacaPosition;
   } catch (err: unknown) {
     // Alpaca returns 404 when no position exists
     const e = err as { statusCode?: number };
@@ -139,20 +167,20 @@ export async function getPosition(
   }
 }
 
-export async function getAllPositions(): Promise<AlpacaPosition[]> {
-  return (await getClient().getPositions()) as AlpacaPosition[];
+export async function getAllPositions(creds?: AlpacaCredentials): Promise<AlpacaPosition[]> {
+  return (await getClient(creds).getPositions()) as AlpacaPosition[];
 }
 
-export async function closePosition(symbol: string): Promise<AlpacaOrder> {
-  return (await getClient().closePosition(symbol)) as AlpacaOrder;
+export async function closePosition(symbol: string, creds?: AlpacaCredentials): Promise<AlpacaOrder> {
+  return (await getClient(creds).closePosition(symbol)) as AlpacaOrder;
 }
 
-export async function cancelOrder(orderId: string): Promise<void> {
-  await getClient().cancelOrder(orderId);
+export async function cancelOrder(orderId: string, creds?: AlpacaCredentials): Promise<void> {
+  await getClient(creds).cancelOrder(orderId);
 }
 
-export async function getOpenOrders(): Promise<AlpacaOrder[]> {
-  return (await getClient().getOrders({ status: "open" })) as AlpacaOrder[];
+export async function getOpenOrders(creds?: AlpacaCredentials): Promise<AlpacaOrder[]> {
+  return (await getClient(creds).getOrders({ status: "open" })) as AlpacaOrder[];
 }
 
 // ─── Timeout helper (Alpaca SDK doesn't support AbortSignal) ─────────────────
@@ -174,8 +202,8 @@ function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
  * Returns the latest trade price for a US equity symbol.
  * Uses Alpaca Data API v2 — real-time during market hours, last close after.
  */
-export async function getLatestPrice(symbol: string): Promise<number> {
-  const trade = await withTimeout(getClient().getLatestTrade(symbol), `getLatestPrice(${symbol})`);
+export async function getLatestPrice(symbol: string, creds?: AlpacaCredentials): Promise<number> {
+  const trade = await withTimeout(getClient(creds).getLatestTrade(symbol), `getLatestPrice(${symbol})`);
   // SDK v3 returns PascalCase fields: { Price, Size, Timestamp, ... }
   const t = trade as { Price?: number; p?: number };
   const price = t.Price ?? t.p;
@@ -189,9 +217,10 @@ export async function getLatestPrice(symbol: string): Promise<number> {
  * Returns latest prices for multiple symbols in one call.
  */
 export async function getLatestPrices(
-  symbols: string[]
+  symbols: string[],
+  creds?: AlpacaCredentials,
 ): Promise<Record<string, number>> {
-  const trades = await withTimeout(getClient().getLatestTrades(symbols), `getLatestPrices(${symbols.length} symbols)`);
+  const trades = await withTimeout(getClient(creds).getLatestTrades(symbols), `getLatestPrices(${symbols.length} symbols)`);
   const result: Record<string, number> = {};
   (trades as Map<string, { Price?: number; p?: number }>).forEach(
     (trade, symbol) => {
@@ -211,12 +240,13 @@ export async function getLatestPrices(
 export async function getBars(
   symbol: string,
   options: { start: string; end: string; timeframe?: string; limit?: number },
+  creds?: AlpacaCredentials,
 ): Promise<{ close: number; volume: number }[]> {
   const bars: { close: number; volume: number }[] = [];
 
   // Wrap entire iteration in a timeout since Alpaca SDK async iterators can hang
   const collectBars = async () => {
-    const barIterator = getClient().getBarsV2(symbol, {
+    const barIterator = getClient(creds).getBarsV2(symbol, {
       start: options.start,
       end: options.end,
       timeframe: options.timeframe || "1Day",

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -853,10 +854,11 @@ export async function deleteAnalyst(analystId: string): Promise<void> {
 
   // 3. Close any open Alpaca positions
   const { closePosition: closeAlpacaPos } = await import("@/lib/alpaca");
+  const creds = await resolveAlpacaCredentials(config.userId) ?? undefined;
   for (const pos of positions) {
     if (pos.status === "OPEN") {
       try {
-        await closeAlpacaPos(pos.symbol).catch(() => {});
+        await closeAlpacaPos(pos.symbol, creds).catch(() => {});
       } catch {
         // Best effort — position may not exist
       }

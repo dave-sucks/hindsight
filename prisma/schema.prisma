@@ -391,3 +391,29 @@ model AccuracyReport {
   @@index([userId])
   @@index([weekStartDate])
 }
+
+// ─── USER API KEYS ─────────────────────────────────────────────────────────
+// Stores encrypted third-party API credentials per user.
+// One row per (userId, provider) pair. Keys are AES-256-GCM encrypted at rest.
+
+model UserApiKey {
+  id             String   @id @default(cuid())
+  userId         String
+  provider       String   // "ALPACA" — extensible for future providers
+  label          String?  // user-friendly label, e.g. "My Paper Account"
+  // Encrypted fields — ciphertext + iv + authTag, base64-encoded
+  encryptedKey   String   // API key (encrypted)
+  encryptedSecret String  // API secret (encrypted)
+  keyHint        String?  // last 4 chars of key for display, e.g. "...a1b2"
+  // Alpaca-specific
+  paperMode      Boolean  @default(true)  // paper vs live (always paper for now)
+  baseUrl        String?  // custom base URL override
+  // Status
+  verified       Boolean  @default(false) // true after successful getAccount() call
+  verifiedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, provider])
+  @@index([userId])
+}

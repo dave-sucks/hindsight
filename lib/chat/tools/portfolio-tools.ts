@@ -8,14 +8,14 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getLatestPrices } from "@/lib/alpaca";
+import { getLatestPrices, type AlpacaCredentials } from "@/lib/alpaca";
 
 // ─── Tool factories ──────────────────────────────────────────────────────────
 
 /**
  * Creates portfolio/performance tools bound to the current user.
  */
-export function createPortfolioTools(userId: string) {
+export function createPortfolioTools(userId: string, alpacaCreds?: AlpacaCredentials) {
   return {
     portfolio_status: tool({
       description:
@@ -46,7 +46,7 @@ export function createPortfolioTools(userId: string) {
         let priceMap: Record<string, number> = {};
         if (tickers.length > 0) {
           try {
-            priceMap = await getLatestPrices(tickers);
+            priceMap = await getLatestPrices(tickers, alpacaCreds);
           } catch {
             // Fall back to entry prices
           }

@@ -9,7 +9,9 @@ import {
   getLatestPrice,
   getAllPositions,
   closePosition,
+  type AlpacaCredentials,
 } from "@/lib/alpaca";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
 export const maxDuration = 120;
 
@@ -61,6 +63,9 @@ export async function POST(req: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
+
+  // Resolve per-user Alpaca credentials
+  const alpacaCreds = await resolveAlpacaCredentials(user.id) ?? undefined;
 
   const { messages, runId, analystId } = await req.json();
   console.log(`[followup] POST runId=${runId} messages=${messages?.length ?? 0}`);
@@ -219,13 +224,13 @@ ${tradeSummary || "No trades placed in this run."}
             symbol: args.ticker,
             qty: args.shares,
             side: args.direction === "LONG" ? "buy" : "sell",
-          });
+          }, alpacaCreds);
 
           // Wait for fill
           let fillPrice = args.entry_price;
           const deadline = Date.now() + 10_000;
           while (Date.now() < deadline) {
-            const order = await getOrder(alpacaOrder.id);
+            const order = await getOrder(alpacaOrder.id, alpacaCreds);
             if (order.status === "filled" && order.filled_avg_price) {
               fillPrice = parseFloat(order.filled_avg_price);
               break;
@@ -236,7 +241,7 @@ ${tradeSummary || "No trades placed in this run."}
             await new Promise((r) => setTimeout(r, 1_000));
           }
           if (fillPrice === args.entry_price) {
-            try { fillPrice = await getLatestPrice(args.ticker); } catch { /* keep entry */ }
+            try { fillPrice = await getLatestPrice(args.ticker, alpacaCreds); } catch { /* keep entry */ }
           }
 
           // Find or create a thesis to link
@@ -354,7 +359,7 @@ ${tradeSummary || "No trades placed in this run."}
       execute: async ({ ticker }: { ticker: string }) => {
         console.log(`[followup] close_position ${ticker}`);
         try {
-          const order = await closePosition(ticker);
+          const order = await closePosition(ticker, alpacaCreds);
 
           // Update DB position record
           const position = await prisma.position.findFirst({
@@ -363,7 +368,7 @@ ${tradeSummary || "No trades placed in this run."}
           });
 
           let closePrice: number | null = null;
-          try { closePrice = await getLatestPrice(ticker); } catch { /* ok */ }
+          try { closePrice = await getLatestPrice(ticker, alpacaCreds); } catch { /* ok */ }
 
           if (position) {
             const pnl = closePrice
@@ -438,7 +443,7 @@ ${tradeSummary || "No trades placed in this run."}
       execute: async () => {
         console.log(`[followup] portfolio_status`);
         try {
-          const positions = await getAllPositions();
+          const positions = await getAllPositions(alpacaCreds);
           return {
             positions: positions.map((p) => ({
               ticker: p.symbol,

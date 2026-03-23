@@ -8,6 +8,7 @@ import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
 export const maxDuration = 300; // 5 min — agent makes 100+ API calls with retry logic
 
@@ -103,9 +104,12 @@ export async function POST(req: Request) {
       }
     }
 
+    // ── Resolve per-user Alpaca credentials (falls back to env vars) ────
+    const alpacaCreds = await resolveAlpacaCredentials(user.id) ?? undefined;
+
     // ── Build structured run input + system prompt ────────────────────────
     const runInput = resolvedAnalystId
-      ? await buildRunInput(resolvedAnalystId, user.id)
+      ? await buildRunInput(resolvedAnalystId, user.id, alpacaCreds)
       : null;
 
     if (runInput) {
@@ -150,6 +154,7 @@ export async function POST(req: Request) {
       sectors: (agentConfig.sectors as string[]) ?? [],
       maxPositionSize: (agentConfig.maxPositionSize as number) ?? undefined,
       maxOpenPositions: (agentConfig.maxOpenPositions as number) ?? undefined,
+      alpacaCreds,
     });
 
     const result = streamText({

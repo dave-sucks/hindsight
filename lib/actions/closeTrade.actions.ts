@@ -1,10 +1,11 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { closePosition as closeAlpacaPosition, getLatestPrice, cancelOrder } from "@/lib/alpaca";
+import { closePosition as closeAlpacaPosition, getLatestPrice, cancelOrder, type AlpacaCredentials } from "@/lib/alpaca";
 import { inngest } from "@/lib/inngest/client";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,8 @@ export interface ClosedPositionResult {
 export async function closeOpenPosition(
   positionId: string,
   reason: "TARGET" | "STOP" | "TIME" | "MANUAL",
-  closePriceOverride?: number
+  closePriceOverride?: number,
+  alpacaCreds?: AlpacaCredentials | null,
 ): Promise<ClosedPositionResult> {
   // 1. Load the position
   const position = await prisma.position.findUniqueOrThrow({
@@ -38,19 +40,22 @@ export async function closeOpenPosition(
     throw new Error(`Position ${positionId} is not OPEN (status: ${position.status})`);
   }
 
+  // Resolve per-user Alpaca credentials if not provided
+  const creds = alpacaCreds ?? await resolveAlpacaCredentials(position.userId) ?? undefined;
+
   // 2. Close the Alpaca paper position
   let closePrice = closePriceOverride;
 
   if (!closePrice) {
     try {
-      const alpacaOrder = await closeAlpacaPosition(position.symbol);
+      const alpacaOrder = await closeAlpacaPosition(position.symbol, creds);
       closePrice = alpacaOrder.filled_avg_price
         ? parseFloat(alpacaOrder.filled_avg_price)
-        : await getLatestPrice(position.symbol);
+        : await getLatestPrice(position.symbol, creds);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
       if (msg.includes("404") || msg.includes("position does not exist")) {
-        closePrice = await getLatestPrice(position.symbol);
+        closePrice = await getLatestPrice(position.symbol, creds);
       } else {
         throw err;
       }
@@ -160,6 +165,9 @@ export async function cancelPosition(positionId: string): Promise<void> {
     throw new Error(`Position ${positionId} is not OPEN (status: ${position.status})`);
   }
 
+  // Resolve per-user Alpaca credentials
+  const creds = await resolveAlpacaCredentials(position.userId) ?? undefined;
+
   // Cancel any pending Alpaca orders
   const pendingOrders = await prisma.order.findMany({
     where: { positionId, status: "PENDING" },
@@ -168,7 +176,7 @@ export async function cancelPosition(positionId: string): Promise<void> {
   for (const order of pendingOrders) {
     if (order.alpacaOrderId) {
       try {
-        await cancelOrder(order.alpacaOrderId);
+        await cancelOrder(order.alpacaOrderId, creds);
       } catch {
         // Order may already be filled or cancelled
       }

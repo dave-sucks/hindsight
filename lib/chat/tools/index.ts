@@ -7,6 +7,7 @@
 import { createTradingTools } from "./trading-tools";
 import { createResearchTools } from "./research-tools";
 import { createPortfolioTools } from "./portfolio-tools";
+import type { AlpacaCredentials } from "@/lib/alpaca";
 
 export { createTradingTools } from "./trading-tools";
 export { createResearchTools } from "./research-tools";
@@ -17,10 +18,10 @@ export { createPortfolioTools } from "./portfolio-tools";
  * Merges trading, research, and portfolio tools into a single object
  * ready to pass to streamText({ tools: ... }).
  */
-export function createAllTools(userId: string) {
+export function createAllTools(userId: string, alpacaCreds?: AlpacaCredentials) {
   return {
-    ...createTradingTools(userId),
+    ...createTradingTools(userId, alpacaCreds),
     ...createResearchTools(userId),
-    ...createPortfolioTools(userId),
+    ...createPortfolioTools(userId, alpacaCreds),
   };
 }
