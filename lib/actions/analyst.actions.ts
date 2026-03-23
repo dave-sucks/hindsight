@@ -714,97 +714,98 @@ export async function createAnalystFromBuilder(
     } : {}),
   };
 
-  const analyst = await prisma.agentConfig.create({
-    data: {
-      userId,
-      name,
-      description: data.description ?? "",
-      enabled: true,
-      analystPrompt: prompt,
-      markets: ["US_EQUITIES"],
-      exchanges: ["NASDAQ", "NYSE"],
-      sectors,
-      watchlist: watchlistSymbols,
-      exclusionList: Array.isArray(data.exclusionList) ? data.exclusionList : [],
-      maxPositionSize: posSize,
-      maxOpenPositions: maxPos,
-      minConfidence: minConf,
-      maxRiskPct: 2,
-      dailyLossLimit: 300,
-      holdDurations: holdDurs,
-      directionBias: bias,
-      signalTypes: signals,
-      minMarketCapTier: capTier,
-      scheduleTime: "08:00",
-      priceCheckFreq: "HOURLY",
-      weekendMode: false,
-      graduationWinRate: 0.65,
-      graduationMinTrades: 50,
-      graduationProfitFactor: 1.5,
-      realTradingEnabled: false,
-      realMaxPosition: posSize,
-      emailAlerts: true,
-      weeklyDigestEnabled: true,
-      intelligencePolicy: intelligencePolicy as unknown as object,
-    },
-  });
-
-  // Create structured watchlist items in the new table
-  if (structuredWatchlist.length > 0) {
-    await prisma.analystWatchlistItem.createMany({
-      data: structuredWatchlist.map((w) => ({
-        analystId: analyst.id,
+  // ── Transactional creation: analyst + watchlist + source pack + queries ──
+  // All intelligence setup is atomic — if source pack creation fails midway,
+  // the analyst still gets created but without a partial/broken intelligence setup.
+  const analyst = await prisma.$transaction(async (tx) => {
+    // 1. Create the analyst config (core record)
+    const newAnalyst = await tx.agentConfig.create({
+      data: {
         userId,
-        symbol: w.symbol,
-        reason: w.reason,
-        addedBy: "BUILDER",
-        priority: w.priority,
-        status: "ACTIVE",
-      })),
+        name,
+        description: data.description ?? "",
+        enabled: true,
+        analystPrompt: prompt,
+        markets: ["US_EQUITIES"],
+        exchanges: ["NASDAQ", "NYSE"],
+        sectors,
+        watchlist: watchlistSymbols,
+        exclusionList: Array.isArray(data.exclusionList) ? data.exclusionList : [],
+        maxPositionSize: posSize,
+        maxOpenPositions: maxPos,
+        minConfidence: minConf,
+        maxRiskPct: 2,
+        dailyLossLimit: 300,
+        holdDurations: holdDurs,
+        directionBias: bias,
+        signalTypes: signals,
+        minMarketCapTier: capTier,
+        scheduleTime: "08:00",
+        priceCheckFreq: "HOURLY",
+        weekendMode: false,
+        graduationWinRate: 0.65,
+        graduationMinTrades: 50,
+        graduationProfitFactor: 1.5,
+        realTradingEnabled: false,
+        realMaxPosition: posSize,
+        emailAlerts: true,
+        weeklyDigestEnabled: true,
+        intelligencePolicy: intelligencePolicy as unknown as object,
+      },
     });
-    console.log(`[analyst] Created ${structuredWatchlist.length} watchlist items for analyst ${analyst.id}`);
-  } else if (watchlistSymbols.length > 0) {
-    // Legacy format: create items with generic reason
-    await prisma.analystWatchlistItem.createMany({
-      data: watchlistSymbols.map((sym) => ({
-        analystId: analyst.id,
-        userId,
-        symbol: sym,
-        reason: "Added during analyst creation",
-        addedBy: "BUILDER",
-        priority: "NORMAL",
-        status: "ACTIVE",
-      })),
-    });
-    console.log(`[analyst] Created ${watchlistSymbols.length} watchlist items (legacy format) for analyst ${analyst.id}`);
-  }
 
-  // ── V3: Create source pack from builder proposal ──────────────────────
-  if (data.sourcePackProposal && data.sourcePackProposal.sources.length > 0) {
-    try {
+    // 2. Create structured watchlist items
+    if (structuredWatchlist.length > 0) {
+      await tx.analystWatchlistItem.createMany({
+        data: structuredWatchlist.map((w) => ({
+          analystId: newAnalyst.id,
+          userId,
+          symbol: w.symbol,
+          reason: w.reason,
+          addedBy: "BUILDER",
+          priority: w.priority,
+          status: "ACTIVE",
+        })),
+      });
+      console.log(`[analyst] Created ${structuredWatchlist.length} watchlist items for analyst ${newAnalyst.id}`);
+    } else if (watchlistSymbols.length > 0) {
+      await tx.analystWatchlistItem.createMany({
+        data: watchlistSymbols.map((sym) => ({
+          analystId: newAnalyst.id,
+          userId,
+          symbol: sym,
+          reason: "Added during analyst creation",
+          addedBy: "BUILDER",
+          priority: "NORMAL",
+          status: "ACTIVE",
+        })),
+      });
+      console.log(`[analyst] Created ${watchlistSymbols.length} watchlist items (legacy format) for analyst ${newAnalyst.id}`);
+    }
+
+    // 3. Create source pack + sources + links (all-or-nothing within tx)
+    if (data.sourcePackProposal && data.sourcePackProposal.sources.length > 0) {
       const proposal = data.sourcePackProposal;
 
-      // Create the SourcePack
-      const sourcePack = await prisma.sourcePack.create({
+      const sourcePack = await tx.sourcePack.create({
         data: {
           name: proposal.name || `${name} Intelligence Pack`,
           scope: "ANALYST",
-          analystId: analyst.id,
+          analystId: newAnalyst.id,
         },
       });
 
-      // Create or find Sources, then link to pack
       for (const src of proposal.sources) {
         const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
           .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
 
         // Upsert source by domain (avoid duplicates across analysts)
-        let source = await prisma.source.findFirst({
+        let source = await tx.source.findFirst({
           where: { domain: src.domain },
         });
 
         if (!source) {
-          source = await prisma.source.create({
+          source = await tx.source.create({
             data: {
               name: src.name,
               type: "DOMAIN",
@@ -818,39 +819,38 @@ export async function createAnalystFromBuilder(
           });
         }
 
-        // Link source to pack
-        await prisma.sourcePackSource.create({
-          data: {
-            packId: sourcePack.id,
-            sourceId: source.id,
-            priority: src.qualityScore >= 4 ? 1 : 2,
-          },
-        }).catch(() => {
-          // Ignore duplicate key errors (source already in pack)
+        // Link source to pack — skip if already linked (race condition guard)
+        const existing = await tx.sourcePackSource.findFirst({
+          where: { packId: sourcePack.id, sourceId: source.id },
         });
+        if (!existing) {
+          await tx.sourcePackSource.create({
+            data: {
+              packId: sourcePack.id,
+              sourceId: source.id,
+              priority: src.qualityScore >= 4 ? 1 : 2,
+            },
+          });
+        }
       }
 
       // Link primary source pack to analyst config
-      await prisma.agentConfig.update({
-        where: { id: analyst.id },
+      await tx.agentConfig.update({
+        where: { id: newAnalyst.id },
         data: { primarySourcePackId: sourcePack.id },
       });
 
-      console.log(`[analyst] Created source pack "${sourcePack.name}" with ${proposal.sources.length} sources for analyst ${analyst.id}`);
-    } catch (spErr) {
-      console.error("[analyst] Failed to create source pack (non-fatal):", spErr);
+      console.log(`[analyst] Created source pack "${sourcePack.name}" with ${proposal.sources.length} sources for analyst ${newAnalyst.id}`);
     }
-  }
 
-  // ── V3: Create intelligence queries from builder proposal ────────────
-  if (data.intelligenceQueries && data.intelligenceQueries.length > 0) {
-    try {
+    // 4. Create intelligence queries
+    if (data.intelligenceQueries && data.intelligenceQueries.length > 0) {
       const queryRows = data.intelligenceQueries.map((q) => {
         const validCategory = (["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"] as const)
           .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
         return {
           scope: "ANALYST" as const,
-          analystId: analyst.id,
+          analystId: newAnalyst.id,
           query: q.query,
           category: validCategory,
           enabled: true,
@@ -858,12 +858,12 @@ export async function createAnalystFromBuilder(
         };
       });
 
-      await prisma.intelligenceQuery.createMany({ data: queryRows });
-      console.log(`[analyst] Created ${queryRows.length} intelligence queries for analyst ${analyst.id}`);
-    } catch (iqErr) {
-      console.error("[analyst] Failed to create intelligence queries (non-fatal):", iqErr);
+      await tx.intelligenceQuery.createMany({ data: queryRows });
+      console.log(`[analyst] Created ${queryRows.length} intelligence queries for analyst ${newAnalyst.id}`);
     }
-  }
+
+    return newAnalyst;
+  });
 
   console.log(`[analyst] Created analyst id=${analyst.id} name="${name}" policy.holdingsAttn=${intelligencePolicy.holdingsAttention} policy.discoveryAttn=${intelligencePolicy.discoveryAttention}`);
   revalidatePath("/analysts");
