@@ -177,8 +177,221 @@ model AgentConfig {
   emailAlerts           Boolean  @default(true)
   weeklyDigestEnabled   Boolean  @default(true)
   digestEmail           String?  // override email for digest; uses auth email when null
+  // V3: Intelligence layer relations
+  sourcePacks           SourcePack[]
+  intelligenceQueries   IntelligenceQuery[]
+  signalRoutes          AnalystSignalRoute[]
+  morningBriefs         MorningBrief[]
+
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+// ─── V3: INTELLIGENCE LAYER ──────────────────────────────────────────────────
+// Persistent intelligence backbone: sources, signals, artifacts, monitoring.
+// Background jobs populate this layer; analyst runtime reads from it.
+
+/// A tracked information source — a domain, RSS feed, newsletter, etc.
+model Source {
+  id              String   @id @default(cuid())
+  name            String   // "Seeking Alpha", "STAT News", "Reuters"
+  type            String   // "DOMAIN" | "RSS" | "NEWSLETTER" | "TWITTER" | "API"
+  url             String?  // base URL or feed URL
+  domain          String?  // "seekingalpha.com" — used for Sonar domain filtering
+  category        String   // "MARKET" | "SECTOR" | "COMPANY" | "THEMATIC" | "SOCIAL" | "EVENT"
+  qualityScore    Int      @default(3)  // 1-5, used in signal scoring
+  checkFrequency  String   @default("DAILY") // "HOURLY" | "DAILY" | "WEEKLY"
+  enabled         Boolean  @default(true)
+  lastCheckedAt   DateTime?
+
+  packs           SourcePackSource[]
+  artifacts       Artifact[]
+  checkpoints     MonitorCheckpoint[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([domain])
+  @@index([category])
+}
+
+/// A curated bundle of sources — firm-wide or analyst-specific.
+model SourcePack {
+  id          String   @id @default(cuid())
+  name        String   // "Firm Market Pack", "Earnings Play Tech Pack"
+  scope       String   // "FIRM" | "ANALYST"
+  analystId   String?  // null for FIRM scope
+  analyst     AgentConfig? @relation(fields: [analystId], references: [id], onDelete: Cascade)
+
+  sources     SourcePackSource[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([scope])
+  @@index([analystId])
+}
+
+/// Join table: which sources belong to which packs, with priority.
+model SourcePackSource {
+  id           String     @id @default(cuid())
+  packId       String
+  sourceId     String
+  pack         SourcePack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  source       Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  priority     Int        @default(2) // 1=critical, 2=standard, 3=supplementary
+
+  @@unique([packId, sourceId])
+}
+
+/// A configurable search query that runs as part of the intelligence sweep.
+/// Can be firm-wide, analyst-specific, permanent, or temporary (from briefing agent).
+model IntelligenceQuery {
+  id          String    @id @default(cuid())
+  scope       String    // "FIRM" | "ANALYST"
+  analystId   String?
+  analyst     AgentConfig? @relation(fields: [analystId], references: [id], onDelete: Cascade)
+  query       String    // the actual search query text
+  category    String    // "MARKET" | "SECTOR" | "TICKER" | "THEMATIC" | "EVENT"
+  enabled     Boolean   @default(true)
+  expiresAt   DateTime? // null = permanent; set for temporary watches from briefing agent
+  createdBy   String    // "USER" | "BRIEFING_AGENT" | "ANALYST_BUILDER" | "ANALYST_RUNTIME"
+  sourceRunId String?   // which run/briefing created this (for dynamic queries)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([scope, enabled])
+  @@index([analystId])
+  @@index([expiresAt])
+}
+
+/// A raw piece of content extracted from the web — article, transcript, filing page.
+model Artifact {
+  id              String   @id @default(cuid())
+  sourceId        String?
+  source          Source?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  url             String
+  title           String
+  contentMarkdown String?  // full extracted content (Firecrawl output)
+  contentSummary  String?  // 2-3 sentence summary
+  contentHash     String   // SHA256 for dedup
+  publishedAt     DateTime?
+  fetchedAt       DateTime @default(now())
+
+  signals         Signal[]
+
+  @@index([contentHash])
+  @@index([url])
+  @@index([fetchedAt])
+}
+
+/// A normalized piece of evidence — the core unit of the intelligence layer.
+/// Created by background jobs from search results, articles, filings, etc.
+model Signal {
+  id             String   @id @default(cuid())
+  batchId        String
+  batch          SignalBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  artifactId     String?
+  artifact       Artifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+
+  type           String   // "NEWS" | "EARNINGS" | "FILING" | "SOCIAL" | "PRICE_ACTION" |
+                          // "ANALYST_NOTE" | "OPTIONS" | "MACRO" | "SECTOR"
+  headline       String
+  summary        String   // 2-3 sentences of structured evidence
+  evidence       String?  // supporting detail / key quote
+  tickers        String[] // mentioned tickers
+  themes         String[] // "AI_CAPEX", "FED_RATE_CUT", "EARNINGS_BEAT"
+  sectors        String[]
+
+  sentiment      String   // "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED"
+  noveltyScore   Int      @default(50)  // 0-100
+  urgency        String   @default("MEDIUM") // "LOW" | "MEDIUM" | "HIGH" | "BREAKING"
+  sourceQuality  Int      @default(3)  // 1-5 inherited from Source
+  freshness      String   // "BREAKING" | "TODAY" | "THIS_WEEK" | "OLDER"
+  sourceUrls     String[]
+  sourceNames    String[]
+
+  expiresAt      DateTime?
+  routes         AnalystSignalRoute[]
+
+  createdAt      DateTime @default(now())
+
+  @@index([tickers])
+  @@index([themes])
+  @@index([createdAt])
+  @@index([batchId])
+}
+
+/// A group of signals from one intelligence job run.
+model SignalBatch {
+  id          String    @id @default(cuid())
+  jobType     String    // "MARKET_SWEEP" | "PORTFOLIO_MONITOR" | "SOURCE_PACK" | "EMAIL_INGEST" | "MANUAL"
+  status      String    @default("RUNNING") // "RUNNING" | "COMPLETE" | "FAILED"
+  signalCount Int       @default(0)
+  metadata    Json?     // job-specific metadata (query count, sources checked, etc.)
+
+  signals     Signal[]
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+/// A signal routed to a specific analyst — the analyst's intelligence inbox.
+model AnalystSignalRoute {
+  id             String      @id @default(cuid())
+  analystId      String
+  analyst        AgentConfig @relation(fields: [analystId], references: [id], onDelete: Cascade)
+  signalId       String
+  signal         Signal      @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  relevanceScore Int         // 0-100
+  routeReason    String      // "ticker_match:AMD", "sector_match:TECH", "theme_match:AI_CAPEX"
+  status         String      @default("PENDING") // "PENDING" | "READ" | "ACTED_ON" | "DISMISSED"
+
+  routedAt       DateTime    @default(now())
+
+  @@index([analystId, status])
+  @@index([analystId, routedAt])
+  @@index([signalId])
+}
+
+/// Tracks "since last checked" state for sources and queries.
+/// Used by source pack monitor and portfolio monitor for change detection.
+model MonitorCheckpoint {
+  id              String   @id @default(cuid())
+  sourceId        String?
+  source          Source?  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  queryHash       String?  // SHA256 of query text, for monitoring saved queries
+  lastCheckedAt   DateTime
+  lastContentHash String?  // to detect changes
+  resultCount     Int      @default(0)
+  nextCheckAt     DateTime?
+
+  @@index([sourceId])
+  @@index([queryHash])
+}
+
+/// Pre-run intelligence summary generated per analyst each morning.
+/// Replaces the agent "rediscovering the world" — agent reads this and starts informed.
+model MorningBrief {
+  id                String      @id @default(cuid())
+  analystId         String
+  analyst           AgentConfig @relation(fields: [analystId], references: [id], onDelete: Cascade)
+  date              DateTime    @db.Date
+
+  marketContext     String      // 3-4 sentences on regime/themes
+  portfolioAlerts   Json        // [{ticker, alert, urgency, signalIds}]
+  watchlistUpdates  Json        // [{ticker, update, recommendation, signalIds}]
+  newOpportunities  Json        // [{headline, tickers, thesis_seed, signalIds}]
+  attentionPriority String[]    // ordered tickers to focus on today
+  riskFlags         String[]
+  signalCount       Int         @default(0)
+
+  generatedAt       DateTime    @default(now())
+
+  @@unique([analystId, date])
+  @@index([analystId])
+  @@index([date])
 }
 
 // ─── ANALYST WATCHLIST ─────────────────────────────────────────────────────
