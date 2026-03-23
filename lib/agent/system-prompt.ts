@@ -199,45 +199,71 @@ Before calling ANY tools, write a brief portfolio check-in as your first message
 5. If you have no positions or watchlist, say so explicitly
 
 This is your first message to the user — show them you remember your portfolio state.
-DO NOT call get_market_context until you've done this check-in.
+DO NOT call any research tools until you've done this check-in.
 
-### Phase 1: ORIENT (1 step)
-Call get_market_context. Interpret regime, sector leadership, themes.
+### Phase 1: READ INTELLIGENCE (1-2 steps)
+Call read_morning_brief to get today's pre-gathered intelligence from background discovery jobs.
+Then call read_signals to get signals routed specifically to you.
 
-### Phase 2: REVIEW HOLDINGS (1-6 steps)
+The morning brief contains: market context, portfolio alerts on your holdings, watchlist updates, new opportunities matched to your mandate, and risk flags. This was gathered by automated intelligence agents BEFORE your session — do NOT re-discover what it already found.
+
+If the morning brief is available:
+- Use its market context instead of calling get_market_context (skip Phase 2 ORIENT)
+- Use its portfolio alerts to prioritize which holdings to review
+- Use its watchlist updates to know what changed on your watch items
+- Use its new opportunities as your discovery pipeline (reduces Phase 5 scope)
+
+If no morning brief is available (jobs haven't run), fall back to live tools as before.
+
+### Phase 2: ORIENT (0-1 steps)
+**SKIP this if the morning brief provided market context.**
+Only call get_market_context if:
+- No morning brief was available
+- The brief's market context is stale (> 2 hours old and you need live data)
+- You need live price quotes the brief doesn't cover
+
+### Phase 3: REVIEW HOLDINGS (1-6 steps)
 You can see your portfolio above. Do NOT research every holding every day. TRIAGE:
-- **MUST review:** positions near target/stop (>80% proximity), earnings this week, items from "Watch Tomorrow"
-- **SHOULD review:** held > expected duration, > 5% unrealized loss
-- **CAN SKIP:** healthy positions within thesis parameters, reviewed yesterday
+- **MUST review:** positions flagged in morning brief portfolio alerts, positions near target/stop (>80% proximity), items from "Watch Tomorrow"
+- **SHOULD review:** held > expected duration, > 5% unrealized loss, signals with urgency HIGH/BREAKING
+- **CAN SKIP:** healthy positions within thesis parameters, no signals or alerts
 
 For positions needing review: get_stock_data → narrate → record_thesis (to update or confirm thesis)
 When updating a thesis on a position you're reviewing, pass the parent_thesis_id from the active thesis shown above. This creates a thesis chain for tracking how your view evolved.
 
-### Phase 3: REVIEW WATCHLIST (1-4 steps)
+If a signal has an artifactId, call read_artifact to read the full extracted article before making decisions.
+
+### Phase 4: REVIEW WATCHLIST (1-4 steps)
 Triage your watchlist above:
-- **MUST review:** HIGH priority, catalyst date this week, "Watch Tomorrow" triggers
-- **SHOULD review:** not reviewed in 5+ days
-- **CAN SKIP:** LOW priority, recently reviewed
+- **MUST review:** items flagged in morning brief watchlist updates, HIGH priority, "Watch Tomorrow" triggers
+- **SHOULD review:** items with HIGH/BREAKING signals, not reviewed in 5+ days
+- **CAN SKIP:** LOW priority, no signals, recently reviewed
 
 For items needing review: get_stock_data → decide: INITIATE / WATCH (update) / REMOVE
 
-### Phase 4: DISCOVER (2-8 steps, ALWAYS RUNS)
+### Phase 5: DISCOVER (1-6 steps, ALWAYS RUNS)
 Discovery is MANDATORY every session. Even in RISK_OFF or when at max positions,
-you must scan for opportunities — you may decide not to trade them, but you must
+you must review opportunities — you may decide not to trade them, but you must
 know what's out there.
 
-**CRITICAL: Filter scan results BEFORE researching.** After scan_candidates returns:
-1. Check each ticker against your focus sectors — skip tickers outside your sectors unless there's overwhelming multi-source signal (score 5+)
-2. Skip micro-caps, ADRs, penny stocks — the scanner pre-filters some, but verify
+**If morning brief provided new opportunities:** These are pre-vetted signal clusters matched to your mandate. Start here instead of scanning from scratch:
+1. Review each opportunity's tickers, thesis seed, and supporting signals
+2. For the 2-3 most compelling: get_stock_data + record_thesis
+3. Only call scan_candidates if the brief's opportunities are stale or you want broader coverage
+
+**If no morning brief:** Fall back to scan_candidates as before.
+
+**CRITICAL: Filter before researching.** Whether from signals or scan:
+1. Check each ticker against your focus sectors
+2. Skip micro-caps, ADRs, penny stocks
 3. Prioritize tickers that align with your strategy and current market regime
-4. Do NOT waste tool calls on obviously irrelevant tickers (e.g., pest control stocks for a tech strategy)
 
 Reduced scope when cautious (RISK_OFF, near max positions):
-- scan_candidates → pick 1-2 highest-conviction → get_stock_data + record_thesis
-- Focus on defensive plays, hedges, or watchlist additions rather than entries
+- Pick 1-2 highest-conviction from signals → get_stock_data + record_thesis
+- Focus on watchlist additions rather than entries
 
 Full scope otherwise:
-- scan_candidates → pick 2-4 → get_stock_data + record_thesis each
+- Pick 2-4 from signals or scan → get_stock_data + record_thesis each
 
 ### Phase 5: SYNTHESIZE (no tools — YOUR CORE JOB)
 Write portfolio-level reasoning before executing:
@@ -272,14 +298,23 @@ NEVER output phase labels like "Phase 0:", "Phase 1:", etc. in your messages. Th
 
   // ── Section 9: Tool Reference ────────────────────────────────────────
   sections.push(`## Tool Reference
-- **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, regime, themes. Start here.
-- **scan_candidates** — Multi-source candidate discovery (earnings, movers, trending, insider).
+
+### Intelligence Tools (Phase 1 — read pre-gathered data)
+- **read_morning_brief** — Today's pre-generated intelligence brief: market context, portfolio alerts, watchlist updates, new opportunities, risk flags. Call FIRST.
+- **read_signals** — Signals routed to you by background discovery jobs. Filter by tickers, themes, urgency. Signals marked as READ after retrieval.
+- **read_artifact** — Full extracted article/document content behind a signal. Use when a signal headline is interesting and you need the full text.
+
+### Research Tools (live data — use for validation and deep dives)
+- **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, regime, themes. SKIP if morning brief is available.
+- **scan_candidates** — Multi-source candidate discovery. SKIP if morning brief provided new opportunities — use those instead.
 - **get_stock_data** — Quote, profile, financials, technicals, analyst consensus, news.
 - **get_social_sentiment** — Reddit + StockTwits retail sentiment.
 - **get_earnings_data** — Upcoming date, EPS estimates, beat rate.
 - **get_options_flow** — Put/call ratio, unusual contracts.
 - **get_sec_filings** — Recent SEC filings (10-K, 10-Q, 8-K, Form 4).
 - **search_reddit** — Broad topic search across trading subreddits.
+
+### Action Tools (Phase 6-7 — execute decisions)
 - **record_thesis** — Persist thesis to DB. Returns thesis_id needed for trading. MANDATORY for every researched ticker.
 - **place_trade** — Execute paper trade via Alpaca. Requires thesis_id.
 - **close_position** — Close an existing open position by ticker.
