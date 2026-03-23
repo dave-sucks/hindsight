@@ -6,6 +6,12 @@ import { morningResearch } from "@/lib/inngest/functions/morning-research";
 import { eodEvaluation } from "@/lib/inngest/functions/eod-evaluation";
 import { weeklyDigest } from "@/lib/inngest/functions/weekly-digest";
 import { accuracyScorer } from "@/lib/inngest/functions/accuracy-scorer";
+// V3 Intelligence Layer
+import { firmMarketSweep } from "@/lib/inngest/functions/firm-market-sweep";
+import { portfolioWatchlistMonitor } from "@/lib/inngest/functions/portfolio-watchlist-monitor";
+import { sourcePackMonitor } from "@/lib/inngest/functions/source-pack-monitor";
+import { signalRouter } from "@/lib/inngest/functions/signal-router";
+import { morningBriefGenerator } from "@/lib/inngest/functions/morning-brief-generator";
 
 // morning-research runs a full agent (generateText with 30 tool steps)
 // inside a single step.run — needs extended timeout to avoid Vercel killing it
@@ -13,5 +19,19 @@ export const maxDuration = 300; // 5 min — covers multi-step agent runs
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [priceMonitor, evaluateTrade, morningResearch, eodEvaluation, weeklyDigest, accuracyScorer],
+  functions: [
+    // Existing
+    priceMonitor,
+    evaluateTrade,
+    morningResearch,
+    eodEvaluation,
+    weeklyDigest,
+    accuracyScorer,
+    // V3 Intelligence (run in order: 6:30 → 7:00 → 7:15 → 7:30 → 7:45 → 8:00 analyst runs)
+    firmMarketSweep,
+    portfolioWatchlistMonitor,
+    sourcePackMonitor,
+    signalRouter,
+    morningBriefGenerator,
+  ],
 });
