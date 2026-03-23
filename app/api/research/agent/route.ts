@@ -152,6 +152,12 @@ export async function POST(req: Request) {
       maxOpenPositions: (agentConfig.maxOpenPositions as number) ?? undefined,
     });
 
+    // Deferred promise: resolves when onFinish completes (including briefing).
+    // Registered with waitUntil() so Vercel keeps the function alive.
+    let resolveOnFinish: () => void;
+    const onFinishComplete = new Promise<void>((r) => { resolveOnFinish = r; });
+    waitUntil(onFinishComplete);
+
     const result = streamText({
       model: openai("gpt-4.1"),
       system: systemPrompt,
@@ -183,7 +189,7 @@ export async function POST(req: Request) {
         console.log(`[agent] ✅ onFinish runId=${runId} elapsed=${elapsed}ms reason=${finishReason} totalTokens=${usage?.totalTokens ?? "?"} responseMsgs=${response.messages.length}`);
 
         // Persist all messages from this exchange so the conversation can be replayed.
-        if (!runId) return;
+        if (!runId) { resolveOnFinish!(); return; }
         try {
           const allMessages = [...messages, ...response.messages];
           await prisma.runMessage.deleteMany({ where: { runId } });
@@ -235,13 +241,10 @@ export async function POST(req: Request) {
         } else {
           console.warn(`[agent] No analystId found for run ${runId} — briefing skipped`);
         }
+
+        resolveOnFinish!();
       },
     });
-
-    // Register the stream's completion promise with waitUntil so Vercel keeps
-    // the function alive for onFinish (message persistence + briefing generation)
-    // after the streaming response is sent to the client.
-    waitUntil(result.response);
 
     return result.toUIMessageStreamResponse();
   } catch (err) {
