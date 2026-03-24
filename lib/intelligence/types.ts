@@ -160,6 +160,101 @@ export const SONAR_SIGNAL_SCHEMA = {
   required: ["signals"],
 };
 
+// ── Intelligence Policy ─────────────────────────────────────────────────────
+// Per-analyst policy that controls how the intelligence layer feeds runtime.
+// Stored as JSON on AgentConfig.intelligencePolicy.
+
+export interface IntelligencePolicy {
+  // Discovery budget — caps how much the agent reads per run
+  maxSignalsPerRun: number;        // default 30 — max signals to surface via read_signals
+  maxArtifactReads: number;        // default 5 — full article reads per run
+
+  // Source category preferences — steer what types of intelligence get priority
+  preferredSourceCategories: SourceCategory[];  // e.g. ["SECTOR", "COMPANY"] — boost these
+  excludedSourceCategories: SourceCategory[];   // e.g. ["SOCIAL"] — never surface these
+
+  // Attention weighting — 0-1 floats controlling how signals are prioritized
+  // These feed into the signal router's relevance scoring.
+  holdingsAttention: number;       // weight for signals about current open positions
+  watchlistAttention: number;      // weight for signals about watchlist tickers
+  discoveryAttention: number;      // weight for new-opportunity signals (no existing position/watch)
+
+  // Live search permissions — controls whether the agent can do real-time searches
+  allowLiveSearch: boolean;        // default true — can the agent call live search tools?
+  liveSearchBudget: number;        // max live search calls per run, default 5
+
+  // Signal quality floor — minimum thresholds to surface a signal
+  minUrgency: SignalUrgency;       // default "LOW" — signals below this urgency are filtered
+  minSourceQuality: number;        // default 2 — minimum source quality score (1-5) to surface
+}
+
+/** Sensible defaults for new analysts — balanced attention, moderate budgets. */
+export const DEFAULT_INTELLIGENCE_POLICY: IntelligencePolicy = {
+  maxSignalsPerRun: 30,
+  maxArtifactReads: 5,
+  preferredSourceCategories: [],
+  excludedSourceCategories: [],
+  holdingsAttention: 0.4,
+  watchlistAttention: 0.35,
+  discoveryAttention: 0.25,
+  allowLiveSearch: true,
+  liveSearchBudget: 5,
+  minUrgency: "LOW",
+  minSourceQuality: 2,
+};
+
+/**
+ * Parse an IntelligencePolicy from a Prisma Json field.
+ * Returns defaults for any missing fields — safe to call on null/undefined.
+ */
+export function parseIntelligencePolicy(raw: unknown): IntelligencePolicy {
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_INTELLIGENCE_POLICY };
+  const obj = raw as Record<string, unknown>;
+  return {
+    maxSignalsPerRun: typeof obj.maxSignalsPerRun === "number" ? obj.maxSignalsPerRun : DEFAULT_INTELLIGENCE_POLICY.maxSignalsPerRun,
+    maxArtifactReads: typeof obj.maxArtifactReads === "number" ? obj.maxArtifactReads : DEFAULT_INTELLIGENCE_POLICY.maxArtifactReads,
+    preferredSourceCategories: Array.isArray(obj.preferredSourceCategories) ? obj.preferredSourceCategories as SourceCategory[] : DEFAULT_INTELLIGENCE_POLICY.preferredSourceCategories,
+    excludedSourceCategories: Array.isArray(obj.excludedSourceCategories) ? obj.excludedSourceCategories as SourceCategory[] : DEFAULT_INTELLIGENCE_POLICY.excludedSourceCategories,
+    holdingsAttention: typeof obj.holdingsAttention === "number" ? obj.holdingsAttention : DEFAULT_INTELLIGENCE_POLICY.holdingsAttention,
+    watchlistAttention: typeof obj.watchlistAttention === "number" ? obj.watchlistAttention : DEFAULT_INTELLIGENCE_POLICY.watchlistAttention,
+    discoveryAttention: typeof obj.discoveryAttention === "number" ? obj.discoveryAttention : DEFAULT_INTELLIGENCE_POLICY.discoveryAttention,
+    allowLiveSearch: typeof obj.allowLiveSearch === "boolean" ? obj.allowLiveSearch : DEFAULT_INTELLIGENCE_POLICY.allowLiveSearch,
+    liveSearchBudget: typeof obj.liveSearchBudget === "number" ? obj.liveSearchBudget : DEFAULT_INTELLIGENCE_POLICY.liveSearchBudget,
+    minUrgency: (["LOW", "MEDIUM", "HIGH", "BREAKING"] as const).includes(obj.minUrgency as SignalUrgency) ? obj.minUrgency as SignalUrgency : DEFAULT_INTELLIGENCE_POLICY.minUrgency,
+    minSourceQuality: typeof obj.minSourceQuality === "number" ? obj.minSourceQuality : DEFAULT_INTELLIGENCE_POLICY.minSourceQuality,
+  };
+}
+
+// ── Dynamic Query Types ─────────────────────────────────────────────────────
+// Output from the briefing agent's dynamic_queries section.
+
+export interface DynamicQueryOutput {
+  query: string;
+  category: QueryCategory;
+  reason: string;
+  expires_days: number;
+}
+
+// ── Source Pack Proposal Types ───────────────────────────────────────────────
+// Output from the analyst builder when proposing a source pack.
+
+export interface SourcePackProposal {
+  name: string;
+  sources: Array<{
+    name: string;
+    domain: string;
+    category: SourceCategory;
+    qualityScore: number;
+    reason: string;       // why this source matters for this analyst
+  }>;
+}
+
+export interface BuilderQueryProposal {
+  query: string;
+  category: QueryCategory;
+  reason: string;
+}
+
 // ── Morning Brief Types ─────────────────────────────────────────────────────
 // Structured output from the morning brief generator job.
 

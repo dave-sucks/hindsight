@@ -16,6 +16,7 @@ import { generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import type { DynamicQueryOutput } from "@/lib/intelligence/types";
 
 // ── Schema for the briefing agent's output ──────────────────────────────────
 
@@ -75,6 +76,28 @@ const briefingSchema = z.object({
     )
     .describe(
       "Behavioral patterns to correct. Be honest — the analyst can't see this prompt, only the output. Flag real issues."
+    ),
+  dynamicQueries: z
+    .array(
+      z.object({
+        query: z
+          .string()
+          .describe("A specific, searchable intelligence query. E.g. 'Tesla China manufacturing partnership developments', 'AMD data center GPU market share Q2 2026'"),
+        category: z
+          .enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"])
+          .describe("Query category — TICKER for company-specific, SECTOR for industry trends, THEMATIC for cross-cutting themes, EVENT for catalysts/dates, MARKET for macro"),
+        reason: z
+          .string()
+          .describe("Why this query matters — what gap it fills or what risk it monitors. Reference specific positions/watchlist items."),
+        expires_days: z
+          .number()
+          .min(1)
+          .max(30)
+          .describe("How many days this query should remain active. 3-7 for near-term catalysts, 14-30 for longer-term monitoring."),
+      })
+    )
+    .describe(
+      "Dynamic intelligence queries to add to the analyst's monitoring pipeline. These get picked up by the morning sweep job and generate signals automatically. Only propose queries for things NOT already covered by existing source packs or permanent queries. Focus on: unresolved research gaps from this session, upcoming catalysts that need monitoring, emerging themes the analyst identified but couldn't fully research, and risk factors on open positions that need tracking. 0-5 queries max."
     ),
 });
 
@@ -420,7 +443,23 @@ Rules:
 - watchTomorrow: derive from positions near targets/stops, catalysts mentioned in conversation, unfinished research
 - selfCorrections: look for REAL patterns — did the analyst over-concentrate? Chase momentum? Ignore risk flags? Skip watchlist items? If the previous briefing had selfCorrections, check if the analyst actually followed through
 - Build on the previous briefing — show progression of thinking, don't repeat the same observations
-- The narrative is the analyst's memory. Be specific enough that it can quote this brief next session.`;
+- The narrative is the analyst's memory. Be specific enough that it can quote this brief next session.
+
+## Dynamic Queries (Intelligence Pipeline)
+After writing the brief, identify specific things to MONITOR that the analyst's existing source packs and permanent queries don't already cover. These become temporary intelligence queries that the morning sweep job will execute automatically.
+
+Good dynamic queries:
+- "NVIDIA earnings guidance revision Q2 2026" — analyst flagged this but couldn't confirm during session
+- "FDA approval timeline for Eli Lilly GLP-1 competitor" — catalyst on a watchlist stock
+- "Semiconductor tariff impact China export controls" — macro risk affecting multiple holdings
+- "AMD Instinct MI400 benchmark comparisons" — competitive intel on a position
+
+Bad dynamic queries (don't create these):
+- "AAPL stock price" — too generic, already covered by portfolio monitoring
+- "tech sector news" — too broad, already in source packs
+- "market conditions" — already in firm-level morning sweep
+
+Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term catalysts, 7-14 for medium-term monitoring, up to 30 for longer tracking.`;
 
     const { object } = await generateObject({
       model: openai("gpt-4o"),
@@ -477,9 +516,34 @@ Rules:
       }
     }
 
+    // ── Persist dynamic queries to IntelligenceQuery table ────────────────
+    const dynamicQueries: DynamicQueryOutput[] = object.dynamicQueries ?? [];
+    if (dynamicQueries.length > 0) {
+      const now = new Date();
+      const queryRows = dynamicQueries.map((dq) => ({
+        scope: "ANALYST" as const,
+        analystId,
+        query: dq.query,
+        category: dq.category,
+        enabled: true,
+        expiresAt: new Date(now.getTime() + dq.expires_days * 24 * 60 * 60 * 1000),
+        createdBy: "BRIEFING_AGENT" as const,
+        sourceRunId: runId,
+      }));
+
+      try {
+        await prisma.intelligenceQuery.createMany({ data: queryRows });
+        console.log(
+          `[briefing] Created ${queryRows.length} dynamic queries for analyst ${config.name}: ${queryRows.map((q) => q.query.slice(0, 50)).join("; ")}`
+        );
+      } catch (queryErr) {
+        console.warn("[briefing] Failed to create dynamic queries (non-fatal):", queryErr);
+      }
+    }
+
     const elapsed = Date.now() - t0;
     console.log(
-      `[briefing] Created briefing for ${config.name} (${analystId}) runId=${runId} in ${elapsed}ms (briefing agent via GPT-4o)`
+      `[briefing] Created briefing for ${config.name} (${analystId}) runId=${runId} in ${elapsed}ms (briefing agent via GPT-4o, ${dynamicQueries.length} dynamic queries)`
     );
   } catch (err) {
     console.error(

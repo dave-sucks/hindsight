@@ -68,6 +68,50 @@ const configSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Tickers to never trade."),
+  // V3: Intelligence layer proposals
+  sourcePackProposal: z
+    .object({
+      name: z.string().describe("Source pack name, e.g. 'EV Industry Intelligence Pack'"),
+      sources: z
+        .array(
+          z.object({
+            name: z.string().describe("Source name, e.g. 'Electrek', 'InsideEVs', 'CNBC Autos'"),
+            domain: z.string().describe("Source domain, e.g. 'electrek.co', 'insideevs.com'"),
+            category: z.enum(["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"]).describe("Source category"),
+            qualityScore: z.number().min(1).max(5).describe("Source quality 1-5. Tier-1 financial press = 5, niche blogs = 2-3, social = 1-2"),
+            reason: z.string().describe("Why this source matters for this analyst's strategy"),
+          })
+        )
+        .min(4)
+        .max(6)
+        .describe("4-6 domain sources that are most relevant to this analyst's sector/strategy. Think like a research desk — what would a real analyst in this space read every day?"),
+    })
+    .optional()
+    .describe("A curated source pack proposal with 4-6 domain sources tailored to the analyst's strategy. The intelligence pipeline will monitor these sources daily and route relevant signals to this analyst."),
+  intelligenceQueries: z
+    .array(
+      z.object({
+        query: z.string().describe("A specific, searchable query, e.g. 'electric vehicle sales data and market share by manufacturer'"),
+        category: z.enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"]).describe("Query category"),
+        reason: z.string().describe("Why this query matters for the analyst's strategy"),
+      })
+    )
+    .min(3)
+    .max(5)
+    .optional()
+    .describe("3-5 permanent intelligence queries that define what this analyst monitors. These run daily in the morning sweep and generate signals. Think: what would this analyst Google every morning before the market opens?"),
+  intelligencePolicy: z
+    .object({
+      holdingsAttention: z.number().min(0).max(1).describe("Weight for signals about current positions. Aggressive traders = 0.3, conservative = 0.5"),
+      watchlistAttention: z.number().min(0).max(1).describe("Weight for watchlist signals. High for watchlist-driven strategies"),
+      discoveryAttention: z.number().min(0).max(1).describe("Weight for new opportunity signals. High for discovery-focused analysts"),
+      maxSignalsPerRun: z.number().min(10).max(100).optional().describe("Max signals per run. Default 30. Higher for broad mandates, lower for focused"),
+      maxArtifactReads: z.number().min(2).max(20).optional().describe("Max full article reads per run. Default 5"),
+      allowLiveSearch: z.boolean().optional().describe("Whether the agent can do live web searches. Default true"),
+      liveSearchBudget: z.number().min(0).max(20).optional().describe("Max live search calls per run. Default 5"),
+    })
+    .optional()
+    .describe("Intelligence policy tuned to the analyst's strategy. Aggressive discovery analysts get high discoveryAttention. Portfolio-focused analysts get high holdingsAttention. The three attention weights should sum to ~1.0."),
 });
 
 // ── System prompt ───────────────────────────────────────────────────────────────
@@ -158,10 +202,36 @@ Create short, memorable names that capture the analyst's personality:
 - "Biotech Catalyst Sniper" (sector + strategy)
 - "Contrarian Value Finder" (style + philosophy)
 
+## Intelligence Pipeline Integration (V3)
+When you call suggest_config, you MUST also propose:
+
+### Source Pack (sourcePackProposal)
+Think like a research desk manager setting up a new analyst's information feeds. What 4-6 domain sources would a REAL analyst in this space read every morning?
+- **Tier-1 financial press** (Reuters, Bloomberg, WSJ) — quality 4-5, category MARKET
+- **Sector-specific outlets** (Electrek for EV, STAT News for biotech, The Information for tech) — quality 3-4, category SECTOR
+- **Company-specific sources** (official investor relations, SEC filings, earnings call transcripts) — quality 4-5, category COMPANY
+- **Thematic/niche sources** (ARK Invest research for disruptive tech, FedWatch for macro) — quality 2-4, category THEMATIC
+
+The intelligence pipeline monitors these sources daily via Perplexity Sonar and routes relevant signals to the analyst before each run. Better sources = better intelligence = better trades.
+
+### Intelligence Queries (intelligenceQueries)
+3-5 permanent search queries that define what this analyst cares about. These run in the daily morning sweep.
+- Be SPECIFIC: "electric vehicle delivery numbers and production data by manufacturer" not "EV news"
+- Be STRATEGIC: queries should directly support the analyst's edge
+- Cover different angles: one about the sector landscape, one about key companies, one about catalysts/events
+
+### Intelligence Policy (intelligencePolicy)
+Tune the attention weights based on the analyst's style:
+- **Aggressive discovery analyst** (scanning for new plays): holdingsAttention=0.25, watchlistAttention=0.25, discoveryAttention=0.50
+- **Portfolio-focused analyst** (managing existing positions): holdingsAttention=0.50, watchlistAttention=0.30, discoveryAttention=0.20
+- **Balanced analyst**: holdingsAttention=0.40, watchlistAttention=0.35, discoveryAttention=0.25
+- **The three attention weights should sum to approximately 1.0**
+
 ## Important
 - NEVER call suggest_config without first calling at least get_market_context + one other research tool
 - Always call suggest_config with ALL required fields filled in
 - The analystPrompt field is the MOST important — make it thorough and specific
+- ALWAYS include sourcePackProposal, intelligenceQueries, and intelligencePolicy — these power the intelligence pipeline
 - Be conversational and enthusiastic — push the user to think deeper
 - This is paper trading (simulated) — remind users if they seem confused about real money
 - Use your research tools during brainstorming — don't just ask questions, bring data to the conversation
