@@ -65,6 +65,29 @@
   100% { transform: translateX(-50%); }
 }
 
+@keyframes analyst-blob-rotate {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+.analyst-gradient-blob {
+  position: absolute;
+  inset: -1rem;
+  opacity: 0.25;
+  filter: blur(2rem);
+  background: conic-gradient(
+    from 0deg,
+    var(--chart-1),
+    var(--chart-2),
+    var(--chart-3),
+    var(--chart-1)
+  );
+  animation: analyst-blob-rotate 8s linear infinite;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 /* ── Light (Nova) ───────────────────────────────────────────────── */
 :root {
   --radius: 0.625rem;
