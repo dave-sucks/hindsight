@@ -71,7 +71,13 @@ import {
   AlertTriangle,
   Eye,
   Layers,
+  Database,
+  FileText,
+  Info,
+  Router,
+  Users,
 } from "lucide-react"
+import { toast } from "sonner"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -193,6 +199,33 @@ const JOB_LABELS: Record<string, string> = {
 }
 
 type SignalFilter = "ALL" | "BREAKING" | "BULLISH" | "BEARISH" | "NEWS" | "EARNINGS"
+type SourceTypeFilter = "ALL" | "WEB" | "API"
+
+interface MorningBrief {
+  id: string
+  analystId: string
+  date: string
+  marketContext: string
+  portfolioAlerts: Array<{ ticker: string; alert: string; urgency: string; signalIds: string[] }>
+  watchlistUpdates: Array<{ ticker: string; update: string; recommendation: string; signalIds: string[] }>
+  newOpportunities: Array<{ headline: string; tickers: string[]; thesisSeed: string; signalIds: string[] }>
+  attentionPriority: string[]
+  riskFlags: string[]
+  signalCount: number
+  generatedAt: string
+  analyst: { id: string; name: string }
+}
+
+interface AnalystRouteInfo {
+  analystId: string
+  analystName: string
+  totalRoutes: number
+  high: number
+  medium: number
+  low: number
+  pending: number
+  read: number
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -207,6 +240,9 @@ export default function IntelligencePage() {
   const [triggerStatus, setTriggerStatus] = useState<Record<string, "idle" | "running" | "done" | "error">>({})
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null)
   const [signalFilter, setSignalFilter] = useState<SignalFilter>("ALL")
+  const [sourceTypeFilter, setSourceTypeFilter] = useState<SourceTypeFilter>("ALL")
+  const [briefs, setBriefs] = useState<MorningBrief[]>([])
+  const [routeInfo, setRouteInfo] = useState<AnalystRouteInfo[]>([])
 
   // Forms
   const [newQuery, setNewQuery] = useState("")
@@ -218,18 +254,22 @@ export default function IntelligencePage() {
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
     try {
-      const [q, s, p, sig, b] = await Promise.all([
+      const [q, s, p, sig, b, br, rt] = await Promise.all([
         fetchJSON<IntelligenceQuery[]>("/api/intelligence/queries"),
         fetchJSON<Source[]>("/api/intelligence/sources"),
         fetchJSON<SourcePack[]>("/api/intelligence/source-packs"),
         fetchJSON<Signal[]>("/api/intelligence/signals?limit=200"),
         fetchJSON<SignalBatch[]>("/api/intelligence/batches?limit=30"),
+        fetchJSON<MorningBrief[]>("/api/intelligence/briefs").catch(() => [] as MorningBrief[]),
+        fetchJSON<AnalystRouteInfo[]>("/api/intelligence/routes").catch(() => [] as AnalystRouteInfo[]),
       ])
       setQueries(q)
       setSources(s)
       setPacks(p)
       setSignals(sig)
       setBatches(b)
+      setBriefs(br)
+      setRouteInfo(rt)
     } catch (e) {
       console.error("Failed to load intelligence data", e)
     } finally {
@@ -243,14 +283,22 @@ export default function IntelligencePage() {
   // ── Computed ─────────────────────────────────────────────────────────────
 
   const filteredSignals = useMemo(() => {
-    if (signalFilter === "ALL") return signals
-    if (signalFilter === "BREAKING") return signals.filter((s) => s.urgency === "BREAKING" || s.urgency === "HIGH")
-    if (signalFilter === "BULLISH") return signals.filter((s) => s.sentiment === "BULLISH")
-    if (signalFilter === "BEARISH") return signals.filter((s) => s.sentiment === "BEARISH")
-    if (signalFilter === "NEWS") return signals.filter((s) => s.type === "NEWS")
-    if (signalFilter === "EARNINGS") return signals.filter((s) => s.type === "EARNINGS" || s.type === "FILING")
-    return signals
-  }, [signals, signalFilter])
+    let result = signals
+    // Source type filter
+    if (sourceTypeFilter === "API") {
+      result = result.filter((s) => s.sourceNames.some((n) => ["FMP", "Finnhub"].includes(n)))
+    } else if (sourceTypeFilter === "WEB") {
+      result = result.filter((s) => !s.sourceNames.some((n) => ["FMP", "Finnhub"].includes(n)))
+    }
+    // Existing filters
+    if (signalFilter === "ALL") return result
+    if (signalFilter === "BREAKING") return result.filter((s) => s.urgency === "BREAKING" || s.urgency === "HIGH")
+    if (signalFilter === "BULLISH") return result.filter((s) => s.sentiment === "BULLISH")
+    if (signalFilter === "BEARISH") return result.filter((s) => s.sentiment === "BEARISH")
+    if (signalFilter === "NEWS") return result.filter((s) => s.type === "NEWS")
+    if (signalFilter === "EARNINGS") return result.filter((s) => s.type === "EARNINGS" || s.type === "FILING")
+    return result
+  }, [signals, signalFilter, sourceTypeFilter])
 
   const stats = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10)
@@ -261,8 +309,10 @@ export default function IntelligencePage() {
     const bearish = todaySignals.filter((s) => s.sentiment === "BEARISH").length
     const uniqueTickers = new Set(todaySignals.flatMap((s) => s.tickers))
     const lastRun = batches.length > 0 ? batches[0] : null
-    return { todaySignals: todaySignals.length, todayRuns: todayBatches.length, breaking, bullish, bearish, uniqueTickers: uniqueTickers.size, lastRun }
-  }, [signals, batches])
+    const briefsGenerated = briefs.length
+    const signalsRouted = routeInfo.reduce((sum, r) => sum + r.totalRoutes, 0)
+    return { todaySignals: todaySignals.length, todayRuns: todayBatches.length, breaking, bullish, bearish, uniqueTickers: uniqueTickers.size, lastRun, briefsGenerated, signalsRouted }
+  }, [signals, batches, briefs, routeInfo])
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
@@ -302,10 +352,17 @@ export default function IntelligencePage() {
     setTriggerStatus((prev) => ({ ...prev, [job]: "running" }))
     try {
       const res = await fetch("/api/intelligence/trigger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job }) })
-      setTriggerStatus((prev) => ({ ...prev, [job]: res.ok ? "done" : "error" }))
+      if (res.ok) {
+        setTriggerStatus((prev) => ({ ...prev, [job]: "done" }))
+        toast.success("Job started", { description: "Check the Activity tab for progress" })
+      } else {
+        setTriggerStatus((prev) => ({ ...prev, [job]: "error" }))
+        toast.error("Failed to trigger job")
+      }
       setTimeout(() => loadData(true), 8000)
     } catch {
       setTriggerStatus((prev) => ({ ...prev, [job]: "error" }))
+      toast.error("Failed to trigger job")
     }
     setTimeout(() => { setTriggerStatus((prev) => ({ ...prev, [job]: "idle" })) }, 3000)
   }
@@ -349,13 +406,15 @@ export default function IntelligencePage() {
         </div>
 
         {/* ── Stats Strip ────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
           <StatCard label="Today's Signals" value={stats.todaySignals} />
           <StatCard label="Jobs Run" value={stats.todayRuns} />
           <StatCard label="Breaking / High" value={stats.breaking} alert={stats.breaking > 0} />
           <StatCard label="Bullish" value={stats.bullish} positive />
           <StatCard label="Bearish" value={stats.bearish} negative />
           <StatCard label="Tickers Covered" value={stats.uniqueTickers} />
+          <StatCard label="Briefs Generated" value={stats.briefsGenerated} />
+          <StatCard label="Signals Routed" value={stats.signalsRouted} />
         </div>
 
         {/* ── Triggers ───────────────────────────────────────────────── */}
@@ -408,6 +467,14 @@ export default function IntelligencePage() {
               <Zap className="h-3.5 w-3.5 mr-1.5" />
               Signals
             </TabsTrigger>
+            <TabsTrigger value="briefs">
+              <FileText className="h-3.5 w-3.5 mr-1.5" />
+              Briefs ({briefs.length})
+            </TabsTrigger>
+            <TabsTrigger value="routes">
+              <Router className="h-3.5 w-3.5 mr-1.5" />
+              Routes
+            </TabsTrigger>
             <TabsTrigger value="activity">
               <Activity className="h-3.5 w-3.5 mr-1.5" />
               Activity
@@ -428,7 +495,39 @@ export default function IntelligencePage() {
 
           {/* ── SIGNALS TAB ─────────────────────────────────────────── */}
           <TabsContent value="signals" className="mt-4 space-y-3">
-            {/* Filter row */}
+            {/* Section tooltip */}
+            <div className="flex items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger render={<span className="inline-flex" />}>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs">
+                  Intelligence gathered by background jobs. Each signal has a headline, tickers, sentiment, urgency, and source. Signals are routed to analysts based on relevance.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            {/* Source type filter */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/50 w-fit">
+                {(["ALL", "WEB", "API"] as SourceTypeFilter[]).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setSourceTypeFilter(f)}
+                    className={cn(
+                      "px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1",
+                      sourceTypeFilter === f
+                        ? "bg-background shadow-sm text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {f === "WEB" && <Globe className="h-3 w-3" />}
+                    {f === "API" && <Database className="h-3 w-3" />}
+                    {f === "ALL" ? "All Sources" : f === "WEB" ? "Web Search" : "API Data"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Signal type filter row */}
             <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/50 w-fit">
               {(["ALL", "BREAKING", "BULLISH", "BEARISH", "NEWS", "EARNINGS"] as SignalFilter[]).map((f) => (
                 <button
@@ -462,6 +561,71 @@ export default function IntelligencePage() {
                     Showing {filteredSignals.length} of {signals.length} signals
                   </p>
                 )}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ── BRIEFS TAB ──────────────────────────────────────────── */}
+          <TabsContent value="briefs" className="mt-4 space-y-3">
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex" />}>
+                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-xs">
+                Synthesized morning intelligence for each analyst. Generated from routed signals by GPT-4o-mini. The analyst reads this as their first tool call.
+              </TooltipContent>
+            </Tooltip>
+            {briefs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
+                <FileText className="h-8 w-8 opacity-30" />
+                <p className="text-sm font-medium mt-3">No briefs generated yet</p>
+                <p className="text-xs mt-1">Run the Router then Brief jobs to generate morning intelligence for each analyst</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {briefs.map((brief) => (
+                  <BriefCard key={brief.id} brief={brief} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ── ROUTES TAB ──────────────────────────────────────────── */}
+          <TabsContent value="routes" className="mt-4 space-y-3">
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex" />}>
+                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-xs">
+                Which signals were routed to which analyst, grouped by relevance score. High = 60+, Medium = 30-59, Low = under 30.
+              </TooltipContent>
+            </Tooltip>
+            {routeInfo.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
+                <Router className="h-8 w-8 opacity-30" />
+                <p className="text-sm font-medium mt-3">No routing data yet</p>
+                <p className="text-xs mt-1">Run the Signal Router job to route signals to analysts</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {routeInfo.map((ri) => (
+                  <Card key={ri.analystId}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">{ri.analystName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {ri.totalRoutes} signals routed ({ri.high} high relevance, {ri.medium} medium, {ri.low} low)
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {ri.pending > 0 && <Badge variant="secondary">{ri.pending} pending</Badge>}
+                          {ri.read > 0 && <Badge variant="outline">{ri.read} read</Badge>}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             )}
           </TabsContent>
@@ -542,6 +706,14 @@ export default function IntelligencePage() {
 
           {/* ── QUERIES TAB ─────────────────────────────────────────── */}
           <TabsContent value="queries" className="space-y-4 mt-4">
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex" />}>
+                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-xs">
+                Search strings sent to Perplexity Sonar every morning. Each query produces 3-8 signals. Add your own or let the briefing agent suggest them.
+              </TooltipContent>
+            </Tooltip>
             <Card>
               <CardContent className="p-4">
                 <div className="flex gap-2">
@@ -584,6 +756,14 @@ export default function IntelligencePage() {
 
           {/* ── SOURCES TAB ─────────────────────────────────────────── */}
           <TabsContent value="sources" className="space-y-4 mt-4">
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex" />}>
+                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-xs">
+                Domains and APIs that the intelligence pipeline monitors. Web sources are searched via Perplexity. API sources call Finnhub/FMP directly for structured data.
+              </TooltipContent>
+            </Tooltip>
             <Card>
               <CardContent className="p-4">
                 <div className="flex gap-2">
@@ -617,6 +797,14 @@ export default function IntelligencePage() {
 
           {/* ── PACKS TAB ───────────────────────────────────────────── */}
           <TabsContent value="packs" className="space-y-4 mt-4">
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex" />}>
+                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-xs">
+                Groups of sources assigned to the firm or specific analysts. The source pack monitor checks all sources in each pack daily.
+              </TooltipContent>
+            </Tooltip>
             {firmPacks.length > 0 && (
               <div className="space-y-3">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Firm Packs</p>
@@ -718,14 +906,21 @@ function SignalRow({ signal, onClick }: { signal: Signal; onClick: () => void })
             {/* Type */}
             <Badge variant="outline">{signal.type}</Badge>
 
-            {/* Source domains */}
-            {signal.sourceNames.slice(0, 2).map((name) => (
-              <span key={name} className="text-[11px] text-muted-foreground flex items-center gap-0.5">
-                <Globe className="h-2.5 w-2.5" />
-                {name}
+            {/* Source badge — API vs Web */}
+            {signal.sourceNames.some((n) => ["FMP", "Finnhub"].includes(n)) ? (
+              <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                <Database className="h-2.5 w-2.5" />
+                via {signal.sourceNames.find((n) => ["FMP", "Finnhub"].includes(n))} API
               </span>
-            ))}
-            {signal.sourceNames.length > 2 && (
+            ) : (
+              signal.sourceNames.slice(0, 2).map((name) => (
+                <span key={name} className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                  <Globe className="h-2.5 w-2.5" />
+                  via {name}
+                </span>
+              ))
+            )}
+            {!signal.sourceNames.some((n) => ["FMP", "Finnhub"].includes(n)) && signal.sourceNames.length > 2 && (
               <span className="text-[11px] text-muted-foreground">+{signal.sourceNames.length - 2} sources</span>
             )}
           </div>
@@ -914,6 +1109,7 @@ function QueryRow({ query, onToggle, onDelete }: { query: IntelligenceQuery; onT
 // ── Source Row ─────────────────────────────────────────────────────────────────
 
 function SourceRow({ source, onToggle, onDelete }: { source: Source; onToggle: (id: string, enabled: boolean) => void; onDelete: (id: string) => void }) {
+  const isApi = source.type === "API"
   return (
     <Card>
       <CardContent className="p-3 flex items-center gap-3">
@@ -922,11 +1118,17 @@ function SourceRow({ source, onToggle, onDelete }: { source: Source; onToggle: (
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">{source.name}</p>
             {source.domain && <span className="text-xs text-muted-foreground">{source.domain}</span>}
+            <Badge variant="outline">
+              {isApi ? <Database className="h-3 w-3 mr-0.5" /> : <Globe className="h-3 w-3 mr-0.5" />}
+              {isApi ? "API" : "WEB"}
+            </Badge>
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             <Badge variant="secondary">{source.category}</Badge>
             <span className="text-xs text-muted-foreground">{"★".repeat(source.qualityScore)}{"☆".repeat(5 - source.qualityScore)}</span>
             {source.lastCheckedAt && <span className="text-xs text-muted-foreground">Checked {relativeTime(source.lastCheckedAt)}</span>}
+            {isApi && <span className="text-xs text-muted-foreground">Produces structured data signals</span>}
+            {!isApi && source.domain && <span className="text-xs text-muted-foreground">Monitors: {source.domain}</span>}
           </div>
         </div>
         <AlertDialog>
@@ -944,6 +1146,62 @@ function SourceRow({ source, onToggle, onDelete }: { source: Source; onToggle: (
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Pack Card ─────────────────────────────────────────────────────────────────
+
+// ── Brief Card ─────────────────────────────────────────────────────────────────
+
+function BriefCard({ brief }: { brief: MorningBrief }) {
+  const alerts = brief.portfolioAlerts ?? []
+  const updates = brief.watchlistUpdates ?? []
+  const opportunities = brief.newOpportunities ?? []
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <p className="text-sm font-medium">{brief.analyst?.name ?? "Unknown Analyst"}</p>
+          </div>
+          <span className="text-xs text-muted-foreground tabular-nums">{relativeTime(brief.generatedAt)}</span>
+        </div>
+
+        {/* Market context */}
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Market Context</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">{brief.marketContext}</p>
+        </div>
+
+        {/* Counts row */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <Badge variant="secondary">{alerts.length} portfolio alert{alerts.length !== 1 ? "s" : ""}</Badge>
+          <Badge variant="secondary">{updates.length} watchlist update{updates.length !== 1 ? "s" : ""}</Badge>
+          <Badge variant="secondary">{opportunities.length} new opportunit{opportunities.length !== 1 ? "ies" : "y"}</Badge>
+          {brief.riskFlags.length > 0 && (
+            <Badge variant="outline">
+              <AlertTriangle className="h-3 w-3 mr-0.5" />
+              {brief.riskFlags.length} risk flag{brief.riskFlags.length !== 1 ? "s" : ""}
+            </Badge>
+          )}
+        </div>
+
+        {/* Attention priority */}
+        {brief.attentionPriority.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs text-muted-foreground">Focus:</span>
+            {brief.attentionPriority.map((t) => (
+              <Badge key={t} variant="secondary">${t}</Badge>
+            ))}
+          </div>
+        )}
+
+        {/* Signals consumed */}
+        <p className="text-xs text-muted-foreground">{brief.signalCount} signals synthesized into this brief</p>
       </CardContent>
     </Card>
   )

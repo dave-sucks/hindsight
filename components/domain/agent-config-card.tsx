@@ -37,7 +37,7 @@ export type AgentConfigData = {
   maxPositionSize?: number;
   maxOpenPositions?: number;
   minMarketCapTier?: string;
-  watchlist?: string[];
+  watchlist?: (string | { symbol: string; reason?: string; priority?: string })[];
   exclusionList?: string[];
   // V3: Intelligence layer proposals (passed through from builder, not rendered in card)
   sourcePackProposal?: {
@@ -221,15 +221,18 @@ export function AgentConfigCard({
           <div>
             <SectionLabel>Watchlist</SectionLabel>
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {watchlist.map((t) => (
-                <Badge
-                  key={t}
-                  variant="outline"
-                >
-                  <Eye className="h-2.5 w-2.5" />
-                  {t}
-                </Badge>
-              ))}
+              {watchlist.map((t) => {
+                const symbol = typeof t === "string" ? t : t.symbol;
+                return (
+                  <Badge
+                    key={symbol}
+                    variant="outline"
+                  >
+                    <Eye className="h-2.5 w-2.5" />
+                    {symbol}
+                  </Badge>
+                );
+              })}
             </div>
           </div>
         )}

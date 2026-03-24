@@ -5,10 +5,8 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
-  TrendingUp,
   Search,
   LineChart,
-  MessageSquare,
   ShoppingCart,
   Briefcase,
   MessageCircle,
@@ -49,8 +47,6 @@ export const SOURCE_REGISTRY: Record<string, SourceDef> = {
   Finnhub: { icon: BarChart3, description: "Real-time stock quotes, company metrics, earnings calendar, and market news from Finnhub API." },
   "Finnhub News": { icon: Newspaper, description: "Financial news headlines aggregated by Finnhub from major business publications." },
   FMP: { icon: Database, description: "Financial Modeling Prep — market movers, analyst ratings, SEC filings, economic calendar, and insider transactions." },
-  Reddit: { icon: MessageSquare, description: "Retail trader sentiment from r/wallstreetbets, r/stocks, r/options, and r/investing." },
-  StockTwits: { icon: TrendingUp, description: "Trending tickers and social momentum from the StockTwits trader community." },
   SEC: { icon: Landmark, description: "SEC EDGAR filings — 10-K, 10-Q, 8-K, and insider Form 4 transaction reports." },
   Alpaca: { icon: ShoppingCart, description: "Alpaca paper trading API — places simulated market orders and tracks positions." },
   Internal: { icon: Cpu, description: "Hindsight's internal analytics — portfolio exposure, trade history, and performance tracking." },
@@ -80,19 +76,13 @@ export const ANALYST_BUILDER_STEPS: FlowStep[] = [
     title: "Read the market context",
     icon: BarChart3,
     sources: ["Finnhub", "FMP"],
-    summary: "Before suggesting anything, the builder reads the market — SPY, VIX, 11 sector ETFs, macro events, market themes. It must research live data before proposing any strategy. It has access to 7 of the agent's research tools (it can't trade or write theses — it's just researching to inform the strategy).",
-  },
-  {
-    title: "Scan candidates",
-    icon: TrendingUp,
-    sources: ["Finnhub", "FMP", "StockTwits", "Reddit"],
-    summary: "Finds real candidate stocks with attached catalysts. This grounds the strategy in what's actually moving — a momentum strategy needs active momentum, an earnings strategy needs upcoming reports.",
+    summary: "Before suggesting anything, the builder reads the market — SPY, VIX, 11 sector ETFs, macro events. It must research live data before proposing any strategy. It has access to 4 of the agent's research tools: market context, stock data, earnings, and SEC filings (it can't trade or write theses — it's just researching to inform the strategy).",
   },
   {
     title: "Deep-dive specific stocks",
     icon: LineChart,
-    sources: ["Finnhub", "FMP", "Reddit", "SEC"],
-    summary: "For promising candidates, the builder can pull full stock data, social sentiment, earnings data, SEC filings, or search Reddit. Shows you what your analyst would actually find on a typical morning.",
+    sources: ["Finnhub", "FMP", "SEC"],
+    summary: "For promising candidates, the builder can pull full stock data, earnings data, SEC filings, and options flow. Shows you what your analyst would actually find on a typical morning.",
   },
   {
     phase: "Phase 3 — Craft Strategy",
@@ -125,6 +115,74 @@ export const ANALYST_BUILDER_STEPS: FlowStep[] = [
     icon: MessageCircle,
     sources: ["Your input"],
     summary: "After the initial config, you can request changes to any field. The builder updates and re-proposes until you're happy and click Create.",
+  },
+];
+
+// ── Intelligence Pipeline Steps ─────────────────────────────────────────────
+
+export const INTELLIGENCE_PIPELINE_STEPS: FlowStep[] = [
+  {
+    phase: "6:30 AM ET",
+    title: "Firm Market Sweep",
+    icon: Search,
+    sources: ["Sonar", "FMP", "Finnhub"],
+    summary: "Executes all firm-level intelligence queries via Perplexity Sonar web search. Also fetches FMP market movers (gainers/losers/actives) and Finnhub earnings calendar for the next 7 days. Creates signals for everything found.",
+  },
+  {
+    phase: "7:00 AM ET",
+    title: "Portfolio & Watchlist Monitor",
+    icon: Briefcase,
+    sources: ["Sonar"],
+    summary: "Searches for news about every open position and watchlist item across all analysts. Deduplicates tickers so NVDA is only searched once even if 3 analysts hold it.",
+  },
+  {
+    phase: "7:15 AM ET",
+    title: "Source Pack Monitor",
+    icon: Newspaper,
+    sources: ["Sonar", "Firecrawl"],
+    summary: "Checks all tracked domain sources in each pack for new content. Extracts full articles via Firecrawl and stores them as Artifacts linked to signals.",
+  },
+  {
+    phase: "7:30 AM ET",
+    title: "Signal Router",
+    icon: Brain,
+    sources: ["Internal"],
+    summary: "Routes all new signals to relevant analysts. Scores relevance using ticker match (40 pts), sector overlap (20 pts), theme keywords (15 pts), and urgency bonuses. Minimum threshold: 15/100.",
+  },
+  {
+    phase: "7:45 AM ET",
+    title: "Morning Brief Generator",
+    icon: Brain,
+    sources: ["Internal"],
+    summary: "GPT-4o-mini synthesizes each analyst's routed signals into a structured brief: market context, portfolio alerts, watchlist updates, new opportunities, and risk flags. This is what the analyst reads first when it runs.",
+  },
+];
+
+export const INTELLIGENCE_PIPELINE_DETAILS: DetailSection[] = [
+  {
+    heading: "How intelligence replaces scanning",
+    items: [
+      { label: "Before (V2)", value: "The analyst spent 3-5 tool calls scanning for candidates during every run — calling FMP market movers, checking StockTwits, searching Reddit. This wasted time and API budget rediscovering the same news every run." },
+      { label: "After (V3)", value: "5 background jobs run before the analyst wakes up. They gather market movers, earnings calendars, web news, portfolio alerts, and social signals into a persistent signal database. A router assigns signals to analysts by relevance. A brief generator synthesizes everything into a morning intelligence brief." },
+      { label: "The analyst's job now", value: "Call read_morning_brief (1 tool call) to get the full picture. Call read_signals if it wants to dig into specific tickers or signal types. Call read_artifact to read a full article. That's it — no more scanning." },
+    ],
+  },
+  {
+    heading: "What the agent reads in Phase 1",
+    items: [
+      { label: "Morning brief", value: "Market context (SPY, VIX, regime, themes), portfolio alerts (positions near targets/stops, earnings this week), watchlist updates (news/catalysts for watched tickers), new opportunities (matched to analyst's mandate), and risk flags." },
+      { label: "Routed signals", value: "Filterable by tickers, themes, signal type (NEWS, EARNINGS, MACRO, SECTOR, etc.), and urgency. Each signal has a headline, summary, tickers, sentiment, urgency, and source attribution." },
+      { label: "Full articles", value: "When a signal headline is interesting, the analyst can read the full extracted article (up to 4000 chars). Stored as Artifacts by the Firecrawl extraction step." },
+    ],
+  },
+  {
+    heading: "Signal types from structured APIs",
+    items: [
+      { label: "MACRO signals", value: "FMP market movers — top gainers, losers, and most active stocks with price change data. Created by the firm market sweep." },
+      { label: "EARNINGS signals", value: "Finnhub earnings calendar — companies reporting in the next 7 days with expected EPS and revenue. Urgency: HIGH if within 2 days." },
+      { label: "NEWS signals", value: "Web search results from Perplexity Sonar — financial news, analysis, press releases matched to intelligence queries." },
+      { label: "SECTOR signals", value: "Sector-level themes and rotations detected by firm-level queries." },
+    ],
   },
 ];
 

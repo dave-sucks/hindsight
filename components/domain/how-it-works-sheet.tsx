@@ -31,6 +31,8 @@ import {
   CRON_RUN_DETAILS,
   LEARNING_LOOP_DETAILS,
   CONTEXT_LOADING_DETAILS,
+  INTELLIGENCE_PIPELINE_STEPS,
+  INTELLIGENCE_PIPELINE_DETAILS,
   type FlowStep,
   type DetailSection,
 } from "@/lib/agent/workflow-data";
@@ -225,6 +227,7 @@ export function HowItWorksSheet({
             <div className="flex items-center justify-between px-4 pt-4">
               <TabsList>
                 <TabsTrigger value="tools">Tools</TabsTrigger>
+                <TabsTrigger value="intelligence">Intelligence</TabsTrigger>
                 <TabsTrigger value="prompt">Prompt</TabsTrigger>
               </TabsList>
               <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
@@ -243,6 +246,19 @@ export function HowItWorksSheet({
                 <CopyButton getText={exportToolsAsMarkdown} label="Copy as markdown" />
               </div>
               <ToolCardList />
+            </TabsContent>
+
+            {/* Intelligence pipeline tab */}
+            <TabsContent value="intelligence" className="px-4 pb-4 space-y-6">
+              <p className="text-sm text-muted-foreground">
+                Before your analyst runs, 5 background jobs gather intelligence:
+              </p>
+              <FlowDiagram steps={INTELLIGENCE_PIPELINE_STEPS} />
+              <Separator />
+              <p className="text-sm text-muted-foreground">
+                The analyst reads this pre-gathered intelligence in Phase 1 instead of scanning the web from scratch.
+              </p>
+              <DetailList sections={INTELLIGENCE_PIPELINE_DETAILS} />
             </TabsContent>
 
             {/* Prompt tab */}

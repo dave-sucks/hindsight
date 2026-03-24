@@ -28,7 +28,6 @@ import {
   Search,
   Calendar,
   Activity,
-  MessageSquareText,
   TrendingUp,
   FileText,
 } from "lucide-react";
@@ -39,11 +38,8 @@ import type { LucideIcon } from "lucide-react";
 /** Tools that render ONLY as CoT steps (no card) */
 const COT_ONLY_TOOLS = new Set([
   "get_market_context",
-  "scan_candidates",
   "get_earnings_data",
   "get_options_flow",
-  "get_social_sentiment",
-  "search_reddit",
   "get_sec_filings",
 ]);
 
@@ -66,12 +62,6 @@ function renderPendingStep(toolName: string, args: Record<string, unknown>): Ste
       badges: ["finnhub.io"],
       status: "active",
     },
-    scan_candidates: {
-      icon: Search,
-      label: "Scanning for trade candidates — checking Finnhub earnings calendar, FMP market movers, and StockTwits trending",
-      badges: ["finnhub.io", "financialmodelingprep.com", "stocktwits.com"],
-      status: "active",
-    },
     get_stock_data: {
       icon: Search,
       label: `Researching ${ticker} — pulling quote, company profile, financials, and news from Finnhub`,
@@ -88,18 +78,6 @@ function renderPendingStep(toolName: string, args: Record<string, unknown>): Ste
       icon: Activity,
       label: `Scanning FMP options chain for ${ticker} to check for unusual activity`,
       badges: ["financialmodelingprep.com"],
-      status: "active",
-    },
-    get_social_sentiment: {
-      icon: MessageSquareText,
-      label: `Checking social sentiment for ${ticker} — Reddit and StockTwits`,
-      badges: ["stocktwits.com", "reddit.com", "financialmodelingprep.com"],
-      status: "active",
-    },
-    search_reddit: {
-      icon: Search,
-      label: "Searching Reddit trading communities",
-      badges: ["reddit.com"],
       status: "active",
     },
     get_sec_filings: {
@@ -142,17 +120,6 @@ function renderCompleteStep(
         icon: TrendingUp,
         label: `Market check — ${spyStr}${vixStr ? `, ${vixStr} (${regime})` : ""}. ${top ? `Leading: ${top}.` : ""} ${bottom ? `Lagging: ${bottom}.` : ""}`.trim(),
         badges: ["finnhub.io"],
-        status: "complete",
-      };
-    }
-
-    case "scan_candidates": {
-      const candidates = (result.candidates ?? []) as unknown[];
-      const total = (result.total_found as number) ?? candidates.length;
-      return {
-        icon: Search,
-        label: `Found ${total} candidates from earnings calendar, market movers, and social trending`,
-        badges: ["finnhub.io", "financialmodelingprep.com", "stocktwits.com"],
         status: "complete",
       };
     }
@@ -207,31 +174,6 @@ function renderCompleteStep(
       };
     }
 
-    case "get_social_sentiment": {
-      const reddit = result.reddit as { mentions?: number; sentiment?: string } | null;
-      const stocktwits = result.stocktwits as { mentions?: number; sentiment?: string } | null;
-      const parts: string[] = [];
-      if (reddit?.mentions) parts.push(`Reddit: ${reddit.mentions} mentions, ${reddit.sentiment}`);
-      if (stocktwits?.mentions) parts.push(`StockTwits: ${stocktwits.mentions} posts, ${stocktwits.sentiment}`);
-      return {
-        icon: MessageSquareText,
-        label: parts.length > 0 ? `Social sentiment for ${ticker} — ${parts.join(" · ")}` : `No social data for ${ticker}`,
-        badges: ["stocktwits.com", "reddit.com", "financialmodelingprep.com"],
-        status: "complete",
-      };
-    }
-
-    case "search_reddit": {
-      const count = (result.results as unknown[] | undefined)?.length ?? 0;
-      const query = result.query as string || "topic";
-      return {
-        icon: Search,
-        label: `Reddit search — ${count} results for "${query}"`,
-        badges: ["reddit.com"],
-        status: "complete",
-      };
-    }
-
     case "get_sec_filings": {
       const filings = (result.filings ?? result) as { type?: string; date?: string }[];
       const filingsArr = Array.isArray(filings) ? filings : [];
@@ -266,7 +208,7 @@ function getGroupHeader(parts: ToolCallMessagePart[]): string {
 
   // Check if this group is just market/scan (no ticker-specific tools)
   const toolNames = parts.map(p => p.toolName);
-  const isMarketScan = toolNames.every(n => n === "get_market_context" || n === "scan_candidates");
+  const isMarketScan = toolNames.every(n => n === "get_market_context");
 
   if (isMarketScan) return "Market scan";
   if (tickers.size === 1) return `Researching ${[...tickers][0]}`;

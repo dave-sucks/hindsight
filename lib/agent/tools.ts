@@ -1,6 +1,6 @@
 /**
- * Research agent tools — real API calls to Finnhub, FMP, Reddit, and StockTwits.
- * These give an LLM the ability to actually research stocks.
+ * Research agent tools — real API calls to Finnhub, FMP, SEC EDGAR, and Alpaca.
+ * Plus V3 intelligence layer tools (read_morning_brief, read_signals, read_artifact).
  *
  * createResearchTools() is a factory that takes context (runId, userId)
  * so tools can persist theses and mark runs complete.
@@ -12,9 +12,8 @@ import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity } from "@/lib/discovery/types";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
-import type { MarketOverviewResult, MarketContextResult, MacroEvent, SectorQuote, EarningsDensity, ScanCandidatesResult, ScanCandidate, MarketTheme, ThemeDirection, DetectMarketThemesResult, ToolSource } from "@/lib/discovery/types";
-import { THEME_DEFINITIONS } from "@/lib/discovery/types";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
@@ -188,128 +187,6 @@ async function fmp(path: string, stats: ApiCallStats = defaultStats): Promise<{ 
   }
 }
 
-// ── Reddit (shared client in lib/reddit.ts) ──
-import {
-  getRedditSentiment,
-  discoverTrendingTickers,
-  type RedditSentimentResult,
-} from "@/lib/reddit";
-
-// ── StockTwits trending ─────────────────────────────────────────────────────
-
-async function stocktwitsTrending(): Promise<string[]> {
-  try {
-    const res = await fetch(
-      "https://api.stocktwits.com/api/2/trending/symbols.json",
-      { signal: AbortSignal.timeout(5000) },
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data?.symbols ?? [])
-      .slice(0, 10)
-      .map((s: { symbol: string }) => s.symbol);
-  } catch {
-    return [];
-  }
-}
-
-// ── Twitter/X sentiment (StockTwits stream + FMP social sentiment) ──────────
-
-async function twitterSentiment(ticker: string): Promise<{
-  available: boolean;
-  mention_count: number;
-  sentiment: "bullish" | "bearish" | "neutral";
-  sentiment_score: number;
-  trending: boolean;
-  watchlist_count: number;
-  posts: { body: string; username: string; created_at: string; url: string; likes?: number }[];
-  fmp_sentiment: { date: string; sentiment: number; mentions: number } | null;
-}> {
-  const posts: { body: string; username: string; created_at: string; url: string; likes?: number }[] = [];
-  let watchlistCount = 0;
-  let sentimentScore = 0;
-  let mentionCount = 0;
-  let trending = false;
-
-  // 1. StockTwits stream (public API, no auth — closest proxy for Twitter stock discussion)
-  try {
-    const res = await fetch(
-      `https://api.stocktwits.com/api/2/streams/symbol/${ticker.toUpperCase()}.json`,
-      {
-        headers: { "User-Agent": "hindsight-research/1.0" },
-        signal: AbortSignal.timeout(8000),
-      },
-    );
-    if (res.ok) {
-      const data = await res.json();
-      const symbol = data?.symbol;
-      watchlistCount = symbol?.watchlist_count ?? 0;
-      trending = watchlistCount > 10000;
-
-      const messages = (data?.messages ?? []) as {
-        body: string;
-        user: { username: string };
-        created_at: string;
-        id: number;
-        entities?: { sentiment?: { basic: string } };
-        likes?: { total: number };
-      }[];
-
-      mentionCount = messages.length;
-
-      for (const msg of messages.slice(0, 8)) {
-        const sentimentBasic = msg.entities?.sentiment?.basic;
-        if (sentimentBasic === "Bullish") sentimentScore += 1;
-        else if (sentimentBasic === "Bearish") sentimentScore -= 1;
-
-        posts.push({
-          body: msg.body.slice(0, 200),
-          username: msg.user?.username ?? "anon",
-          created_at: msg.created_at ?? "",
-          url: `https://stocktwits.com/symbol/${ticker.toUpperCase()}`,
-          likes: msg.likes?.total,
-        });
-      }
-    }
-  } catch (err) {
-    console.warn(`[twitter] StockTwits failed for ${ticker}:`, err instanceof Error ? err.message : err);
-  }
-
-  // 2. FMP social sentiment (aggregates Twitter + StockTwits data)
-  let fmpSentimentData: { date: string; sentiment: number; mentions: number } | null = null;
-  try {
-    const fmpResult = await fmp(`/v4/historical/social-sentiment?symbol=${ticker.toUpperCase()}&limit=1`);
-    const arr = fmpResult.data as { date: string; stocktwitsSentiment?: number; twitterSentiment?: number; stocktwitsPostsMention?: number; twitterPostsMention?: number }[] | null;
-    if (Array.isArray(arr) && arr.length > 0) {
-      const latest = arr[0];
-      const twitterSent = latest.twitterSentiment ?? latest.stocktwitsSentiment ?? 0;
-      const twitterMentions = latest.twitterPostsMention ?? latest.stocktwitsPostsMention ?? 0;
-      fmpSentimentData = {
-        date: latest.date,
-        sentiment: twitterSent,
-        mentions: twitterMentions,
-      };
-      if (twitterSent > 0.6) sentimentScore += 2;
-      else if (twitterSent < 0.4) sentimentScore -= 2;
-      mentionCount = Math.max(mentionCount, twitterMentions);
-    }
-  } catch {
-    // non-fatal
-  }
-
-  const sentiment = sentimentScore > 2 ? "bullish" : sentimentScore < -2 ? "bearish" : "neutral";
-
-  return {
-    available: posts.length > 0 || fmpSentimentData != null,
-    mention_count: mentionCount,
-    sentiment,
-    sentiment_score: sentimentScore,
-    trending,
-    watchlist_count: watchlistCount,
-    posts: posts.slice(0, 5),
-    fmp_sentiment: fmpSentimentData,
-  };
-}
 
 // ── Technical indicator calculations ────────────────────────────────────────
 
@@ -355,24 +232,6 @@ function formatShortDate(isoDate: string): string {
 const emptyParams = z.object({});
 const tickerParams = z.object({
   ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
-});
-const scanParams = z.object({
-  sectors: z
-    .array(z.string())
-    .optional()
-    .describe("Sectors to focus on, e.g. ['Technology', 'Healthcare']"),
-  theme_filter: z
-    .string()
-    .optional()
-    .describe("Theme name from get_market_context to boost matching tickers (e.g. 'AI Infrastructure')"),
-  min_market_cap: z
-    .number()
-    .optional()
-    .describe("Minimum market cap in dollars (default $1B). Filters out micro-caps."),
-  min_avg_volume: z
-    .number()
-    .optional()
-    .describe("Minimum 10-day average volume (default 500K). Filters out illiquid stocks."),
 });
 const thesisParams = z.object({
   ticker: z.string(),
@@ -441,7 +300,6 @@ const tradeParams = z.object({
 
 // Inferred types
 type TickerInput = z.infer<typeof tickerParams>;
-type ScanInput = z.infer<typeof scanParams>;
 type ThesisInput = z.infer<typeof thesisParams>;
 type TradeInput = z.infer<typeof tradeParams>;
 
@@ -486,9 +344,9 @@ export function createResearchTools(ctx: ToolContext) {
   const toolsBase = {
     get_market_context: tool({
       description:
-        "Get current market conditions: S&P 500, VIX, sector ETF performance, and dominant market themes/narratives. Call this first to understand the market environment and what stories are driving capital flows.",
+        "Get current market conditions: S&P 500, VIX, sector ETF performance, macro events, and regime classification. A quick price snapshot for market orientation.",
       inputSchema: emptyParams,
-      execute: async (): Promise<MarketContextResult> => {
+      execute: async (): Promise<MarketOverviewResult> => {
         const _t0 = Date.now();
         logToolStart("get_market_context", ctx.runId, undefined, stats);
         const errors: string[] = [];
@@ -504,7 +362,7 @@ export function createResearchTools(ctx: ToolContext) {
         // Fetch SPY + all sector ETFs from Finnhub in parallel,
         // plus SPY candles, macro calendar, and earnings density
         const allSymbols = ["SPY", ...SECTOR_ETFS];
-        const [quoteResults, spyCandleResult, macroCalResult, earningsDensityResult, generalNewsResult] = await Promise.all([
+        const [quoteResults, spyCandleResult, macroCalResult, earningsDensityResult] = await Promise.all([
           // All quotes in parallel
           Promise.all(
             allSymbols.map(async (sym) => {
@@ -523,8 +381,6 @@ export function createResearchTools(ctx: ToolContext) {
           fmp(`/economic_calendar?from=${today}&to=${today}`, stats),
           // Finnhub earnings calendar for next 5 days
           finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`, 2, stats),
-          // Finnhub general news for inline theme detection
-          finnhub(`/news?category=general&minId=0`, 2, stats),
         ]);
 
         const spyData = quoteResults[0];
@@ -635,66 +491,7 @@ export function createResearchTools(ctx: ToolContext) {
           }))
           .sort((a, b) => b.change_pct - a.change_pct);
 
-        // ── Inline theme detection (keyword-based, no extra API calls) ───
-        const BEARISH_WORDS = ["crash", "decline", "selloff", "warning", "downgrade", "risk", "fear", "plunge"];
-        const BULLISH_WORDS = ["surge", "rally", "beat", "upgrade", "growth", "record", "breakout", "soar"];
-
-        const newsArticlesRaw = generalNewsResult.data as { headline: string; summary: string; source: string; url: string; datetime: number }[] | null;
-        const newsArticles = Array.isArray(newsArticlesRaw) ? newsArticlesRaw.slice(0, 50) : [];
-        const headlineTexts = newsArticles.map((a) => a.headline);
-        const allTexts = newsArticles.map((a) => `${a.headline} ${a.summary ?? ""}`);
-        const topSectors = new Set(sectors.filter((s) => s.change_pct > 0.5).map((s) => s.symbol));
-
-        const scoredThemes: (MarketTheme & { rawScore: number })[] = [];
-        for (const [id, def] of Object.entries(THEME_DEFINITIONS)) {
-          let headlineMatches = 0;
-          const matchedHeadlines: string[] = [];
-          let bullishCount = 0;
-          let bearishCount = 0;
-
-          for (let i = 0; i < allTexts.length; i++) {
-            const text = allTexts[i].toLowerCase();
-            if (def.keywords.some((kw) => text.includes(kw.toLowerCase()))) {
-              headlineMatches++;
-              if (matchedHeadlines.length < 3) matchedHeadlines.push(headlineTexts[i]);
-              const hl = headlineTexts[i].toLowerCase();
-              for (const w of BULLISH_WORDS) { if (hl.includes(w)) bullishCount++; }
-              for (const w of BEARISH_WORDS) { if (hl.includes(w)) bearishCount++; }
-            }
-          }
-
-          const sectorBonus = def.sectors.filter((s) => topSectors.has(s)).length;
-          const rawScore = headlineMatches * 2 + sectorBonus * 2;
-          if (rawScore === 0) continue;
-
-          let direction: ThemeDirection = "NEUTRAL";
-          if (bullishCount > bearishCount) direction = "BULLISH";
-          else if (bearishCount > bullishCount) direction = "BEARISH";
-
-          scoredThemes.push({
-            id,
-            label: def.label,
-            strength: 0,
-            direction,
-            tickers: def.tickers.slice(0, 4),
-            headline_matches: headlineMatches,
-            reddit_overlap: 0,
-            representative_headlines: matchedHeadlines,
-            rawScore,
-          });
-        }
-
-        const maxThemeScore = Math.max(...scoredThemes.map((t) => t.rawScore), 1);
-        for (const theme of scoredThemes) {
-          theme.strength = Math.round((theme.rawScore / maxThemeScore) * 100) / 100;
-        }
-        const themes: MarketTheme[] = scoredThemes
-          .filter((t) => t.strength >= 0.1)
-          .sort((a, b) => b.strength - a.strength)
-          .slice(0, 8)
-          .map(({ rawScore: _, ...theme }) => theme);
-
-        logToolEnd("get_market_context", _t0, ctx.runId, `SPY=${spyData ? `$${spyData.price}` : "null"} regime=${regime} themes=${themes.length}`, stats);
+        logToolEnd("get_market_context", _t0, ctx.runId, `SPY=${spyData ? `$${spyData.price}` : "null"} regime=${regime}`, stats);
         return {
           spy: spyData
             ? {
@@ -712,7 +509,6 @@ export function createResearchTools(ctx: ToolContext) {
           spy_trend: spyTrend,
           macro_events_today: macroEventsToday,
           earnings_density: earningsDensity,
-          themes,
           // Tell the agent exactly what failed so it can adapt
           ...(errors.length > 0 ? { api_errors: errors, note: `Some data sources failed: ${errors.join("; ")}. Analyze what's available and proceed.` } : {}),
           _sources: [
@@ -754,284 +550,6 @@ export function createResearchTools(ctx: ToolContext) {
               url: "https://finnhub.io/docs/api/earnings-calendar",
               excerpt: `${earningsDensity.count} earnings reports ${earningsDensity.period}`,
             },
-          ],
-        };
-      },
-    }),
-
-    scan_candidates: tool({
-      description:
-        "Scan the market for trading candidates. Returns scored tickers from multiple sources: earnings calendar (30 days), market movers, gainers/losers, social trends. Supports theme filtering, market cap/volume quality floors, and volume spike detection.",
-      inputSchema: scanParams,
-      execute: async ({ sectors, theme_filter, min_market_cap, min_avg_volume }: ScanInput): Promise<ScanCandidatesResult> => {
-        const _t0 = Date.now();
-        logToolStart("scan_candidates", ctx.runId, `sectors=${sectors?.join(",") ?? "all"} theme=${theme_filter ?? "none"}`, stats);
-        const today = new Date().toISOString().slice(0, 10);
-        const nextMonth = new Date(Date.now() + 30 * 86400_000)
-          .toISOString()
-          .slice(0, 10);
-
-        const [earningsResult, gainersResult, losersResult, stTrending, redditTrending] = await Promise.all([
-          finnhub(`/calendar/earnings?from=${today}&to=${nextMonth}`, 2, stats),
-          fmp("/stock_market/gainers", stats),
-          fmp("/stock_market/losers", stats),
-          stocktwitsTrending(),
-          discoverTrendingTickers(),
-        ]);
-
-        const earnings = earningsResult.data as Record<string, unknown> | null;
-        const gainers = gainersResult.data as unknown[] | null;
-        const losers = losersResult.data as unknown[] | null;
-
-        // Watchlist (highest priority)
-        const watchlistTickers = (ctx.watchlist ?? []).map((t) => ({
-          ticker: t,
-          source: "watchlist" as const,
-          score: 4,
-        }));
-
-        // ── Quality filter: skip penny stocks, ADRs, special tickers ──
-        const MIN_PRICE = min_market_cap ? 1 : 5; // $5 floor unless user overrides
-        const isValidTicker = (sym: string, price?: number) => {
-          if (!sym || sym.length > 5) return false; // Skip long tickers (warrants, units)
-          if (/[^A-Z]/.test(sym)) return false; // Only uppercase alpha (no dots, dashes)
-          if (price != null && price < MIN_PRICE) return false; // Penny stock filter
-          return true;
-        };
-
-        // Earnings calendar (30 days forward)
-        const earningsTickers =
-          (earnings as { earningsCalendar?: { symbol: string; date: string; epsEstimate: number | null }[] })
-            ?.earningsCalendar
-            ?.filter((e) => isValidTicker(e.symbol))
-            ?.slice(0, 30)
-            ?.map((e) => ({
-              ticker: e.symbol,
-              source: "earnings_calendar" as const,
-              date: e.date,
-              eps_estimate: e.epsEstimate,
-              score: 3,
-            })) ?? [];
-
-        // Market movers
-        const gainerTickers = Array.isArray(gainers)
-          ? gainers
-              .slice(0, 15) // Scan more, filter down
-              .map((m: unknown) => {
-                const mov = m as { symbol: string; changesPercentage: number; price: number };
-                return {
-                  ticker: mov.symbol,
-                  source: "top_gainers" as const,
-                  change_pct: mov.changesPercentage,
-                  price: mov.price,
-                  score: 2,
-                };
-              })
-              .filter((m) => isValidTicker(m.ticker, m.price))
-              .slice(0, 8)
-          : [];
-
-        const loserTickers = Array.isArray(losers)
-          ? losers
-              .slice(0, 10) // Scan more, filter down
-              .map((m: unknown) => {
-                const mov = m as { symbol: string; changesPercentage: number; price: number };
-                return {
-                  ticker: mov.symbol,
-                  source: "top_losers" as const,
-                  change_pct: mov.changesPercentage,
-                  price: mov.price,
-                  score: 2,
-                };
-              })
-              .filter((m) => isValidTicker(m.ticker, m.price))
-              .slice(0, 5)
-          : [];
-
-        // StockTwits trending
-        const socialTickers = stTrending
-          .filter((t) => isValidTicker(t))
-          .map((t) => ({
-            ticker: t,
-            source: "stocktwits_trending" as const,
-            score: 1,
-          }));
-
-        // Reddit trending (WSB + r/stocks + r/options + r/investing)
-        const redditTickers = redditTrending
-          .filter((t) => isValidTicker(t.ticker))
-          .map((t) => ({
-            ticker: t.ticker,
-            source: "reddit_trending" as const,
-            score: 2, // Reddit retail momentum signal
-            mentions: t.mentions,
-          }));
-
-        // ── Theme filter boost (BEFORE dedup/ranking) ─────────────────────
-        let themeBoostTickers = new Set<string>();
-        if (theme_filter) {
-          // Match by label (display name) or id (snake_case key)
-          const matchedTheme = Object.entries(THEME_DEFINITIONS).find(
-            ([id, def]) =>
-              def.label.toLowerCase() === theme_filter.toLowerCase() ||
-              id === theme_filter.toLowerCase().replace(/[\s/&]+/g, "_"),
-          );
-          if (matchedTheme) {
-            themeBoostTickers = new Set(matchedTheme[1].tickers.map((t) => t.toUpperCase()));
-          }
-        }
-
-        // Score & deduplicate
-        const allCandidates = [
-          ...watchlistTickers,
-          ...earningsTickers,
-          ...gainerTickers,
-          ...loserTickers,
-          ...socialTickers,
-          ...redditTickers,
-        ];
-
-        const scoreMap = new Map<
-          string,
-          { score: number; sources: string[]; data: Record<string, unknown> }
-        >();
-        const exclusionSet = new Set(
-          (ctx.exclusionList ?? []).map((t) => t.toUpperCase()),
-        );
-
-        for (const c of allCandidates) {
-          const sym = c.ticker.toUpperCase();
-          if (exclusionSet.has(sym)) continue;
-
-          const existing = scoreMap.get(sym);
-          if (existing) {
-            existing.score += c.score;
-            if (!existing.sources.includes(c.source)) {
-              existing.sources.push(c.source);
-            }
-          } else {
-            scoreMap.set(sym, {
-              score: c.score,
-              sources: [c.source],
-              data: c,
-            });
-          }
-        }
-
-        // Apply theme boost after dedup so it counts once per ticker
-        if (themeBoostTickers.size > 0) {
-          for (const [sym, entry] of scoreMap) {
-            if (themeBoostTickers.has(sym)) {
-              entry.score += 3;
-              if (!entry.sources.includes("theme_match")) {
-                entry.sources.push("theme_match");
-              }
-            }
-          }
-        }
-
-        const ranked = [...scoreMap.entries()]
-          .sort((a, b) => b[1].score - a[1].score)
-          .slice(0, 15);
-
-        // ── Build output (no per-ticker API calls — quality filtering deferred to get_stock_data) ──
-        const candidatesRaw = ranked.map(([ticker, v]) => ({
-          ticker,
-          score: v.score,
-          sources: v.sources,
-          change_pct: (v.data as { change_pct?: number }).change_pct,
-          date: (v.data as { date?: string }).date,
-          catalysts: undefined as { type: string; date: string; details: string }[] | undefined,
-        }));
-
-        // ── Inline catalyst fetch (merged from scan_catalysts) ─────────────
-        let catalystSources: ToolSource[] = [];
-        try {
-          const { scanCatalysts } = await import("@/lib/discovery/catalysts");
-          const catalystResult = await scanCatalysts({ forwardDays: 14 });
-          const catalystsByTicker = new Map<string, { type: string; date: string; details: string }[]>();
-          for (const c of catalystResult.catalysts) {
-            if (!c.ticker) continue;
-            const sym = c.ticker.toUpperCase();
-            if (!catalystsByTicker.has(sym)) catalystsByTicker.set(sym, []);
-            catalystsByTicker.get(sym)!.push({
-              type: c.catalyst_type,
-              date: c.date,
-              details: c.details,
-            });
-          }
-          for (const candidate of candidatesRaw) {
-            const matched = catalystsByTicker.get(candidate.ticker.toUpperCase());
-            if (matched) candidate.catalysts = matched;
-          }
-          catalystSources = catalystResult._sources ?? [];
-        } catch (err) {
-          console.warn(`[tool] scan_candidates catalyst fetch failed:`, err instanceof Error ? err.message : err);
-        }
-
-        const candidates: ScanCandidate[] = candidatesRaw.map((c) => ({
-          ...c,
-          catalysts: c.catalysts,
-        }));
-
-        const notes: string[] = [];
-        notes.push(`Pre-filtered: penny stocks (<$${MIN_PRICE}), ADRs, warrants, and special tickers removed.`);
-        const configSectors = ctx.sectors ?? [];
-        if (configSectors.length > 0) notes.push(`Your focus sectors: ${configSectors.join(", ")}. SKIP tickers outside these sectors — check sector in get_stock_data before deep research.`);
-        if (theme_filter) notes.push(`Theme boost applied: ${theme_filter}.`);
-        if (min_market_cap) notes.push(`Min market cap requested: $${(min_market_cap / 1e9).toFixed(1)}B — verify in get_stock_data.`);
-        notes.push(`${candidates.length} candidates ranked by multi-source score.`);
-
-        logToolEnd("scan_candidates", _t0, ctx.runId, `found=${candidates.length}`, stats);
-        return {
-          candidates,
-          total_found: candidates.length,
-          sources_queried: [
-            "earnings_calendar",
-            "top_gainers",
-            "top_losers",
-            "stocktwits_trending",
-            "reddit_trending",
-            ...(ctx.watchlist?.length ? ["watchlist"] : []),
-            ...(theme_filter ? ["theme_match"] : []),
-          ],
-          note: notes.join(" "),
-          _sources: [
-            {
-              provider: "Finnhub",
-              title: "Earnings Calendar (30 Days)",
-              url: "https://finnhub.io/docs/api/earnings-calendar",
-              excerpt: candidates.filter(c => c.sources.includes("earnings_calendar")).length > 0
-                ? `${candidates.filter(c => c.sources.includes("earnings_calendar")).length} upcoming earnings`
-                : "No upcoming earnings",
-            },
-            {
-              provider: "FMP",
-              title: "Top Gainers & Losers",
-              url: "https://financialmodelingprep.com/api/v3/stock_market/gainers",
-              excerpt: `${gainerTickers.length} gainers, ${loserTickers.length} losers scanned`,
-            },
-            {
-              provider: "StockTwits",
-              title: "Trending Symbols",
-              url: "https://stocktwits.com/rankings/trending",
-              excerpt: stTrending.length > 0 ? `Trending: ${stTrending.slice(0, 5).join(", ")}` : "No trending data",
-            },
-            {
-              provider: "Reddit",
-              title: "Trending Tickers (WSB, r/stocks, r/options, r/investing)",
-              url: "https://reddit.com/r/wallstreetbets",
-              excerpt: redditTrending.length > 0 ? `${redditTrending.length} trending tickers` : "No Reddit data",
-            },
-            ...(ctx.watchlist?.length
-              ? [{
-                  provider: "Watchlist",
-                  title: "Custom Watchlist",
-                  url: "",
-                  excerpt: `Watching: ${ctx.watchlist.join(", ")}`,
-                }]
-              : []),
-            ...catalystSources,
           ],
         };
       },
@@ -1296,110 +814,6 @@ export function createResearchTools(ctx: ToolContext) {
                 }]
               : []),
           ],
-        };
-      },
-    }),
-
-    get_social_sentiment: tool({
-      description:
-        "Get combined social sentiment for a stock from Reddit (r/wallstreetbets, r/stocks, r/options, r/investing) and StockTwits/Twitter. Shows mention counts, sentiment direction, top posts, and a combined signal.",
-      inputSchema: tickerParams,
-      execute: async ({ ticker }: TickerInput) => {
-        const _t0 = Date.now();
-        logToolStart("get_social_sentiment", ctx.runId, `ticker=${ticker}`, stats);
-
-        // Fetch Reddit + StockTwits/Twitter sentiment in parallel
-        const [redditData, stocktwitsData] = await Promise.all([
-          getRedditSentiment(ticker),
-          twitterSentiment(ticker),
-        ]);
-
-        // Compute combined signal from both sources
-        let combinedScore = 0;
-        let signalSources = 0;
-        if (redditData.available && redditData.mention_count > 0) {
-          combinedScore += redditData.sentiment_score;
-          signalSources++;
-        }
-        if (stocktwitsData.available) {
-          combinedScore += stocktwitsData.sentiment_score;
-          signalSources++;
-        }
-        const avgScore = signalSources > 0 ? combinedScore / signalSources : 0;
-        const combinedSignal = avgScore > 2 ? "bullish" : avgScore < -2 ? "bearish" : "neutral";
-
-        const _sources: ToolSource[] = [];
-
-        // Reddit sources
-        if (redditData.available && redditData.top_posts?.length > 0) {
-          for (const p of redditData.top_posts) {
-            _sources.push({
-              provider: `Reddit r/${p.subreddit}`,
-              title: p.title,
-              url: p.url,
-              excerpt: `Score: ${p.score}, ${p.num_comments} comments`,
-            });
-          }
-        } else {
-          _sources.push({
-            provider: "Reddit",
-            title: `${ticker} Reddit Search`,
-            url: `https://www.reddit.com/search/?q=${ticker}&sort=new`,
-            excerpt: "No mentions found",
-          });
-        }
-
-        // StockTwits sources
-        _sources.push({
-          provider: "StockTwits",
-          title: `${ticker} Social Feed`,
-          url: `https://stocktwits.com/symbol/${ticker.toUpperCase()}`,
-          excerpt: stocktwitsData.available
-            ? `${stocktwitsData.mention_count} posts, sentiment: ${stocktwitsData.sentiment}`
-            : "No social data found",
-        });
-        if (stocktwitsData.fmp_sentiment) {
-          _sources.push({
-            provider: "FMP Social",
-            title: `${ticker} Twitter/Social Sentiment`,
-            url: `https://financialmodelingprep.com/api/v4/historical/social-sentiment?symbol=${ticker}`,
-            excerpt: `Sentiment score: ${stocktwitsData.fmp_sentiment.sentiment.toFixed(2)}, ${stocktwitsData.fmp_sentiment.mentions} mentions`,
-          });
-        }
-
-        logToolEnd("get_social_sentiment", _t0, ctx.runId, `ticker=${ticker} combined=${combinedSignal}`, stats);
-        return {
-          reddit: {
-            available: redditData.available && redditData.mention_count > 0,
-            mention_count: redditData.mention_count,
-            sentiment: redditData.sentiment,
-            sentiment_score: redditData.sentiment_score,
-            trending: redditData.trending,
-            top_posts: redditData.available ? redditData.top_posts.map((p) => ({
-              subreddit: p.subreddit,
-              title: p.title,
-              url: p.url,
-              score: p.score,
-              comments: p.num_comments,
-            })) : [],
-          },
-          stocktwits: {
-            available: stocktwitsData.available,
-            mention_count: stocktwitsData.mention_count,
-            sentiment: stocktwitsData.sentiment,
-            sentiment_score: stocktwitsData.sentiment_score,
-            trending: stocktwitsData.trending,
-            watchlist_count: stocktwitsData.watchlist_count,
-            posts: stocktwitsData.posts.map((p) => ({
-              body: p.body,
-              username: p.username,
-              created_at: p.created_at,
-              likes: p.likes,
-            })),
-            fmp_sentiment: stocktwitsData.fmp_sentiment,
-          },
-          combined_signal: combinedSignal,
-          _sources,
         };
       },
     }),
@@ -2735,29 +2149,6 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
-    // ── Reddit topic search (broader than ticker-specific sentiment) ────
-    search_reddit: tool({
-      description:
-        "Search Reddit trading communities by topic or keyword. Searches r/wallstreetbets, r/stocks, r/options, r/investing. Use for broad topics like 'biotech FDA', 'momentum plays', 'semiconductor earnings'. For ticker-specific sentiment, use get_social_sentiment instead.",
-      inputSchema: z.object({
-        query: z.string().describe("Search query — topic or ticker. E.g. 'biotech FDA', 'NVDA earnings', 'momentum plays'"),
-      }),
-      execute: async ({ query }) => {
-        const { searchReddit } = await import("@/lib/reddit");
-        const results = await searchReddit(query);
-        return {
-          query,
-          results,
-          _sources: results.map((r) => ({
-            title: r.title,
-            url: r.url,
-            provider: `r/${r.subreddit}`,
-            excerpt: `Score: ${r.score}`,
-          })),
-        };
-      },
-    }),
-
     // ── V3 Intelligence Layer Tools ───────────────────────────────────────
 
     read_morning_brief: tool({
@@ -2808,10 +2199,11 @@ export function createResearchTools(ctx: ToolContext) {
       inputSchema: z.object({
         tickers: z.array(z.string()).optional().describe("Filter to signals mentioning these tickers"),
         themes: z.array(z.string()).optional().describe("Filter to signals with these themes (e.g. AI_CAPEX, FED_RATE_CUT)"),
+        type: z.enum(["NEWS", "EARNINGS", "FILING", "SOCIAL", "PRICE_ACTION", "ANALYST_NOTE", "OPTIONS", "MACRO", "SECTOR"]).optional().describe("Filter to a specific signal type (e.g. EARNINGS for earnings calendar, MACRO for market movers)"),
         urgency: z.enum(["LOW", "MEDIUM", "HIGH", "BREAKING"]).optional().describe("Minimum urgency level"),
         limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy)"),
       }),
-      execute: async ({ tickers, themes, urgency, limit = 20 }) => {
+      execute: async ({ tickers, themes, type, urgency, limit = 20 }) => {
         if (!ctx.analystId) return { error: "No analyst context — cannot read signals" };
 
         // ── Apply intelligence policy constraints ──────────────────────
@@ -2841,6 +2233,7 @@ export function createResearchTools(ctx: ToolContext) {
             signal: {
               ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
               ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
+              ...(type ? { type } : {}),
               urgency: { in: validUrgencies },
               sourceQuality: { gte: minSourceQuality },
             },

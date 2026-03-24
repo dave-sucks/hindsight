@@ -2,8 +2,8 @@
 // Structured data for all agent tools. Drives the tool documentation UI
 // and markdown export. Update this file when tools change.
 //
-// V2 architecture: 13 tools across 8 phases. Portfolio state is injected
-// as context (not a tool). show_thesis → record_thesis, summarize_run → complete_run.
+// V3 architecture: 10 runtime tools across 8 phases. Discovery moved to
+// background intelligence pipeline. Portfolio state injected as context.
 
 // ── Enums ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +52,10 @@ export interface ToolDef {
   /** Provider keys for source logos in card header */
   sources: string[];
   resources: Resource[];
+  /** V3: tool has been removed from runtime and replaced by the intelligence pipeline */
+  deprecated?: boolean;
+  /** V3: what replaced this tool */
+  replacedBy?: string;
 }
 
 // ── Stage + Type metadata ──────────────────────────────────────────────────
@@ -59,11 +63,11 @@ export interface ToolDef {
 export const STAGE_META: Record<ToolStage, { label: string; summary: string }> = {
   Discovery: {
     label: "Discovery",
-    summary: "The analyst starts every session here. It reads the overall market environment — which sectors are hot, whether the VIX is elevated, what macro events are on deck — then scans 6 different sources to build a ranked shortlist of stocks worth researching today.",
+    summary: "The analyst starts every session by reading pre-gathered intelligence — a morning brief with market context, portfolio alerts, and new opportunities, plus routed signals from background discovery jobs. It can also check live market conditions (SPY, VIX, sector ETFs) if the brief is stale.",
   },
   Research: {
     label: "Research",
-    summary: "Deep-dive tools for individual stocks. The analyst pulls fundamentals, technicals, Wall Street ratings, social sentiment, options flow, earnings data, and SEC filings. These are called per-ticker for every stock the analyst is evaluating — existing holdings, watchlist items, and new candidates.",
+    summary: "Deep-dive tools for individual stocks. The analyst pulls fundamentals, technicals, Wall Street ratings, options flow, earnings data, and SEC filings. These are called per-ticker for every stock the analyst is evaluating — existing holdings, watchlist items, and new candidates.",
   },
   Decision: {
     label: "Decision",
@@ -87,16 +91,76 @@ export const TYPE_META: Record<ToolType, { label: string }> = {
   Logging: { label: "Logging" },
 };
 
-// ── All tools (V2) ────────────────────────────────────────────────────────
+// ── All tools (V3) ────────────────────────────────────────────────────────
 
 export const TOOLS: ToolDef[] = [
-  // ─── Discovery ────────────────────────────────────────────────────────
+  // ─── Discovery (Intelligence) ──────────────────────────────────────────
+  {
+    name: "read_morning_brief",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Read today's pre-generated intelligence brief — market context, portfolio alerts, watchlist updates, new opportunities, and risk flags",
+    goal: "Understand what happened overnight before making any research decisions. Background jobs gather this intelligence automatically, so the analyst doesn't have to rediscover it.",
+    phases: [1],
+    tags: ["required", "start-here"],
+    sources: ["internal"],
+    resources: [
+      {
+        source: "internal",
+        title: "Morning brief",
+        description: "A pre-generated intelligence brief created by background jobs before the analyst's session. Contains market context, alerts on open positions, updates on watchlist items, new opportunities matched to the analyst's mandate, and risk flags.",
+        type: "db",
+        endpointOrPath: "prisma.morningBrief.findUnique()",
+        exampleOutput: "Market: SPY +0.5%, RISK_ON · 2 portfolio alerts (NVDA near target, AMD earnings this week) · 3 new opportunities",
+      },
+    ],
+  },
+  {
+    name: "read_signals",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Read intelligence signals routed by background discovery jobs — news, filings, earnings, macro, and sector signals matched to the analyst's mandate",
+    goal: "Surface pre-gathered signals that the intelligence pipeline found relevant for this analyst. Replaces the old scan_candidates approach of rediscovering from scratch every run.",
+    phases: [1],
+    tags: ["required"],
+    sources: ["internal"],
+    resources: [
+      {
+        source: "internal",
+        title: "Routed signals",
+        description: "Signals gathered by background jobs (market sweeps, source pack monitors, portfolio monitors) and routed to this analyst based on sector overlap, watchlist tickers, and thematic relevance. Filtered by intelligence policy (urgency floor, quality floor, signal budget).",
+        type: "db",
+        endpointOrPath: "prisma.analystSignalRoute.findMany()",
+        exampleOutput: "12 signals · 3 HIGH urgency · Topics: NVDA earnings beat, AMD guidance raise, semiconductor sector rotation",
+      },
+    ],
+  },
+  {
+    name: "read_artifact",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Read the full extracted content of an article or document behind a signal — the complete text, not just the headline",
+    goal: "When a signal's headline is interesting, read the full source article to get complete context before making research decisions.",
+    phases: [1, 2, 3, 4],
+    tags: ["optional"],
+    sources: ["internal"],
+    resources: [
+      {
+        source: "internal",
+        title: "Extracted article",
+        description: "Full article content extracted by Firecrawl from the source URL. Stored as an Artifact and linked to the signal. Capped at 4000 chars to avoid token bloat.",
+        type: "db",
+        endpointOrPath: "prisma.artifact.findUnique()",
+        exampleOutput: "\"NVIDIA Announces Next-Gen Blackwell GPUs\" — 2500 words extracted from Reuters article with full analysis",
+      },
+    ],
+  },
   {
     name: "get_market_context",
     stage: "Discovery",
     type: "Aggregation",
-    summary: "Reads the full market landscape before looking at any individual stock — like checking the weather before planning your day",
-    goal: "Understand whether it's a risk-on or risk-off environment so the analyst can adjust its strategy accordingly",
+    summary: "Quick price snapshot of the broad market — SPY, VIX, sector ETFs, macro events, and regime classification",
+    goal: "Understand whether it's a risk-on or risk-off environment so the analyst can adjust its strategy accordingly. Morning brief handles themes and narratives.",
     phases: [1],
     tags: ["required", "start-here"],
     sources: ["finnhub", "fmp"],
@@ -127,14 +191,6 @@ export const TOOLS: ToolDef[] = [
         exampleOutput: "47 companies reporting this week — elevated earnings density",
       },
       {
-        source: "finnhub",
-        title: "Market narratives",
-        description: "Scans 50 recent headlines to detect the dominant themes driving the market right now (AI, rate cuts, trade war, etc.). The analyst uses these themes to contextualize individual stock moves.",
-        type: "api",
-        endpointOrPath: "/news?category=general",
-        exampleOutput: "Themes: AI Infrastructure (strong, bullish), Rate Cut Expectations (moderate, bullish)",
-      },
-      {
         source: "fmp",
         title: "Economic calendar",
         description: "Checks for major macro events today — Fed meetings, CPI data, jobs reports. High-impact events can move the entire market, so the analyst factors them into risk decisions.",
@@ -152,80 +208,6 @@ export const TOOLS: ToolDef[] = [
       },
     ],
   },
-  {
-    name: "scan_candidates",
-    stage: "Discovery",
-    type: "Aggregation",
-    summary: "Casts a wide net across 6 sources to find stocks worth researching today, then ranks them by conviction",
-    goal: "Build a shortlist of 5–15 stocks the analyst should deep-dive into, prioritizing watchlist items and multi-source signals",
-    phases: [4],
-    tags: ["required"],
-    sources: ["finnhub", "fmp", "stocktwits", "reddit"],
-    resources: [
-      {
-        source: "finnhub",
-        title: "Upcoming earnings",
-        description: "Finds companies reporting earnings in the next 30 days. Earnings are one of the strongest catalysts — the analyst looks for pre-earnings setups and avoids getting blindsided.",
-        type: "api",
-        endpointOrPath: "/calendar/earnings",
-        exampleOutput: "NVDA earnings Mar 26 · ORCL earnings Mar 28",
-        notes: ["Returns 50-200 companies depending on earnings season"],
-      },
-      {
-        source: "fmp",
-        title: "Today's biggest gainers",
-        description: "The top 20 stocks moving up the most today. Momentum breakouts and sector rotation signals often show up here first. The analyst looks for names with real catalysts, not just noise.",
-        type: "api",
-        endpointOrPath: "/stock_market/gainers",
-        exampleOutput: "SMCI +12.4% · PLTR +5.1% · COIN +4.8%",
-        notes: ["Returns ~20 stocks", "OTC and penny stocks are filtered out"],
-      },
-      {
-        source: "fmp",
-        title: "Today's biggest losers",
-        description: "The top 20 stocks falling the most today. The analyst watches for overreactions to earnings misses, downgrades, or sector weakness — potential mean-reversion opportunities.",
-        type: "api",
-        endpointOrPath: "/stock_market/losers",
-        exampleOutput: "NKE -8.2% · FDX -4.1%",
-        notes: ["Returns ~20 stocks"],
-      },
-      {
-        source: "fmp",
-        title: "Most actively traded",
-        description: "The 20 highest-volume stocks today by dollar amount. Unusual volume often means institutional money is moving — the analyst uses this to spot under-the-radar activity.",
-        type: "api",
-        endpointOrPath: "/stock_market/actives",
-        exampleOutput: "TSLA 82M shares · NVDA 61M shares",
-        notes: ["Returns ~20 stocks", "Ranked by dollar volume, not share count"],
-      },
-      {
-        source: "stocktwits",
-        title: "Trending on StockTwits",
-        description: "Which tickers retail traders on StockTwits are talking about most right now. Social momentum can precede price moves — or signal a crowded trade to avoid.",
-        type: "api",
-        endpointOrPath: "/api/2/trending/symbols.json",
-        exampleOutput: "Trending: $NVDA, $SMCI, $PLTR, $COIN",
-      },
-      {
-        source: "reddit",
-        title: "Reddit buzz",
-        description: "Scans r/wallstreetbets, r/stocks, r/options, and r/investing for which tickers are getting the most mentions and upvotes right now.",
-        type: "api",
-        endpointOrPath: "discoverTrendingTickers()",
-        exampleOutput: "Reddit buzz: NVDA (42 mentions), GME (18 mentions)",
-      },
-      {
-        source: "internal",
-        title: "Scoring & ranking",
-        description: "Combines all 6 sources into one ranked list. Stocks appearing in multiple sources score higher. Watchlist items get a priority boost. Result: a shortlist of 5-15 candidates the analyst will actually research.",
-        type: "internal",
-        endpointOrPath: "score + rank pipeline",
-        exampleOutput: "15 candidates — NVDA (score: 8, 4 sources), PLTR (score: 5, 2 sources)",
-        notes: ["Capped at 15 to preserve the step budget for deep research"],
-      },
-    ],
-  },
-
   // ─── Research ─────────────────────────────────────────────────────────
   {
     name: "get_stock_data",
@@ -293,42 +275,6 @@ export const TOOLS: ToolDef[] = [
         type: "api",
         endpointOrPath: "/v4/price-target-consensus?symbol={ticker}",
         exampleOutput: "Average target $158.00 · High $200 · Low $120 · 44 analysts",
-      },
-    ],
-  },
-  {
-    name: "get_social_sentiment",
-    stage: "Research",
-    type: "Aggregation",
-    summary: "Checks what retail traders on Reddit and StockTwits are saying about a specific stock — bullish, bearish, or indifferent",
-    goal: "Gauge crowd sentiment as an additional signal. High retail bullishness can mean momentum or a crowded trade — the analyst interprets in context.",
-    phases: [2, 3, 4],
-    tags: ["optional", "per-ticker"],
-    sources: ["reddit", "stocktwits", "fmp"],
-    resources: [
-      {
-        source: "reddit",
-        title: "Reddit sentiment",
-        description: "Searches 4 trading subreddits for mentions of this stock — how many people are talking about it, whether they're bullish or bearish, and what the top posts say.",
-        type: "api",
-        endpointOrPath: "getRedditSentiment({ticker})",
-        exampleOutput: "NVDA: 42 mentions · Bullish (0.72) · Top post: \"NVDA earnings play\" (+340 upvotes)",
-      },
-      {
-        source: "stocktwits",
-        title: "StockTwits sentiment",
-        description: "Checks FinTwit for this stock's bullish/bearish ratio, how many traders are watching it, and the volume of recent messages. High watcher count with bullish skew can signal retail conviction.",
-        type: "api",
-        endpointOrPath: "/api/2/streams/symbol/{ticker}.json",
-        exampleOutput: "68% bullish · 12.4K watchers · 89 messages today",
-      },
-      {
-        source: "fmp",
-        title: "Sentiment trend",
-        description: "Historical social mention volume for this stock — is buzz increasing or fading compared to last week? Rising mentions before earnings can signal a potential catalyst play.",
-        type: "api",
-        endpointOrPath: "/v4/historical/social-sentiment?symbol={ticker}",
-        exampleOutput: "Sentiment trending up +15% vs last week",
       },
     ],
   },
@@ -416,27 +362,6 @@ export const TOOLS: ToolDef[] = [
       },
     ],
   },
-  {
-    name: "search_reddit",
-    stage: "Research",
-    type: "Lookup",
-    summary: "Searches trading communities on Reddit for broader themes — not just ticker-specific sentiment, but sector narratives, trade ideas, and emerging catalysts",
-    goal: "Discover what retail traders are thinking about a sector, theme, or catalyst before it becomes mainstream news",
-    phases: [2, 3, 4],
-    tags: ["optional"],
-    sources: ["reddit"],
-    resources: [
-      {
-        source: "reddit",
-        title: "Reddit search",
-        description: "Keyword search across r/wallstreetbets, r/stocks, r/options, and r/investing. Returns the most upvoted posts matching the query. The analyst uses this for thematic research — like searching \"biotech FDA\" to find upcoming catalysts.",
-        type: "website",
-        endpointOrPath: "searchReddit({query}, subreddits)",
-        exampleOutput: "\"Biotech FDA approvals\" → 12 posts · Top: \"MRNA FDA decision timeline\" (+280)",
-      },
-    ],
-  },
-
   // ─── Decision ─────────────────────────────────────────────────────────
   {
     name: "record_thesis",
@@ -617,9 +542,49 @@ export const TOOLS: ToolDef[] = [
       },
     ],
   },
+  // ─── Deprecated Tools (removed in V3, replaced by intelligence pipeline) ──
+  {
+    name: "scan_candidates",
+    stage: "Discovery",
+    type: "Aggregation",
+    summary: "Scanned for trading candidates using market movers, social sentiment, and trending tickers",
+    goal: "Find new stocks to research. Replaced by background intelligence jobs that gather candidates overnight.",
+    phases: [],
+    tags: ["removed"],
+    sources: ["fmp", "stocktwits"],
+    resources: [],
+    deprecated: true,
+    replacedBy: "read_signals — pre-gathered from FMP market movers, Finnhub earnings calendar, and Perplexity Sonar web search by background intelligence jobs",
+  },
+  {
+    name: "get_social_sentiment",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Checked social media sentiment from StockTwits and Reddit for a given ticker",
+    goal: "Gauge retail sentiment. Replaced by social signals gathered by the intelligence pipeline.",
+    phases: [],
+    tags: ["removed"],
+    sources: ["stocktwits", "reddit"],
+    resources: [],
+    deprecated: true,
+    replacedBy: "read_signals — social sentiment is now gathered as SOCIAL-type signals by background jobs and routed to relevant analysts",
+  },
+  {
+    name: "search_reddit",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Searched Reddit (r/wallstreetbets, r/stocks) for discussion about a ticker",
+    goal: "Find retail catalysts and sentiment. Replaced by intelligence pipeline's web search.",
+    phases: [],
+    tags: ["removed"],
+    sources: ["reddit"],
+    resources: [],
+    deprecated: true,
+    replacedBy: "read_signals + read_artifact — Perplexity Sonar searches include Reddit and social media. Relevant discussions surface as signals with full article extraction available.",
+  },
 ];
 
-// ── V2 Run Contract (8 phases) ─────────────────────────────────────────
+// ── V3 Run Contract (8 phases) ─────────────────────────────────────────
 
 export interface RunPhase {
   number: number;
@@ -631,10 +596,10 @@ export interface RunPhase {
 
 export const RUN_PHASES: RunPhase[] = [
   { number: 0, name: "Portfolio Check-in", description: "Read injected context: holdings, watchlist, prior brief, performance stats. No tool calls — pure reasoning.", tools: [], stepBudget: "0 steps" },
-  { number: 1, name: "Orient", description: "Market context: SPY, VIX, sectors, macro events, regime classification, themes.", tools: ["get_market_context"], stepBudget: "1 step" },
+  { number: 1, name: "Read Intelligence", description: "Read pre-gathered intelligence: morning brief (market context, portfolio alerts, new opportunities) and routed signals. Optionally call get_market_context if brief is stale.", tools: ["read_morning_brief", "read_signals", "read_artifact", "get_market_context"], stepBudget: "1–3 steps" },
   { number: 2, name: "Review Holdings", description: "Triage open positions near target/stop, with earnings, or from watch-tomorrow list.", tools: ["get_stock_data", "get_earnings_data", "get_options_flow", "record_thesis"], stepBudget: "1–6 steps" },
-  { number: 3, name: "Review Watchlist", description: "Triage watchlist items by priority, review triggers and catalysts.", tools: ["get_stock_data", "get_social_sentiment", "record_thesis"], stepBudget: "1–4 steps" },
-  { number: 4, name: "Discover", description: "Scan candidates from earnings, movers, social buzz. Research new opportunities. Reduced scope at max positions or RISK_OFF.", tools: ["scan_candidates", "get_stock_data", "get_social_sentiment", "get_options_flow", "get_earnings_data", "get_sec_filings", "search_reddit", "record_thesis"], stepBudget: "2–8 steps" },
+  { number: 3, name: "Review Watchlist", description: "Triage watchlist items by priority, review triggers and catalysts.", tools: ["get_stock_data", "record_thesis"], stepBudget: "1–4 steps" },
+  { number: 4, name: "Discover", description: "Review opportunities from intelligence signals and morning brief. Research new ideas. Reduced scope at max positions or RISK_OFF.", tools: ["get_stock_data", "get_options_flow", "get_earnings_data", "get_sec_filings", "record_thesis"], stepBudget: "2–8 steps" },
   { number: 5, name: "Synthesize", description: "Pure reasoning. Output decision table: INITIATE, ADD, HOLD, REDUCE, EXIT, WATCH, REMOVE, PASS. Consider exposure, risk budget, conflicts.", tools: [], stepBudget: "0 steps" },
   { number: 6, name: "Execute", description: "Execute decisions in order (exits before entries). Place trades, close positions, manage watchlist.", tools: ["place_trade", "close_position", "manage_watchlist"], stepBudget: "1–5 steps" },
   { number: 7, name: "Wrap Up", description: "Call complete_run with ranked picks, market summary, overall assessment, exposure breakdown, and risk notes. The analyst does NOT self-reflect — a separate briefing agent handles that after the session.", tools: ["complete_run"], stepBudget: "1 step" },
@@ -675,7 +640,7 @@ export function exportToolsAsMarkdown(): string {
   const lines: string[] = [
     "# Agent Tool Registry",
     "",
-    `${TOOLS.length} tools · ${RUN_PHASES.length} phases · V2 portfolio-manager architecture`,
+    `${TOOLS.length} tools · ${RUN_PHASES.length} phases · V3 intelligence-first architecture`,
     "",
     "## Run Contract (8 phases)",
     "",

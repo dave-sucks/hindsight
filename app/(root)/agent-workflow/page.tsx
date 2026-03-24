@@ -111,7 +111,7 @@ const CONFIG_STEPS: FlowStep[] = [
     phase: "Configuration",
     title: "Create an Analyst",
     icon: Sparkles,
-    badges: ["AI Builder", "GPT-4o", "8 research tools", "Intelligence Setup"],
+    badges: ["AI Builder", "GPT-4o", "4 research tools", "Intelligence Setup"],
     summary:
       "You describe your trading style in conversation — sectors, risk appetite, patterns that catch your eye. The builder researches live market data, then writes a full analyst persona: strategy document, direction bias, sectors, confidence threshold, position sizing, and watchlist. It also proposes a source pack (4-6 curated domain sources for daily monitoring), 3-5 intelligence queries for the morning sweep, and an intelligence policy controlling signal budgets and attention weights. Think of it like onboarding a new PM and setting up their Bloomberg terminal.",
     detailSheet: "analyst-builder",
@@ -146,7 +146,7 @@ const CRON_TRIGGER: FlowStep = {
 const POST_TRIGGER_STEPS: FlowStep[] = [
   {
     phase: "Research Session",
-    title: "8-phase research pipeline (16 tools)",
+    title: "8-phase research pipeline (13 tools)",
     icon: Search,
     badges: ["Check-in", "Intelligence", "Orient", "Holdings", "Watchlist", "Discover", "Synthesize", "Execute", "Wrap Up"],
     summary:
