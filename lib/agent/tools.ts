@@ -2199,10 +2199,11 @@ export function createResearchTools(ctx: ToolContext) {
       inputSchema: z.object({
         tickers: z.array(z.string()).optional().describe("Filter to signals mentioning these tickers"),
         themes: z.array(z.string()).optional().describe("Filter to signals with these themes (e.g. AI_CAPEX, FED_RATE_CUT)"),
+        type: z.enum(["NEWS", "EARNINGS", "FILING", "SOCIAL", "PRICE_ACTION", "ANALYST_NOTE", "OPTIONS", "MACRO", "SECTOR"]).optional().describe("Filter to a specific signal type (e.g. EARNINGS for earnings calendar, MACRO for market movers)"),
         urgency: z.enum(["LOW", "MEDIUM", "HIGH", "BREAKING"]).optional().describe("Minimum urgency level"),
         limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy)"),
       }),
-      execute: async ({ tickers, themes, urgency, limit = 20 }) => {
+      execute: async ({ tickers, themes, type, urgency, limit = 20 }) => {
         if (!ctx.analystId) return { error: "No analyst context — cannot read signals" };
 
         // ── Apply intelligence policy constraints ──────────────────────
@@ -2232,6 +2233,7 @@ export function createResearchTools(ctx: ToolContext) {
             signal: {
               ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
               ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
+              ...(type ? { type } : {}),
               urgency: { in: validUrgencies },
               sourceQuality: { gte: minSourceQuality },
             },

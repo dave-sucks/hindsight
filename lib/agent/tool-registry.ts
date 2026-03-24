@@ -52,6 +52,10 @@ export interface ToolDef {
   /** Provider keys for source logos in card header */
   sources: string[];
   resources: Resource[];
+  /** V3: tool has been removed from runtime and replaced by the intelligence pipeline */
+  deprecated?: boolean;
+  /** V3: what replaced this tool */
+  replacedBy?: string;
 }
 
 // ── Stage + Type metadata ──────────────────────────────────────────────────
@@ -537,6 +541,46 @@ export const TOOLS: ToolDef[] = [
         exampleOutput: "HOLD: AMZN (thesis intact, within parameters) · NVDA (near target, watching closely)",
       },
     ],
+  },
+  // ─── Deprecated Tools (removed in V3, replaced by intelligence pipeline) ──
+  {
+    name: "scan_candidates",
+    stage: "Discovery",
+    type: "Aggregation",
+    summary: "Scanned for trading candidates using market movers, social sentiment, and trending tickers",
+    goal: "Find new stocks to research. Replaced by background intelligence jobs that gather candidates overnight.",
+    phases: [],
+    tags: ["removed"],
+    sources: ["fmp", "stocktwits"],
+    resources: [],
+    deprecated: true,
+    replacedBy: "read_signals — pre-gathered from FMP market movers, Finnhub earnings calendar, and Perplexity Sonar web search by background intelligence jobs",
+  },
+  {
+    name: "get_social_sentiment",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Checked social media sentiment from StockTwits and Reddit for a given ticker",
+    goal: "Gauge retail sentiment. Replaced by social signals gathered by the intelligence pipeline.",
+    phases: [],
+    tags: ["removed"],
+    sources: ["stocktwits", "reddit"],
+    resources: [],
+    deprecated: true,
+    replacedBy: "read_signals — social sentiment is now gathered as SOCIAL-type signals by background jobs and routed to relevant analysts",
+  },
+  {
+    name: "search_reddit",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Searched Reddit (r/wallstreetbets, r/stocks) for discussion about a ticker",
+    goal: "Find retail catalysts and sentiment. Replaced by intelligence pipeline's web search.",
+    phases: [],
+    tags: ["removed"],
+    sources: ["reddit"],
+    resources: [],
+    deprecated: true,
+    replacedBy: "read_signals + read_artifact — Perplexity Sonar searches include Reddit and social media. Relevant discussions surface as signals with full article extraction available.",
   },
 ];
 

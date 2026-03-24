@@ -27,6 +27,7 @@ import { ChevronRight, Globe, Database, Cpu, Zap } from "lucide-react";
 import {
   STAGES,
   STAGE_META,
+  TOOLS,
   getToolsByStage,
   type ToolDef,
   type Resource,
@@ -183,6 +184,34 @@ function ToolCard({
   tool: ToolDef;
   onResourceClick: (resource: Resource) => void;
 }) {
+  if (tool.deprecated) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger render={<span className="block w-full" />}>
+            <Card className="p-0 overflow-hidden opacity-50">
+              <div className="px-3 pt-3 pb-2 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <code className="text-xs font-mono font-medium line-through">{tool.name}</code>
+                  <Badge variant="outline">removed</Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed line-through">{tool.summary}</p>
+                {tool.replacedBy && (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    → {tool.replacedBy}
+                  </p>
+                )}
+              </div>
+            </Card>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-xs">
+            Replaced by V3 Intelligence Pipeline — signals from background web search now provide this data before the analyst run starts
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <Card className="p-0 overflow-hidden">
       <div className="px-3 pt-3 pb-2 space-y-1.5">
@@ -230,8 +259,10 @@ export function ToolCardList() {
   }, []);
 
   const grouped = STAGES
-    .map((stage) => ({ stage, tools: getToolsByStage(stage) }))
+    .map((stage) => ({ stage, tools: getToolsByStage(stage).filter((t) => !t.deprecated) }))
     .filter((g) => g.tools.length > 0);
+
+  const deprecatedTools = TOOLS.filter((t) => t.deprecated);
 
   return (
     <div className="space-y-5">
@@ -255,6 +286,28 @@ export function ToolCardList() {
           </div>
         </div>
       ))}
+
+      {/* Deprecated tools */}
+      {deprecatedTools.length > 0 && (
+        <div className="space-y-3">
+          <div>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-sm font-semibold text-muted-foreground">Removed in V3</h3>
+              <span className="text-xs text-muted-foreground">
+                {deprecatedTools.length} tool{deprecatedTools.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+              These tools were replaced by the V3 intelligence pipeline. Background jobs now gather this data before the analyst runs.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {deprecatedTools.map((tool) => (
+              <ToolCard key={tool.name} tool={tool} onResourceClick={handleResourceClick} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <ResourceDetailDialog
         resource={selectedResource}

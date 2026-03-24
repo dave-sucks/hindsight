@@ -16,6 +16,9 @@ import {
   GitCompare,
   HelpCircle,
   Eye,
+  Radar,
+  Zap,
+  Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -388,18 +391,163 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
-  // ── V3 Intelligence Layer — CoT steps rendered by ResearchToolGroup ──
+  // ── V3 Intelligence Layer — CoT steps ────────────────────────────────────
   useAssistantToolUI({
     toolName: "read_morning_brief",
-    render: () => null,
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Reading morning intelligence brief...</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Radar} label="Loading today's brief" status="active" />
+              <ChainOfThoughtStep icon={BarChart3} label="Market context" status="pending" />
+              <ChainOfThoughtStep icon={Briefcase} label="Portfolio alerts" status="pending" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const r = result as Record<string, unknown>;
+      if (r.available === false) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>No morning brief available</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Radar} label="Intelligence jobs may not have run yet" status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const marketCtx = typeof r.marketContext === "string" ? r.marketContext.slice(0, 100) : "";
+      const alertCount = Array.isArray(r.portfolioAlerts) ? r.portfolioAlerts.length : 0;
+      const watchCount = Array.isArray(r.watchlistUpdates) ? r.watchlistUpdates.length : 0;
+      const oppCount = Array.isArray(r.newOpportunities) ? r.newOpportunities.length : 0;
+
+      return (
+        <ChainOfThought defaultOpen>
+          <ChainOfThoughtHeader>Morning intelligence brief</ChainOfThoughtHeader>
+          <ChainOfThoughtContent>
+            <ChainOfThoughtStep icon={BarChart3} label={marketCtx ? `${marketCtx}…` : "Market context loaded"} status="complete" />
+            <ChainOfThoughtStep icon={Briefcase} label={`${alertCount} portfolio alert${alertCount !== 1 ? "s" : ""}`} status="complete" />
+            <ChainOfThoughtStep icon={Eye} label={`${watchCount} watchlist update${watchCount !== 1 ? "s" : ""}`} status="complete" />
+            <ChainOfThoughtStep icon={Zap} label={`${oppCount} new opportunit${oppCount !== 1 ? "ies" : "y"}`} status="complete" />
+          </ChainOfThoughtContent>
+          <SourceChips sources={[{ provider: "Intelligence Pipeline", title: "Morning Brief", excerpt: `${r.signalCount ?? 0} signals synthesized` }]} />
+        </ChainOfThought>
+      );
+    },
   });
+
   useAssistantToolUI({
     toolName: "read_signals",
-    render: () => null,
+    render: ({ args, result }) => {
+      const filterTickers = (args as Record<string, unknown>)?.tickers as string[] | undefined;
+      const filterType = (args as Record<string, unknown>)?.type as string | undefined;
+
+      if (!result) {
+        const filterCtx = filterTickers?.length
+          ? ` for ${filterTickers.join(", ")}`
+          : filterType
+            ? ` (${filterType})`
+            : "";
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Reading routed signals{filterCtx}...</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={Zap} label="Querying intelligence feed" status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const r = result as Record<string, unknown>;
+      const count = typeof r.count === "number" ? r.count : 0;
+      const signals = Array.isArray(r.signals) ? r.signals as Record<string, unknown>[] : [];
+      const urgent = signals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
+      const bullish = signals.filter((s) => s.sentiment === "BULLISH").length;
+      const bearish = signals.filter((s) => s.sentiment === "BEARISH").length;
+      const top3 = signals.slice(0, 3).map((s) => s.headline as string).filter(Boolean);
+      const allTickers = [...new Set(signals.flatMap((s) => Array.isArray(s.tickers) ? s.tickers as string[] : []))];
+      const sourceNames = [...new Set(signals.flatMap((s) => Array.isArray(s.sourceNames) ? s.sourceNames as string[] : []))];
+
+      return (
+        <ChainOfThought defaultOpen>
+          <ChainOfThoughtHeader>
+            Read {count} signal{count !== 1 ? "s" : ""} ({urgent} urgent, {bullish} bullish, {bearish} bearish)
+          </ChainOfThoughtHeader>
+          <ChainOfThoughtContent>
+            {top3.map((headline, i) => (
+              <ChainOfThoughtStep key={i} icon={Zap} label={headline} status="complete" />
+            ))}
+            {count > 3 && (
+              <ChainOfThoughtStep icon={Zap} label={`+${count - 3} more signals`} status="complete" />
+            )}
+          </ChainOfThoughtContent>
+          {allTickers.length > 0 && (
+            <div className="mt-1.5 flex items-center gap-1 flex-wrap px-1">
+              {allTickers.slice(0, 8).map((t) => (
+                <Badge key={t} variant="secondary">${t}</Badge>
+              ))}
+              {allTickers.length > 8 && (
+                <span className="text-[11px] text-muted-foreground">+{allTickers.length - 8}</span>
+              )}
+            </div>
+          )}
+          <SourceChips sources={sourceNames.map((n) => ({ provider: n, title: `${n} signals` }))} />
+        </ChainOfThought>
+      );
+    },
   });
+
   useAssistantToolUI({
     toolName: "read_artifact",
-    render: () => null,
+    render: ({ result }) => {
+      if (!result) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Reading full article...</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={FileText} label="Extracting article content" status="active" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const r = result as Record<string, unknown>;
+      if (r.error) {
+        return (
+          <ChainOfThought defaultOpen>
+            <ChainOfThoughtHeader>Article not found</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              <ChainOfThoughtStep icon={FileText} label={String(r.error)} status="complete" />
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        );
+      }
+
+      const title = typeof r.title === "string" ? r.title : "Untitled";
+      const url = typeof r.url === "string" ? r.url : "";
+      const content = typeof r.contentMarkdown === "string" ? r.contentMarkdown : "";
+      const wordCount = content ? content.split(/\s+/).length : 0;
+      let domain = "";
+      try { domain = url ? new URL(url).hostname.replace(/^www\./, "") : ""; } catch { /* */ }
+
+      const sources = extractToolSources(r);
+
+      return (
+        <ChainOfThought defaultOpen>
+          <ChainOfThoughtHeader>
+            {domain ? `${domain}: ` : ""}{title} ({wordCount.toLocaleString()} words)
+          </ChainOfThoughtHeader>
+          <ChainOfThoughtContent>
+            <ChainOfThoughtStep icon={FileText} label={title} status="complete" />
+          </ChainOfThoughtContent>
+          <SourceChips sources={sources.length > 0 ? sources : (domain ? [{ provider: domain, title, url }] : [])} />
+        </ChainOfThought>
+      );
+    },
   });
 
   // ── Thesis → ThesisCard (compact preview, opens sheet on click) ────
