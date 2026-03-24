@@ -131,10 +131,6 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
       const macroEvents = (result.macro_events_today ?? []) as { event: string; impact: string }[];
       const earningsDensity = result.earnings_density as { count?: number; period?: string } | undefined;
       const sectors = (result.sectors ?? []) as { symbol: string; change_pct: number; momentum?: string }[];
-      const themes = (result.themes ?? []) as {
-        label: string; strength: number; direction: string;
-        tickers: string[]; headline_matches: number;
-      }[];
 
       const lines: ReactNode[] = [];
 
@@ -181,35 +177,6 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
           `${s.symbol} ${fmtPct(s.change_pct)}`
         ).join("  ·  ");
         lines.push(<div key="sectors">{`Sectors: ${sectorLine}`}</div>);
-      }
-
-      // Themes (merged from detect_market_themes)
-      if (themes.length > 0) {
-        lines.push(
-          <div key="themes" className="space-y-1 pt-1">
-            <div className="font-medium text-foreground">Themes:</div>
-            {themes.map((t, i) => {
-              const dir = t.direction === "BULLISH" ? "bullish" : t.direction === "BEARISH" ? "bearish" : "neutral";
-              const dirColor = t.direction === "BULLISH" ? "text-emerald-500" : t.direction === "BEARISH" ? "text-red-500" : "";
-              const strengthPct = (t.strength * 100).toFixed(0);
-              return (
-                <div key={i}>
-                  <span className={dirColor}>{t.label}</span>
-                  {" — "}
-                  <span className={dirColor}>{dir}</span>
-                  {", "}
-                  strength {strengthPct}%
-                  {t.tickers.length > 0 && (
-                    <span className="text-muted-foreground"> · {t.tickers.slice(0, 5).join(", ")}</span>
-                  )}
-                  {t.headline_matches > 0 && (
-                    <span className="text-muted-foreground"> · {t.headline_matches} headlines</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        );
       }
 
       if (lines.length === 0) return null;
