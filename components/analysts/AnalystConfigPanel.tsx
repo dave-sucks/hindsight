@@ -130,11 +130,9 @@ export function AnalystConfigPanel({
       {/* ── Animated gradient header ──────────────────────────────── */}
       <div className="relative overflow-hidden px-5 pt-5 pb-4 shrink-0">
         {/* Gradient blob */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="analyst-gradient-blob absolute -inset-4 opacity-30 blur-2xl" />
-        </div>
+        <div className="analyst-gradient-blob" />
         {/* Content overlay */}
-        <div className="relative">
+        <div className="relative z-10">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="text-lg font-semibold truncate">
@@ -319,15 +317,15 @@ export function AnalystConfigPanel({
                   <div className="space-y-2">
                     <AttentionBar
                       label="Holdings"
-                      value={policy.holdingsAttention}
+                      value={Math.round(policy.holdingsAttention * 100)}
                     />
                     <AttentionBar
                       label="Watchlist"
-                      value={policy.watchlistAttention}
+                      value={Math.round(policy.watchlistAttention * 100)}
                     />
                     <AttentionBar
                       label="Discovery"
-                      value={policy.discoveryAttention}
+                      value={Math.round(policy.discoveryAttention * 100)}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-3 text-xs">
@@ -469,6 +467,7 @@ export function AnalystConfigPanel({
           onClick={onConfirm}
           disabled={isCreating}
           size="default"
+          className="w-full"
         >
           <Check className="h-4 w-4 mr-2" />
           {isCreating ? "Creating..." : "Create Analyst"}

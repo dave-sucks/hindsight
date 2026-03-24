@@ -57,9 +57,11 @@ const SUGGESTIONS = [
 
 function BuilderThread({
   onConfirmConfig,
+  onConfigSuggested,
   isCreating,
 }: {
   onConfirmConfig: (config: AgentConfigData) => void;
+  onConfigSuggested?: (config: AgentConfigData) => void;
   isCreating: boolean;
 }) {
   useRegisterBuilderToolUIs();
@@ -67,11 +69,12 @@ function BuilderThread({
   const callbacks = useMemo(
     () => ({
       onConfirmConfig,
+      onConfigSuggested,
       isCreating,
       confirmLabel: "Create Analyst",
       confirmingLabel: "Creating...",
     }),
-    [onConfirmConfig, isCreating]
+    [onConfirmConfig, onConfigSuggested, isCreating]
   );
 
   return (
@@ -91,8 +94,12 @@ function BuilderThread({
 
 export function AnalystBuilderChat({
   currentConfig,
+  onConfigSuggested,
+  onCreatingChange,
 }: {
   currentConfig?: Record<string, unknown>;
+  onConfigSuggested?: (config: AgentConfigData, onConfirm: () => void) => void;
+  onCreatingChange?: (creating: boolean) => void;
 } = {}) {
   const router = useRouter();
   const [isCreating, startCreating] = useTransition();
@@ -113,6 +120,7 @@ export function AnalystBuilderChat({
   const handleConfirmConfig = useCallback(
     (config: AgentConfigData) => {
       setCreateError(null);
+      onCreatingChange?.(true);
       startCreating(async () => {
         try {
           const result = await createAnalystFromBuilder({
@@ -148,16 +156,31 @@ export function AnalystBuilderChat({
           console.error("Failed to create analyst:", err);
           setCreateError(msg);
           toast.error(`Failed to create analyst: ${msg}`);
+        } finally {
+          onCreatingChange?.(false);
         }
       });
     },
-    [router]
+    [router, onCreatingChange]
+  );
+
+  // Callback that the SuggestConfigRender calls to notify the page
+  const handleConfigSuggestedInternal = useCallback(
+    (config: AgentConfigData) => {
+      if (onConfigSuggested) {
+        onConfigSuggested(config, () => handleConfirmConfig(config));
+      }
+    },
+    [onConfigSuggested, handleConfirmConfig]
   );
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <BuilderThread
         onConfirmConfig={handleConfirmConfig}
+        onConfigSuggested={
+          onConfigSuggested ? handleConfigSuggestedInternal : undefined
+        }
         isCreating={isCreating}
       />
     </AssistantRuntimeProvider>

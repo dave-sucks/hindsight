@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { useAssistantToolUI } from "@assistant-ui/react";
 import {
@@ -73,6 +73,8 @@ import {
 type ToolUICallbacks = {
   /** Builder mode: create from config */
   onConfirmConfig?: (config: AgentConfigData) => void;
+  /** Builder mode: notify parent that config was suggested (for panel) */
+  onConfigSuggested?: (config: AgentConfigData) => void;
   isCreating?: boolean;
   confirmLabel?: string;
   confirmingLabel?: string;
@@ -193,11 +195,40 @@ const SuggestConfigRender: ToolCallMessagePartComponent<
   AgentConfigData,
   AgentConfigData
 > = ({ args, status }) => {
-  const { onConfirmConfig, isCreating, confirmLabel, confirmingLabel } =
+  const { onConfirmConfig, onConfigSuggested, isCreating, confirmLabel, confirmingLabel } =
     useToolUICallbacks();
+
+  const hasPanelCallback = !!onConfigSuggested;
+  const configSuggestedRef = useRef(onConfigSuggested);
+  configSuggestedRef.current = onConfigSuggested;
+
+  useEffect(() => {
+    if (args && configSuggestedRef.current) {
+      configSuggestedRef.current(args);
+    }
+  }, [args]);
 
   if (!args) return null;
 
+  if (hasPanelCallback) {
+    return (
+      <div className="my-2">
+        <Card className="p-4">
+          <div className="flex items-center gap-2">
+            <Check className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">
+              {args.name ?? "Analyst"} configured
+            </span>
+            <span className="text-sm text-muted-foreground ml-auto">
+              See panel →
+            </span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Fallback: render full config card inline (no panel available)
   return (
     <div className="my-2">
       <AgentConfigCard
