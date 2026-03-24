@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -45,6 +44,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupButton,
+  InputGroupText,
+} from "@/components/ui/input-group";
 import { Separator } from "@/components/ui/separator";
 import {
   Plus,
@@ -61,7 +67,7 @@ import { cn } from "@/lib/utils";
 import type { IntelligenceQuery, Source, SourcePack } from "./types";
 import { relativeTime } from "./types";
 
-// ── Logos (inline SVG for Perplexity + Firecrawl) ────────────────────────────
+// ── Logos ─────────────────────────────────────────────────────────────────────
 
 function PerplexityLogo({ className }: { className?: string }) {
   return (
@@ -147,7 +153,7 @@ function buildUnifiedItems(
   return [...queryItems, ...sourceItems];
 }
 
-// ── Category tooltip descriptions ────────────────────────────────────────────
+// ── Category tooltips ────────────────────────────────────────────────────────
 
 const CATEGORY_TOOLTIPS: Record<string, string> = {
   MARKET: "Broad market-level intelligence — indices, macro data, overall sentiment",
@@ -157,6 +163,23 @@ const CATEGORY_TOOLTIPS: Record<string, string> = {
   EVENT: "Time-bound events — earnings, IPOs, FDA decisions, M&A announcements",
   COMPANY: "Company-specific source — covers one company's filings, news, etc.",
   SOCIAL: "Social media / sentiment — StockTwits, Reddit, Twitter/X chatter",
+};
+
+const CATEGORY_OPTIONS = [
+  { value: "MARKET", label: "Market", description: "Broad market & macro intelligence" },
+  { value: "SECTOR", label: "Sector", description: "Industry-specific monitoring" },
+  { value: "TICKER", label: "Ticker", description: "Individual stock queries" },
+  { value: "THEMATIC", label: "Thematic", description: "Cross-cutting themes (AI, tariffs...)" },
+  { value: "EVENT", label: "Event", description: "Earnings, IPOs, FDA decisions" },
+  { value: "COMPANY", label: "Company", description: "Single company coverage" },
+  { value: "SOCIAL", label: "Social", description: "Social media sentiment" },
+];
+
+const CREATED_BY_LABELS: Record<string, string> = {
+  USER: "You",
+  BRIEFING_AGENT: "Briefing agent",
+  ANALYST_BUILDER: "Analyst builder",
+  ANALYST_RUNTIME: "Analyst runtime",
 };
 
 // ── Config Panel ────────────────────────────────────────────────────────────
@@ -235,96 +258,60 @@ export function ConfigPanel({
     }
   };
 
-  // Count active filters
-  const activeFilterCount =
-    (kindFilter !== "all" ? 1 : 0) + (categoryFilter !== "all" ? 1 : 0);
+  const searchCount = allItems.filter((i) => i.kind === "search").length;
+  const sourceCount = allItems.filter((i) => i.kind === "source").length;
+  const hasFilters = kindFilter !== "all" || categoryFilter !== "all" || search !== "";
 
   return (
     <TooltipProvider>
       <div className="max-w-3xl mx-auto space-y-4">
-        {/* Add new — Firecrawl-style */}
-        <AddItemCard onRefresh={onRefresh} />
+        {/* Add new — InputGroup block-end pattern */}
+        <AddItemInput onRefresh={onRefresh} />
 
         {/* Filter bar */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 ml-auto">
-            {/* Type filter chips */}
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Select value={kindFilter} onValueChange={(v) => v && setKindFilter(v as typeof kindFilter)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types ({allItems.length})</SelectItem>
+              <SelectItem value="search">Searches ({searchCount})</SelectItem>
+              <SelectItem value="source">Sources ({sourceCount})</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={categoryFilter} onValueChange={(v) => v && setCategoryFilter(v)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c.charAt(0) + c.slice(1).toLowerCase()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {hasFilters && (
             <Button
-              variant={kindFilter === "all" ? "secondary" : "outline"}
+              variant="ghost"
               size="sm"
-              onClick={() => setKindFilter("all")}
+              onClick={() => { setKindFilter("all"); setCategoryFilter("all"); setSearch(""); }}
             >
-              All
-              <Badge variant="secondary" className="ml-1">
-                {allItems.length}
-              </Badge>
+              Clear
             </Button>
-            <Button
-              variant={kindFilter === "search" ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setKindFilter("search")}
-            >
-              <Search className="h-3 w-3 mr-1" />
-              Searches
-              <Badge variant="secondary" className="ml-1">
-                {allItems.filter((i) => i.kind === "search").length}
-              </Badge>
-            </Button>
-            <Button
-              variant={kindFilter === "source" ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setKindFilter("source")}
-            >
-              <Globe className="h-3 w-3 mr-1" />
-              Sources
-              <Badge variant="secondary" className="ml-1">
-                {allItems.filter((i) => i.kind === "source").length}
-              </Badge>
-            </Button>
-
-            {/* Category dropdown */}
-            <Separator orientation="vertical" className="h-5 mx-1" />
-            <Select value={categoryFilter} onValueChange={(v) => v && setCategoryFilter(v)}>
-              <SelectTrigger className="h-8 w-auto gap-1">
-                <SlidersHorizontal className="h-3 w-3" />
-                <SelectValue placeholder="Category" />
-                {categoryFilter !== "all" && (
-                  <Badge variant="secondary" className="ml-1">1</Badge>
-                )}
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c.charAt(0) + c.slice(1).toLowerCase()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          )}
         </div>
 
         {/* Results */}
         <p className="text-xs text-muted-foreground tabular-nums">
           {filtered.length} of {allItems.length} items
-          {activeFilterCount > 0 && (
-            <button
-              className="ml-2 text-foreground hover:underline"
-              onClick={() => { setKindFilter("all"); setCategoryFilter("all"); setSearch(""); }}
-            >
-              Clear filters
-            </button>
-          )}
         </p>
 
         {/* Table */}
@@ -374,7 +361,7 @@ function ConfigRow({
 }) {
   return (
     <TableRow>
-      {/* Colored type icon in square */}
+      {/* Colored type icon */}
       <TableCell>
         <div
           className={cn(
@@ -416,7 +403,7 @@ function ConfigRow({
         <Switch checked={item.enabled} onCheckedChange={onToggle} />
       </TableCell>
 
-      {/* Detail popover (contains delete too) */}
+      {/* Detail popover */}
       <TableCell>
         <ItemDetailPopover item={item} onDelete={onDelete} />
       </TableCell>
@@ -438,9 +425,7 @@ function ItemDetailPopover({
   return (
     <Popover>
       <PopoverTrigger
-        render={
-          <Button variant="ghost" size="icon" className="h-7 w-7" />
-        }
+        render={<Button variant="ghost" size="icon" />}
       >
         <Info className="h-3.5 w-3.5" />
       </PopoverTrigger>
@@ -455,11 +440,7 @@ function ItemDetailPopover({
                   : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
               )}
             >
-              {isSearch ? (
-                <Search className="h-3 w-3" />
-              ) : (
-                <Globe className="h-3 w-3" />
-              )}
+              {isSearch ? <Search className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
             </div>
             <span>{isSearch ? "Search Query" : "Monitored Source"}</span>
           </PopoverTitle>
@@ -475,7 +456,7 @@ function ItemDetailPopover({
 
         <Separator />
 
-        {/* Trigger + How it works — unified section */}
+        {/* Trigger + how it works */}
         <div className="text-xs space-y-2">
           <div className="flex items-center gap-2">
             {isSearch ? (
@@ -512,13 +493,11 @@ function ItemDetailPopover({
             </TooltipContent>
           </Tooltip>
 
-          {/* Scope */}
           <span className="text-muted-foreground">Scope</span>
           <span className="text-foreground">
             {item.scope === "FIRM" ? "Firm-wide" : "Analyst-specific"}
           </span>
 
-          {/* Search-specific fields */}
           {isSearch && (
             <>
               <span className="text-muted-foreground">Created by</span>
@@ -536,7 +515,6 @@ function ItemDetailPopover({
             </>
           )}
 
-          {/* Source-specific fields */}
           {!isSearch && (
             <>
               {item.qualityScore != null && (
@@ -547,7 +525,7 @@ function ItemDetailPopover({
                       {item.qualityScore}/5
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs">
-                      Signal scoring weight. Higher quality sources produce higher-scored signals that get prioritized in analyst briefs and surface more prominently.
+                      Signal scoring weight. Higher quality sources produce higher-scored signals that get prioritized in analyst briefs.
                     </TooltipContent>
                   </Tooltip>
                 </>
@@ -575,22 +553,19 @@ function ItemDetailPopover({
 
         <Separator />
 
-        {/* Delete action */}
+        {/* Delete */}
         <AlertDialog>
           <AlertDialogTrigger
-            render={
-              <Button variant="ghost" size="sm" className="w-full text-red-500 hover:text-red-600">
-                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                Delete {isSearch ? "search" : "source"}
-              </Button>
-            }
-          />
+            render={<Button variant="ghost" size="sm" className="w-full text-red-500 hover:text-red-600" />}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            Delete {isSearch ? "search" : "source"}
+          </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete {isSearch ? "search" : "source"}?</AlertDialogTitle>
               <AlertDialogDescription>
                 Remove &ldquo;{item.name.slice(0, 60)}&rdquo; from intelligence monitoring.
-                This cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -604,16 +579,9 @@ function ItemDetailPopover({
   );
 }
 
-const CREATED_BY_LABELS: Record<string, string> = {
-  USER: "You",
-  BRIEFING_AGENT: "Briefing agent",
-  ANALYST_BUILDER: "Analyst builder",
-  ANALYST_RUNTIME: "Analyst runtime",
-};
+// ── Add Item — Pure ShadCN InputGroup with block-end addon ───────────────────
 
-// ── Add Item Card (Firecrawl-style) ──────────────────────────────────────────
-
-function AddItemCard({ onRefresh }: { onRefresh: () => void }) {
+function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
   const [kind, setKind] = useState<ItemKind>("search");
   const [value, setValue] = useState("");
   const [category, setCategory] = useState("MARKET");
@@ -670,102 +638,54 @@ function AddItemCard({ onRefresh }: { onRefresh: () => void }) {
   };
 
   return (
-    <Card className="p-4 space-y-3">
-      {/* Input row */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-          {kind === "search" ? "query://" : "https://"}
-        </span>
-        <Input
-          placeholder={kind === "search"
-            ? "semiconductor supply chain disruptions today..."
-            : "seekingalpha.com"}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          className="flex-1 border-0 shadow-none focus-visible:ring-0 px-0 h-8"
-        />
-      </div>
+    <InputGroup className="h-auto">
+      {/* Top: the actual input */}
+      <InputGroupInput
+        placeholder={kind === "search"
+          ? "semiconductor supply chain disruptions today..."
+          : "seekingalpha.com"}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+      />
 
-      <Separator />
+      {/* Bottom: controls bar */}
+      <InputGroupAddon align="block-end">
+        {/* Type selector */}
+        <Select value={kind} onValueChange={(v) => v && setKind(v as ItemKind)}>
+          <SelectTrigger className="w-[110px] h-7">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="search">Search</SelectItem>
+            <SelectItem value="source">Source</SelectItem>
+          </SelectContent>
+        </Select>
 
-      {/* Controls row — like Firecrawl's options bar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {/* Type toggle */}
-        <div className="flex items-center rounded-md border">
-          <button
-            className={cn(
-              "px-2.5 py-1 text-xs rounded-l-md transition-colors",
-              kind === "search"
-                ? "bg-violet-500/10 text-violet-600 dark:text-violet-400 font-medium"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-            onClick={() => setKind("search")}
-          >
-            <Search className="h-3 w-3 inline mr-1" />
-            Search
-          </button>
-          <button
-            className={cn(
-              "px-2.5 py-1 text-xs rounded-r-md transition-colors",
-              kind === "source"
-                ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 font-medium"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-            onClick={() => setKind("source")}
-          >
-            <Globe className="h-3 w-3 inline mr-1" />
-            Source
-          </button>
-        </div>
+        {/* Category selector */}
+        <Select value={category} onValueChange={(v) => v && setCategory(v)}>
+          <SelectTrigger className="w-[110px] h-7">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORY_OPTIONS
+              .filter((c) => kind === "source" || !["COMPANY", "SOCIAL"].includes(c.value))
+              .map((c) => (
+                <SelectItem key={c.value} value={c.value}>
+                  {c.label}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
 
-        {/* Category dropdown */}
-        <Popover>
-          <PopoverTrigger
-            render={
-              <button className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border text-muted-foreground hover:text-foreground transition-colors">
-                <SlidersHorizontal className="h-3 w-3" />
-                <span>Category: <span className="text-foreground font-medium">{category.charAt(0) + category.slice(1).toLowerCase()}</span></span>
-              </button>
-            }
-          />
-          <PopoverContent side="bottom" align="start" className="w-64">
-            <PopoverHeader>
-              <PopoverTitle>Category</PopoverTitle>
-            </PopoverHeader>
-            <div className="space-y-1">
-              {CATEGORY_OPTIONS
-                .filter((c) => kind === "source" || !["COMPANY", "SOCIAL"].includes(c.value))
-                .map((c) => (
-                  <button
-                    key={c.value}
-                    className={cn(
-                      "w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors",
-                      category === c.value
-                        ? "bg-accent text-accent-foreground"
-                        : "hover:bg-accent/50"
-                    )}
-                    onClick={() => setCategory(c.value)}
-                  >
-                    <p className="font-medium">{c.label}</p>
-                    <p className="text-muted-foreground">{c.description}</p>
-                  </button>
-                ))}
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        {/* Source-specific options */}
+        {/* Source options popover */}
         {kind === "source" && (
           <Popover>
             <PopoverTrigger
-              render={
-                <button className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border text-muted-foreground hover:text-foreground transition-colors">
-                  <SlidersHorizontal className="h-3 w-3" />
-                  <span>Options</span>
-                </button>
-              }
-            />
+              render={<InputGroupButton variant="ghost" size="icon-xs" />}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+            </PopoverTrigger>
             <PopoverContent side="bottom" align="start" className="w-64">
               <PopoverHeader>
                 <PopoverTitle>Source Options</PopoverTitle>
@@ -776,7 +696,6 @@ function AddItemCard({ onRefresh }: { onRefresh: () => void }) {
                     Display name
                   </label>
                   <Input
-                    className="h-7 text-xs"
                     placeholder="e.g. Seeking Alpha"
                     value={sourceName}
                     onChange={(e) => setSourceName(e.target.value)}
@@ -787,7 +706,7 @@ function AddItemCard({ onRefresh }: { onRefresh: () => void }) {
                     Source type
                   </label>
                   <Select value={sourceType} onValueChange={(v) => v && setSourceType(v)}>
-                    <SelectTrigger className="h-7 text-xs">
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -804,7 +723,7 @@ function AddItemCard({ onRefresh }: { onRefresh: () => void }) {
                     Quality score
                   </label>
                   <Select value={qualityScore} onValueChange={(v) => v && setQualityScore(v)}>
-                    <SelectTrigger className="h-7 text-xs">
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -824,27 +743,18 @@ function AddItemCard({ onRefresh }: { onRefresh: () => void }) {
           </Popover>
         )}
 
-        {/* Submit */}
-        <Button
+        {/* Submit button */}
+        <InputGroupButton
+          variant="default"
           size="sm"
+          className="ml-auto"
           onClick={handleAdd}
           disabled={!canSubmit || adding}
-          className="ml-auto"
         >
-          <Plus className="h-3.5 w-3.5 mr-1" />
+          <Plus className="h-3.5 w-3.5" />
           {adding ? "Adding..." : `Add ${kind}`}
-        </Button>
-      </div>
-    </Card>
+        </InputGroupButton>
+      </InputGroupAddon>
+    </InputGroup>
   );
 }
-
-const CATEGORY_OPTIONS = [
-  { value: "MARKET", label: "Market", description: "Broad market & macro intelligence" },
-  { value: "SECTOR", label: "Sector", description: "Industry-specific monitoring" },
-  { value: "TICKER", label: "Ticker", description: "Individual stock queries" },
-  { value: "THEMATIC", label: "Thematic", description: "Cross-cutting themes (AI, tariffs...)" },
-  { value: "EVENT", label: "Event", description: "Earnings, IPOs, FDA decisions" },
-  { value: "COMPANY", label: "Company", description: "Single company coverage" },
-  { value: "SOCIAL", label: "Social", description: "Social media sentiment" },
-];
