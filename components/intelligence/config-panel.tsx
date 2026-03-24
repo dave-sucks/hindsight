@@ -144,21 +144,21 @@ function QueriesSection({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger>
-        <Button variant="ghost" className="w-full justify-start px-0 h-auto py-1">
-          {open ? (
-            <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
-          )}
-          <Search className="h-4 w-4 mr-2 text-muted-foreground" />
-          <span className="text-sm font-medium">
-            Queries
-          </span>
-          <Badge variant="secondary" className="ml-2">
-            {queries.length}
-          </Badge>
-        </Button>
+      <CollapsibleTrigger
+        render={<Button variant="ghost" className="w-full justify-start px-0 h-auto py-1" />}
+      >
+        {open ? (
+          <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
+        )}
+        <Search className="h-4 w-4 mr-2 text-muted-foreground" />
+        <span className="text-sm font-medium">
+          Queries
+        </span>
+        <Badge variant="secondary" className="ml-2">
+          {queries.length}
+        </Badge>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="space-y-3 pt-3">
@@ -277,14 +277,14 @@ function QueryRow({
         </Tooltip>
       )}
       <AlertDialog>
-        <AlertDialogTrigger>
-          <Button
+        <AlertDialogTrigger
+          render={<Button
             variant="ghost"
             size="icon"
             className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
+          />}
+        >
+          <Trash2 className="h-3 w-3" />
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -372,19 +372,19 @@ function SourcesSection({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger>
-        <Button variant="ghost" className="w-full justify-start px-0 h-auto py-1">
-          {open ? (
-            <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
-          )}
-          <Globe className="h-4 w-4 mr-2 text-muted-foreground" />
-          <span className="text-sm font-medium">Sources</span>
-          <Badge variant="secondary" className="ml-2">
-            {sources.length}
-          </Badge>
-        </Button>
+      <CollapsibleTrigger
+        render={<Button variant="ghost" className="w-full justify-start px-0 h-auto py-1" />}
+      >
+        {open ? (
+          <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
+        )}
+        <Globe className="h-4 w-4 mr-2 text-muted-foreground" />
+        <span className="text-sm font-medium">Sources</span>
+        <Badge variant="secondary" className="ml-2">
+          {sources.length}
+        </Badge>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="space-y-3 pt-3">
@@ -491,14 +491,14 @@ function SourceRow({
           </Tooltip>
         )}
         <AlertDialog>
-          <AlertDialogTrigger>
-            <Button
+          <AlertDialogTrigger
+            render={<Button
               variant="ghost"
               size="icon"
               className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
+            />}
+          >
+            <Trash2 className="h-3 w-3" />
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -527,19 +527,19 @@ function PacksSection({ packs }: { packs: SourcePack[] }) {
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger>
-        <Button variant="ghost" className="w-full justify-start px-0 h-auto py-1">
-          {open ? (
-            <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
-          )}
-          <Package className="h-4 w-4 mr-2 text-muted-foreground" />
-          <span className="text-sm font-medium">Source Packs</span>
-          <Badge variant="secondary" className="ml-2">
-            {packs.length}
-          </Badge>
-        </Button>
+      <CollapsibleTrigger
+        render={<Button variant="ghost" className="w-full justify-start px-0 h-auto py-1" />}
+      >
+        {open ? (
+          <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
+        )}
+        <Package className="h-4 w-4 mr-2 text-muted-foreground" />
+        <span className="text-sm font-medium">Source Packs</span>
+        <Badge variant="secondary" className="ml-2">
+          {packs.length}
+        </Badge>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="space-y-3 pt-3">

@@ -83,63 +83,60 @@ function BriefCard({ brief }: { brief: MorningBrief }) {
       <Collapsible open={open} onOpenChange={setOpen}>
         <Card className="p-0 overflow-hidden">
           {/* Header — always visible */}
-          <CollapsibleTrigger>
-            <Button
-              variant="ghost"
-              className="w-full justify-start rounded-none px-4 py-3 h-auto"
-            >
-              <div className="flex items-center gap-3 w-full">
-                {open ? (
-                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <CollapsibleTrigger
+            render={<Button variant="ghost" className="w-full justify-start rounded-none px-4 py-3 h-auto" />}
+          >
+            <div className="flex items-center gap-3 w-full">
+              {open ? (
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+
+              <span className="text-sm font-medium">{brief.analyst.name}</span>
+
+              <div className="flex items-center gap-1.5 ml-auto">
+                {alerts.length > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="inline-flex" />}>
+                      <Badge variant="destructive">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        {alerts.length}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>Portfolio alerts</TooltipContent>
+                  </Tooltip>
                 )}
-
-                <span className="text-sm font-medium">{brief.analyst.name}</span>
-
-                <div className="flex items-center gap-1.5 ml-auto">
-                  {alerts.length > 0 && (
-                    <Tooltip>
-                      <TooltipTrigger render={<span className="inline-flex" />}>
-                        <Badge variant="destructive">
-                          <AlertTriangle className="h-3 w-3 mr-1" />
-                          {alerts.length}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>Portfolio alerts</TooltipContent>
-                    </Tooltip>
-                  )}
-                  {opportunities.length > 0 && (
-                    <Tooltip>
-                      <TooltipTrigger render={<span className="inline-flex" />}>
-                        <Badge variant="secondary">
-                          <Sparkles className="h-3 w-3 mr-1" />
-                          {opportunities.length}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>New opportunities</TooltipContent>
-                    </Tooltip>
-                  )}
-                  {updates.length > 0 && (
-                    <Tooltip>
-                      <TooltipTrigger render={<span className="inline-flex" />}>
-                        <Badge variant="outline">
-                          <Eye className="h-3 w-3 mr-1" />
-                          {updates.length}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>Watchlist updates</TooltipContent>
-                    </Tooltip>
-                  )}
-                  <span className="text-xs text-muted-foreground tabular-nums ml-2">
-                    {brief.signalCount} signals
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {relativeTime(brief.generatedAt)}
-                  </span>
-                </div>
+                {opportunities.length > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="inline-flex" />}>
+                      <Badge variant="secondary">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        {opportunities.length}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>New opportunities</TooltipContent>
+                  </Tooltip>
+                )}
+                {updates.length > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="inline-flex" />}>
+                      <Badge variant="outline">
+                        <Eye className="h-3 w-3 mr-1" />
+                        {updates.length}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>Watchlist updates</TooltipContent>
+                  </Tooltip>
+                )}
+                <span className="text-xs text-muted-foreground tabular-nums ml-2">
+                  {brief.signalCount} signals
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {relativeTime(brief.generatedAt)}
+                </span>
               </div>
-            </Button>
+            </div>
           </CollapsibleTrigger>
 
           {/* Expanded content */}
