@@ -4,6 +4,7 @@
  */
 
 import type { RunInput } from "./run-input";
+import type { IntelligencePolicy } from "@/lib/intelligence/types";
 
 // ─── Config type (shared with consumers) ─────────────────────────────────────
 
@@ -62,6 +63,10 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 - Exclusion list (never trade): ${exclusions}
 - Max position size: $${maxPosSize}
 - Max open positions: ${maxOpenPos}`);
+
+  // ── Section 2.5: Intelligence Policy ─────────────────────────────────
+  const policy = runInput.intelligencePolicy;
+  sections.push(buildPolicySummary(policy));
 
   // ── Section 3: Current Portfolio ─────────────────────────────────────
   const { portfolio } = runInput;
@@ -329,6 +334,32 @@ NEVER output phase labels like "Phase 0:", "Phase 1:", etc. in your messages. Th
 - ALWAYS end with complete_run.`);
 
   return sections.join("\n\n");
+}
+
+// ─── Intelligence Policy Summary ──────────────────────────────────────────────
+
+function buildPolicySummary(policy: IntelligencePolicy): string {
+  const preferred = policy.preferredSourceCategories.length > 0
+    ? policy.preferredSourceCategories.join(", ")
+    : "all";
+  const excluded = policy.excludedSourceCategories.length > 0
+    ? policy.excludedSourceCategories.join(", ")
+    : "none";
+
+  let section = `## Intelligence Policy\n`;
+  section += `Your discovery budget this session:\n`;
+  section += `- Signal budget: ${policy.maxSignalsPerRun} signals max from read_signals\n`;
+  section += `- Article reads: ${policy.maxArtifactReads} full artifact reads max (read_artifact)\n`;
+  section += `- Live search: ${policy.allowLiveSearch ? `enabled (${policy.liveSearchBudget} calls max)` : "disabled — use pre-gathered intelligence only"}\n`;
+  section += `\nSource preferences: prefer ${preferred} | exclude ${excluded}\n`;
+  section += `Signal floor: urgency >= ${policy.minUrgency}, source quality >= ${policy.minSourceQuality}/5\n`;
+  section += `\nAttention weighting:\n`;
+  section += `- Holdings (open positions): ${(policy.holdingsAttention * 100).toFixed(0)}%\n`;
+  section += `- Watchlist: ${(policy.watchlistAttention * 100).toFixed(0)}%\n`;
+  section += `- Discovery (new opportunities): ${(policy.discoveryAttention * 100).toFixed(0)}%\n`;
+  section += `\nAllocate your research time proportionally to these weights. If holdings attention is high, spend more steps reviewing positions. If discovery is high, spend more steps on new opportunities.`;
+
+  return section;
 }
 
 // ─── Legacy V1 prompt (kept for backward compat) ─────────────────────────────

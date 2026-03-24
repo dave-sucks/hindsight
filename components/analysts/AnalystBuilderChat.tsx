@@ -136,6 +136,10 @@ export function AnalystBuilderChat({
               | "SMALL",
             watchlist: config.watchlist ?? [],
             exclusionList: config.exclusionList ?? [],
+            // V3: Intelligence layer proposals
+            sourcePackProposal: config.sourcePackProposal,
+            intelligenceQueries: config.intelligenceQueries,
+            intelligencePolicy: config.intelligencePolicy,
           });
           toast.success(`Analyst "${config.name}" created`);
           router.push(`/analysts/${result.id}`);

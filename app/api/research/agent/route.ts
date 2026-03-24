@@ -8,6 +8,7 @@ import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
 export const maxDuration = 300; // 5 min — agent makes 100+ API calls with retry logic
@@ -139,6 +140,7 @@ export async function POST(req: Request) {
           priorBrief: null,
           performance: null,
           recentClosedTrades: [],
+          intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
         });
 
     const modelMessages = await convertToModelMessages(messages);
@@ -155,6 +157,7 @@ export async function POST(req: Request) {
       maxPositionSize: (agentConfig.maxPositionSize as number) ?? undefined,
       maxOpenPositions: (agentConfig.maxOpenPositions as number) ?? undefined,
       alpacaCreds,
+      intelligencePolicy: runInput?.intelligencePolicy,
     });
 
     const result = streamText({

@@ -5,10 +5,8 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
-  TrendingUp,
   Search,
   LineChart,
-  MessageSquare,
   ShoppingCart,
   Briefcase,
   MessageCircle,
@@ -49,8 +47,6 @@ export const SOURCE_REGISTRY: Record<string, SourceDef> = {
   Finnhub: { icon: BarChart3, description: "Real-time stock quotes, company metrics, earnings calendar, and market news from Finnhub API." },
   "Finnhub News": { icon: Newspaper, description: "Financial news headlines aggregated by Finnhub from major business publications." },
   FMP: { icon: Database, description: "Financial Modeling Prep — market movers, analyst ratings, SEC filings, economic calendar, and insider transactions." },
-  Reddit: { icon: MessageSquare, description: "Retail trader sentiment from r/wallstreetbets, r/stocks, r/options, and r/investing." },
-  StockTwits: { icon: TrendingUp, description: "Trending tickers and social momentum from the StockTwits trader community." },
   SEC: { icon: Landmark, description: "SEC EDGAR filings — 10-K, 10-Q, 8-K, and insider Form 4 transaction reports." },
   Alpaca: { icon: ShoppingCart, description: "Alpaca paper trading API — places simulated market orders and tracks positions." },
   Internal: { icon: Cpu, description: "Hindsight's internal analytics — portfolio exposure, trade history, and performance tracking." },
@@ -60,6 +56,9 @@ export const SOURCE_REGISTRY: Record<string, SourceDef> = {
   "Market context": { icon: BarChart3, description: "Live market data gathered from earlier research steps." },
   "Your input": { icon: User, description: "Your preferences and feedback from the conversation." },
   "Strategy logic": { icon: Brain, description: "Derived from the strategy prompt and market research above." },
+  "Intelligence Pipeline": { icon: Globe, description: "V3 intelligence backbone — background jobs gather signals from source packs, intelligence queries, and portfolio monitoring. The agent reads pre-gathered intelligence instead of rediscovering from scratch." },
+  Sonar: { icon: Search, description: "Perplexity Sonar API — domain-filtered web search used by intelligence jobs to gather signals from tracked sources." },
+  Firecrawl: { icon: Newspaper, description: "Firecrawl web scraping — extracts full article content from URLs found by Sonar, stored as Artifacts." },
 };
 
 // ── Analyst builder flow steps ─────────────────────────────────────────────
@@ -77,7 +76,7 @@ export const ANALYST_BUILDER_STEPS: FlowStep[] = [
     title: "Read the market context",
     icon: BarChart3,
     sources: ["Finnhub", "FMP"],
-    summary: "Before suggesting anything, the builder reads the market — SPY, VIX, 11 sector ETFs, macro events, market themes. It must research live data before proposing any strategy. It has access to 7 of the agent's research tools (it can't trade or write theses — it's just researching to inform the strategy).",
+    summary: "Before suggesting anything, the builder reads the market — SPY, VIX, 11 sector ETFs, macro events. It must research live data before proposing any strategy. It has access to 4 of the agent's research tools: market context, stock data, earnings, and SEC filings (it can't trade or write theses — it's just researching to inform the strategy).",
   },
   {
     title: "Deep-dive specific stocks",
@@ -99,10 +98,16 @@ export const ANALYST_BUILDER_STEPS: FlowStep[] = [
     summary: "Sets the dials: direction bias (long/short/both), hold durations, sectors, signal types, confidence threshold, position sizing, watchlist, and exclusion list.",
   },
   {
+    title: "Propose intelligence setup",
+    icon: Globe,
+    sources: ["Strategy logic", "Market context"],
+    summary: "Proposes the analyst's intelligence pipeline: a source pack with 4-6 curated domain sources (e.g. Electrek for EV, STAT News for biotech), 3-5 permanent intelligence queries for the daily morning sweep, and an intelligence policy controlling signal budgets, attention weights (holdings vs watchlist vs discovery), and quality floors. This powers the background discovery that feeds the analyst before each run.",
+  },
+  {
     title: "Propose the complete analyst",
     icon: CheckCircle2,
     sources: ["All above"],
-    summary: "Presents the complete analyst profile as a confirmation card. You can refine any part through conversation — the builder updates and re-proposes. Click 'Create Analyst' when you're happy.",
+    summary: "Presents the complete analyst profile as a confirmation card — including strategy, parameters, source pack, queries, and intelligence policy. You can refine any part through conversation. Click 'Create Analyst' when you're happy — it saves everything: the config, source pack with sources, intelligence queries, and structured watchlist items.",
   },
   {
     phase: "Phase 4 — Refine",
@@ -121,14 +126,14 @@ export const MANUAL_RUN_DETAILS: DetailSection[] = [
     items: [
       { label: "Trigger", value: "You click the \"Run\" button on any analyst's page. The system creates a new research session and takes you to the run page." },
       { label: "What you see", value: "A live-streaming chat where the analyst thinks out loud, makes tool calls that render as data cards (market overview, stock analysis, thesis, trade confirmation), and explains its reasoning between each step." },
-      { label: "Time limit", value: "120 seconds maximum, up to 30 tool calls. Most sessions complete in 60-90 seconds." },
+      { label: "Time limit", value: "5 minutes maximum, up to 30 tool calls. Most sessions complete in 60-120 seconds." },
       { label: "Model", value: "GPT-4.1 — chosen for its tool-calling accuracy and instruction following. Streams tokens to your browser in real time." },
     ],
   },
   {
     heading: "How it differs from the daily cron",
     items: [
-      { label: "Same agent", value: "Same model (GPT-4.1), same 10 tools, same system prompt, same analyst memory. The research quality is identical." },
+      { label: "Same agent", value: "Same model (GPT-4.1), same 13 tools, same system prompt, same analyst memory. The research quality is identical." },
       { label: "Streaming", value: "Manual runs stream to your browser so you watch it happen. Cron runs execute on the server with no UI — you see the results after." },
       { label: "Position limits", value: "Manual runs give the agent the full max positions setting (e.g. 5). Cron runs calculate how many slots are left and only allow that many new positions." },
     ],
@@ -149,7 +154,7 @@ export const CRON_RUN_DETAILS: DetailSection[] = [
     items: [
       { label: "Schedule", value: "Every weekday at 8:00 AM Eastern, before the US market opens. Runs automatically — no human needed." },
       { label: "What happens", value: "The system finds all enabled analysts and runs each one sequentially. Each analyst gets its own full research session — just like clicking Run manually, but unattended." },
-      { label: "Same agent", value: "Same GPT-4.1 model, same 10 tools, same 8-phase workflow, same analyst memory. The only differences: it runs on the server (no streaming UI), each analyst gets a 4-minute time limit, and position slots are calculated automatically." },
+      { label: "Same agent", value: "Same GPT-4.1 model, same 13 tools, same 8-phase workflow, same analyst memory. The only differences: it runs on the server (no streaming UI), each analyst gets a 4-minute time limit, and position slots are calculated automatically." },
     ],
   },
   {
@@ -199,6 +204,7 @@ export const LEARNING_LOOP_DETAILS: DetailSection[] = [
       { label: "Watch tomorrow", value: "2-5 specific tickers with triggers — derived from positions near targets/stops, unresolved research, catalysts mentioned in conversation. e.g. 'AMD: breakout above $180 → INITIATE LONG [HIGH]'" },
       { label: "Unresolved items", value: "Data gaps, pending catalysts, tickers the analyst wanted to research but ran out of steps for, failed tool calls — anything that needs follow-up." },
       { label: "Self-corrections", value: "Behavioral patterns the reviewer noticed — over-concentration, momentum chasing, ignoring stop losses, skipping watchlist items. More honest than self-assessment because the reviewer has no ego." },
+      { label: "Dynamic queries", value: "0-5 temporary intelligence queries for things that need monitoring but aren't covered by existing source packs or permanent queries. Examples: 'NVIDIA earnings guidance revision Q2 2026', 'FDA approval timeline for Eli Lilly GLP-1 competitor'. Each has an expiration date (3-30 days). These get picked up by the morning sweep job and generate signals automatically — the analyst sees them as routed signals in its next session." },
     ],
   },
   {
@@ -207,6 +213,7 @@ export const LEARNING_LOOP_DETAILS: DetailSection[] = [
       { label: "Next session reads it", value: "When this analyst runs again (tomorrow morning or when you click Run), the system loads the latest briefing into the system prompt. The analyst sees the prior brief in Phase 0 and must reference it." },
       { label: "Accountability", value: "The analyst is required to quote Watch Tomorrow items by name in its Phase 0 check-in. If the prior brief said 'watch AMD for breakout,' the analyst must acknowledge that and check AMD first." },
       { label: "Model", value: "GPT-4o writes the briefing. The briefing is the memory system — it's the most important artifact for run-to-run continuity. Using a capable model here is worth the extra cost." },
+      { label: "Dynamic queries → morning sweep", value: "Dynamic queries created by the briefing agent are picked up by the next morning's intelligence sweep job. The sweep runs them through Perplexity Sonar, generates signals, and routes them to the analyst. So if the briefing agent says 'monitor AMD Instinct MI400 benchmarks', the analyst will see any news about that as a signal in its next session — automatically, without the analyst having to remember to search for it." },
     ],
   },
 ];
@@ -225,7 +232,8 @@ export const CONTEXT_LOADING_DETAILS: DetailSection[] = [
     items: [
       { label: "What", value: "The full strategy document written by the AI builder during analyst creation. Covers the analyst's core edge, entry/exit criteria, preferred patterns, risk management philosophy." },
       { label: "Plus rules", value: "Direction bias (long-only, short-only, or both), hold durations, sector focus, minimum confidence threshold to trade, max position size, max open positions, watchlist, and exclusion list." },
-      { label: "Plus the 8-phase contract", value: "The exact workflow the analyst must follow — check in on portfolio, read the market, review holdings, review watchlist, discover new ideas, synthesize decisions, execute, and brief." },
+      { label: "Plus intelligence policy", value: "The analyst's intelligence policy — signal budget (max signals per run), article read budget, attention weights (how much time to spend on holdings vs watchlist vs discovery), live search permissions, source quality floors, and preferred/excluded source categories. This shapes how the agent allocates its research time." },
+      { label: "Plus the 8-phase contract", value: "The exact workflow the analyst must follow — check in on portfolio, read intelligence, optionally orient with live data, review holdings, review watchlist, discover from signals, synthesize decisions, execute, and wrap up." },
     ],
   },
   {

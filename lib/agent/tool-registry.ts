@@ -59,11 +59,11 @@ export interface ToolDef {
 export const STAGE_META: Record<ToolStage, { label: string; summary: string }> = {
   Discovery: {
     label: "Discovery",
-    summary: "The analyst starts every session here. It reads the overall market environment — which sectors are hot, whether the VIX is elevated, what macro events are on deck — then scans 6 different sources to build a ranked shortlist of stocks worth researching today.",
+    summary: "The analyst starts every session by reading pre-gathered intelligence — a morning brief with market context, portfolio alerts, and new opportunities, plus routed signals from background discovery jobs. It can also check live market conditions (SPY, VIX, sector ETFs) if the brief is stale.",
   },
   Research: {
     label: "Research",
-    summary: "Deep-dive tools for individual stocks. The analyst pulls fundamentals, technicals, Wall Street ratings, social sentiment, options flow, earnings data, and SEC filings. These are called per-ticker for every stock the analyst is evaluating — existing holdings, watchlist items, and new candidates.",
+    summary: "Deep-dive tools for individual stocks. The analyst pulls fundamentals, technicals, Wall Street ratings, options flow, earnings data, and SEC filings. These are called per-ticker for every stock the analyst is evaluating — existing holdings, watchlist items, and new candidates.",
   },
   Decision: {
     label: "Decision",
@@ -87,10 +87,70 @@ export const TYPE_META: Record<ToolType, { label: string }> = {
   Logging: { label: "Logging" },
 };
 
-// ── All tools (V2) ────────────────────────────────────────────────────────
+// ── All tools (V3) ────────────────────────────────────────────────────────
 
 export const TOOLS: ToolDef[] = [
-  // ─── Discovery ────────────────────────────────────────────────────────
+  // ─── Discovery (Intelligence) ──────────────────────────────────────────
+  {
+    name: "read_morning_brief",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Read today's pre-generated intelligence brief — market context, portfolio alerts, watchlist updates, new opportunities, and risk flags",
+    goal: "Understand what happened overnight before making any research decisions. Background jobs gather this intelligence automatically, so the analyst doesn't have to rediscover it.",
+    phases: [1],
+    tags: ["required", "start-here"],
+    sources: ["internal"],
+    resources: [
+      {
+        source: "internal",
+        title: "Morning brief",
+        description: "A pre-generated intelligence brief created by background jobs before the analyst's session. Contains market context, alerts on open positions, updates on watchlist items, new opportunities matched to the analyst's mandate, and risk flags.",
+        type: "db",
+        endpointOrPath: "prisma.morningBrief.findUnique()",
+        exampleOutput: "Market: SPY +0.5%, RISK_ON · 2 portfolio alerts (NVDA near target, AMD earnings this week) · 3 new opportunities",
+      },
+    ],
+  },
+  {
+    name: "read_signals",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Read intelligence signals routed by background discovery jobs — news, filings, earnings, macro, and sector signals matched to the analyst's mandate",
+    goal: "Surface pre-gathered signals that the intelligence pipeline found relevant for this analyst. Replaces the old scan_candidates approach of rediscovering from scratch every run.",
+    phases: [1],
+    tags: ["required"],
+    sources: ["internal"],
+    resources: [
+      {
+        source: "internal",
+        title: "Routed signals",
+        description: "Signals gathered by background jobs (market sweeps, source pack monitors, portfolio monitors) and routed to this analyst based on sector overlap, watchlist tickers, and thematic relevance. Filtered by intelligence policy (urgency floor, quality floor, signal budget).",
+        type: "db",
+        endpointOrPath: "prisma.analystSignalRoute.findMany()",
+        exampleOutput: "12 signals · 3 HIGH urgency · Topics: NVDA earnings beat, AMD guidance raise, semiconductor sector rotation",
+      },
+    ],
+  },
+  {
+    name: "read_artifact",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Read the full extracted content of an article or document behind a signal — the complete text, not just the headline",
+    goal: "When a signal's headline is interesting, read the full source article to get complete context before making research decisions.",
+    phases: [1, 2, 3, 4],
+    tags: ["optional"],
+    sources: ["internal"],
+    resources: [
+      {
+        source: "internal",
+        title: "Extracted article",
+        description: "Full article content extracted by Firecrawl from the source URL. Stored as an Artifact and linked to the signal. Capped at 4000 chars to avoid token bloat.",
+        type: "db",
+        endpointOrPath: "prisma.artifact.findUnique()",
+        exampleOutput: "\"NVIDIA Announces Next-Gen Blackwell GPUs\" — 2500 words extracted from Reuters article with full analysis",
+      },
+    ],
+  },
   {
     name: "get_market_context",
     stage: "Discovery",
@@ -480,7 +540,7 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-// ── V2 Run Contract (8 phases) ─────────────────────────────────────────
+// ── V3 Run Contract (8 phases) ─────────────────────────────────────────
 
 export interface RunPhase {
   number: number;
@@ -492,7 +552,7 @@ export interface RunPhase {
 
 export const RUN_PHASES: RunPhase[] = [
   { number: 0, name: "Portfolio Check-in", description: "Read injected context: holdings, watchlist, prior brief, performance stats. No tool calls — pure reasoning.", tools: [], stepBudget: "0 steps" },
-  { number: 1, name: "Orient", description: "Market context: SPY, VIX, sectors, macro events, regime classification, themes.", tools: ["get_market_context"], stepBudget: "1 step" },
+  { number: 1, name: "Read Intelligence", description: "Read pre-gathered intelligence: morning brief (market context, portfolio alerts, new opportunities) and routed signals. Optionally call get_market_context if brief is stale.", tools: ["read_morning_brief", "read_signals", "read_artifact", "get_market_context"], stepBudget: "1–3 steps" },
   { number: 2, name: "Review Holdings", description: "Triage open positions near target/stop, with earnings, or from watch-tomorrow list.", tools: ["get_stock_data", "get_earnings_data", "get_options_flow", "record_thesis"], stepBudget: "1–6 steps" },
   { number: 3, name: "Review Watchlist", description: "Triage watchlist items by priority, review triggers and catalysts.", tools: ["get_stock_data", "record_thesis"], stepBudget: "1–4 steps" },
   { number: 4, name: "Discover", description: "Review opportunities from intelligence signals and morning brief. Research new ideas. Reduced scope at max positions or RISK_OFF.", tools: ["get_stock_data", "get_options_flow", "get_earnings_data", "get_sec_filings", "record_thesis"], stepBudget: "2–8 steps" },
@@ -536,7 +596,7 @@ export function exportToolsAsMarkdown(): string {
   const lines: string[] = [
     "# Agent Tool Registry",
     "",
-    `${TOOLS.length} tools · ${RUN_PHASES.length} phases · V2 portfolio-manager architecture`,
+    `${TOOLS.length} tools · ${RUN_PHASES.length} phases · V3 intelligence-first architecture`,
     "",
     "## Run Contract (8 phases)",
     "",

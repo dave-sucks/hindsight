@@ -177,6 +177,9 @@ model AgentConfig {
   emailAlerts           Boolean  @default(true)
   weeklyDigestEnabled   Boolean  @default(true)
   digestEmail           String?  // override email for digest; uses auth email when null
+  // V3: Intelligence layer — policy + primary source pack
+  intelligencePolicy    Json?    // IntelligencePolicy type — controls signal budget, attention weights, search limits
+  primarySourcePackId   String?  // FK to analyst's primary source pack (the one the builder proposed)
   // V3: Intelligence layer relations
   sourcePacks           SourcePack[]
   intelligenceQueries   IntelligenceQuery[]
