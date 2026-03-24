@@ -101,72 +101,65 @@ export default function IntelligencePage() {
 
   return (
     <TooltipProvider>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Intelligence</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Background discovery pipeline — signals, briefs, sources, and
-              queries
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-1.5" />
-            )}
-            Refresh
-          </Button>
-        </div>
-
-        {/* Stats strip */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-          <StatCard label="Today's Signals" value={todaySignals.length} />
-          <StatCard
-            label="Breaking / High"
-            value={breakingHigh}
-            variant={breakingHigh > 0 ? "alert" : "default"}
-          />
-          <StatCard
-            label="Bullish"
-            value={bullish}
-            variant={bullish > 0 ? "positive" : "default"}
-          />
-          <StatCard
-            label="Bearish"
-            value={bearish}
-            variant={bearish > 0 ? "negative" : "default"}
-          />
-          <StatCard label="Tickers" value={tickers} />
-          <StatCard label="Jobs Today" value={todayJobs} />
-        </div>
-
-        <Separator />
-
-        {/* Three tabs */}
+      <div className="p-6 space-y-4">
+        {/* Top bar: empty left | tabs center | refresh right */}
         <Tabs defaultValue="signals">
-          <TabsList>
-            <TabsTrigger value="signals">
-              Signals
-              {todaySignals.length > 0 && (
+          <div className="grid grid-cols-3 items-center">
+            <div />
+            <TabsList className="mx-auto">
+              <TabsTrigger value="signals">
+                Signals
+                {todaySignals.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5">
+                    {todaySignals.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+              <TabsTrigger value="config">
+                Config
                 <Badge variant="secondary" className="ml-1.5">
-                  {todaySignals.length}
+                  {queries.length + sources.length}
                 </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
-            <TabsTrigger value="config">
-              Config
-              <Badge variant="secondary" className="ml-1.5">
-                {queries.length + sources.length}
-              </Badge>
-            </TabsTrigger>
-          </TabsList>
+              </TabsTrigger>
+            </TabsList>
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
 
           {/* Signals tab */}
           <TabsContent value="signals" className="space-y-6 pt-4">
+            {/* Stats strip inside signals tab */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+              <StatCard label="Today's Signals" value={todaySignals.length} />
+              <StatCard
+                label="Breaking / High"
+                value={breakingHigh}
+                variant={breakingHigh > 0 ? "alert" : "default"}
+              />
+              <StatCard
+                label="Bullish"
+                value={bullish}
+                variant={bullish > 0 ? "positive" : "default"}
+              />
+              <StatCard
+                label="Bearish"
+                value={bearish}
+                variant={bearish > 0 ? "negative" : "default"}
+              />
+              <StatCard label="Tickers" value={tickers} />
+              <StatCard label="Jobs Today" value={todayJobs} />
+            </div>
+
+            <Separator />
+
             {/* Briefs at top */}
             <BriefCards briefs={briefs} />
 
