@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -44,12 +45,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-  InputGroupButton,
-} from "@/components/ui/input-group";
 import { Separator } from "@/components/ui/separator";
 import {
   Plus,
@@ -57,15 +52,32 @@ import {
   Search,
   Globe,
   Info,
-  ArrowRight,
   Clock,
-  Zap,
-  Filter,
+  SlidersHorizontal,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { IntelligenceQuery, Source, SourcePack } from "./types";
 import { relativeTime } from "./types";
+
+// ── Logos (inline SVG for Perplexity + Firecrawl) ────────────────────────────
+
+function PerplexityLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M12 1L4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-4zm0 2.18l6 3v5.82c0 4.53-3.13 8.74-6 9.94-2.87-1.2-6-5.41-6-9.94V6.18l6-3zM11 7v6H7l5 7v-6h4l-5-7z" />
+    </svg>
+  );
+}
+
+function FirecrawlLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M12 2c-1.5 3-4 5-4 8 0 2.21 1.79 4 4 4s4-1.79 4-4c0-3-2.5-5-4-8zm0 10c-1.1 0-2-.9-2-2 0-1.5 1-2.8 2-4.2 1 1.4 2 2.7 2 4.2 0 1.1-.9 2-2 2zm-4 4c-.55 0-1 .45-1 1v2c0 .55.45 1 1 1h8c.55 0 1-.45 1-1v-2c0-.55-.45-1-1-1H8z" />
+    </svg>
+  );
+}
 
 // ── Unified row type ─────────────────────────────────────────────────────────
 
@@ -94,7 +106,6 @@ function buildUnifiedItems(
   sources: Source[],
   packs: SourcePack[]
 ): UnifiedItem[] {
-  // Build source→pack name map
   const sourcePackMap = new Map<string, string[]>();
   for (const pack of packs) {
     for (const ps of pack.sources) {
@@ -136,6 +147,18 @@ function buildUnifiedItems(
   return [...queryItems, ...sourceItems];
 }
 
+// ── Category tooltip descriptions ────────────────────────────────────────────
+
+const CATEGORY_TOOLTIPS: Record<string, string> = {
+  MARKET: "Broad market-level intelligence — indices, macro data, overall sentiment",
+  SECTOR: "Industry/sector-specific monitoring — e.g. tech, healthcare, energy",
+  TICKER: "Individual stock-level queries or sources for specific companies",
+  THEMATIC: "Cross-cutting themes — e.g. AI, tariffs, supply chain trends",
+  EVENT: "Time-bound events — earnings, IPOs, FDA decisions, M&A announcements",
+  COMPANY: "Company-specific source — covers one company's filings, news, etc.",
+  SOCIAL: "Social media / sentiment — StockTwits, Reddit, Twitter/X chatter",
+};
+
 // ── Config Panel ────────────────────────────────────────────────────────────
 
 interface ConfigPanelProps {
@@ -154,7 +177,6 @@ export function ConfigPanel({
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<"all" | ItemKind>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [scopeFilter, setScopeFilter] = useState("all");
 
   const allItems = useMemo(
     () => buildUnifiedItems(queries, sources, packs),
@@ -170,17 +192,14 @@ export function ConfigPanel({
     return allItems.filter((item) => {
       if (kindFilter !== "all" && item.kind !== kindFilter) return false;
       if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
-      if (scopeFilter !== "all" && item.scope !== scopeFilter) return false;
       if (search) {
         const q = search.toLowerCase();
-        const searchable = `${item.name} ${item.detail ?? ""} ${item.category} ${item.domain ?? ""}`.toLowerCase();
+        const searchable = `${item.name} ${item.detail ?? ""} ${item.domain ?? ""}`.toLowerCase();
         if (!searchable.includes(q)) return false;
       }
       return true;
     });
-  }, [allItems, kindFilter, categoryFilter, scopeFilter, search]);
-
-  // ── Mutations ────────────────────────────────────────────────────────────
+  }, [allItems, kindFilter, categoryFilter, search]);
 
   const toggleItem = async (item: UnifiedItem) => {
     try {
@@ -216,77 +235,113 @@ export function ConfigPanel({
     }
   };
 
+  // Count active filters
+  const activeFilterCount =
+    (kindFilter !== "all" ? 1 : 0) + (categoryFilter !== "all" ? 1 : 0);
+
   return (
     <TooltipProvider>
-      <div className="max-w-4xl mx-auto space-y-4">
-        {/* Add row */}
-        <AddItemRow onRefresh={onRefresh} />
+      <div className="max-w-3xl mx-auto space-y-4">
+        {/* Add new — Firecrawl-style */}
+        <AddItemCard onRefresh={onRefresh} />
 
-        {/* Filters */}
-        <div className="flex items-center gap-2">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <Input
-            placeholder="Filter..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <Select value={kindFilter} onValueChange={(v) => v && setKindFilter(v as typeof kindFilter)}>
-            <SelectTrigger className="w-[120px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              <SelectItem value="search">Searches</SelectItem>
-              <SelectItem value="source">Sources</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={categoryFilter} onValueChange={(v) => v && setCategoryFilter(v)}>
-            <SelectTrigger className="w-[120px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c.charAt(0) + c.slice(1).toLowerCase()}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={scopeFilter} onValueChange={(v) => v && setScopeFilter(v)}>
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All scopes</SelectItem>
-              <SelectItem value="FIRM">Firm</SelectItem>
-              <SelectItem value="ANALYST">Analyst</SelectItem>
-            </SelectContent>
-          </Select>
+        {/* Filter bar */}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 ml-auto">
+            {/* Type filter chips */}
+            <Button
+              variant={kindFilter === "all" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setKindFilter("all")}
+            >
+              All
+              <Badge variant="secondary" className="ml-1">
+                {allItems.length}
+              </Badge>
+            </Button>
+            <Button
+              variant={kindFilter === "search" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setKindFilter("search")}
+            >
+              <Search className="h-3 w-3 mr-1" />
+              Searches
+              <Badge variant="secondary" className="ml-1">
+                {allItems.filter((i) => i.kind === "search").length}
+              </Badge>
+            </Button>
+            <Button
+              variant={kindFilter === "source" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setKindFilter("source")}
+            >
+              <Globe className="h-3 w-3 mr-1" />
+              Sources
+              <Badge variant="secondary" className="ml-1">
+                {allItems.filter((i) => i.kind === "source").length}
+              </Badge>
+            </Button>
+
+            {/* Category dropdown */}
+            <Separator orientation="vertical" className="h-5 mx-1" />
+            <Select value={categoryFilter} onValueChange={(v) => v && setCategoryFilter(v)}>
+              <SelectTrigger className="h-8 w-auto gap-1">
+                <SlidersHorizontal className="h-3 w-3" />
+                <SelectValue placeholder="Category" />
+                {categoryFilter !== "all" && (
+                  <Badge variant="secondary" className="ml-1">1</Badge>
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c.charAt(0) + c.slice(1).toLowerCase()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
-        {/* Results count */}
-        <p className="text-xs text-muted-foreground">
+        {/* Results */}
+        <p className="text-xs text-muted-foreground tabular-nums">
           {filtered.length} of {allItems.length} items
+          {activeFilterCount > 0 && (
+            <button
+              className="ml-2 text-foreground hover:underline"
+              onClick={() => { setKindFilter("all"); setCategoryFilter("all"); setSearch(""); }}
+            >
+              Clear filters
+            </button>
+          )}
         </p>
 
         {/* Table */}
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[30px]" />
+              <TableHead className="w-10" />
               <TableHead>Name</TableHead>
-              <TableHead className="w-[90px]">Category</TableHead>
-              <TableHead className="w-[70px]">Scope</TableHead>
-              <TableHead className="w-[50px]">On</TableHead>
-              <TableHead className="w-[30px]" />
-              <TableHead className="w-[30px]" />
+              <TableHead className="w-16">Scope</TableHead>
+              <TableHead className="w-14" />
+              <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   No items match your filters
                 </TableCell>
               </TableRow>
@@ -318,21 +373,23 @@ function ConfigRow({
   onDelete: () => void;
 }) {
   return (
-    <TableRow className="group">
-      {/* Type icon */}
+    <TableRow>
+      {/* Colored type icon in square */}
       <TableCell>
-        <Tooltip>
-          <TooltipTrigger render={<span className="inline-flex" />}>
-            {item.kind === "search" ? (
-              <Search className="h-3.5 w-3.5 text-muted-foreground" />
-            ) : (
-              <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-            )}
-          </TooltipTrigger>
-          <TooltipContent>
-            {item.kind === "search" ? "Search query — runs via Perplexity Sonar" : "Monitored source domain"}
-          </TooltipContent>
-        </Tooltip>
+        <div
+          className={cn(
+            "h-7 w-7 rounded-md flex items-center justify-center",
+            item.kind === "search"
+              ? "bg-violet-500/10 text-violet-600 dark:text-violet-400"
+              : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+          )}
+        >
+          {item.kind === "search" ? (
+            <Search className="h-3.5 w-3.5" />
+          ) : (
+            <Globe className="h-3.5 w-3.5" />
+          )}
+        </div>
       </TableCell>
 
       {/* Name + detail */}
@@ -347,11 +404,6 @@ function ConfigRow({
         </div>
       </TableCell>
 
-      {/* Category */}
-      <TableCell>
-        <Badge variant="outline">{item.category.charAt(0) + item.category.slice(1).toLowerCase()}</Badge>
-      </TableCell>
-
       {/* Scope */}
       <TableCell>
         <span className="text-xs text-muted-foreground">
@@ -364,30 +416,181 @@ function ConfigRow({
         <Switch checked={item.enabled} onCheckedChange={onToggle} />
       </TableCell>
 
-      {/* Detail popover */}
+      {/* Detail popover (contains delete too) */}
       <TableCell>
-        <ItemDetailPopover item={item} />
+        <ItemDetailPopover item={item} onDelete={onDelete} />
       </TableCell>
+    </TableRow>
+  );
+}
 
-      {/* Delete */}
-      <TableCell>
+// ── Detail Popover ───────────────────────────────────────────────────────────
+
+function ItemDetailPopover({
+  item,
+  onDelete,
+}: {
+  item: UnifiedItem;
+  onDelete: () => void;
+}) {
+  const isSearch = item.kind === "search";
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button variant="ghost" size="icon" className="h-7 w-7" />
+        }
+      >
+        <Info className="h-3.5 w-3.5" />
+      </PopoverTrigger>
+      <PopoverContent side="left" align="start" className="w-80">
+        <PopoverHeader>
+          <PopoverTitle className="flex items-center gap-2">
+            <div
+              className={cn(
+                "h-6 w-6 rounded-md flex items-center justify-center shrink-0",
+                isSearch
+                  ? "bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                  : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+              )}
+            >
+              {isSearch ? (
+                <Search className="h-3 w-3" />
+              ) : (
+                <Globe className="h-3 w-3" />
+              )}
+            </div>
+            <span>{isSearch ? "Search Query" : "Monitored Source"}</span>
+          </PopoverTitle>
+        </PopoverHeader>
+
+        {/* Name */}
+        <div className="text-xs">
+          <p className="font-medium text-foreground">{item.name}</p>
+          {item.detail && (
+            <p className="text-muted-foreground mt-0.5">{item.detail}</p>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Trigger + How it works — unified section */}
+        <div className="text-xs space-y-2">
+          <div className="flex items-center gap-2">
+            {isSearch ? (
+              <PerplexityLogo className="h-4 w-4 text-muted-foreground shrink-0" />
+            ) : (
+              <FirecrawlLogo className="h-4 w-4 text-orange-500 shrink-0" />
+            )}
+            <span className="font-medium text-foreground">
+              {isSearch ? "Market Sweep" : "Source Pack Monitor"}
+            </span>
+            <span className="text-muted-foreground ml-auto tabular-nums">
+              {isSearch ? "6:30 AM ET" : "7:15 AM ET"}
+            </span>
+          </div>
+          <p className="text-muted-foreground leading-relaxed">
+            {isSearch
+              ? "This query runs as a Perplexity Sonar search every weekday morning. Results are parsed into signals, deduplicated, then routed to matching analysts based on their sectors and watchlist."
+              : "This domain is checked for new content via Perplexity Sonar domain search. High-value pages get full text extraction via Firecrawl. Results become signals routed to matching analysts."}
+          </p>
+        </div>
+
+        <Separator />
+
+        {/* Metadata */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+          {/* Category with tooltip */}
+          <span className="text-muted-foreground">Category</span>
+          <Tooltip>
+            <TooltipTrigger render={<span className="text-foreground underline decoration-dotted cursor-help" />}>
+              {item.category.charAt(0) + item.category.slice(1).toLowerCase()}
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              {CATEGORY_TOOLTIPS[item.category] ?? item.category}
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Scope */}
+          <span className="text-muted-foreground">Scope</span>
+          <span className="text-foreground">
+            {item.scope === "FIRM" ? "Firm-wide" : "Analyst-specific"}
+          </span>
+
+          {/* Search-specific fields */}
+          {isSearch && (
+            <>
+              <span className="text-muted-foreground">Created by</span>
+              <span className="text-foreground">
+                {CREATED_BY_LABELS[item.createdBy ?? "USER"] ?? item.createdBy ?? "You"}
+              </span>
+              {item.expiresAt && (
+                <>
+                  <span className="text-muted-foreground">Expires</span>
+                  <span className="text-foreground">
+                    {new Date(item.expiresAt).toLocaleDateString()}
+                  </span>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Source-specific fields */}
+          {!isSearch && (
+            <>
+              {item.qualityScore != null && (
+                <>
+                  <span className="text-muted-foreground">Quality</span>
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="text-foreground underline decoration-dotted cursor-help" />}>
+                      {item.qualityScore}/5
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Signal scoring weight. Higher quality sources produce higher-scored signals that get prioritized in analyst briefs and surface more prominently.
+                    </TooltipContent>
+                  </Tooltip>
+                </>
+              )}
+              {item.lastCheckedAt && (
+                <>
+                  <span className="text-muted-foreground">Last checked</span>
+                  <span className="text-foreground tabular-nums">
+                    {relativeTime(item.lastCheckedAt)}
+                  </span>
+                </>
+              )}
+              {item.packs && item.packs.length > 0 && (
+                <>
+                  <span className="text-muted-foreground">Packs</span>
+                  <span className="text-foreground flex items-center gap-1">
+                    <Package className="h-3 w-3 text-muted-foreground" />
+                    {item.packs.join(", ")}
+                  </span>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Delete action */}
         <AlertDialog>
           <AlertDialogTrigger
             render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-              />
+              <Button variant="ghost" size="sm" className="w-full text-red-500 hover:text-red-600">
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Delete {isSearch ? "search" : "source"}
+              </Button>
             }
-          >
-            <Trash2 className="h-3 w-3" />
-          </AlertDialogTrigger>
+          />
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete {item.kind === "search" ? "search" : "source"}?</AlertDialogTitle>
+              <AlertDialogTitle>Delete {isSearch ? "search" : "source"}?</AlertDialogTitle>
               <AlertDialogDescription>
                 Remove &ldquo;{item.name.slice(0, 60)}&rdquo; from intelligence monitoring.
+                This cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -396,157 +599,8 @@ function ConfigRow({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-// ── Detail Popover ───────────────────────────────────────────────────────────
-
-function ItemDetailPopover({ item }: { item: UnifiedItem }) {
-  const isSearch = item.kind === "search";
-
-  return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <Button variant="ghost" size="icon" className="h-6 w-6" />
-        }
-      >
-        <Info className="h-3 w-3" />
-      </PopoverTrigger>
-      <PopoverContent side="left" align="start" className="w-80">
-        <PopoverHeader>
-          <PopoverTitle className="flex items-center gap-1.5">
-            {isSearch ? (
-              <Search className="h-3.5 w-3.5 text-muted-foreground" />
-            ) : (
-              <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-            )}
-            {isSearch ? "Search Query" : "Monitored Source"}
-          </PopoverTitle>
-        </PopoverHeader>
-
-        <Separator />
-
-        {/* What it is */}
-        <div className="space-y-3 text-xs">
-          <div>
-            <p className="font-medium text-foreground mb-0.5">
-              {item.name}
-            </p>
-            {item.detail && (
-              <p className="text-muted-foreground">{item.detail}</p>
-            )}
-          </div>
-
-          {/* How it works */}
-          <div>
-            <p className="font-medium uppercase tracking-wide text-muted-foreground mb-1">
-              How it works
-            </p>
-            {isSearch ? (
-              <p className="text-muted-foreground leading-relaxed">
-                Executed as a Perplexity Sonar search during the{" "}
-                <span className="text-foreground font-medium">Market Sweep</span> job
-                (6:30 AM ET weekdays). Results are parsed into Signals, deduplicated,
-                then routed to matching analysts by the Signal Router.
-              </p>
-            ) : (
-              <p className="text-muted-foreground leading-relaxed">
-                Checked by the{" "}
-                <span className="text-foreground font-medium">Source Pack Monitor</span>{" "}
-                (7:15 AM ET weekdays). New content detected via domain-filtered Sonar search.
-                High-value pages get full extraction via Firecrawl. Results become Signals.
-              </p>
-            )}
-          </div>
-
-          {/* Data flow */}
-          <div>
-            <p className="font-medium uppercase tracking-wide text-muted-foreground mb-1">
-              Data flow
-            </p>
-            <div className="flex items-center gap-1 text-muted-foreground flex-wrap">
-              {isSearch ? (
-                <>
-                  <span className="text-foreground">Query</span>
-                  <ArrowRight className="h-3 w-3 shrink-0" />
-                  <span>Perplexity Sonar</span>
-                  <ArrowRight className="h-3 w-3 shrink-0" />
-                  <span>Signals</span>
-                  <ArrowRight className="h-3 w-3 shrink-0" />
-                  <span>Router</span>
-                  <ArrowRight className="h-3 w-3 shrink-0" />
-                  <span>Analyst Briefs</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-foreground">Domain</span>
-                  <ArrowRight className="h-3 w-3 shrink-0" />
-                  <span>Sonar</span>
-                  <ArrowRight className="h-3 w-3 shrink-0" />
-                  <span>Firecrawl</span>
-                  <ArrowRight className="h-3 w-3 shrink-0" />
-                  <span>Signals</span>
-                  <ArrowRight className="h-3 w-3 shrink-0" />
-                  <span>Briefs</span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Metadata grid */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-            <MetaRow label="Category" value={item.category} />
-            <MetaRow label="Scope" value={item.scope === "FIRM" ? "Firm-wide" : "Analyst-specific"} />
-            <MetaRow label="Status" value={item.enabled ? "Active" : "Disabled"} />
-            {isSearch && (
-              <>
-                <MetaRow
-                  label="Created by"
-                  value={CREATED_BY_LABELS[item.createdBy ?? "USER"] ?? item.createdBy ?? "User"}
-                />
-                {item.expiresAt && (
-                  <MetaRow
-                    label="Expires"
-                    value={new Date(item.expiresAt).toLocaleDateString()}
-                  />
-                )}
-                <MetaRow label="Trigger" value="Market Sweep (6:30 AM)" />
-              </>
-            )}
-            {!isSearch && (
-              <>
-                <MetaRow label="Type" value={SOURCE_TYPE_LABELS[item.sourceType ?? "DOMAIN"] ?? item.sourceType ?? "Domain"} />
-                {item.qualityScore != null && (
-                  <MetaRow label="Quality" value={`${item.qualityScore}/5`} />
-                )}
-                {item.lastCheckedAt && (
-                  <MetaRow label="Last checked" value={relativeTime(item.lastCheckedAt)} />
-                )}
-                <MetaRow label="Trigger" value="Source Pack Monitor (7:15 AM)" />
-                {item.packs && item.packs.length > 0 && (
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground">Packs: </span>
-                    <span className="text-foreground">{item.packs.join(", ")}</span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-function MetaRow({ label, value }: { label: string; value: string }) {
-  return (
-    <>
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-foreground">{value}</span>
-    </>
   );
 }
 
@@ -557,32 +611,24 @@ const CREATED_BY_LABELS: Record<string, string> = {
   ANALYST_RUNTIME: "Analyst runtime",
 };
 
-const SOURCE_TYPE_LABELS: Record<string, string> = {
-  DOMAIN: "Web domain",
-  RSS: "RSS feed",
-  NEWSLETTER: "Newsletter",
-  TWITTER: "Twitter/X",
-  API: "API endpoint",
-};
+// ── Add Item Card (Firecrawl-style) ──────────────────────────────────────────
 
-// ── Add Item Row ─────────────────────────────────────────────────────────────
-
-function AddItemRow({ onRefresh }: { onRefresh: () => void }) {
+function AddItemCard({ onRefresh }: { onRefresh: () => void }) {
   const [kind, setKind] = useState<ItemKind>("search");
   const [value, setValue] = useState("");
   const [category, setCategory] = useState("MARKET");
-  const [showOptions, setShowOptions] = useState(false);
-  // Source-specific fields
   const [sourceName, setSourceName] = useState("");
   const [sourceType, setSourceType] = useState("DOMAIN");
   const [qualityScore, setQualityScore] = useState("3");
+  const [adding, setAdding] = useState(false);
 
   const canSubmit = kind === "search"
     ? value.trim().length > 0
     : value.trim().length > 0 && sourceName.trim().length > 0;
 
   const handleAdd = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || adding) return;
+    setAdding(true);
     try {
       if (kind === "search") {
         const res = await fetch("/api/intelligence/queries", {
@@ -614,148 +660,191 @@ function AddItemRow({ onRefresh }: { onRefresh: () => void }) {
       }
       setValue("");
       setSourceName("");
-      setShowOptions(false);
       onRefresh();
     } catch (err) {
       toast.error(`Failed to add ${kind}`);
       console.error(err);
+    } finally {
+      setAdding(false);
     }
   };
 
   return (
-    <div className="space-y-2">
-      <InputGroup>
-        <InputGroupAddon align="inline-start">
-          <Select value={kind} onValueChange={(v) => v && setKind(v as ItemKind)}>
-            <SelectTrigger className="h-6 w-[90px] border-0 shadow-none text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="search">
-                <Search className="h-3 w-3 mr-1.5 inline" />
-                Search
-              </SelectItem>
-              <SelectItem value="source">
-                <Globe className="h-3 w-3 mr-1.5 inline" />
-                Source
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </InputGroupAddon>
-        <InputGroupInput
-          placeholder={kind === "search" ? "e.g. semiconductor supply chain disruptions..." : "e.g. seekingalpha.com"}
+    <Card className="p-4 space-y-3">
+      {/* Input row */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+          {kind === "search" ? "query://" : "https://"}
+        </span>
+        <Input
+          placeholder={kind === "search"
+            ? "semiconductor supply chain disruptions today..."
+            : "seekingalpha.com"}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          className="flex-1 border-0 shadow-none focus-visible:ring-0 px-0 h-8"
         />
-        <InputGroupAddon align="inline-end">
-          <Popover open={showOptions} onOpenChange={setShowOptions}>
+      </div>
+
+      <Separator />
+
+      {/* Controls row — like Firecrawl's options bar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Type toggle */}
+        <div className="flex items-center rounded-md border">
+          <button
+            className={cn(
+              "px-2.5 py-1 text-xs rounded-l-md transition-colors",
+              kind === "search"
+                ? "bg-violet-500/10 text-violet-600 dark:text-violet-400 font-medium"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+            onClick={() => setKind("search")}
+          >
+            <Search className="h-3 w-3 inline mr-1" />
+            Search
+          </button>
+          <button
+            className={cn(
+              "px-2.5 py-1 text-xs rounded-r-md transition-colors",
+              kind === "source"
+                ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 font-medium"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+            onClick={() => setKind("source")}
+          >
+            <Globe className="h-3 w-3 inline mr-1" />
+            Source
+          </button>
+        </div>
+
+        {/* Category dropdown */}
+        <Popover>
+          <PopoverTrigger
+            render={
+              <button className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border text-muted-foreground hover:text-foreground transition-colors">
+                <SlidersHorizontal className="h-3 w-3" />
+                <span>Category: <span className="text-foreground font-medium">{category.charAt(0) + category.slice(1).toLowerCase()}</span></span>
+              </button>
+            }
+          />
+          <PopoverContent side="bottom" align="start" className="w-64">
+            <PopoverHeader>
+              <PopoverTitle>Category</PopoverTitle>
+            </PopoverHeader>
+            <div className="space-y-1">
+              {CATEGORY_OPTIONS
+                .filter((c) => kind === "source" || !["COMPANY", "SOCIAL"].includes(c.value))
+                .map((c) => (
+                  <button
+                    key={c.value}
+                    className={cn(
+                      "w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors",
+                      category === c.value
+                        ? "bg-accent text-accent-foreground"
+                        : "hover:bg-accent/50"
+                    )}
+                    onClick={() => setCategory(c.value)}
+                  >
+                    <p className="font-medium">{c.label}</p>
+                    <p className="text-muted-foreground">{c.description}</p>
+                  </button>
+                ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Source-specific options */}
+        {kind === "source" && (
+          <Popover>
             <PopoverTrigger
               render={
-                <InputGroupButton variant="ghost" size="icon-xs">
-                  <Zap className="h-3.5 w-3.5" />
-                </InputGroupButton>
+                <button className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border text-muted-foreground hover:text-foreground transition-colors">
+                  <SlidersHorizontal className="h-3 w-3" />
+                  <span>Options</span>
+                </button>
               }
             />
-            <PopoverContent side="bottom" align="end" className="w-64">
+            <PopoverContent side="bottom" align="start" className="w-64">
               <PopoverHeader>
-                <PopoverTitle>Options</PopoverTitle>
+                <PopoverTitle>Source Options</PopoverTitle>
               </PopoverHeader>
-              <Separator />
               <div className="space-y-3 text-xs">
                 <div>
-                  <label className="font-medium uppercase tracking-wide text-muted-foreground block mb-1">
-                    Category
+                  <label className="font-medium text-muted-foreground block mb-1">
+                    Display name
                   </label>
-                  <Select value={category} onValueChange={(v) => v && setCategory(v)}>
+                  <Input
+                    className="h-7 text-xs"
+                    placeholder="e.g. Seeking Alpha"
+                    value={sourceName}
+                    onChange={(e) => setSourceName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="font-medium text-muted-foreground block mb-1">
+                    Source type
+                  </label>
+                  <Select value={sourceType} onValueChange={(v) => v && setSourceType(v)}>
                     <SelectTrigger className="h-7 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="MARKET">Market</SelectItem>
-                      <SelectItem value="SECTOR">Sector</SelectItem>
-                      <SelectItem value="TICKER">Ticker</SelectItem>
-                      <SelectItem value="THEMATIC">Thematic</SelectItem>
-                      <SelectItem value="EVENT">Event</SelectItem>
-                      {kind === "source" && (
-                        <>
-                          <SelectItem value="COMPANY">Company</SelectItem>
-                          <SelectItem value="SOCIAL">Social</SelectItem>
-                        </>
-                      )}
+                      <SelectItem value="DOMAIN">Web domain</SelectItem>
+                      <SelectItem value="RSS">RSS feed</SelectItem>
+                      <SelectItem value="NEWSLETTER">Newsletter</SelectItem>
+                      <SelectItem value="TWITTER">Twitter/X</SelectItem>
+                      <SelectItem value="API">API endpoint</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                {kind === "source" && (
-                  <>
-                    <div>
-                      <label className="font-medium uppercase tracking-wide text-muted-foreground block mb-1">
-                        Display name
-                      </label>
-                      <Input
-                        className="h-7 text-xs"
-                        placeholder="e.g. Seeking Alpha"
-                        value={sourceName}
-                        onChange={(e) => setSourceName(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="font-medium uppercase tracking-wide text-muted-foreground block mb-1">
-                        Source type
-                      </label>
-                      <Select value={sourceType} onValueChange={(v) => v && setSourceType(v)}>
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="DOMAIN">Web domain</SelectItem>
-                          <SelectItem value="RSS">RSS feed</SelectItem>
-                          <SelectItem value="NEWSLETTER">Newsletter</SelectItem>
-                          <SelectItem value="TWITTER">Twitter/X</SelectItem>
-                          <SelectItem value="API">API endpoint</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="font-medium uppercase tracking-wide text-muted-foreground block mb-1">
-                        Quality (1-5)
-                      </label>
-                      <Select value={qualityScore} onValueChange={(v) => v && setQualityScore(v)}>
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1">1 — Low</SelectItem>
-                          <SelectItem value="2">2 — Fair</SelectItem>
-                          <SelectItem value="3">3 — Good</SelectItem>
-                          <SelectItem value="4">4 — High</SelectItem>
-                          <SelectItem value="5">5 — Premium</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
+                <div>
+                  <label className="font-medium text-muted-foreground block mb-1">
+                    Quality score
+                  </label>
+                  <Select value={qualityScore} onValueChange={(v) => v && setQualityScore(v)}>
+                    <SelectTrigger className="h-7 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 — Low reliability</SelectItem>
+                      <SelectItem value="2">2 — Fair</SelectItem>
+                      <SelectItem value="3">3 — Good</SelectItem>
+                      <SelectItem value="4">4 — High reliability</SelectItem>
+                      <SelectItem value="5">5 — Premium / official</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-muted-foreground mt-1">
+                    Higher quality sources produce higher-weighted signals in analyst briefs.
+                  </p>
+                </div>
               </div>
             </PopoverContent>
           </Popover>
-          <InputGroupButton
-            variant="default"
-            size="xs"
-            onClick={handleAdd}
-            disabled={!canSubmit}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add
-          </InputGroupButton>
-        </InputGroupAddon>
-      </InputGroup>
+        )}
 
-      {/* Hint text */}
-      <p className="text-xs text-muted-foreground pl-1">
-        {kind === "search"
-          ? "Searches run via Perplexity Sonar during the daily Market Sweep (6:30 AM ET)."
-          : "Sources are monitored by the Source Pack Monitor (7:15 AM ET). Set name via options."}
-      </p>
-    </div>
+        {/* Submit */}
+        <Button
+          size="sm"
+          onClick={handleAdd}
+          disabled={!canSubmit || adding}
+          className="ml-auto"
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          {adding ? "Adding..." : `Add ${kind}`}
+        </Button>
+      </div>
+    </Card>
   );
 }
+
+const CATEGORY_OPTIONS = [
+  { value: "MARKET", label: "Market", description: "Broad market & macro intelligence" },
+  { value: "SECTOR", label: "Sector", description: "Industry-specific monitoring" },
+  { value: "TICKER", label: "Ticker", description: "Individual stock queries" },
+  { value: "THEMATIC", label: "Thematic", description: "Cross-cutting themes (AI, tariffs...)" },
+  { value: "EVENT", label: "Event", description: "Earnings, IPOs, FDA decisions" },
+  { value: "COMPANY", label: "Company", description: "Single company coverage" },
+  { value: "SOCIAL", label: "Social", description: "Social media sentiment" },
+];
