@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -79,25 +79,27 @@ export default function IntelligencePage() {
     loadAll();
   }, [loadAll]);
 
-  // ── Stats ──────────────────────────────────────────────────────────────
+  // ── Stats (memoized to avoid recomputing on tab switch) ────────────────
 
-  const todaySignals = signals.filter((s) => {
-    const d = new Date(s.createdAt);
-    const now = new Date();
-    return d.toDateString() === now.toDateString();
-  });
+  const todaySignals = useMemo(() => {
+    const now = new Date().toDateString();
+    return signals.filter((s) => new Date(s.createdAt).toDateString() === now);
+  }, [signals]);
 
-  const breakingHigh = todaySignals.filter(
-    (s) => s.urgency === "BREAKING" || s.urgency === "HIGH"
-  ).length;
-  const bullish = todaySignals.filter((s) => s.sentiment === "BULLISH").length;
-  const bearish = todaySignals.filter((s) => s.sentiment === "BEARISH").length;
-  const tickers = new Set(todaySignals.flatMap((s) => s.tickers)).size;
-  const todayJobs = batches.filter((b) => {
-    const d = new Date(b.startedAt);
-    const now = new Date();
-    return d.toDateString() === now.toDateString();
-  }).length;
+  const stats = useMemo(() => {
+    const breakingHigh = todaySignals.filter(
+      (s) => s.urgency === "BREAKING" || s.urgency === "HIGH"
+    ).length;
+    const bullish = todaySignals.filter((s) => s.sentiment === "BULLISH").length;
+    const bearish = todaySignals.filter((s) => s.sentiment === "BEARISH").length;
+    const tickers = new Set(todaySignals.flatMap((s) => s.tickers)).size;
+    return { breakingHigh, bullish, bearish, tickers };
+  }, [todaySignals]);
+
+  const todayJobs = useMemo(() => {
+    const now = new Date().toDateString();
+    return batches.filter((b) => new Date(b.startedAt).toDateString() === now).length;
+  }, [batches]);
 
   return (
     <TooltipProvider>
@@ -141,20 +143,20 @@ export default function IntelligencePage() {
               <StatCard label="Today's Signals" value={todaySignals.length} />
               <StatCard
                 label="Breaking / High"
-                value={breakingHigh}
-                variant={breakingHigh > 0 ? "alert" : "default"}
+                value={stats.breakingHigh}
+                variant={stats.breakingHigh > 0 ? "alert" : "default"}
               />
               <StatCard
                 label="Bullish"
-                value={bullish}
-                variant={bullish > 0 ? "positive" : "default"}
+                value={stats.bullish}
+                variant={stats.bullish > 0 ? "positive" : "default"}
               />
               <StatCard
                 label="Bearish"
-                value={bearish}
-                variant={bearish > 0 ? "negative" : "default"}
+                value={stats.bearish}
+                variant={stats.bearish > 0 ? "negative" : "default"}
               />
-              <StatCard label="Tickers" value={tickers} />
+              <StatCard label="Tickers" value={stats.tickers} />
               <StatCard label="Jobs Today" value={todayJobs} />
             </div>
 
