@@ -1,67 +1,65 @@
 "use client";
 
-import React from "react";
 import { cn } from "@/lib/utils";
 
 /**
  * Aceternity UI — AuroraBackground
- * Pure CSS animated aurora effect using layered radial gradients.
- * Zero performance cost — GPU-accelerated transforms only.
+ * Layered repeating-linear-gradient with mix-blend-difference
+ * and a 60s aurora keyframe for northern-lights shimmer.
  * @see https://ui.aceternity.com/components/aurora-background
  */
+
+interface AuroraBackgroundProps {
+  children?: React.ReactNode;
+  className?: string;
+  showRadialGradient?: boolean;
+}
+
 export function AuroraBackground({
   children,
   className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement> & { children?: React.ReactNode }) {
+  showRadialGradient = true,
+}: AuroraBackgroundProps) {
   return (
-    <div className={cn("relative overflow-hidden", className)} {...props}>
-      {/* Aurora layers */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {/* Layer 1 — violet accent */}
+    <div
+      className={cn(
+        "relative flex flex-col items-center justify-center bg-zinc-950 text-slate-200 transition-colors overflow-hidden",
+        className
+      )}
+    >
+      <div className="absolute inset-0 overflow-hidden">
         <div
-          className="
-            absolute -top-1/3 -left-1/4 w-[120%] h-[120%]
-            bg-[radial-gradient(circle_at_30%_30%,rgba(124,58,237,0.3),transparent_60%)]
-            blur-3xl animate-[auroraFloat_18s_ease-in-out_infinite]
-          "
+          className={cn(
+            `
+            [--white-gradient:repeating-linear-gradient(100deg,var(--white)_0%,var(--white)_7%,var(--transparent)_10%,var(--transparent)_12%,var(--white)_16%)]
+            [--dark-gradient:repeating-linear-gradient(100deg,var(--black)_0%,var(--black)_7%,var(--transparent)_10%,var(--transparent)_12%,var(--black)_16%)]
+            [--aurora:repeating-linear-gradient(100deg,var(--blue-500)_10%,var(--indigo-300)_15%,var(--blue-300)_20%,var(--violet-200)_25%,var(--blue-400)_30%)]
+            [background-image:var(--dark-gradient),var(--aurora)]
+            [background-size:300%,_200%]
+            [background-position:50%_50%,50%_50%]
+            filter blur-[10px] invert
+            after:content-[""] after:absolute after:inset-0 after:[background-image:var(--dark-gradient),var(--aurora)]
+            after:[background-size:200%,_100%]
+            after:animate-aurora after:[background-attachment:fixed] after:mix-blend-difference
+            pointer-events-none
+            absolute -inset-[10px] opacity-50
+            will-change-transform`,
+            showRadialGradient &&
+              `[mask-image:radial-gradient(ellipse_at_100%_0%,black_10%,var(--transparent)_70%)]`
+          )}
         />
-
-        {/* Layer 2 — purple wash */}
-        <div
-          className="
-            absolute -bottom-1/3 -right-1/4 w-[120%] h-[120%]
-            bg-[radial-gradient(circle_at_70%_80%,rgba(168,85,247,0.15),transparent_60%)]
-            blur-3xl animate-[auroraShift_22s_ease-in-out_infinite]
-          "
-        />
-
-        {/* Layer 3 — subtle cool tone */}
-        <div
-          className="
-            absolute top-1/4 left-1/3 w-[100%] h-[100%]
-            bg-[radial-gradient(circle_at_50%_50%,rgba(99,102,241,0.1),transparent_60%)]
-            blur-[100px] animate-[auroraFloat_28s_ease-in-out_infinite]
-          "
-        />
-
-        <style>
-          {`
-            @keyframes auroraFloat {
-              0% { transform: translate3d(-10%, 0, 0) scale(1); }
-              50% { transform: translate3d(10%, -6%, 0) scale(1.05); }
-              100% { transform: translate3d(-10%, 0, 0) scale(1); }
-            }
-            @keyframes auroraShift {
-              0% { transform: translate3d(0,0,0) scale(1); }
-              50% { transform: translate3d(0,-4%,0) scale(1.08); }
-              100% { transform: translate3d(0,0,0) scale(1); }
-            }
-          `}
-        </style>
       </div>
-
-      {/* Content */}
+      <style>
+        {`
+          @keyframes aurora {
+            from { background-position: 50% 50%, 50% 50%; }
+            to { background-position: 350% 50%, 350% 50%; }
+          }
+          .animate-aurora::after {
+            animation: aurora 60s linear infinite;
+          }
+        `}
+      </style>
       <div className="relative z-10">{children}</div>
     </div>
   );
