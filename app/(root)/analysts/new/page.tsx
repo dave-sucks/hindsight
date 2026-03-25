@@ -31,21 +31,21 @@ export default function NewAnalystPage() {
   const panelOpen = configData !== null;
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-5.25rem)] overflow-hidden">
-      {/* Minimal toolbar — back + sparkle ghost buttons */}
-      <div className="shrink-0 flex items-center gap-1 px-3 py-2">
+    <div className="relative h-[calc(100dvh-5.25rem)] overflow-hidden">
+      {/* Floating ghost buttons — no background, over the chat */}
+      <div className="absolute top-2 left-3 z-20">
         <Button variant="ghost" size="icon" render={<Link href="/analysts" />}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="ml-auto">
-          <HowItWorksSheet flow="analyst-builder">
-            <Sparkles className="h-4 w-4" />
-          </HowItWorksSheet>
-        </div>
+      </div>
+      <div className="absolute top-2 right-3 z-20">
+        <HowItWorksSheet flow="analyst-builder">
+          <Sparkles className="h-4 w-4" />
+        </HowItWorksSheet>
       </div>
 
       {/* Split pane */}
-      <div className="flex-1 min-h-0 flex">
+      <div className="h-full flex">
         {/* Chat side */}
         <div
           className="min-h-0 transition-all duration-300 ease-out"
