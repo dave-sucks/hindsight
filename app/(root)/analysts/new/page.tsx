@@ -6,7 +6,7 @@ import { ArrowLeft, Sparkles } from "lucide-react";
 import { AnalystBuilderChat } from "@/components/analysts/AnalystBuilderChat";
 import { AnalystConfigPanel } from "@/components/analysts/AnalystConfigPanel";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
-import { LiquidMetalBg } from "@/components/effects/liquid-metal-bg";
+import { WavyBackground } from "@/components/effects/wavy-background";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 export default function NewAnalystPage() {
@@ -32,13 +32,24 @@ export default function NewAnalystPage() {
 
   return (
     <div className="flex flex-col h-[calc(100dvh-5.25rem)] overflow-hidden">
-      {/* Hero header with liquid metal background */}
-      <div className="relative shrink-0 border-b overflow-hidden">
-        <div className="absolute inset-0">
-          <LiquidMetalBg speed={0.8} />
-        </div>
-        <div className="absolute inset-0 bg-gradient-to-b from-background/30 to-background/80" />
-        <div className="relative px-6 py-6 flex flex-col gap-3">
+      {/* Hero header with wavy background */}
+      <div className="relative shrink-0 border-b overflow-hidden h-28">
+        <WavyBackground
+          containerClassName="absolute inset-0"
+          backgroundFill="hsl(0 0% 4%)"
+          blur={12}
+          speed="slow"
+          waveOpacity={0.4}
+          colors={[
+            "#7c3aed",
+            "#6d28d9",
+            "#4c1d95",
+            "#a855f7",
+            "#3b0764",
+          ]}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background/60" />
+        <div className="relative z-20 px-6 py-5 flex flex-col gap-2 h-full justify-between">
           <div className="flex items-center gap-3">
             <Link
               href="/analysts"
@@ -54,7 +65,7 @@ export default function NewAnalystPage() {
           </div>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Create Analyst</h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-0.5">
               Describe your ideal trading analyst and AI will build it
             </p>
           </div>
