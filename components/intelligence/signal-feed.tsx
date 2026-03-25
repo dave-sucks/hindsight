@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -72,6 +72,10 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
     });
   }, [signals, search, typeFilter, urgencyFilter]);
 
+  const handleSelect = useCallback((signal: Signal) => {
+    setSelected(signal);
+  }, []);
+
   const signalTypes = useMemo(
     () => [...new Set(signals.map((s) => s.type))].sort(),
     [signals]
@@ -133,7 +137,7 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
               key={signal.id}
               signal={signal}
               routes={routes}
-              onClick={() => setSelected(signal)}
+              onSelect={handleSelect}
             />
           ))}
         </div>
@@ -156,14 +160,14 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
 
 // ── Signal Row ──────────────────────────────────────────────────────────────
 
-function SignalRow({
+const SignalRow = memo(function SignalRow({
   signal,
   routes,
-  onClick,
+  onSelect,
 }: {
   signal: Signal;
   routes: AnalystRouteInfo[];
-  onClick: () => void;
+  onSelect: (signal: Signal) => void;
 }) {
   const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
   const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
@@ -171,7 +175,7 @@ function SignalRow({
   return (
     <Card
       className="p-4 cursor-pointer hover:bg-accent/50 transition-colors"
-      onClick={onClick}
+      onClick={() => onSelect(signal)}
     >
       <div className="flex items-start gap-3">
         {/* Urgency dot */}
@@ -265,7 +269,7 @@ function SignalRow({
       </div>
     </Card>
   );
-}
+});
 
 // ── Signal Detail Sheet ─────────────────────────────────────────────────────
 
