@@ -53,10 +53,10 @@ export default function IntelligencePage() {
     setLoading(true);
     try {
       const [q, s, p, sig, b, br, rt] = await Promise.all([
-        fetchJSON<IntelligenceQuery[]>("/api/intelligence/queries"),
-        fetchJSON<Source[]>("/api/intelligence/sources"),
-        fetchJSON<SourcePack[]>("/api/intelligence/source-packs"),
-        fetchJSON<Signal[]>("/api/intelligence/signals?limit=200"),
+        fetchJSON<IntelligenceQuery[]>("/api/intelligence/queries").catch(() => []),
+        fetchJSON<Source[]>("/api/intelligence/sources").catch(() => []),
+        fetchJSON<SourcePack[]>("/api/intelligence/source-packs").catch(() => []),
+        fetchJSON<Signal[]>("/api/intelligence/signals?limit=200").catch(() => []),
         fetchJSON<SignalBatch[]>("/api/intelligence/batches?limit=30").catch(() => []),
         fetchJSON<MorningBrief[]>("/api/intelligence/briefs").catch(() => []),
         fetchJSON<AnalystRouteInfo[]>("/api/intelligence/routes").catch(() => []),
