@@ -265,39 +265,48 @@ export function ConfigPanel({
   return (
     <TooltipProvider>
       <div className="max-w-3xl mx-auto space-y-4">
-        {/* Add new — InputGroup block-end pattern */}
+        {/* Add new */}
         <AddItemInput onRefresh={onRefresh} />
 
         {/* Filter bar */}
         <div className="flex items-center gap-2">
-          <Input
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="relative max-w-xs w-full">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8"
+            />
+          </div>
           <Select value={kindFilter} onValueChange={(v) => v && setKindFilter(v as typeof kindFilter)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All types ({allItems.length})</SelectItem>
+              <SelectItem value="all">All ({allItems.length})</SelectItem>
               <SelectItem value="search">Searches ({searchCount})</SelectItem>
               <SelectItem value="source">Sources ({sourceCount})</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={categoryFilter} onValueChange={(v) => v && setCategoryFilter(v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c.charAt(0) + c.slice(1).toLowerCase()}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Tooltip>
+            <TooltipTrigger render={<span />}>
+              <Select value={categoryFilter} onValueChange={(v) => v && setCategoryFilter(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c.charAt(0) + c.slice(1).toLowerCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </TooltipTrigger>
+            <TooltipContent>Filter by category</TooltipContent>
+          </Tooltip>
           {hasFilters && (
             <Button
               variant="ghost"
@@ -367,8 +376,8 @@ function ConfigRow({
           className={cn(
             "h-7 w-7 rounded-md flex items-center justify-center",
             item.kind === "search"
-              ? "bg-violet-500/10 text-violet-600 dark:text-violet-400"
-              : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+              ? "bg-brand-blue/10 text-brand-blue"
+              : "bg-brand-orange/10 text-brand-orange"
           )}
         >
           {item.kind === "search" ? (
@@ -436,8 +445,8 @@ function ItemDetailPopover({
               className={cn(
                 "h-6 w-6 rounded-md flex items-center justify-center shrink-0",
                 isSearch
-                  ? "bg-violet-500/10 text-violet-600 dark:text-violet-400"
-                  : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                  ? "bg-brand-blue/10 text-brand-blue"
+                  : "bg-brand-orange/10 text-brand-orange"
               )}
             >
               {isSearch ? <Search className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
@@ -462,7 +471,7 @@ function ItemDetailPopover({
             {isSearch ? (
               <PerplexityLogo className="h-4 w-4 text-muted-foreground shrink-0" />
             ) : (
-              <FirecrawlLogo className="h-4 w-4 text-orange-500 shrink-0" />
+              <FirecrawlLogo className="h-4 w-4 text-brand-orange shrink-0" />
             )}
             <span className="font-medium text-foreground">
               {isSearch ? "Market Sweep" : "Source Pack Monitor"}
@@ -651,20 +660,33 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
 
       {/* Bottom: controls bar */}
       <InputGroupAddon align="block-end">
-        {/* Type selector */}
-        <Select value={kind} onValueChange={(v) => v && setKind(v as ItemKind)}>
-          <SelectTrigger className="w-[110px] h-7">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="search">Search</SelectItem>
-            <SelectItem value="source">Source</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Type selector — icon-only trigger */}
+        <Tooltip>
+          <TooltipTrigger render={<span />}>
+            <Select value={kind} onValueChange={(v) => v && setKind(v as ItemKind)}>
+              <SelectTrigger size="sm">
+                {kind === "search" ? (
+                  <Search className="h-3.5 w-3.5" />
+                ) : (
+                  <Globe className="h-3.5 w-3.5" />
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="search">
+                  <Search className="h-3.5 w-3.5" /> Search
+                </SelectItem>
+                <SelectItem value="source">
+                  <Globe className="h-3.5 w-3.5" /> Source
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </TooltipTrigger>
+          <TooltipContent>{kind === "search" ? "Search query" : "Monitored source"}</TooltipContent>
+        </Tooltip>
 
         {/* Category selector */}
         <Select value={category} onValueChange={(v) => v && setCategory(v)}>
-          <SelectTrigger className="w-[110px] h-7">
+          <SelectTrigger size="sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -744,16 +766,15 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
         )}
 
         {/* Submit button */}
-        <InputGroupButton
-          variant="default"
+        <Button
           size="sm"
           className="ml-auto"
           onClick={handleAdd}
           disabled={!canSubmit || adding}
         >
           <Plus className="h-3.5 w-3.5" />
-          {adding ? "Adding..." : `Add ${kind}`}
-        </InputGroupButton>
+          {adding ? "Adding..." : "Add"}
+        </Button>
       </InputGroupAddon>
     </InputGroup>
   );
