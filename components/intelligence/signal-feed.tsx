@@ -34,8 +34,6 @@ import {
   Globe,
   Lock,
   Search,
-  Sparkles,
-  Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Signal, AnalystRouteInfo } from "./types";
@@ -45,6 +43,9 @@ import {
   URGENCY_CONFIG,
   SENTIMENT_CONFIG,
 } from "./types";
+import { PerplexityLogo, FirecrawlLogo } from "./icons";
+
+type Icon = React.ComponentType<{ className?: string }>;
 
 // ── Signal Feed ─────────────────────────────────────────────────────────────
 
@@ -461,7 +462,7 @@ interface Discovery {
   visual: string;
   /** Resolved tool name */
   toolName: string;
-  toolIcon: typeof Sparkles;
+  toolIcon: Icon;
   jobLabel: string;
   explanation: string;
   /** For domain type: the source/publication name */
@@ -549,7 +550,7 @@ function inferDiscovery(signal: Signal): Discovery {
       type: "portfolio",
       visual: signal.tickers.length === 1 ? `$${ticker}` : signal.tickers.slice(0, 3).map(t => `$${t}`).join(", "),
       toolName: "Perplexity Sonar",
-      toolIcon: Sparkles,
+      toolIcon: PerplexityLogo,
       jobLabel,
       explanation: `Searched "${ticker} stock news developments catalysts today" via Perplexity Sonar because this ticker is in an open position or on a watchlist. Each result becomes a signal.`,
     };
@@ -562,7 +563,7 @@ function inferDiscovery(signal: Signal): Discovery {
       visual: domain ?? "Monitored sources",
       sourceName: signal.sourceNames[0] ?? undefined,
       toolName: "Perplexity Sonar",
-      toolIcon: Sparkles,
+      toolIcon: PerplexityLogo,
       jobLabel,
       explanation: "Searched monitored domains via Perplexity Sonar (domain-filtered search). High-value pages get full text extraction via Firecrawl.",
     };
@@ -595,7 +596,7 @@ function inferDiscovery(signal: Signal): Discovery {
       type: "search",
       visual: inferQueryFromSignal(signal),
       toolName: "Perplexity Sonar",
-      toolIcon: Sparkles,
+      toolIcon: PerplexityLogo,
       jobLabel,
       explanation: "Ran a search query from Config through Perplexity Sonar web search. Each distinct finding becomes a signal with extracted tickers, sentiment, and source URLs.",
     };
@@ -606,7 +607,7 @@ function inferDiscovery(signal: Signal): Discovery {
     type: "search",
     visual: inferQueryFromSignal(signal),
     toolName: "Perplexity Sonar",
-    toolIcon: Sparkles,
+    toolIcon: PerplexityLogo,
     jobLabel,
     explanation: "Discovered by the intelligence pipeline via web search.",
   };
@@ -695,9 +696,9 @@ function DiscoveryHeader({ discovery, signal }: { discovery: Discovery; signal: 
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const TOOL_CONFIG: Record<string, { name: string; icon: typeof Sparkles }> = {
-  PERPLEXITY_SONAR: { name: "Perplexity Sonar", icon: Sparkles },
+const TOOL_CONFIG: Record<string, { name: string; icon: Icon }> = {
+  PERPLEXITY_SONAR: { name: "Perplexity Sonar", icon: PerplexityLogo },
   FMP: { name: "Financial Modeling Prep", icon: BarChart3 },
   FINNHUB: { name: "Finnhub", icon: CalendarDays },
-  FIRECRAWL: { name: "Firecrawl", icon: Flame },
+  FIRECRAWL: { name: "Firecrawl", icon: FirecrawlLogo },
 };
