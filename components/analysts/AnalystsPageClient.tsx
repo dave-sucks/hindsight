@@ -39,6 +39,7 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
+import { WavyBackground } from "@/components/effects/wavy-background";
 
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
 
@@ -362,7 +363,26 @@ export default function AnalystsPageClient({
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="relative p-6 space-y-6 max-w-5xl mx-auto">
+      {/* Wavy background hero */}
+      <div className="absolute inset-x-0 top-0 h-64 overflow-hidden -z-10">
+        <WavyBackground
+          containerClassName="h-full w-full"
+          backgroundFill="hsl(0 0% 4%)"
+          blur={12}
+          speed="slow"
+          waveOpacity={0.35}
+          colors={[
+            "#7c3aed",
+            "#6d28d9",
+            "#4c1d95",
+            "#a855f7",
+            "#3b0764",
+          ]}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/60 to-background" />
+      </div>
+
       <h1 className="text-2xl font-semibold">Analysts</h1>
 
       {analysts.length === 0 ? (
