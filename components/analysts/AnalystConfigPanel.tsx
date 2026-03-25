@@ -26,6 +26,7 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { StockLogo } from "@/components/StockLogo";
+import { WavyBackground } from "@/components/effects/wavy-background";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -140,57 +141,74 @@ export function AnalystConfigPanel({
 
   return (
     <div className="flex flex-col h-full border-l bg-background">
-      {/* ── Header with gradient orb ────────────────────────────── */}
-      <div className="px-4 pt-4 pb-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <GradientOrb />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-base font-brand font-bold truncate leading-tight">
-                {config.name || "Untitled Analyst"}
-              </p>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Badge
-                        variant={
-                          direction === "LONG"
-                            ? "positive"
-                            : direction === "SHORT"
-                              ? "negative"
-                              : "secondary"
-                        }
-                      >
-                        {dm.icon}
-                        {direction}
-                      </Badge>
-                    }
-                  />
-                  <TooltipContent side="bottom">{dm.tip}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+      {/* ── Landscape hero with wavy background ─────────────────── */}
+      <div className="relative shrink-0 overflow-hidden h-36">
+        <WavyBackground
+          containerClassName="absolute inset-0"
+          backgroundFill="hsl(0 0% 4%)"
+          blur={12}
+          speed="slow"
+          waveOpacity={0.4}
+          colors={[
+            "#7c3aed",
+            "#6d28d9",
+            "#4c1d95",
+            "#a855f7",
+            "#3b0764",
+          ]}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
+        <div className="relative z-10 flex flex-col justify-end h-full px-4 pb-3">
+          <div className="flex items-center gap-3">
+            <GradientOrb />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <p className="text-base font-brand font-bold truncate leading-tight">
+                  {config.name || "Untitled Analyst"}
+                </p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Badge
+                          variant={
+                            direction === "LONG"
+                              ? "positive"
+                              : direction === "SHORT"
+                                ? "negative"
+                                : "secondary"
+                          }
+                        >
+                          {dm.icon}
+                          {direction}
+                        </Badge>
+                      }
+                    />
+                    <TooltipContent side="bottom">{dm.tip}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              {config.description && (
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                  {config.description}
+                </p>
+              )}
             </div>
-            {config.description && (
-              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                {config.description}
-              </p>
-            )}
           </div>
-        </div>
-        {/* Meta strip */}
-        <div className="mt-2">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
-            <span>{direction}</span>
-            <span className="opacity-30">&middot;</span>
-            <span>{holdDurations.join("/") || "SWING"}</span>
-            <span className="opacity-30">&middot;</span>
-            <span className="tabular-nums">{config.minConfidence ?? 65}% MIN</span>
-            <span className="opacity-30">&middot;</span>
-            <span className="tabular-nums">${(config.maxPositionSize ?? 5000).toLocaleString()}</span>
-            <span className="opacity-30">&middot;</span>
-            <span>{config.minMarketCapTier ?? "LARGE"}+</span>
-          </span>
+          {/* Meta strip */}
+          <div className="mt-2">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
+              <span>{direction}</span>
+              <span className="opacity-30">&middot;</span>
+              <span>{holdDurations.join("/") || "SWING"}</span>
+              <span className="opacity-30">&middot;</span>
+              <span className="tabular-nums">{config.minConfidence ?? 65}% MIN</span>
+              <span className="opacity-30">&middot;</span>
+              <span className="tabular-nums">${(config.maxPositionSize ?? 5000).toLocaleString()}</span>
+              <span className="opacity-30">&middot;</span>
+              <span>{config.minMarketCapTier ?? "LARGE"}+</span>
+            </span>
+          </div>
         </div>
       </div>
 

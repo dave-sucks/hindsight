@@ -3,10 +3,10 @@
 import { useState, useCallback } from "react";
 import Link from "next/link";
 import { ArrowLeft, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { AnalystBuilderChat } from "@/components/analysts/AnalystBuilderChat";
 import { AnalystConfigPanel } from "@/components/analysts/AnalystConfigPanel";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
-import { WavyBackground } from "@/components/effects/wavy-background";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 export default function NewAnalystPage() {
@@ -32,43 +32,15 @@ export default function NewAnalystPage() {
 
   return (
     <div className="flex flex-col h-[calc(100dvh-5.25rem)] overflow-hidden">
-      {/* Hero header with wavy background */}
-      <div className="relative shrink-0 border-b overflow-hidden h-28">
-        <WavyBackground
-          containerClassName="absolute inset-0"
-          backgroundFill="hsl(0 0% 4%)"
-          blur={12}
-          speed="slow"
-          waveOpacity={0.4}
-          colors={[
-            "#7c3aed",
-            "#6d28d9",
-            "#4c1d95",
-            "#a855f7",
-            "#3b0764",
-          ]}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background/60" />
-        <div className="relative z-20 px-6 py-5 flex flex-col gap-2 h-full justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/analysts"
-              className="text-muted-foreground hover:text-foreground transition-colors shrink-0 -ml-1"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-            <div className="ml-auto">
-              <HowItWorksSheet flow="analyst-builder">
-                <Sparkles className="h-4 w-4" />
-              </HowItWorksSheet>
-            </div>
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Create Analyst</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Describe your ideal trading analyst and AI will build it
-            </p>
-          </div>
+      {/* Minimal toolbar — back + sparkle ghost buttons */}
+      <div className="shrink-0 flex items-center gap-1 px-3 py-2">
+        <Button variant="ghost" size="icon" render={<Link href="/analysts" />}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div className="ml-auto">
+          <HowItWorksSheet flow="analyst-builder">
+            <Sparkles className="h-4 w-4" />
+          </HowItWorksSheet>
         </div>
       </div>
 
