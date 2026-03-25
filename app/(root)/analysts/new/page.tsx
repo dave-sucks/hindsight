@@ -44,12 +44,12 @@ export default function NewAnalystPage() {
         </HowItWorksSheet>
       </div>
 
-      {/* Split pane */}
-      <div className="h-full flex">
+      {/* Full layout */}
+      <div className="h-full flex relative">
         {/* Chat side */}
         <div
-          className="min-h-0 transition-all duration-300 ease-out"
-          style={{ flex: panelOpen ? "0 0 55%" : "1 1 100%" }}
+          className="min-h-0 transition-all duration-500 ease-out"
+          style={{ flex: panelOpen ? "1 1 0%" : "1 1 100%" }}
         >
           <AnalystBuilderChat
             onConfigSuggested={handleConfigSuggested}
@@ -57,22 +57,22 @@ export default function NewAnalystPage() {
           />
         </div>
 
-        {/* Config panel side */}
-        <div
-          className="min-h-0 overflow-hidden transition-all duration-300 ease-out"
-          style={{
-            flex: panelOpen ? "0 0 45%" : "0 0 0%",
-            opacity: panelOpen ? 1 : 0,
-          }}
-        >
-          {configData && (
+        {/* Floating config panel — Manus-style artifact */}
+        {configData && (
+          <div
+            className="absolute inset-4 left-auto z-10 w-[440px] max-w-[45%] transition-all duration-500 ease-out"
+            style={{
+              opacity: panelOpen ? 1 : 0,
+              transform: panelOpen ? "translateX(0)" : "translateX(100%)",
+            }}
+          >
             <AnalystConfigPanel
               config={configData}
               onConfirm={confirmHandler ?? (() => {})}
               isCreating={isCreating}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

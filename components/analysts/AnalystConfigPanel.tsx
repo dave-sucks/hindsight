@@ -27,10 +27,7 @@ import {
 } from "@/components/ui/tooltip";
 import { StockLogo } from "@/components/StockLogo";
 import { SilkOrb } from "@/components/effects/silk-orb";
-import dynamic from "next/dynamic";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
-
-const Silk = dynamic(() => import("@/components/effects/silk"), { ssr: false });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,17 +125,11 @@ export function AnalystConfigPanel({
   const dm = directionMeta[direction] ?? directionMeta.BOTH;
 
   return (
-    <div className="relative flex flex-col h-full border-l overflow-hidden">
-      {/* ── Full Silk WebGL background ──────────────────────────── */}
-      <div className="absolute inset-0 z-0">
-        <Silk speed={5} scale={1} color="#AEFD83" noiseIntensity={1.2} rotation={0} />
-      </div>
-      <div className="absolute inset-0 z-[1] bg-background/85 pointer-events-none" />
-
+    <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden">
       {/* ── Header with SilkOrb avatar ──────────────────────────── */}
-      <div className="relative z-[2] shrink-0 px-4 pt-4 pb-3">
+      <div className="shrink-0 px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
-          <SilkOrb size={56} speed={8} color="#AEFD83" noiseIntensity={1.5} />
+          <SilkOrb size={56} speed={10} color="#AEFD83" scale={2} noiseIntensity={2} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-base font-brand font-bold truncate leading-tight">
@@ -190,7 +181,7 @@ export function AnalystConfigPanel({
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────── */}
-      <Tabs defaultValue="overview" className="relative z-[2] flex-1 flex flex-col min-h-0">
+      <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
         <div className="px-4 pt-2 shrink-0">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -558,7 +549,7 @@ export function AnalystConfigPanel({
       </Tabs>
 
       {/* ── Footer: Create button ─────────────────────────────── */}
-      <div className="relative z-[2] shrink-0 border-t px-4 py-3 flex">
+      <div className="shrink-0 border-t px-4 py-3 flex">
         <Button
           onClick={onConfirm}
           disabled={isCreating}
