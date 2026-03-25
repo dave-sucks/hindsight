@@ -12,15 +12,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import {
+  Search,
+  Briefcase,
+  Package,
+  GitBranch,
+  Newspaper,
+  MoreHorizontal,
   Play,
+  Info,
   Loader2,
   CheckCircle2,
   XCircle,
@@ -28,7 +43,56 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { SignalBatch, AnalystRouteInfo } from "./types";
-import { relativeTime, JOB_LABELS, JOB_TRIGGERS } from "./types";
+import { relativeTime, JOB_LABELS } from "./types";
+import type { LucideIcon } from "lucide-react";
+
+// ── Job Card Data ──────────────────────────────────────────────────────────
+
+interface JobInfo {
+  icon: LucideIcon;
+  event: string;
+  time: string;
+  short: string;
+  long: string;
+}
+
+const JOBS: Record<string, JobInfo> = {
+  "Market Sweep": {
+    icon: Search,
+    event: "market-sweep",
+    time: "6:30 AM ET",
+    short: "Searches for market-moving news across all enabled queries",
+    long: "Runs every enabled search query from Config through Perplexity Sonar. Results get parsed into structured signals with tickers, sentiment, urgency, and themes. Signals are deduplicated against the last 48 hours before storage.",
+  },
+  "Portfolio Monitor": {
+    icon: Briefcase,
+    event: "portfolio-monitor",
+    time: "7:00 AM ET",
+    short: "Monitors open positions and watchlist for price alerts and news",
+    long: "Checks current prices and recent news for every open position and watchlist item across all analysts. Generates alerts for stop-loss proximity, target price hits, and material news that could affect trade thesis.",
+  },
+  "Source Pack": {
+    icon: Package,
+    event: "source-pack-monitor",
+    time: "7:15 AM ET",
+    short: "Crawls monitored domains for new articles, filings, and releases",
+    long: "Iterates over every enabled Source from Config. Uses Perplexity Sonar for domain-scoped search, then Firecrawl for full-text extraction of high-value pages. Creates artifact records with extracted content that become signals.",
+  },
+  "Signal Router": {
+    icon: GitBranch,
+    event: "signal-router",
+    time: "7:30 AM ET",
+    short: "Routes unprocessed signals to matching analysts by coverage area",
+    long: "Takes all unrouted signals and matches them against each analyst's sector coverage, ticker watchlist, and category preferences. Each signal gets urgency-priority routing so analysts see the most important signals first in their briefs.",
+  },
+  "Morning Brief": {
+    icon: Newspaper,
+    event: "morning-brief",
+    time: "7:45 AM ET",
+    short: "Generates personalized daily briefs for each analyst from their signals",
+    long: "Uses GPT-4o to synthesize each analyst's pending signals into a structured brief: market context, portfolio alerts, watchlist updates, new opportunities, and attention priorities. Briefs appear in the Signals tab.",
+  },
+};
 
 // ── Pipeline Log ────────────────────────────────────────────────────────────
 
@@ -42,18 +106,17 @@ export function PipelineLog({ batches, routes, onRefresh }: PipelineLogProps) {
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        {/* Job triggers */}
+        {/* Job cards */}
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
-            Manual Triggers
+            Pipeline Jobs
           </p>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(JOB_TRIGGERS).map(([label, { event, time }]) => (
-              <JobTriggerButton
-                key={event}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {Object.entries(JOBS).map(([label, job]) => (
+              <JobCard
+                key={job.event}
                 label={label}
-                event={event}
-                time={time}
+                job={job}
                 onTriggered={onRefresh}
               />
             ))}
@@ -192,20 +255,20 @@ function BatchStatus({ status }: { status: string }) {
   }
 }
 
-// ── Job Trigger Button ──────────────────────────────────────────────────────
+// ── Job Card ────────────────────────────────────────────────────────────────
 
-function JobTriggerButton({
+function JobCard({
   label,
-  event,
-  time,
+  job,
   onTriggered,
 }: {
   label: string;
-  event: string;
-  time: string;
+  job: JobInfo;
   onTriggered: () => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const Icon = job.icon;
 
   const trigger = async () => {
     setLoading(true);
@@ -213,11 +276,10 @@ function JobTriggerButton({
       const res = await fetch("/api/intelligence/trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ job: event }),
+        body: JSON.stringify({ job: job.event }),
       });
       if (!res.ok) throw new Error(await res.text());
       toast.success(`${label} triggered`);
-      // Wait a bit for the job to register, then refresh
       setTimeout(onTriggered, 3000);
     } catch (err) {
       toast.error(`Failed to trigger ${label}`);
@@ -228,31 +290,62 @@ function JobTriggerButton({
   };
 
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="inline-flex" />}>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={trigger}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-          ) : (
-            <Play className="h-3.5 w-3.5 mr-1.5" />
-          )}
-          {label}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        <div className="text-center">
-          <p>Run {label.toLowerCase()} now</p>
-          <p className="text-muted-foreground flex items-center gap-1">
+    <Card className="p-6 relative">
+      {/* 3-dot menu */}
+      <div className="absolute top-3 right-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon" />}>
+            <MoreHorizontal className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={trigger} disabled={loading}>
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              Run now
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDialogOpen(true)}>
+              <Info className="h-4 w-4" />
+              Learn more
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Icon */}
+      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+
+      {/* Name */}
+      <p className="text-sm font-medium mt-3">{label}</p>
+
+      {/* Description */}
+      <p className="text-xs text-muted-foreground mt-1">{job.short}</p>
+
+      {/* Schedule time */}
+      <div className="flex items-center gap-1 mt-3">
+        <Clock className="h-3 w-3 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {job.time}
+        </span>
+      </div>
+
+      {/* Learn more dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{label}</DialogTitle>
+            <DialogDescription>{job.long}</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
-            Auto: {time} ET weekdays
-          </p>
-        </div>
-      </TooltipContent>
-    </Tooltip>
+            <span className="tabular-nums">Scheduled: {job.time} weekdays</span>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }

@@ -24,7 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
-import { ExternalLink, FileText, Search } from "lucide-react";
+import { Briefcase, ExternalLink, FileText, Lock, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Signal, AnalystRouteInfo } from "./types";
 import {
@@ -87,7 +87,7 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All types</SelectItem>
+              <SelectItem value="ALL">Type</SelectItem>
               {signalTypes.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
@@ -100,7 +100,7 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All urgency</SelectItem>
+              <SelectItem value="ALL">Urgency</SelectItem>
               <SelectItem value="BREAKING">Breaking</SelectItem>
               <SelectItem value="HIGH">High</SelectItem>
               <SelectItem value="MEDIUM">Medium</SelectItem>
@@ -269,146 +269,140 @@ function SignalDetail({
 }) {
   const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
   const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
+  const jobLabel = JOB_LABELS[signal.batch?.jobType] ?? signal.batch?.jobType ?? "Unknown";
 
   return (
     <>
       <SheetHeader>
         <div className="flex items-center gap-2">
-          <div className={cn("h-2.5 w-2.5 rounded-full", urgency.dot)} />
+          <div className={cn("h-2.5 w-2.5 rounded-full shrink-0", urgency.dot)} />
           <SheetTitle className="text-left">{signal.headline}</SheetTitle>
         </div>
       </SheetHeader>
 
-      <div className="space-y-5 pt-4">
+      <div className="px-6 pb-6 space-y-5">
         {/* Summary */}
         <p className="text-sm text-muted-foreground">{signal.summary}</p>
 
-        <Separator />
+        {/* Source / Job visual */}
+        <SourceVisual signal={signal} jobLabel={jobLabel} />
 
-        {/* Metadata grid */}
-        <div className="grid grid-cols-2 gap-3">
-          <MetaItem label="Type" value={signal.type} />
-          <MetaItem label="Urgency" value={urgency.label} />
-          <MetaItem
-            label="Sentiment"
-            value={sentiment.label}
-            className={sentiment.className}
-          />
-          <MetaItem label="Freshness" value={signal.freshness} />
-          <MetaItem
-            label="Source Quality"
-            value={`${signal.sourceQuality}/5`}
-          />
-          <MetaItem
-            label="Novelty"
-            value={`${signal.noveltyScore}/100`}
-          />
-          <MetaItem
-            label="Job"
-            value={JOB_LABELS[signal.batch?.jobType] ?? signal.batch?.jobType ?? "—"}
-          />
-          <MetaItem label="Time" value={relativeTime(signal.createdAt)} />
+        {/* Properties row */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{signal.type}</Badge>
+            <Badge variant="secondary">
+              <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", urgency.dot)} />
+              {urgency.label}
+            </Badge>
+            <Badge variant="secondary">
+              <span className={cn("mr-1", sentiment.className)}>{sentiment.label}</span>
+            </Badge>
+            <Badge variant="secondary">{signal.freshness}</Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>Source Quality <span className="text-foreground tabular-nums">{signal.sourceQuality}/5</span></span>
+            <span>Novelty <span className="text-foreground tabular-nums">{signal.noveltyScore}/100</span></span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>Job <span className="text-foreground">{jobLabel}</span></span>
+            <span>Time <span className="text-foreground tabular-nums">{relativeTime(signal.createdAt)}</span></span>
+          </div>
         </div>
+
+        <Separator />
 
         {/* Tickers */}
         {signal.tickers.length > 0 && (
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-              Tickers
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {signal.tickers.map((t) => (
-                <Badge key={t} variant="secondary">
-                  ${t}
-                </Badge>
-              ))}
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Tickers</span>
+            {signal.tickers.map((t) => (
+              <Badge key={t} variant="secondary">
+                ${t}
+              </Badge>
+            ))}
           </div>
         )}
 
         {/* Themes */}
         {signal.themes.length > 0 && (
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-              Themes
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {signal.themes.map((t) => (
-                <Badge key={t} variant="outline">
-                  {t}
-                </Badge>
-              ))}
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Themes</span>
+            {signal.themes.map((t) => (
+              <Badge key={t} variant="outline">
+                {t}
+              </Badge>
+            ))}
           </div>
         )}
 
         {/* Sectors */}
         {signal.sectors.length > 0 && (
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-              Sectors
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {signal.sectors.map((s) => (
-                <Badge key={s} variant="outline">
-                  {s}
-                </Badge>
-              ))}
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sectors</span>
+            {signal.sectors.map((s) => (
+              <Badge key={s} variant="outline">
+                {s}
+              </Badge>
+            ))}
           </div>
         )}
 
         {/* Routing */}
         {routes.length > 0 && (
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-              Routed to
-            </p>
-            <div className="space-y-1.5">
-              {routes
-                .filter((r) => r.totalRoutes > 0)
-                .map((r) => (
-                  <div
-                    key={r.analystId}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span>{r.analystName}</span>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-                      <span>{r.high} high</span>
-                      <span>{r.medium} med</span>
-                      <span>{r.low} low</span>
+          <>
+            <Separator />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                Routed to
+              </p>
+              <div className="space-y-1.5">
+                {routes
+                  .filter((r) => r.totalRoutes > 0)
+                  .map((r) => (
+                    <div
+                      key={r.analystId}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span>{r.analystName}</span>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+                        <span>{r.high} high</span>
+                        <span>{r.medium} med</span>
+                        <span>{r.low} low</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+              </div>
             </div>
-          </div>
+          </>
         )}
-
-        <Separator />
 
         {/* Sources */}
         {signal.sourceUrls.length > 0 && (
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-              Sources
-            </p>
-            <div className="space-y-1.5">
-              {signal.sourceUrls.map((url, i) => (
-                <a
-                  key={i}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <ExternalLink className="h-3 w-3 shrink-0" />
-                  <span className="truncate">
-                    {signal.sourceNames[i] ?? new URL(url).hostname}
-                  </span>
-                </a>
-              ))}
+          <>
+            <Separator />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                Sources
+              </p>
+              <div className="space-y-1.5">
+                {signal.sourceUrls.map((url, i) => (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                    <span className="truncate">
+                      {signal.sourceNames[i] ?? new URL(url).hostname}
+                    </span>
+                  </a>
+                ))}
+              </div>
             </div>
-          </div>
+          </>
         )}
 
         {/* Artifact indicator */}
@@ -423,23 +417,57 @@ function SignalDetail({
   );
 }
 
-// ── Meta Item ───────────────────────────────────────────────────────────────
+// ── Source Visual ────────────────────────────────────────────────────────────
 
-function MetaItem({
-  label,
-  value,
-  className,
+function SourceVisual({
+  signal,
+  jobLabel,
 }: {
-  label: string;
-  value: string;
-  className?: string;
+  signal: Signal;
+  jobLabel: string;
 }) {
+  const jobType = signal.batch?.jobType;
+
+  if (jobType === "MARKET_SWEEP") {
+    const query = signal.sourceNames[0] ?? "market scan";
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground truncate">{query}</span>
+      </div>
+    );
+  }
+
+  if (jobType === "SOURCE_PACK") {
+    let domain = "source";
+    try {
+      if (signal.sourceUrls[0]) {
+        domain = new URL(signal.sourceUrls[0]).hostname;
+      }
+    } catch {
+      // keep default
+    }
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+        <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground truncate">{domain}</span>
+      </div>
+    );
+  }
+
+  if (jobType === "PORTFOLIO_MONITOR") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+        <Briefcase className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">Portfolio Monitor</span>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p className={cn("text-sm", className)}>{value}</p>
+    <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <span className="text-sm text-muted-foreground">{jobLabel}</span>
     </div>
   );
 }

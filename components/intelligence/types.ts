@@ -121,6 +121,29 @@ export const JOB_LABELS: Record<string, string> = {
   MANUAL: "Manual",
 };
 
+export const JOB_DESCRIPTIONS: Record<string, { short: string; long: string }> = {
+  "Market Sweep": {
+    short: "Searches for market-moving news across all enabled queries",
+    long: "Runs every enabled search query from Config through Perplexity Sonar. Results get parsed into structured signals with tickers, sentiment, urgency, and themes. Signals are deduplicated against the last 48 hours before storage.",
+  },
+  "Portfolio Monitor": {
+    short: "Monitors open positions and watchlist for price alerts and news",
+    long: "Checks current prices and recent news for every open position and watchlist item across all analysts. Generates alerts for stop-loss proximity, target price hits, and material news that could affect trade thesis.",
+  },
+  "Source Pack": {
+    short: "Crawls monitored domains for new articles, filings, and releases",
+    long: "Iterates over every enabled Source from Config. Uses Perplexity Sonar for domain-scoped search, then Firecrawl for full-text extraction of high-value pages. Creates artifact records with extracted content that become signals.",
+  },
+  "Signal Router": {
+    short: "Routes unprocessed signals to matching analysts by coverage area",
+    long: "Takes all unrouted signals and matches them against each analyst's sector coverage, ticker watchlist, and category preferences. Each signal gets urgency-priority routing so analysts see the most important signals first in their briefs.",
+  },
+  "Morning Brief": {
+    short: "Generates personalized daily briefs for each analyst from their signals",
+    long: "Uses GPT-4o to synthesize each analyst's pending signals into a structured brief: market context, portfolio alerts, watchlist updates, new opportunities, and attention priorities. Briefs appear in the Signals tab.",
+  },
+};
+
 export const JOB_TRIGGERS: Record<string, { event: string; time: string }> = {
   "Market Sweep": { event: "market-sweep", time: "6:30 AM" },
   "Portfolio Monitor": { event: "portfolio-monitor", time: "7:00 AM" },

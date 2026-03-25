@@ -16,8 +16,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
-  TableHeader,
   TableRow,
 } from "@/components/ui/table";
 import {
@@ -49,7 +47,6 @@ import {
   InputGroupAddon,
   InputGroupInput,
   InputGroupButton,
-  InputGroupText,
 } from "@/components/ui/input-group";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -58,9 +55,10 @@ import {
   Search,
   Globe,
   Info,
-  Clock,
   SlidersHorizontal,
   Package,
+  Terminal,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -281,10 +279,10 @@ export function ConfigPanel({
           </div>
           <Select value={kindFilter} onValueChange={(v) => v && setKindFilter(v as typeof kindFilter)}>
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All ({allItems.length})</SelectItem>
+              <SelectItem value="all">Type</SelectItem>
               <SelectItem value="search">Searches ({searchCount})</SelectItem>
               <SelectItem value="source">Sources ({sourceCount})</SelectItem>
             </SelectContent>
@@ -293,10 +291,10 @@ export function ConfigPanel({
             <TooltipTrigger render={<span />}>
               <Select value={categoryFilter} onValueChange={(v) => v && setCategoryFilter(v)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All categories</SelectItem>
+                  <SelectItem value="all">Category</SelectItem>
                   {categories.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c.charAt(0) + c.slice(1).toLowerCase()}
@@ -325,15 +323,6 @@ export function ConfigPanel({
 
         {/* Table */}
         <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10" />
-              <TableHead>Name</TableHead>
-              <TableHead className="w-16">Scope</TableHead>
-              <TableHead className="w-14" />
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
           <TableBody>
             {filtered.length === 0 && (
               <TableRow>
@@ -372,20 +361,7 @@ function ConfigRow({
     <TableRow>
       {/* Colored type icon */}
       <TableCell>
-        <div
-          className={cn(
-            "h-7 w-7 rounded-md flex items-center justify-center",
-            item.kind === "search"
-              ? "bg-brand-blue/10 text-brand-blue"
-              : "bg-brand-orange/10 text-brand-orange"
-          )}
-        >
-          {item.kind === "search" ? (
-            <Search className="h-3.5 w-3.5" />
-          ) : (
-            <Globe className="h-3.5 w-3.5" />
-          )}
-        </div>
+        <ItemIcon kind={item.kind} sourceType={item.sourceType} />
       </TableCell>
 
       {/* Name + detail */}
@@ -420,6 +396,68 @@ function ConfigRow({
   );
 }
 
+// ── Shared visual elements ────────────────────────────────────────────────────
+
+function ItemIcon({ kind, sourceType }: { kind: ItemKind; sourceType?: string }) {
+  if (kind === "search") {
+    return (
+      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
+        <Search className="h-3.5 w-3.5" />
+      </div>
+    );
+  }
+  if (sourceType === "API") {
+    return (
+      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand/20 text-emerald-600 dark:text-emerald-400">
+        <Terminal className="h-3.5 w-3.5" />
+      </div>
+    );
+  }
+  return (
+    <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-orange/10 text-brand-orange">
+      <Globe className="h-3.5 w-3.5" />
+    </div>
+  );
+}
+
+/** Fake search bar for search queries */
+function SearchQueryVisual({ query }: { query: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      <p className="text-sm text-foreground truncate">{query}</p>
+    </div>
+  );
+}
+
+/** Browser-style URL bar for domain sources */
+function DomainVisual({ domain, name }: { domain: string; name: string }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium text-foreground">{name}</p>
+      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+        <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+        <p className="text-xs text-muted-foreground font-mono truncate">{domain}</p>
+      </div>
+    </div>
+  );
+}
+
+/** Fake API call display for API sources */
+function ApiCallVisual({ name, domain }: { name: string; domain: string }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium text-foreground">{name}</p>
+      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 font-mono">
+        <Badge variant="secondary" className="shrink-0 text-[10px] font-mono">
+          GET
+        </Badge>
+        <p className="text-xs text-foreground truncate">{domain}</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Detail Popover ───────────────────────────────────────────────────────────
 
 function ItemDetailPopover({
@@ -430,6 +468,7 @@ function ItemDetailPopover({
   onDelete: () => void;
 }) {
   const isSearch = item.kind === "search";
+  const isApi = item.sourceType === "API";
 
   return (
     <Popover>
@@ -439,27 +478,17 @@ function ItemDetailPopover({
         <Info className="h-3.5 w-3.5" />
       </PopoverTrigger>
       <PopoverContent side="left" align="start" className="w-80">
-        <PopoverHeader>
-          <PopoverTitle className="flex items-center gap-2">
-            <div
-              className={cn(
-                "h-6 w-6 rounded-md flex items-center justify-center shrink-0",
-                isSearch
-                  ? "bg-brand-blue/10 text-brand-blue"
-                  : "bg-brand-orange/10 text-brand-orange"
-              )}
-            >
-              {isSearch ? <Search className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
-            </div>
-            <span>{isSearch ? "Search Query" : "Monitored Source"}</span>
-          </PopoverTitle>
-        </PopoverHeader>
-
-        {/* Name */}
-        <div className="text-xs">
-          <p className="font-medium text-foreground">{item.name}</p>
-          {item.detail && (
-            <p className="text-muted-foreground mt-0.5">{item.detail}</p>
+        {/* Visual header */}
+        <div className="pb-1">
+          {isSearch ? (
+            <SearchQueryVisual query={item.name} />
+          ) : isApi ? (
+            <ApiCallVisual name={item.name} domain={item.detail ?? item.domain ?? ""} />
+          ) : (
+            <DomainVisual
+              name={item.name}
+              domain={item.detail ?? item.domain ?? ""}
+            />
           )}
         </div>
 
@@ -470,20 +499,24 @@ function ItemDetailPopover({
           <div className="flex items-center gap-2">
             {isSearch ? (
               <PerplexityLogo className="h-4 w-4 text-muted-foreground shrink-0" />
+            ) : isApi ? (
+              <Terminal className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             ) : (
               <FirecrawlLogo className="h-4 w-4 text-brand-orange shrink-0" />
             )}
             <span className="font-medium text-foreground">
-              {isSearch ? "Market Sweep" : "Source Pack Monitor"}
+              {isSearch ? "Market Sweep" : isApi ? "API Integration" : "Source Pack Monitor"}
             </span>
             <span className="text-muted-foreground ml-auto tabular-nums">
-              {isSearch ? "6:30 AM ET" : "7:15 AM ET"}
+              {isSearch ? "6:30 AM ET" : isApi ? "6:30 AM ET" : "7:15 AM ET"}
             </span>
           </div>
           <p className="text-muted-foreground leading-relaxed">
             {isSearch
-              ? "This query runs as a Perplexity Sonar search every weekday morning. Results are parsed into signals, deduplicated, then routed to matching analysts based on their sectors and watchlist."
-              : "This domain is checked for new content via Perplexity Sonar domain search. High-value pages get full text extraction via Firecrawl. Results become signals routed to matching analysts."}
+              ? "This query runs as a Perplexity Sonar search every weekday morning. Results are parsed into signals, deduplicated, then routed to matching analysts."
+              : isApi
+              ? "This API endpoint is called during the market sweep to pull structured data (earnings, movers, filings). Results become signals routed to matching analysts."
+              : "This domain is checked for new content via Perplexity Sonar domain search. High-value pages get full text extraction via Firecrawl."}
           </p>
         </div>
 
@@ -491,7 +524,6 @@ function ItemDetailPopover({
 
         {/* Metadata */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-          {/* Category with tooltip */}
           <span className="text-muted-foreground">Category</span>
           <Tooltip>
             <TooltipTrigger render={<span className="text-foreground underline decoration-dotted cursor-help" />}>
@@ -664,7 +696,7 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
         <Tooltip>
           <TooltipTrigger render={<span />}>
             <Select value={kind} onValueChange={(v) => v && setKind(v as ItemKind)}>
-              <SelectTrigger size="sm">
+              <SelectTrigger size="sm" chevron={false}>
                 {kind === "search" ? (
                   <Search className="h-3.5 w-3.5" />
                 ) : (
@@ -686,7 +718,7 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
 
         {/* Category selector */}
         <Select value={category} onValueChange={(v) => v && setCategory(v)}>
-          <SelectTrigger size="sm">
+          <SelectTrigger size="sm" chevron={false}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
