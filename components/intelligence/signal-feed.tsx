@@ -24,7 +24,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
-import { Briefcase, ExternalLink, FileText, Lock, Search } from "lucide-react";
+import {
+  BarChart3,
+  CalendarDays,
+  ExternalLink,
+  FileText,
+  Flame,
+  Globe,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Signal, AnalystRouteInfo } from "./types";
 import {
@@ -270,6 +279,8 @@ function SignalDetail({
   const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
   const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
   const jobLabel = JOB_LABELS[signal.batch?.jobType] ?? signal.batch?.jobType ?? "Unknown";
+  const tool = parseSearchTool(signal.searchTool);
+  const context = parseSearchContext(signal.searchContext, signal.batch?.jobType);
 
   return (
     <>
@@ -281,79 +292,154 @@ function SignalDetail({
       </SheetHeader>
 
       <div className="px-6 pb-6 space-y-5">
-        {/* Summary */}
+        {/* ── Act 1: The Finding ──────────────────────────────────────── */}
         <p className="text-sm text-muted-foreground">{signal.summary}</p>
 
-        {/* Source / Job visual */}
-        <SourceVisual signal={signal} jobLabel={jobLabel} />
+        {/* Classification badges */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{signal.type}</Badge>
+          <Badge variant="secondary">
+            <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", urgency.dot)} />
+            {urgency.label}
+          </Badge>
+          <Badge variant="secondary">
+            <span className={cn("mr-1", sentiment.className)}>{sentiment.label}</span>
+          </Badge>
+          <Badge variant="secondary">{signal.freshness}</Badge>
+        </div>
 
-        {/* Properties row */}
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{signal.type}</Badge>
-            <Badge variant="secondary">
-              <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", urgency.dot)} />
-              {urgency.label}
-            </Badge>
-            <Badge variant="secondary">
-              <span className={cn("mr-1", sentiment.className)}>{sentiment.label}</span>
-            </Badge>
-            <Badge variant="secondary">{signal.freshness}</Badge>
+        {/* Tickers + Themes + Sectors inline */}
+        {(signal.tickers.length > 0 || signal.themes.length > 0 || signal.sectors.length > 0) && (
+          <div className="space-y-2">
+            {signal.tickers.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Tickers</span>
+                {signal.tickers.map((t) => (
+                  <Badge key={t} variant="secondary">${t}</Badge>
+                ))}
+              </div>
+            )}
+            {signal.themes.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Themes</span>
+                {signal.themes.map((t) => (
+                  <Badge key={t} variant="outline">{t}</Badge>
+                ))}
+              </div>
+            )}
+            {signal.sectors.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Sectors</span>
+                {signal.sectors.map((s) => (
+                  <Badge key={s} variant="outline">{s}</Badge>
+                ))}
+              </div>
+            )}
           </div>
+        )}
+
+        <Separator />
+
+        {/* ── Act 2: The Discovery Trail ──────────────────────────────── */}
+        <div className="space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            How this was found
+          </p>
+
+          {/* Tool + Job */}
+          <div className="rounded-lg border bg-muted/50 p-3 space-y-2.5">
+            {/* Row 1: Tool used */}
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-background">
+                <tool.icon className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+              <span className="text-sm font-medium">{tool.name}</span>
+              <span className="text-xs text-muted-foreground">via {jobLabel}</span>
+              <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                {relativeTime(signal.createdAt)}
+              </span>
+            </div>
+
+            {/* Row 2: The actual query */}
+            {signal.searchQuery && (
+              <div className="flex items-start gap-2">
+                <Search className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
+                <p className="text-xs text-foreground font-mono break-all">
+                  {signal.searchQuery}
+                </p>
+              </div>
+            )}
+
+            {/* Row 3: Why this search happened */}
+            {context && (
+              <p className="text-xs text-muted-foreground pl-5">
+                {context}
+              </p>
+            )}
+          </div>
+
+          {/* Quality scores */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>Source Quality <span className="text-foreground tabular-nums">{signal.sourceQuality}/5</span></span>
             <span>Novelty <span className="text-foreground tabular-nums">{signal.noveltyScore}/100</span></span>
           </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>Job <span className="text-foreground">{jobLabel}</span></span>
-            <span>Time <span className="text-foreground tabular-nums">{relativeTime(signal.createdAt)}</span></span>
-          </div>
         </div>
 
-        <Separator />
-
-        {/* Tickers */}
-        {signal.tickers.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Tickers</span>
-            {signal.tickers.map((t) => (
-              <Badge key={t} variant="secondary">
-                ${t}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* Themes */}
-        {signal.themes.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Themes</span>
-            {signal.themes.map((t) => (
-              <Badge key={t} variant="outline">
-                {t}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* Sectors */}
-        {signal.sectors.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sectors</span>
-            {signal.sectors.map((s) => (
-              <Badge key={s} variant="outline">
-                {s}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* Routing */}
-        {routes.length > 0 && (
+        {/* ── Evidence Sources ────────────────────────────────────────── */}
+        {signal.sourceUrls.length > 0 && (
           <>
             <Separator />
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Evidence sources
+              </p>
+              <div className="space-y-1">
+                {signal.sourceUrls.map((url, i) => {
+                  let domain = url;
+                  try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
+                  const name = signal.sourceNames[i];
+                  return (
+                    <a
+                      key={i}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-sm hover:bg-accent/50 transition-colors group"
+                    >
+                      <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 min-w-0">
+                        {name && (
+                          <span className="text-foreground">{name}</span>
+                        )}
+                        <span className="text-xs text-muted-foreground ml-1 truncate">
+                          {domain}
+                        </span>
+                      </span>
+                      <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Artifact (full extraction) */}
+        {signal.artifactId && (
+          <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2">
+            <Flame className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">
+              Full article extracted via Firecrawl
+            </span>
+          </div>
+        )}
+
+        {/* ── Act 3: The Routing ──────────────────────────────────────── */}
+        {routes.length > 0 && routes.some((r) => r.totalRoutes > 0) && (
+          <>
+            <Separator />
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Routed to
               </p>
               <div className="space-y-1.5">
@@ -376,98 +462,63 @@ function SignalDetail({
             </div>
           </>
         )}
-
-        {/* Sources */}
-        {signal.sourceUrls.length > 0 && (
-          <>
-            <Separator />
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-                Sources
-              </p>
-              <div className="space-y-1.5">
-                {signal.sourceUrls.map((url, i) => (
-                  <a
-                    key={i}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <ExternalLink className="h-3 w-3 shrink-0" />
-                    <span className="truncate">
-                      {signal.sourceNames[i] ?? new URL(url).hostname}
-                    </span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Artifact indicator */}
-        {signal.artifactId && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <FileText className="h-3.5 w-3.5" />
-            <span>Full article extracted (artifact {signal.artifactId.slice(0, 8)}...)</span>
-          </div>
-        )}
       </div>
     </>
   );
 }
 
-// ── Source Visual ────────────────────────────────────────────────────────────
+// ── Provenance Helpers ──────────────────────────────────────────────────────
 
-function SourceVisual({
-  signal,
-  jobLabel,
-}: {
-  signal: Signal;
-  jobLabel: string;
-}) {
-  const jobType = signal.batch?.jobType;
+const TOOL_CONFIG: Record<string, { name: string; icon: typeof Sparkles }> = {
+  PERPLEXITY_SONAR: { name: "Perplexity Sonar", icon: Sparkles },
+  FMP: { name: "Financial Modeling Prep", icon: BarChart3 },
+  FINNHUB: { name: "Finnhub", icon: CalendarDays },
+  FIRECRAWL: { name: "Firecrawl", icon: Flame },
+};
 
-  if (jobType === "MARKET_SWEEP") {
-    const query = signal.sourceNames[0] ?? "market scan";
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground truncate">{query}</span>
-      </div>
-    );
+function parseSearchTool(tool: string | null): { name: string; icon: typeof Sparkles } {
+  if (tool && TOOL_CONFIG[tool]) return TOOL_CONFIG[tool];
+  return { name: "Unknown source", icon: Globe };
+}
+
+function parseSearchContext(context: string | null, jobType?: string): string | null {
+  if (!context) {
+    // Fallback: explain based on job type alone
+    if (jobType === "PORTFOLIO_MONITOR") return "Searched because this ticker is in an open position or on a watchlist";
+    if (jobType === "MARKET_SWEEP") return "Part of the daily intelligence sweep using your configured queries";
+    if (jobType === "SOURCE_PACK") return "Crawled from a monitored source in your config";
+    return null;
   }
 
-  if (jobType === "SOURCE_PACK") {
-    let domain = "source";
-    try {
-      if (signal.sourceUrls[0]) {
-        domain = new URL(signal.sourceUrls[0]).hostname;
-      }
-    } catch {
-      // keep default
-    }
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-        <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground truncate">{domain}</span>
-      </div>
-    );
+  // Parse structured context strings
+  if (context.startsWith("ticker:")) {
+    const ticker = context.replace("ticker:", "");
+    return `Searched because ${ticker} is in an open position or on a watchlist`;
   }
 
-  if (jobType === "PORTFOLIO_MONITOR") {
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-        <Briefcase className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">Portfolio Monitor</span>
-      </div>
-    );
+  if (context.startsWith("query:")) {
+    const parts = context.split(":");
+    const category = parts[1] ?? "custom";
+    return `Matched intelligence query (${category})`;
   }
 
-  return (
-    <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <span className="text-sm text-muted-foreground">{jobLabel}</span>
-    </div>
-  );
+  if (context.startsWith("source_pack:")) {
+    const parts = context.replace("source_pack:", "").split(":");
+    const packName = parts[0] ?? "Unknown";
+    const domains = parts[1]?.split(",").slice(0, 3).join(", ") ?? "";
+    return domains
+      ? `Source pack "${packName}" — monitoring ${domains}`
+      : `Source pack "${packName}"`;
+  }
+
+  if (context.startsWith("market_movers:")) {
+    const label = context.replace("market_movers:", "");
+    return `FMP market movers: ${label}`;
+  }
+
+  if (context === "earnings_calendar") {
+    return "Finnhub earnings calendar (next 7 days)";
+  }
+
+  return context;
 }

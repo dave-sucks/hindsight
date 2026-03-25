@@ -54,6 +54,10 @@ export interface Signal {
   sourceQuality: number;
   noveltyScore: number;
   artifactId: string | null;
+  // Provenance
+  searchTool: string | null;
+  searchQuery: string | null;
+  searchContext: string | null;
   createdAt: string;
   batch: {
     jobType: string;
