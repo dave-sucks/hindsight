@@ -139,54 +139,53 @@ export function AnalystConfigPanel({
       <div className="relative z-[2] shrink-0 px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
           <SilkOrb size={56} speed={8} color="#AEFD83" noiseIntensity={1.5} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-base font-brand font-bold truncate leading-tight">
-                  {config.name || "Untitled Analyst"}
-                </p>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Badge
-                          variant={
-                            direction === "LONG"
-                              ? "positive"
-                              : direction === "SHORT"
-                                ? "negative"
-                                : "secondary"
-                          }
-                        >
-                          {dm.icon}
-                          {direction}
-                        </Badge>
-                      }
-                    />
-                    <TooltipContent side="bottom">{dm.tip}</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              {config.description && (
-                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                  {config.description}
-                </p>
-              )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="text-base font-brand font-bold truncate leading-tight">
+                {config.name || "Untitled Analyst"}
+              </p>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Badge
+                        variant={
+                          direction === "LONG"
+                            ? "positive"
+                            : direction === "SHORT"
+                              ? "negative"
+                              : "secondary"
+                        }
+                      >
+                        {dm.icon}
+                        {direction}
+                      </Badge>
+                    }
+                  />
+                  <TooltipContent side="bottom">{dm.tip}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
+            {config.description && (
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                {config.description}
+              </p>
+            )}
           </div>
-          {/* Meta strip */}
-          <div className="mt-2">
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
-              <span>{direction}</span>
-              <span className="opacity-30">&middot;</span>
-              <span>{holdDurations.join("/") || "SWING"}</span>
-              <span className="opacity-30">&middot;</span>
-              <span className="tabular-nums">{config.minConfidence ?? 65}% MIN</span>
-              <span className="opacity-30">&middot;</span>
-              <span className="tabular-nums">${(config.maxPositionSize ?? 5000).toLocaleString()}</span>
-              <span className="opacity-30">&middot;</span>
-              <span>{config.minMarketCapTier ?? "LARGE"}+</span>
-            </span>
-          </div>
+        </div>
+        {/* Meta strip */}
+        <div className="mt-2">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
+            <span>{direction}</span>
+            <span className="opacity-30">&middot;</span>
+            <span>{holdDurations.join("/") || "SWING"}</span>
+            <span className="opacity-30">&middot;</span>
+            <span className="tabular-nums">{config.minConfidence ?? 65}% MIN</span>
+            <span className="opacity-30">&middot;</span>
+            <span className="tabular-nums">${(config.maxPositionSize ?? 5000).toLocaleString()}</span>
+            <span className="opacity-30">&middot;</span>
+            <span>{config.minMarketCapTier ?? "LARGE"}+</span>
+          </span>
         </div>
       </div>
 
