@@ -135,7 +135,7 @@ export default function IntelligencePage() {
           </div>
 
           {/* Signals tab */}
-          <TabsContent value="signals" className="space-y-6 pt-4">
+          <TabsContent value="signals" className="space-y-6 pt-4" keepMounted>
             {/* Stats strip inside signals tab */}
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
               <StatCard label="Today's Signals" value={todaySignals.length} />
