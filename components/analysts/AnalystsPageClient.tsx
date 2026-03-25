@@ -39,7 +39,9 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
-import { AuroraBackground } from "@/components/effects/aurora-background";
+import dynamic from "next/dynamic";
+
+const Silk = dynamic(() => import("@/components/effects/silk"), { ssr: false });
 
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
 
@@ -364,9 +366,11 @@ export default function AnalystsPageClient({
 
   return (
     <div className="relative">
-      {/* Aurora background hero */}
-      <AuroraBackground className="absolute inset-x-0 top-0 h-72 z-0" />
-      <div className="absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-transparent via-transparent to-background z-[1]" />
+      {/* Silk WebGL background */}
+      <div className="absolute inset-x-0 top-0 h-80 z-0">
+        <Silk speed={3} scale={1} color="#4c1d95" noiseIntensity={1.5} rotation={0} />
+      </div>
+      <div className="absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-transparent via-transparent to-background z-[1] pointer-events-none" />
 
       {/* Page content */}
       <div className="relative z-[2] p-6 space-y-6 max-w-5xl mx-auto">
