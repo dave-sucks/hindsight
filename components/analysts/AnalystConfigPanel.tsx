@@ -26,8 +26,11 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { StockLogo } from "@/components/StockLogo";
-import { WavyBackground } from "@/components/effects/wavy-background";
+import { SilkOrb } from "@/components/effects/silk-orb";
+import dynamic from "next/dynamic";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
+
+const Silk = dynamic(() => import("@/components/effects/silk"), { ssr: false });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -106,21 +109,6 @@ function AttentionBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-// ─── Gradient Orb ─────────────────────────────────────────────────────────────
-
-function GradientOrb() {
-  return (
-    <div className="relative size-14 shrink-0">
-      {/* Glow */}
-      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--chart-1)] via-[var(--chart-2)] to-[var(--chart-3)] opacity-30 blur-md" />
-      {/* Orb */}
-      <div className="relative size-14 rounded-full bg-gradient-to-br from-[var(--chart-1)] via-[var(--chart-2)] to-[var(--chart-3)] opacity-80" />
-      {/* Highlight */}
-      <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/25 to-transparent" />
-    </div>
-  );
-}
-
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
 export function AnalystConfigPanel({
@@ -140,27 +128,17 @@ export function AnalystConfigPanel({
   const dm = directionMeta[direction] ?? directionMeta.BOTH;
 
   return (
-    <div className="flex flex-col h-full border-l bg-background">
-      {/* ── Landscape hero with wavy background ─────────────────── */}
-      <div className="relative shrink-0 overflow-hidden h-36">
-        <WavyBackground
-          containerClassName="absolute inset-0"
-          backgroundFill="hsl(0 0% 4%)"
-          blur={12}
-          speed="slow"
-          waveOpacity={0.4}
-          colors={[
-            "#7c3aed",
-            "#6d28d9",
-            "#4c1d95",
-            "#a855f7",
-            "#3b0764",
-          ]}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
-        <div className="relative z-10 flex flex-col justify-end h-full px-4 pb-3">
-          <div className="flex items-center gap-3">
-            <GradientOrb />
+    <div className="relative flex flex-col h-full border-l overflow-hidden">
+      {/* ── Full Silk WebGL background ──────────────────────────── */}
+      <div className="absolute inset-0 z-0">
+        <Silk speed={5} scale={1} color="#AEFD83" noiseIntensity={1.2} rotation={0} />
+      </div>
+      <div className="absolute inset-0 z-[1] bg-background/85 pointer-events-none" />
+
+      {/* ── Header with SilkOrb avatar ──────────────────────────── */}
+      <div className="relative z-[2] shrink-0 px-4 pt-4 pb-3">
+        <div className="flex items-center gap-3">
+          <SilkOrb size={56} speed={8} color="#AEFD83" noiseIntensity={1.5} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="text-base font-brand font-bold truncate leading-tight">
@@ -212,10 +190,8 @@ export function AnalystConfigPanel({
         </div>
       </div>
 
-      <Separator />
-
       {/* ── Tabs ──────────────────────────────────────────────────── */}
-      <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
+      <Tabs defaultValue="overview" className="relative z-[2] flex-1 flex flex-col min-h-0">
         <div className="px-4 pt-2 shrink-0">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -583,7 +559,7 @@ export function AnalystConfigPanel({
       </Tabs>
 
       {/* ── Footer: Create button ─────────────────────────────── */}
-      <div className="shrink-0 border-t px-4 py-3 flex">
+      <div className="relative z-[2] shrink-0 border-t px-4 py-3 flex">
         <Button
           onClick={onConfirm}
           disabled={isCreating}
