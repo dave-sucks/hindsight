@@ -26,13 +26,16 @@ import {
 import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
+  Briefcase,
   CalendarDays,
   ExternalLink,
   FileText,
   Flame,
   Globe,
+  Lock,
   Search,
   Sparkles,
+  Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Signal, AnalystRouteInfo } from "./types";
@@ -224,11 +227,11 @@ const SignalRow = memo(function SignalRow({
             <span className="text-xs text-muted-foreground">
               {signal.type}
             </span>
-            {signal.sourceNames[0] && (
-              <span className="text-xs text-muted-foreground">
-                via {signal.sourceNames[0]}
-              </span>
-            )}
+            <span className="text-xs text-muted-foreground">
+              {signal.sourceNames[0]
+                ? `via ${signal.sourceNames[0]}`
+                : `via ${JOB_LABELS[signal.batch?.jobType] ?? "Intelligence"}`}
+            </span>
 
             {signal.artifactId && (
               <Tooltip>
@@ -282,23 +285,24 @@ function SignalDetail({
 }) {
   const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
   const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
-  const jobLabel = JOB_LABELS[signal.batch?.jobType] ?? signal.batch?.jobType ?? "Unknown";
-  const tool = parseSearchTool(signal.searchTool);
-  const context = parseSearchContext(signal.searchContext, signal.batch?.jobType);
+  const discovery = inferDiscovery(signal);
 
   return (
     <>
-      <SheetHeader>
-        <div className="flex items-center gap-2">
-          <div className={cn("h-2.5 w-2.5 rounded-full shrink-0", urgency.dot)} />
-          <SheetTitle className="text-left">{signal.headline}</SheetTitle>
+      <SheetHeader className="space-y-4">
+        {/* ── Discovery header (matches config popover style) ─────── */}
+        <DiscoveryHeader discovery={discovery} signal={signal} />
+
+        {/* Title + summary */}
+        <div className="space-y-2">
+          <SheetTitle className="text-left leading-tight">
+            {signal.headline}
+          </SheetTitle>
+          <p className="text-sm text-muted-foreground">{signal.summary}</p>
         </div>
       </SheetHeader>
 
       <div className="px-6 pb-6 space-y-5">
-        {/* ── Act 1: The Finding ──────────────────────────────────────── */}
-        <p className="text-sm text-muted-foreground">{signal.summary}</p>
-
         {/* Classification badges */}
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{signal.type}</Badge>
@@ -312,7 +316,7 @@ function SignalDetail({
           <Badge variant="secondary">{signal.freshness}</Badge>
         </div>
 
-        {/* Tickers + Themes + Sectors inline */}
+        {/* Tickers + Themes + Sectors */}
         {(signal.tickers.length > 0 || signal.themes.length > 0 || signal.sectors.length > 0) && (
           <div className="space-y-2">
             {signal.tickers.length > 0 && (
@@ -344,49 +348,25 @@ function SignalDetail({
 
         <Separator />
 
-        {/* ── Act 2: The Discovery Trail ──────────────────────────────── */}
-        <div className="space-y-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            How this was found
+        {/* ── How it works ────────────────────────────────────────────── */}
+        <div className="text-xs space-y-2">
+          <div className="flex items-center gap-2">
+            <discovery.toolIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="font-medium text-foreground">{discovery.toolName}</span>
+            <span className="text-muted-foreground">via {discovery.jobLabel}</span>
+            <span className="ml-auto text-muted-foreground tabular-nums">
+              {relativeTime(signal.createdAt)}
+            </span>
+          </div>
+          <p className="text-muted-foreground leading-relaxed">
+            {discovery.explanation}
           </p>
+        </div>
 
-          {/* Tool + Job */}
-          <div className="rounded-lg border bg-muted/50 p-3 space-y-2.5">
-            {/* Row 1: Tool used */}
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-background">
-                <tool.icon className="h-3.5 w-3.5 text-muted-foreground" />
-              </div>
-              <span className="text-sm font-medium">{tool.name}</span>
-              <span className="text-xs text-muted-foreground">via {jobLabel}</span>
-              <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                {relativeTime(signal.createdAt)}
-              </span>
-            </div>
-
-            {/* Row 2: The actual query */}
-            {signal.searchQuery && (
-              <div className="flex items-start gap-2">
-                <Search className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
-                <p className="text-xs text-foreground font-mono break-all">
-                  {signal.searchQuery}
-                </p>
-              </div>
-            )}
-
-            {/* Row 3: Why this search happened */}
-            {context && (
-              <p className="text-xs text-muted-foreground pl-5">
-                {context}
-              </p>
-            )}
-          </div>
-
-          {/* Quality scores */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>Source Quality <span className="text-foreground tabular-nums">{signal.sourceQuality}/5</span></span>
-            <span>Novelty <span className="text-foreground tabular-nums">{signal.noveltyScore}/100</span></span>
-          </div>
+        {/* Quality scores */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>Source Quality <span className="text-foreground tabular-nums">{signal.sourceQuality}/5</span></span>
+          <span>Novelty <span className="text-foreground tabular-nums">{signal.noveltyScore}/100</span></span>
         </div>
 
         {/* ── Evidence Sources ────────────────────────────────────────── */}
@@ -395,7 +375,7 @@ function SignalDetail({
             <Separator />
             <div className="space-y-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Evidence sources
+                Sources
               </p>
               <div className="space-y-1">
                 {signal.sourceUrls.map((url, i) => {
@@ -428,7 +408,7 @@ function SignalDetail({
           </>
         )}
 
-        {/* Artifact (full extraction) */}
+        {/* Artifact */}
         {signal.artifactId && (
           <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2">
             <Flame className="h-3.5 w-3.5 text-muted-foreground" />
@@ -438,7 +418,7 @@ function SignalDetail({
           </div>
         )}
 
-        {/* ── Act 3: The Routing ──────────────────────────────────────── */}
+        {/* ── Routing ─────────────────────────────────────────────────── */}
         {routes.length > 0 && routes.some((r) => r.totalRoutes > 0) && (
           <>
             <Separator />
@@ -471,7 +451,249 @@ function SignalDetail({
   );
 }
 
-// ── Provenance Helpers ──────────────────────────────────────────────────────
+// ── Discovery Header ────────────────────────────────────────────────────────
+// Visual header matching the config popover style — search bar, domain bar,
+// ticker bar, or API endpoint depending on how the signal was discovered.
+
+interface Discovery {
+  type: "search" | "portfolio" | "domain" | "api";
+  /** What to show in the visual bar */
+  visual: string;
+  /** Resolved tool name */
+  toolName: string;
+  toolIcon: typeof Sparkles;
+  jobLabel: string;
+  explanation: string;
+  /** For domain type: the source/publication name */
+  sourceName?: string;
+}
+
+function inferDiscovery(signal: Signal): Discovery {
+  const jobType = signal.batch?.jobType;
+  const jobLabel = JOB_LABELS[jobType] ?? jobType ?? "Intelligence";
+
+  // If we have provenance data (searchTool is populated), use it directly
+  if (signal.searchTool) {
+    const toolCfg = TOOL_CONFIG[signal.searchTool];
+    const toolName = toolCfg?.name ?? signal.searchTool;
+    const toolIcon = toolCfg?.icon ?? Globe;
+
+    if (signal.searchContext?.startsWith("ticker:")) {
+      const ticker = signal.searchContext.replace("ticker:", "");
+      return {
+        type: "portfolio",
+        visual: `$${ticker}`,
+        toolName,
+        toolIcon,
+        jobLabel,
+        explanation: `Sent "${signal.searchQuery ?? `${ticker} stock news`}" to Perplexity Sonar because ${ticker} is in an open position or on a watchlist. Each result becomes a signal.`,
+      };
+    }
+
+    if (signal.searchContext?.startsWith("source_pack:")) {
+      const parts = signal.searchContext.replace("source_pack:", "").split(":");
+      const packName = parts[0] ?? "Sources";
+      const domains = parts[1]?.split(",").slice(0, 3) ?? [];
+      return {
+        type: "domain",
+        visual: domains[0] ?? packName,
+        sourceName: packName,
+        toolName,
+        toolIcon,
+        jobLabel,
+        explanation: `Searched ${domains.length > 0 ? domains.join(", ") : "monitored domains"} via Perplexity Sonar (domain-filtered). High-value pages get full extraction via Firecrawl.`,
+      };
+    }
+
+    if (signal.searchContext?.startsWith("market_movers:")) {
+      const label = signal.searchContext.replace("market_movers:", "");
+      return {
+        type: "api",
+        visual: signal.searchQuery ?? `/stock_market/${label}`,
+        toolName,
+        toolIcon,
+        jobLabel,
+        explanation: `Called FMP market movers API for ${label}. Each of the top 10 results becomes a separate signal with price change data.`,
+      };
+    }
+
+    if (signal.searchContext === "earnings_calendar") {
+      return {
+        type: "api",
+        visual: signal.searchQuery ?? "/calendar/earnings",
+        toolName,
+        toolIcon,
+        jobLabel,
+        explanation: "Called Finnhub earnings calendar API for the next 7 days. Each company with upcoming earnings becomes a signal.",
+      };
+    }
+
+    // Generic search query
+    return {
+      type: "search",
+      visual: signal.searchQuery ?? "Intelligence search",
+      toolName,
+      toolIcon,
+      jobLabel,
+      explanation: `Ran this query through Perplexity Sonar web search. Each distinct finding becomes a signal with extracted tickers, sentiment, and source URLs.`,
+    };
+  }
+
+  // ── Fallback: infer from batch jobType + signal data ─────────────────
+  // This handles all existing signals that were created before provenance
+  // columns were added to the database.
+
+  if (jobType === "PORTFOLIO_MONITOR") {
+    const ticker = signal.tickers[0] ?? "positions";
+    return {
+      type: "portfolio",
+      visual: signal.tickers.length === 1 ? `$${ticker}` : signal.tickers.slice(0, 3).map(t => `$${t}`).join(", "),
+      toolName: "Perplexity Sonar",
+      toolIcon: Sparkles,
+      jobLabel,
+      explanation: `Searched "${ticker} stock news developments catalysts today" via Perplexity Sonar because this ticker is in an open position or on a watchlist. Each result becomes a signal.`,
+    };
+  }
+
+  if (jobType === "SOURCE_PACK") {
+    const domain = extractDomainFromUrls(signal.sourceUrls);
+    return {
+      type: "domain",
+      visual: domain ?? "Monitored sources",
+      sourceName: signal.sourceNames[0] ?? undefined,
+      toolName: "Perplexity Sonar",
+      toolIcon: Sparkles,
+      jobLabel,
+      explanation: "Searched monitored domains via Perplexity Sonar (domain-filtered search). High-value pages get full text extraction via Firecrawl.",
+    };
+  }
+
+  if (jobType === "MARKET_SWEEP") {
+    // FMP signals have sourceNames=["FMP"] or ["Finnhub"], Sonar signals have publication names
+    if (signal.sourceNames.includes("FMP")) {
+      return {
+        type: "api",
+        visual: "/stock_market/movers",
+        toolName: "Financial Modeling Prep",
+        toolIcon: BarChart3,
+        jobLabel,
+        explanation: "Called FMP market movers API (gainers, losers, most active). Each of the top 10 results per category becomes a signal.",
+      };
+    }
+    if (signal.sourceNames.includes("Finnhub")) {
+      return {
+        type: "api",
+        visual: "/calendar/earnings",
+        toolName: "Finnhub",
+        toolIcon: CalendarDays,
+        jobLabel,
+        explanation: "Called Finnhub earnings calendar API for the next 7 days. Each company with upcoming earnings becomes a signal.",
+      };
+    }
+    // Default: Sonar web search from a Config query
+    return {
+      type: "search",
+      visual: inferQueryFromSignal(signal),
+      toolName: "Perplexity Sonar",
+      toolIcon: Sparkles,
+      jobLabel,
+      explanation: "Ran a search query from Config through Perplexity Sonar web search. Each distinct finding becomes a signal with extracted tickers, sentiment, and source URLs.",
+    };
+  }
+
+  // Unknown job type
+  return {
+    type: "search",
+    visual: inferQueryFromSignal(signal),
+    toolName: "Perplexity Sonar",
+    toolIcon: Sparkles,
+    jobLabel,
+    explanation: "Discovered by the intelligence pipeline via web search.",
+  };
+}
+
+/** Try to extract a representative domain from source URLs */
+function extractDomainFromUrls(urls: string[]): string | null {
+  for (const url of urls) {
+    try {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch { /* skip */ }
+  }
+  return null;
+}
+
+/** Build a readable inferred query from signal content when searchQuery is null */
+function inferQueryFromSignal(signal: Signal): string {
+  if (signal.tickers.length > 0) {
+    return `${signal.tickers.join(", ")} ${signal.themes[0]?.toLowerCase().replace(/_/g, " ") ?? "news"}`;
+  }
+  if (signal.themes.length > 0) {
+    return signal.themes.slice(0, 2).map(t => t.toLowerCase().replace(/_/g, " ")).join(", ");
+  }
+  return signal.headline.slice(0, 60);
+}
+
+/** Visual header matching config popover style */
+function DiscoveryHeader({ discovery, signal }: { discovery: Discovery; signal: Signal }) {
+  if (discovery.type === "portfolio") {
+    // Ticker-focused: icon + ticker badge in a bar
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+        <Briefcase className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <p className="text-sm font-medium text-foreground">{discovery.visual}</p>
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+          {relativeTime(signal.createdAt)}
+        </span>
+      </div>
+    );
+  }
+
+  if (discovery.type === "domain") {
+    // Domain bar with lock icon (like config popover DomainVisual)
+    return (
+      <div className="space-y-1.5">
+        {discovery.sourceName && (
+          <p className="text-sm font-medium text-foreground">{discovery.sourceName}</p>
+        )}
+        <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+          <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+          <p className="text-xs text-muted-foreground font-mono truncate">{discovery.visual}</p>
+          <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0">
+            {relativeTime(signal.createdAt)}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (discovery.type === "api") {
+    // API endpoint bar (like config popover ApiCallVisual)
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 font-mono">
+        <Badge variant="secondary">
+          GET
+        </Badge>
+        <p className="text-xs text-foreground truncate">{discovery.visual}</p>
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0 font-sans">
+          {relativeTime(signal.createdAt)}
+        </span>
+      </div>
+    );
+  }
+
+  // search: Search bar (like config popover SearchQueryVisual)
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      <p className="text-sm text-foreground truncate">{discovery.visual}</p>
+      <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0">
+        {relativeTime(signal.createdAt)}
+      </span>
+    </div>
+  );
+}
+
+// ── Constants ────────────────────────────────────────────────────────────────
 
 const TOOL_CONFIG: Record<string, { name: string; icon: typeof Sparkles }> = {
   PERPLEXITY_SONAR: { name: "Perplexity Sonar", icon: Sparkles },
@@ -479,50 +701,3 @@ const TOOL_CONFIG: Record<string, { name: string; icon: typeof Sparkles }> = {
   FINNHUB: { name: "Finnhub", icon: CalendarDays },
   FIRECRAWL: { name: "Firecrawl", icon: Flame },
 };
-
-function parseSearchTool(tool: string | null): { name: string; icon: typeof Sparkles } {
-  if (tool && TOOL_CONFIG[tool]) return TOOL_CONFIG[tool];
-  return { name: "Unknown source", icon: Globe };
-}
-
-function parseSearchContext(context: string | null, jobType?: string): string | null {
-  if (!context) {
-    // Fallback: explain based on job type alone
-    if (jobType === "PORTFOLIO_MONITOR") return "Searched because this ticker is in an open position or on a watchlist";
-    if (jobType === "MARKET_SWEEP") return "Part of the daily intelligence sweep using your configured queries";
-    if (jobType === "SOURCE_PACK") return "Crawled from a monitored source in your config";
-    return null;
-  }
-
-  // Parse structured context strings
-  if (context.startsWith("ticker:")) {
-    const ticker = context.replace("ticker:", "");
-    return `Searched because ${ticker} is in an open position or on a watchlist`;
-  }
-
-  if (context.startsWith("query:")) {
-    const parts = context.split(":");
-    const category = parts[1] ?? "custom";
-    return `Matched intelligence query (${category})`;
-  }
-
-  if (context.startsWith("source_pack:")) {
-    const parts = context.replace("source_pack:", "").split(":");
-    const packName = parts[0] ?? "Unknown";
-    const domains = parts[1]?.split(",").slice(0, 3).join(", ") ?? "";
-    return domains
-      ? `Source pack "${packName}" — monitoring ${domains}`
-      : `Source pack "${packName}"`;
-  }
-
-  if (context.startsWith("market_movers:")) {
-    const label = context.replace("market_movers:", "");
-    return `FMP market movers: ${label}`;
-  }
-
-  if (context === "earnings_calendar") {
-    return "Finnhub earnings calendar (next 7 days)";
-  }
-
-  return context;
-}
