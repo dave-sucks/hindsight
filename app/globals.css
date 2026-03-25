@@ -67,15 +67,16 @@
 
 @keyframes analyst-blob-rotate {
   0% { transform: rotate(0deg) scale(1); }
-  50% { transform: rotate(180deg) scale(1.1); }
+  33% { transform: rotate(120deg) scale(1.05); }
+  66% { transform: rotate(240deg) scale(0.97); }
   100% { transform: rotate(360deg) scale(1); }
 }
 
 .analyst-gradient-blob {
   position: absolute;
-  inset: -1rem;
-  opacity: 0.25;
-  filter: blur(2rem);
+  inset: -1.5rem;
+  opacity: 0.2;
+  filter: blur(2.5rem);
   background: conic-gradient(
     from 0deg,
     var(--chart-1),
@@ -83,7 +84,7 @@
     var(--chart-3),
     var(--chart-1)
   );
-  animation: analyst-blob-rotate 8s linear infinite;
+  animation: analyst-blob-rotate 12s ease-in-out infinite;
   border-radius: 50%;
   pointer-events: none;
 }

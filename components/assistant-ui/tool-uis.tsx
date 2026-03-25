@@ -211,16 +211,37 @@ const SuggestConfigRender: ToolCallMessagePartComponent<
   if (!args) return null;
 
   if (hasPanelCallback) {
+    const dir = args.directionBias ?? "BOTH";
+    const hold = (args.holdDurations ?? ["SWING"]).join("/");
+    const conf = args.minConfidence ?? 65;
     return (
       <div className="my-2">
-        <Card className="p-4">
-          <div className="flex items-center gap-2">
-            <Check className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">
-              {args.name ?? "Analyst"} configured
+        <Card className="overflow-hidden p-0 gap-0">
+          <div className="px-3 py-2 border-b bg-muted flex items-center justify-between gap-2">
+            <span className="text-sm font-brand font-semibold truncate">
+              {args.name ?? "Analyst"}
             </span>
-            <span className="text-sm text-muted-foreground ml-auto">
-              See panel →
+            <Badge
+              variant={
+                dir === "LONG"
+                  ? "positive"
+                  : dir === "SHORT"
+                    ? "negative"
+                    : "secondary"
+              }
+            >
+              {dir}
+            </Badge>
+          </div>
+          <div className="px-3 py-1.5">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
+              <span>{dir}</span>
+              <span className="opacity-30">&middot;</span>
+              <span>{hold}</span>
+              <span className="opacity-30">&middot;</span>
+              <span className="tabular-nums">{conf}% MIN</span>
+              <span className="opacity-30">&middot;</span>
+              <span className="text-foreground/50">see panel &rarr;</span>
             </span>
           </div>
         </Card>

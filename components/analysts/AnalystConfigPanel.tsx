@@ -4,17 +4,12 @@ import {
   ArrowDownRight,
   ArrowLeftRight,
   ArrowUpRight,
-  BarChart3,
   Ban,
   Check,
-  Clock,
-  DollarSign,
   Eye,
   Globe,
   Search,
-  Shield,
   Sparkles,
-  Target,
   TrendingUp,
   Zap,
 } from "lucide-react";
@@ -59,30 +54,6 @@ function QualityDots({ score }: { score: number }) {
   );
 }
 
-// ─── Stat cell ────────────────────────────────────────────────────────────────
-
-function StatCell({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-lg border bg-muted/30 px-3 py-2">
-      <div className="flex items-center gap-1.5 mb-0.5">
-        <Icon className="h-3 w-3 text-muted-foreground" />
-        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          {label}
-        </span>
-      </div>
-      <p className="text-sm tabular-nums font-semibold truncate">{value}</p>
-    </div>
-  );
-}
-
 // ─── Attention bar ────────────────────────────────────────────────────────────
 
 function AttentionBar({
@@ -95,10 +66,10 @@ function AttentionBar({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span className="text-xs tabular-nums font-medium">{value}%</span>
+        <span className="text-[10px] text-muted-foreground">{label}</span>
+        <span className="text-[10px] tabular-nums font-medium">{value}%</span>
       </div>
-      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+      <div className="h-1 rounded-full bg-muted overflow-hidden">
         <div
           className="h-full rounded-full bg-primary transition-all"
           style={{ width: `${value}%` }}
@@ -128,14 +99,14 @@ export function AnalystConfigPanel({
   return (
     <div className="flex flex-col h-full border-l bg-background">
       {/* ── Animated gradient header ──────────────────────────────── */}
-      <div className="relative overflow-hidden px-5 pt-5 pb-4 shrink-0">
+      <div className="relative overflow-hidden px-4 pt-4 pb-3 shrink-0">
         {/* Gradient blob */}
         <div className="analyst-gradient-blob" />
         {/* Content overlay */}
         <div className="relative z-10">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-lg font-semibold truncate">
+              <p className="text-base font-brand font-bold truncate leading-tight">
                 {config.name || "Untitled Analyst"}
               </p>
               {config.description && (
@@ -157,6 +128,20 @@ export function AnalystConfigPanel({
               {direction}
             </Badge>
           </div>
+          {/* Meta strip — thesis-card style */}
+          <div className="mt-2">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
+              <span>{direction}</span>
+              <span className="opacity-30">&middot;</span>
+              <span>{holdDurations.join("/") || "SWING"}</span>
+              <span className="opacity-30">&middot;</span>
+              <span className="tabular-nums">{config.minConfidence ?? 65}% MIN</span>
+              <span className="opacity-30">&middot;</span>
+              <span className="tabular-nums">${(config.maxPositionSize ?? 5000).toLocaleString()}</span>
+              <span className="opacity-30">&middot;</span>
+              <span>{config.minMarketCapTier ?? "LARGE"}+</span>
+            </span>
+          </div>
         </div>
       </div>
 
@@ -164,7 +149,7 @@ export function AnalystConfigPanel({
 
       {/* ── Tabs ──────────────────────────────────────────────────── */}
       <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
-        <div className="px-5 pt-3 shrink-0">
+        <div className="px-4 pt-2 shrink-0">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="intelligence">Intelligence</TabsTrigger>
@@ -175,60 +160,111 @@ export function AnalystConfigPanel({
         {/* ── Overview tab ───────────────────────────────────────── */}
         <TabsContent value="overview" className="flex-1 min-h-0 mt-0">
           <ScrollArea className="h-full">
-            <div className="px-5 py-4 space-y-4">
+            <div className="px-4 py-3 space-y-3">
               {/* Strategy */}
               <div>
-                <div className="flex items-center gap-1.5 mb-1.5">
+                <div className="flex items-center gap-1.5 mb-1">
                   <Sparkles className="h-3 w-3 text-muted-foreground" />
                   <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Strategy
                   </span>
                 </div>
-                <p className="text-sm text-foreground/80 leading-relaxed">
+                <p className="text-sm font-light text-muted-foreground leading-relaxed">
                   {config.analystPrompt}
                 </p>
               </div>
 
-              <Separator />
+              {/* Sectors */}
+              {sectors.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Sectors
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {sectors.map((s) => (
+                        <Badge key={s} variant="outline">
+                          {s}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
-              {/* Stats grid */}
-              <div>
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Parameters
-                </span>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <StatCell
-                    icon={Shield}
-                    label="Confidence"
-                    value={`${config.minConfidence ?? 65}%`}
-                  />
-                  <StatCell
-                    icon={DollarSign}
-                    label="Position"
-                    value={`$${(config.maxPositionSize ?? 5000).toLocaleString()}`}
-                  />
-                  <StatCell
-                    icon={Target}
-                    label="Max Open"
-                    value={String(config.maxOpenPositions ?? 5)}
-                  />
-                  <StatCell
-                    icon={Clock}
-                    label="Duration"
-                    value={holdDurations.join(", ") || "SWING"}
-                  />
-                  <StatCell
-                    icon={BarChart3}
-                    label="Market Cap"
-                    value={`${config.minMarketCapTier ?? "LARGE"}+`}
-                  />
-                  <StatCell
-                    icon={ArrowLeftRight}
-                    label="Direction"
-                    value={direction}
-                  />
-                </div>
-              </div>
+              {/* Signal Types */}
+              {signalTypes.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Signals
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {signalTypes.map((s) => (
+                        <Badge key={s} variant="outline">
+                          <TrendingUp className="h-2.5 w-2.5" />
+                          {s.replace(/_/g, " ")}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Watchlist */}
+              {watchlist.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Watchlist
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {watchlist.map((t) => {
+                        const symbol = typeof t === "string" ? t : t.symbol;
+                        return (
+                          <Badge key={symbol} variant="outline">
+                            <Eye className="h-2.5 w-2.5" />
+                            <span className="font-mono">{symbol}</span>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Exclusion List */}
+              {exclusionList.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Excluded
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {exclusionList.map((t) => (
+                        <Badge key={t} variant="outline">
+                          <Ban className="h-2.5 w-2.5" />
+                          <span className="font-mono">{t}</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Empty state */}
+              {sectors.length === 0 &&
+                signalTypes.length === 0 &&
+                watchlist.length === 0 &&
+                exclusionList.length === 0 && (
+                  <div className="text-xs text-muted-foreground/40 py-6 text-center not-italic">
+                    No configuration details yet.
+                  </div>
+                )}
             </div>
           </ScrollArea>
         </TabsContent>
@@ -236,26 +272,26 @@ export function AnalystConfigPanel({
         {/* ── Intelligence tab ───────────────────────────────────── */}
         <TabsContent value="intelligence" className="flex-1 min-h-0 mt-0">
           <ScrollArea className="h-full">
-            <div className="px-5 py-4 space-y-4">
+            <div className="px-4 py-3 space-y-3">
               {/* Source Pack */}
               {sources.length > 0 && (
                 <div>
-                  <div className="flex items-center gap-1.5 mb-2">
+                  <div className="flex items-center gap-1.5 mb-1.5">
                     <Globe className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Source Pack
                     </span>
                     {config.sourcePackProposal?.name && (
-                      <span className="text-xs text-muted-foreground ml-auto">
+                      <span className="text-[10px] text-muted-foreground/60 ml-auto font-mono">
                         {config.sourcePackProposal.name}
                       </span>
                     )}
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     {sources.map((s) => (
                       <div
                         key={s.domain}
-                        className="flex items-center gap-2 text-sm"
+                        className="flex items-center gap-2 py-0.5"
                       >
                         <img
                           src={`https://www.google.com/s2/favicons?domain=${s.domain}&sz=16`}
@@ -264,7 +300,7 @@ export function AnalystConfigPanel({
                           height={14}
                           className="size-3.5 rounded-sm shrink-0"
                         />
-                        <span className="truncate flex-1">{s.name}</span>
+                        <span className="text-sm truncate flex-1">{s.name}</span>
                         <QualityDots score={s.qualityScore} />
                       </div>
                     ))}
@@ -277,19 +313,19 @@ export function AnalystConfigPanel({
               {/* Standing Queries */}
               {queries.length > 0 && (
                 <div>
-                  <div className="flex items-center gap-1.5 mb-2">
+                  <div className="flex items-center gap-1.5 mb-1.5">
                     <Search className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Standing Queries
                     </span>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     {queries.map((q, i) => (
                       <div
                         key={i}
-                        className="flex items-start gap-2 text-sm"
+                        className="flex items-start gap-2"
                       >
-                        <span className="flex-1 text-foreground/80">
+                        <span className="text-sm font-light text-foreground/80 flex-1">
                           {q.query}
                         </span>
                         <Badge variant="secondary">
@@ -308,13 +344,13 @@ export function AnalystConfigPanel({
               {/* Policy */}
               {policy && (
                 <div>
-                  <div className="flex items-center gap-1.5 mb-2">
+                  <div className="flex items-center gap-1.5 mb-1.5">
                     <Zap className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Attention Policy
                     </span>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <AttentionBar
                       label="Holdings"
                       value={Math.round(policy.holdingsAttention * 100)}
@@ -328,7 +364,7 @@ export function AnalystConfigPanel({
                       value={Math.round(policy.discoveryAttention * 100)}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-3 text-xs">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-2 text-[10px]">
                     {policy.maxSignalsPerRun != null && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Signal budget</span>
@@ -365,7 +401,7 @@ export function AnalystConfigPanel({
 
               {/* Empty state */}
               {sources.length === 0 && queries.length === 0 && !policy && (
-                <div className="text-sm text-muted-foreground py-6 text-center">
+                <div className="text-xs text-muted-foreground/40 py-6 text-center not-italic">
                   No intelligence configuration yet.
                 </div>
               )}
@@ -373,96 +409,69 @@ export function AnalystConfigPanel({
           </ScrollArea>
         </TabsContent>
 
-        {/* ── Config tab ─────────────────────────────────────────── */}
+        {/* ── Config tab — raw JSON-like key/values ────────────── */}
         <TabsContent value="config" className="flex-1 min-h-0 mt-0">
           <ScrollArea className="h-full">
-            <div className="px-5 py-4 space-y-4">
-              {/* Sectors */}
+            <div className="px-4 py-3 space-y-2">
+              <ConfigRow label="Direction" value={direction} />
+              <ConfigRow
+                label="Hold"
+                value={holdDurations.join(", ") || "SWING"}
+              />
+              <ConfigRow
+                label="Min Confidence"
+                value={`${config.minConfidence ?? 65}%`}
+                mono
+              />
+              <ConfigRow
+                label="Max Position"
+                value={`$${(config.maxPositionSize ?? 5000).toLocaleString()}`}
+                mono
+              />
+              <ConfigRow
+                label="Max Open"
+                value={String(config.maxOpenPositions ?? 5)}
+                mono
+              />
+              <ConfigRow
+                label="Market Cap"
+                value={`${config.minMarketCapTier ?? "LARGE"}+`}
+              />
               {sectors.length > 0 && (
-                <div>
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Sectors
-                  </span>
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
-                    {sectors.map((s) => (
-                      <Badge key={s} variant="outline">
-                        {s}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                <ConfigRow
+                  label="Sectors"
+                  value={sectors.join(", ")}
+                />
               )}
-
-              {/* Signal Types */}
               {signalTypes.length > 0 && (
-                <div>
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Signals
-                  </span>
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
-                    {signalTypes.map((s) => (
-                      <Badge key={s} variant="outline">
-                        <TrendingUp className="h-2.5 w-2.5" />
-                        {s.replace(/_/g, " ")}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                <ConfigRow
+                  label="Signals"
+                  value={signalTypes.map((s) => s.replace(/_/g, " ")).join(", ")}
+                />
               )}
-
-              {/* Watchlist */}
               {watchlist.length > 0 && (
-                <div>
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Watchlist
-                  </span>
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
-                    {watchlist.map((t) => {
-                      const symbol = typeof t === "string" ? t : t.symbol;
-                      return (
-                        <Badge key={symbol} variant="outline">
-                          <Eye className="h-2.5 w-2.5" />
-                          {symbol}
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                </div>
+                <ConfigRow
+                  label="Watchlist"
+                  value={watchlist
+                    .map((t) => (typeof t === "string" ? t : t.symbol))
+                    .join(", ")}
+                  mono
+                />
               )}
-
-              {/* Exclusion List */}
               {exclusionList.length > 0 && (
-                <div>
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Excluded
-                  </span>
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
-                    {exclusionList.map((t) => (
-                      <Badge key={t} variant="outline">
-                        <Ban className="h-2.5 w-2.5" />
-                        {t}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                <ConfigRow
+                  label="Excluded"
+                  value={exclusionList.join(", ")}
+                  mono
+                />
               )}
-
-              {/* Empty state */}
-              {sectors.length === 0 &&
-                signalTypes.length === 0 &&
-                watchlist.length === 0 &&
-                exclusionList.length === 0 && (
-                  <div className="text-sm text-muted-foreground py-6 text-center">
-                    No configuration details yet.
-                  </div>
-                )}
             </div>
           </ScrollArea>
         </TabsContent>
       </Tabs>
 
       {/* ── Footer: Create button ─────────────────────────────── */}
-      <div className="shrink-0 border-t px-5 py-4 flex">
+      <div className="shrink-0 border-t px-4 py-3 flex">
         <Button
           onClick={onConfirm}
           disabled={isCreating}
@@ -473,6 +482,33 @@ export function AnalystConfigPanel({
           {isCreating ? "Creating..." : "Create Analyst"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ─── Config row (Rox-style key/value) ─────────────────────────────────────────
+
+function ConfigRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1 border-b border-border/40 last:border-0">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground shrink-0">
+        {label}
+      </span>
+      <span
+        className={`text-xs text-foreground/80 truncate text-right ${
+          mono ? "font-mono tabular-nums" : ""
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
