@@ -7,13 +7,19 @@ import { Color, type Mesh, type ShaderMaterial, type IUniform } from "three";
 
 type NormalizedRGB = [number, number, number];
 
-const hexToNormalizedRGB = (hex: string): NormalizedRGB => {
-  if (!hex) return [0.48, 0.99, 0.51]; // fallback green
-  const clean = hex.replace("#", "");
-  const r = parseInt(clean.slice(0, 2), 16) / 255;
-  const g = parseInt(clean.slice(2, 4), 16) / 255;
-  const b = parseInt(clean.slice(4, 6), 16) / 255;
-  return [r, g, b];
+const hexToNormalizedRGB = (hex?: string | null): NormalizedRGB => {
+  const fallback: NormalizedRGB = [0.68, 0.99, 0.51];
+  if (!hex || typeof hex !== "string") return fallback;
+  try {
+    const clean = hex.replace("#", "");
+    if (clean.length < 6) return fallback;
+    const r = parseInt(clean.slice(0, 2), 16) / 255;
+    const g = parseInt(clean.slice(2, 4), 16) / 255;
+    const b = parseInt(clean.slice(4, 6), 16) / 255;
+    return [r, g, b];
+  } catch {
+    return fallback;
+  }
 };
 
 interface UniformValue<T = number | Color> {
@@ -137,11 +143,12 @@ export interface SilkProps {
 export default function Silk({
   speed = 5,
   scale = 1,
-  color = "#7B7481",
+  color: colorProp = "#7B7481",
   noiseIntensity = 1.5,
   rotation = 0,
 }: SilkProps) {
   const meshRef = useRef<Mesh>(null);
+  const color = colorProp || "#7B7481";
 
   const uniforms = useMemo<SilkUniforms>(
     () => ({
