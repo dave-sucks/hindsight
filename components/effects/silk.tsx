@@ -8,6 +8,7 @@ import { Color, type Mesh, type ShaderMaterial, type IUniform } from "three";
 type NormalizedRGB = [number, number, number];
 
 const hexToNormalizedRGB = (hex: string): NormalizedRGB => {
+  if (!hex) return [0.48, 0.99, 0.51]; // fallback green
   const clean = hex.replace("#", "");
   const r = parseInt(clean.slice(0, 2), 16) / 255;
   const g = parseInt(clean.slice(2, 4), 16) / 255;

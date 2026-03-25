@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import {
   ArrowDownRight,
   ArrowLeftRight,
@@ -13,6 +15,8 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
+
+const Silk = dynamic(() => import("@/components/effects/silk"), { ssr: false });
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,12 +128,27 @@ export function AnalystConfigPanel({
   const policy = config.intelligencePolicy;
   const dm = directionMeta[direction] ?? directionMeta.BOTH;
 
+  // Intro: full Silk background → shrink to orb after 1.5s
+  const [introActive, setIntroActive] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setIntroActive(false), 1500);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
-    <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden">
+    <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden relative">
+      {/* Intro Silk background — fills panel, fades out */}
+      <div
+        className="absolute inset-0 z-[5] transition-opacity duration-700 ease-out"
+        style={{ opacity: introActive ? 1 : 0, pointerEvents: "none" }}
+      >
+        <Silk speed={10} scale={0.6} color="#AEFD83" noiseIntensity={1.5} rotation={0} />
+      </div>
+
       {/* ── Header with SilkOrb avatar ──────────────────────────── */}
-      <div className="shrink-0 px-4 pt-4 pb-3">
+      <div className="relative z-[6] shrink-0 px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
-          <SilkOrb size={56} speed={10} color="#AEFD83" scale={2} noiseIntensity={2} />
+          <SilkOrb size={56} speed={10} color="#AEFD83" scale={0.6} noiseIntensity={1.5} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-base font-brand font-bold truncate leading-tight">
@@ -181,7 +200,7 @@ export function AnalystConfigPanel({
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────── */}
-      <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
+      <Tabs defaultValue="overview" className="relative z-[6] flex-1 flex flex-col min-h-0">
         <div className="px-4 pt-2 shrink-0">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -549,7 +568,7 @@ export function AnalystConfigPanel({
       </Tabs>
 
       {/* ── Footer: Create button ─────────────────────────────── */}
-      <div className="shrink-0 border-t px-4 py-3 flex">
+      <div className="relative z-[6] shrink-0 border-t px-4 py-3 flex">
         <Button
           onClick={onConfirm}
           disabled={isCreating}
