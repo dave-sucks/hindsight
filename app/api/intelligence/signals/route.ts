@@ -10,61 +10,122 @@ export async function GET(req: NextRequest) {
   const monitorId = req.nextUrl.searchParams.get("monitorId")
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50")
 
-  const signals = await prisma.signal.findMany({
-    where: {
-      ...(ticker ? { tickers: { has: ticker } } : {}),
-      ...(type ? { type } : {}),
-      ...(urgency ? { urgency } : {}),
-      ...(batchId ? { batchId } : {}),
-      ...(monitorId ? { monitorId } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: Math.min(limit, 200),
-    select: {
-      id: true,
-      batchId: true,
-      artifactId: true,
-      monitorId: true,
-      type: true,
-      headline: true,
-      summary: true,
-      evidence: true,
-      tickers: true,
-      themes: true,
-      sectors: true,
-      sentiment: true,
-      noveltyScore: true,
-      urgency: true,
-      sourceQuality: true,
-      freshness: true,
-      sourceUrls: true,
-      sourceNames: true,
-      searchTool: true,
-      searchQuery: true,
-      searchContext: true,
-      aggregateType: true,
-      dataPayload: true,
-      itemCount: true,
-      expiresAt: true,
-      createdAt: true,
-      batch: {
-        select: { jobType: true, status: true, startedAt: true },
+  try {
+    // Try with full relations (requires Monitor table migration)
+    const signals = await prisma.signal.findMany({
+      where: {
+        ...(ticker ? { tickers: { has: ticker } } : {}),
+        ...(type ? { type } : {}),
+        ...(urgency ? { urgency } : {}),
+        ...(batchId ? { batchId } : {}),
+        ...(monitorId ? { monitorId } : {}),
       },
-      monitor: {
-        select: { id: true, name: true, type: true, method: true, config: true },
-      },
-      routes: {
-        select: {
-          id: true,
-          analystId: true,
-          analyst: { select: { id: true, name: true } },
-          relevanceScore: true,
-          routeReason: true,
-          status: true,
+      orderBy: { createdAt: "desc" },
+      take: Math.min(limit, 200),
+      select: {
+        id: true,
+        batchId: true,
+        artifactId: true,
+        monitorId: true,
+        type: true,
+        headline: true,
+        summary: true,
+        evidence: true,
+        tickers: true,
+        themes: true,
+        sectors: true,
+        sentiment: true,
+        noveltyScore: true,
+        urgency: true,
+        sourceQuality: true,
+        freshness: true,
+        sourceUrls: true,
+        sourceNames: true,
+        searchTool: true,
+        searchQuery: true,
+        searchContext: true,
+        aggregateType: true,
+        dataPayload: true,
+        itemCount: true,
+        expiresAt: true,
+        createdAt: true,
+        batch: {
+          select: { jobType: true, status: true, startedAt: true },
+        },
+        monitor: {
+          select: { id: true, name: true, type: true, method: true, config: true },
+        },
+        routes: {
+          select: {
+            id: true,
+            analystId: true,
+            analyst: { select: { id: true, name: true } },
+            relevanceScore: true,
+            routeReason: true,
+            status: true,
+          },
         },
       },
-    },
-  })
-
-  return NextResponse.json(signals)
+    })
+    return NextResponse.json(signals)
+  } catch {
+    // Fallback: Monitor table may not exist yet (pre-migration)
+    const signals = await prisma.signal.findMany({
+      where: {
+        ...(ticker ? { tickers: { has: ticker } } : {}),
+        ...(type ? { type } : {}),
+        ...(urgency ? { urgency } : {}),
+        ...(batchId ? { batchId } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(limit, 200),
+      select: {
+        id: true,
+        batchId: true,
+        artifactId: true,
+        type: true,
+        headline: true,
+        summary: true,
+        evidence: true,
+        tickers: true,
+        themes: true,
+        sectors: true,
+        sentiment: true,
+        noveltyScore: true,
+        urgency: true,
+        sourceQuality: true,
+        freshness: true,
+        sourceUrls: true,
+        sourceNames: true,
+        searchTool: true,
+        searchQuery: true,
+        searchContext: true,
+        expiresAt: true,
+        createdAt: true,
+        batch: {
+          select: { jobType: true, status: true, startedAt: true },
+        },
+        routes: {
+          select: {
+            id: true,
+            analystId: true,
+            analyst: { select: { id: true, name: true } },
+            relevanceScore: true,
+            routeReason: true,
+            status: true,
+          },
+        },
+      },
+    })
+    // Add null defaults for new fields so the UI doesn't crash
+    const enriched = signals.map((s) => ({
+      ...s,
+      monitorId: null,
+      monitor: null,
+      aggregateType: null,
+      dataPayload: null,
+      itemCount: null,
+    }))
+    return NextResponse.json(enriched)
+  }
 }
