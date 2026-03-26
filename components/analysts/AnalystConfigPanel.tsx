@@ -136,73 +136,36 @@ export function AnalystConfigPanel({
 
   return (
     <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden relative">
-      {/* Full-panel Silk intro — visible while "thinking" */}
+      {/* Full-panel Silk intro — visible while "thinking", fades out */}
       <div
-        className="absolute inset-0 z-[5] transition-opacity duration-700 ease-out"
+        className="absolute inset-0 z-[5] transition-opacity duration-1000 ease-out"
         style={{ opacity: introActive ? 1 : 0, pointerEvents: "none" }}
       >
         <Silk speed={5} scale={0.85} color="#919191" noiseIntensity={1.5} rotation={0} />
       </div>
 
-      {/* ── Landscape Silk hero card ─────────────────────────────── */}
-      <div className="relative z-[6] shrink-0 mx-3 mt-3 rounded-lg overflow-hidden h-20">
-        <div className="absolute inset-0">
-          <Silk speed={5} scale={0.85} color="#919191" noiseIntensity={1.5} rotation={0} />
-        </div>
-        <div className="relative z-10 flex items-end h-full p-3 bg-gradient-to-t from-black/60 to-transparent">
+      {/* ── Header: Silk circle avatar + name/description ──────── */}
+      <div className="relative z-[6] shrink-0 px-4 pt-4 pb-3">
+        <div className="flex items-center gap-3">
+          <div style={{ width: 48, height: 48, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}>
+            <Silk speed={5} scale={0.85} color="#919191" noiseIntensity={1.5} rotation={0} />
+          </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-base font-brand font-bold truncate leading-tight text-white">
-                {config.name || "Untitled Analyst"}
-              </p>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Badge
-                        variant={
-                          direction === "LONG"
-                            ? "positive"
-                            : direction === "SHORT"
-                              ? "negative"
-                              : "secondary"
-                        }
-                      >
-                        {dm.icon}
-                        {direction}
-                      </Badge>
-                    }
-                  />
-                  <TooltipContent side="bottom">{dm.tip}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+            <p className="text-base font-brand font-bold truncate leading-tight">
+              {config.name || "Untitled Analyst"}
+            </p>
             {config.description && (
-              <p className="text-xs text-white/70 mt-0.5 line-clamp-1">
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                 {config.description}
               </p>
             )}
           </div>
         </div>
       </div>
-      {/* Meta strip */}
-      <div className="relative z-[6] px-4 pt-2 pb-1">
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
-          <span>{direction}</span>
-          <span className="opacity-30">&middot;</span>
-          <span>{holdDurations.join("/") || "SWING"}</span>
-          <span className="opacity-30">&middot;</span>
-          <span className="tabular-nums">{config.minConfidence ?? 65}% MIN</span>
-          <span className="opacity-30">&middot;</span>
-          <span className="tabular-nums">${(config.maxPositionSize ?? 5000).toLocaleString()}</span>
-          <span className="opacity-30">&middot;</span>
-          <span>{config.minMarketCapTier ?? "LARGE"}+</span>
-        </span>
-      </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────── */}
       <Tabs defaultValue="overview" className="relative z-[6] flex-1 flex flex-col min-h-0">
-        <div className="px-4 pt-2 shrink-0">
+        <div className="px-4 pt-1 shrink-0">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="intelligence">Intelligence</TabsTrigger>
@@ -226,104 +189,6 @@ export function AnalystConfigPanel({
                   {config.analystPrompt}
                 </p>
               </div>
-
-              {/* Signals with tooltips */}
-              {signalTypes.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Signals
-                    </span>
-                    <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      <TooltipProvider>
-                        {signalTypes.map((s) => {
-                          const tip = signalTips[s] ?? `Trades based on ${s.replace(/_/g, " ").toLowerCase()} signals.`;
-                          return (
-                            <Tooltip key={s}>
-                              <TooltipTrigger
-                                render={
-                                  <Badge variant="outline">
-                                    <TrendingUp className="h-2.5 w-2.5" />
-                                    {s.replace(/_/g, " ")}
-                                  </Badge>
-                                }
-                              />
-                              <TooltipContent side="bottom">{tip}</TooltipContent>
-                            </Tooltip>
-                          );
-                        })}
-                      </TooltipProvider>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Sectors with tooltips */}
-              {sectors.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Sectors
-                    </span>
-                    <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      <TooltipProvider>
-                        {sectors.map((s) => (
-                          <Tooltip key={s}>
-                            <TooltipTrigger
-                              render={
-                                <Badge variant="outline">{s}</Badge>
-                              }
-                            />
-                            <TooltipContent side="bottom">
-                              Only researches stocks in the {s} sector.
-                            </TooltipContent>
-                          </Tooltip>
-                        ))}
-                      </TooltipProvider>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Watchlist — stock rows like source pack */}
-              {watchlist.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <Eye className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Watchlist
-                      </span>
-                      <span className="text-[10px] text-muted-foreground/60 ml-auto tabular-nums">
-                        {watchlist.length} {watchlist.length === 1 ? "stock" : "stocks"}
-                      </span>
-                    </div>
-                    <div className="space-y-0">
-                      {watchlist.map((t) => {
-                        const symbol = typeof t === "string" ? t : t.symbol;
-                        const reason = typeof t === "object" ? t.reason : undefined;
-                        return (
-                          <div
-                            key={symbol}
-                            className="flex items-center gap-2.5 py-1.5 border-b border-border/40 last:border-0"
-                          >
-                            <StockLogo ticker={symbol} size="sm" className="rounded-md" />
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm font-medium font-mono">{symbol}</span>
-                              {reason && (
-                                <p className="text-[10px] text-muted-foreground truncate">{reason}</p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
-              )}
 
               {/* Exclusion List — stock rows */}
               {exclusionList.length > 0 && (
@@ -352,14 +217,11 @@ export function AnalystConfigPanel({
               )}
 
               {/* Empty state */}
-              {sectors.length === 0 &&
-                signalTypes.length === 0 &&
-                watchlist.length === 0 &&
-                exclusionList.length === 0 && (
-                  <div className="text-xs text-muted-foreground/40 py-6 text-center not-italic">
-                    No configuration details yet.
-                  </div>
-                )}
+              {exclusionList.length === 0 && !config.analystPrompt && (
+                <div className="text-xs text-muted-foreground/40 py-6 text-center not-italic">
+                  No configuration details yet.
+                </div>
+              )}
             </div>
           </ScrollArea>
         </TabsContent>
@@ -368,6 +230,43 @@ export function AnalystConfigPanel({
         <TabsContent value="intelligence" className="flex-1 min-h-0 mt-0">
           <ScrollArea className="h-full">
             <div className="px-4 py-3 space-y-3">
+              {/* Watchlist — moved here from overview */}
+              {watchlist.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Eye className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Watchlist
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60 ml-auto tabular-nums">
+                      {watchlist.length} {watchlist.length === 1 ? "stock" : "stocks"}
+                    </span>
+                  </div>
+                  <div className="space-y-0">
+                    {watchlist.map((t) => {
+                      const symbol = typeof t === "string" ? t : t.symbol;
+                      const reason = typeof t === "object" ? t.reason : undefined;
+                      return (
+                        <div
+                          key={symbol}
+                          className="flex items-center gap-2.5 py-1.5 border-b border-border/40 last:border-0"
+                        >
+                          <StockLogo ticker={symbol} size="sm" className="rounded-md" />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium font-mono">{symbol}</span>
+                            {reason && (
+                              <p className="text-[10px] text-muted-foreground truncate">{reason}</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {watchlist.length > 0 && sources.length > 0 && <Separator />}
+
               {/* Source Pack */}
               {sources.length > 0 && (
                 <div>
@@ -505,7 +404,7 @@ export function AnalystConfigPanel({
               )}
 
               {/* Empty state */}
-              {sources.length === 0 && queries.length === 0 && !policy && (
+              {watchlist.length === 0 && sources.length === 0 && queries.length === 0 && !policy && (
                 <div className="text-xs text-muted-foreground/40 py-6 text-center not-italic">
                   No intelligence configuration yet.
                 </div>
@@ -517,51 +416,75 @@ export function AnalystConfigPanel({
         {/* ── Config tab — flat key/value rows ─────────────────── */}
         <TabsContent value="config" className="flex-1 min-h-0 mt-0">
           <ScrollArea className="h-full">
-            <div className="px-4 py-3 space-y-2">
-              <ConfigRow label="Direction" value={direction} />
-              <ConfigRow
-                label="Hold"
-                value={holdDurations.join(", ") || "SWING"}
-              />
-              <ConfigRow
-                label="Min Confidence"
-                value={`${config.minConfidence ?? 65}%`}
-                mono
-              />
-              <ConfigRow
-                label="Max Position"
-                value={`$${(config.maxPositionSize ?? 5000).toLocaleString()}`}
-                mono
-              />
-              <ConfigRow
-                label="Max Open"
-                value={String(config.maxOpenPositions ?? 5)}
-                mono
-              />
-              <ConfigRow
-                label="Market Cap"
-                value={`${config.minMarketCapTier ?? "LARGE"}+`}
-              />
-              {sectors.length > 0 && (
-                <ConfigRow label="Sectors" value={sectors.join(", ")} />
-              )}
+            <div className="px-4 py-3 space-y-3">
+              <div className="space-y-2">
+                <ConfigRow label="Direction" value={direction} />
+                <ConfigRow label="Hold" value={holdDurations.join(", ") || "SWING"} />
+                <ConfigRow label="Min Confidence" value={`${config.minConfidence ?? 65}%`} mono />
+                <ConfigRow label="Max Position" value={`$${(config.maxPositionSize ?? 5000).toLocaleString()}`} mono />
+                <ConfigRow label="Max Open" value={String(config.maxOpenPositions ?? 5)} mono />
+                <ConfigRow label="Market Cap" value={`${config.minMarketCapTier ?? "LARGE"}+`} />
+                {exclusionList.length > 0 && (
+                  <ConfigRow label="Excluded" value={exclusionList.join(", ")} mono />
+                )}
+              </div>
+
+              {/* Signals — badges with tooltips */}
               {signalTypes.length > 0 && (
-                <ConfigRow
-                  label="Signals"
-                  value={signalTypes.map((s) => s.replace(/_/g, " ")).join(", ")}
-                />
+                <>
+                  <Separator />
+                  <div>
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Signals
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      <TooltipProvider>
+                        {signalTypes.map((s) => {
+                          const tip = signalTips[s] ?? `Trades based on ${s.replace(/_/g, " ").toLowerCase()} signals.`;
+                          return (
+                            <Tooltip key={s}>
+                              <TooltipTrigger
+                                render={
+                                  <Badge variant="outline">
+                                    <TrendingUp className="h-2.5 w-2.5" />
+                                    {s.replace(/_/g, " ")}
+                                  </Badge>
+                                }
+                              />
+                              <TooltipContent side="bottom">{tip}</TooltipContent>
+                            </Tooltip>
+                          );
+                        })}
+                      </TooltipProvider>
+                    </div>
+                  </div>
+                </>
               )}
-              {watchlist.length > 0 && (
-                <ConfigRow
-                  label="Watchlist"
-                  value={watchlist
-                    .map((t) => (typeof t === "string" ? t : t.symbol))
-                    .join(", ")}
-                  mono
-                />
-              )}
-              {exclusionList.length > 0 && (
-                <ConfigRow label="Excluded" value={exclusionList.join(", ")} mono />
+
+              {/* Sectors — badges with tooltips */}
+              {sectors.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Sectors
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      <TooltipProvider>
+                        {sectors.map((s) => (
+                          <Tooltip key={s}>
+                            <TooltipTrigger
+                              render={<Badge variant="outline">{s}</Badge>}
+                            />
+                            <TooltipContent side="bottom">
+                              Only researches stocks in the {s} sector.
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </TooltipProvider>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </ScrollArea>
