@@ -31,6 +31,23 @@ export interface AnalystConfig {
   scheduleTime: string;
   createdAt: Date;
   updatedAt: Date;
+  // V3 intelligence fields — populated from Monitor table + AgentConfig.intelligencePolicy
+  intelligencePolicy: Record<string, unknown> | null;
+  domainMonitors: Array<{
+    id: string;
+    name: string;
+    domain: string;
+    category: string;
+    qualityScore: number;
+    enabled: boolean;
+  }>;
+  searchMonitors: Array<{
+    id: string;
+    name: string;
+    query: string;
+    category: string;
+    enabled: boolean;
+  }>;
 }
 
 export interface AnalystOpenTrade {
@@ -281,7 +298,7 @@ export async function getAnalystDetail(
   });
   if (!config) return null;
 
-  const [recentRuns, recentPositions, totalRuns, totalTheses, briefings, morningBriefs] = await Promise.all([
+  const [recentRuns, recentPositions, totalRuns, totalTheses, briefings, morningBriefs, monitors] = await Promise.all([
     // Last 20 runs with their theses (join trade info via decisions)
     prisma.researchRun.findMany({
       where: { agentConfigId: analystId, userId },
@@ -396,6 +413,19 @@ export async function getAnalystDetail(
         generatedAt: true,
       },
     }),
+    // Load monitors (DOMAIN + SEARCH) for intelligence display
+    prisma.monitor.findMany({
+      where: { analystId },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        config: true,
+        category: true,
+        enabled: true,
+      },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
 
   // Compute stats from all positions for this analyst
@@ -434,6 +464,34 @@ export async function getAnalystDetail(
       : null;
   const avgConfidence = avgConfAgg._avg.confidenceScore ?? null;
 
+  // Map monitors into typed arrays for UI display
+  const domainMonitors = monitors
+    .filter((m) => m.type === "DOMAIN")
+    .map((m) => {
+      const cfg = (m.config as Record<string, unknown>) ?? {};
+      return {
+        id: m.id,
+        name: m.name,
+        domain: (cfg.domain as string) ?? "",
+        category: m.category,
+        qualityScore: (cfg.qualityScore as number) ?? 3,
+        enabled: m.enabled,
+      };
+    });
+
+  const searchMonitors = monitors
+    .filter((m) => m.type === "SEARCH")
+    .map((m) => {
+      const cfg = (m.config as Record<string, unknown>) ?? {};
+      return {
+        id: m.id,
+        name: m.name,
+        query: (cfg.query as string) ?? m.name,
+        category: m.category,
+        enabled: m.enabled,
+      };
+    });
+
   // Map Prisma config (Json fields) → typed AnalystConfig
   const mappedConfig: AnalystConfig = {
     id: config.id,
@@ -457,6 +515,9 @@ export async function getAnalystDetail(
     scheduleTime: config.scheduleTime,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
+    intelligencePolicy: (config.intelligencePolicy as Record<string, unknown>) ?? null,
+    domainMonitors,
+    searchMonitors,
   };
 
   // Map runs: transform theses.decisions[0].position → trade shape for backwards compat
