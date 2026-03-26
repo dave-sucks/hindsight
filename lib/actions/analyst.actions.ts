@@ -1163,10 +1163,85 @@ export async function updateAnalystFromBuilder(
     }
   }
 
+  // Update intelligence policy on AgentConfig if provided
+  if (data.intelligencePolicy) {
+    const policyInput = data.intelligencePolicy;
+    updateData.intelligencePolicy = {
+      ...DEFAULT_INTELLIGENCE_POLICY,
+      holdingsAttention: policyInput.holdingsAttention,
+      watchlistAttention: policyInput.watchlistAttention,
+      discoveryAttention: policyInput.discoveryAttention,
+      ...(policyInput.maxSignalsPerRun != null ? { maxSignalsPerRun: policyInput.maxSignalsPerRun } : {}),
+      ...(policyInput.maxArtifactReads != null ? { maxArtifactReads: policyInput.maxArtifactReads } : {}),
+      ...(policyInput.allowLiveSearch != null ? { allowLiveSearch: policyInput.allowLiveSearch } : {}),
+      ...(policyInput.liveSearchBudget != null ? { liveSearchBudget: policyInput.liveSearchBudget } : {}),
+    };
+  }
+
   await prisma.agentConfig.update({
     where: { id, userId },
     data: updateData,
   });
+
+  // Create domain monitors from sourcePackProposal (replace existing BUILDER-origin monitors)
+  if (data.sourcePackProposal && data.sourcePackProposal.sources.length > 0) {
+    // Remove old builder-created domain monitors for this analyst
+    await prisma.monitor.deleteMany({
+      where: { analystId: id, type: "DOMAIN", origin: "BUILDER" },
+    });
+
+    for (const src of data.sourcePackProposal.sources) {
+      const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
+        .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
+      await prisma.monitor.create({
+        data: {
+          name: src.name,
+          type: "DOMAIN",
+          method: "perplexity_sonar",
+          config: {
+            domain: src.domain,
+            url: `https://${src.domain}`,
+            qualityScore: Math.min(5, Math.max(1, Math.round(src.qualityScore))),
+          },
+          scope: "ANALYST",
+          analystId: id,
+          enabled: true,
+          builtIn: false,
+          origin: "BUILDER",
+          category: validCategory,
+        },
+      });
+    }
+    console.log(`[analyst] Replaced domain monitors for analyst ${id}: ${data.sourcePackProposal.sources.length} created`);
+  }
+
+  // Create search monitors from intelligenceQueries (replace existing BUILDER-origin monitors)
+  if (data.intelligenceQueries && data.intelligenceQueries.length > 0) {
+    // Remove old builder-created search monitors for this analyst
+    await prisma.monitor.deleteMany({
+      where: { analystId: id, type: "SEARCH", origin: "BUILDER" },
+    });
+
+    for (const q of data.intelligenceQueries) {
+      const validCategory = (["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"] as const)
+        .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
+      await prisma.monitor.create({
+        data: {
+          name: q.query,
+          type: "SEARCH",
+          method: "perplexity_sonar",
+          config: { query: q.query },
+          scope: "ANALYST",
+          analystId: id,
+          enabled: true,
+          builtIn: false,
+          origin: "BUILDER",
+          category: validCategory,
+        },
+      });
+    }
+    console.log(`[analyst] Replaced search monitors for analyst ${id}: ${data.intelligenceQueries.length} created`);
+  }
 
   revalidatePath(`/analysts/${id}`);
   revalidatePath("/analysts");

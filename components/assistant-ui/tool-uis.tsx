@@ -284,10 +284,27 @@ const FIELD_LABELS: Record<string, string> = {
   minMarketCapTier: "Market Cap",
   watchlist: "Watchlist",
   exclusionList: "Exclusion List",
+  sourcePackProposal: "Source Monitors",
+  intelligenceQueries: "Search Monitors",
+  intelligencePolicy: "Attention Policy",
 };
 
 function formatValue(key: string, val: unknown): string {
   if (val == null || val === "") return "—";
+  if (key === "sourcePackProposal" && typeof val === "object") {
+    const pack = val as { sources?: Array<{ name: string }> };
+    return pack.sources?.map((s) => s.name).join(", ") ?? "—";
+  }
+  if (key === "intelligenceQueries" && Array.isArray(val)) {
+    return val.length === 0 ? "—" : `${val.length} queries`;
+  }
+  if (key === "intelligencePolicy" && typeof val === "object") {
+    const p = val as Record<string, unknown>;
+    const h = typeof p.holdingsAttention === "number" ? Math.round(p.holdingsAttention * 100) : 0;
+    const w = typeof p.watchlistAttention === "number" ? Math.round(p.watchlistAttention * 100) : 0;
+    const d = typeof p.discoveryAttention === "number" ? Math.round(p.discoveryAttention * 100) : 0;
+    return `H:${h}% W:${w}% D:${d}%`;
+  }
   if (Array.isArray(val)) return val.length === 0 ? "—" : val.join(", ");
   if (key === "maxPositionSize" && typeof val === "number")
     return `$${val.toLocaleString()}`;
