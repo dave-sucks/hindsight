@@ -36,9 +36,6 @@ export async function GET(req: NextRequest) {
       freshness: true,
       sourceUrls: true,
       sourceNames: true,
-      searchTool: true,
-      searchQuery: true,
-      searchContext: true,
       expiresAt: true,
       createdAt: true,
       batch: {
@@ -60,6 +57,9 @@ export async function GET(req: NextRequest) {
   // Add null defaults for new fields the UI expects
   const enriched = signals.map((s) => ({
     ...s,
+    searchTool: null,
+    searchQuery: null,
+    searchContext: null,
     monitorId: null,
     monitor: null,
     aggregateType: null,
