@@ -28,28 +28,28 @@ const BUILDER_WELCOME: WelcomeConfig = {
 
 const SUGGESTIONS = [
   {
-    title: "What's hot today?",
-    label: "Trending stocks → strategy",
-    prompt:
-      "Show me what's trending in the market right now — top movers, biggest gainers. Then let's build a strategy around current momentum.",
-  },
-  {
-    title: "Aggressive day trader",
-    label: "Momentum + tech breakouts",
+    title: "Momentum day trader",
+    label: "Intraday breakouts on high-volume tech stocks",
     prompt:
       "Build me an aggressive day trader focused on momentum and technical breakouts in tech stocks. Show me some real examples of stocks that fit this strategy right now.",
   },
   {
-    title: "Earnings momentum player",
-    label: "Pre/post-earnings moves",
+    title: "Earnings player",
+    label: "Trades the run-up and post-earnings drift",
     prompt:
       "I want an analyst that trades around earnings — catches the run-up and post-earnings momentum. Research a stock with upcoming earnings to show me how it would work.",
   },
   {
     title: "Biotech catalyst hunter",
-    label: "FDA + options flow",
+    label: "FDA approvals, trial data, unusual options flow",
     prompt:
-      "Build a biotech-focused analyst that watches for FDA catalysts, clinical trial data, and unusual options flow. What's buzzing on Reddit about biotech right now?",
+      "Build a biotech-focused analyst that watches for FDA catalysts, clinical trial data, and unusual options flow.",
+  },
+  {
+    title: "Mean reversion swing",
+    label: "Buys oversold dips on quality large-caps",
+    prompt:
+      "Create a swing trader that uses mean reversion — buys oversold dips on quality large-cap stocks when RSI drops below 30, targets a bounce back to the moving average.",
   },
 ];
 

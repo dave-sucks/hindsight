@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import {
   ArrowDownRight,
   ArrowLeftRight,
@@ -27,6 +29,8 @@ import {
 } from "@/components/ui/tooltip";
 import { StockLogo } from "@/components/StockLogo";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
+
+const Silk = dynamic(() => import("@/components/Silk"), { ssr: false });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,18 +109,6 @@ function AttentionBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-// ─── Gradient Orb ─────────────────────────────────────────────────────────────
-
-function GradientOrb() {
-  return (
-    <div className="relative size-14 shrink-0">
-      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--chart-1)] via-[var(--chart-2)] to-[var(--chart-3)] opacity-30 blur-md" />
-      <div className="relative size-14 rounded-full bg-gradient-to-br from-[var(--chart-1)] via-[var(--chart-2)] to-[var(--chart-3)] opacity-80" />
-      <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/25 to-transparent" />
-    </div>
-  );
-}
-
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
 export function AnalystConfigPanel({
@@ -135,15 +127,32 @@ export function AnalystConfigPanel({
   const policy = config.intelligencePolicy;
   const dm = directionMeta[direction] ?? directionMeta.BOTH;
 
+  // Intro: full Silk background → shrink to landscape card after 2s
+  const [introActive, setIntroActive] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setIntroActive(false), 2000);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
-    <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden">
-      {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="shrink-0 px-4 pt-4 pb-3">
-        <div className="flex items-center gap-3">
-          <GradientOrb />
+    <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden relative">
+      {/* Full-panel Silk intro — visible while "thinking" */}
+      <div
+        className="absolute inset-0 z-[5] transition-opacity duration-700 ease-out"
+        style={{ opacity: introActive ? 1 : 0, pointerEvents: "none" }}
+      >
+        <Silk speed={5} scale={0.85} color="#919191" noiseIntensity={1.5} rotation={0} />
+      </div>
+
+      {/* ── Landscape Silk hero card ─────────────────────────────── */}
+      <div className="relative z-[6] shrink-0 mx-3 mt-3 rounded-lg overflow-hidden h-20">
+        <div className="absolute inset-0">
+          <Silk speed={5} scale={0.85} color="#919191" noiseIntensity={1.5} rotation={0} />
+        </div>
+        <div className="relative z-10 flex items-end h-full p-3 bg-gradient-to-t from-black/60 to-transparent">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className="text-base font-brand font-bold truncate leading-tight">
+              <p className="text-base font-brand font-bold truncate leading-tight text-white">
                 {config.name || "Untitled Analyst"}
               </p>
               <TooltipProvider>
@@ -169,30 +178,30 @@ export function AnalystConfigPanel({
               </TooltipProvider>
             </div>
             {config.description && (
-              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+              <p className="text-xs text-white/70 mt-0.5 line-clamp-1">
                 {config.description}
               </p>
             )}
           </div>
         </div>
-        {/* Meta strip */}
-        <div className="mt-2">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
-            <span>{direction}</span>
-            <span className="opacity-30">&middot;</span>
-            <span>{holdDurations.join("/") || "SWING"}</span>
-            <span className="opacity-30">&middot;</span>
-            <span className="tabular-nums">{config.minConfidence ?? 65}% MIN</span>
-            <span className="opacity-30">&middot;</span>
-            <span className="tabular-nums">${(config.maxPositionSize ?? 5000).toLocaleString()}</span>
-            <span className="opacity-30">&middot;</span>
-            <span>{config.minMarketCapTier ?? "LARGE"}+</span>
-          </span>
-        </div>
+      </div>
+      {/* Meta strip */}
+      <div className="relative z-[6] px-4 pt-2 pb-1">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
+          <span>{direction}</span>
+          <span className="opacity-30">&middot;</span>
+          <span>{holdDurations.join("/") || "SWING"}</span>
+          <span className="opacity-30">&middot;</span>
+          <span className="tabular-nums">{config.minConfidence ?? 65}% MIN</span>
+          <span className="opacity-30">&middot;</span>
+          <span className="tabular-nums">${(config.maxPositionSize ?? 5000).toLocaleString()}</span>
+          <span className="opacity-30">&middot;</span>
+          <span>{config.minMarketCapTier ?? "LARGE"}+</span>
+        </span>
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────── */}
-      <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
+      <Tabs defaultValue="overview" className="relative z-[6] flex-1 flex flex-col min-h-0">
         <div className="px-4 pt-2 shrink-0">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -560,7 +569,7 @@ export function AnalystConfigPanel({
       </Tabs>
 
       {/* ── Footer: Create button ─────────────────────────────── */}
-      <div className="shrink-0 border-t px-4 py-3 flex">
+      <div className="relative z-[6] shrink-0 border-t px-4 py-3 flex">
         <Button
           onClick={onConfirm}
           disabled={isCreating}

@@ -8,14 +8,6 @@ import {
   Plus,
   MoreHorizontal,
   Loader2,
-  Zap,
-  TrendingUp,
-  BarChart3,
-  Beaker,
-  ArrowLeftRight,
-  Shield,
-  Activity,
-  Layers,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,11 +29,8 @@ import {
 import { StockLogo } from "@/components/StockLogo";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
-import dynamic from "next/dynamic";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
-
-const Silk = dynamic(() => import("@/components/Silk"), { ssr: false });
 
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
 
@@ -232,106 +221,12 @@ function NewAnalystCard() {
   );
 }
 
-// ── Idea cards ────────────────────────────────────────────────────────────────
-
-const ANALYST_IDEAS = [
-  {
-    icon: Zap,
-    title: "Momentum day trader",
-    description: "Catches intraday breakouts on high-volume tech stocks.",
-    prompt: "Build me an aggressive day trader focused on momentum and technical breakouts in tech stocks. Show me some real examples of stocks that fit this strategy right now.",
-  },
-  {
-    icon: BarChart3,
-    title: "Earnings player",
-    description: "Trades the run-up and post-earnings drift.",
-    prompt: "I want an analyst that trades around earnings — catches the run-up and post-earnings momentum. Research a stock with upcoming earnings to show me how it would work.",
-  },
-  {
-    icon: Beaker,
-    title: "Biotech catalyst hunter",
-    description: "FDA approvals, trial data, unusual options flow.",
-    prompt: "Build a biotech-focused analyst that watches for FDA catalysts, clinical trial data, and unusual options flow.",
-  },
-  {
-    icon: ArrowLeftRight,
-    title: "Mean reversion swing",
-    description: "Buys oversold dips on quality large-caps.",
-    prompt: "Create a swing trader that uses mean reversion — buys oversold dips on quality large-cap stocks when RSI drops below 30, targets a bounce back to the moving average.",
-  },
-  {
-    icon: Shield,
-    title: "Defensive value",
-    description: "Low-beta dividend stocks for uncertain markets.",
-    prompt: "Build a conservative value analyst focused on low-beta, high-dividend stocks. Focus on sectors like utilities, consumer staples, and healthcare.",
-  },
-  {
-    icon: Activity,
-    title: "Options flow tracker",
-    description: "Follows smart money through unusual options activity.",
-    prompt: "Create an analyst that tracks unusual options flow as its primary signal — large block trades, put/call ratio extremes, and dark pool activity.",
-  },
-  {
-    icon: TrendingUp,
-    title: "Sector rotator",
-    description: "Rides capital rotation between market sectors.",
-    prompt: "Build an analyst that trades sector rotation — identifies which sectors capital is flowing into and out of, and rides the rotation with sector ETFs and leading stocks.",
-  },
-  {
-    icon: Layers,
-    title: "Multi-signal quant",
-    description: "Combines technicals, sentiment, and fundamentals.",
-    prompt: "Create a quantitative analyst that combines multiple signal types — technical breakouts, social sentiment, and fundamental value metrics — to find high-conviction setups.",
-  },
-];
-
-function IdeaCard({
-  icon: Icon,
-  title,
-  description,
-}: (typeof ANALYST_IDEAS)[number]) {
-  return (
-    <Link
-      href="/analysts/new"
-      className="shrink-0 w-[180px] group"
-    >
-      <Card className="h-full shadow-none py-0 hover:border-foreground/25 transition-colors">
-        <div className="p-3 flex flex-col gap-1.5">
-          <Icon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-          <p className="text-sm font-medium leading-tight">{title}</p>
-          <p className="text-[10px] text-muted-foreground leading-snug line-clamp-2">
-            {description}
-          </p>
-        </div>
-      </Card>
-    </Link>
-  );
-}
-
-function AnalystIdeasSection() {
-  return (
-    <div className="space-y-2">
-      <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Try an idea
-      </h2>
-      <div className="flex gap-3 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
-        {ANALYST_IDEAS.map((idea) => (
-          <IdeaCard key={idea.title} {...idea} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 function AnalystsEmptyState() {
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <NewAnalystCard />
-      </div>
-      <AnalystIdeasSection />
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <NewAnalystCard />
     </div>
   );
 }
@@ -366,25 +261,17 @@ export default function AnalystsPageClient({
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-center gap-6">
-        <h1 className="text-2xl font-semibold">Analysts</h1>
-        <div style={{ width: 200, height: 200, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}>
-          <Silk speed={5} scale={0.7} color="#3f2f8e" noiseIntensity={1.5} rotation={0} />
-        </div>
-      </div>
+      <h1 className="text-2xl font-semibold">Analysts</h1>
 
       {analysts.length === 0 ? (
         <AnalystsEmptyState />
       ) : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {analysts.map((analyst) => (
-              <AnalystCard key={analyst.id} analyst={analyst} onDelete={setDeleteTarget} />
-            ))}
-            <NewAnalystCard />
-          </div>
-          <AnalystIdeasSection />
-        </>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {analysts.map((analyst) => (
+            <AnalystCard key={analyst.id} analyst={analyst} onDelete={setDeleteTarget} />
+          ))}
+          <NewAnalystCard />
+        </div>
       )}
 
       <Dialog
