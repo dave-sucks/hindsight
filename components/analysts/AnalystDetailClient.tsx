@@ -26,6 +26,7 @@ import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { TradeRow } from "@/components/ui/trade-row";
 import { Markdown } from "@/components/ui/markdown";
 import { BriefingFeed } from "@/components/analysts/BriefingFeed";
+import { MorningBriefFeed } from "@/components/analysts/MorningBriefFeed";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -465,7 +466,15 @@ export default function AnalystDetailClient({
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value={1}>Overview</TabsTrigger>
+                <TabsTrigger value={1}>
+                  Morning Briefs
+                  {detail.morningBriefs.length > 0 && (
+                    <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
+                      {detail.morningBriefs.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value={2}>Overview</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value={0}>
@@ -474,6 +483,11 @@ export default function AnalystDetailClient({
               </div>
             </TabsContent>
             <TabsContent value={1}>
+              <div className="max-w-3xl mx-auto px-4 md:px-8 py-6">
+                <MorningBriefFeed briefs={detail.morningBriefs} />
+              </div>
+            </TabsContent>
+            <TabsContent value={2}>
               <div className="max-w-3xl mx-auto px-4 md:px-8 py-6">
                 {config.analystPrompt && config.analystPrompt.trim().length > 0 ? (
                   <Markdown variant="prose">{config.analystPrompt}</Markdown>

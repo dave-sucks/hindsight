@@ -447,6 +447,40 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
     },
   },
 
+  web_search: {
+    icon: Search,
+    sources: ["google.com"],
+    loadingLabel: (_ticker, args) => {
+      const query = (args as Record<string, unknown>)?.query as string | undefined;
+      return query ? `Searching: "${query.slice(0, 60)}"` : "Searching the web...";
+    },
+    completeLabel: (_ticker, result) => {
+      const count = result.resultCount as number | undefined;
+      const query = result.query as string | undefined;
+      if (count != null && query) {
+        return `Found ${count} result${count !== 1 ? "s" : ""} for "${query.slice(0, 50)}"`;
+      }
+      if (result.error) return `Search failed: ${String(result.error).slice(0, 60)}`;
+      return "Web search complete";
+    },
+    completeDescription: (_ticker, result) => {
+      const results = result.results as Array<{ title: string; snippet: string; domain: string; url: string }> | undefined;
+      if (!results || results.length === 0) return null;
+      return (
+        <ChainOfThoughtSearchResults>
+          {results.slice(0, 5).map((r, i) => (
+            <ChainOfThoughtSearchResult
+              key={i}
+              title={r.title}
+              url={r.url}
+              description={r.snippet}
+            />
+          ))}
+        </ChainOfThoughtSearchResults>
+      );
+    },
+  },
+
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

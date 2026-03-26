@@ -116,12 +116,26 @@ export interface AnalystStats {
   avgConfidence: number | null;
 }
 
+export interface MorningBriefItem {
+  id: string;
+  date: Date;
+  marketContext: string;
+  portfolioAlerts: unknown;
+  watchlistUpdates: unknown;
+  newOpportunities: unknown;
+  attentionPriority: string[];
+  riskFlags: string[];
+  signalCount: number;
+  generatedAt: Date;
+}
+
 export interface AnalystDetail {
   config: AnalystConfig;
   recentRuns: RunWithTheses[];
   recentTrades: PositionWithThesis[];
   stats: AnalystStats;
   briefings: AnalystBriefingItem[];
+  morningBriefs: MorningBriefItem[];
 }
 
 export interface AnalystBriefingItem {
@@ -267,7 +281,7 @@ export async function getAnalystDetail(
   });
   if (!config) return null;
 
-  const [recentRuns, recentPositions, totalRuns, totalTheses, briefings] = await Promise.all([
+  const [recentRuns, recentPositions, totalRuns, totalTheses, briefings, morningBriefs] = await Promise.all([
     // Last 20 runs with their theses (join trade info via decisions)
     prisma.researchRun.findMany({
       where: { agentConfigId: analystId, userId },
@@ -362,6 +376,24 @@ export async function getAnalystDetail(
         unresolvedItems: true,
         selfCorrections: true,
         createdAt: true,
+      },
+    }),
+    // Load morning briefs (most recent 10)
+    prisma.morningBrief.findMany({
+      where: { analystId },
+      orderBy: { date: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        date: true,
+        marketContext: true,
+        portfolioAlerts: true,
+        watchlistUpdates: true,
+        newOpportunities: true,
+        attentionPriority: true,
+        riskFlags: true,
+        signalCount: true,
+        generatedAt: true,
       },
     }),
   ]);
@@ -472,6 +504,7 @@ export async function getAnalystDetail(
     recentRuns: mappedRuns,
     recentTrades: mappedTrades,
     briefings,
+    morningBriefs,
     stats: {
       totalRuns,
       totalTheses,

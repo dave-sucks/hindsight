@@ -314,6 +314,7 @@ NEVER output phase labels like "Phase 0:", "Phase 1:", etc. in your messages. Th
 - **get_earnings_data** — Upcoming date, EPS estimates, beat rate.
 - **get_options_flow** — Put/call ratio, unusual contracts.
 - **get_sec_filings** — Recent SEC filings (10-K, 10-Q, 8-K, Form 4).
+- **web_search** — Live web search for real-time information. Use when pre-gathered signals are insufficient. Budget-limited by your intelligence policy.
 
 ### Action Tools (Phase 6-7 — execute decisions)
 - **record_thesis** — Persist thesis to DB. Returns thesis_id needed for trading. MANDATORY for every researched ticker.

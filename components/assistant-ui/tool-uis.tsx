@@ -443,6 +443,12 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: () => null,
   });
 
+  // ── Web Search — rendered as CoT step by ResearchToolGroup ──────────
+  useAssistantToolUI({
+    toolName: "web_search",
+    render: () => null,
+  });
+
   // ── V3 Intelligence Layer — CoT steps ────────────────────────────────────
   useAssistantToolUI({
     toolName: "read_morning_brief",
@@ -472,22 +478,114 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
-      const marketCtx = typeof r.marketContext === "string" ? r.marketContext.slice(0, 100) : "";
-      const alertCount = Array.isArray(r.portfolioAlerts) ? r.portfolioAlerts.length : 0;
-      const watchCount = Array.isArray(r.watchlistUpdates) ? r.watchlistUpdates.length : 0;
-      const oppCount = Array.isArray(r.newOpportunities) ? r.newOpportunities.length : 0;
+      const marketCtx = typeof r.marketContext === "string" ? r.marketContext : "";
+      const alerts = Array.isArray(r.portfolioAlerts) ? r.portfolioAlerts as Array<{ ticker: string; alert: string; urgency: string }> : [];
+      const watchUpdates = Array.isArray(r.watchlistUpdates) ? r.watchlistUpdates as Array<{ ticker: string; update: string; recommendation: string }> : [];
+      const opportunities = Array.isArray(r.newOpportunities) ? r.newOpportunities as Array<{ headline: string; tickers: string[]; thesisSeed: string }> : [];
+      const riskFlags = Array.isArray(r.riskFlags) ? r.riskFlags as string[] : [];
+      const attentionPriority = Array.isArray(r.attentionPriority) ? r.attentionPriority as string[] : [];
 
       return (
-        <ChainOfThought defaultOpen>
-          <ChainOfThoughtHeader>Morning intelligence brief</ChainOfThoughtHeader>
-          <ChainOfThoughtContent>
-            <ChainOfThoughtStep icon={BarChart3} label={marketCtx ? `${marketCtx}…` : "Market context loaded"} status="complete" />
-            <ChainOfThoughtStep icon={Briefcase} label={`${alertCount} portfolio alert${alertCount !== 1 ? "s" : ""}`} status="complete" />
-            <ChainOfThoughtStep icon={Eye} label={`${watchCount} watchlist update${watchCount !== 1 ? "s" : ""}`} status="complete" />
-            <ChainOfThoughtStep icon={Zap} label={`${oppCount} new opportunit${oppCount !== 1 ? "ies" : "y"}`} status="complete" />
-          </ChainOfThoughtContent>
+        <Card className="p-6 my-2 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium">Morning Intelligence Brief</h3>
+            <span className="text-xs text-muted-foreground">{typeof r.date === "string" ? r.date : ""}</span>
+          </div>
+
+          {/* Market Context */}
+          {marketCtx && (
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Market Context</p>
+              <p className="text-sm text-muted-foreground">{marketCtx}</p>
+            </div>
+          )}
+
+          {/* Attention Priority */}
+          {attentionPriority.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Focus:</span>
+              {attentionPriority.map((t) => (
+                <Badge key={t} variant="secondary">${t}</Badge>
+              ))}
+            </div>
+          )}
+
+          {/* Portfolio Alerts */}
+          {alerts.length > 0 && (
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">Portfolio Alerts</p>
+              <div className="space-y-1.5">
+                {alerts.map((a, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm">
+                    <Badge variant={a.urgency === "HIGH" || a.urgency === "BREAKING" ? "destructive" : "secondary"}>
+                      ${a.ticker}
+                    </Badge>
+                    <span className="text-muted-foreground">{a.alert}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Watchlist Updates */}
+          {watchUpdates.length > 0 && (
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">Watchlist Updates</p>
+              <div className="space-y-1.5">
+                {watchUpdates.map((w, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm">
+                    <Badge variant="outline">${w.ticker}</Badge>
+                    <span className="text-muted-foreground">{w.update}</span>
+                    {w.recommendation === "ESCALATE" && (
+                      <Badge variant="default">Escalate</Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* New Opportunities */}
+          {opportunities.length > 0 && (
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">New Opportunities</p>
+              <div className="space-y-1.5">
+                {opportunities.map((opp, i) => (
+                  <div key={i} className="text-sm">
+                    <div className="flex items-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                      <span className="font-medium">{opp.headline}</span>
+                    </div>
+                    {opp.tickers.length > 0 && (
+                      <div className="flex items-center gap-1 mt-0.5 ml-5">
+                        {opp.tickers.map((t) => (
+                          <Badge key={t} variant="secondary">${t}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    {opp.thesisSeed && (
+                      <p className="text-muted-foreground ml-5 mt-0.5">{opp.thesisSeed}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Risk Flags */}
+          {riskFlags.length > 0 && (
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Risk Flags</p>
+              <div className="space-y-0.5">
+                {riskFlags.map((flag, i) => (
+                  <p key={i} className="text-sm text-red-500">• {flag}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
           <SourceChips sources={[{ provider: "Intelligence Pipeline", title: "Morning Brief", excerpt: `${r.signalCount ?? 0} signals synthesized` }]} />
-        </ChainOfThought>
+        </Card>
       );
     },
   });

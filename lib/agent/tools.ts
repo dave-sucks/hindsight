@@ -339,6 +339,7 @@ function logToolEnd(name: string, t0: number, runId: string, extra?: string, sta
 export function createResearchTools(ctx: ToolContext) {
   // Per-run stats — each run gets its own counters (no shared mutable state)
   const stats = createApiCallStats();
+  let liveSearchCount = 0; // tracks web_search calls against policy budget
   console.log(`[tools] Creating research tools for runId=${ctx.runId} analystId=${ctx.analystId ?? "none"}`);
 
   const toolsBase = {
@@ -2275,6 +2276,63 @@ export function createResearchTools(ctx: ToolContext) {
           });
         }
 
+        // ── Fallback: if 0 routed signals, query by sectors/watchlist directly ──
+        if (finalRoutes.length === 0) {
+          const config = await prisma.agentConfig.findUnique({
+            where: { id: ctx.analystId },
+            select: { sectors: true, watchlist: true },
+          });
+
+          if (config && (config.sectors.length > 0 || config.watchlist.length > 0)) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const fallbackSignals = await prisma.signal.findMany({
+              where: {
+                createdAt: { gte: today },
+                urgency: { in: validUrgencies },
+                sourceQuality: { gte: minSourceQuality },
+                OR: [
+                  ...(config.watchlist.length > 0 ? [{ tickers: { hasSome: config.watchlist } }] : []),
+                  ...(config.sectors.length > 0 ? [{ sectors: { hasSome: config.sectors } }] : []),
+                ],
+              },
+              orderBy: { createdAt: "desc" },
+              take: effectiveLimit,
+            });
+
+            if (fallbackSignals.length > 0) {
+              return {
+                count: fallbackSignals.length,
+                fallback: true,
+                fallbackReason: "No routed signals found — falling back to sector/watchlist match",
+                policyApplied: {
+                  maxSignals: policyMaxSignals,
+                  minUrgency: urgencyOrder[effectiveMinIdx],
+                  minSourceQuality,
+                  excludedCategories,
+                },
+                signals: fallbackSignals.map((s) => ({
+                  signalId: s.id,
+                  type: s.type,
+                  headline: s.headline,
+                  summary: s.summary,
+                  tickers: s.tickers,
+                  themes: s.themes,
+                  sentiment: s.sentiment,
+                  urgency: s.urgency,
+                  freshness: s.freshness,
+                  sourceNames: s.sourceNames,
+                  sourceUrls: s.sourceUrls,
+                  relevanceScore: 0,
+                  routeReason: "fallback_sector_watchlist_match",
+                  artifactId: s.artifactId,
+                })),
+              };
+            }
+          }
+        }
+
         return {
           count: finalRoutes.length,
           policyApplied: {
@@ -2330,6 +2388,111 @@ export function createResearchTools(ctx: ToolContext) {
             ? [{ title: artifact.title ?? "Source", url: artifact.url, provider: "Firecrawl", excerpt: artifact.contentSummary ?? "" }]
             : [],
         };
+      },
+    }),
+
+    web_search: tool({
+      description:
+        "Search the web for real-time information. Use when pre-gathered intelligence is insufficient and you need live data — breaking news, recent developments, or niche topics not covered by the signal pipeline. Respects your intelligence policy's allowLiveSearch and liveSearchBudget.",
+      inputSchema: z.object({
+        query: z.string().describe("Search query — be specific and financial-context-aware"),
+        maxResults: z.number().optional().describe("Max results to return (default 5, max 10)"),
+      }),
+      execute: async ({ query, maxResults = 5 }) => {
+        const policy = ctx.intelligencePolicy;
+
+        // Check policy: is live search allowed?
+        if (policy && !policy.allowLiveSearch) {
+          return {
+            error: "Live search is disabled by your intelligence policy. Use pre-gathered signals instead.",
+            allowed: false,
+          };
+        }
+
+        // Check budget
+        const budget = policy?.liveSearchBudget ?? 5;
+        if (liveSearchCount >= budget) {
+          return {
+            error: `Live search budget exhausted (${budget}/${budget} used). Use pre-gathered intelligence for remaining research.`,
+            allowed: false,
+            budgetUsed: liveSearchCount,
+            budgetMax: budget,
+          };
+        }
+
+        const SEARCH_API_KEY = process.env.SERPER_API_KEY ?? process.env.SEARCH_API_KEY;
+        if (!SEARCH_API_KEY) {
+          return { error: "Search API key not configured. Set SERPER_API_KEY or SEARCH_API_KEY in environment." };
+        }
+
+        liveSearchCount++;
+        const clampedMax = Math.min(Math.max(maxResults, 1), 10);
+        logToolStart("web_search", ctx.runId, `q="${query}" max=${clampedMax} budget=${liveSearchCount}/${budget}`, stats);
+
+        try {
+          const res = await fetch("https://google.serper.dev/search", {
+            method: "POST",
+            headers: {
+              "X-API-KEY": SEARCH_API_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              q: query,
+              num: clampedMax,
+            }),
+            signal: AbortSignal.timeout(API_TIMEOUT_MS),
+          });
+
+          if (!res.ok) {
+            stats.errors++;
+            return { error: `Search API error: ${res.status} ${res.statusText}` };
+          }
+
+          stats.other++;
+          const data = await res.json() as {
+            organic?: Array<{
+              title: string;
+              link: string;
+              snippet: string;
+              date?: string;
+            }>;
+            knowledgeGraph?: {
+              title?: string;
+              description?: string;
+            };
+          };
+
+          const results = (data.organic ?? []).slice(0, clampedMax).map((r) => {
+            let domain = "";
+            try { domain = new URL(r.link).hostname.replace(/^www\./, ""); } catch { /* */ }
+            return {
+              title: r.title,
+              url: r.link,
+              snippet: r.snippet,
+              domain,
+              date: r.date ?? null,
+            };
+          });
+
+          return {
+            query,
+            resultCount: results.length,
+            budgetUsed: liveSearchCount,
+            budgetMax: budget,
+            results,
+            knowledgeGraph: data.knowledgeGraph ?? null,
+            _sources: results.map((r) => ({
+              title: r.title,
+              url: r.url,
+              provider: r.domain,
+              excerpt: r.snippet,
+            })),
+          };
+        } catch (e) {
+          stats.errors++;
+          const msg = e instanceof Error ? e.message : String(e);
+          return { error: `Search failed: ${msg}` };
+        }
       },
     }),
 
