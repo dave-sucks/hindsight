@@ -37,6 +37,7 @@ import {
 import { StockLogo } from "@/components/StockLogo";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
+import { SilkOrb } from "@/components/effects/silk-orb";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
 
@@ -104,8 +105,9 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
 
         {/* ── Top SectionHeader ── */}
         <div className="p-2 flex flex-col gap-1 min-w-0">
-          {/* ── Header: name | PnlBadge + 3-dot menu ── */}
+          {/* ── Header: orb + name | PnlBadge + 3-dot menu ── */}
           <div className="flex items-center gap-2 min-w-0">
+            <SilkOrb size={28} speed={10} color="#AEFD83" scale={0.08} noiseIntensity={1.5} />
             <h2 className="font-brand text-base font-bold leading-tight truncate flex-1 min-w-0">
               {analyst.name}
             </h2>
