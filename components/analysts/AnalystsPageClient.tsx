@@ -37,9 +37,11 @@ import {
 import { StockLogo } from "@/components/StockLogo";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
-import { SilkOrb } from "@/components/SilkOrb";
+import dynamic from "next/dynamic";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
+
+const Silk = dynamic(() => import("@/components/Silk"), { ssr: false });
 
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
 
@@ -105,9 +107,8 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
 
         {/* ── Top SectionHeader ── */}
         <div className="p-2 flex flex-col gap-1 min-w-0">
-          {/* ── Header: orb + name | PnlBadge + 3-dot menu ── */}
+          {/* ── Header: name | PnlBadge + 3-dot menu ── */}
           <div className="flex items-center gap-2 min-w-0">
-            <SilkOrb size={28} speed={10} color="#AEFD83" noiseIntensity={1.5} />
             <h2 className="font-brand text-base font-bold leading-tight truncate flex-1 min-w-0">
               {analyst.name}
             </h2>
@@ -365,7 +366,12 @@ export default function AnalystsPageClient({
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-semibold">Analysts</h1>
+      <div className="flex items-center gap-6">
+        <h1 className="text-2xl font-semibold">Analysts</h1>
+        <div style={{ width: 200, height: 200, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}>
+          <Silk speed={5} scale={1} color="#AEFD83" noiseIntensity={1.5} rotation={0} />
+        </div>
+      </div>
 
       {analysts.length === 0 ? (
         <AnalystsEmptyState />
