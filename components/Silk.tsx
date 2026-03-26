@@ -1,3 +1,6 @@
+/* eslint-disable react/no-unknown-property */
+"use client";
+
 import React, { forwardRef, useMemo, useRef, useLayoutEffect } from 'react';
 import { Canvas, useFrame, useThree, RootState } from '@react-three/fiber';
 import { Color, Mesh, ShaderMaterial } from 'three';
@@ -5,12 +8,18 @@ import { IUniform } from 'three';
 
 type NormalizedRGB = [number, number, number];
 
-const hexToNormalizedRGB = (hex: string): NormalizedRGB => {
-  const clean = hex.replace('#', '');
-  const r = parseInt(clean.slice(0, 2), 16) / 255;
-  const g = parseInt(clean.slice(2, 4), 16) / 255;
-  const b = parseInt(clean.slice(4, 6), 16) / 255;
-  return [r, g, b];
+const hexToNormalizedRGB = (hex?: string | null): NormalizedRGB => {
+  if (!hex || typeof hex !== 'string') return [0.68, 0.99, 0.51];
+  try {
+    const clean = hex.replace('#', '');
+    if (clean.length < 6) return [0.68, 0.99, 0.51];
+    const r = parseInt(clean.slice(0, 2), 16) / 255;
+    const g = parseInt(clean.slice(2, 4), 16) / 255;
+    const b = parseInt(clean.slice(4, 6), 16) / 255;
+    return [r, g, b];
+  } catch {
+    return [0.68, 0.99, 0.51];
+  }
 };
 
 interface UniformValue<T = number | Color> {
