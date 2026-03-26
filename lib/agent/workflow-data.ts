@@ -56,7 +56,7 @@ export const SOURCE_REGISTRY: Record<string, SourceDef> = {
   "Market context": { icon: BarChart3, description: "Live market data gathered from earlier research steps." },
   "Your input": { icon: User, description: "Your preferences and feedback from the conversation." },
   "Strategy logic": { icon: Brain, description: "Derived from the strategy prompt and market research above." },
-  "Intelligence Pipeline": { icon: Globe, description: "V3 intelligence backbone — background jobs gather signals from source packs, intelligence queries, and portfolio monitoring. The agent reads pre-gathered intelligence instead of rediscovering from scratch." },
+  "Intelligence Pipeline": { icon: Globe, description: "Intelligence backbone — background monitors (search, domain, ticker, API) gather findings and route them to analysts. The agent reads pre-gathered intelligence instead of rediscovering from scratch." },
   Sonar: { icon: Search, description: "Perplexity Sonar API — domain-filtered web search used by intelligence jobs to gather signals from tracked sources." },
   Firecrawl: { icon: Newspaper, description: "Firecrawl web scraping — extracts full article content from URLs found by Sonar, stored as Artifacts." },
 };
@@ -101,13 +101,13 @@ export const ANALYST_BUILDER_STEPS: FlowStep[] = [
     title: "Propose intelligence setup",
     icon: Globe,
     sources: ["Strategy logic", "Market context"],
-    summary: "Proposes the analyst's intelligence pipeline: a source pack with 4-6 curated domain sources (e.g. Electrek for EV, STAT News for biotech), 3-5 permanent intelligence queries for the daily morning sweep, and an intelligence policy controlling signal budgets, attention weights (holdings vs watchlist vs discovery), and quality floors. This powers the background discovery that feeds the analyst before each run.",
+    summary: "Proposes the analyst's monitors: 4-6 domain monitors (e.g. Electrek for EV, STAT News for biotech), 3-5 search monitors for the daily sweep, and an intelligence policy controlling signal budgets, attention weights (holdings vs watchlist vs discovery), and quality floors. This powers the background discovery that feeds the analyst before each run.",
   },
   {
     title: "Propose the complete analyst",
     icon: CheckCircle2,
     sources: ["All above"],
-    summary: "Presents the complete analyst profile as a confirmation card — including strategy, parameters, source pack, queries, and intelligence policy. You can refine any part through conversation. Click 'Create Analyst' when you're happy — it saves everything: the config, source pack with sources, intelligence queries, and structured watchlist items.",
+    summary: "Presents the complete analyst profile as a confirmation card — including strategy, parameters, domain monitors, search monitors, and intelligence policy. You can refine any part through conversation. Click 'Create Analyst' when you're happy — it saves everything: the config, monitors, and structured watchlist items.",
   },
   {
     phase: "Phase 4 — Refine",
@@ -123,24 +123,24 @@ export const ANALYST_BUILDER_STEPS: FlowStep[] = [
 export const INTELLIGENCE_PIPELINE_STEPS: FlowStep[] = [
   {
     phase: "6:30 AM ET",
-    title: "Firm Market Sweep",
+    title: "Search Monitors",
     icon: Search,
     sources: ["Sonar", "FMP", "Finnhub"],
-    summary: "Executes all firm-level intelligence queries via Perplexity Sonar web search. Also fetches FMP market movers (gainers/losers/actives) and Finnhub earnings calendar for the next 7 days. Creates signals for everything found.",
+    summary: "Runs all enabled search monitors via Perplexity Sonar web search. Also runs API monitors: FMP market movers (gainers/losers/actives) and Finnhub earnings calendar. Creates findings for everything found.",
   },
   {
     phase: "7:00 AM ET",
-    title: "Portfolio & Watchlist Monitor",
+    title: "Ticker Monitors",
     icon: Briefcase,
     sources: ["Sonar"],
-    summary: "Searches for news about every open position and watchlist item across all analysts. Deduplicates tickers so NVDA is only searched once even if 3 analysts hold it.",
+    summary: "Searches for news about every open position and watchlist ticker across all analysts. Deduplicates tickers so NVDA is only searched once even if 3 analysts hold it.",
   },
   {
     phase: "7:15 AM ET",
-    title: "Source Pack Monitor",
+    title: "Domain Monitors",
     icon: Newspaper,
     sources: ["Sonar", "Firecrawl"],
-    summary: "Checks all tracked domain sources in each pack for new content. Extracts full articles via Firecrawl and stores them as Artifacts linked to signals.",
+    summary: "Checks all enabled domain monitors for new content via Perplexity Sonar. High-priority domains get full article extraction via Firecrawl.",
   },
   {
     phase: "7:30 AM ET",
@@ -178,10 +178,10 @@ export const INTELLIGENCE_PIPELINE_DETAILS: DetailSection[] = [
   {
     heading: "Signal types from structured APIs",
     items: [
-      { label: "MACRO signals", value: "FMP market movers — top gainers, losers, and most active stocks with price change data. Created by the firm market sweep." },
-      { label: "EARNINGS signals", value: "Finnhub earnings calendar — companies reporting in the next 7 days with expected EPS and revenue. Urgency: HIGH if within 2 days." },
-      { label: "NEWS signals", value: "Web search results from Perplexity Sonar — financial news, analysis, press releases matched to intelligence queries." },
-      { label: "SECTOR signals", value: "Sector-level themes and rotations detected by firm-level queries." },
+      { label: "MACRO findings", value: "FMP market movers — top gainers, losers, and most active stocks as aggregate findings with price change data." },
+      { label: "EARNINGS findings", value: "Finnhub earnings calendar — companies reporting in the next 7 days as a single aggregate finding." },
+      { label: "NEWS findings", value: "Web search results from Perplexity Sonar — financial news, analysis, press releases matched to search monitors." },
+      { label: "SECTOR findings", value: "Sector-level themes and rotations detected by firm-level search monitors." },
     ],
   },
 ];
@@ -272,7 +272,7 @@ export const LEARNING_LOOP_DETAILS: DetailSection[] = [
       { label: "Watch tomorrow", value: "2-5 specific tickers with triggers — derived from positions near targets/stops, unresolved research, catalysts mentioned in conversation. e.g. 'AMD: breakout above $180 → INITIATE LONG [HIGH]'" },
       { label: "Unresolved items", value: "Data gaps, pending catalysts, tickers the analyst wanted to research but ran out of steps for, failed tool calls — anything that needs follow-up." },
       { label: "Self-corrections", value: "Behavioral patterns the reviewer noticed — over-concentration, momentum chasing, ignoring stop losses, skipping watchlist items. More honest than self-assessment because the reviewer has no ego." },
-      { label: "Dynamic queries", value: "0-5 temporary intelligence queries for things that need monitoring but aren't covered by existing source packs or permanent queries. Examples: 'NVIDIA earnings guidance revision Q2 2026', 'FDA approval timeline for Eli Lilly GLP-1 competitor'. Each has an expiration date (3-30 days). These get picked up by the morning sweep job and generate signals automatically — the analyst sees them as routed signals in its next session." },
+      { label: "Dynamic monitors", value: "0-5 temporary search monitors for things that need tracking but aren't covered by existing monitors. Examples: 'NVIDIA earnings guidance revision Q2 2026', 'FDA approval timeline for Eli Lilly GLP-1 competitor'. Each has an expiration date (3-30 days). These get picked up by the search monitors job and generate findings automatically — the analyst sees them as routed findings in its next session." },
     ],
   },
   {

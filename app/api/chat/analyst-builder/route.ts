@@ -68,10 +68,10 @@ const configSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Tickers to never trade."),
-  // V3: Intelligence layer proposals
+  // Intelligence monitors — domain sources and search queries
   sourcePackProposal: z
     .object({
-      name: z.string().describe("Source pack name, e.g. 'EV Industry Intelligence Pack'"),
+      name: z.string().describe("Monitor group name, e.g. 'EV Industry Monitors'"),
       sources: z
         .array(
           z.object({
@@ -84,10 +84,10 @@ const configSchema = z.object({
         )
         .min(4)
         .max(6)
-        .describe("4-6 domain sources that are most relevant to this analyst's sector/strategy. Think like a research desk — what would a real analyst in this space read every day?"),
+        .describe("4-6 domain monitors — websites the system checks daily for this analyst via Perplexity Sonar + Firecrawl."),
     })
     .optional()
-    .describe("A curated source pack proposal with 4-6 domain sources tailored to the analyst's strategy. The intelligence pipeline will monitor these sources daily and route relevant signals to this analyst."),
+    .describe("Domain monitors: 4-6 websites the intelligence pipeline monitors daily for this analyst. Each becomes a domain monitor that searches the site for new content and routes findings to the analyst."),
   intelligenceQueries: z
     .array(
       z.object({
@@ -99,7 +99,7 @@ const configSchema = z.object({
     .min(3)
     .max(5)
     .optional()
-    .describe("3-5 permanent intelligence queries that define what this analyst monitors. These run daily in the morning sweep and generate signals. Think: what would this analyst Google every morning before the market opens?"),
+    .describe("Search monitors: 3-5 queries the system searches daily via Perplexity Sonar. Think: what would this analyst Google every morning before the market opens?"),
   intelligencePolicy: z
     .object({
       holdingsAttention: z.number().min(0).max(1).describe("Weight for signals about current positions. Aggressive traders = 0.3, conservative = 0.5"),
@@ -196,20 +196,20 @@ Create short, memorable names that capture the analyst's personality:
 - "Biotech Catalyst Sniper" (sector + strategy)
 - "Contrarian Value Finder" (style + philosophy)
 
-## Intelligence Pipeline Integration (V3)
-When you call suggest_config, you MUST also propose:
+## Intelligence Monitors
+When you call suggest_config, you MUST also propose monitors that power the analyst's daily intelligence:
 
-### Source Pack (sourcePackProposal)
+### Domain Monitors (sourcePackProposal)
 Think like a research desk manager setting up a new analyst's information feeds. What 4-6 domain sources would a REAL analyst in this space read every morning?
 - **Tier-1 financial press** (Reuters, Bloomberg, WSJ) — quality 4-5, category MARKET
 - **Sector-specific outlets** (Electrek for EV, STAT News for biotech, The Information for tech) — quality 3-4, category SECTOR
-- **Company-specific sources** (official investor relations, SEC filings, earnings call transcripts) — quality 4-5, category COMPANY
+- **Company-specific sources** (official investor relations, SEC filings) — quality 4-5, category COMPANY
 - **Thematic/niche sources** (ARK Invest research for disruptive tech, FedWatch for macro) — quality 2-4, category THEMATIC
 
-The intelligence pipeline monitors these sources daily via Perplexity Sonar and routes relevant signals to the analyst before each run. Better sources = better intelligence = better trades.
+These become domain monitors — the system searches these sites daily via Perplexity Sonar and extracts articles via Firecrawl. Better sources = better intelligence = better trades.
 
-### Intelligence Queries (intelligenceQueries)
-3-5 permanent search queries that define what this analyst cares about. These run in the daily morning sweep.
+### Search Monitors (intelligenceQueries)
+3-5 permanent search monitors that define what this analyst cares about. These run daily as Perplexity Sonar web searches.
 - Be SPECIFIC: "electric vehicle delivery numbers and production data by manufacturer" not "EV news"
 - Be STRATEGIC: queries should directly support the analyst's edge
 - Cover different angles: one about the sector landscape, one about key companies, one about catalysts/events
@@ -221,11 +221,13 @@ Tune the attention weights based on the analyst's style:
 - **Balanced analyst**: holdingsAttention=0.40, watchlistAttention=0.35, discoveryAttention=0.25
 - **The three attention weights should sum to approximately 1.0**
 
+Note: In addition to the monitors you propose, the system automatically monitors all portfolio positions and watchlist tickers, plus firm-wide API feeds (FMP market movers, Finnhub earnings calendar). You don't need to propose those.
+
 ## Important
 - NEVER call suggest_config without first calling at least get_market_context + one other research tool
 - Always call suggest_config with ALL required fields filled in
 - The analystPrompt field is the MOST important — make it thorough and specific
-- ALWAYS include sourcePackProposal, intelligenceQueries, and intelligencePolicy — these power the intelligence pipeline
+- ALWAYS include sourcePackProposal, intelligenceQueries, and intelligencePolicy — these power the monitor pipeline
 - Be conversational and enthusiastic — push the user to think deeper
 - This is paper trading (simulated) — remind users if they seem confused about real money
 - Use your research tools during brainstorming — don't just ask questions, bring data to the conversation

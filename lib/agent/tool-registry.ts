@@ -128,7 +128,7 @@ export const TOOLS: ToolDef[] = [
       {
         source: "internal",
         title: "Routed signals",
-        description: "Signals gathered by background jobs (market sweeps, source pack monitors, portfolio monitors) and routed to this analyst based on sector overlap, watchlist tickers, and thematic relevance. Filtered by intelligence policy (urgency floor, quality floor, signal budget).",
+        description: "Findings gathered by background monitors (search, domain, ticker, and API monitors) and routed to this analyst based on sector overlap, watchlist tickers, and thematic relevance. Filtered by intelligence policy (urgency floor, quality floor, signal budget).",
         type: "db",
         endpointOrPath: "prisma.analystSignalRoute.findMany()",
         exampleOutput: "12 signals · 3 HIGH urgency · Topics: NVDA earnings beat, AMD guidance raise, semiconductor sector rotation",

@@ -1,43 +1,6 @@
 // ── Intelligence Page Types ──────────────────────────────────────────────────
 // Shared types for all intelligence components. Matches API response shapes.
 
-export interface IntelligenceQuery {
-  id: string;
-  query: string;
-  category: string;
-  scope: string;
-  analystId: string | null;
-  enabled: boolean;
-  createdBy: string;
-  expiresAt: string | null;
-  sourceRunId: string | null;
-  createdAt: string;
-}
-
-export interface Source {
-  id: string;
-  name: string;
-  type: string;
-  url: string | null;
-  domain: string | null;
-  category: string;
-  qualityScore: number;
-  enabled: boolean;
-  lastCheckedAt: string | null;
-}
-
-export interface SourcePack {
-  id: string;
-  name: string;
-  scope: string;
-  analystId: string | null;
-  sources: Array<{
-    id: string;
-    priority: number;
-    source: Source;
-  }>;
-}
-
 export interface Signal {
   id: string;
   type: string;
