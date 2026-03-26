@@ -58,12 +58,6 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
   --animate-marquee: marquee 30s linear infinite;
-  --animate-aurora: aurora 60s linear infinite;
-}
-
-@keyframes aurora {
-  from { background-position: 50% 50%, 50% 50%; }
-  to { background-position: 350% 50%, 350% 50%; }
 }
 
 @keyframes marquee {

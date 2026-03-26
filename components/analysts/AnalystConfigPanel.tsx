@@ -1,7 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import dynamic from "next/dynamic";
 import {
   ArrowDownRight,
   ArrowLeftRight,
@@ -16,8 +14,6 @@ import {
   Zap,
 } from "lucide-react";
 
-const Silk = dynamic(() => import("@/components/effects/silk"), { ssr: false });
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,7 +26,6 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { StockLogo } from "@/components/StockLogo";
-import { SilkOrb } from "@/components/effects/silk-orb";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -110,6 +105,18 @@ function AttentionBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+// ─── Gradient Orb ─────────────────────────────────────────────────────────────
+
+function GradientOrb() {
+  return (
+    <div className="relative size-14 shrink-0">
+      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--chart-1)] via-[var(--chart-2)] to-[var(--chart-3)] opacity-30 blur-md" />
+      <div className="relative size-14 rounded-full bg-gradient-to-br from-[var(--chart-1)] via-[var(--chart-2)] to-[var(--chart-3)] opacity-80" />
+      <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/25 to-transparent" />
+    </div>
+  );
+}
+
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
 export function AnalystConfigPanel({
@@ -128,27 +135,12 @@ export function AnalystConfigPanel({
   const policy = config.intelligencePolicy;
   const dm = directionMeta[direction] ?? directionMeta.BOTH;
 
-  // Intro: full Silk background → shrink to orb after 1.5s
-  const [introActive, setIntroActive] = useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setIntroActive(false), 1500);
-    return () => clearTimeout(t);
-  }, []);
-
   return (
-    <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden relative">
-      {/* Intro Silk background — fills panel, fades out */}
-      <div
-        className="absolute inset-0 z-[5] transition-opacity duration-700 ease-out"
-        style={{ opacity: introActive ? 1 : 0, pointerEvents: "none" }}
-      >
-        <Silk speed={10} scale={0.08} color="#AEFD83" noiseIntensity={1.5} rotation={0} />
-      </div>
-
-      {/* ── Header with SilkOrb avatar ──────────────────────────── */}
-      <div className="relative z-[6] shrink-0 px-4 pt-4 pb-3">
+    <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden">
+      {/* ── Header ──────────────────────────────────────────────── */}
+      <div className="shrink-0 px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
-          <SilkOrb size={56} speed={10} color="#AEFD83" scale={0.08} noiseIntensity={1.5} />
+          <GradientOrb />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-base font-brand font-bold truncate leading-tight">
@@ -200,7 +192,7 @@ export function AnalystConfigPanel({
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────── */}
-      <Tabs defaultValue="overview" className="relative z-[6] flex-1 flex flex-col min-h-0">
+      <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
         <div className="px-4 pt-2 shrink-0">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -568,7 +560,7 @@ export function AnalystConfigPanel({
       </Tabs>
 
       {/* ── Footer: Create button ─────────────────────────────── */}
-      <div className="relative z-[6] shrink-0 border-t px-4 py-3 flex">
+      <div className="shrink-0 border-t px-4 py-3 flex">
         <Button
           onClick={onConfirm}
           disabled={isCreating}
