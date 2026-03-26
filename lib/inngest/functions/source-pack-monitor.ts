@@ -83,7 +83,12 @@ export const sourcePackMonitor = inngest.createFunction(
             batchId,
             sonarResponse,
             "NEWS",
-            avgQuality
+            avgQuality,
+            {
+              searchTool: "PERPLEXITY_SONAR",
+              searchQuery: query,
+              searchContext: `source_pack:${pack.name}:${domains.join(",")}`,
+            }
           )
 
           // Update lastCheckedAt for all sources in this pack
