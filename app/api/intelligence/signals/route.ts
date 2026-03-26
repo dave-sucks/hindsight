@@ -36,10 +36,23 @@ export async function GET(req: NextRequest) {
       freshness: true,
       sourceUrls: true,
       sourceNames: true,
+      searchTool: true,
+      searchQuery: true,
+      searchContext: true,
       expiresAt: true,
       createdAt: true,
       batch: {
         select: { jobType: true, status: true, startedAt: true },
+      },
+      // Per-signal routing: which analysts received this signal
+      analystRoutes: {
+        select: {
+          relevanceScore: true,
+          routeReason: true,
+          status: true,
+          analyst: { select: { id: true, name: true } },
+        },
+        orderBy: { relevanceScore: "desc" },
       },
     },
   })

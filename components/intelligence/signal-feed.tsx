@@ -30,19 +30,13 @@ import {
   CalendarDays,
   ExternalLink,
   FileText,
-  Flame,
   Globe,
-  Lock,
   Search,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Signal, AnalystRouteInfo } from "./types";
-import {
-  relativeTime,
-  JOB_LABELS,
-  URGENCY_CONFIG,
-  SENTIMENT_CONFIG,
-} from "./types";
+import type { Signal } from "./types";
+import { relativeTime, JOB_LABELS, URGENCY_CONFIG, SENTIMENT_CONFIG } from "./types";
 import { PerplexityLogo, FirecrawlLogo } from "./icons";
 
 type Icon = React.ComponentType<{ className?: string }>;
@@ -51,10 +45,9 @@ type Icon = React.ComponentType<{ className?: string }>;
 
 interface SignalFeedProps {
   signals: Signal[];
-  routes: AnalystRouteInfo[];
 }
 
-export function SignalFeed({ signals, routes }: SignalFeedProps) {
+export function SignalFeed({ signals }: SignalFeedProps) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [urgencyFilter, setUrgencyFilter] = useState("ALL");
@@ -104,10 +97,10 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">Type</SelectItem>
+              <SelectItem value="ALL">All types</SelectItem>
               {signalTypes.map((t) => (
                 <SelectItem key={t} value={t}>
-                  {t}
+                  {SIGNAL_TYPE_LABELS[t] ?? t}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -117,7 +110,7 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">Urgency</SelectItem>
+              <SelectItem value="ALL">All urgency</SelectItem>
               <SelectItem value="BREAKING">Breaking</SelectItem>
               <SelectItem value="HIGH">High</SelectItem>
               <SelectItem value="MEDIUM">Medium</SelectItem>
@@ -140,7 +133,6 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
             <SignalRow
               key={signal.id}
               signal={signal}
-              routes={routes}
               onSelect={handleSelect}
             />
           ))}
@@ -152,9 +144,7 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
           onOpenChange={(open) => !open && setSelected(null)}
         >
           <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
-            {selected && (
-              <SignalDetail signal={selected} routes={routes} />
-            )}
+            {selected && <SignalDetail signal={selected} />}
           </SheetContent>
         </Sheet>
       </div>
@@ -163,264 +153,246 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
 }
 
 // ── Signal Row ──────────────────────────────────────────────────────────────
+// Clean, news-reader style. Left border = urgency. Source attribution first.
 
 const SignalRow = memo(function SignalRow({
   signal,
-  routes,
   onSelect,
 }: {
   signal: Signal;
-  routes: AnalystRouteInfo[];
   onSelect: (signal: Signal) => void;
 }) {
   const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
-  const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
+  const source = getSourceAttribution(signal);
+  const sentimentCfg = SENTIMENT_CONFIG[signal.sentiment];
 
   return (
     <Card
-      className="p-4 cursor-pointer hover:bg-accent/50 transition-colors"
+      className={cn(
+        "p-4 cursor-pointer hover:bg-accent/50 transition-colors border-l-2",
+        URGENCY_BORDER[signal.urgency] ?? "border-l-transparent"
+      )}
       onClick={() => onSelect(signal)}
     >
-      <div className="flex items-start gap-3">
-        {/* Urgency dot */}
-        <Tooltip>
-          <TooltipTrigger render={<span className="inline-flex" />}>
-            <span
-              className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", urgency.dot)}
-            />
-          </TooltipTrigger>
-          <TooltipContent side="left">{urgency.label} urgency</TooltipContent>
-        </Tooltip>
+      <div className="space-y-1.5">
+        {/* Headline */}
+        <p className="text-sm font-medium leading-tight">{signal.headline}</p>
 
-        <div className="flex-1 min-w-0 space-y-1.5">
-          {/* Headline */}
-          <p className="text-sm font-medium leading-tight">{signal.headline}</p>
+        {/* Summary — 1 line */}
+        <p className="text-xs text-muted-foreground line-clamp-1">
+          {signal.summary}
+        </p>
 
-          {/* Summary */}
-          <p className="text-xs text-muted-foreground line-clamp-2">
-            {signal.summary}
-          </p>
+        {/* Attribution row: source · tickers · sentiment indicator · time */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {/* Source */}
+          <span className="flex items-center gap-1 shrink-0">
+            <source.icon className="h-3 w-3" />
+            {source.name}
+          </span>
 
-          {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {/* Tickers */}
-            {signal.tickers.slice(0, 5).map((t) => (
-              <Badge key={t} variant="secondary">
-                ${t}
-              </Badge>
-            ))}
-            {signal.tickers.length > 5 && (
-              <span className="text-xs text-muted-foreground">
-                +{signal.tickers.length - 5}
-              </span>
-            )}
-
-            <Separator orientation="vertical" className="h-3" />
-
-            {/* Sentiment */}
-            <span className={cn("text-xs font-medium", sentiment.className)}>
-              {sentiment.label}
-            </span>
-
-            <Separator orientation="vertical" className="h-3" />
-
-            {/* Type + source */}
-            <span className="text-xs text-muted-foreground">
-              {signal.type}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {signal.sourceNames[0]
-                ? `via ${signal.sourceNames[0]}`
-                : `via ${JOB_LABELS[signal.batch?.jobType] ?? "Intelligence"}`}
-            </span>
-
-            {signal.artifactId && (
-              <Tooltip>
-                <TooltipTrigger render={<span className="inline-flex" />}>
-                  <FileText className="h-3 w-3 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>Full article available</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-
-          {/* Routing badges */}
-          {routes.length > 0 && (
-            <div className="flex flex-wrap gap-1 pt-0.5">
-              {routes
-                .filter((r) => r.totalRoutes > 0)
-                .slice(0, 4)
-                .map((r) => (
-                  <Tooltip key={r.analystId}>
-                    <TooltipTrigger render={<span className="inline-flex" />}>
-                      <Badge variant="outline" className="text-[10px]">
-                        {r.analystName}
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {r.totalRoutes} signals routed ({r.pending} pending, {r.read} read)
-                    </TooltipContent>
-                  </Tooltip>
-                ))}
-            </div>
+          {signal.sourceNames[0] && (
+            <>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="truncate max-w-[120px]">{signal.sourceNames[0]}</span>
+            </>
           )}
-        </div>
 
-        {/* Time */}
-        <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-          {relativeTime(signal.createdAt)}
-        </span>
+          {/* Tickers (max 3) */}
+          {signal.tickers.length > 0 && (
+            <>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="flex items-center gap-1">
+                {signal.tickers.slice(0, 3).map((t) => (
+                  <span key={t} className="font-medium text-foreground">
+                    ${t}
+                  </span>
+                ))}
+                {signal.tickers.length > 3 && (
+                  <span>+{signal.tickers.length - 3}</span>
+                )}
+              </span>
+            </>
+          )}
+
+          {/* Sentiment */}
+          {sentimentCfg && signal.sentiment !== "NEUTRAL" && (
+            <>
+              <span className="text-muted-foreground/40">·</span>
+              <span className={cn("font-medium", sentimentCfg.className)}>
+                {sentimentCfg.label}
+              </span>
+            </>
+          )}
+
+          {/* Full article indicator */}
+          {signal.artifactId && (
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex" />}>
+                <FileText className="h-3 w-3" />
+              </TooltipTrigger>
+              <TooltipContent>Full article extracted</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Time — pushed right */}
+          <span className="ml-auto shrink-0 tabular-nums">
+            {relativeTime(signal.createdAt)}
+          </span>
+        </div>
       </div>
     </Card>
   );
 });
 
 // ── Signal Detail Sheet ─────────────────────────────────────────────────────
+// Completely redesigned: provenance-first, source preview, no badge spam.
 
-function SignalDetail({
-  signal,
-  routes,
-}: {
-  signal: Signal;
-  routes: AnalystRouteInfo[];
-}) {
+function SignalDetail({ signal }: { signal: Signal }) {
   const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
   const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
-  const discovery = inferDiscovery(signal);
+  const provenance = buildProvenance(signal);
 
   return (
     <>
       <SheetHeader className="space-y-4">
-        {/* ── Discovery header (matches config popover style) ─────── */}
-        <DiscoveryHeader discovery={discovery} signal={signal} />
+        {/* Source preview card — if we have URLs */}
+        {signal.sourceUrls.length > 0 && (
+          <div className="space-y-2">
+            {signal.sourceUrls.slice(0, 3).map((url, i) => (
+              <SourcePreviewCard
+                key={i}
+                url={url}
+                name={signal.sourceNames[i] ?? undefined}
+              />
+            ))}
+          </div>
+        )}
 
-        {/* Title + summary */}
+        {/* Headline + summary */}
         <div className="space-y-2">
           <SheetTitle className="text-left leading-tight">
             {signal.headline}
           </SheetTitle>
           <p className="text-sm text-muted-foreground">{signal.summary}</p>
+          {signal.evidence && signal.evidence !== signal.summary && (
+            <p className="text-sm text-muted-foreground/80">{signal.evidence}</p>
+          )}
         </div>
       </SheetHeader>
 
       <div className="px-6 pb-6 space-y-5">
-        {/* Classification badges */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">{signal.type}</Badge>
-          <Badge variant="secondary">
-            <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", urgency.dot)} />
-            {urgency.label}
-          </Badge>
-          <Badge variant="secondary">
-            <span className={cn("mr-1", sentiment.className)}>{sentiment.label}</span>
-          </Badge>
-          <Badge variant="secondary">{signal.freshness}</Badge>
-        </div>
+        {/* ── Provenance: How this was found ─────────────────────────── */}
+        <div className="rounded-lg bg-muted/50 p-4 space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            How this was found
+          </p>
 
-        {/* Tickers + Themes + Sectors */}
-        {(signal.tickers.length > 0 || signal.themes.length > 0 || signal.sectors.length > 0) && (
-          <div className="space-y-2">
-            {signal.tickers.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Tickers</span>
-                {signal.tickers.map((t) => (
-                  <Badge key={t} variant="secondary">${t}</Badge>
-                ))}
-              </div>
-            )}
-            {signal.themes.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Themes</span>
-                {signal.themes.map((t) => (
-                  <Badge key={t} variant="outline">{t}</Badge>
-                ))}
-              </div>
-            )}
-            {signal.sectors.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Sectors</span>
-                {signal.sectors.map((s) => (
-                  <Badge key={s} variant="outline">{s}</Badge>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <Separator />
-
-        {/* ── How it works ────────────────────────────────────────────── */}
-        <div className="text-xs space-y-2">
-          <div className="flex items-center gap-2">
-            <discovery.toolIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="font-medium text-foreground">{discovery.toolName}</span>
-            <span className="text-muted-foreground">via {discovery.jobLabel}</span>
-            <span className="ml-auto text-muted-foreground tabular-nums">
-              {relativeTime(signal.createdAt)}
+          {/* Tool + job */}
+          <div className="flex items-center gap-2 text-sm">
+            <provenance.toolIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="font-medium">{provenance.toolName}</span>
+            <span className="text-muted-foreground">
+              during {provenance.jobLabel}
             </span>
           </div>
-          <p className="text-muted-foreground leading-relaxed">
-            {discovery.explanation}
-          </p>
-        </div>
 
-        {/* Quality scores */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>Source Quality <span className="text-foreground tabular-nums">{signal.sourceQuality}/5</span></span>
-          <span>Novelty <span className="text-foreground tabular-nums">{signal.noveltyScore}/100</span></span>
-        </div>
-
-        {/* ── Evidence Sources ────────────────────────────────────────── */}
-        {signal.sourceUrls.length > 0 && (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Sources
-              </p>
-              <div className="space-y-1">
-                {signal.sourceUrls.map((url, i) => {
-                  let domain = url;
-                  try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
-                  const name = signal.sourceNames[i];
-                  return (
-                    <a
-                      key={i}
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-sm hover:bg-accent/50 transition-colors group"
-                    >
-                      <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 min-w-0">
-                        {name && (
-                          <span className="text-foreground">{name}</span>
-                        )}
-                        <span className="text-xs text-muted-foreground ml-1 truncate">
-                          {domain}
-                        </span>
-                      </span>
-                      <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </a>
-                  );
-                })}
-              </div>
+          {/* The actual query/endpoint/trigger */}
+          {provenance.query && (
+            <div className="rounded-md bg-background border px-3 py-2">
+              {provenance.queryType === "api" ? (
+                <div className="flex items-center gap-2 font-mono text-xs">
+                  <Badge variant="secondary">GET</Badge>
+                  <span className="text-foreground">{provenance.query}</span>
+                </div>
+              ) : provenance.queryType === "domain" ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <Globe className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-foreground font-mono">{provenance.query}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs">
+                  <Search className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-foreground">{provenance.query}</span>
+                </div>
+              )}
             </div>
-          </>
+          )}
+
+          {/* Why — the context */}
+          {provenance.reason && (
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {provenance.reason}
+            </p>
+          )}
+        </div>
+
+        {/* ── Context line: Type · Urgency · Sentiment · Freshness ─── */}
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>{SIGNAL_TYPE_LABELS[signal.type] ?? signal.type}</span>
+          <span className="text-muted-foreground/40">·</span>
+          <span className="flex items-center gap-1">
+            <span className={cn("h-1.5 w-1.5 rounded-full", urgency.dot)} />
+            {urgency.label}
+          </span>
+          <span className="text-muted-foreground/40">·</span>
+          <span className={sentiment.className}>{sentiment.label}</span>
+          <span className="text-muted-foreground/40">·</span>
+          <span>{signal.freshness.charAt(0) + signal.freshness.slice(1).toLowerCase().replace(/_/g, " ")}</span>
+          <span className="ml-auto tabular-nums">{relativeTime(signal.createdAt)}</span>
+        </div>
+
+        {/* ── Tickers ─────────────────────────────────────────────────── */}
+        {signal.tickers.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {signal.tickers.map((t) => (
+              <Badge key={t} variant="secondary">
+                ${t}
+              </Badge>
+            ))}
+          </div>
         )}
 
-        {/* Artifact */}
+        {/* ── Themes + Sectors (collapsed into one line if few) ────── */}
+        {(signal.themes.length > 0 || signal.sectors.length > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            {signal.themes.map((t) => (
+              <span key={t} className="px-2 py-0.5 rounded-full bg-muted">
+                {t.toLowerCase().replace(/_/g, " ")}
+              </span>
+            ))}
+            {signal.sectors.map((s) => (
+              <span key={s} className="px-2 py-0.5 rounded-full bg-muted">
+                {s.toLowerCase()}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* ── Quality ──────────────────────────────────────────────── */}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span>
+            Source quality{" "}
+            <span className="text-foreground tabular-nums">{signal.sourceQuality}/5</span>
+          </span>
+          <span>
+            Novelty{" "}
+            <span className="text-foreground tabular-nums">{signal.noveltyScore}/100</span>
+          </span>
+        </div>
+
+        {/* ── Full article indicator ─────────────────────────────────── */}
         {signal.artifactId && (
           <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2">
-            <Flame className="h-3.5 w-3.5 text-muted-foreground" />
+            <FirecrawlLogo className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">
               Full article extracted via Firecrawl
             </span>
           </div>
         )}
 
-        {/* ── Routing ─────────────────────────────────────────────────── */}
-        {routes.length > 0 && routes.some((r) => r.totalRoutes > 0) && (
+        {/* ── Routed to (per-signal, not aggregate) ──────────────────── */}
+        {signal.analystRoutes && signal.analystRoutes.length > 0 && (
           <>
             <Separator />
             <div className="space-y-2">
@@ -428,21 +400,28 @@ function SignalDetail({
                 Routed to
               </p>
               <div className="space-y-1.5">
-                {routes
-                  .filter((r) => r.totalRoutes > 0)
-                  .map((r) => (
-                    <div
-                      key={r.analystId}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span>{r.analystName}</span>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-                        <span>{r.high} high</span>
-                        <span>{r.medium} med</span>
-                        <span>{r.low} low</span>
-                      </div>
+                {signal.analystRoutes.map((route) => (
+                  <div
+                    key={route.analyst.id}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <User className="h-3 w-3 text-muted-foreground" />
+                      <span>{route.analyst.name}</span>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="tabular-nums">{route.relevanceScore}%</span>
+                      {route.routeReason && (
+                        <Tooltip>
+                          <TooltipTrigger render={<span className="underline decoration-dotted cursor-help" />}>
+                            {formatRouteReason(route.routeReason)}
+                          </TooltipTrigger>
+                          <TooltipContent>{route.routeReason}</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </>
@@ -452,28 +431,64 @@ function SignalDetail({
   );
 }
 
-// ── Discovery Header ────────────────────────────────────────────────────────
-// Visual header matching the config popover style — search bar, domain bar,
-// ticker bar, or API endpoint depending on how the signal was discovered.
+// ── Source Preview Card ──────────────────────────────────────────────────────
+// A clean card showing source URL with favicon and domain
 
-interface Discovery {
-  type: "search" | "portfolio" | "domain" | "api";
-  /** What to show in the visual bar */
-  visual: string;
-  /** Resolved tool name */
+function SourcePreviewCard({ url, name }: { url: string; name?: string }) {
+  let domain = url;
+  let faviconUrl = "";
+  try {
+    const parsed = new URL(url);
+    domain = parsed.hostname.replace(/^www\./, "");
+    faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+  } catch {
+    /* keep raw */
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-3 rounded-lg border px-3 py-2.5 hover:bg-accent/50 transition-colors group"
+    >
+      {faviconUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={faviconUrl}
+          alt=""
+          className="h-4 w-4 shrink-0 rounded-sm"
+          loading="lazy"
+        />
+      ) : (
+        <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+      )}
+      <div className="flex-1 min-w-0">
+        {name && <p className="text-sm font-medium truncate">{name}</p>}
+        <p className="text-xs text-muted-foreground truncate">{domain}</p>
+      </div>
+      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+    </a>
+  );
+}
+
+// ── Provenance Builder ──────────────────────────────────────────────────────
+// Constructs human-readable provenance from signal metadata
+
+interface Provenance {
   toolName: string;
   toolIcon: Icon;
   jobLabel: string;
-  explanation: string;
-  /** For domain type: the source/publication name */
-  sourceName?: string;
+  query: string | null;
+  queryType: "search" | "api" | "domain";
+  reason: string | null;
 }
 
-function inferDiscovery(signal: Signal): Discovery {
+function buildProvenance(signal: Signal): Provenance {
   const jobType = signal.batch?.jobType;
   const jobLabel = JOB_LABELS[jobType] ?? jobType ?? "Intelligence";
 
-  // If we have provenance data (searchTool is populated), use it directly
+  // With provenance data
   if (signal.searchTool) {
     const toolCfg = TOOL_CONFIG[signal.searchTool];
     const toolName = toolCfg?.name ?? signal.searchTool;
@@ -482,12 +497,12 @@ function inferDiscovery(signal: Signal): Discovery {
     if (signal.searchContext?.startsWith("ticker:")) {
       const ticker = signal.searchContext.replace("ticker:", "");
       return {
-        type: "portfolio",
-        visual: `$${ticker}`,
         toolName,
         toolIcon,
         jobLabel,
-        explanation: `Sent "${signal.searchQuery ?? `${ticker} stock news`}" to Perplexity Sonar because ${ticker} is in an open position or on a watchlist. Each result becomes a signal.`,
+        query: signal.searchQuery ?? `${ticker} stock news developments catalysts today`,
+        queryType: "search",
+        reason: `${ticker} is in an open position or on a watchlist. The portfolio monitor searches for ticker-specific news that broad market sweeps might miss.`,
       };
     }
 
@@ -496,209 +511,198 @@ function inferDiscovery(signal: Signal): Discovery {
       const packName = parts[0] ?? "Sources";
       const domains = parts[1]?.split(",").slice(0, 3) ?? [];
       return {
-        type: "domain",
-        visual: domains[0] ?? packName,
-        sourceName: packName,
         toolName,
         toolIcon,
         jobLabel,
-        explanation: `Searched ${domains.length > 0 ? domains.join(", ") : "monitored domains"} via Perplexity Sonar (domain-filtered). High-value pages get full extraction via Firecrawl.`,
+        query: domains.join(", ") || packName,
+        queryType: "domain",
+        reason: `Domain-filtered search against the "${packName}" source pack. High-value pages get full text extraction via Firecrawl for deeper analysis.`,
       };
     }
 
     if (signal.searchContext?.startsWith("market_movers:")) {
       const label = signal.searchContext.replace("market_movers:", "");
       return {
-        type: "api",
-        visual: signal.searchQuery ?? `/stock_market/${label}`,
         toolName,
         toolIcon,
         jobLabel,
-        explanation: `Called FMP market movers API for ${label}. Each of the top 10 results becomes a separate signal with price change data.`,
+        query: signal.searchQuery ?? `/stock_market/${label}`,
+        queryType: "api",
+        reason: `FMP market movers API — top 10 ${label}. Each result becomes a signal with price change and volume data.`,
       };
     }
 
     if (signal.searchContext === "earnings_calendar") {
       return {
-        type: "api",
-        visual: signal.searchQuery ?? "/calendar/earnings",
         toolName,
         toolIcon,
         jobLabel,
-        explanation: "Called Finnhub earnings calendar API for the next 7 days. Each company with upcoming earnings becomes a signal.",
+        query: signal.searchQuery ?? "/calendar/earnings",
+        queryType: "api",
+        reason: "Finnhub earnings calendar for the next 7 days. Companies reporting soon get higher urgency.",
       };
     }
 
-    // Generic search query
+    if (signal.searchContext?.startsWith("query:")) {
+      const parts = signal.searchContext.replace("query:", "").split(":");
+      const category = parts[0] ?? "";
+      return {
+        toolName,
+        toolIcon,
+        jobLabel,
+        query: signal.searchQuery,
+        queryType: "search",
+        reason: `From a ${category.toLowerCase()} intelligence query in your Config. Sonar searches the web and returns structured findings with tickers, sentiment, and sources.`,
+      };
+    }
+
+    // Generic with searchTool but no recognized context
     return {
-      type: "search",
-      visual: signal.searchQuery ?? "Intelligence search",
       toolName,
       toolIcon,
       jobLabel,
-      explanation: `Ran this query through Perplexity Sonar web search. Each distinct finding becomes a signal with extracted tickers, sentiment, and source URLs.`,
+      query: signal.searchQuery,
+      queryType: "search",
+      reason: null,
     };
   }
 
-  // ── Fallback: infer from batch jobType + signal data ─────────────────
-  // This handles all existing signals that were created before provenance
-  // columns were added to the database.
-
+  // ── Fallback: infer from batch jobType ─────────────────────────────────
   if (jobType === "PORTFOLIO_MONITOR") {
     const ticker = signal.tickers[0] ?? "positions";
     return {
-      type: "portfolio",
-      visual: signal.tickers.length === 1 ? `$${ticker}` : signal.tickers.slice(0, 3).map(t => `$${t}`).join(", "),
       toolName: "Perplexity Sonar",
       toolIcon: PerplexityLogo,
       jobLabel,
-      explanation: `Searched "${ticker} stock news developments catalysts today" via Perplexity Sonar because this ticker is in an open position or on a watchlist. Each result becomes a signal.`,
+      query: `${ticker} stock news developments catalysts today`,
+      queryType: "search",
+      reason: `${ticker} is in an open position or on a watchlist.`,
     };
   }
 
   if (jobType === "SOURCE_PACK") {
     const domain = extractDomainFromUrls(signal.sourceUrls);
     return {
-      type: "domain",
-      visual: domain ?? "Monitored sources",
-      sourceName: signal.sourceNames[0] ?? undefined,
       toolName: "Perplexity Sonar",
       toolIcon: PerplexityLogo,
       jobLabel,
-      explanation: "Searched monitored domains via Perplexity Sonar (domain-filtered search). High-value pages get full text extraction via Firecrawl.",
+      query: domain,
+      queryType: "domain",
+      reason: "Searched monitored domains via domain-filtered Sonar search.",
     };
   }
 
   if (jobType === "MARKET_SWEEP") {
-    // FMP signals have sourceNames=["FMP"] or ["Finnhub"], Sonar signals have publication names
     if (signal.sourceNames.includes("FMP")) {
       return {
-        type: "api",
-        visual: "/stock_market/movers",
         toolName: "Financial Modeling Prep",
         toolIcon: BarChart3,
         jobLabel,
-        explanation: "Called FMP market movers API (gainers, losers, most active). Each of the top 10 results per category becomes a signal.",
+        query: "/stock_market/movers",
+        queryType: "api",
+        reason: "FMP market movers API (gainers, losers, most active). Top 10 per category.",
       };
     }
     if (signal.sourceNames.includes("Finnhub")) {
       return {
-        type: "api",
-        visual: "/calendar/earnings",
         toolName: "Finnhub",
         toolIcon: CalendarDays,
         jobLabel,
-        explanation: "Called Finnhub earnings calendar API for the next 7 days. Each company with upcoming earnings becomes a signal.",
+        query: "/calendar/earnings",
+        queryType: "api",
+        reason: "Finnhub earnings calendar for the next 7 days.",
       };
     }
-    // Default: Sonar web search from a Config query
     return {
-      type: "search",
-      visual: inferQueryFromSignal(signal),
       toolName: "Perplexity Sonar",
       toolIcon: PerplexityLogo,
       jobLabel,
-      explanation: "Ran a search query from Config through Perplexity Sonar web search. Each distinct finding becomes a signal with extracted tickers, sentiment, and source URLs.",
+      query: inferQueryFromSignal(signal),
+      queryType: "search",
+      reason: "From a search query in your Config.",
     };
   }
 
-  // Unknown job type
   return {
-    type: "search",
-    visual: inferQueryFromSignal(signal),
     toolName: "Perplexity Sonar",
     toolIcon: PerplexityLogo,
     jobLabel,
-    explanation: "Discovered by the intelligence pipeline via web search.",
+    query: inferQueryFromSignal(signal),
+    queryType: "search",
+    reason: null,
   };
 }
 
-/** Try to extract a representative domain from source URLs */
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
 function extractDomainFromUrls(urls: string[]): string | null {
   for (const url of urls) {
     try {
       return new URL(url).hostname.replace(/^www\./, "");
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
   return null;
 }
 
-/** Build a readable inferred query from signal content when searchQuery is null */
 function inferQueryFromSignal(signal: Signal): string {
   if (signal.tickers.length > 0) {
     return `${signal.tickers.join(", ")} ${signal.themes[0]?.toLowerCase().replace(/_/g, " ") ?? "news"}`;
   }
   if (signal.themes.length > 0) {
-    return signal.themes.slice(0, 2).map(t => t.toLowerCase().replace(/_/g, " ")).join(", ");
+    return signal.themes
+      .slice(0, 2)
+      .map((t) => t.toLowerCase().replace(/_/g, " "))
+      .join(", ");
   }
   return signal.headline.slice(0, 60);
 }
 
-/** Visual header matching config popover style */
-function DiscoveryHeader({ discovery, signal }: { discovery: Discovery; signal: Signal }) {
-  if (discovery.type === "portfolio") {
-    // Ticker-focused: icon + ticker badge in a bar
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-        <Briefcase className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <p className="text-sm font-medium text-foreground">{discovery.visual}</p>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-          {relativeTime(signal.createdAt)}
-        </span>
-      </div>
-    );
+function getSourceAttribution(signal: Signal): { name: string; icon: Icon } {
+  if (signal.searchTool) {
+    return TOOL_CONFIG[signal.searchTool] ?? { name: signal.searchTool, icon: Globe };
   }
+  // Fallback from batch
+  const jobType = signal.batch?.jobType;
+  if (jobType === "PORTFOLIO_MONITOR") return TOOL_CONFIG.PERPLEXITY_SONAR;
+  if (jobType === "SOURCE_PACK") return TOOL_CONFIG.PERPLEXITY_SONAR;
+  if (signal.sourceNames.includes("FMP")) return TOOL_CONFIG.FMP;
+  if (signal.sourceNames.includes("Finnhub")) return TOOL_CONFIG.FINNHUB;
+  return TOOL_CONFIG.PERPLEXITY_SONAR;
+}
 
-  if (discovery.type === "domain") {
-    // Domain bar with lock icon (like config popover DomainVisual)
-    return (
-      <div className="space-y-1.5">
-        {discovery.sourceName && (
-          <p className="text-sm font-medium text-foreground">{discovery.sourceName}</p>
-        )}
-        <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-          <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
-          <p className="text-xs text-muted-foreground font-mono truncate">{discovery.visual}</p>
-          <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0">
-            {relativeTime(signal.createdAt)}
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  if (discovery.type === "api") {
-    // API endpoint bar (like config popover ApiCallVisual)
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 font-mono">
-        <Badge variant="secondary">
-          GET
-        </Badge>
-        <p className="text-xs text-foreground truncate">{discovery.visual}</p>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0 font-sans">
-          {relativeTime(signal.createdAt)}
-        </span>
-      </div>
-    );
-  }
-
-  // search: Search bar (like config popover SearchQueryVisual)
-  return (
-    <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-      <p className="text-sm text-foreground truncate">{discovery.visual}</p>
-      <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0">
-        {relativeTime(signal.createdAt)}
-      </span>
-    </div>
-  );
+function formatRouteReason(reason: string): string {
+  if (reason.startsWith("ticker_match:")) return "ticker match";
+  if (reason.startsWith("sector_match:")) return "sector match";
+  if (reason.startsWith("theme_match:")) return "theme match";
+  return reason.split(",")[0] ?? reason;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const TOOL_CONFIG: Record<string, { name: string; icon: Icon }> = {
   PERPLEXITY_SONAR: { name: "Perplexity Sonar", icon: PerplexityLogo },
-  FMP: { name: "Financial Modeling Prep", icon: BarChart3 },
+  FMP: { name: "FMP", icon: BarChart3 },
   FINNHUB: { name: "Finnhub", icon: CalendarDays },
   FIRECRAWL: { name: "Firecrawl", icon: FirecrawlLogo },
+};
+
+const URGENCY_BORDER: Record<string, string> = {
+  BREAKING: "border-l-red-500",
+  HIGH: "border-l-amber-500",
+  MEDIUM: "border-l-blue-500",
+  LOW: "border-l-transparent",
+};
+
+const SIGNAL_TYPE_LABELS: Record<string, string> = {
+  NEWS: "News",
+  EARNINGS: "Earnings",
+  FILING: "SEC Filing",
+  SOCIAL: "Social",
+  PRICE_ACTION: "Price Action",
+  ANALYST_NOTE: "Analyst Note",
+  OPTIONS: "Options",
+  MACRO: "Macro",
+  SECTOR: "Sector",
 };

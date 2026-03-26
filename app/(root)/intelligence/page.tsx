@@ -3,15 +3,8 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -79,7 +72,7 @@ export default function IntelligencePage() {
     loadAll();
   }, [loadAll]);
 
-  // ── Stats (memoized to avoid recomputing on tab switch) ────────────────
+  // ── Stats ──────────────────────────────────────────────────────────────
 
   const todaySignals = useMemo(() => {
     const now = new Date().toDateString();
@@ -90,137 +83,97 @@ export default function IntelligencePage() {
     const breakingHigh = todaySignals.filter(
       (s) => s.urgency === "BREAKING" || s.urgency === "HIGH"
     ).length;
-    const bullish = todaySignals.filter((s) => s.sentiment === "BULLISH").length;
-    const bearish = todaySignals.filter((s) => s.sentiment === "BEARISH").length;
     const tickers = new Set(todaySignals.flatMap((s) => s.tickers)).size;
-    return { breakingHigh, bullish, bearish, tickers };
-  }, [todaySignals]);
-
-  const todayJobs = useMemo(() => {
-    const now = new Date().toDateString();
-    return batches.filter((b) => new Date(b.startedAt).toDateString() === now).length;
-  }, [batches]);
+    const todayJobs = batches.filter(
+      (b) => new Date(b.startedAt).toDateString() === new Date().toDateString()
+    ).length;
+    return { breakingHigh, tickers, todayJobs };
+  }, [todaySignals, batches]);
 
   return (
-    <TooltipProvider>
-      <div className="p-6 space-y-4">
-        {/* Top bar: empty left | tabs center | refresh right */}
-        <Tabs defaultValue="signals">
-          <div className="grid grid-cols-3 items-center">
-            <div />
-            <TabsList className="mx-auto">
-              <TabsTrigger value="signals">
-                Signals
-                {todaySignals.length > 0 && (
-                  <Badge variant="secondary" className="ml-1.5">
-                    {todaySignals.length}
-                  </Badge>
+    <div className="p-6 space-y-4">
+      {/* Page header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Intelligence</h1>
+          <p className="text-sm text-muted-foreground">
+            {todaySignals.length > 0 ? (
+              <>
+                <span className="tabular-nums">{todaySignals.length}</span> signals today
+                {stats.breakingHigh > 0 && (
+                  <> · <span className="text-amber-500 tabular-nums">{stats.breakingHigh}</span> high priority</>
                 )}
-              </TabsTrigger>
-              <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
-              <TabsTrigger value="config">
-                Config
-                <Badge variant="secondary" className="ml-1.5">
-                  {queries.length + sources.length}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
-            <div className="flex justify-end">
-              <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
+                {stats.tickers > 0 && (
+                  <> · <span className="tabular-nums">{stats.tickers}</span> tickers</>
                 )}
-              </Button>
-            </div>
-          </div>
-
-          {/* Signals tab */}
-          <TabsContent value="signals" className="space-y-6 pt-4" keepMounted>
-            {/* Stats strip inside signals tab */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-              <StatCard label="Today's Signals" value={todaySignals.length} />
-              <StatCard
-                label="Breaking / High"
-                value={stats.breakingHigh}
-                variant={stats.breakingHigh > 0 ? "alert" : "default"}
-              />
-              <StatCard
-                label="Bullish"
-                value={stats.bullish}
-                variant={stats.bullish > 0 ? "positive" : "default"}
-              />
-              <StatCard
-                label="Bearish"
-                value={stats.bearish}
-                variant={stats.bearish > 0 ? "negative" : "default"}
-              />
-              <StatCard label="Tickers" value={stats.tickers} />
-              <StatCard label="Jobs Today" value={todayJobs} />
-            </div>
-
-            <Separator />
-
-            {/* Briefs at top */}
-            <BriefCards briefs={briefs} />
-
-            {briefs.length > 0 && <Separator />}
-
-            {/* Signal feed */}
-            <SignalFeed signals={signals} routes={routes} />
-          </TabsContent>
-
-          {/* Pipeline tab */}
-          <TabsContent value="pipeline" className="pt-4">
-            <PipelineLog
-              batches={batches}
-              routes={routes}
-              onRefresh={loadAll}
-            />
-          </TabsContent>
-
-          {/* Config tab */}
-          <TabsContent value="config" className="pt-4">
-            <ConfigPanel
-              queries={queries}
-              sources={sources}
-              packs={packs}
-              onRefresh={loadAll}
-            />
-          </TabsContent>
-        </Tabs>
+                {stats.todayJobs > 0 && (
+                  <> · <span className="tabular-nums">{stats.todayJobs}</span> jobs ran</>
+                )}
+              </>
+            ) : (
+              "No signals today yet"
+            )}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+        </Button>
       </div>
-    </TooltipProvider>
-  );
-}
 
-// ── Stat Card ───────────────────────────────────────────────────────────────
+      {/* Tabs */}
+      <Tabs defaultValue="signals">
+        <TabsList>
+          <TabsTrigger value="signals">
+            Signals
+            {todaySignals.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5">
+                {todaySignals.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+          <TabsTrigger value="config">
+            Config
+            <Badge variant="secondary" className="ml-1.5">
+              {queries.length + sources.length}
+            </Badge>
+          </TabsTrigger>
+        </TabsList>
 
-function StatCard({
-  label,
-  value,
-  variant = "default",
-}: {
-  label: string;
-  value: number;
-  variant?: "default" | "positive" | "negative" | "alert";
-}) {
-  return (
-    <Card className="p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "text-2xl font-semibold tabular-nums mt-1",
-          variant === "positive" && "text-emerald-500",
-          variant === "negative" && "text-red-500",
-          variant === "alert" && value > 0 && "text-amber-500"
-        )}
-      >
-        {value}
-      </p>
-    </Card>
+        {/* Signals tab */}
+        <TabsContent value="signals" className="space-y-6 pt-4" keepMounted>
+          {/* Briefs at top */}
+          <BriefCards briefs={briefs} />
+
+          {briefs.length > 0 && <Separator />}
+
+          {/* Signal feed */}
+          <SignalFeed signals={signals} />
+        </TabsContent>
+
+        {/* Pipeline tab */}
+        <TabsContent value="pipeline" className="pt-4">
+          <PipelineLog
+            batches={batches}
+            routes={routes}
+            onRefresh={loadAll}
+          />
+        </TabsContent>
+
+        {/* Config tab */}
+        <TabsContent value="config" className="pt-4">
+          <ConfigPanel
+            queries={queries}
+            sources={sources}
+            packs={packs}
+            onRefresh={loadAll}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }

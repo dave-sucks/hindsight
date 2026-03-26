@@ -38,6 +38,13 @@ export interface SourcePack {
   }>;
 }
 
+export interface SignalRoute {
+  relevanceScore: number;
+  routeReason: string;
+  status: string;
+  analyst: { id: string; name: string };
+}
+
 export interface Signal {
   id: string;
   type: string;
@@ -58,12 +65,25 @@ export interface Signal {
   searchTool: string | null;
   searchQuery: string | null;
   searchContext: string | null;
+  // Per-signal routing
+  analystRoutes: SignalRoute[];
   createdAt: string;
   batch: {
     jobType: string;
     status: string;
     startedAt: string;
   };
+}
+
+export interface SignalBatchPreview {
+  id: string;
+  headline: string;
+  tickers: string[];
+  urgency: string;
+  sentiment: string;
+  searchTool: string | null;
+  searchQuery: string | null;
+  searchContext: string | null;
 }
 
 export interface SignalBatch {
@@ -74,6 +94,7 @@ export interface SignalBatch {
   startedAt: string;
   completedAt: string | null;
   _count: { signals: number };
+  signals: SignalBatchPreview[];
 }
 
 export interface MorningBrief {

@@ -5,6 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Table,
   TableBody,
   TableCell,
@@ -40,10 +45,12 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { SignalBatch, AnalystRouteInfo } from "./types";
-import { relativeTime, JOB_LABELS } from "./types";
+import { relativeTime, JOB_LABELS, URGENCY_CONFIG } from "./types";
 import type { LucideIcon } from "lucide-react";
 
 // ── Job Card Data ──────────────────────────────────────────────────────────
@@ -62,14 +69,14 @@ const JOBS: Record<string, JobInfo> = {
     event: "market-sweep",
     time: "6:30 AM ET",
     short: "Searches for market-moving news across all enabled queries",
-    long: "Runs every enabled search query from Config through Perplexity Sonar. Results get parsed into structured signals with tickers, sentiment, urgency, and themes. Signals are deduplicated against the last 48 hours before storage.",
+    long: "Runs every enabled search query from Config through Perplexity Sonar. Also calls FMP market movers (gainers/losers/actives, 10 each) and Finnhub earnings calendar (next 7 days). Results get parsed into structured signals with tickers, sentiment, urgency, and themes. Signals are deduplicated against the last 48 hours before storage.",
   },
   "Portfolio Monitor": {
     icon: Briefcase,
     event: "portfolio-monitor",
     time: "7:00 AM ET",
-    short: "Monitors open positions and watchlist for price alerts and news",
-    long: "Checks current prices and recent news for every open position and watchlist item across all analysts. Generates alerts for stop-loss proximity, target price hits, and material news that could affect trade thesis.",
+    short: "Searches for news on every open position and watchlist ticker",
+    long: "Collects every unique ticker from open positions and active watchlist items across all analysts. For each ticker, searches Perplexity Sonar for stock-specific news, developments, and catalysts. Catches ticker-specific news the broad sweep might miss.",
   },
   "Source Pack": {
     icon: Package,
@@ -83,7 +90,7 @@ const JOBS: Record<string, JobInfo> = {
     event: "signal-router",
     time: "7:30 AM ET",
     short: "Routes unprocessed signals to matching analysts by coverage area",
-    long: "Takes all unrouted signals and matches them against each analyst's sector coverage, ticker watchlist, and category preferences. Each signal gets urgency-priority routing so analysts see the most important signals first in their briefs.",
+    long: "Takes all unrouted signals and scores them against each analyst's sector coverage, ticker watchlist, and keywords. Signals scoring 15+ get routed. Higher relevance scores mean the signal is more important to that analyst.",
   },
   "Morning Brief": {
     icon: Newspaper,
@@ -162,67 +169,175 @@ export function PipelineLog({ batches, routes, onRefresh }: PipelineLogProps) {
           </>
         )}
 
-        {/* Activity log table */}
+        {/* Activity log — expandable batch rows */}
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
             Job History
           </p>
-          <Card className="p-0 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Job</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Signals</TableHead>
-                  <TableHead className="text-right">Duration</TableHead>
-                  <TableHead className="text-right">Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {batches.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                      No job runs yet
-                    </TableCell>
-                  </TableRow>
-                )}
-                {batches.map((batch) => {
-                  const duration =
-                    batch.completedAt && batch.startedAt
-                      ? Math.round(
-                          (new Date(batch.completedAt).getTime() -
-                            new Date(batch.startedAt).getTime()) /
-                            1000
-                        )
-                      : null;
-
-                  return (
-                    <TableRow key={batch.id}>
-                      <TableCell className="font-medium text-sm">
-                        {JOB_LABELS[batch.jobType] ?? batch.jobType}
-                      </TableCell>
-                      <TableCell>
-                        <BatchStatus status={batch.status} />
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-sm">
-                        {batch._count.signals}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                        {duration !== null ? `${duration}s` : "—"}
-                      </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground tabular-nums">
-                        {relativeTime(batch.startedAt)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </Card>
+          <div className="space-y-2">
+            {batches.length === 0 && (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                No job runs yet
+              </p>
+            )}
+            {batches.map((batch) => (
+              <BatchRow key={batch.id} batch={batch} />
+            ))}
+          </div>
         </div>
       </div>
     </TooltipProvider>
   );
+}
+
+// ── Batch Row (expandable) ──────────────────────────────────────────────────
+
+function BatchRow({ batch }: { batch: SignalBatch }) {
+  const [open, setOpen] = useState(false);
+  const duration =
+    batch.completedAt && batch.startedAt
+      ? Math.round(
+          (new Date(batch.completedAt).getTime() -
+            new Date(batch.startedAt).getTime()) /
+            1000
+        )
+      : null;
+
+  const signalCount = batch._count.signals;
+  const previews = batch.signals ?? [];
+
+  // Extract unique tickers from signal previews
+  const tickers = [...new Set(previews.flatMap((s) => s.tickers))].slice(0, 8);
+
+  // Extract unique search queries/tools for summary
+  const querySummary = summarizeBatch(previews);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card className="p-0 overflow-hidden">
+        <CollapsibleTrigger
+          render={<Button variant="ghost" className="w-full justify-start rounded-none px-4 py-3 h-auto" />}
+        >
+          <div className="flex items-center gap-3 w-full">
+            {open ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+
+            {/* Job name */}
+            <span className="text-sm font-medium">
+              {JOB_LABELS[batch.jobType] ?? batch.jobType}
+            </span>
+
+            {/* Status */}
+            <BatchStatus status={batch.status} />
+
+            {/* Signal count + duration */}
+            <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground tabular-nums">
+              <span>{signalCount} signals</span>
+              {duration !== null && <span>{duration}s</span>}
+              <span>{relativeTime(batch.startedAt)}</span>
+            </div>
+          </div>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <Separator />
+          <div className="p-4 space-y-3">
+            {/* Tickers discovered */}
+            {tickers.length > 0 && (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+                  Tickers
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {tickers.map((t) => (
+                    <Badge key={t} variant="secondary">
+                      ${t}
+                    </Badge>
+                  ))}
+                  {[...new Set(previews.flatMap((s) => s.tickers))].length > 8 && (
+                    <span className="text-xs text-muted-foreground self-center">
+                      +{[...new Set(previews.flatMap((s) => s.tickers))].length - 8} more
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* What ran — queries/endpoints */}
+            {querySummary.length > 0 && (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+                  What ran
+                </p>
+                <div className="space-y-1">
+                  {querySummary.map((item, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">{item.tool}</span>
+                      <span className="text-muted-foreground/40">→</span>
+                      <span className="text-foreground truncate">{item.query}</span>
+                      <span className="text-muted-foreground tabular-nums ml-auto shrink-0">
+                        {item.count} signal{item.count !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Signal previews */}
+            {previews.length > 0 && (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+                  Signals (top {previews.length})
+                </p>
+                <div className="space-y-1">
+                  {previews.map((s) => {
+                    const urgency = URGENCY_CONFIG[s.urgency];
+                    return (
+                      <div key={s.id} className="flex items-center gap-2 text-xs">
+                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${urgency?.dot ?? "bg-muted-foreground/40"}`} />
+                        <span className="truncate">{s.headline}</span>
+                        {s.tickers.length > 0 && (
+                          <span className="text-muted-foreground shrink-0">
+                            {s.tickers.slice(0, 2).map((t) => `$${t}`).join(", ")}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+/** Group signal previews by tool+query to show what actually ran */
+function summarizeBatch(previews: SignalBatch["signals"]): Array<{ tool: string; query: string; count: number }> {
+  const groups = new Map<string, { tool: string; query: string; count: number }>();
+  for (const s of previews) {
+    const tool = s.searchTool ?? "Unknown";
+    const query = s.searchQuery ?? s.searchContext ?? "—";
+    const key = `${tool}::${query}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count++;
+    } else {
+      const toolLabel =
+        tool === "PERPLEXITY_SONAR" ? "Sonar" :
+        tool === "FMP" ? "FMP" :
+        tool === "FINNHUB" ? "Finnhub" :
+        tool;
+      groups.set(key, { tool: toolLabel, query, count: 1 });
+    }
+  }
+  return Array.from(groups.values()).sort((a, b) => b.count - a.count);
 }
 
 // ── Batch Status Badge ──────────────────────────────────────────────────────
@@ -233,7 +348,7 @@ function BatchStatus({ status }: { status: string }) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-emerald-500 font-medium">
           <CheckCircle2 className="h-3 w-3" />
-          Completed
+          Done
         </span>
       );
     case "RUNNING":

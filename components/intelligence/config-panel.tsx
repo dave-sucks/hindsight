@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -59,6 +60,11 @@ import {
   Package,
   Terminal,
   Lock,
+  CalendarDays,
+  Briefcase,
+  TrendingUp,
+  TrendingDown,
+  Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -66,9 +72,101 @@ import type { IntelligenceQuery, Source, SourcePack } from "./types";
 import { relativeTime } from "./types";
 import { PerplexityLogo, FirecrawlLogo } from "./icons";
 
+// ── Built-in Data Sources ────────────────────────────────────────────────────
+// These represent data sources that run during the intelligence pipeline but
+// have NO representation in the Config DB. Making them visible so users can
+// understand what's actually producing signals.
+
+interface BuiltInSource {
+  id: string;
+  name: string;
+  description: string;
+  tool: string;
+  toolIcon: React.ComponentType<{ className?: string }>;
+  endpoint: string;
+  schedule: string;
+  job: string;
+  signalType: string;
+  estimatedSignals: string;
+  enabled: boolean; // always true — can't disable yet
+}
+
+const BUILT_IN_SOURCES: BuiltInSource[] = [
+  {
+    id: "builtin-fmp-gainers",
+    name: "FMP Market Gainers",
+    description:
+      "Top 10 stocks with largest percentage gains today. Each becomes a BULLISH price action signal with urgency based on change magnitude.",
+    tool: "Financial Modeling Prep",
+    toolIcon: TrendingUp,
+    endpoint: "GET /stock_market/gainers",
+    schedule: "6:30 AM ET",
+    job: "Market Sweep",
+    signalType: "PRICE_ACTION",
+    estimatedSignals: "~10 per day",
+    enabled: true,
+  },
+  {
+    id: "builtin-fmp-losers",
+    name: "FMP Market Losers",
+    description:
+      "Top 10 stocks with largest percentage losses today. Each becomes a BEARISH price action signal.",
+    tool: "Financial Modeling Prep",
+    toolIcon: TrendingDown,
+    endpoint: "GET /stock_market/losers",
+    schedule: "6:30 AM ET",
+    job: "Market Sweep",
+    signalType: "PRICE_ACTION",
+    estimatedSignals: "~10 per day",
+    enabled: true,
+  },
+  {
+    id: "builtin-fmp-actives",
+    name: "FMP Most Active",
+    description:
+      "Top 10 most actively traded stocks by volume. High volume often signals institutional activity or breaking news.",
+    tool: "Financial Modeling Prep",
+    toolIcon: Activity,
+    endpoint: "GET /stock_market/actives",
+    schedule: "6:30 AM ET",
+    job: "Market Sweep",
+    signalType: "PRICE_ACTION",
+    estimatedSignals: "~10 per day",
+    enabled: true,
+  },
+  {
+    id: "builtin-finnhub-earnings",
+    name: "Finnhub Earnings Calendar",
+    description:
+      "Companies reporting earnings in the next 7 days. Urgency increases as the earnings date approaches (HIGH if ≤2 days).",
+    tool: "Finnhub",
+    toolIcon: CalendarDays,
+    endpoint: "GET /calendar/earnings",
+    schedule: "6:30 AM ET",
+    job: "Market Sweep",
+    signalType: "EARNINGS",
+    estimatedSignals: "~20-80 per day",
+    enabled: true,
+  },
+  {
+    id: "builtin-portfolio-monitor",
+    name: "Portfolio & Watchlist Monitor",
+    description:
+      'For every ticker in open positions + watchlists across all analysts, searches "{TICKER} stock news developments catalysts today" via Perplexity Sonar. Catches ticker-specific news the broad sweep misses.',
+    tool: "Perplexity Sonar",
+    toolIcon: Briefcase,
+    endpoint: "Sonar search per ticker",
+    schedule: "7:00 AM ET",
+    job: "Portfolio Monitor",
+    signalType: "NEWS",
+    estimatedSignals: "~3-5 per ticker",
+    enabled: true,
+  },
+];
+
 // ── Unified row type ─────────────────────────────────────────────────────────
 
-type ItemKind = "search" | "source";
+type ItemKind = "search" | "source" | "builtin";
 
 interface UnifiedItem {
   id: string;
@@ -85,7 +183,7 @@ interface UnifiedItem {
   sourceType?: string;
   domain?: string | null;
   packs?: string[];
-  raw: IntelligenceQuery | Source;
+  raw: IntelligenceQuery | Source | BuiltInSource;
 }
 
 function buildUnifiedItems(
@@ -101,6 +199,18 @@ function buildUnifiedItems(
       sourcePackMap.set(ps.source.id, existing);
     }
   }
+
+  const builtInItems: UnifiedItem[] = BUILT_IN_SOURCES.map((b) => ({
+    id: b.id,
+    kind: "builtin" as const,
+    name: b.name,
+    detail: b.endpoint,
+    category: b.signalType,
+    scope: "FIRM",
+    enabled: b.enabled,
+    sourceType: "API",
+    raw: b,
+  }));
 
   const queryItems: UnifiedItem[] = queries.map((q) => ({
     id: q.id,
@@ -131,7 +241,7 @@ function buildUnifiedItems(
     raw: s,
   }));
 
-  return [...queryItems, ...sourceItems];
+  return [...builtInItems, ...queryItems, ...sourceItems];
 }
 
 // ── Category tooltips ────────────────────────────────────────────────────────
@@ -144,6 +254,10 @@ const CATEGORY_TOOLTIPS: Record<string, string> = {
   EVENT: "Time-bound events — earnings, IPOs, FDA decisions, M&A announcements",
   COMPANY: "Company-specific source — covers one company's filings, news, etc.",
   SOCIAL: "Social media / sentiment — StockTwits, Reddit, Twitter/X chatter",
+  PRICE_ACTION: "Price movement signals — market movers, volume spikes",
+  EARNINGS: "Earnings calendar and reporting signals",
+  NEWS: "General news and portfolio monitoring signals",
+  MACRO: "Macroeconomic indicators and regime signals",
 };
 
 const CATEGORY_OPTIONS = [
@@ -180,22 +294,15 @@ export function ConfigPanel({
 }: ConfigPanelProps) {
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<"all" | ItemKind>("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
 
   const allItems = useMemo(
     () => buildUnifiedItems(queries, sources, packs),
     [queries, sources, packs]
   );
 
-  const categories = useMemo(() => {
-    const set = new Set(allItems.map((i) => i.category));
-    return Array.from(set).sort();
-  }, [allItems]);
-
   const filtered = useMemo(() => {
     return allItems.filter((item) => {
       if (kindFilter !== "all" && item.kind !== kindFilter) return false;
-      if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         const searchable = `${item.name} ${item.detail ?? ""} ${item.domain ?? ""}`.toLowerCase();
@@ -203,9 +310,13 @@ export function ConfigPanel({
       }
       return true;
     });
-  }, [allItems, kindFilter, categoryFilter, search]);
+  }, [allItems, kindFilter, search]);
 
   const toggleItem = async (item: UnifiedItem) => {
+    if (item.kind === "builtin") {
+      toast.info("Built-in sources can't be disabled yet");
+      return;
+    }
     try {
       if (item.kind === "search") {
         await fetch("/api/intelligence/queries", {
@@ -227,6 +338,7 @@ export function ConfigPanel({
   };
 
   const deleteItem = async (item: UnifiedItem) => {
+    if (item.kind === "builtin") return;
     try {
       const endpoint = item.kind === "search" ? "queries" : "sources";
       await fetch(`/api/intelligence/${endpoint}?id=${item.id}`, {
@@ -239,93 +351,168 @@ export function ConfigPanel({
     }
   };
 
-  const searchCount = allItems.filter((i) => i.kind === "search").length;
-  const sourceCount = allItems.filter((i) => i.kind === "source").length;
-  const hasFilters = kindFilter !== "all" || categoryFilter !== "all" || search !== "";
+  const builtInCount = BUILT_IN_SOURCES.length;
+  const searchCount = queries.length;
+  const sourceCount = sources.length;
+  const hasFilters = kindFilter !== "all" || search !== "";
 
   return (
     <TooltipProvider>
-      <div className="max-w-3xl mx-auto space-y-4">
-        {/* Add new */}
-        <AddItemInput onRefresh={onRefresh} />
-
-        {/* Filter bar */}
-        <div className="flex items-center gap-2">
-          <div className="relative max-w-xs w-full">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8"
-            />
+      <div className="max-w-3xl mx-auto space-y-6">
+        {/* ── Built-in Data Sources ────────────────────────────────── */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">API Integrations</p>
+              <p className="text-xs text-muted-foreground">
+                Built-in data feeds that run automatically during the pipeline
+              </p>
+            </div>
+            <Badge variant="secondary">{builtInCount}</Badge>
           </div>
-          <Select value={kindFilter} onValueChange={(v) => v && setKindFilter(v as typeof kindFilter)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Type</SelectItem>
-              <SelectItem value="search">Searches ({searchCount})</SelectItem>
-              <SelectItem value="source">Sources ({sourceCount})</SelectItem>
-            </SelectContent>
-          </Select>
-          <Tooltip>
-            <TooltipTrigger render={<span />}>
-              <Select value={categoryFilter} onValueChange={(v) => v && setCategoryFilter(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Category</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c.charAt(0) + c.slice(1).toLowerCase()}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </TooltipTrigger>
-            <TooltipContent>Filter by category</TooltipContent>
-          </Tooltip>
-          {hasFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setKindFilter("all"); setCategoryFilter("all"); setSearch(""); }}
-            >
-              Clear
-            </Button>
-          )}
-        </div>
-
-        {/* Results */}
-        <p className="text-xs text-muted-foreground tabular-nums">
-          {filtered.length} of {allItems.length} items
-        </p>
-
-        {/* Table */}
-        <Table>
-          <TableBody>
-            {filtered.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                  No items match your filters
-                </TableCell>
-              </TableRow>
-            )}
-            {filtered.map((item) => (
-              <ConfigRow
-                key={`${item.kind}-${item.id}`}
-                item={item}
-                onToggle={() => toggleItem(item)}
-                onDelete={() => deleteItem(item)}
-              />
+          <div className="grid gap-2">
+            {BUILT_IN_SOURCES.map((source) => (
+              <BuiltInSourceCard key={source.id} source={source} />
             ))}
-          </TableBody>
-        </Table>
+          </div>
+        </section>
+
+        <Separator />
+
+        {/* ── Search Queries + Domain Sources ──────────────────────── */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Search Queries & Sources</p>
+              <p className="text-xs text-muted-foreground">
+                Configurable queries and monitored domains
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">{searchCount} queries</Badge>
+              <Badge variant="secondary">{sourceCount} sources</Badge>
+            </div>
+          </div>
+
+          {/* Add new */}
+          <AddItemInput onRefresh={onRefresh} />
+
+          {/* Filter bar */}
+          <div className="flex items-center gap-2">
+            <div className="relative max-w-xs w-full">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+            <Select value={kindFilter} onValueChange={(v) => v && setKindFilter(v as typeof kindFilter)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="search">Queries ({searchCount})</SelectItem>
+                <SelectItem value="source">Sources ({sourceCount})</SelectItem>
+              </SelectContent>
+            </Select>
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setKindFilter("all");
+                  setSearch("");
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+
+          {/* Table — only queries and sources */}
+          <Table>
+            <TableBody>
+              {filtered.filter(i => i.kind !== "builtin").length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    No items match your filters
+                  </TableCell>
+                </TableRow>
+              )}
+              {filtered
+                .filter((i) => i.kind !== "builtin")
+                .map((item) => (
+                  <ConfigRow
+                    key={`${item.kind}-${item.id}`}
+                    item={item}
+                    onToggle={() => toggleItem(item)}
+                    onDelete={() => deleteItem(item)}
+                  />
+                ))}
+            </TableBody>
+          </Table>
+        </section>
       </div>
     </TooltipProvider>
+  );
+}
+
+// ── Built-in Source Card ─────────────────────────────────────────────────────
+// A clear, informative card for each built-in API integration
+
+function BuiltInSourceCard({ source }: { source: BuiltInSource }) {
+  const [expanded, setExpanded] = useState(false);
+  const Icon = source.toolIcon;
+
+  return (
+    <Card
+      className="p-4 cursor-pointer hover:bg-accent/30 transition-colors"
+      onClick={() => setExpanded(!expanded)}
+    >
+      <div className="flex items-start gap-3">
+        <div className="h-8 w-8 rounded-md flex items-center justify-center bg-muted shrink-0">
+          <Icon className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">{source.name}</p>
+            <Badge variant="outline" className="text-[10px]">
+              Built-in
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {source.description}
+          </p>
+
+          {expanded && (
+            <div className="mt-3 space-y-2">
+              {/* Endpoint */}
+              <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 font-mono text-xs">
+                <Badge variant="secondary">GET</Badge>
+                <span>{source.endpoint}</span>
+              </div>
+              {/* Metadata */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Tool</span>
+                <span>{source.tool}</span>
+                <span className="text-muted-foreground">Schedule</span>
+                <span>{source.schedule} weekdays</span>
+                <span className="text-muted-foreground">Pipeline job</span>
+                <span>{source.job}</span>
+                <span className="text-muted-foreground">Signal type</span>
+                <span>{source.signalType}</span>
+                <span className="text-muted-foreground">Output</span>
+                <span>{source.estimatedSignals}</span>
+              </div>
+            </div>
+          )}
+        </div>
+        <span className="text-xs text-muted-foreground shrink-0">{source.schedule}</span>
+      </div>
+    </Card>
   );
 }
 
@@ -539,7 +726,7 @@ function ItemDetailPopover({
             </>
           )}
 
-          {!isSearch && (
+          {item.kind === "source" && (
             <>
               {item.qualityScore != null && (
                 <>
@@ -606,7 +793,7 @@ function ItemDetailPopover({
 // ── Add Item — Pure ShadCN InputGroup with block-end addon ───────────────────
 
 function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
-  const [kind, setKind] = useState<ItemKind>("search");
+  const [kind, setKind] = useState<"search" | "source">("search");
   const [value, setValue] = useState("");
   const [category, setCategory] = useState("MARKET");
   const [sourceName, setSourceName] = useState("");
@@ -678,7 +865,7 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
         {/* Type selector — icon-only trigger */}
         <Tooltip>
           <TooltipTrigger render={<span />}>
-            <Select value={kind} onValueChange={(v) => v && setKind(v as ItemKind)}>
+            <Select value={kind} onValueChange={(v) => v && setKind(v as typeof kind)}>
               <SelectTrigger size="sm" chevron={false}>
                 {kind === "search" ? (
                   <Search className="h-3.5 w-3.5" />
