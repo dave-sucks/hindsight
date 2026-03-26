@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
       id: true,
       batchId: true,
       artifactId: true,
+      monitorId: true,
       type: true,
       headline: true,
       summary: true,
@@ -36,10 +37,19 @@ export async function GET(req: NextRequest) {
       freshness: true,
       sourceUrls: true,
       sourceNames: true,
+      searchTool: true,
+      searchQuery: true,
+      searchContext: true,
+      aggregateType: true,
+      dataPayload: true,
+      itemCount: true,
       expiresAt: true,
       createdAt: true,
       batch: {
         select: { jobType: true, status: true, startedAt: true },
+      },
+      monitor: {
+        select: { id: true, name: true, type: true, method: true, config: true },
       },
       routes: {
         select: {
@@ -54,18 +64,5 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  // Add null defaults for new fields the UI expects
-  const enriched = signals.map((s) => ({
-    ...s,
-    searchTool: null,
-    searchQuery: null,
-    searchContext: null,
-    monitorId: null,
-    monitor: null,
-    aggregateType: null,
-    dataPayload: null,
-    itemCount: null,
-  }))
-
-  return NextResponse.json(enriched)
+  return NextResponse.json(signals)
 }
