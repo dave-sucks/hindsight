@@ -1,0 +1,147 @@
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+import { z } from "zod"
+
+// GET /api/intelligence/monitors — list all monitors with today's finding counts
+export async function GET(req: NextRequest) {
+  const type = req.nextUrl.searchParams.get("type") // SEARCH | DOMAIN | API | PORTFOLIO | WATCHLIST
+  const scope = req.nextUrl.searchParams.get("scope") // FIRM | ANALYST
+  const analystId = req.nextUrl.searchParams.get("analystId")
+
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+
+  const monitors = await prisma.monitor.findMany({
+    where: {
+      ...(type ? { type } : {}),
+      ...(scope ? { scope } : {}),
+      ...(analystId ? { analystId } : {}),
+    },
+    orderBy: [{ builtIn: "desc" }, { type: "asc" }, { createdAt: "asc" }],
+    include: {
+      analyst: { select: { id: true, name: true } },
+      _count: {
+        select: {
+          signals: {
+            where: { createdAt: { gte: todayStart } },
+          },
+        },
+      },
+    },
+  })
+
+  // For PORTFOLIO and WATCHLIST monitors, include the actual tickers being monitored
+  const enriched = await Promise.all(
+    monitors.map(async (m) => {
+      if (m.type === "PORTFOLIO") {
+        const positions = await prisma.position.findMany({
+          where: { status: "OPEN" },
+          select: { symbol: true, direction: true, analystId: true },
+          distinct: ["symbol"],
+        })
+        return { ...m, monitoredTickers: positions.map((p) => ({ ticker: p.symbol, reason: `Open ${p.direction} position`, analystId: p.analystId })) }
+      }
+      if (m.type === "WATCHLIST") {
+        const items = await prisma.analystWatchlistItem.findMany({
+          where: { status: "ACTIVE" },
+          select: { symbol: true, reason: true, priority: true, analystId: true },
+        })
+        return { ...m, monitoredTickers: items.map((i) => ({ ticker: i.symbol, reason: i.reason, priority: i.priority, analystId: i.analystId })) }
+      }
+      return { ...m, monitoredTickers: null }
+    })
+  )
+
+  return NextResponse.json(enriched)
+}
+
+// POST /api/intelligence/monitors — create a new monitor
+const createSchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(["SEARCH", "DOMAIN", "API", "PORTFOLIO", "WATCHLIST"]),
+  method: z.string().default("perplexity_sonar"),
+  config: z.record(z.unknown()).optional(),
+  scope: z.enum(["FIRM", "ANALYST"]).default("FIRM"),
+  analystId: z.string().optional(),
+  category: z.enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"]).default("MARKET"),
+  origin: z.enum(["USER", "BUILDER", "BRIEFING_AGENT"]).default("USER"),
+  expiresAt: z.string().datetime().optional(),
+  sourceRunId: z.string().optional(),
+})
+
+export async function POST(req: NextRequest) {
+  const body = await req.json()
+  const parsed = createSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  }
+
+  const data = parsed.data
+  const monitor = await prisma.monitor.create({
+    data: {
+      name: data.name,
+      type: data.type,
+      method: data.method,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config: (data.config ?? undefined) as any,
+      scope: data.scope,
+      analystId: data.analystId ?? null,
+      enabled: true,
+      builtIn: false,
+      origin: data.origin,
+      category: data.category,
+      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+      sourceRunId: data.sourceRunId ?? null,
+    },
+  })
+
+  return NextResponse.json(monitor, { status: 201 })
+}
+
+// PATCH /api/intelligence/monitors — toggle enabled or update config
+const patchSchema = z.object({
+  id: z.string(),
+  enabled: z.boolean().optional(),
+  name: z.string().optional(),
+  config: z.record(z.unknown()).optional(),
+  category: z.string().optional(),
+})
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json()
+  const parsed = patchSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  }
+
+  const { id, ...updates } = parsed.data
+  const filtered = Object.fromEntries(
+    Object.entries(updates).filter(([, v]) => v !== undefined)
+  )
+
+  const updated = await prisma.monitor.update({
+    where: { id },
+    data: filtered,
+  })
+
+  return NextResponse.json(updated)
+}
+
+// DELETE /api/intelligence/monitors — delete a monitor (prevents deleting built-in)
+export async function DELETE(req: NextRequest) {
+  const id = req.nextUrl.searchParams.get("id")
+  if (!id) {
+    return NextResponse.json({ error: "id required" }, { status: 400 })
+  }
+
+  const monitor = await prisma.monitor.findUnique({ where: { id } })
+  if (!monitor) {
+    return NextResponse.json({ error: "not found" }, { status: 404 })
+  }
+  if (monitor.builtIn) {
+    return NextResponse.json({ error: "Cannot delete built-in monitor. You can disable it instead." }, { status: 403 })
+  }
+
+  await prisma.monitor.delete({ where: { id } })
+  return NextResponse.json({ deleted: true })
+}

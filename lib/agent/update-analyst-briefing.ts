@@ -516,7 +516,7 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
       }
     }
 
-    // ── Persist dynamic queries to IntelligenceQuery table ────────────────
+    // ── Persist dynamic queries to IntelligenceQuery table + Monitor table ──
     const dynamicQueries: DynamicQueryOutput[] = object.dynamicQueries ?? [];
     if (dynamicQueries.length > 0) {
       const now = new Date();
@@ -532,9 +532,31 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
       }));
 
       try {
+        // Legacy: IntelligenceQuery rows
         await prisma.intelligenceQuery.createMany({ data: queryRows });
+
+        // V4: Also create Monitor rows for unified monitor system
+        for (const dq of dynamicQueries) {
+          await prisma.monitor.create({
+            data: {
+              name: dq.query,
+              type: "SEARCH",
+              method: "perplexity_sonar",
+              config: { query: dq.query, reason: dq.reason },
+              scope: "ANALYST",
+              analystId,
+              enabled: true,
+              builtIn: false,
+              origin: "BRIEFING_AGENT",
+              category: dq.category,
+              expiresAt: new Date(now.getTime() + dq.expires_days * 24 * 60 * 60 * 1000),
+              sourceRunId: runId,
+            },
+          });
+        }
+
         console.log(
-          `[briefing] Created ${queryRows.length} dynamic queries for analyst ${config.name}: ${queryRows.map((q) => q.query.slice(0, 50)).join("; ")}`
+          `[briefing] Created ${queryRows.length} dynamic queries + monitors for analyst ${config.name}: ${queryRows.map((q) => q.query.slice(0, 50)).join("; ")}`
         );
       } catch (queryErr) {
         console.warn("[briefing] Failed to create dynamic queries (non-fatal):", queryErr);

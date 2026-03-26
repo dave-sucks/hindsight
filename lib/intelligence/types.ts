@@ -294,6 +294,7 @@ export interface MorningBriefData {
 export interface CreateSignalInput {
   batchId: string;
   artifactId?: string;
+  monitorId?: string;
   type: SignalType;
   headline: string;
   summary: string;
@@ -312,6 +313,10 @@ export interface CreateSignalInput {
   searchTool?: string;    // "PERPLEXITY_SONAR" | "FMP" | "FINNHUB" | "FIRECRAWL"
   searchQuery?: string;   // the actual query or URL sent to the tool
   searchContext?: string; // why this search happened
+  // Aggregate findings
+  aggregateType?: string; // "MARKET_MOVERS_GAINERS" | "MARKET_MOVERS_LOSERS" | "MARKET_MOVERS_ACTIVES" | "EARNINGS_CALENDAR"
+  dataPayload?: unknown;  // [{ticker, change, price, volume}...] or [{ticker, date, epsEstimate}...]
+  itemCount?: number;     // how many items in the aggregate
   expiresAt?: Date;
 }
 

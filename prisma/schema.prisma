@@ -185,6 +185,8 @@ model AgentConfig {
   intelligenceQueries   IntelligenceQuery[]
   signalRoutes          AnalystSignalRoute[]
   morningBriefs         MorningBrief[]
+  // V4: Unified monitors
+  monitors              Monitor[]
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -269,6 +271,42 @@ model IntelligenceQuery {
   @@index([expiresAt])
 }
 
+/// Unified monitor — anything the intelligence system watches.
+/// Replaces the split across IntelligenceQuery + Source + SourcePack.
+/// Each monitor represents one thing being checked: a search query, a domain,
+/// an API endpoint, portfolio tickers, or watchlist tickers.
+model Monitor {
+  id          String    @id @default(cuid())
+  name        String    // "Semiconductor supply chain", "reuters.com", "FMP Top Gainers", "Portfolio Tickers"
+  type        String    // "SEARCH" | "DOMAIN" | "API" | "PORTFOLIO" | "WATCHLIST"
+  method      String    // "perplexity_sonar" | "firecrawl" | "fmp" | "finnhub" | "auto"
+  config      Json?     // type-specific: {query}, {domain, qualityScore}, {endpoint, params}, etc.
+  scope       String    @default("FIRM") // "FIRM" | "ANALYST"
+  analystId   String?
+  analyst     AgentConfig? @relation(fields: [analystId], references: [id], onDelete: Cascade)
+  enabled     Boolean   @default(true)
+  builtIn     Boolean   @default(false) // FMP, Finnhub, Portfolio, Watchlist — can't be deleted
+  origin      String    @default("USER") // "USER" | "BUILDER" | "BRIEFING_AGENT"
+  category    String    @default("MARKET") // "MARKET" | "SECTOR" | "TICKER" | "THEMATIC" | "EVENT"
+  expiresAt   DateTime? // null = permanent; set for temporary monitors from briefing agent
+  sourceRunId String?   // which run created this (for dynamic monitors from briefing agent)
+  lastRunAt   DateTime?
+
+  // Legacy FKs for migration tracking
+  legacyQueryId  String? // original IntelligenceQuery.id
+  legacySourceId String? // original Source.id
+
+  signals     Signal[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([type])
+  @@index([scope, enabled])
+  @@index([analystId])
+  @@index([expiresAt])
+}
+
 /// A raw piece of content extracted from the web — article, transcript, filing page.
 model Artifact {
   id              String   @id @default(cuid())
@@ -297,6 +335,8 @@ model Signal {
   batch          SignalBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   artifactId     String?
   artifact       Artifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+  monitorId      String?  // FK to the Monitor that produced this finding
+  monitor        Monitor? @relation(fields: [monitorId], references: [id], onDelete: SetNull)
 
   type           String   // "NEWS" | "EARNINGS" | "FILING" | "SOCIAL" | "PRICE_ACTION" |
                           // "ANALYST_NOTE" | "OPTIONS" | "MACRO" | "SECTOR"
@@ -320,6 +360,11 @@ model Signal {
   searchQuery    String?  // the actual query or URL sent to the tool
   searchContext  String?  // why this search happened (e.g. "watchlist:KLAC", "query:semiconductor AI capex")
 
+  // Aggregate findings — one signal can represent many data points
+  aggregateType  String?  // "MARKET_MOVERS_GAINERS" | "MARKET_MOVERS_LOSERS" | "MARKET_MOVERS_ACTIVES" | "EARNINGS_CALENDAR"
+  dataPayload    Json?    // [{ticker, change, price, volume}...] or [{ticker, date, epsEstimate}...]
+  itemCount      Int?     // how many items in the aggregate
+
   expiresAt      DateTime?
   routes         AnalystSignalRoute[]
 
@@ -329,6 +374,7 @@ model Signal {
   @@index([themes])
   @@index([createdAt])
   @@index([batchId])
+  @@index([monitorId])
 }
 
 /// A group of signals from one intelligence job run.

@@ -15,18 +15,13 @@ import {
 import { RefreshCw, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-import { SignalFeed } from "@/components/intelligence/signal-feed";
+import { FindingFeed } from "@/components/intelligence/finding-feed";
+import { MonitorList } from "@/components/intelligence/monitor-list";
 import { BriefCards } from "@/components/intelligence/brief-cards";
-import { PipelineLog } from "@/components/intelligence/pipeline-log";
-import { ConfigPanel } from "@/components/intelligence/config-panel";
 import type {
-  IntelligenceQuery,
-  Source,
-  SourcePack,
   Signal,
-  SignalBatch,
   MorningBrief,
-  AnalystRouteInfo,
+  Monitor,
 } from "@/components/intelligence/types";
 
 // ── Fetch helper ────────────────────────────────────────────────────────────
@@ -40,34 +35,29 @@ async function fetchJSON<T>(url: string): Promise<T> {
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function IntelligencePage() {
-  const [queries, setQueries] = useState<IntelligenceQuery[]>([]);
-  const [sources, setSources] = useState<Source[]>([]);
-  const [packs, setPacks] = useState<SourcePack[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
-  const [batches, setBatches] = useState<SignalBatch[]>([]);
+  const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [briefs, setBriefs] = useState<MorningBrief[]>([]);
-  const [routes, setRoutes] = useState<AnalystRouteInfo[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Brief date selection
+  const [briefDate, setBriefDate] = useState<"today" | "yesterday" | "week">(
+    "today"
+  );
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [q, s, p, sig, b, br, rt] = await Promise.all([
-        fetchJSON<IntelligenceQuery[]>("/api/intelligence/queries").catch(() => []),
-        fetchJSON<Source[]>("/api/intelligence/sources").catch(() => []),
-        fetchJSON<SourcePack[]>("/api/intelligence/source-packs").catch(() => []),
-        fetchJSON<Signal[]>("/api/intelligence/signals?limit=200").catch(() => []),
-        fetchJSON<SignalBatch[]>("/api/intelligence/batches?limit=30").catch(() => []),
+      const [sig, mon, br] = await Promise.all([
+        fetchJSON<Signal[]>("/api/intelligence/signals?limit=200").catch(
+          () => []
+        ),
+        fetchJSON<Monitor[]>("/api/intelligence/monitors").catch(() => []),
         fetchJSON<MorningBrief[]>("/api/intelligence/briefs").catch(() => []),
-        fetchJSON<AnalystRouteInfo[]>("/api/intelligence/routes").catch(() => []),
       ]);
-      setQueries(q);
-      setSources(s);
-      setPacks(p);
       setSignals(sig);
-      setBatches(b);
+      setMonitors(mon);
       setBriefs(br);
-      setRoutes(rt);
     } catch (err) {
       console.error("[intelligence] Failed to load:", err);
     } finally {
@@ -79,54 +69,77 @@ export default function IntelligencePage() {
     loadAll();
   }, [loadAll]);
 
-  // ── Stats (memoized to avoid recomputing on tab switch) ────────────────
+  // Load briefs when date changes
+  const loadBriefs = useCallback(async () => {
+    try {
+      const dateParam = getBriefDateParam(briefDate);
+      const br = await fetchJSON<MorningBrief[]>(
+        `/api/intelligence/briefs${dateParam ? `?date=${dateParam}` : ""}`
+      );
+      setBriefs(br);
+    } catch {
+      console.error("[intelligence] Failed to load briefs");
+    }
+  }, [briefDate]);
+
+  useEffect(() => {
+    loadBriefs();
+  }, [loadBriefs]);
+
+  // ── Stats ────────────────────────────────────────────────────────────────
 
   const todaySignals = useMemo(() => {
     const now = new Date().toDateString();
-    return signals.filter((s) => new Date(s.createdAt).toDateString() === now);
+    return signals.filter(
+      (s) => new Date(s.createdAt).toDateString() === now
+    );
   }, [signals]);
 
   const stats = useMemo(() => {
     const breakingHigh = todaySignals.filter(
       (s) => s.urgency === "BREAKING" || s.urgency === "HIGH"
     ).length;
-    const bullish = todaySignals.filter((s) => s.sentiment === "BULLISH").length;
-    const bearish = todaySignals.filter((s) => s.sentiment === "BEARISH").length;
-    const tickers = new Set(todaySignals.flatMap((s) => s.tickers)).size;
-    return { breakingHigh, bullish, bearish, tickers };
-  }, [todaySignals]);
-
-  const todayJobs = useMemo(() => {
-    const now = new Date().toDateString();
-    return batches.filter((b) => new Date(b.startedAt).toDateString() === now).length;
-  }, [batches]);
+    const bullish = todaySignals.filter(
+      (s) => s.sentiment === "BULLISH"
+    ).length;
+    const bearish = todaySignals.filter(
+      (s) => s.sentiment === "BEARISH"
+    ).length;
+    const monitorsActive = monitors.filter((m) => m.enabled).length;
+    return { breakingHigh, bullish, bearish, monitorsActive };
+  }, [todaySignals, monitors]);
 
   return (
     <TooltipProvider>
       <div className="p-6 space-y-4">
         {/* Top bar: empty left | tabs center | refresh right */}
-        <Tabs defaultValue="signals">
+        <Tabs defaultValue="findings">
           <div className="grid grid-cols-3 items-center">
             <div />
             <TabsList className="mx-auto">
-              <TabsTrigger value="signals">
-                Signals
+              <TabsTrigger value="findings">
+                Findings
                 {todaySignals.length > 0 && (
                   <Badge variant="secondary" className="ml-1.5">
                     {todaySignals.length}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
-              <TabsTrigger value="config">
-                Config
+              <TabsTrigger value="monitors">
+                Monitors
                 <Badge variant="secondary" className="ml-1.5">
-                  {queries.length + sources.length}
+                  {monitors.length}
                 </Badge>
               </TabsTrigger>
+              <TabsTrigger value="briefs">Briefs</TabsTrigger>
             </TabsList>
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadAll}
+                disabled={loading}
+              >
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -136,11 +149,14 @@ export default function IntelligencePage() {
             </div>
           </div>
 
-          {/* Signals tab */}
-          <TabsContent value="signals" className="space-y-6 pt-4" keepMounted>
-            {/* Stats strip inside signals tab */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-              <StatCard label="Today's Signals" value={todaySignals.length} />
+          {/* Findings tab */}
+          <TabsContent value="findings" className="space-y-6 pt-4" keepMounted>
+            {/* Stats strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <StatCard
+                label="Today's Findings"
+                value={todaySignals.length}
+              />
               <StatCard
                 label="Breaking / High"
                 value={stats.breakingHigh}
@@ -156,38 +172,51 @@ export default function IntelligencePage() {
                 value={stats.bearish}
                 variant={stats.bearish > 0 ? "negative" : "default"}
               />
-              <StatCard label="Tickers" value={stats.tickers} />
-              <StatCard label="Jobs Today" value={todayJobs} />
+              <StatCard
+                label="Monitors Active"
+                value={stats.monitorsActive}
+              />
             </div>
 
             <Separator />
 
-            {/* Briefs at top */}
+            {/* Finding feed */}
+            <FindingFeed signals={signals} />
+          </TabsContent>
+
+          {/* Monitors tab */}
+          <TabsContent value="monitors" className="pt-4">
+            <MonitorList monitors={monitors} onRefresh={loadAll} />
+          </TabsContent>
+
+          {/* Briefs tab */}
+          <TabsContent value="briefs" className="pt-4 space-y-4">
+            {/* Date selector */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={briefDate === "today" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setBriefDate("today")}
+              >
+                Today
+              </Button>
+              <Button
+                variant={briefDate === "yesterday" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setBriefDate("yesterday")}
+              >
+                Yesterday
+              </Button>
+              <Button
+                variant={briefDate === "week" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setBriefDate("week")}
+              >
+                This Week
+              </Button>
+            </div>
+
             <BriefCards briefs={briefs} />
-
-            {briefs.length > 0 && <Separator />}
-
-            {/* Signal feed */}
-            <SignalFeed signals={signals} routes={routes} />
-          </TabsContent>
-
-          {/* Pipeline tab */}
-          <TabsContent value="pipeline" className="pt-4">
-            <PipelineLog
-              batches={batches}
-              routes={routes}
-              onRefresh={loadAll}
-            />
-          </TabsContent>
-
-          {/* Config tab */}
-          <TabsContent value="config" className="pt-4">
-            <ConfigPanel
-              queries={queries}
-              sources={sources}
-              packs={packs}
-              onRefresh={loadAll}
-            />
           </TabsContent>
         </Tabs>
       </div>
@@ -223,4 +252,29 @@ function StatCard({
       </p>
     </Card>
   );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function getBriefDateParam(
+  selection: "today" | "yesterday" | "week"
+): string | null {
+  const now = new Date();
+  if (selection === "today") {
+    return formatDateParam(now);
+  }
+  if (selection === "yesterday") {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return formatDateParam(yesterday);
+  }
+  // "week" — return null to get all recent briefs
+  return null;
+}
+
+function formatDateParam(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }

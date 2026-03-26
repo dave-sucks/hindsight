@@ -64,6 +64,26 @@ export interface Signal {
     status: string;
     startedAt: string;
   };
+  // Monitor-based provenance
+  monitorId: string | null;
+  monitor: {
+    id: string;
+    name: string;
+    type: string;
+    method: string;
+    config: Record<string, unknown> | null;
+  } | null;
+  aggregateType: string | null;
+  dataPayload: unknown;
+  itemCount: number | null;
+  routes: Array<{
+    id: string;
+    analystId: string;
+    analyst: { id: string; name: string };
+    relevanceScore: number;
+    routeReason: string;
+    status: string;
+  }>;
 }
 
 export interface SignalBatch {
@@ -89,6 +109,32 @@ export interface MorningBrief {
   signalCount: number;
   generatedAt: string;
   analyst: { id: string; name: string };
+}
+
+export interface Monitor {
+  id: string;
+  name: string;
+  type: string;
+  method: string;
+  config: Record<string, unknown> | null;
+  scope: string;
+  analystId: string | null;
+  analyst: { id: string; name: string } | null;
+  enabled: boolean;
+  builtIn: boolean;
+  origin: string;
+  category: string;
+  expiresAt: string | null;
+  sourceRunId: string | null;
+  lastRunAt: string | null;
+  monitoredTickers: Array<{
+    ticker: string;
+    reason: string | null;
+    priority?: number;
+    analystId?: string;
+  }> | null;
+  _count: { signals: number };
+  createdAt: string;
 }
 
 export interface AnalystRouteInfo {
@@ -168,4 +214,50 @@ export const SENTIMENT_CONFIG: Record<string, { label: string; className: string
   BEARISH: { label: "Bearish", className: "text-red-500" },
   NEUTRAL: { label: "Neutral", className: "text-muted-foreground" },
   MIXED: { label: "Mixed", className: "text-amber-500" },
+};
+
+export const MONITOR_TYPE_CONFIG: Record<string, { label: string; description: string }> = {
+  SEARCH: { label: "Search", description: "Web search via Perplexity Sonar" },
+  DOMAIN: { label: "Domain", description: "Monitored publication or website" },
+  API: { label: "API", description: "Financial data API endpoint" },
+  PORTFOLIO: { label: "Portfolio", description: "Open positions monitoring" },
+  WATCHLIST: { label: "Watchlist", description: "Watchlist items monitoring" },
+};
+
+export const MONITOR_METHOD_CONFIG: Record<string, { label: string }> = {
+  perplexity_sonar: { label: "Perplexity Sonar" },
+  firecrawl: { label: "Firecrawl" },
+  fmp: { label: "FMP" },
+  finnhub: { label: "Finnhub" },
+  auto: { label: "Automatic" },
+};
+
+export const ORIGIN_LABELS: Record<string, string> = {
+  USER: "You",
+  BUILDER: "Analyst Builder",
+  BRIEFING_AGENT: "Briefing Agent",
+  SYSTEM: "System",
+};
+
+export const THEME_LABELS: Record<string, string> = {
+  AI_CAPEX: "AI Capital Spending",
+  FED_RATE_CUT: "Fed Rate Cut",
+  EARNINGS_BEAT: "Earnings Beat",
+  EARNINGS_MISS: "Earnings Miss",
+  SUPPLY_CHAIN: "Supply Chain",
+  TARIFFS: "Tariffs",
+  GEOPOLITICAL: "Geopolitical Risk",
+  ENERGY_TRANSITION: "Energy Transition",
+  CRYPTO: "Cryptocurrency",
+  REAL_ESTATE: "Real Estate",
+  INFLATION: "Inflation",
+  RECESSION: "Recession Risk",
+  IPO: "IPO",
+  M_AND_A: "M&A Activity",
+  BUYBACK: "Share Buyback",
+  DIVIDEND: "Dividend",
+  INSIDER_TRADING: "Insider Trading",
+  SHORT_SQUEEZE: "Short Squeeze",
+  REGULATORY: "Regulatory",
+  FDA_APPROVAL: "FDA Approval",
 };

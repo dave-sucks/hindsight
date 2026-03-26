@@ -841,9 +841,34 @@ export async function createAnalystFromBuilder(
       });
 
       console.log(`[analyst] Created source pack "${sourcePack.name}" with ${proposal.sources.length} sources for analyst ${newAnalyst.id}`);
+
+      // Also create Monitor rows for each domain source (V4 unified monitors)
+      for (const src of proposal.sources) {
+        const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
+          .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
+        await tx.monitor.create({
+          data: {
+            name: src.name,
+            type: "DOMAIN",
+            method: "perplexity_sonar",
+            config: {
+              domain: src.domain,
+              url: `https://${src.domain}`,
+              qualityScore: Math.min(5, Math.max(1, Math.round(src.qualityScore))),
+            },
+            scope: "ANALYST",
+            analystId: newAnalyst.id,
+            enabled: true,
+            builtIn: false,
+            origin: "BUILDER",
+            category: validCategory,
+          },
+        });
+      }
+      console.log(`[analyst] Created ${proposal.sources.length} domain monitors for analyst ${newAnalyst.id}`);
     }
 
-    // 4. Create intelligence queries
+    // 4. Create intelligence queries (legacy) + Monitor rows (V4)
     if (data.intelligenceQueries && data.intelligenceQueries.length > 0) {
       const queryRows = data.intelligenceQueries.map((q) => {
         const validCategory = (["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"] as const)
@@ -859,7 +884,27 @@ export async function createAnalystFromBuilder(
       });
 
       await tx.intelligenceQuery.createMany({ data: queryRows });
-      console.log(`[analyst] Created ${queryRows.length} intelligence queries for analyst ${newAnalyst.id}`);
+
+      // Also create Monitor rows for each search query (V4 unified monitors)
+      for (const q of data.intelligenceQueries) {
+        const validCategory = (["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"] as const)
+          .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
+        await tx.monitor.create({
+          data: {
+            name: q.query,
+            type: "SEARCH",
+            method: "perplexity_sonar",
+            config: { query: q.query },
+            scope: "ANALYST",
+            analystId: newAnalyst.id,
+            enabled: true,
+            builtIn: false,
+            origin: "BUILDER",
+            category: validCategory,
+          },
+        });
+      }
+      console.log(`[analyst] Created ${queryRows.length} intelligence queries + monitors for analyst ${newAnalyst.id}`);
     }
 
     return newAnalyst;
