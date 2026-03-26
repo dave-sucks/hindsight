@@ -7,17 +7,14 @@ export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get("type")
   const urgency = req.nextUrl.searchParams.get("urgency")
   const batchId = req.nextUrl.searchParams.get("batchId")
-  const monitorId = req.nextUrl.searchParams.get("monitorId")
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50")
 
-  try {
   const signals = await prisma.signal.findMany({
     where: {
       ...(ticker ? { tickers: { has: ticker } } : {}),
       ...(type ? { type } : {}),
       ...(urgency ? { urgency } : {}),
       ...(batchId ? { batchId } : {}),
-      ...(monitorId ? { monitorId } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: Math.min(limit, 200),
@@ -25,7 +22,6 @@ export async function GET(req: NextRequest) {
       id: true,
       batchId: true,
       artifactId: true,
-      monitorId: true,
       type: true,
       headline: true,
       summary: true,
@@ -43,9 +39,6 @@ export async function GET(req: NextRequest) {
       searchTool: true,
       searchQuery: true,
       searchContext: true,
-      aggregateType: true,
-      dataPayload: true,
-      itemCount: true,
       expiresAt: true,
       createdAt: true,
       batch: {
@@ -64,10 +57,15 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  return NextResponse.json(signals)
-  } catch (err) {
-    const msg = err instanceof Error ? `${err.message}\n${(err as Record<string, unknown>).code ?? ""}` : String(err)
-    console.error("[signals] FULL ERROR:", msg)
-    return NextResponse.json([], { status: 200 })
-  }
+  // Add null defaults for new fields the UI expects
+  const enriched = signals.map((s) => ({
+    ...s,
+    monitorId: null,
+    monitor: null,
+    aggregateType: null,
+    dataPayload: null,
+    itemCount: null,
+  }))
+
+  return NextResponse.json(enriched)
 }
