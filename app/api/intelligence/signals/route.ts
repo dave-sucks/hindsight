@@ -51,9 +51,6 @@ export async function GET(req: NextRequest) {
       batch: {
         select: { jobType: true, status: true, startedAt: true },
       },
-      monitor: {
-        select: { id: true, name: true, type: true, method: true, config: true },
-      },
       routes: {
         select: {
           id: true,
