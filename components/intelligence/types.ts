@@ -162,11 +162,11 @@ export function relativeTime(dateStr: string): string {
 }
 
 export const JOB_LABELS: Record<string, string> = {
-  MARKET_SWEEP: "Market Sweep",
-  PORTFOLIO_MONITOR: "Portfolio Monitor",
-  SOURCE_PACK: "Source Pack Monitor",
-  SIGNAL_ROUTER: "Signal Router",
-  MORNING_BRIEF: "Morning Brief",
+  MARKET_SWEEP: "Search Monitors",
+  PORTFOLIO_MONITOR: "Ticker Monitors",
+  SOURCE_PACK: "Domain Monitors",
+  SIGNAL_ROUTER: "Route Findings",
+  MORNING_BRIEF: "Generate Briefs",
   EMAIL_INGEST: "Email Ingest",
   MANUAL: "Manual",
 };

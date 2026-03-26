@@ -783,66 +783,10 @@ export async function createAnalystFromBuilder(
       console.log(`[analyst] Created ${watchlistSymbols.length} watchlist items (legacy format) for analyst ${newAnalyst.id}`);
     }
 
-    // 3. Create source pack + sources + links (all-or-nothing within tx)
+    // 3. Create domain monitors from source pack proposal
     if (data.sourcePackProposal && data.sourcePackProposal.sources.length > 0) {
       const proposal = data.sourcePackProposal;
 
-      const sourcePack = await tx.sourcePack.create({
-        data: {
-          name: proposal.name || `${name} Intelligence Pack`,
-          scope: "ANALYST",
-          analystId: newAnalyst.id,
-        },
-      });
-
-      for (const src of proposal.sources) {
-        const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
-          .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
-
-        // Upsert source by domain (avoid duplicates across analysts)
-        let source = await tx.source.findFirst({
-          where: { domain: src.domain },
-        });
-
-        if (!source) {
-          source = await tx.source.create({
-            data: {
-              name: src.name,
-              type: "DOMAIN",
-              url: `https://${src.domain}`,
-              domain: src.domain,
-              category: validCategory,
-              qualityScore: Math.min(5, Math.max(1, Math.round(src.qualityScore))),
-              checkFrequency: "DAILY",
-              enabled: true,
-            },
-          });
-        }
-
-        // Link source to pack — skip if already linked (race condition guard)
-        const existing = await tx.sourcePackSource.findFirst({
-          where: { packId: sourcePack.id, sourceId: source.id },
-        });
-        if (!existing) {
-          await tx.sourcePackSource.create({
-            data: {
-              packId: sourcePack.id,
-              sourceId: source.id,
-              priority: src.qualityScore >= 4 ? 1 : 2,
-            },
-          });
-        }
-      }
-
-      // Link primary source pack to analyst config
-      await tx.agentConfig.update({
-        where: { id: newAnalyst.id },
-        data: { primarySourcePackId: sourcePack.id },
-      });
-
-      console.log(`[analyst] Created source pack "${sourcePack.name}" with ${proposal.sources.length} sources for analyst ${newAnalyst.id}`);
-
-      // Also create Monitor rows for each domain source (V4 unified monitors)
       for (const src of proposal.sources) {
         const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
           .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
@@ -868,24 +812,8 @@ export async function createAnalystFromBuilder(
       console.log(`[analyst] Created ${proposal.sources.length} domain monitors for analyst ${newAnalyst.id}`);
     }
 
-    // 4. Create intelligence queries (legacy) + Monitor rows (V4)
+    // 4. Create search monitors from intelligence queries
     if (data.intelligenceQueries && data.intelligenceQueries.length > 0) {
-      const queryRows = data.intelligenceQueries.map((q) => {
-        const validCategory = (["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"] as const)
-          .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
-        return {
-          scope: "ANALYST" as const,
-          analystId: newAnalyst.id,
-          query: q.query,
-          category: validCategory,
-          enabled: true,
-          createdBy: "ANALYST_BUILDER" as const,
-        };
-      });
-
-      await tx.intelligenceQuery.createMany({ data: queryRows });
-
-      // Also create Monitor rows for each search query (V4 unified monitors)
       for (const q of data.intelligenceQueries) {
         const validCategory = (["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"] as const)
           .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
@@ -904,7 +832,7 @@ export async function createAnalystFromBuilder(
           },
         });
       }
-      console.log(`[analyst] Created ${queryRows.length} intelligence queries + monitors for analyst ${newAnalyst.id}`);
+      console.log(`[analyst] Created ${data.intelligenceQueries.length} search monitors for analyst ${newAnalyst.id}`);
     }
 
     return newAnalyst;

@@ -516,26 +516,11 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
       }
     }
 
-    // ── Persist dynamic queries to IntelligenceQuery table + Monitor table ──
+    // ── Persist dynamic queries as Monitor rows ─────────────────────────────
     const dynamicQueries: DynamicQueryOutput[] = object.dynamicQueries ?? [];
     if (dynamicQueries.length > 0) {
       const now = new Date();
-      const queryRows = dynamicQueries.map((dq) => ({
-        scope: "ANALYST" as const,
-        analystId,
-        query: dq.query,
-        category: dq.category,
-        enabled: true,
-        expiresAt: new Date(now.getTime() + dq.expires_days * 24 * 60 * 60 * 1000),
-        createdBy: "BRIEFING_AGENT" as const,
-        sourceRunId: runId,
-      }));
-
       try {
-        // Legacy: IntelligenceQuery rows
-        await prisma.intelligenceQuery.createMany({ data: queryRows });
-
-        // V4: Also create Monitor rows for unified monitor system
         for (const dq of dynamicQueries) {
           await prisma.monitor.create({
             data: {
@@ -554,12 +539,11 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
             },
           });
         }
-
         console.log(
-          `[briefing] Created ${queryRows.length} dynamic queries + monitors for analyst ${config.name}: ${queryRows.map((q) => q.query.slice(0, 50)).join("; ")}`
+          `[briefing] Created ${dynamicQueries.length} dynamic monitors for analyst ${config.name}: ${dynamicQueries.map((q) => q.query.slice(0, 50)).join("; ")}`
         );
       } catch (queryErr) {
-        console.warn("[briefing] Failed to create dynamic queries (non-fatal):", queryErr);
+        console.warn("[briefing] Failed to create dynamic monitors (non-fatal):", queryErr);
       }
     }
 
