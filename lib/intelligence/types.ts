@@ -308,6 +308,10 @@ export interface CreateSignalInput {
   freshness: SignalFreshness;
   sourceUrls: string[];
   sourceNames: string[];
+  // Provenance
+  searchTool?: string;    // "PERPLEXITY_SONAR" | "FMP" | "FINNHUB" | "FIRECRAWL"
+  searchQuery?: string;   // the actual query or URL sent to the tool
+  searchContext?: string; // why this search happened
   expiresAt?: Date;
 }
 

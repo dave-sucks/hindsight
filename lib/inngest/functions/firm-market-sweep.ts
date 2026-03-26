@@ -84,7 +84,13 @@ export const firmMarketSweep = inngest.createFunction(
           const signalIds = await createSignalsFromSonar(
             batchId,
             sonarResponse,
-            signalType
+            signalType,
+            3,
+            {
+              searchTool: "PERPLEXITY_SONAR",
+              searchQuery: query.query,
+              searchContext: `query:${query.category.toLowerCase()}:${query.id}`,
+            }
           )
 
           return { success: true, signalCount: signalIds.length }
@@ -163,6 +169,9 @@ export const firmMarketSweep = inngest.createFunction(
               freshness: "TODAY",
               sourceUrls: [],
               sourceNames: ["FMP"],
+              searchTool: "FMP",
+              searchQuery: path,
+              searchContext: `market_movers:${label}`,
             })
             created++
           }
@@ -239,6 +248,9 @@ export const firmMarketSweep = inngest.createFunction(
             freshness: "TODAY",
             sourceUrls: [],
             sourceNames: ["Finnhub"],
+            searchTool: "FINNHUB",
+            searchQuery: `/calendar/earnings?from=${from}&to=${to}`,
+            searchContext: "earnings_calendar",
           })
           created++
         }

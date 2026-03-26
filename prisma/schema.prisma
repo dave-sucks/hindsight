@@ -315,6 +315,11 @@ model Signal {
   sourceUrls     String[]
   sourceNames    String[]
 
+  // Provenance — how this signal was discovered
+  searchTool     String?  // "PERPLEXITY_SONAR" | "FMP" | "FINNHUB" | "FIRECRAWL"
+  searchQuery    String?  // the actual query or URL sent to the tool
+  searchContext  String?  // why this search happened (e.g. "watchlist:KLAC", "query:semiconductor AI capex")
+
   expiresAt      DateTime?
   routes         AnalystSignalRoute[]
 

@@ -81,10 +81,10 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
       freshness: input.freshness,
       sourceUrls: input.sourceUrls,
       sourceNames: input.sourceNames,
+      searchTool: input.searchTool,
+      searchQuery: input.searchQuery,
+      searchContext: input.searchContext,
       expiresAt: input.expiresAt,
-      // Store contentHash in batch metadata since Signal model
-      // doesn't have a dedicated contentHash column — we use it
-      // transiently for dedup via headline+summary hashing.
     },
   });
 
@@ -100,7 +100,8 @@ export async function createSignalsFromSonar(
   batchId: string,
   sonarResponse: SonarSignalResponse,
   signalType: SignalType,
-  sourceQuality: number = 3
+  sourceQuality: number = 3,
+  provenance?: { searchTool?: string; searchQuery?: string; searchContext?: string }
 ): Promise<string[]> {
   const ids: string[] = [];
 
@@ -120,6 +121,9 @@ export async function createSignalsFromSonar(
         freshness: "TODAY",
         sourceUrls: item.sourceUrls,
         sourceNames: item.sourceNames,
+        searchTool: provenance?.searchTool,
+        searchQuery: provenance?.searchQuery,
+        searchContext: provenance?.searchContext,
       });
       ids.push(id);
     } catch (error) {

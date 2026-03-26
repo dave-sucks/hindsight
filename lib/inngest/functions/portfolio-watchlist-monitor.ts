@@ -72,7 +72,12 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
             batchId,
             sonarResponse,
             "NEWS",
-            3 // default source quality
+            3,
+            {
+              searchTool: "PERPLEXITY_SONAR",
+              searchQuery: `${ticker} stock news developments catalysts today`,
+              searchContext: `ticker:${ticker}`,
+            }
           )
 
           return { success: true, signalCount: signalIds.length }
