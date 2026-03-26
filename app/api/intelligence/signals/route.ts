@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const monitorId = req.nextUrl.searchParams.get("monitorId")
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50")
 
+  try {
   const signals = await prisma.signal.findMany({
     where: {
       ...(ticker ? { tickers: { has: ticker } } : {}),
@@ -67,4 +68,8 @@ export async function GET(req: NextRequest) {
   })
 
   return NextResponse.json(signals)
+  } catch (err) {
+    console.error("[signals] Query failed:", err)
+    return NextResponse.json([], { status: 200 })
+  }
 }

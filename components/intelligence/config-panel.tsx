@@ -115,7 +115,11 @@ export function MonitorList({ monitors, onRefresh }: MonitorListProps) {
 
   const filtered = useMemo(() => {
     return monitors.filter((m) => {
-      if (typeFilter !== "ALL" && m.type !== typeFilter) return false;
+      if (typeFilter !== "ALL") {
+        if (typeFilter === "SEARCH") {
+          if (m.type !== "SEARCH" && m.type !== "PORTFOLIO" && m.type !== "WATCHLIST") return false;
+        } else if (m.type !== typeFilter) return false;
+      }
       if (categoryFilter !== "ALL" && m.category !== categoryFilter) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -185,11 +189,9 @@ export function MonitorList({ monitors, onRefresh }: MonitorListProps) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Type</SelectItem>
-              <SelectItem value="SEARCH">Search ({typeCounts.SEARCH ?? 0})</SelectItem>
+              <SelectItem value="SEARCH">Search ({(typeCounts.SEARCH ?? 0) + (typeCounts.PORTFOLIO ?? 0) + (typeCounts.WATCHLIST ?? 0)})</SelectItem>
               <SelectItem value="DOMAIN">Domain ({typeCounts.DOMAIN ?? 0})</SelectItem>
               <SelectItem value="API">API ({typeCounts.API ?? 0})</SelectItem>
-              <SelectItem value="PORTFOLIO">Portfolio ({typeCounts.PORTFOLIO ?? 0})</SelectItem>
-              <SelectItem value="WATCHLIST">Watchlist ({typeCounts.WATCHLIST ?? 0})</SelectItem>
             </SelectContent>
           </Select>
           <Tooltip>
@@ -276,7 +278,7 @@ function MonitorRow({
     <TableRow>
       {/* Colored type icon */}
       <TableCell>
-        <MonitorTypeIcon type={monitor.type} method={monitor.method} />
+        <MonitorTypeIcon type={monitor.type} />
       </TableCell>
 
       {/* Name + detail + expandable tickers */}
@@ -350,25 +352,12 @@ function MonitorRow({
 
 // ── Type Icons ───────────────────────────────────────────────────────────────
 
-function MonitorTypeIcon({ type, method }: { type: string; method: string }) {
-  if (type === "SEARCH") {
-    return (
-      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
-        <Search className="h-3.5 w-3.5" />
-      </div>
-    );
-  }
+function MonitorTypeIcon({ type }: { type: string }) {
+  // 3 types: Search (includes portfolio/watchlist), Domain, API
   if (type === "DOMAIN") {
     return (
       <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-orange/10 text-brand-orange">
         <Globe className="h-3.5 w-3.5" />
-      </div>
-    );
-  }
-  if (type === "API" && method === "finnhub") {
-    return (
-      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-teal-500/10 text-teal-500">
-        <CalendarDays className="h-3.5 w-3.5" />
       </div>
     );
   }
@@ -379,22 +368,9 @@ function MonitorTypeIcon({ type, method }: { type: string; method: string }) {
       </div>
     );
   }
-  if (type === "PORTFOLIO") {
-    return (
-      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-emerald-500/10 text-emerald-500">
-        <Briefcase className="h-3.5 w-3.5" />
-      </div>
-    );
-  }
-  if (type === "WATCHLIST") {
-    return (
-      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-amber-500/10 text-amber-500">
-        <Eye className="h-3.5 w-3.5" />
-      </div>
-    );
-  }
+  // SEARCH, PORTFOLIO, WATCHLIST — all use Sonar search
   return (
-    <div className="h-7 w-7 rounded-md flex items-center justify-center bg-muted text-muted-foreground">
+    <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
       <Search className="h-3.5 w-3.5" />
     </div>
   );
@@ -770,7 +746,7 @@ function getMonitorDetail(monitor: Monitor): string {
   if (monitor.type === "SEARCH") return (config.query as string) ?? "";
   if (monitor.type === "DOMAIN") return (config.domain as string) ?? "";
   if (monitor.type === "API") return (config.endpoint as string) ?? "";
-  if (monitor.type === "PORTFOLIO") return "Open positions across all analysts";
-  if (monitor.type === "WATCHLIST") return "Active watchlist items across all analysts";
+  if (monitor.type === "PORTFOLIO") return "Auto-searches all open positions via Sonar";
+  if (monitor.type === "WATCHLIST") return "Auto-searches all watchlist tickers via Sonar";
   return "";
 }

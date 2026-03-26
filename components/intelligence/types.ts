@@ -183,8 +183,8 @@ export const MONITOR_TYPE_CONFIG: Record<string, { label: string; description: s
   SEARCH: { label: "Search", description: "Web search via Perplexity Sonar" },
   DOMAIN: { label: "Domain", description: "Monitored publication or website" },
   API: { label: "API", description: "Financial data API endpoint" },
-  PORTFOLIO: { label: "Portfolio", description: "Open positions monitoring" },
-  WATCHLIST: { label: "Watchlist", description: "Watchlist items monitoring" },
+  PORTFOLIO: { label: "Search", description: "Auto-searches open positions via Sonar" },
+  WATCHLIST: { label: "Search", description: "Auto-searches watchlist tickers via Sonar" },
 };
 
 export const MONITOR_METHOD_CONFIG: Record<string, { label: string }> = {
