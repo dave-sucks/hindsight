@@ -69,7 +69,8 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(signals)
   } catch (err) {
-    console.error("[signals] Query failed:", err)
+    const msg = err instanceof Error ? `${err.message}\n${(err as Record<string, unknown>).code ?? ""}` : String(err)
+    console.error("[signals] FULL ERROR:", msg)
     return NextResponse.json([], { status: 200 })
   }
 }
