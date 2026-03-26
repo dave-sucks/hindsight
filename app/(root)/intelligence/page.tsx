@@ -15,8 +15,8 @@ import {
 import { RefreshCw, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-import { FindingFeed } from "@/components/intelligence/finding-feed";
-import { MonitorList } from "@/components/intelligence/monitor-list";
+import { SignalFeed } from "@/components/intelligence/signal-feed";
+import { MonitorList } from "@/components/intelligence/config-panel";
 import { BriefCards } from "@/components/intelligence/brief-cards";
 import type {
   Signal,
@@ -181,7 +181,7 @@ export default function IntelligencePage() {
             <Separator />
 
             {/* Finding feed */}
-            <FindingFeed signals={signals} />
+            <SignalFeed signals={signals} />
           </TabsContent>
 
           {/* Monitors tab */}

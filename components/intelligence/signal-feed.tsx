@@ -36,14 +36,15 @@ import {
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Signal, AnalystRouteInfo } from "./types";
+import type { Signal } from "./types";
 import {
   relativeTime,
   JOB_LABELS,
   URGENCY_CONFIG,
   SENTIMENT_CONFIG,
+  THEME_LABELS,
 } from "./types";
-import { PerplexityLogo, FirecrawlLogo } from "./icons";
+import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo } from "./icons";
 
 type Icon = React.ComponentType<{ className?: string }>;
 
@@ -51,10 +52,9 @@ type Icon = React.ComponentType<{ className?: string }>;
 
 interface SignalFeedProps {
   signals: Signal[];
-  routes: AnalystRouteInfo[];
 }
 
-export function SignalFeed({ signals, routes }: SignalFeedProps) {
+export function SignalFeed({ signals }: SignalFeedProps) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [urgencyFilter, setUrgencyFilter] = useState("ALL");
@@ -136,14 +136,17 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
               No signals match your filters
             </p>
           )}
-          {filtered.map((signal) => (
-            <SignalRow
-              key={signal.id}
-              signal={signal}
-              routes={routes}
-              onSelect={handleSelect}
-            />
-          ))}
+          {filtered.map((signal) =>
+            signal.aggregateType ? (
+              <AggregateFindingCard key={signal.id} signal={signal} />
+            ) : (
+              <SignalRow
+                key={signal.id}
+                signal={signal}
+                onSelect={handleSelect}
+              />
+            )
+          )}
         </div>
 
         {/* Detail sheet */}
@@ -153,7 +156,7 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
         >
           <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
             {selected && (
-              <SignalDetail signal={selected} routes={routes} />
+              <SignalDetail signal={selected} />
             )}
           </SheetContent>
         </Sheet>
@@ -166,11 +169,9 @@ export function SignalFeed({ signals, routes }: SignalFeedProps) {
 
 const SignalRow = memo(function SignalRow({
   signal,
-  routes,
   onSelect,
 }: {
   signal: Signal;
-  routes: AnalystRouteInfo[];
   onSelect: (signal: Signal) => void;
 }) {
   const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
@@ -224,12 +225,12 @@ const SignalRow = memo(function SignalRow({
 
             <Separator orientation="vertical" className="h-3" />
 
-            {/* Type + source */}
-            <span className="text-xs text-muted-foreground">
-              {signal.type}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {signal.sourceNames[0]
+            {/* Provider logo + monitor name */}
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <ProviderLogo method={signal.monitor?.method} />
+              {signal.monitor?.name
+                ? `via ${signal.monitor.name}`
+                : signal.sourceNames[0]
                 ? `via ${signal.sourceNames[0]}`
                 : `via ${JOB_LABELS[signal.batch?.jobType] ?? "Intelligence"}`}
             </span>
@@ -244,24 +245,21 @@ const SignalRow = memo(function SignalRow({
             )}
           </div>
 
-          {/* Routing badges */}
-          {routes.length > 0 && (
+          {/* Per-signal routing badges */}
+          {signal.routes && signal.routes.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-0.5">
-              {routes
-                .filter((r) => r.totalRoutes > 0)
-                .slice(0, 4)
-                .map((r) => (
-                  <Tooltip key={r.analystId}>
-                    <TooltipTrigger render={<span className="inline-flex" />}>
-                      <Badge variant="outline" className="text-[10px]">
-                        {r.analystName}
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {r.totalRoutes} signals routed ({r.pending} pending, {r.read} read)
-                    </TooltipContent>
-                  </Tooltip>
-                ))}
+              {signal.routes.slice(0, 4).map((r) => (
+                <Tooltip key={r.id}>
+                  <TooltipTrigger render={<span className="inline-flex" />}>
+                    <Badge variant="outline" className="text-[10px]">
+                      {r.analyst.name}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Relevance: {r.relevanceScore}% — {formatRouteReason(r.routeReason)}
+                  </TooltipContent>
+                </Tooltip>
+              ))}
             </div>
           )}
         </div>
@@ -279,10 +277,8 @@ const SignalRow = memo(function SignalRow({
 
 function SignalDetail({
   signal,
-  routes,
 }: {
   signal: Signal;
-  routes: AnalystRouteInfo[];
 }) {
   const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
   const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
@@ -304,21 +300,22 @@ function SignalDetail({
       </SheetHeader>
 
       <div className="px-6 pb-6 space-y-5">
-        {/* Classification badges */}
+        {/* Classification badges — simplified */}
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{signal.type}</Badge>
           <Badge variant="secondary">
             <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", urgency.dot)} />
             {urgency.label}
           </Badge>
-          <Badge variant="secondary">
-            <span className={cn("mr-1", sentiment.className)}>{sentiment.label}</span>
-          </Badge>
-          <Badge variant="secondary">{signal.freshness}</Badge>
+          {signal.sentiment !== "NEUTRAL" && (
+            <Badge variant="secondary">
+              <span className={cn("mr-1", sentiment.className)}>{sentiment.label}</span>
+            </Badge>
+          )}
         </div>
 
-        {/* Tickers + Themes + Sectors */}
-        {(signal.tickers.length > 0 || signal.themes.length > 0 || signal.sectors.length > 0) && (
+        {/* Tickers + Themes (translated, top 3) */}
+        {(signal.tickers.length > 0 || signal.themes.length > 0) && (
           <div className="space-y-2">
             {signal.tickers.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
@@ -331,16 +328,8 @@ function SignalDetail({
             {signal.themes.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Themes</span>
-                {signal.themes.map((t) => (
-                  <Badge key={t} variant="outline">{t}</Badge>
-                ))}
-              </div>
-            )}
-            {signal.sectors.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Sectors</span>
-                {signal.sectors.map((s) => (
-                  <Badge key={s} variant="outline">{s}</Badge>
+                {signal.themes.slice(0, 3).map((t) => (
+                  <Badge key={t} variant="outline">{THEME_LABELS[t] ?? t.toLowerCase().replace(/_/g, " ")}</Badge>
                 ))}
               </div>
             )}
@@ -419,8 +408,8 @@ function SignalDetail({
           </div>
         )}
 
-        {/* ── Routing ─────────────────────────────────────────────────── */}
-        {routes.length > 0 && routes.some((r) => r.totalRoutes > 0) && (
+        {/* ── Per-signal routing ────────────────────────────────────── */}
+        {signal.routes && signal.routes.length > 0 && (
           <>
             <Separator />
             <div className="space-y-2">
@@ -428,21 +417,18 @@ function SignalDetail({
                 Routed to
               </p>
               <div className="space-y-1.5">
-                {routes
-                  .filter((r) => r.totalRoutes > 0)
-                  .map((r) => (
-                    <div
-                      key={r.analystId}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span>{r.analystName}</span>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-                        <span>{r.high} high</span>
-                        <span>{r.medium} med</span>
-                        <span>{r.low} low</span>
-                      </div>
+                {signal.routes.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <span>{r.analyst.name}</span>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+                      <span>{r.relevanceScore}%</span>
+                      <span className="text-muted-foreground">{formatRouteReason(r.routeReason)}</span>
                     </div>
-                  ))}
+                  </div>
+                ))}
               </div>
             </div>
           </>
@@ -698,7 +684,108 @@ function DiscoveryHeader({ discovery, signal }: { discovery: Discovery; signal: 
 
 const TOOL_CONFIG: Record<string, { name: string; icon: Icon }> = {
   PERPLEXITY_SONAR: { name: "Perplexity Sonar", icon: PerplexityLogo },
-  FMP: { name: "Financial Modeling Prep", icon: BarChart3 },
-  FINNHUB: { name: "Finnhub", icon: CalendarDays },
+  FMP: { name: "Financial Modeling Prep", icon: FmpLogo },
+  FINNHUB: { name: "Finnhub", icon: FinnhubLogo },
   FIRECRAWL: { name: "Firecrawl", icon: FirecrawlLogo },
 };
+
+// ── Provider Logo (inline) ──────────────────────────────────────────────────
+
+function ProviderLogo({ method }: { method?: string | null }) {
+  if (!method) return null;
+  if (method === "perplexity_sonar") return <PerplexityLogo className="h-3 w-3" />;
+  if (method === "firecrawl") return <FirecrawlLogo className="h-3 w-3" />;
+  if (method === "fmp") return <FmpLogo className="h-3 w-3" />;
+  if (method === "finnhub") return <FinnhubLogo className="h-3 w-3" />;
+  return null;
+}
+
+// ── Aggregate Finding Card ──────────────────────────────────────────────────
+
+function AggregateFindingCard({ signal }: { signal: Signal }) {
+  const data = (signal.dataPayload ?? []) as Array<Record<string, unknown>>;
+  const isMovers = signal.aggregateType?.startsWith("MARKET_MOVERS");
+  const isEarnings = signal.aggregateType === "EARNINGS_CALENDAR";
+
+  const title = signal.aggregateType === "MARKET_MOVERS_GAINERS" ? "Top Gainers"
+    : signal.aggregateType === "MARKET_MOVERS_LOSERS" ? "Top Losers"
+    : signal.aggregateType === "MARKET_MOVERS_ACTIVES" ? "Most Active"
+    : signal.aggregateType === "EARNINGS_CALENDAR" ? "Upcoming Earnings"
+    : signal.headline;
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <ProviderLogo method={signal.monitor?.method} />
+          <p className="text-sm font-medium">{title}</p>
+          <Badge variant="secondary">{signal.itemCount ?? data.length}</Badge>
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {relativeTime(signal.createdAt)}
+        </span>
+      </div>
+
+      {isMovers && (
+        <div className="space-y-1">
+          {data.slice(0, 10).map((item, i) => {
+            const change = Number(item.change ?? 0);
+            const isPositive = change >= 0;
+            return (
+              <div key={i} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">${String(item.ticker)}</Badge>
+                </div>
+                <div className="flex items-center gap-4 tabular-nums">
+                  <span className={cn(
+                    "text-xs",
+                    isPositive ? "text-emerald-500" : "text-red-500"
+                  )}>
+                    {isPositive ? "+" : ""}{change.toFixed(1)}%
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ${Number(item.price ?? 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {isEarnings && (
+        <div className="space-y-1">
+          {data.slice(0, 10).map((item, i) => (
+            <div key={i} className="flex items-center justify-between text-sm">
+              <Badge variant="secondary">${String(item.ticker)}</Badge>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground tabular-nums">
+                <span>{String(item.date ?? "")}</span>
+                {item.epsEstimate != null && <span>EPS est: ${Number(item.epsEstimate).toFixed(2)}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isMovers && !isEarnings && (
+        <p className="text-sm text-muted-foreground">{signal.summary}</p>
+      )}
+    </Card>
+  );
+}
+
+// ── Route reason formatting ─────────────────────────────────────────────────
+
+function formatRouteReason(reason: string): string {
+  return reason
+    .split(", ")
+    .map((r) => {
+      const [type, value] = r.split(":");
+      if (type === "ticker_match") return `${value} match`;
+      if (type === "sector_match") return `${value} sector`;
+      if (type === "theme_match") return value?.replace(/_/g, " ");
+      return r;
+    })
+    .slice(0, 2)
+    .join(", ");
+}
