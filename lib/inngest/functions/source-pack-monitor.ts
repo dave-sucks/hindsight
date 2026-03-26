@@ -1,8 +1,9 @@
-// ── Source Pack Monitor ──────────────────────────────────────────────────────
-// Runs daily at 7:15 AM ET after portfolio monitor.
-// For each active source pack (firm + analyst), checks tracked domains for
-// new content via domain-filtered Sonar searches.
+// ── Domain Monitors ─────────────────────────────────────────────────────────
+// Runs daily at 7:15 AM ET after ticker monitors.
+// For each enabled DOMAIN monitor, checks tracked domains for new content
+// via domain-filtered Sonar searches.
 // High-value pages get full extraction via Firecrawl.
+// NOTE: Inngest function ID is "source-pack-monitor" for backward compat.
 
 import { inngest } from "@/lib/inngest/client"
 import { prisma } from "@/lib/prisma"
@@ -19,7 +20,7 @@ import {
 export const sourcePackMonitor = inngest.createFunction(
   {
     id: "source-pack-monitor",
-    name: "Source Pack Monitor",
+    name: "Domain Monitors",
     concurrency: { limit: 1 },
     retries: 1,
   },
@@ -28,21 +29,25 @@ export const sourcePackMonitor = inngest.createFunction(
     { event: "intelligence/source-pack-monitor" },
   ],
   async ({ step }) => {
-    // ── Step 1: Load all active source packs with their sources ───────────
+    // ── Step 1: Load enabled DOMAIN monitors ─────────────────────────────
 
-    const packs = await step.run("load-source-packs", async () => {
-      return prisma.sourcePack.findMany({
-        include: {
-          sources: {
-            include: { source: true },
-            orderBy: { priority: "asc" },
-          },
+    const monitors = await step.run("load-domain-monitors", async () => {
+      const now = new Date()
+      return prisma.monitor.findMany({
+        where: {
+          type: "DOMAIN",
+          enabled: true,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: now } },
+          ],
         },
+        orderBy: { createdAt: "asc" },
       })
     })
 
-    if (packs.length === 0) {
-      return { ran: 0, reason: "no-source-packs" }
+    if (monitors.length === 0) {
+      return { ran: 0, reason: "no-domain-monitors" }
     }
 
     // ── Step 2: Create signal batch ────────────────────────────────────────
@@ -51,33 +56,56 @@ export const sourcePackMonitor = inngest.createFunction(
       return createSignalBatch("SOURCE_PACK")
     })
 
-    // ── Step 3: Process each pack ──────────────────────────────────────────
+    // ── Step 3: Group domain monitors and process ─────────────────────────
 
     let totalSignals = 0
-    let sourcesChecked = 0
+    let monitorsProcessed = 0
     let artifactsCreated = 0
 
-    for (const pack of packs) {
-      // Group sources by domain for batch searching
-      const enabledSources = pack.sources
-        .filter((sps) => sps.source.enabled && sps.source.domain)
+    // Group monitors by scope+analystId so related domains are searched together
+    const monitorGroups = new Map<string, typeof monitors>()
+    for (const monitor of monitors) {
+      const groupKey = monitor.analystId
+        ? `analyst:${monitor.analystId}`
+        : `firm:${monitor.scope}`
+      const group = monitorGroups.get(groupKey) ?? []
+      group.push(monitor)
+      monitorGroups.set(groupKey, group)
+    }
 
-      if (enabledSources.length === 0) continue
+    for (const [groupKey, groupMonitors] of monitorGroups) {
+      // Extract domains from monitor configs
+      const monitorDomains: Array<{ monitor: typeof monitors[0]; domain: string; qualityScore: number; priority: number }> = []
+      for (const monitor of groupMonitors) {
+        const config = monitor.config as Record<string, unknown> | null
+        const domain = (config?.domain as string) ?? ""
+        const qualityScore = (config?.qualityScore as number) ?? 3
+        const priority = (config?.priority as number) ?? 5
+        if (domain) {
+          monitorDomains.push({ monitor, domain, qualityScore, priority })
+        }
+      }
 
-      // Search all domains in this pack together
-      const domains = enabledSources.map((sps) => sps.source.domain!).filter(Boolean)
+      if (monitorDomains.length === 0) continue
 
-      const result = await step.run(`search-pack-${pack.id}`, async () => {
+      const domains = monitorDomains.map((md) => md.domain)
+
+      const result = await step.run(`search-group-${groupKey}`, async () => {
         try {
-          // Search across all domains in the pack
+          // Search across all domains in the group
           const query = `latest news analysis developments today from financial markets investing`
           const sonarResponse = await searchDomain(query, domains, "day")
 
-          // Average quality score from pack sources
+          // Average quality score from monitors in this group
           const avgQuality = Math.round(
-            enabledSources.reduce((sum, s) => sum + s.source.qualityScore, 0) /
-              enabledSources.length
+            monitorDomains.reduce((sum, md) => sum + md.qualityScore, 0) /
+              monitorDomains.length
           )
+
+          // Use the first monitor's ID as the primary monitorId for these signals
+          // (signals are grouped by domain search, individual monitor attribution
+          // is tracked via searchContext)
+          const primaryMonitorId = groupMonitors[0].id
 
           const signalIds = await createSignalsFromSonar(
             batchId,
@@ -87,43 +115,42 @@ export const sourcePackMonitor = inngest.createFunction(
             {
               searchTool: "PERPLEXITY_SONAR",
               searchQuery: query,
-              searchContext: `source_pack:${pack.name}:${domains.join(",")}`,
+              searchContext: `domain_group:${groupKey}:${domains.join(",")}`,
+              monitorId: primaryMonitorId,
             }
           )
 
-          // Update lastCheckedAt for all sources in this pack
-          const sourceIds = enabledSources.map((s) => s.source.id)
-          await prisma.source.updateMany({
-            where: { id: { in: sourceIds } },
-            data: { lastCheckedAt: new Date() },
+          // Update lastRunAt for all monitors in this group
+          const monitorIds = groupMonitors.map((m) => m.id)
+          await prisma.monitor.updateMany({
+            where: { id: { in: monitorIds } },
+            data: { lastRunAt: new Date() },
           })
 
           return {
             success: true,
             signalCount: signalIds.length,
-            sourcesChecked: enabledSources.length,
+            monitorsProcessed: groupMonitors.length,
           }
         } catch (error) {
           console.error(
-            `[source-pack] Pack "${pack.name}" search failed:`,
+            `[domain-monitors] Domain group "${groupKey}" search failed:`,
             error instanceof Error ? error.message : error
           )
-          return { success: false, signalCount: 0, sourcesChecked: 0 }
+          return { success: false, signalCount: 0, monitorsProcessed: 0 }
         }
       })
 
       totalSignals += result.signalCount
-      sourcesChecked += result.sourcesChecked
+      monitorsProcessed += result.monitorsProcessed
 
-      // For high-priority sources (priority 1), try to extract full pages
-      // from the signals we just found
-      const criticalSources = enabledSources.filter((s) => s.priority === 1)
-      if (criticalSources.length > 0) {
-        const extractResult = await step.run(`extract-pack-${pack.id}`, async () => {
+      // For high-priority monitors (priority 1), try to extract full pages
+      const criticalMonitors = monitorDomains.filter((md) => md.priority === 1)
+      if (criticalMonitors.length > 0) {
+        const extractResult = await step.run(`extract-group-${groupKey}`, async () => {
           try {
-            // Get signals we just created that have source URLs from critical domains
             const criticalDomains = new Set(
-              criticalSources.map((s) => s.source.domain!).filter(Boolean)
+              criticalMonitors.map((md) => md.domain)
             )
 
             const recentSignals = await prisma.signal.findMany({
@@ -172,7 +199,7 @@ export const sourcePackMonitor = inngest.createFunction(
                 created++
               } catch (error) {
                 console.warn(
-                  `[source-pack] Extract failed for ${url}:`,
+                  `[domain-monitors] Extract failed for ${url}:`,
                   error instanceof Error ? error.message : error
                 )
               }
@@ -202,8 +229,8 @@ export const sourcePackMonitor = inngest.createFunction(
 
     return {
       batchId,
-      packsProcessed: packs.length,
-      sourcesChecked,
+      monitorsTotal: monitors.length,
+      monitorsProcessed,
       signalsCreated: totalSignals,
       artifactsCreated,
       duplicatesRemoved: dupsRemoved,

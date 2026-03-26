@@ -67,6 +67,7 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
     data: {
       batchId: input.batchId,
       artifactId: input.artifactId,
+      monitorId: input.monitorId,
       type: input.type,
       headline: input.headline,
       summary: input.summary,
@@ -84,6 +85,10 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
       searchTool: input.searchTool,
       searchQuery: input.searchQuery,
       searchContext: input.searchContext,
+      aggregateType: input.aggregateType,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      dataPayload: (input.dataPayload ?? undefined) as any,
+      itemCount: input.itemCount,
       expiresAt: input.expiresAt,
     },
   });
@@ -101,7 +106,7 @@ export async function createSignalsFromSonar(
   sonarResponse: SonarSignalResponse,
   signalType: SignalType,
   sourceQuality: number = 3,
-  provenance?: { searchTool?: string; searchQuery?: string; searchContext?: string }
+  provenance?: { searchTool?: string; searchQuery?: string; searchContext?: string; monitorId?: string }
 ): Promise<string[]> {
   const ids: string[] = [];
 
@@ -109,6 +114,7 @@ export async function createSignalsFromSonar(
     try {
       const id = await createSignal({
         batchId,
+        monitorId: provenance?.monitorId,
         type: signalType,
         headline: item.headline,
         summary: item.summary,

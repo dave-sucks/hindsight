@@ -27,7 +27,7 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
   async ({ step }) => {
     // ── Step 1: Collect all unique tickers from positions + watchlist ──────
 
-    const tickers = await step.run("collect-tickers", async () => {
+    const tickerSources = await step.run("collect-tickers", async () => {
       const [positions, watchlistItems] = await Promise.all([
         prisma.position.findMany({
           where: { status: "OPEN" },
@@ -39,13 +39,22 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
         }),
       ])
 
-      // Deduplicate across all analysts
-      const tickerSet = new Set<string>()
-      for (const p of positions) tickerSet.add(p.symbol)
-      for (const w of watchlistItems) tickerSet.add(w.symbol)
+      const portfolioTickers = new Set<string>()
+      for (const p of positions) portfolioTickers.add(p.symbol)
 
-      return Array.from(tickerSet).sort()
+      const watchlistTickers = new Set<string>()
+      for (const w of watchlistItems) watchlistTickers.add(w.symbol)
+
+      // Build a list with source info for each unique ticker
+      const allTickers = new Set([...portfolioTickers, ...watchlistTickers])
+      return Array.from(allTickers).sort().map((symbol) => ({
+        symbol,
+        // Portfolio takes priority if ticker is in both
+        monitorId: portfolioTickers.has(symbol) ? "monitor_portfolio" : "monitor_watchlist",
+      }))
     })
+
+    const tickers = tickerSources.map((t) => t.symbol)
 
     if (tickers.length === 0) {
       return { ran: 0, reason: "no-tickers-to-monitor" }
@@ -63,7 +72,8 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
     let tickersSearched = 0
     let tickersFailed = 0
 
-    for (const ticker of tickers) {
+    for (const tickerSource of tickerSources) {
+      const ticker = tickerSource.symbol
       const result = await step.run(`search-${ticker}`, async () => {
         try {
           const sonarResponse = await searchTicker(ticker)
@@ -77,6 +87,7 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
               searchTool: "PERPLEXITY_SONAR",
               searchQuery: `${ticker} stock news developments catalysts today`,
               searchContext: `ticker:${ticker}`,
+              monitorId: tickerSource.monitorId,
             }
           )
 

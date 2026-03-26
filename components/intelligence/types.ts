@@ -1,43 +1,6 @@
 // ── Intelligence Page Types ──────────────────────────────────────────────────
 // Shared types for all intelligence components. Matches API response shapes.
 
-export interface IntelligenceQuery {
-  id: string;
-  query: string;
-  category: string;
-  scope: string;
-  analystId: string | null;
-  enabled: boolean;
-  createdBy: string;
-  expiresAt: string | null;
-  sourceRunId: string | null;
-  createdAt: string;
-}
-
-export interface Source {
-  id: string;
-  name: string;
-  type: string;
-  url: string | null;
-  domain: string | null;
-  category: string;
-  qualityScore: number;
-  enabled: boolean;
-  lastCheckedAt: string | null;
-}
-
-export interface SourcePack {
-  id: string;
-  name: string;
-  scope: string;
-  analystId: string | null;
-  sources: Array<{
-    id: string;
-    priority: number;
-    source: Source;
-  }>;
-}
-
 export interface Signal {
   id: string;
   type: string;
@@ -64,6 +27,26 @@ export interface Signal {
     status: string;
     startedAt: string;
   };
+  // Monitor-based provenance
+  monitorId: string | null;
+  monitor: {
+    id: string;
+    name: string;
+    type: string;
+    method: string;
+    config: Record<string, unknown> | null;
+  } | null;
+  aggregateType: string | null;
+  dataPayload: unknown;
+  itemCount: number | null;
+  routes: Array<{
+    id: string;
+    analystId: string;
+    analyst: { id: string; name: string };
+    relevanceScore: number;
+    routeReason: string;
+    status: string;
+  }>;
 }
 
 export interface SignalBatch {
@@ -91,6 +74,32 @@ export interface MorningBrief {
   analyst: { id: string; name: string };
 }
 
+export interface Monitor {
+  id: string;
+  name: string;
+  type: string;
+  method: string;
+  config: Record<string, unknown> | null;
+  scope: string;
+  analystId: string | null;
+  analyst: { id: string; name: string } | null;
+  enabled: boolean;
+  builtIn: boolean;
+  origin: string;
+  category: string;
+  expiresAt: string | null;
+  sourceRunId: string | null;
+  lastRunAt: string | null;
+  monitoredTickers: Array<{
+    ticker: string;
+    reason: string | null;
+    priority?: number;
+    analystId?: string;
+  }> | null;
+  _count: { signals: number };
+  createdAt: string;
+}
+
 export interface AnalystRouteInfo {
   analystId: string;
   analystName: string;
@@ -116,11 +125,11 @@ export function relativeTime(dateStr: string): string {
 }
 
 export const JOB_LABELS: Record<string, string> = {
-  MARKET_SWEEP: "Market Sweep",
-  PORTFOLIO_MONITOR: "Portfolio Monitor",
-  SOURCE_PACK: "Source Pack Monitor",
-  SIGNAL_ROUTER: "Signal Router",
-  MORNING_BRIEF: "Morning Brief",
+  MARKET_SWEEP: "Search Monitors",
+  PORTFOLIO_MONITOR: "Ticker Monitors",
+  SOURCE_PACK: "Domain Monitors",
+  SIGNAL_ROUTER: "Route Findings",
+  MORNING_BRIEF: "Generate Briefs",
   EMAIL_INGEST: "Email Ingest",
   MANUAL: "Manual",
 };
@@ -168,4 +177,50 @@ export const SENTIMENT_CONFIG: Record<string, { label: string; className: string
   BEARISH: { label: "Bearish", className: "text-red-500" },
   NEUTRAL: { label: "Neutral", className: "text-muted-foreground" },
   MIXED: { label: "Mixed", className: "text-amber-500" },
+};
+
+export const MONITOR_TYPE_CONFIG: Record<string, { label: string; description: string }> = {
+  SEARCH: { label: "Search", description: "Web search via Perplexity Sonar" },
+  DOMAIN: { label: "Domain", description: "Monitored publication or website" },
+  API: { label: "API", description: "Financial data API endpoint" },
+  PORTFOLIO: { label: "Search", description: "Auto-searches open positions via Sonar" },
+  WATCHLIST: { label: "Search", description: "Auto-searches watchlist tickers via Sonar" },
+};
+
+export const MONITOR_METHOD_CONFIG: Record<string, { label: string }> = {
+  perplexity_sonar: { label: "Perplexity Sonar" },
+  firecrawl: { label: "Firecrawl" },
+  fmp: { label: "FMP" },
+  finnhub: { label: "Finnhub" },
+  auto: { label: "Automatic" },
+};
+
+export const ORIGIN_LABELS: Record<string, string> = {
+  USER: "You",
+  BUILDER: "Analyst Builder",
+  BRIEFING_AGENT: "Briefing Agent",
+  SYSTEM: "System",
+};
+
+export const THEME_LABELS: Record<string, string> = {
+  AI_CAPEX: "AI Capital Spending",
+  FED_RATE_CUT: "Fed Rate Cut",
+  EARNINGS_BEAT: "Earnings Beat",
+  EARNINGS_MISS: "Earnings Miss",
+  SUPPLY_CHAIN: "Supply Chain",
+  TARIFFS: "Tariffs",
+  GEOPOLITICAL: "Geopolitical Risk",
+  ENERGY_TRANSITION: "Energy Transition",
+  CRYPTO: "Cryptocurrency",
+  REAL_ESTATE: "Real Estate",
+  INFLATION: "Inflation",
+  RECESSION: "Recession Risk",
+  IPO: "IPO",
+  M_AND_A: "M&A Activity",
+  BUYBACK: "Share Buyback",
+  DIVIDEND: "Dividend",
+  INSIDER_TRADING: "Insider Trading",
+  SHORT_SQUEEZE: "Short Squeeze",
+  REGULATORY: "Regulatory",
+  FDA_APPROVAL: "FDA Approval",
 };

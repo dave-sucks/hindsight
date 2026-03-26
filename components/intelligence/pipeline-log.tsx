@@ -30,7 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Search,
   Briefcase,
-  Package,
+  Globe,
   GitBranch,
   Newspaper,
   MoreHorizontal,
@@ -57,40 +57,40 @@ interface JobInfo {
 }
 
 const JOBS: Record<string, JobInfo> = {
-  "Market Sweep": {
+  "Search Monitors": {
     icon: Search,
     event: "market-sweep",
     time: "6:30 AM ET",
-    short: "Searches for market-moving news across all enabled queries",
-    long: "Runs every enabled search query from Config through Perplexity Sonar. Results get parsed into structured signals with tickers, sentiment, urgency, and themes. Signals are deduplicated against the last 48 hours before storage.",
+    short: "Runs all search monitors and API monitors via Perplexity Sonar",
+    long: "Runs every enabled search monitor through Perplexity Sonar, then calls FMP (gainers, losers, most active) and Finnhub (earnings calendar) APIs. Results are parsed into findings with tickers, sentiment, and urgency, then deduplicated.",
   },
-  "Portfolio Monitor": {
+  "Ticker Monitors": {
     icon: Briefcase,
     event: "portfolio-monitor",
     time: "7:00 AM ET",
-    short: "Monitors open positions and watchlist for price alerts and news",
-    long: "Checks current prices and recent news for every open position and watchlist item across all analysts. Generates alerts for stop-loss proximity, target price hits, and material news that could affect trade thesis.",
+    short: "Searches all portfolio positions and watchlist tickers for news",
+    long: "For every open position and watchlist item across all analysts, searches Perplexity Sonar for recent news, developments, and catalysts. Each ticker gets its own search so nothing is missed.",
   },
-  "Source Pack": {
-    icon: Package,
+  "Domain Monitors": {
+    icon: Globe,
     event: "source-pack-monitor",
     time: "7:15 AM ET",
-    short: "Crawls monitored domains for new articles, filings, and releases",
-    long: "Iterates over every enabled Source from Config. Uses Perplexity Sonar for domain-scoped search, then Firecrawl for full-text extraction of high-value pages. Creates artifact records with extracted content that become signals.",
+    short: "Checks monitored domains for new articles and extracts content",
+    long: "Searches all enabled domain monitors via Perplexity Sonar with domain filtering. High-priority domains get full article extraction via Firecrawl for deep content analysis.",
   },
-  "Signal Router": {
+  "Route Findings": {
     icon: GitBranch,
     event: "signal-router",
     time: "7:30 AM ET",
-    short: "Routes unprocessed signals to matching analysts by coverage area",
-    long: "Takes all unrouted signals and matches them against each analyst's sector coverage, ticker watchlist, and category preferences. Each signal gets urgency-priority routing so analysts see the most important signals first in their briefs.",
+    short: "Scores and routes findings to matching analysts",
+    long: "Takes all unrouted findings and scores them against each analyst's sectors, watchlist, and coverage area. Each finding gets a relevance score so analysts see the most important items first in their briefs.",
   },
-  "Morning Brief": {
+  "Generate Briefs": {
     icon: Newspaper,
     event: "morning-brief",
     time: "7:45 AM ET",
-    short: "Generates personalized daily briefs for each analyst from their signals",
-    long: "Uses GPT-4o to synthesize each analyst's pending signals into a structured brief: market context, portfolio alerts, watchlist updates, new opportunities, and attention priorities. Briefs appear in the Signals tab.",
+    short: "Creates personalized daily briefs for each analyst",
+    long: "Uses GPT-4o to synthesize each analyst's routed findings into a structured brief: market context, portfolio alerts, watchlist updates, new opportunities, and attention priorities.",
   },
 };
 

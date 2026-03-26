@@ -119,9 +119,9 @@ const CONFIG_STEPS: FlowStep[] = [
   {
     title: "The Analyst (AgentConfig)",
     icon: Bot,
-    badges: ["Strategy prompt", "Watchlist", "Intelligence policy", "Source pack", "Queries"],
+    badges: ["Strategy prompt", "Watchlist", "Intelligence policy", "Domain monitors", "Search monitors"],
     summary:
-      "The output is a saved analyst profile with a name, multi-paragraph strategy document, direction bias, hold durations, sector focus, minimum confidence to trade, max position size, and a watchlist. It also has an intelligence policy (signal budgets, attention weights, quality floors), a linked source pack (domain sources monitored daily), and intelligence queries (permanent searches run every morning). Each analyst builds its own track record — separate trades, performance stats, and memory.",
+      "The output is a saved analyst profile with a name, multi-paragraph strategy document, direction bias, hold durations, sector focus, minimum confidence to trade, max position size, and a watchlist. It also has an intelligence policy (signal budgets, attention weights, quality floors), domain monitors (websites checked daily), and search monitors (queries run every morning). Each analyst builds its own track record — separate trades, performance stats, and memory.",
   },
 ];
 
@@ -157,9 +157,9 @@ const POST_TRIGGER_STEPS: FlowStep[] = [
     phase: "Learning Loop",
     title: "Post-run briefing agent (memory + queries)",
     icon: RotateCcw,
-    badges: ["Post-run", "GPT-4o", "Separate agent", "Dynamic queries", "Feeds next session"],
+    badges: ["Post-run", "GPT-4o", "Separate agent", "Dynamic monitors", "Feeds next session"],
     summary:
-      "After the session ends, a separate briefing agent (GPT-4o) reads the full conversation transcript + portfolio state and writes a standup brief: narrative, strategy notes, market posture, watch-tomorrow items, unresolved items, and self-corrections. It also proposes 0-5 dynamic intelligence queries for things that need monitoring — these get added to the morning sweep pipeline automatically with expiration dates. The brief feeds into the next session as the analyst's memory.",
+      "After the session ends, a separate briefing agent (GPT-4o) reads the full conversation transcript + portfolio state and writes a standup brief: narrative, strategy notes, market posture, watch-tomorrow items, unresolved items, and self-corrections. It also proposes 0-5 temporary search monitors for things that need tracking — these run daily via Perplexity Sonar with expiration dates. The brief feeds into the next session as the analyst's memory.",
     detailSheet: "learning-loop",
   },
 ];

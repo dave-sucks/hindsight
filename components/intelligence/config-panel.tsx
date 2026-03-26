@@ -43,10 +43,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
-  InputGroupButton,
 } from "@/components/ui/input-group";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -56,83 +60,19 @@ import {
   Globe,
   Info,
   SlidersHorizontal,
-  Package,
-  Terminal,
   Lock,
+  BarChart3,
+  CalendarDays,
+  Briefcase,
+  Eye,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import type { IntelligenceQuery, Source, SourcePack } from "./types";
-import { relativeTime } from "./types";
-import { PerplexityLogo, FirecrawlLogo } from "./icons";
-
-// ── Unified row type ─────────────────────────────────────────────────────────
-
-type ItemKind = "search" | "source";
-
-interface UnifiedItem {
-  id: string;
-  kind: ItemKind;
-  name: string;
-  detail: string | null;
-  category: string;
-  scope: string;
-  enabled: boolean;
-  createdBy?: string;
-  expiresAt?: string | null;
-  lastCheckedAt?: string | null;
-  qualityScore?: number;
-  sourceType?: string;
-  domain?: string | null;
-  packs?: string[];
-  raw: IntelligenceQuery | Source;
-}
-
-function buildUnifiedItems(
-  queries: IntelligenceQuery[],
-  sources: Source[],
-  packs: SourcePack[]
-): UnifiedItem[] {
-  const sourcePackMap = new Map<string, string[]>();
-  for (const pack of packs) {
-    for (const ps of pack.sources) {
-      const existing = sourcePackMap.get(ps.source.id) ?? [];
-      existing.push(pack.name);
-      sourcePackMap.set(ps.source.id, existing);
-    }
-  }
-
-  const queryItems: UnifiedItem[] = queries.map((q) => ({
-    id: q.id,
-    kind: "search" as const,
-    name: q.query,
-    detail: null,
-    category: q.category,
-    scope: q.scope,
-    enabled: q.enabled,
-    createdBy: q.createdBy,
-    expiresAt: q.expiresAt,
-    raw: q,
-  }));
-
-  const sourceItems: UnifiedItem[] = sources.map((s) => ({
-    id: s.id,
-    kind: "source" as const,
-    name: s.name,
-    detail: s.domain,
-    category: s.category,
-    scope: "FIRM",
-    enabled: s.enabled,
-    lastCheckedAt: s.lastCheckedAt,
-    qualityScore: s.qualityScore,
-    sourceType: s.type,
-    domain: s.domain,
-    packs: sourcePackMap.get(s.id) ?? [],
-    raw: s,
-  }));
-
-  return [...queryItems, ...sourceItems];
-}
+import type { Monitor } from "./types";
+import { relativeTime, ORIGIN_LABELS, MONITOR_METHOD_CONFIG } from "./types";
+import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo } from "./icons";
 
 // ── Category tooltips ────────────────────────────────────────────────────────
 
@@ -147,89 +87,66 @@ const CATEGORY_TOOLTIPS: Record<string, string> = {
 };
 
 const CATEGORY_OPTIONS = [
-  { value: "MARKET", label: "Market", description: "Broad market & macro intelligence" },
-  { value: "SECTOR", label: "Sector", description: "Industry-specific monitoring" },
-  { value: "TICKER", label: "Ticker", description: "Individual stock queries" },
-  { value: "THEMATIC", label: "Thematic", description: "Cross-cutting themes (AI, tariffs...)" },
-  { value: "EVENT", label: "Event", description: "Earnings, IPOs, FDA decisions" },
-  { value: "COMPANY", label: "Company", description: "Single company coverage" },
-  { value: "SOCIAL", label: "Social", description: "Social media sentiment" },
+  { value: "MARKET", label: "Market" },
+  { value: "SECTOR", label: "Sector" },
+  { value: "TICKER", label: "Ticker" },
+  { value: "THEMATIC", label: "Thematic" },
+  { value: "EVENT", label: "Event" },
+  { value: "COMPANY", label: "Company" },
+  { value: "SOCIAL", label: "Social" },
 ];
 
-const CREATED_BY_LABELS: Record<string, string> = {
-  USER: "You",
-  BRIEFING_AGENT: "Briefing agent",
-  ANALYST_BUILDER: "Analyst builder",
-  ANALYST_RUNTIME: "Analyst runtime",
-};
+// ── Monitor List (renamed from ConfigPanel) ─────────────────────────────────
 
-// ── Config Panel ────────────────────────────────────────────────────────────
-
-interface ConfigPanelProps {
-  queries: IntelligenceQuery[];
-  sources: Source[];
-  packs: SourcePack[];
+interface MonitorListProps {
+  monitors: Monitor[];
   onRefresh: () => void;
 }
 
-export function ConfigPanel({
-  queries,
-  sources,
-  packs,
-  onRefresh,
-}: ConfigPanelProps) {
+export function MonitorList({ monitors, onRefresh }: MonitorListProps) {
   const [search, setSearch] = useState("");
-  const [kindFilter, setKindFilter] = useState<"all" | ItemKind>("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-
-  const allItems = useMemo(
-    () => buildUnifiedItems(queries, sources, packs),
-    [queries, sources, packs]
-  );
+  const [typeFilter, setTypeFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
 
   const categories = useMemo(() => {
-    const set = new Set(allItems.map((i) => i.category));
+    const set = new Set(monitors.map((m) => m.category));
     return Array.from(set).sort();
-  }, [allItems]);
+  }, [monitors]);
 
   const filtered = useMemo(() => {
-    return allItems.filter((item) => {
-      if (kindFilter !== "all" && item.kind !== kindFilter) return false;
-      if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
+    return monitors.filter((m) => {
+      if (typeFilter !== "ALL") {
+        if (typeFilter === "SEARCH") {
+          if (m.type !== "SEARCH" && m.type !== "PORTFOLIO" && m.type !== "WATCHLIST") return false;
+        } else if (m.type !== typeFilter) return false;
+      }
+      if (categoryFilter !== "ALL" && m.category !== categoryFilter) return false;
       if (search) {
         const q = search.toLowerCase();
-        const searchable = `${item.name} ${item.detail ?? ""} ${item.domain ?? ""}`.toLowerCase();
+        const searchable = `${m.name} ${getMonitorDetail(m)}`.toLowerCase();
         if (!searchable.includes(q)) return false;
       }
       return true;
     });
-  }, [allItems, kindFilter, categoryFilter, search]);
+  }, [monitors, typeFilter, categoryFilter, search]);
 
-  const toggleItem = async (item: UnifiedItem) => {
+  const toggleMonitor = async (monitor: Monitor) => {
     try {
-      if (item.kind === "search") {
-        await fetch("/api/intelligence/queries", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: [item.id], enabled: !item.enabled }),
-        });
-      } else {
-        await fetch("/api/intelligence/sources", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: item.id, enabled: !item.enabled }),
-        });
-      }
+      await fetch("/api/intelligence/monitors", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: monitor.id, enabled: !monitor.enabled }),
+      });
       onRefresh();
     } catch {
       toast.error("Failed to toggle");
     }
   };
 
-  const deleteItem = async (item: UnifiedItem) => {
+  const deleteMonitor = async (monitor: Monitor) => {
+    if (monitor.builtIn) return;
     try {
-      const endpoint = item.kind === "search" ? "queries" : "sources";
-      await fetch(`/api/intelligence/${endpoint}?id=${item.id}`, {
+      await fetch(`/api/intelligence/monitors?id=${monitor.id}`, {
         method: "DELETE",
       });
       toast.success("Deleted");
@@ -239,35 +156,42 @@ export function ConfigPanel({
     }
   };
 
-  const searchCount = allItems.filter((i) => i.kind === "search").length;
-  const sourceCount = allItems.filter((i) => i.kind === "source").length;
-  const hasFilters = kindFilter !== "all" || categoryFilter !== "all" || search !== "";
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const m of monitors) {
+      counts[m.type] = (counts[m.type] ?? 0) + 1;
+    }
+    return counts;
+  }, [monitors]);
+
+  const hasFilters = typeFilter !== "ALL" || categoryFilter !== "ALL" || search !== "";
 
   return (
     <TooltipProvider>
       <div className="max-w-3xl mx-auto space-y-4">
         {/* Add new */}
-        <AddItemInput onRefresh={onRefresh} />
+        <AddMonitorInput onRefresh={onRefresh} />
 
         {/* Filter bar */}
         <div className="flex items-center gap-2">
           <div className="relative max-w-xs w-full">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <Input
-              placeholder="Search..."
+              placeholder="Search monitors..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8"
             />
           </div>
-          <Select value={kindFilter} onValueChange={(v) => v && setKindFilter(v as typeof kindFilter)}>
+          <Select value={typeFilter} onValueChange={(v) => v && setTypeFilter(v)}>
             <SelectTrigger>
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Type</SelectItem>
-              <SelectItem value="search">Searches ({searchCount})</SelectItem>
-              <SelectItem value="source">Sources ({sourceCount})</SelectItem>
+              <SelectItem value="ALL">Type</SelectItem>
+              <SelectItem value="SEARCH">Search ({(typeCounts.SEARCH ?? 0) + (typeCounts.PORTFOLIO ?? 0) + (typeCounts.WATCHLIST ?? 0)})</SelectItem>
+              <SelectItem value="DOMAIN">Domain ({typeCounts.DOMAIN ?? 0})</SelectItem>
+              <SelectItem value="API">API ({typeCounts.API ?? 0})</SelectItem>
             </SelectContent>
           </Select>
           <Tooltip>
@@ -277,7 +201,7 @@ export function ConfigPanel({
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Category</SelectItem>
+                  <SelectItem value="ALL">Category</SelectItem>
                   {categories.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c.charAt(0) + c.slice(1).toLowerCase()}
@@ -292,7 +216,7 @@ export function ConfigPanel({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setKindFilter("all"); setCategoryFilter("all"); setSearch(""); }}
+              onClick={() => { setTypeFilter("ALL"); setCategoryFilter("ALL"); setSearch(""); }}
             >
               Clear
             </Button>
@@ -301,7 +225,7 @@ export function ConfigPanel({
 
         {/* Results */}
         <p className="text-xs text-muted-foreground tabular-nums">
-          {filtered.length} of {allItems.length} items
+          {filtered.length} of {monitors.length} monitors
         </p>
 
         {/* Table */}
@@ -309,17 +233,17 @@ export function ConfigPanel({
           <TableBody>
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                  No items match your filters
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  No monitors match your filters
                 </TableCell>
               </TableRow>
             )}
-            {filtered.map((item) => (
-              <ConfigRow
-                key={`${item.kind}-${item.id}`}
-                item={item}
-                onToggle={() => toggleItem(item)}
-                onDelete={() => deleteItem(item)}
+            {filtered.map((monitor) => (
+              <MonitorRow
+                key={monitor.id}
+                monitor={monitor}
+                onToggle={() => toggleMonitor(monitor)}
+                onDelete={() => deleteMonitor(monitor)}
               />
             ))}
           </TableBody>
@@ -329,32 +253,72 @@ export function ConfigPanel({
   );
 }
 
-// ── Config Row ───────────────────────────────────────────────────────────────
+// Keep old export name for backward compat during transition
+export { MonitorList as ConfigPanel };
 
-function ConfigRow({
-  item,
+// ── Monitor Row ──────────────────────────────────────────────────────────────
+
+function MonitorRow({
+  monitor,
   onToggle,
   onDelete,
 }: {
-  item: UnifiedItem;
+  monitor: Monitor;
   onToggle: () => void;
   onDelete: () => void;
 }) {
+  const [tickersOpen, setTickersOpen] = useState(false);
+  const detail = getMonitorDetail(monitor);
+  const hasTickers =
+    (monitor.type === "PORTFOLIO" || monitor.type === "WATCHLIST") &&
+    monitor.monitoredTickers &&
+    monitor.monitoredTickers.length > 0;
+
   return (
     <TableRow>
       {/* Colored type icon */}
       <TableCell>
-        <ItemIcon kind={item.kind} sourceType={item.sourceType} />
+        <MonitorTypeIcon type={monitor.type} />
       </TableCell>
 
-      {/* Name + detail */}
+      {/* Name + detail + expandable tickers */}
       <TableCell>
         <div className="min-w-0">
-          <p className={cn("text-sm truncate", !item.enabled && "text-muted-foreground")}>
-            {item.name}
+          <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
+            {monitor.name}
           </p>
-          {item.detail && (
-            <p className="text-xs text-muted-foreground truncate">{item.detail}</p>
+          {detail && (
+            <p className="text-xs text-muted-foreground truncate">{detail}</p>
+          )}
+          {hasTickers && (
+            <Collapsible open={tickersOpen} onOpenChange={setTickersOpen}>
+              <CollapsibleTrigger
+                render={<Button variant="ghost" size="sm" className="h-auto px-0 py-0.5" />}
+              >
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {monitor.monitoredTickers!.length} tickers
+                </span>
+                {tickersOpen ? (
+                  <ChevronDown className="h-3 w-3 text-muted-foreground ml-1" />
+                ) : (
+                  <ChevronRight className="h-3 w-3 text-muted-foreground ml-1" />
+                )}
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {monitor.monitoredTickers!.map((t) => (
+                    <Tooltip key={t.ticker}>
+                      <TooltipTrigger render={<span className="inline-flex" />}>
+                        <Badge variant="secondary">${t.ticker}</Badge>
+                      </TooltipTrigger>
+                      {t.reason && (
+                        <TooltipContent>{t.reason}</TooltipContent>
+                      )}
+                    </Tooltip>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           )}
         </div>
       </TableCell>
@@ -362,48 +326,58 @@ function ConfigRow({
       {/* Scope */}
       <TableCell>
         <span className="text-xs text-muted-foreground">
-          {item.scope === "FIRM" ? "Firm" : "Analyst"}
+          {monitor.scope === "FIRM" ? "Firm" : monitor.analyst?.name ?? "Analyst"}
+        </span>
+      </TableCell>
+
+      {/* Today's findings count */}
+      <TableCell>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {monitor._count.signals > 0 ? monitor._count.signals : "—"}
         </span>
       </TableCell>
 
       {/* Enabled toggle */}
       <TableCell>
-        <Switch checked={item.enabled} onCheckedChange={onToggle} />
+        <Switch checked={monitor.enabled} onCheckedChange={onToggle} />
       </TableCell>
 
       {/* Detail popover */}
       <TableCell>
-        <ItemDetailPopover item={item} onDelete={onDelete} />
+        <MonitorInfoPopover monitor={monitor} onDelete={onDelete} />
       </TableCell>
     </TableRow>
   );
 }
 
-// ── Shared visual elements ────────────────────────────────────────────────────
+// ── Type Icons ───────────────────────────────────────────────────────────────
 
-function ItemIcon({ kind, sourceType }: { kind: ItemKind; sourceType?: string }) {
-  if (kind === "search") {
+function MonitorTypeIcon({ type }: { type: string }) {
+  // 3 types: Search (includes portfolio/watchlist), Domain, API
+  if (type === "DOMAIN") {
     return (
-      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
-        <Search className="h-3.5 w-3.5" />
+      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-orange/10 text-brand-orange">
+        <Globe className="h-3.5 w-3.5" />
       </div>
     );
   }
-  if (sourceType === "API") {
+  if (type === "API") {
     return (
-      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand/20 text-emerald-600 dark:text-emerald-400">
-        <Terminal className="h-3.5 w-3.5" />
+      <div className="h-7 w-7 rounded-md flex items-center justify-center bg-purple-500/10 text-purple-500">
+        <BarChart3 className="h-3.5 w-3.5" />
       </div>
     );
   }
+  // SEARCH, PORTFOLIO, WATCHLIST — all use Sonar search
   return (
-    <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-orange/10 text-brand-orange">
-      <Globe className="h-3.5 w-3.5" />
+    <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
+      <Search className="h-3.5 w-3.5" />
     </div>
   );
 }
 
-/** Fake search bar for search queries */
+// ── Shared visuals (kept from original) ──────────────────────────────────────
+
 function SearchQueryVisual({ query }: { query: string }) {
   return (
     <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
@@ -413,7 +387,6 @@ function SearchQueryVisual({ query }: { query: string }) {
   );
 }
 
-/** Browser-style URL bar for domain sources */
 function DomainVisual({ domain, name }: { domain: string; name: string }) {
   return (
     <div className="space-y-1.5">
@@ -426,8 +399,7 @@ function DomainVisual({ domain, name }: { domain: string; name: string }) {
   );
 }
 
-/** Fake API call display for API sources */
-function ApiCallVisual({ name, domain }: { name: string; domain: string }) {
+function ApiCallVisual({ name, endpoint }: { name: string; endpoint: string }) {
   return (
     <div className="space-y-1.5">
       <p className="text-sm font-medium text-foreground">{name}</p>
@@ -435,23 +407,34 @@ function ApiCallVisual({ name, domain }: { name: string; domain: string }) {
         <Badge variant="secondary" className="shrink-0 text-[10px] font-mono">
           GET
         </Badge>
-        <p className="text-xs text-foreground truncate">{domain}</p>
+        <p className="text-xs text-foreground truncate">{endpoint}</p>
       </div>
     </div>
   );
 }
 
+function ProviderLogo({ method }: { method: string }) {
+  if (method === "perplexity_sonar") return <PerplexityLogo className="h-3.5 w-3.5 text-muted-foreground" />;
+  if (method === "firecrawl") return <FirecrawlLogo className="h-3.5 w-3.5 text-muted-foreground" />;
+  if (method === "fmp") return <FmpLogo className="h-3.5 w-3.5 text-muted-foreground" />;
+  if (method === "finnhub") return <FinnhubLogo className="h-3.5 w-3.5 text-muted-foreground" />;
+  return null;
+}
+
 // ── Detail Popover ───────────────────────────────────────────────────────────
 
-function ItemDetailPopover({
-  item,
+function MonitorInfoPopover({
+  monitor,
   onDelete,
 }: {
-  item: UnifiedItem;
+  monitor: Monitor;
   onDelete: () => void;
 }) {
-  const isSearch = item.kind === "search";
-  const isApi = item.sourceType === "API";
+  const config = monitor.config ?? {};
+  const isSearch = monitor.type === "SEARCH";
+  const isDomain = monitor.type === "DOMAIN";
+  const isApi = monitor.type === "API";
+  const methodLabel = MONITOR_METHOD_CONFIG[monitor.method]?.label ?? monitor.method;
 
   return (
     <Popover>
@@ -464,42 +447,45 @@ function ItemDetailPopover({
         {/* Visual header */}
         <div className="pb-1">
           {isSearch ? (
-            <SearchQueryVisual query={item.name} />
+            <SearchQueryVisual query={(config.query as string) ?? monitor.name} />
           ) : isApi ? (
-            <ApiCallVisual name={item.name} domain={item.detail ?? item.domain ?? ""} />
+            <ApiCallVisual name={monitor.name} endpoint={(config.endpoint as string) ?? ""} />
+          ) : isDomain ? (
+            <DomainVisual name={monitor.name} domain={(config.domain as string) ?? ""} />
           ) : (
-            <DomainVisual
-              name={item.name}
-              domain={item.detail ?? item.domain ?? ""}
-            />
+            <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+              {monitor.type === "PORTFOLIO" ? (
+                <Briefcase className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              ) : (
+                <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              )}
+              <p className="text-sm text-foreground">{monitor.name}</p>
+            </div>
           )}
         </div>
 
         <Separator />
 
-        {/* Trigger + how it works */}
+        {/* Provider + how it works */}
         <div className="text-xs space-y-2">
           <div className="flex items-center gap-2">
-            {isSearch ? (
-              <PerplexityLogo className="h-4 w-4 text-muted-foreground shrink-0" />
-            ) : isApi ? (
-              <Terminal className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            ) : (
-              <FirecrawlLogo className="h-4 w-4 text-brand-orange shrink-0" />
+            <ProviderLogo method={monitor.method} />
+            <span className="font-medium text-foreground">{methodLabel}</span>
+            {monitor.lastRunAt && (
+              <span className="text-muted-foreground ml-auto tabular-nums">
+                {relativeTime(monitor.lastRunAt)}
+              </span>
             )}
-            <span className="font-medium text-foreground">
-              {isSearch ? "Market Sweep" : isApi ? "API Integration" : "Source Pack Monitor"}
-            </span>
-            <span className="text-muted-foreground ml-auto tabular-nums">
-              {isSearch ? "6:30 AM ET" : isApi ? "6:30 AM ET" : "7:15 AM ET"}
-            </span>
           </div>
           <p className="text-muted-foreground leading-relaxed">
-            {isSearch
-              ? "This query runs as a Perplexity Sonar search every weekday morning. Results are parsed into signals, deduplicated, then routed to matching analysts."
-              : isApi
-              ? "This API endpoint is called during the market sweep to pull structured data (earnings, movers, filings). Results become signals routed to matching analysts."
-              : "This domain is checked for new content via Perplexity Sonar domain search. High-value pages get full text extraction via Firecrawl."}
+            {(config.description as string) ??
+              (isSearch
+                ? "This query runs as a Perplexity Sonar search every weekday morning. Results are parsed into signals, deduplicated, then routed to matching analysts."
+                : isApi
+                ? "This API endpoint is called during the market sweep to pull structured data. Results become aggregate findings routed to matching analysts."
+                : isDomain
+                ? "This domain is checked for new content via Perplexity Sonar domain search. High-value pages get full text extraction via Firecrawl."
+                : "Automatically monitors tickers from your positions and watchlists for news, catalysts, and developments.")}
           </p>
         </div>
 
@@ -510,107 +496,91 @@ function ItemDetailPopover({
           <span className="text-muted-foreground">Category</span>
           <Tooltip>
             <TooltipTrigger render={<span className="text-foreground underline decoration-dotted cursor-help" />}>
-              {item.category.charAt(0) + item.category.slice(1).toLowerCase()}
+              {monitor.category.charAt(0) + monitor.category.slice(1).toLowerCase()}
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              {CATEGORY_TOOLTIPS[item.category] ?? item.category}
+              {CATEGORY_TOOLTIPS[monitor.category] ?? monitor.category}
             </TooltipContent>
           </Tooltip>
 
           <span className="text-muted-foreground">Scope</span>
           <span className="text-foreground">
-            {item.scope === "FIRM" ? "Firm-wide" : "Analyst-specific"}
+            {monitor.scope === "FIRM" ? "Firm-wide" : monitor.analyst?.name ?? "Analyst-specific"}
           </span>
 
-          {isSearch && (
-            <>
-              <span className="text-muted-foreground">Created by</span>
-              <span className="text-foreground">
-                {CREATED_BY_LABELS[item.createdBy ?? "USER"] ?? item.createdBy ?? "You"}
-              </span>
-              {item.expiresAt && (
-                <>
-                  <span className="text-muted-foreground">Expires</span>
-                  <span className="text-foreground">
-                    {new Date(item.expiresAt).toLocaleDateString()}
-                  </span>
-                </>
-              )}
-            </>
-          )}
+          <span className="text-muted-foreground">Origin</span>
+          <span className="text-foreground">
+            {ORIGIN_LABELS[monitor.origin] ?? monitor.origin}
+          </span>
 
-          {!isSearch && (
+          <span className="text-muted-foreground">Findings today</span>
+          <span className="text-foreground tabular-nums">{monitor._count.signals}</span>
+
+          {monitor.expiresAt && (
             <>
-              {item.qualityScore != null && (
-                <>
-                  <span className="text-muted-foreground">Quality</span>
-                  <Tooltip>
-                    <TooltipTrigger render={<span className="text-foreground underline decoration-dotted cursor-help" />}>
-                      {item.qualityScore}/5
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      Signal scoring weight. Higher quality sources produce higher-scored signals that get prioritized in analyst briefs.
-                    </TooltipContent>
-                  </Tooltip>
-                </>
-              )}
-              {item.lastCheckedAt && (
-                <>
-                  <span className="text-muted-foreground">Last checked</span>
-                  <span className="text-foreground tabular-nums">
-                    {relativeTime(item.lastCheckedAt)}
-                  </span>
-                </>
-              )}
-              {item.packs && item.packs.length > 0 && (
-                <>
-                  <span className="text-muted-foreground">Packs</span>
-                  <span className="text-foreground flex items-center gap-1">
-                    <Package className="h-3 w-3 text-muted-foreground" />
-                    {item.packs.join(", ")}
-                  </span>
-                </>
-              )}
+              <span className="text-muted-foreground">Expires</span>
+              <span className="text-foreground">
+                {new Date(monitor.expiresAt).toLocaleDateString()}
+              </span>
             </>
           )}
         </div>
 
-        <Separator />
+        {/* Monitored tickers for PORTFOLIO/WATCHLIST */}
+        {monitor.monitoredTickers && monitor.monitoredTickers.length > 0 && (
+          <>
+            <Separator />
+            <div className="text-xs space-y-1.5">
+              <span className="text-muted-foreground font-medium">
+                Monitoring {monitor.monitoredTickers.length} tickers
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {monitor.monitoredTickers.map((t) => (
+                  <Badge key={t.ticker} variant="secondary">${t.ticker}</Badge>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
 
-        {/* Delete */}
-        <AlertDialog>
-          <AlertDialogTrigger
-            render={<Button variant="ghost" size="sm" className="w-full text-red-500 hover:text-red-600" />}
-          >
-            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-            Delete {isSearch ? "search" : "source"}
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete {isSearch ? "search" : "source"}?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Remove &ldquo;{item.name.slice(0, 60)}&rdquo; from intelligence monitoring.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        {/* Delete (non-builtIn only) */}
+        {!monitor.builtIn && (
+          <>
+            <Separator />
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={<Button variant="ghost" size="sm" className="w-full text-red-500 hover:text-red-600" />}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Delete monitor
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete monitor?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Remove &ldquo;{monitor.name.slice(0, 60)}&rdquo; from intelligence monitoring.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );
 }
 
-// ── Add Item — Pure ShadCN InputGroup with block-end addon ───────────────────
+// ── Add Monitor Input ────────────────────────────────────────────────────────
 
-function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
-  const [kind, setKind] = useState<ItemKind>("search");
+function AddMonitorInput({ onRefresh }: { onRefresh: () => void }) {
+  const [kind, setKind] = useState<"search" | "source">("search");
   const [value, setValue] = useState("");
   const [category, setCategory] = useState("MARKET");
   const [sourceName, setSourceName] = useState("");
-  const [sourceType, setSourceType] = useState("DOMAIN");
   const [qualityScore, setQualityScore] = useState("3");
   const [adding, setAdding] = useState(false);
 
@@ -622,34 +592,33 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
     if (!canSubmit || adding) return;
     setAdding(true);
     try {
-      if (kind === "search") {
-        const res = await fetch("/api/intelligence/queries", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: value.trim(),
+      const body = kind === "search"
+        ? {
+            name: value.trim(),
+            type: "SEARCH",
+            method: "perplexity_sonar",
+            config: { query: value.trim() },
             category,
             scope: "FIRM",
-            createdBy: "USER",
-          }),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        toast.success("Search added");
-      } else {
-        const res = await fetch("/api/intelligence/sources", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+            origin: "USER",
+          }
+        : {
             name: sourceName.trim(),
-            type: sourceType,
-            domain: value.trim(),
+            type: "DOMAIN",
+            method: "perplexity_sonar",
+            config: { domain: value.trim(), qualityScore: parseInt(qualityScore) },
             category,
-            qualityScore: parseInt(qualityScore),
-          }),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        toast.success("Source added");
-      }
+            scope: "FIRM",
+            origin: "USER",
+          };
+
+      const res = await fetch("/api/intelligence/monitors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success(kind === "search" ? "Search added" : "Source added");
       setValue("");
       setSourceName("");
       onRefresh();
@@ -663,7 +632,6 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
 
   return (
     <InputGroup className="h-auto">
-      {/* Top: the actual input */}
       <InputGroupInput
         placeholder={kind === "search"
           ? "semiconductor supply chain disruptions today..."
@@ -673,12 +641,11 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
         onKeyDown={(e) => e.key === "Enter" && handleAdd()}
       />
 
-      {/* Bottom: controls bar */}
       <InputGroupAddon align="block-end">
-        {/* Type selector — icon-only trigger */}
+        {/* Type selector */}
         <Tooltip>
           <TooltipTrigger render={<span />}>
-            <Select value={kind} onValueChange={(v) => v && setKind(v as ItemKind)}>
+            <Select value={kind} onValueChange={(v) => v && setKind(v as "search" | "source")}>
               <SelectTrigger size="sm" chevron={false}>
                 {kind === "search" ? (
                   <Search className="h-3.5 w-3.5" />
@@ -705,13 +672,11 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {CATEGORY_OPTIONS
-              .filter((c) => kind === "source" || !["COMPANY", "SOCIAL"].includes(c.value))
-              .map((c) => (
-                <SelectItem key={c.value} value={c.value}>
-                  {c.label}
-                </SelectItem>
-              ))}
+            {CATEGORY_OPTIONS.map((c) => (
+              <SelectItem key={c.value} value={c.value}>
+                {c.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
@@ -719,7 +684,7 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
         {kind === "source" && (
           <Popover>
             <PopoverTrigger
-              render={<InputGroupButton variant="ghost" size="icon-xs" />}
+              render={<Button variant="ghost" size="sm" />}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
             </PopoverTrigger>
@@ -740,23 +705,6 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
                 </div>
                 <div>
                   <label className="font-medium text-muted-foreground block mb-1">
-                    Source type
-                  </label>
-                  <Select value={sourceType} onValueChange={(v) => v && setSourceType(v)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="DOMAIN">Web domain</SelectItem>
-                      <SelectItem value="RSS">RSS feed</SelectItem>
-                      <SelectItem value="NEWSLETTER">Newsletter</SelectItem>
-                      <SelectItem value="TWITTER">Twitter/X</SelectItem>
-                      <SelectItem value="API">API endpoint</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="font-medium text-muted-foreground block mb-1">
                     Quality score
                   </label>
                   <Select value={qualityScore} onValueChange={(v) => v && setQualityScore(v)}>
@@ -771,16 +719,12 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
                       <SelectItem value="5">5 — Premium / official</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-muted-foreground mt-1">
-                    Higher quality sources produce higher-weighted signals in analyst briefs.
-                  </p>
                 </div>
               </div>
             </PopoverContent>
           </Popover>
         )}
 
-        {/* Submit button */}
         <Button
           size="sm"
           className="ml-auto"
@@ -793,4 +737,16 @@ function AddItemInput({ onRefresh }: { onRefresh: () => void }) {
       </InputGroupAddon>
     </InputGroup>
   );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function getMonitorDetail(monitor: Monitor): string {
+  const config = monitor.config ?? {};
+  if (monitor.type === "SEARCH") return (config.query as string) ?? "";
+  if (monitor.type === "DOMAIN") return (config.domain as string) ?? "";
+  if (monitor.type === "API") return (config.endpoint as string) ?? "";
+  if (monitor.type === "PORTFOLIO") return "Auto-searches all open positions via Sonar";
+  if (monitor.type === "WATCHLIST") return "Auto-searches all watchlist tickers via Sonar";
+  return "";
 }

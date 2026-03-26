@@ -15,3 +15,21 @@ export function FirecrawlLogo({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function FinnhubLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M3 17h2v-7H3v7zm4 0h2V7H7v10zm4 0h2v-4h-2v4zm4 0h2V4h-2v13zm4 0h2v-9h-2v9z" />
+      <path d="M2 20h20v2H2z" opacity="0.5" />
+    </svg>
+  );
+}
+
+export function FmpLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M4 4h4v16H4zm6 4h4v12h-4zm6 6h4v6h-4z" />
+      <path d="M3 21h18v1H3z" opacity="0.5" />
+    </svg>
+  );
+}

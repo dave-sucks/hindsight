@@ -82,7 +82,7 @@ const briefingSchema = z.object({
       z.object({
         query: z
           .string()
-          .describe("A specific, searchable intelligence query. E.g. 'Tesla China manufacturing partnership developments', 'AMD data center GPU market share Q2 2026'"),
+          .describe("A specific, searchable query for a temporary search monitor. E.g. 'Tesla China manufacturing partnership developments', 'AMD data center GPU market share Q2 2026'"),
         category: z
           .enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"])
           .describe("Query category — TICKER for company-specific, SECTOR for industry trends, THEMATIC for cross-cutting themes, EVENT for catalysts/dates, MARKET for macro"),
@@ -97,7 +97,7 @@ const briefingSchema = z.object({
       })
     )
     .describe(
-      "Dynamic intelligence queries to add to the analyst's monitoring pipeline. These get picked up by the morning sweep job and generate signals automatically. Only propose queries for things NOT already covered by existing source packs or permanent queries. Focus on: unresolved research gaps from this session, upcoming catalysts that need monitoring, emerging themes the analyst identified but couldn't fully research, and risk factors on open positions that need tracking. 0-5 queries max."
+      "Temporary search monitors to add to the analyst's monitoring pipeline. These run daily as Perplexity Sonar searches and generate findings automatically. Only propose monitors for things NOT already covered by existing monitors. Focus on: unresolved research gaps from this session, upcoming catalysts that need monitoring, emerging themes the analyst identified but couldn't fully research, and risk factors on open positions that need tracking. 0-5 monitors max."
     ),
 });
 
@@ -445,18 +445,18 @@ Rules:
 - Build on the previous briefing — show progression of thinking, don't repeat the same observations
 - The narrative is the analyst's memory. Be specific enough that it can quote this brief next session.
 
-## Dynamic Queries (Intelligence Pipeline)
-After writing the brief, identify specific things to MONITOR that the analyst's existing source packs and permanent queries don't already cover. These become temporary intelligence queries that the morning sweep job will execute automatically.
+## Dynamic Monitors
+After writing the brief, identify specific things to MONITOR that the analyst's existing monitors don't already cover. These become temporary search monitors that run daily via Perplexity Sonar automatically.
 
-Good dynamic queries:
+Good dynamic monitors:
 - "NVIDIA earnings guidance revision Q2 2026" — analyst flagged this but couldn't confirm during session
 - "FDA approval timeline for Eli Lilly GLP-1 competitor" — catalyst on a watchlist stock
 - "Semiconductor tariff impact China export controls" — macro risk affecting multiple holdings
 - "AMD Instinct MI400 benchmark comparisons" — competitive intel on a position
 
-Bad dynamic queries (don't create these):
-- "AAPL stock price" — too generic, already covered by portfolio monitoring
-- "tech sector news" — too broad, already in source packs
+Bad dynamic monitors (don't create these):
+- "AAPL stock price" — too generic, already covered by ticker monitoring
+- "tech sector news" — too broad, already covered by existing search monitors
 - "market conditions" — already in firm-level morning sweep
 
 Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term catalysts, 7-14 for medium-term monitoring, up to 30 for longer tracking.`;
@@ -516,28 +516,34 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
       }
     }
 
-    // ── Persist dynamic queries to IntelligenceQuery table ────────────────
+    // ── Persist dynamic queries as Monitor rows ─────────────────────────────
     const dynamicQueries: DynamicQueryOutput[] = object.dynamicQueries ?? [];
     if (dynamicQueries.length > 0) {
       const now = new Date();
-      const queryRows = dynamicQueries.map((dq) => ({
-        scope: "ANALYST" as const,
-        analystId,
-        query: dq.query,
-        category: dq.category,
-        enabled: true,
-        expiresAt: new Date(now.getTime() + dq.expires_days * 24 * 60 * 60 * 1000),
-        createdBy: "BRIEFING_AGENT" as const,
-        sourceRunId: runId,
-      }));
-
       try {
-        await prisma.intelligenceQuery.createMany({ data: queryRows });
+        for (const dq of dynamicQueries) {
+          await prisma.monitor.create({
+            data: {
+              name: dq.query,
+              type: "SEARCH",
+              method: "perplexity_sonar",
+              config: { query: dq.query, reason: dq.reason },
+              scope: "ANALYST",
+              analystId,
+              enabled: true,
+              builtIn: false,
+              origin: "BRIEFING_AGENT",
+              category: dq.category,
+              expiresAt: new Date(now.getTime() + dq.expires_days * 24 * 60 * 60 * 1000),
+              sourceRunId: runId,
+            },
+          });
+        }
         console.log(
-          `[briefing] Created ${queryRows.length} dynamic queries for analyst ${config.name}: ${queryRows.map((q) => q.query.slice(0, 50)).join("; ")}`
+          `[briefing] Created ${dynamicQueries.length} dynamic monitors for analyst ${config.name}: ${dynamicQueries.map((q) => q.query.slice(0, 50)).join("; ")}`
         );
       } catch (queryErr) {
-        console.warn("[briefing] Failed to create dynamic queries (non-fatal):", queryErr);
+        console.warn("[briefing] Failed to create dynamic monitors (non-fatal):", queryErr);
       }
     }
 

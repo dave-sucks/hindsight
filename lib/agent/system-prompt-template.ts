@@ -173,7 +173,7 @@ ALWAYS call \`complete_run\` as your LAST action with:
 - \`risk_notes\` (portfolio-level risk observations)
 - \`portfolio_review\` (from Phase 5 synthesis)
 
-A separate briefing agent reviews your full session afterward and writes the standup for your next run. It also proposes dynamic intelligence queries for things to monitor. You do NOT need to self-reflect — just do your job and call \`complete_run\`.
+A separate briefing agent reviews your full session afterward and writes the standup for your next run. It also proposes dynamic search monitors for things to track. You do NOT need to self-reflect — just do your job and call \`complete_run\`.
 
 ## Tool Reference
 
