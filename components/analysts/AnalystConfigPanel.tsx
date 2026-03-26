@@ -142,13 +142,13 @@ export function AnalystConfigPanel({
         className="absolute inset-0 z-[5] transition-opacity duration-700 ease-out"
         style={{ opacity: introActive ? 1 : 0, pointerEvents: "none" }}
       >
-        <Silk speed={10} scale={0.6} color="#AEFD83" noiseIntensity={1.5} rotation={0} />
+        <Silk speed={10} scale={0.08} color="#AEFD83" noiseIntensity={1.5} rotation={0} />
       </div>
 
       {/* ── Header with SilkOrb avatar ──────────────────────────── */}
       <div className="relative z-[6] shrink-0 px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
-          <SilkOrb size={56} speed={10} color="#AEFD83" scale={0.6} noiseIntensity={1.5} />
+          <SilkOrb size={56} speed={10} color="#AEFD83" scale={0.08} noiseIntensity={1.5} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-base font-brand font-bold truncate leading-tight">
