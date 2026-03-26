@@ -14,6 +14,7 @@ import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, g
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity } from "@/lib/discovery/types";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
+import { searchSignals } from "@/lib/intelligence/sonar";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
@@ -2393,12 +2394,12 @@ export function createResearchTools(ctx: ToolContext) {
 
     web_search: tool({
       description:
-        "Search the web for real-time information. Use when pre-gathered intelligence is insufficient and you need live data — breaking news, recent developments, or niche topics not covered by the signal pipeline. Respects your intelligence policy's allowLiveSearch and liveSearchBudget.",
+        "Search the web for real-time information via Perplexity Sonar. Use when pre-gathered intelligence is insufficient and you need live data — breaking news, recent developments, or niche topics not covered by the signal pipeline. Respects your intelligence policy's allowLiveSearch and liveSearchBudget.",
       inputSchema: z.object({
         query: z.string().describe("Search query — be specific and financial-context-aware"),
-        maxResults: z.number().optional().describe("Max results to return (default 5, max 10)"),
+        recency: z.enum(["hour", "day", "week", "month"]).optional().describe("How recent results should be (default: day)"),
       }),
-      execute: async ({ query, maxResults = 5 }) => {
+      execute: async ({ query, recency = "day" }) => {
         const policy = ctx.intelligencePolicy;
 
         // Check policy: is live search allowed?
@@ -2420,59 +2421,23 @@ export function createResearchTools(ctx: ToolContext) {
           };
         }
 
-        const SEARCH_API_KEY = process.env.SERPER_API_KEY ?? process.env.SEARCH_API_KEY;
-        if (!SEARCH_API_KEY) {
-          return { error: "Search API key not configured. Set SERPER_API_KEY or SEARCH_API_KEY in environment." };
-        }
-
         liveSearchCount++;
-        const clampedMax = Math.min(Math.max(maxResults, 1), 10);
-        logToolStart("web_search", ctx.runId, `q="${query}" max=${clampedMax} budget=${liveSearchCount}/${budget}`, stats);
+        logToolStart("web_search", ctx.runId, `q="${query}" recency=${recency} budget=${liveSearchCount}/${budget}`, stats);
 
         try {
-          const res = await fetch("https://google.serper.dev/search", {
-            method: "POST",
-            headers: {
-              "X-API-KEY": SEARCH_API_KEY,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              q: query,
-              num: clampedMax,
-            }),
-            signal: AbortSignal.timeout(API_TIMEOUT_MS),
-          });
-
-          if (!res.ok) {
-            stats.errors++;
-            return { error: `Search API error: ${res.status} ${res.statusText}` };
-          }
-
           stats.other++;
-          const data = await res.json() as {
-            organic?: Array<{
-              title: string;
-              link: string;
-              snippet: string;
-              date?: string;
-            }>;
-            knowledgeGraph?: {
-              title?: string;
-              description?: string;
-            };
-          };
+          const sonarResult = await searchSignals(query, { recency, model: "sonar" });
 
-          const results = (data.organic ?? []).slice(0, clampedMax).map((r) => {
-            let domain = "";
-            try { domain = new URL(r.link).hostname.replace(/^www\./, ""); } catch { /* */ }
-            return {
-              title: r.title,
-              url: r.link,
-              snippet: r.snippet,
-              domain,
-              date: r.date ?? null,
-            };
-          });
+          const results = sonarResult.signals.map((s) => ({
+            headline: s.headline,
+            summary: s.summary,
+            tickers: s.tickers,
+            themes: s.themes,
+            sentiment: s.sentiment,
+            urgency: s.urgency,
+            sourceNames: s.sourceNames,
+            sourceUrls: s.sourceUrls,
+          }));
 
           return {
             query,
@@ -2480,13 +2445,18 @@ export function createResearchTools(ctx: ToolContext) {
             budgetUsed: liveSearchCount,
             budgetMax: budget,
             results,
-            knowledgeGraph: data.knowledgeGraph ?? null,
-            _sources: results.map((r) => ({
-              title: r.title,
-              url: r.url,
-              provider: r.domain,
-              excerpt: r.snippet,
-            })),
+            _sources: results.flatMap((r) =>
+              r.sourceUrls.map((url, i) => {
+                let domain = "";
+                try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* */ }
+                return {
+                  title: r.sourceNames[i] ?? domain,
+                  url,
+                  provider: domain,
+                  excerpt: r.summary,
+                };
+              })
+            ),
           };
         } catch (e) {
           stats.errors++;
