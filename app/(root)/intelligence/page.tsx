@@ -12,7 +12,26 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { RefreshCw, Loader2 } from "lucide-react";
+import {
+  RefreshCw,
+  Loader2,
+  Play,
+  Radar,
+  Search,
+  Globe,
+  GitBranch,
+  FileText,
+  Layers,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 import { SignalFeed } from "@/components/intelligence/signal-feed";
@@ -44,6 +63,28 @@ export default function IntelligencePage() {
   const [briefDate, setBriefDate] = useState<"today" | "yesterday" | "week">(
     "today"
   );
+
+  const [triggering, setTriggering] = useState<string | null>(null);
+
+  const triggerJob = useCallback(async (job: string, label: string) => {
+    setTriggering(job);
+    try {
+      const res = await fetch("/api/intelligence/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed: ${res.status}`);
+      }
+      toast.success(`Triggered: ${label}`, { description: "Refresh in a few seconds to see results." });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Trigger failed");
+    } finally {
+      setTriggering(null);
+    }
+  }, []);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -133,7 +174,51 @@ export default function IntelligencePage() {
               </TabsTrigger>
               <TabsTrigger value="briefs">Briefs</TabsTrigger>
             </TabsList>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-1.5">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={triggering !== null}
+                  >
+                    {triggering ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Play className="h-4 w-4" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Run Pipeline</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => triggerJob("full-pipeline", "Full Pipeline")}>
+                    <Layers className="h-4 w-4" />
+                    Run Full Pipeline
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Individual Steps</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => triggerJob("market-sweep", "Market Sweep")}>
+                    <Search className="h-4 w-4" />
+                    Market Sweep
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => triggerJob("portfolio-monitor", "Portfolio Monitor")}>
+                    <Radar className="h-4 w-4" />
+                    Portfolio &amp; Watchlist
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => triggerJob("source-pack-monitor", "Source Monitor")}>
+                    <Globe className="h-4 w-4" />
+                    Domain Sources
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => triggerJob("signal-router", "Signal Router")}>
+                    <GitBranch className="h-4 w-4" />
+                    Route Signals
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => triggerJob("morning-brief", "Morning Briefs")}>
+                    <FileText className="h-4 w-4" />
+                    Generate Briefs
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="outline"
                 size="sm"
