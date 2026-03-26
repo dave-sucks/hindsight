@@ -369,7 +369,7 @@ export default function AnalystsPageClient({
       <div className="flex items-center gap-6">
         <h1 className="text-2xl font-semibold">Analysts</h1>
         <div style={{ width: 200, height: 200, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}>
-          <Silk speed={5} scale={1} color="#AEFD83" noiseIntensity={1.5} rotation={0} />
+          <Silk speed={5} scale={0.7} color="#3f2f8e" noiseIntensity={1.5} rotation={0} />
         </div>
       </div>
 
