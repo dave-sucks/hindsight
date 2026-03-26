@@ -353,12 +353,6 @@ function SignalDetail({
           </p>
         </div>
 
-        {/* Quality scores */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>Source Quality <span className="text-foreground tabular-nums">{signal.sourceQuality}/5</span></span>
-          <span>Novelty <span className="text-foreground tabular-nums">{signal.noveltyScore}/100</span></span>
-        </div>
-
         {/* ── Evidence Sources ────────────────────────────────────────── */}
         {signal.sourceUrls.length > 0 && (
           <>
