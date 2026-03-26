@@ -2,8 +2,8 @@
 // Bulk search substrate for the intelligence backbone.
 // Uses OpenAI-compatible API with Perplexity base URL.
 //
-// Sonar is used for background intelligence jobs (market sweep, portfolio
-// monitor, source pack monitor). It returns structured JSON via response_format.
+// Sonar is used for background monitors (search, ticker, domain monitors).
+// It returns structured JSON via response_format.
 // NOT used for analyst runtime — that uses Claude web search.
 
 import OpenAI from "openai"
@@ -153,7 +153,7 @@ export async function batchSearchSignals(
 // ── Domain-Filtered Search ──────────────────────────────────────────────────
 
 /**
- * Search within specific domains — used by source pack monitor.
+ * Search within specific domains — used by domain monitors.
  * Convenience wrapper around searchSignals with domainFilter.
  */
 export async function searchDomain(

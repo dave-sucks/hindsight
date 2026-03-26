@@ -714,8 +714,8 @@ export async function createAnalystFromBuilder(
     } : {}),
   };
 
-  // ── Transactional creation: analyst + watchlist + source pack + queries ──
-  // All intelligence setup is atomic — if source pack creation fails midway,
+  // ── Transactional creation: analyst + watchlist + monitors ──
+  // All intelligence setup is atomic — if monitor creation fails midway,
   // the analyst still gets created but without a partial/broken intelligence setup.
   const analyst = await prisma.$transaction(async (tx) => {
     // 1. Create the analyst config (core record)

@@ -19,7 +19,6 @@ export type SourceCategory =
   | "SOCIAL"
   | "EVENT";
 
-export type SourcePackScope = "FIRM" | "ANALYST";
 
 export type CheckFrequency = "HOURLY" | "DAILY" | "WEEKLY";
 
@@ -235,25 +234,6 @@ export interface DynamicQueryOutput {
   expires_days: number;
 }
 
-// ── Source Pack Proposal Types ───────────────────────────────────────────────
-// Output from the analyst builder when proposing a source pack.
-
-export interface SourcePackProposal {
-  name: string;
-  sources: Array<{
-    name: string;
-    domain: string;
-    category: SourceCategory;
-    qualityScore: number;
-    reason: string;       // why this source matters for this analyst
-  }>;
-}
-
-export interface BuilderQueryProposal {
-  query: string;
-  category: QueryCategory;
-  reason: string;
-}
 
 // ── Morning Brief Types ─────────────────────────────────────────────────────
 // Structured output from the morning brief generator job.
@@ -329,44 +309,6 @@ export interface RouteDecision {
   routeReason: string;
 }
 
-// ── Intelligence Query Types ────────────────────────────────────────────────
-// For the config UI and job execution.
-
-export interface IntelligenceQueryConfig {
-  query: string;
-  category: QueryCategory;
-  scope: SourcePackScope;
-  analystId?: string;
-  expiresAt?: Date;
-  createdBy: QueryCreator;
-}
-
-// ── Source Pack Seed Types ───────────────────────────────────────────────────
-// Used by the seed script to define initial source packs.
-
-export interface SourceSeed {
-  name: string;
-  type: SourceType;
-  url?: string;
-  domain?: string;
-  category: SourceCategory;
-  qualityScore: number;
-}
-
-export interface SourcePackSeed {
-  name: string;
-  scope: SourcePackScope;
-  sources: Array<{
-    name: string; // references a SourceSeed by name
-    priority: number;
-  }>;
-}
-
-export interface IntelligenceQuerySeed {
-  query: string;
-  category: QueryCategory;
-  scope: SourcePackScope;
-}
 
 // ── Runtime Tool Types ──────────────────────────────────────────────────────
 // Used by agent runtime tools to query the intelligence layer.

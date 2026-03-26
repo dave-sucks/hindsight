@@ -1,8 +1,9 @@
-// ── Source Pack Monitor ──────────────────────────────────────────────────────
-// Runs daily at 7:15 AM ET after portfolio monitor.
+// ── Domain Monitors ─────────────────────────────────────────────────────────
+// Runs daily at 7:15 AM ET after ticker monitors.
 // For each enabled DOMAIN monitor, checks tracked domains for new content
 // via domain-filtered Sonar searches.
 // High-value pages get full extraction via Firecrawl.
+// NOTE: Inngest function ID is "source-pack-monitor" for backward compat.
 
 import { inngest } from "@/lib/inngest/client"
 import { prisma } from "@/lib/prisma"
@@ -19,7 +20,7 @@ import {
 export const sourcePackMonitor = inngest.createFunction(
   {
     id: "source-pack-monitor",
-    name: "Source Pack Monitor",
+    name: "Domain Monitors",
     concurrency: { limit: 1 },
     retries: 1,
   },
@@ -133,7 +134,7 @@ export const sourcePackMonitor = inngest.createFunction(
           }
         } catch (error) {
           console.error(
-            `[source-pack] Domain group "${groupKey}" search failed:`,
+            `[domain-monitors] Domain group "${groupKey}" search failed:`,
             error instanceof Error ? error.message : error
           )
           return { success: false, signalCount: 0, monitorsProcessed: 0 }
@@ -198,7 +199,7 @@ export const sourcePackMonitor = inngest.createFunction(
                 created++
               } catch (error) {
                 console.warn(
-                  `[source-pack] Extract failed for ${url}:`,
+                  `[domain-monitors] Extract failed for ${url}:`,
                   error instanceof Error ? error.message : error
                 )
               }
