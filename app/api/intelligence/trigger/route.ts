@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { inngest } from "@/lib/inngest/client"
 
 // POST /api/intelligence/trigger — manually trigger an intelligence job
-// Body: { job: "market-sweep" | "portfolio-monitor" | "source-pack-monitor" | "signal-router" | "morning-brief" | "full-pipeline" }
+// Body: { job: "market-sweep" | "portfolio-monitor" | "domain-monitor" | "signal-router" | "morning-brief" | "full-pipeline" }
 
 const JOB_EVENTS: Record<string, string> = {
   "market-sweep": "intelligence/market-sweep",
   "portfolio-monitor": "intelligence/portfolio-monitor",
-  "source-pack-monitor": "intelligence/source-pack-monitor",
+  "domain-monitor": "intelligence/domain-monitor",
   "signal-router": "intelligence/route-signals",
   "morning-brief": "intelligence/generate-briefs",
 }
@@ -16,7 +16,7 @@ const JOB_EVENTS: Record<string, string> = {
 const PIPELINE_ORDER = [
   "market-sweep",
   "portfolio-monitor",
-  "source-pack-monitor",
+  "domain-monitor",
   "signal-router",
   "morning-brief",
 ]

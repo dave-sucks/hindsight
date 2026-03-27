@@ -274,11 +274,11 @@ model IntelligenceQuery {
 /// Unified monitor — anything the intelligence system watches.
 /// Replaces the split across IntelligenceQuery + Source + SourcePack.
 /// Each monitor represents one thing being checked: a search query, a domain,
-/// an API endpoint, portfolio tickers, or watchlist tickers.
+/// or an API endpoint.
 model Monitor {
   id          String    @id @default(cuid())
   name        String    // "Semiconductor supply chain", "reuters.com", "FMP Top Gainers", "Portfolio Tickers"
-  type        String    // "SEARCH" | "DOMAIN" | "API" | "PORTFOLIO" | "WATCHLIST"
+  type        String    // "SEARCH" | "DOMAIN" | "API"
   method      String    // "perplexity_sonar" | "firecrawl" | "fmp" | "finnhub" | "auto"
   config      Json?     // type-specific: {query}, {domain, qualityScore}, {endpoint, params}, etc.
   scope       String    @default("FIRM") // "FIRM" | "ANALYST"

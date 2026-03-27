@@ -113,11 +113,7 @@ export function MonitorList({ monitors, onRefresh }: MonitorListProps) {
 
   const filtered = useMemo(() => {
     return monitors.filter((m) => {
-      if (typeFilter !== "ALL") {
-        if (typeFilter === "SEARCH") {
-          if (m.type !== "SEARCH" && m.type !== "PORTFOLIO" && m.type !== "WATCHLIST") return false;
-        } else if (m.type !== typeFilter) return false;
-      }
+      if (typeFilter !== "ALL" && m.type !== typeFilter) return false;
       if (categoryFilter !== "ALL" && m.category !== categoryFilter) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -187,7 +183,7 @@ export function MonitorList({ monitors, onRefresh }: MonitorListProps) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Type</SelectItem>
-              <SelectItem value="SEARCH">Search ({(typeCounts.SEARCH ?? 0) + (typeCounts.PORTFOLIO ?? 0) + (typeCounts.WATCHLIST ?? 0)})</SelectItem>
+              <SelectItem value="SEARCH">Search ({typeCounts.SEARCH ?? 0})</SelectItem>
               <SelectItem value="DOMAIN">Domain ({typeCounts.DOMAIN ?? 0})</SelectItem>
               <SelectItem value="API">API ({typeCounts.API ?? 0})</SelectItem>
             </SelectContent>
@@ -268,7 +264,6 @@ function MonitorRow({
   const [tickersOpen, setTickersOpen] = useState(false);
   const detail = getMonitorDetail(monitor);
   const hasTickers =
-    (monitor.type === "PORTFOLIO" || monitor.type === "WATCHLIST") &&
     monitor.monitoredTickers &&
     monitor.monitoredTickers.length > 0;
 
@@ -351,7 +346,7 @@ function MonitorRow({
 // ── Type Icons ───────────────────────────────────────────────────────────────
 
 function MonitorTypeIcon({ type }: { type: string }) {
-  // 3 categories: Search (SEARCH/PORTFOLIO/WATCHLIST use Sonar), Domain (Sonar + Firecrawl), API (FMP/Finnhub)
+  // SEARCH — all Sonar searches, DOMAIN — Sonar + Firecrawl, API — FMP/Finnhub
   if (type === "DOMAIN") {
     return (
       <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-orange/10 text-brand-orange">
@@ -366,7 +361,7 @@ function MonitorTypeIcon({ type }: { type: string }) {
       </div>
     );
   }
-  // SEARCH, PORTFOLIO, WATCHLIST — all Perplexity Sonar searches
+  // SEARCH — all Perplexity Sonar searches
   return (
     <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
       <Search className="h-3.5 w-3.5" />
@@ -444,14 +439,8 @@ function MonitorInfoPopover({
       <PopoverContent side="left" align="start" className="w-80">
         {/* Visual header */}
         <div className="pb-1">
-          {(isSearch || monitor.type === "PORTFOLIO" || monitor.type === "WATCHLIST") ? (
-            <SearchQueryVisual query={
-              monitor.type === "PORTFOLIO"
-                ? "{TICKER} stock news developments catalysts today"
-                : monitor.type === "WATCHLIST"
-                ? "{TICKER} stock news developments catalysts today"
-                : (config.query as string) ?? monitor.name
-            } />
+          {isSearch ? (
+            <SearchQueryVisual query={(config.query as string) ?? monitor.name} />
           ) : isApi ? (
             <ApiCallVisual name={monitor.name} endpoint={(config.endpoint as string) ?? ""} />
           ) : isDomain ? (
@@ -476,8 +465,8 @@ function MonitorInfoPopover({
           </div>
           <p className="text-muted-foreground leading-relaxed">
             {(config.description as string) ??
-              ((isSearch || monitor.type === "PORTFOLIO" || monitor.type === "WATCHLIST")
-                ? `This query is sent to Perplexity Sonar every weekday morning. Sonar searches the web and returns structured signals — each with a headline, summary, tickers, sentiment, and source URLs. Signals are then routed to matching analysts.${monitor.type === "PORTFOLIO" ? " The query is auto-generated for each open position ticker." : monitor.type === "WATCHLIST" ? " The query is auto-generated for each watchlist ticker." : ""}`
+              (isSearch
+                ? "This query is sent to Perplexity Sonar every weekday morning. Sonar searches the web and returns structured signals — each with a headline, summary, tickers, sentiment, and source URLs. Signals are then routed to matching analysts."
                 : isApi
                 ? "This API endpoint is called during the market sweep. The response is parsed into one aggregate signal with the top results (e.g. top 10 gainers with price and % change)."
                 : isDomain
@@ -523,7 +512,7 @@ function MonitorInfoPopover({
           )}
         </div>
 
-        {/* Monitored tickers for PORTFOLIO/WATCHLIST */}
+        {/* Monitored tickers */}
         {monitor.monitoredTickers && monitor.monitoredTickers.length > 0 && (
           <>
             <Separator />
@@ -743,7 +732,5 @@ function getMonitorDetail(monitor: Monitor): string {
   if (monitor.type === "SEARCH") return (config.query as string) ?? "";
   if (monitor.type === "DOMAIN") return (config.domain as string) ?? "";
   if (monitor.type === "API") return (config.endpoint as string) ?? "";
-  if (monitor.type === "PORTFOLIO") return "{TICKER} stock news developments catalysts today";
-  if (monitor.type === "WATCHLIST") return "{TICKER} stock news developments catalysts today";
   return "";
 }

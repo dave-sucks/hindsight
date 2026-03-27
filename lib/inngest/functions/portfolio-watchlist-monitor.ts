@@ -25,9 +25,9 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
     { event: "intelligence/portfolio-monitor" },
   ],
   async ({ step }) => {
-    // ── Step 1: Collect all unique tickers from positions + watchlist ──────
+    // ── Step 1: Collect tickers and upsert Monitor rows ─────────────────
 
-    const tickerSources = await step.run("collect-tickers", async () => {
+    const tickerMonitors = await step.run("collect-tickers-and-upsert-monitors", async () => {
       const [positions, watchlistItems] = await Promise.all([
         prisma.position.findMany({
           where: { status: "OPEN" },
@@ -45,18 +45,44 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
       const watchlistTickers = new Set<string>()
       for (const w of watchlistItems) watchlistTickers.add(w.symbol)
 
-      // Build a list with source info for each unique ticker
       const allTickers = new Set([...portfolioTickers, ...watchlistTickers])
-      return Array.from(allTickers).sort().map((symbol) => ({
-        symbol,
-        // Portfolio takes priority if ticker is in both
-        monitorId: portfolioTickers.has(symbol) ? "monitor_portfolio" : "monitor_watchlist",
-      }))
+      const sorted = Array.from(allTickers).sort()
+
+      // Upsert a Monitor row for each ticker
+      const results: { symbol: string; monitorId: string }[] = []
+
+      for (const symbol of sorted) {
+        const deterministicId = `ticker-search-${symbol.toLowerCase()}`
+        const query = `${symbol} stock news developments catalysts today`
+
+        const monitor = await prisma.monitor.upsert({
+          where: { id: deterministicId },
+          create: {
+            id: deterministicId,
+            name: `${symbol} Ticker Search`,
+            type: "SEARCH",
+            method: "perplexity_sonar",
+            config: { query },
+            scope: "FIRM",
+            enabled: true,
+            builtIn: true,
+            origin: "SYSTEM",
+            category: "TICKER",
+          },
+          update: {
+            name: `${symbol} Ticker Search`,
+            config: { query },
+            enabled: true,
+          },
+        })
+
+        results.push({ symbol, monitorId: monitor.id })
+      }
+
+      return results
     })
 
-    const tickers = tickerSources.map((t) => t.symbol)
-
-    if (tickers.length === 0) {
+    if (tickerMonitors.length === 0) {
       return { ran: 0, reason: "no-tickers-to-monitor" }
     }
 
@@ -72,8 +98,7 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
     let tickersSearched = 0
     let tickersFailed = 0
 
-    for (const tickerSource of tickerSources) {
-      const ticker = tickerSource.symbol
+    for (const { symbol: ticker, monitorId } of tickerMonitors) {
       const result = await step.run(`search-${ticker}`, async () => {
         try {
           const sonarResponse = await searchTicker(ticker)
@@ -87,9 +112,15 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
               searchTool: "PERPLEXITY_SONAR",
               searchQuery: `${ticker} stock news developments catalysts today`,
               searchContext: `ticker:${ticker}`,
-              monitorId: tickerSource.monitorId,
+              monitorId,
             }
           )
+
+          // Update lastRunAt on the monitor
+          await prisma.monitor.update({
+            where: { id: monitorId },
+            data: { lastRunAt: new Date() },
+          })
 
           return { success: true, signalCount: signalIds.length }
         } catch (error) {
@@ -123,7 +154,7 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
 
     return {
       batchId,
-      tickersTotal: tickers.length,
+      tickersTotal: tickerMonitors.length,
       tickersSearched,
       tickersFailed,
       signalsCreated: totalSignals,

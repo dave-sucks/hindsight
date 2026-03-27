@@ -535,7 +535,7 @@ function inferDiscovery(signal: Signal): Discovery {
     };
   }
 
-  if (jobType === "SOURCE_PACK") {
+  if (jobType === "DOMAIN_MONITOR" || jobType === "SOURCE_PACK") {
     const domain = extractDomainFromUrls(signal.sourceUrls);
     return {
       type: "domain",

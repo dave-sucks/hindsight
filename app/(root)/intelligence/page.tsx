@@ -202,7 +202,7 @@ export default function IntelligencePage() {
                     <Radar className="h-4 w-4" />
                     Portfolio &amp; Watchlist
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => triggerJob("source-pack-monitor", "Source Monitor")}>
+                  <DropdownMenuItem onClick={() => triggerJob("domain-monitor", "Source Monitor")}>
                     <Globe className="h-4 w-4" />
                     Domain Sources
                   </DropdownMenuItem>

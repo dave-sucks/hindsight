@@ -127,6 +127,7 @@ export function relativeTime(dateStr: string): string {
 export const JOB_LABELS: Record<string, string> = {
   MARKET_SWEEP: "Search Monitors",
   PORTFOLIO_MONITOR: "Ticker Searches",
+  DOMAIN_MONITOR: "Domain Monitors",
   SOURCE_PACK: "Domain Monitors",
   SIGNAL_ROUTER: "Route Findings",
   MORNING_BRIEF: "Generate Briefs",
@@ -160,7 +161,7 @@ export const JOB_DESCRIPTIONS: Record<string, { short: string; long: string }> =
 export const JOB_TRIGGERS: Record<string, { event: string; time: string }> = {
   "Market Sweep": { event: "market-sweep", time: "6:30 AM" },
   "Portfolio Monitor": { event: "portfolio-monitor", time: "7:00 AM" },
-  "Source Pack": { event: "source-pack-monitor", time: "7:15 AM" },
+  "Domain Monitor": { event: "domain-monitor", time: "7:15 AM" },
   "Signal Router": { event: "signal-router", time: "7:30 AM" },
   "Morning Brief": { event: "morning-brief", time: "7:45 AM" },
 };
@@ -183,8 +184,6 @@ export const MONITOR_TYPE_CONFIG: Record<string, { label: string; description: s
   SEARCH: { label: "Search", description: "Sends a query to Perplexity Sonar, gets back structured signals with headlines, tickers, and sentiment" },
   DOMAIN: { label: "Domain", description: "Sends a domain-filtered query to Perplexity Sonar, gets back signals from that site. High-priority domains also get full-page extraction via Firecrawl" },
   API: { label: "API", description: "Calls an FMP or Finnhub REST endpoint, gets back structured market data as one aggregate signal" },
-  PORTFOLIO: { label: "Search", description: "Sends a query to Perplexity Sonar, gets back structured signals with headlines, tickers, and sentiment" },
-  WATCHLIST: { label: "Search", description: "Sends a query to Perplexity Sonar, gets back structured signals with headlines, tickers, and sentiment" },
 };
 
 export const MONITOR_METHOD_CONFIG: Record<string, { label: string }> = {

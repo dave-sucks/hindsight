@@ -4,7 +4,7 @@ import { z } from "zod"
 
 // GET /api/intelligence/monitors — list all monitors with today's finding counts
 export async function GET(req: NextRequest) {
-  const type = req.nextUrl.searchParams.get("type") // SEARCH | DOMAIN | API | PORTFOLIO | WATCHLIST
+  const type = req.nextUrl.searchParams.get("type") // SEARCH | DOMAIN | API
   const scope = req.nextUrl.searchParams.get("scope") // FIRM | ANALYST
   const analystId = req.nextUrl.searchParams.get("analystId")
 
@@ -30,23 +30,26 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  // For PORTFOLIO and WATCHLIST monitors, include the actual tickers being monitored
+  // For built-in TICKER-category SEARCH monitors, include the actual tickers being monitored
   const enriched = await Promise.all(
     monitors.map(async (m) => {
-      if (m.type === "PORTFOLIO") {
+      if (m.builtIn && m.category === "TICKER" && m.type === "SEARCH") {
+        // Check config to determine if this tracks positions or watchlist items
+        const trackType = (m.config as Record<string, unknown> | null)?.track as string | undefined
+        if (trackType === "watchlist") {
+          const items = await prisma.analystWatchlistItem.findMany({
+            where: { status: "ACTIVE" },
+            select: { symbol: true, reason: true, priority: true, analystId: true },
+          })
+          return { ...m, monitoredTickers: items.map((i) => ({ ticker: i.symbol, reason: i.reason, priority: i.priority, analystId: i.analystId })) }
+        }
+        // Default: track open positions
         const positions = await prisma.position.findMany({
           where: { status: "OPEN" },
           select: { symbol: true, direction: true, analystId: true },
           distinct: ["symbol"],
         })
         return { ...m, monitoredTickers: positions.map((p) => ({ ticker: p.symbol, reason: `Open ${p.direction} position`, analystId: p.analystId })) }
-      }
-      if (m.type === "WATCHLIST") {
-        const items = await prisma.analystWatchlistItem.findMany({
-          where: { status: "ACTIVE" },
-          select: { symbol: true, reason: true, priority: true, analystId: true },
-        })
-        return { ...m, monitoredTickers: items.map((i) => ({ ticker: i.symbol, reason: i.reason, priority: i.priority, analystId: i.analystId })) }
       }
       return { ...m, monitoredTickers: null }
     })
@@ -58,7 +61,7 @@ export async function GET(req: NextRequest) {
 // POST /api/intelligence/monitors — create a new monitor
 const createSchema = z.object({
   name: z.string().min(1),
-  type: z.enum(["SEARCH", "DOMAIN", "API", "PORTFOLIO", "WATCHLIST"]),
+  type: z.enum(["SEARCH", "DOMAIN", "API"]),
   method: z.string().default("perplexity_sonar"),
   config: z.record(z.unknown()).optional(),
   scope: z.enum(["FIRM", "ANALYST"]).default("FIRM"),
