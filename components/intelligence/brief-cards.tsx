@@ -6,8 +6,6 @@ import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Tooltip,
@@ -77,8 +75,10 @@ export function BriefCards({ briefs }: BriefCardsProps) {
           open={!!selected}
           onOpenChange={(open) => !open && setSelected(null)}
         >
-          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-            {selected && <BriefDetail brief={selected} />}
+          <DialogContent className="max-w-2xl p-0">
+            <div className="max-h-[85vh] overflow-y-auto p-6">
+              {selected && <BriefDetail brief={selected} />}
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -190,22 +190,19 @@ function BriefDetail({ brief }: { brief: MorningBrief }) {
   const priorities = brief.attentionPriority ?? [];
 
   return (
-    <>
-      <DialogHeader>
-        <div className="flex items-center justify-between pr-8">
-          <DialogTitle>{brief.analyst.name}</DialogTitle>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {new Date(brief.date).toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </span>
-        </div>
-      </DialogHeader>
-
-      <div className="space-y-5 pt-2">
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">{brief.analyst.name}</h2>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {new Date(brief.date).toLocaleDateString("en-US", {
+            weekday: "long",
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+      </div>
         {/* ── Market Context ─────────────────────────────────────── */}
         <p className="text-sm text-muted-foreground leading-relaxed">
           {brief.marketContext}
@@ -349,16 +346,15 @@ function BriefDetail({ brief }: { brief: MorningBrief }) {
 
         {/* ── Footer ─────────────────────────────────────────────── */}
         <Separator />
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span className="tabular-nums">
-            Based on {brief.signalCount} signals
-          </span>
-          <span>
-            Generated {relativeTime(brief.generatedAt)}
-          </span>
-        </div>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="tabular-nums">
+          Based on {brief.signalCount} signals
+        </span>
+        <span>
+          Generated {relativeTime(brief.generatedAt)}
+        </span>
       </div>
-    </>
+    </div>
   );
 }
 
