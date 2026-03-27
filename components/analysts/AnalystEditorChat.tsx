@@ -117,6 +117,10 @@ export function AnalystEditorChat({
               | "SMALL",
             watchlist: config.watchlist,
             exclusionList: config.exclusionList,
+            // V3 intelligence fields
+            sourcePackProposal: config.sourcePackProposal,
+            intelligenceQueries: config.intelligenceQueries,
+            intelligencePolicy: config.intelligencePolicy,
           });
           setApplied(true);
           router.refresh();

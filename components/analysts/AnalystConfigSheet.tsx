@@ -20,7 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StockLogo } from "@/components/StockLogo";
 import { StockCombobox } from "@/components/analysts/StockCombobox";
-import { Eye, X } from "lucide-react";
+import { Eye, X, Globe, Search, Zap } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import {
   updateAnalystField,
   addToWatchlist,
@@ -275,6 +276,114 @@ export function AnalystConfigSheet({
               </p>
             )}
           </div>
+
+          {/* Intelligence Section */}
+          {(config.domainMonitors.length > 0 || config.searchMonitors.length > 0 || config.intelligencePolicy) && (
+            <>
+              <Separator />
+
+              {/* Domain Monitors (Sources) */}
+              {config.domainMonitors.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Source Monitors</p>
+                    <span className="text-[10px] text-muted-foreground/60 ml-auto tabular-nums">
+                      {config.domainMonitors.length}
+                    </span>
+                  </div>
+                  <div className="space-y-0">
+                    {config.domainMonitors.map((m) => (
+                      <div key={m.id} className="flex items-center gap-2 py-1 border-b border-border/40 last:border-0">
+                        <img
+                          src={`https://www.google.com/s2/favicons?domain=${m.domain}&sz=16`}
+                          alt=""
+                          width={14}
+                          height={14}
+                          className="size-3.5 rounded-sm shrink-0"
+                        />
+                        <span className="text-sm truncate flex-1">{m.name}</span>
+                        <Badge variant="secondary">{m.category}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Search Monitors (Queries) */}
+              {config.searchMonitors.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Search Monitors</p>
+                    <span className="text-[10px] text-muted-foreground/60 ml-auto tabular-nums">
+                      {config.searchMonitors.length}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {config.searchMonitors.map((m) => (
+                      <div key={m.id} className="flex items-start gap-2 py-1 border-b border-border/40 last:border-0">
+                        <span className="text-sm text-foreground/80 flex-1">{m.query}</span>
+                        <Badge variant="secondary">{m.category}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Intelligence Policy */}
+              {config.intelligencePolicy && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Attention Policy</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+                    {typeof config.intelligencePolicy.holdingsAttention === "number" && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Holdings</span>
+                        <span className="tabular-nums font-medium">
+                          {Math.round((config.intelligencePolicy.holdingsAttention as number) * 100)}%
+                        </span>
+                      </div>
+                    )}
+                    {typeof config.intelligencePolicy.watchlistAttention === "number" && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Watchlist</span>
+                        <span className="tabular-nums font-medium">
+                          {Math.round((config.intelligencePolicy.watchlistAttention as number) * 100)}%
+                        </span>
+                      </div>
+                    )}
+                    {typeof config.intelligencePolicy.discoveryAttention === "number" && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Discovery</span>
+                        <span className="tabular-nums font-medium">
+                          {Math.round((config.intelligencePolicy.discoveryAttention as number) * 100)}%
+                        </span>
+                      </div>
+                    )}
+                    {typeof config.intelligencePolicy.maxSignalsPerRun === "number" && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Signal budget</span>
+                        <span className="tabular-nums font-medium">
+                          {config.intelligencePolicy.maxSignalsPerRun as number}
+                        </span>
+                      </div>
+                    )}
+                    {typeof config.intelligencePolicy.allowLiveSearch === "boolean" && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Live search</span>
+                        <span className="font-medium">
+                          {(config.intelligencePolicy.allowLiveSearch as boolean) ? "On" : "Off"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>

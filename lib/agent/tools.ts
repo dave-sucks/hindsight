@@ -14,6 +14,7 @@ import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, g
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity } from "@/lib/discovery/types";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
+import { searchSignals } from "@/lib/intelligence/sonar";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const FMP_KEY = process.env.FMP_API_KEY!;
@@ -339,6 +340,7 @@ function logToolEnd(name: string, t0: number, runId: string, extra?: string, sta
 export function createResearchTools(ctx: ToolContext) {
   // Per-run stats — each run gets its own counters (no shared mutable state)
   const stats = createApiCallStats();
+  let liveSearchCount = 0; // tracks web_search calls against policy budget
   console.log(`[tools] Creating research tools for runId=${ctx.runId} analystId=${ctx.analystId ?? "none"}`);
 
   const toolsBase = {
@@ -2275,6 +2277,63 @@ export function createResearchTools(ctx: ToolContext) {
           });
         }
 
+        // ── Fallback: if 0 routed signals, query by sectors/watchlist directly ──
+        if (finalRoutes.length === 0) {
+          const config = await prisma.agentConfig.findUnique({
+            where: { id: ctx.analystId },
+            select: { sectors: true, watchlist: true },
+          });
+
+          if (config && (config.sectors.length > 0 || config.watchlist.length > 0)) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const fallbackSignals = await prisma.signal.findMany({
+              where: {
+                createdAt: { gte: today },
+                urgency: { in: validUrgencies },
+                sourceQuality: { gte: minSourceQuality },
+                OR: [
+                  ...(config.watchlist.length > 0 ? [{ tickers: { hasSome: config.watchlist } }] : []),
+                  ...(config.sectors.length > 0 ? [{ sectors: { hasSome: config.sectors } }] : []),
+                ],
+              },
+              orderBy: { createdAt: "desc" },
+              take: effectiveLimit,
+            });
+
+            if (fallbackSignals.length > 0) {
+              return {
+                count: fallbackSignals.length,
+                fallback: true,
+                fallbackReason: "No routed signals found — falling back to sector/watchlist match",
+                policyApplied: {
+                  maxSignals: policyMaxSignals,
+                  minUrgency: urgencyOrder[effectiveMinIdx],
+                  minSourceQuality,
+                  excludedCategories,
+                },
+                signals: fallbackSignals.map((s) => ({
+                  signalId: s.id,
+                  type: s.type,
+                  headline: s.headline,
+                  summary: s.summary,
+                  tickers: s.tickers,
+                  themes: s.themes,
+                  sentiment: s.sentiment,
+                  urgency: s.urgency,
+                  freshness: s.freshness,
+                  sourceNames: s.sourceNames,
+                  sourceUrls: s.sourceUrls,
+                  relevanceScore: 0,
+                  routeReason: "fallback_sector_watchlist_match",
+                  artifactId: s.artifactId,
+                })),
+              };
+            }
+          }
+        }
+
         return {
           count: finalRoutes.length,
           policyApplied: {
@@ -2330,6 +2389,80 @@ export function createResearchTools(ctx: ToolContext) {
             ? [{ title: artifact.title ?? "Source", url: artifact.url, provider: "Firecrawl", excerpt: artifact.contentSummary ?? "" }]
             : [],
         };
+      },
+    }),
+
+    web_search: tool({
+      description:
+        "Search the web for real-time information via Perplexity Sonar. Use when pre-gathered intelligence is insufficient and you need live data — breaking news, recent developments, or niche topics not covered by the signal pipeline. Respects your intelligence policy's allowLiveSearch and liveSearchBudget.",
+      inputSchema: z.object({
+        query: z.string().describe("Search query — be specific and financial-context-aware"),
+        recency: z.enum(["hour", "day", "week", "month"]).optional().describe("How recent results should be (default: day)"),
+      }),
+      execute: async ({ query, recency = "day" }) => {
+        const policy = ctx.intelligencePolicy;
+
+        // Check policy: is live search allowed?
+        if (policy && !policy.allowLiveSearch) {
+          return {
+            error: "Live search is disabled by your intelligence policy. Use pre-gathered signals instead.",
+            allowed: false,
+          };
+        }
+
+        // Check budget
+        const budget = policy?.liveSearchBudget ?? 5;
+        if (liveSearchCount >= budget) {
+          return {
+            error: `Live search budget exhausted (${budget}/${budget} used). Use pre-gathered intelligence for remaining research.`,
+            allowed: false,
+            budgetUsed: liveSearchCount,
+            budgetMax: budget,
+          };
+        }
+
+        liveSearchCount++;
+        logToolStart("web_search", ctx.runId, `q="${query}" recency=${recency} budget=${liveSearchCount}/${budget}`, stats);
+
+        try {
+          stats.other++;
+          const sonarResult = await searchSignals(query, { recency, model: "sonar" });
+
+          const results = sonarResult.signals.map((s) => ({
+            headline: s.headline,
+            summary: s.summary,
+            tickers: s.tickers,
+            themes: s.themes,
+            sentiment: s.sentiment,
+            urgency: s.urgency,
+            sourceNames: s.sourceNames,
+            sourceUrls: s.sourceUrls,
+          }));
+
+          return {
+            query,
+            resultCount: results.length,
+            budgetUsed: liveSearchCount,
+            budgetMax: budget,
+            results,
+            _sources: results.flatMap((r) =>
+              r.sourceUrls.map((url, i) => {
+                let domain = "";
+                try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* */ }
+                return {
+                  title: r.sourceNames[i] ?? domain,
+                  url,
+                  provider: domain,
+                  excerpt: r.summary,
+                };
+              })
+            ),
+          };
+        } catch (e) {
+          stats.errors++;
+          const msg = e instanceof Error ? e.message : String(e);
+          return { error: `Search failed: ${msg}` };
+        }
       },
     }),
 

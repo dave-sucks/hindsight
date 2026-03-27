@@ -73,7 +73,7 @@ const JOBS: Record<string, JobInfo> = {
   },
   "Domain Monitors": {
     icon: Globe,
-    event: "source-pack-monitor",
+    event: "domain-monitor",
     time: "7:15 AM ET",
     short: "Checks monitored domains for new articles and extracts content",
     long: "Searches all enabled domain monitors via Perplexity Sonar with domain filtering. High-priority domains get full article extraction via Firecrawl for deep content analysis.",

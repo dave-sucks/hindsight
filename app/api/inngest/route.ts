@@ -9,7 +9,7 @@ import { accuracyScorer } from "@/lib/inngest/functions/accuracy-scorer";
 // V3 Intelligence Layer
 import { firmMarketSweep } from "@/lib/inngest/functions/firm-market-sweep";
 import { portfolioWatchlistMonitor } from "@/lib/inngest/functions/portfolio-watchlist-monitor";
-import { sourcePackMonitor } from "@/lib/inngest/functions/source-pack-monitor";
+import { domainMonitor } from "@/lib/inngest/functions/domain-monitor";
 import { signalRouter } from "@/lib/inngest/functions/signal-router";
 import { morningBriefGenerator } from "@/lib/inngest/functions/morning-brief-generator";
 
@@ -30,7 +30,7 @@ export const { GET, POST, PUT } = serve({
     // V3 Intelligence (run in order: 6:30 → 7:00 → 7:15 → 7:30 → 7:45 → 8:00 analyst runs)
     firmMarketSweep,
     portfolioWatchlistMonitor,
-    sourcePackMonitor,
+    domainMonitor,
     signalRouter,
     morningBriefGenerator,
   ],

@@ -1,0 +1,147 @@
+"use client";
+
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Radar, Zap, Eye, Briefcase, AlertTriangle } from "lucide-react";
+import type { MorningBriefItem } from "@/lib/actions/analyst.actions";
+
+type PortfolioAlert = { ticker: string; alert: string; urgency: string };
+type WatchlistUpdate = { ticker: string; update: string; recommendation: string };
+type NewOpportunity = { headline: string; tickers: string[]; thesisSeed: string };
+
+function safeArray<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  return [];
+}
+
+function formatDate(date: Date): string {
+  return new Date(date).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function MorningBriefCard({ brief }: { brief: MorningBriefItem }) {
+  const alerts = safeArray<PortfolioAlert>(brief.portfolioAlerts);
+  const watchUpdates = safeArray<WatchlistUpdate>(brief.watchlistUpdates);
+  const opportunities = safeArray<NewOpportunity>(brief.newOpportunities);
+
+  return (
+    <Card className="p-6 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Radar className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">{formatDate(brief.date)}</span>
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {brief.signalCount} signal{brief.signalCount !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {brief.marketContext && (
+        <p className="text-sm text-muted-foreground">{brief.marketContext}</p>
+      )}
+
+      {brief.attentionPriority.length > 0 && (
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Focus:</span>
+          {brief.attentionPriority.map((t) => (
+            <Badge key={t} variant="secondary">${t}</Badge>
+          ))}
+        </div>
+      )}
+
+      {alerts.length > 0 && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <Briefcase className="h-3 w-3" />
+            Portfolio Alerts
+          </div>
+          {alerts.map((a, i) => (
+            <div key={i} className="flex items-start gap-2 text-sm">
+              <Badge variant={a.urgency === "HIGH" || a.urgency === "BREAKING" ? "destructive" : "secondary"}>
+                ${a.ticker}
+              </Badge>
+              <span className="text-muted-foreground">{a.alert}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {watchUpdates.length > 0 && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <Eye className="h-3 w-3" />
+            Watchlist
+          </div>
+          {watchUpdates.map((w, i) => (
+            <div key={i} className="flex items-start gap-2 text-sm">
+              <Badge variant="outline">${w.ticker}</Badge>
+              <span className="text-muted-foreground">{w.update}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {opportunities.length > 0 && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <Zap className="h-3 w-3" />
+            Opportunities
+          </div>
+          {opportunities.map((opp, i) => (
+            <div key={i} className="text-sm">
+              <span className="font-medium">{opp.headline}</span>
+              {opp.tickers.length > 0 && (
+                <span className="text-muted-foreground ml-1">
+                  ({opp.tickers.map((t) => `$${t}`).join(", ")})
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {brief.riskFlags.length > 0 && (
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <AlertTriangle className="h-3 w-3" />
+            Risk Flags
+          </div>
+          {brief.riskFlags.map((flag, i) => (
+            <p key={i} className="text-sm text-red-500">• {flag}</p>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export function MorningBriefFeed({
+  briefs,
+}: {
+  briefs: MorningBriefItem[];
+}) {
+  if (briefs.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-3">
+        <Radar className="h-10 w-10 text-muted-foreground/30" />
+        <p className="text-sm text-muted-foreground">No morning briefs yet</p>
+        <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
+          Morning briefs are generated by the intelligence pipeline before each
+          trading session. They surface overnight signals, portfolio alerts, and
+          new opportunities.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {briefs.map((brief) => (
+        <MorningBriefCard key={brief.id} brief={brief} />
+      ))}
+    </div>
+  );
+}

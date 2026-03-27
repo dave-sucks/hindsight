@@ -3,7 +3,6 @@
 // For each enabled DOMAIN monitor, checks tracked domains for new content
 // via domain-filtered Sonar searches.
 // High-value pages get full extraction via Firecrawl.
-// NOTE: Inngest function ID is "source-pack-monitor" for backward compat.
 
 import { inngest } from "@/lib/inngest/client"
 import { prisma } from "@/lib/prisma"
@@ -17,16 +16,16 @@ import {
   computeContentHash,
 } from "@/lib/intelligence/signals"
 
-export const sourcePackMonitor = inngest.createFunction(
+export const domainMonitor = inngest.createFunction(
   {
-    id: "source-pack-monitor",
+    id: "domain-monitor",
     name: "Domain Monitors",
     concurrency: { limit: 1 },
     retries: 1,
   },
   [
     { cron: "TZ=America/New_York 15 7 * * 1-5" },
-    { event: "intelligence/source-pack-monitor" },
+    { event: "intelligence/domain-monitor" },
   ],
   async ({ step }) => {
     // ── Step 1: Load enabled DOMAIN monitors ─────────────────────────────
@@ -53,7 +52,7 @@ export const sourcePackMonitor = inngest.createFunction(
     // ── Step 2: Create signal batch ────────────────────────────────────────
 
     const batchId = await step.run("create-batch", async () => {
-      return createSignalBatch("SOURCE_PACK")
+      return createSignalBatch("DOMAIN_MONITOR")
     })
 
     // ── Step 3: Group domain monitors and process ─────────────────────────

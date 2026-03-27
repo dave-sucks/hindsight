@@ -65,6 +65,50 @@ const configSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Tickers to never trade."),
+  // Intelligence monitors — domain sources and search queries
+  sourcePackProposal: z
+    .object({
+      name: z.string().describe("Monitor group name, e.g. 'EV Industry Monitors'"),
+      sources: z
+        .array(
+          z.object({
+            name: z.string().describe("Source name, e.g. 'Electrek', 'InsideEVs', 'CNBC Autos'"),
+            domain: z.string().describe("Source domain, e.g. 'electrek.co', 'insideevs.com'"),
+            category: z.enum(["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"]).describe("Source category"),
+            qualityScore: z.number().min(1).max(5).describe("Source quality 1-5. Tier-1 financial press = 5, niche blogs = 2-3, social = 1-2"),
+            reason: z.string().describe("Why this source matters for this analyst's strategy"),
+          })
+        )
+        .min(4)
+        .max(6)
+        .describe("4-6 domain monitors — websites the system checks daily for this analyst."),
+    })
+    .optional()
+    .describe("Domain monitors: 4-6 websites the intelligence pipeline monitors daily. Each becomes a domain monitor that searches the site for new content and routes findings to the analyst."),
+  intelligenceQueries: z
+    .array(
+      z.object({
+        query: z.string().describe("A specific, searchable query"),
+        category: z.enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"]).describe("Query category"),
+        reason: z.string().describe("Why this query matters for the analyst's strategy"),
+      })
+    )
+    .min(3)
+    .max(5)
+    .optional()
+    .describe("Search monitors: 3-5 queries the system searches daily. Think: what would this analyst Google every morning before the market opens?"),
+  intelligencePolicy: z
+    .object({
+      holdingsAttention: z.number().min(0).max(1).describe("Weight for signals about current positions"),
+      watchlistAttention: z.number().min(0).max(1).describe("Weight for watchlist signals"),
+      discoveryAttention: z.number().min(0).max(1).describe("Weight for new opportunity signals"),
+      maxSignalsPerRun: z.number().min(10).max(100).optional().describe("Max signals per run. Default 30"),
+      maxArtifactReads: z.number().min(2).max(20).optional().describe("Max full article reads per run. Default 5"),
+      allowLiveSearch: z.boolean().optional().describe("Whether the agent can do live web searches. Default true"),
+      liveSearchBudget: z.number().min(0).max(20).optional().describe("Max live search calls per run. Default 5"),
+    })
+    .optional()
+    .describe("Intelligence policy tuned to the analyst's strategy. The three attention weights should sum to ~1.0."),
 });
 
 // ── System prompt ───────────────────────────────────────────────────────────────
@@ -117,10 +161,19 @@ When you notice potential improvements, suggest them:
 
 Use these tools when the user's request benefits from current market context, but you don't need to use them for straightforward config changes.
 
+## Intelligence Layer
+The analyst has an intelligence layer: background monitors that search the web daily and route findings to the agent before each run.
+- **sourcePackProposal**: 4-6 domain monitors (websites). Think: what sources would a real analyst at this desk read every morning?
+- **intelligenceQueries**: 3-5 standing search queries. Think: what would this analyst Google before the market opens?
+- **intelligencePolicy**: Attention weights (holdingsAttention, watchlistAttention, discoveryAttention — sum to ~1.0) and budgets.
+
+When the user asks to "set up intelligence" or "add monitoring" or "what sources should this analyst watch", propose domain monitors and search queries tailored to their specific strategy. If the analyst has no intelligence config yet, proactively suggest setting it up.
+
 ## Key Rules
 - ALWAYS include ALL fields when calling suggest_config — it replaces the entire config
 - The analystPrompt must be COMPLETE (not a diff) — at least 3-5 paragraphs
 - When only changing numeric params (confidence, position size), keep the analystPrompt unchanged
+- Intelligence fields (sourcePackProposal, intelligenceQueries, intelligencePolicy) are OPTIONAL — only include them when specifically setting up or changing intelligence monitoring
 - Explain trade-offs before making changes — don't just blindly do what's asked
 - If the user's change seems counterproductive, respectfully push back with reasoning`;
 }

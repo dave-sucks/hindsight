@@ -126,7 +126,8 @@ export function relativeTime(dateStr: string): string {
 
 export const JOB_LABELS: Record<string, string> = {
   MARKET_SWEEP: "Search Monitors",
-  PORTFOLIO_MONITOR: "Ticker Monitors",
+  PORTFOLIO_MONITOR: "Ticker Searches",
+  DOMAIN_MONITOR: "Domain Monitors",
   SOURCE_PACK: "Domain Monitors",
   SIGNAL_ROUTER: "Route Findings",
   MORNING_BRIEF: "Generate Briefs",
@@ -144,8 +145,8 @@ export const JOB_DESCRIPTIONS: Record<string, { short: string; long: string }> =
     long: "Checks current prices and recent news for every open position and watchlist item across all analysts. Generates alerts for stop-loss proximity, target price hits, and material news that could affect trade thesis.",
   },
   "Source Pack": {
-    short: "Crawls monitored domains for new articles, filings, and releases",
-    long: "Iterates over every enabled Source from Config. Uses Perplexity Sonar for domain-scoped search, then Firecrawl for full-text extraction of high-value pages. Creates artifact records with extracted content that become signals.",
+    short: "Searches monitored domains for new articles, filings, and releases",
+    long: "For each enabled domain monitor, sends a domain-filtered search to Perplexity Sonar. Only results from that domain are returned. High-priority domains also get full-page HTML extraction via Firecrawl, stored as artifacts.",
   },
   "Signal Router": {
     short: "Routes unprocessed signals to matching analysts by coverage area",
@@ -160,7 +161,7 @@ export const JOB_DESCRIPTIONS: Record<string, { short: string; long: string }> =
 export const JOB_TRIGGERS: Record<string, { event: string; time: string }> = {
   "Market Sweep": { event: "market-sweep", time: "6:30 AM" },
   "Portfolio Monitor": { event: "portfolio-monitor", time: "7:00 AM" },
-  "Source Pack": { event: "source-pack-monitor", time: "7:15 AM" },
+  "Domain Monitor": { event: "domain-monitor", time: "7:15 AM" },
   "Signal Router": { event: "signal-router", time: "7:30 AM" },
   "Morning Brief": { event: "morning-brief", time: "7:45 AM" },
 };
@@ -180,11 +181,9 @@ export const SENTIMENT_CONFIG: Record<string, { label: string; className: string
 };
 
 export const MONITOR_TYPE_CONFIG: Record<string, { label: string; description: string }> = {
-  SEARCH: { label: "Search", description: "Web search via Perplexity Sonar" },
-  DOMAIN: { label: "Domain", description: "Monitored publication or website" },
-  API: { label: "API", description: "Financial data API endpoint" },
-  PORTFOLIO: { label: "Search", description: "Auto-searches open positions via Sonar" },
-  WATCHLIST: { label: "Search", description: "Auto-searches watchlist tickers via Sonar" },
+  SEARCH: { label: "Search", description: "Sends a query to Perplexity Sonar, gets back structured signals with headlines, tickers, and sentiment" },
+  DOMAIN: { label: "Domain", description: "Sends a domain-filtered query to Perplexity Sonar, gets back signals from that site. High-priority domains also get full-page extraction via Firecrawl" },
+  API: { label: "API", description: "Calls an FMP or Finnhub REST endpoint, gets back structured market data as one aggregate signal" },
 };
 
 export const MONITOR_METHOD_CONFIG: Record<string, { label: string }> = {
