@@ -1,21 +1,25 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { StockLogo } from '@/components/StockLogo';
-import { Badge } from '@/components/ui/badge';
 import { PnlBadge } from '@/components/ui/pnl-badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip';
-import TradingViewWidget from '@/components/TradingViewWidget';
-import { CANDLE_CHART_WIDGET_CONFIG } from '@/lib/constants';
+import { StockPriceChart } from '@/components/stocks/StockPriceChart';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
-import { getStockProfile } from '@/lib/actions/finnhub.actions';
+import {
+  getStockProfile,
+  getStockQuote,
+  getStockCandles,
+} from '@/lib/actions/finnhub.actions';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -28,30 +32,37 @@ import {
   ExternalLink,
   Target,
   GitBranch,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import { TradeActions } from '@/components/trades/TradeActions';
 
-// ─── Event icon map ─────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function EventIcon({ type }: { type: string }) {
-  const major = ['PLACED', 'CLOSED', 'NEAR_TARGET', 'EVALUATED'];
-  const isMajor = major.includes(type);
   switch (type) {
     case 'PLACED':      return <ArrowDownUp className="h-3.5 w-3.5" />;
     case 'NEAR_TARGET': return <Target className="h-3.5 w-3.5 text-amber-500" />;
     case 'CLOSED':      return <CheckCircle2 className="h-3.5 w-3.5 text-positive" />;
     case 'EVALUATED':   return <Brain className="h-3.5 w-3.5 text-primary" />;
-    default:            return <span className={cn('h-2 w-2 rounded-full', isMajor ? 'bg-foreground' : 'bg-muted-foreground/40')} />;
+    default:            return <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />;
   }
 }
 
-// ─── Status helpers ──────────────────────────────────────────────────────────
-
 function getStatusDisplay(status: string, outcome: string | null) {
-  if (status === 'OPEN') return { label: 'Held', dotClass: 'bg-blue-400 animate-pulse', tooltip: 'This position is actively held. P&L updates when the market is open.' };
+  if (status === 'OPEN') return { label: 'Held', dotClass: 'bg-blue-400 animate-pulse', tooltip: 'This position is actively held.' };
   if (outcome === 'WIN')  return { label: 'Won', dotClass: 'bg-positive', tooltip: 'Position closed with a profit.' };
   if (outcome === 'LOSS') return { label: 'Loss', dotClass: 'bg-negative', tooltip: 'Position closed at a loss.' };
   return { label: 'Closed', dotClass: 'bg-muted-foreground/40', tooltip: 'Position has been closed.' };
+}
+
+function StatCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium tabular-nums text-foreground truncate">{value}</span>
+    </div>
+  );
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -75,9 +86,7 @@ export default async function TradeDetailPage({
         include: {
           thesis: {
             include: {
-              researchRun: {
-                select: { id: true },
-              },
+              researchRun: { select: { id: true } },
             },
           },
         },
@@ -87,7 +96,7 @@ export default async function TradeDetailPage({
 
   if (!position || position.userId !== user?.id) notFound();
 
-  // Load thesis chain for this stock (all theses by this analyst for this symbol)
+  // Load thesis chain for this stock
   const thesisChain = await prisma.thesis.findMany({
     where: {
       userId: user.id,
@@ -112,7 +121,6 @@ export default async function TradeDetailPage({
     },
   });
 
-  // Alias for backwards-compat with template
   const trade = {
     ...position,
     ticker: position.symbol,
@@ -122,12 +130,19 @@ export default async function TradeDetailPage({
     events: position.events,
   };
 
-  const stockProfile = await getStockProfile(trade.ticker);
+  // Fetch stock data + candles in parallel
+  const [stockProfile, stockQuote, candles] = await Promise.all([
+    getStockProfile(trade.ticker),
+    getStockQuote(trade.ticker),
+    getStockCandles(trade.ticker, 365),
+  ]);
+
   const companyName = stockProfile?.name ?? null;
   const exchange = stockProfile?.exchange ?? null;
 
   const isOpen = position.status === 'OPEN';
-  const currentPrice = position.closePrice ?? position.avgCost;
+  const livePrice = stockQuote?.c ?? null;
+  const currentPrice = isOpen && livePrice ? livePrice : (position.closePrice ?? position.avgCost);
 
   // P&L
   const realizedPnl = position.realizedPnl ?? 0;
@@ -161,24 +176,30 @@ export default async function TradeDetailPage({
   );
   const riskReward = riskMove > 0 ? totalMove / riskMove : 0;
 
-  // Analyst + run info
   const analystName = position.analyst?.name ?? null;
   const analystIdVal = position.analyst?.id ?? null;
   const runId = trade.thesis?.researchRun?.id ?? null;
 
-  // Post-mortem eval event
   const evalEvent = position.events.find((e) => e.eventType === 'EVALUATED');
 
-  const thesisBullets = (trade.thesis?.thesisBullets ?? []) as string[];
-  const riskFlags = (trade.thesis?.riskFlags ?? []) as string[];
+  const fmtCur = (n: number | null | undefined) =>
+    n != null
+      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n)
+      : '—';
 
-  const chartConfig = {
-    ...CANDLE_CHART_WIDGET_CONFIG,
-    symbol: `NASDAQ:${trade.ticker}`,
-  };
+  // Chart reference lines for entry/target/stop
+  const chartReferenceLines = [
+    { price: trade.entryPrice, color: 'hsl(var(--foreground))', label: 'Entry', dashed: true },
+    { price: targetPrice, color: 'hsl(var(--positive))', label: 'Target', dashed: true },
+    { price: stopPrice, color: 'hsl(var(--negative))', label: 'Stop', dashed: true },
+  ];
+
+  // Quote data for stats grid
+  const changePct = stockQuote?.dp ?? null;
+  const isQuoteUp = (changePct ?? 0) >= 0;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="px-6 py-6 max-w-7xl mx-auto">
       {/* Back nav */}
       <Button
         variant="ghost"
@@ -190,331 +211,315 @@ export default async function TradeDetailPage({
         Paper Trades
       </Button>
 
-      {/* ── 2-column layout ── */}
-      <div className="flex gap-6">
-        {/* ════ LEFT column ════ */}
-        <div className="flex-1 min-w-0 space-y-6">
-
-          {/* Header: StockLogo + ticker + status + actions */}
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <StockLogo ticker={trade.ticker} size="lg" />
-              <div>
-                <h1 className="font-brand font-bold text-2xl leading-tight">
-                  {companyName ?? trade.ticker}
-                </h1>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {trade.ticker}{exchange ? ` · ${exchange}` : ''} · {trade.direction}
-                  </span>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default">
-                            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status.dotClass}`} />
-                            {status.label}
-                          </span>
-                        }
-                      />
-                      <TooltipContent side="bottom">{status.tooltip}</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                  {analystName && analystIdVal && (
-                    <Link href={`/analysts/${analystIdVal}`} className="hover:text-foreground transition-colors">
-                      {analystName}
-                    </Link>
-                  )}
-                  {analystName && <span className="opacity-30">·</span>}
-                  <span>
-                    Submitted {new Date(trade.createdAt).toLocaleDateString('en-US', {
-                      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-                    })}
-                  </span>
-                  {trade.openedAt.getTime() !== trade.createdAt.getTime() && (
-                    <>
-                      <span className="opacity-30">·</span>
-                      <span>
-                        Filled {new Date(trade.openedAt).toLocaleDateString('en-US', {
-                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-                        })}
-                      </span>
-                    </>
-                  )}
-                  {runId && (
-                    <>
-                      <span className="opacity-30">·</span>
-                      <Link href={`/runs/${runId}`} className="hover:text-foreground transition-colors inline-flex items-center gap-0.5">
-                        View run <ExternalLink className="h-3 w-3" />
-                      </Link>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} />
-          </div>
-
-          {/* Closed result banner */}
-          {!isOpen && (
-            <div className={cn(
-              'rounded-xl border px-4 py-3 text-sm font-medium flex items-center gap-2',
-              trade.outcome === 'WIN'
-                ? 'border-positive/30 bg-positive/10 text-positive'
-                : 'border-negative/30 bg-negative/10 text-negative'
-            )}>
-              {trade.outcome === 'WIN'  && <CheckCircle2 className="h-4 w-4 shrink-0" />}
-              {trade.outcome === 'LOSS' && <XCircle className="h-4 w-4 shrink-0" />}
-              {(!trade.outcome || trade.outcome === 'BREAKEVEN') && <Clock className="h-4 w-4 shrink-0" />}
-              <span className="tabular-nums">
-                {status.label} · Realized P&amp;L: {isPos ? '+' : ''}${Math.abs(realizedPnl).toFixed(2)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <StockLogo ticker={trade.ticker} size="lg" />
+          <div>
+            <h1 className="text-2xl font-semibold leading-tight">
+              {companyName ?? trade.ticker}
+            </h1>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-sm text-muted-foreground">
+                {trade.ticker}{exchange ? ` · ${exchange}` : ''} · {trade.direction}
               </span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default">
+                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status.dotClass}`} />
+                        {status.label}
+                      </span>
+                    }
+                  />
+                  <TooltipContent side="bottom">{status.tooltip}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
-          )}
-
-          {/* Chart wrapper: bg-muted/30 rounded-xl border */}
-          <div className="bg-muted/30 rounded-xl border overflow-hidden">
-            {/* 2-col header: stock price | your position */}
-            <div className="flex items-stretch divide-x">
-              {/* Left: current price */}
-              <div className="flex-1 p-4">
-                <p className="text-xs text-muted-foreground mb-1">Current Price</p>
-                <p className="text-2xl font-medium tabular-nums">${currentPrice.toFixed(2)}</p>
-                {pnlPct !== 0 && (
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className={cn('text-sm font-light tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
-                      {isPos ? '+' : '−'}${Math.abs(pnl / trade.shares).toFixed(2)}
-                    </span>
-                    <PnlBadge value={pnlPct} />
-                  </div>
-                )}
-              </div>
-              {/* Right: your position */}
-              <div className="flex-1 p-4">
-                <p className="text-xs text-muted-foreground mb-1">Your Position</p>
-                <p className="text-2xl font-medium tabular-nums">
-                  ${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                </p>
-                <p className="text-sm text-muted-foreground tabular-nums mt-1">
-                  {trade.shares} shares · ${trade.entryPrice.toFixed(2)} entry
-                </p>
-              </div>
-            </div>
-
-            {/* TradingView chart */}
-            <div className="border-t">
-              <TradingViewWidget
-                scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"
-                config={chartConfig}
-                height={400}
-              />
-            </div>
-
-            {/* Stats grid below chart: 3x2 */}
-            <div className="grid grid-cols-3 border-t divide-x">
-              {[
-                { label: 'Entry', value: `$${trade.entryPrice.toFixed(2)}` },
-                { label: 'Target', value: `$${targetPrice.toFixed(2)}`, cls: 'text-positive' },
-                { label: 'Stop', value: `$${stopPrice.toFixed(2)}`, cls: 'text-negative' },
-                { label: 'R:R Ratio', value: `${riskReward.toFixed(2)}:1` },
-                { label: 'Confidence', value: `${trade.thesis?.confidenceScore ?? '—'}%` },
-                { label: 'Hold', value: trade.thesis?.holdDuration ?? 'Swing' },
-              ].map((stat) => (
-                <div key={stat.label} className="px-4 py-2.5 text-center">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {stat.label}
-                  </p>
-                  <p className={cn('text-sm font-medium tabular-nums mt-0.5', stat.cls)}>
-                    {stat.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Thesis body (NOT in a card) */}
-          {trade.thesis && (
-            <div className="space-y-3">
-              <h2 className="text-lg font-medium">Thesis</h2>
-              <p className="text-base text-muted-foreground leading-relaxed">
-                {trade.thesis.reasoningSummary}
-              </p>
-              {(trade.thesis.signalTypes as string[] ?? []).length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {(trade.thesis.signalTypes as string[]).map((s) => (
-                    <Badge key={s} variant="outline" className="text-[10px]">
-                      {s.replace(/_/g, ' ')}
-                    </Badge>
-                  ))}
-                </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              {analystName && analystIdVal && (
+                <Link href={`/analysts/${analystIdVal}`} className="hover:text-foreground transition-colors">
+                  {analystName}
+                </Link>
+              )}
+              {analystName && <span className="opacity-30">·</span>}
+              <span>
+                Submitted {new Date(trade.createdAt).toLocaleDateString('en-US', {
+                  month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                })}
+              </span>
+              {runId && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <Link href={`/runs/${runId}`} className="hover:text-foreground transition-colors inline-flex items-center gap-0.5">
+                    View run <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </>
               )}
             </div>
-          )}
-
-          {/* Bulls / Bears 2-col card */}
-          {(thesisBullets.length > 0 || riskFlags.length > 0) && (
-            <Card className="overflow-hidden shadow-none p-0">
-              <CardContent className="p-0">
-                <div className="grid grid-cols-2 divide-x min-h-[120px]">
-                  {/* Bulls */}
-                  <div className="p-4 bg-gradient-to-br from-positive/10 via-positive/2 to-positive/0 flex flex-col gap-4">
-
-                    <Badge variant="secondary" className="bg-positive/10 text-positive border-none rounded-lg">
-                      Bull Case
-                    </Badge>
-                    <div className="space-y-2">
-                      {thesisBullets.map((b, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
-                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                          <span className="text-foreground/80 leading-snug">{b}</span>
-                        </div>
-                      ))}
-                      {thesisBullets.length === 0 && (
-                        <p className="text-xs text-muted-foreground">No bull points recorded</p>
-                      )}
-                    </div>
-                  </div>
-                  {/* Bears */}
-                  <div className="p-4 bg-gradient-to-br from-negative/10 via-negative/2 to-negative/0 flex flex-col gap-4">
-                    <Badge variant="secondary" className="bg-negative/10 text-negative border-none rounded-lg">
-                      Bear Case
-                    </Badge>
-                    <div className="space-y-2">
-                      {riskFlags.map((r, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
-                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                          <span className="text-foreground/70 leading-snug">{r}</span>
-                        </div>
-                      ))}
-                      {riskFlags.length === 0 && (
-                        <p className="text-xs text-muted-foreground">No risk flags recorded</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Thesis chain — all theses for this stock by this analyst */}
-          {thesisChain.length > 1 && (
-            <div className="space-y-3">
-              <h2 className="text-lg font-medium">Thesis History</h2>
-              <div className="space-y-0">
-                {thesisChain.map((t, i) => {
-                  const isCurrent = t.id === trade.thesis?.id;
-                  const dirColor = t.direction === 'LONG' ? 'text-emerald-500' : t.direction === 'SHORT' ? 'text-red-500' : 'text-muted-foreground';
-                  const statusColor = t.status === 'ACTIVE' ? 'text-blue-400' : t.status === 'INVALIDATED' ? 'text-red-400' : t.status === 'SUPERSEDED' ? 'text-amber-400' : 'text-muted-foreground';
-                  return (
-                    <div key={t.id} className="flex gap-3 pb-3 last:pb-0">
-                      <div className="flex flex-col items-center">
-                        <div className={cn(
-                          'h-2.5 w-2.5 rounded-full shrink-0 mt-1.5',
-                          isCurrent ? 'bg-blue-400 ring-2 ring-blue-400/30' :
-                          t.status === 'ACTIVE' ? 'bg-blue-400' :
-                          t.status === 'INVALIDATED' ? 'bg-red-400' :
-                          'bg-muted-foreground/40'
-                        )} />
-                        {i < thesisChain.length - 1 && (
-                          <div className="w-px flex-1 bg-border mt-1 min-h-[12px]" />
-                        )}
-                      </div>
-                      <Link href={`/runs/${t.researchRunId}`} className="hover:opacity-80 transition-opacity pb-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className={cn('text-[10px] font-medium uppercase', dirColor)}>{t.direction}</span>
-                          <span className="text-xs tabular-nums text-muted-foreground">{t.confidenceScore}%</span>
-                          {t.parentThesisId && <GitBranch className="h-3 w-3 text-muted-foreground/50" />}
-                          <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 leading-none">
-                            <span className={statusColor}>{t.status}</span>
-                          </Badge>
-                          {isCurrent && (
-                            <span className="text-[9px] text-blue-400 font-medium">current</span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
-                          {t.reasoningSummary.slice(0, 120)}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground/50 tabular-nums mt-0.5">
-                          {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          {t.entryPrice != null && <> · Entry ${Number(t.entryPrice).toFixed(2)}</>}
-                        </p>
-                      </Link>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Post-mortem evaluation */}
-          {evalEvent && (
-            <div className="space-y-2">
-              <h2 className="text-lg font-medium flex items-center gap-2">
-                <Brain className="h-4 w-4 text-primary" />
-                Post-Mortem
-              </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-                {evalEvent.description}
-              </p>
-              <p className="text-xs text-muted-foreground tabular-nums">
-                Evaluated {new Date(evalEvent.createdAt).toLocaleDateString('en-US', {
-                  month: 'short', day: 'numeric', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
-              </p>
-            </div>
-          )}
-
-          {/* Event timeline */}
-          <div className="space-y-3">
-            <h2 className="text-lg font-medium">Events</h2>
-            {trade.events.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4">No events recorded yet.</p>
-            ) : (
-              <div className="space-y-0">
-                {trade.events.map((event, i) => (
-                  <div key={event.id} className="flex gap-3 pb-4 last:pb-0">
-                    <div className="flex flex-col items-center">
-                      <div className="h-6 w-6 rounded-full bg-secondary flex items-center justify-center shrink-0 text-muted-foreground">
-                        <EventIcon type={event.eventType} />
-                      </div>
-                      {i < trade.events.length - 1 && (
-                        <div className="w-px flex-1 bg-border mt-1 min-h-[16px]" />
-                      )}
-                    </div>
-                    <div className="pt-0.5 pb-2">
-                      <p className="text-sm text-foreground leading-snug">{event.description}</p>
-                      {event.priceAt != null && (
-                        <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
-                          ${event.priceAt.toFixed(2)}
-                          {event.pnlAt != null && (
-                            <span className={cn('ml-1', event.pnlAt >= 0 ? 'text-positive' : 'text-negative')}>
-                              {event.pnlAt >= 0 ? '+' : ''}${event.pnlAt.toFixed(2)}
-                            </span>
-                          )}
-                        </p>
-                      )}
-                      <p className="text-[11px] font-mono text-muted-foreground/60 mt-0.5 tabular-nums">
-                        {new Date(event.createdAt).toLocaleDateString('en-US', {
-                          month: 'short', day: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
+        <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} />
+      </div>
 
-        {/* ════ RIGHT column ════ */}
-        <div className="hidden lg:block w-80 shrink-0 space-y-4">
+      {/* ── 2-col layout ───────────────────────────────────────────────── */}
+      <div className="flex gap-6">
+        {/* ════ MAIN column ════ */}
+        <div className="flex-1 min-w-0">
+          <Tabs defaultValue="overview">
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="theses">Theses</TabsTrigger>
+              {!isOpen && evalEvent && (
+                <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
+              )}
+            </TabsList>
 
-          {/* Info card: key-value pairs */}
-          <Card className="shadow-none p-0">
+            {/* ── OVERVIEW ─────────────────────────────────────────── */}
+            <TabsContent value="overview" className="mt-4 space-y-4">
+              {/* Closed result banner */}
+              {!isOpen && (
+                <div className={cn(
+                  'rounded-xl border px-4 py-3 text-sm font-medium flex items-center gap-2',
+                  trade.outcome === 'WIN'
+                    ? 'border-positive/30 bg-positive/10 text-positive'
+                    : 'border-negative/30 bg-negative/10 text-negative'
+                )}>
+                  {trade.outcome === 'WIN'  && <CheckCircle2 className="h-4 w-4 shrink-0" />}
+                  {trade.outcome === 'LOSS' && <XCircle className="h-4 w-4 shrink-0" />}
+                  {(!trade.outcome || trade.outcome === 'BREAKEVEN') && <Clock className="h-4 w-4 shrink-0" />}
+                  <span className="tabular-nums">
+                    {status.label} · Realized P&amp;L: {isPos ? '+' : ''}${Math.abs(realizedPnl).toFixed(2)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
+                  </span>
+                </div>
+              )}
+
+              {/* Price block */}
+              <div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-semibold tabular-nums">
+                    {fmtCur(currentPrice)}
+                  </span>
+                  {stockQuote && (
+                    <span className={cn(
+                      'text-sm font-medium tabular-nums flex items-center gap-0.5',
+                      isQuoteUp ? 'text-positive' : 'text-negative',
+                    )}>
+                      {isQuoteUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                      {fmtCur(stockQuote.d)} ({changePct != null ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : '—'})
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                  <span className="tabular-nums">Entry {fmtCur(trade.entryPrice)}</span>
+                  <span>→</span>
+                  <span className={cn('tabular-nums font-medium', isPos ? 'text-positive' : 'text-negative')}>
+                    {isPos ? '+' : ''}{fmtCur(pnl)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
+                  </span>
+                  <span className="text-muted-foreground/60">·</span>
+                  <span>{trade.shares} shares</span>
+                </div>
+              </div>
+
+              {/* Chart with reference lines */}
+              <StockPriceChart candles={candles} referenceLines={chartReferenceLines} />
+
+              {/* Stats grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-2 py-3 border-y">
+                <StatCell label="Entry" value={`$${trade.entryPrice.toFixed(2)}`} />
+                <StatCell label="Target" value={`$${targetPrice.toFixed(2)}`} />
+                <StatCell label="Stop" value={`$${stopPrice.toFixed(2)}`} />
+                <StatCell label="R:R Ratio" value={`${riskReward.toFixed(2)}:1`} />
+                <StatCell label="Confidence" value={`${trade.thesis?.confidenceScore ?? '—'}%`} />
+                <StatCell label="Hold" value={(trade.thesis?.holdDuration as string) ?? 'Swing'} />
+              </div>
+
+              {/* Thesis reasoning (if available) */}
+              {trade.thesis && (
+                <div className="space-y-2">
+                  <h2 className="text-lg font-medium">Thesis</h2>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {trade.thesis.reasoningSummary}
+                  </p>
+                  {(trade.thesis.signalTypes as string[] ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(trade.thesis.signalTypes as string[]).map((s) => (
+                        <Badge key={s} variant="outline" className="text-[10px]">
+                          {s.replace(/_/g, ' ')}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── THESES ──────────────────────────────────────────── */}
+            <TabsContent value="theses" className="mt-4 max-w-3xl">
+              {thesisChain.length === 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No thesis history for this position.
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {thesisChain.map((t, i) => {
+                    const isCurrent = t.id === trade.thesis?.id;
+                    const isActive = t.status === 'ACTIVE';
+                    const dirColor = t.direction === 'LONG'
+                      ? 'border-primary/50 text-primary'
+                      : t.direction === 'SHORT'
+                      ? 'border-amber-500/50 text-amber-500'
+                      : 'border-muted-foreground/50 text-muted-foreground';
+                    const statusColor = t.status === 'INVALIDATED'
+                      ? 'text-red-500'
+                      : t.status === 'SUPERSEDED'
+                      ? 'text-amber-500'
+                      : t.status === 'CLOSED'
+                      ? 'text-muted-foreground'
+                      : 'text-blue-400';
+
+                    return (
+                      <Link
+                        key={t.id}
+                        href={`/runs/${t.researchRunId}`}
+                        className={cn(
+                          'flex gap-4 py-3 hover:bg-secondary/20 rounded px-2 transition-colors',
+                          isCurrent && 'border-l-2 border-primary pl-3 bg-primary/5',
+                          i < thesisChain.length - 1 && 'border-b border-border',
+                        )}
+                      >
+                        {/* Date column */}
+                        <div className="w-20 shrink-0 pt-0.5">
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground/60">
+                            {new Date(t.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          </p>
+                        </div>
+
+                        {/* Content column */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="outline" className={cn('text-[10px]', dirColor)}>
+                              {t.direction}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {t.confidenceScore}%
+                            </span>
+                            {t.status && t.status !== 'ACTIVE' && (
+                              <Badge variant="outline" className="text-[10px]">
+                                <span className={statusColor}>{t.status}</span>
+                              </Badge>
+                            )}
+                            {isActive && (
+                              <Badge variant="outline" className="text-[10px] text-blue-400 border-blue-400/50">
+                                ACTIVE
+                              </Badge>
+                            )}
+                            {isCurrent && (
+                              <span className="text-[10px] text-primary font-medium">trade thesis</span>
+                            )}
+                            {t.parentThesisId && (
+                              <GitBranch className="h-2.5 w-2.5 text-muted-foreground/50" />
+                            )}
+                            {t.entryPrice != null && (
+                              <span className="text-[10px] text-muted-foreground tabular-nums">
+                                Entry ${Number(t.entryPrice).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1 leading-relaxed line-clamp-2">
+                            {t.reasoningSummary}
+                          </p>
+                          {(t.signalTypes as string[])?.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {(t.signalTypes as string[]).slice(0, 4).map((s) => (
+                                <Badge key={s} variant="outline" className="text-[8px] px-1 py-0 h-3.5">
+                                  {s.replace(/_/g, ' ')}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── EVALUATION ──────────────────────────────────────── */}
+            {!isOpen && evalEvent && (
+              <TabsContent value="evaluation" className="mt-4 max-w-3xl space-y-6">
+                {/* Post-mortem */}
+                <div className="space-y-2">
+                  <h2 className="text-lg font-medium flex items-center gap-2">
+                    <Brain className="h-4 w-4 text-primary" />
+                    Post-Mortem
+                  </h2>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                    {evalEvent.description}
+                  </p>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    Evaluated {new Date(evalEvent.createdAt).toLocaleDateString('en-US', {
+                      month: 'short', day: 'numeric', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+
+                {/* Event timeline */}
+                <div className="space-y-3">
+                  <h2 className="text-lg font-medium">Events</h2>
+                  {trade.events.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4">No events recorded yet.</p>
+                  ) : (
+                    <div className="space-y-0">
+                      {trade.events.map((event, i) => (
+                        <div key={event.id} className="flex gap-3 pb-4 last:pb-0">
+                          <div className="flex flex-col items-center">
+                            <div className="h-6 w-6 rounded-full bg-secondary flex items-center justify-center shrink-0 text-muted-foreground">
+                              <EventIcon type={event.eventType} />
+                            </div>
+                            {i < trade.events.length - 1 && (
+                              <div className="w-px flex-1 bg-border mt-1 min-h-[16px]" />
+                            )}
+                          </div>
+                          <div className="pt-0.5 pb-2">
+                            <p className="text-sm text-foreground leading-snug">{event.description}</p>
+                            {event.priceAt != null && (
+                              <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
+                                ${event.priceAt.toFixed(2)}
+                                {event.pnlAt != null && (
+                                  <span className={cn('ml-1', event.pnlAt >= 0 ? 'text-positive' : 'text-negative')}>
+                                    {event.pnlAt >= 0 ? '+' : ''}${event.pnlAt.toFixed(2)}
+                                  </span>
+                                )}
+                              </p>
+                            )}
+                            <p className="text-[11px] font-mono text-muted-foreground/60 mt-0.5 tabular-nums">
+                              {new Date(event.createdAt).toLocaleDateString('en-US', {
+                                month: 'short', day: 'numeric',
+                                hour: '2-digit', minute: '2-digit',
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            )}
+          </Tabs>
+        </div>
+
+        {/* ════ SIDEBAR ════ */}
+        <div className="hidden lg:block w-80 shrink-0 space-y-4 sticky top-6 self-start">
+          {/* Trade Details Card */}
+          <Card>
             <CardContent className="p-3 flex flex-col gap-1">
               {[
                 { label: 'Direction', value: trade.direction },
@@ -562,9 +567,7 @@ export default async function TradeDetailPage({
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Closed</span>
                     <span className="font-medium tabular-nums text-xs">
-                      {new Date(trade.closedAt).toLocaleDateString('en-US', {
-                        month: 'short', day: 'numeric',
-                      })}
+                      {new Date(trade.closedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </span>
                   </div>
                 )}
@@ -572,12 +575,10 @@ export default async function TradeDetailPage({
             </CardContent>
           </Card>
 
-          {/* Target visualization */}
-          <Card className="shadow-none">
+          {/* Target Progress */}
+          <Card>
             <CardContent className="p-4 space-y-3">
               <h3 className="text-sm font-medium">Target Progress</h3>
-
-              {/* 10-segment bar */}
               <div className="space-y-2">
                 <div className="flex gap-[2px]">
                   {Array.from({ length: 10 }).map((_, i) => {
@@ -605,7 +606,6 @@ export default async function TradeDetailPage({
                 </div>
               </div>
 
-              {/* Key levels */}
               <div className="space-y-1.5 border-t pt-3">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Entry</span>
@@ -632,6 +632,39 @@ export default async function TradeDetailPage({
               </div>
             </CardContent>
           </Card>
+
+          {/* Stock Info */}
+          {stockProfile && (
+            <Card>
+              <CardContent className="px-4 pt-4 pb-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Stock Info</p>
+                <div className="space-y-0">
+                  {[
+                    { label: 'Symbol', value: trade.ticker },
+                    { label: 'Exchange', value: stockProfile.exchange || '—' },
+                    { label: 'Industry', value: stockProfile.finnhubIndustry || '—' },
+                    { label: 'Country', value: stockProfile.country || '—' },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                      <span className="text-xs text-muted-foreground">{label}</span>
+                      <span className="text-xs font-medium text-foreground text-right max-w-[60%] truncate">{value}</span>
+                    </div>
+                  ))}
+                </div>
+                {stockProfile.weburl && (
+                  <a
+                    href={stockProfile.weburl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    {stockProfile.weburl.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

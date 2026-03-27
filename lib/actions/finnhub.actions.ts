@@ -281,3 +281,74 @@ export async function getStockMetrics(symbol: string): Promise<Record<string, nu
     return null;
   }
 }
+
+// ─── Stock candles (daily OHLCV) ────────────────────────────────────────────
+
+export type StockCandle = {
+  date: string;
+  close: number;
+  open: number;
+  high: number;
+  low: number;
+  volume: number;
+};
+
+type FinnhubCandleResponse = {
+  c: number[];
+  h: number[];
+  l: number[];
+  o: number[];
+  v: number[];
+  t: number[];
+  s: string;
+};
+
+export async function getStockCandles(
+  symbol: string,
+  days = 365,
+): Promise<StockCandle[]> {
+  try {
+    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    if (!token) return [];
+    const now = Math.floor(Date.now() / 1000);
+    const from = now - days * 24 * 60 * 60;
+    const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(symbol.toUpperCase())}&resolution=D&from=${from}&to=${now}&token=${token}`;
+    const data = await fetchJSON<FinnhubCandleResponse>(url, 300);
+    if (!data || data.s !== 'ok' || !data.c?.length) return [];
+    return data.t.map((ts, i) => ({
+      date: new Date(ts * 1000).toISOString().slice(0, 10),
+      close: data.c[i],
+      open: data.o[i],
+      high: data.h[i],
+      low: data.l[i],
+      volume: data.v[i],
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ─── Analyst recommendation trends ──────────────────────────────────────────
+
+export type RecommendationTrend = {
+  buy: number;
+  hold: number;
+  sell: number;
+  strongBuy: number;
+  strongSell: number;
+  period: string;
+};
+
+export async function getRecommendationTrends(
+  symbol: string,
+): Promise<RecommendationTrend[] | null> {
+  try {
+    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    if (!token) return null;
+    const url = `${FINNHUB_BASE_URL}/stock/recommendation?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
+    const data = await fetchJSON<RecommendationTrend[]>(url, 3600);
+    return Array.isArray(data) && data.length > 0 ? data : null;
+  } catch {
+    return null;
+  }
+}

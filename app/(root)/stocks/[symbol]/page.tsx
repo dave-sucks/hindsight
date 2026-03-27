@@ -7,13 +7,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import TradingViewWidget from "@/components/TradingViewWidget";
+import { StockLogo } from "@/components/StockLogo";
+import { StockPriceChart } from "@/components/stocks/StockPriceChart";
 import {
-  CANDLE_CHART_WIDGET_CONFIG,
-  TECHNICAL_ANALYSIS_WIDGET_CONFIG,
-  COMPANY_FINANCIALS_WIDGET_CONFIG,
-} from "@/lib/constants";
-import { getNews, getStockProfile, getStockQuote, getStockMetrics } from "@/lib/actions/finnhub.actions";
+  getNews,
+  getStockProfile,
+  getStockQuote,
+  getStockMetrics,
+  getStockCandles,
+  getRecommendationTrends,
+} from "@/lib/actions/finnhub.actions";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -33,7 +36,7 @@ import {
   Lock,
 } from "lucide-react";
 
-// ─── Data types ─────────────────────────────────────────────────────────────
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
 type MarketNewsArticle = {
   headline: string;
@@ -41,8 +44,6 @@ type MarketNewsArticle = {
   datetime: number;
   url: string;
 };
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
 
 function StatCell({ label, value }: { label: string; value: string }) {
   return (
@@ -103,6 +104,8 @@ async function NewsTab({ symbol }: { symbol: string }) {
   );
 }
 
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 interface Props {
   params: Promise<{ symbol: string }>;
 }
@@ -116,10 +119,12 @@ export default async function StockDetailPage({ params }: Props) {
   const userId = user?.id ?? "";
 
   // Fetch everything in parallel
-  const [profile, quote, metrics, tickerTrades, tickerTheses] = await Promise.all([
+  const [profile, quote, metrics, candles, recommendations, tickerTrades, tickerTheses] = await Promise.all([
     getStockProfile(upperSymbol),
     getStockQuote(upperSymbol),
     getStockMetrics(upperSymbol),
+    getStockCandles(upperSymbol, 365),
+    getRecommendationTrends(upperSymbol),
     userId
       ? prisma.position.findMany({
           where: { userId, symbol: upperSymbol },
@@ -167,8 +172,6 @@ export default async function StockDetailPage({ params }: Props) {
   // Format helpers
   const fmt = (n: number | null | undefined, digits = 2) =>
     n != null ? n.toFixed(digits) : "—";
-  const fmtPct = (n: number | null | undefined) =>
-    n != null ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}%` : "—";
   const fmtCur = (n: number | null | undefined) =>
     n != null
       ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n)
@@ -186,7 +189,6 @@ export default async function StockDetailPage({ params }: Props) {
   const changePct = quote?.dp ?? null;
   const isUp = (changePct ?? 0) >= 0;
 
-  // Key stats row values
   const prevClose = quote?.pc;
   const open = quote?.o;
   const high = quote?.h;
@@ -202,51 +204,42 @@ export default async function StockDetailPage({ params }: Props) {
     ? metrics["marketCapitalization"] * 1_000_000
     : null;
 
+  // Analyst consensus (latest period)
+  const latestRec = recommendations?.[0] ?? null;
+  const totalAnalysts = latestRec
+    ? latestRec.strongBuy + latestRec.buy + latestRec.hold + latestRec.sell + latestRec.strongSell
+    : 0;
+  const bullish = latestRec ? latestRec.strongBuy + latestRec.buy : 0;
+  const bearish = latestRec ? latestRec.strongSell + latestRec.sell : 0;
+  const neutral = latestRec?.hold ?? 0;
+  const consensus = bullish > bearish ? "Buy" : bearish > bullish ? "Sell" : "Hold";
+
   return (
-    <div className="p-4 space-y-4 max-w-7xl mx-auto">
+    <div className="px-6 py-6 max-w-7xl mx-auto">
       {/* Back nav */}
       <Link
         href="/stocks"
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit"
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit mb-4"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
         Stocks
       </Link>
 
-      {/* Company Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            {profile?.logo && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={profile.logo} alt={profile.name} className="h-8 w-8 rounded object-contain bg-muted p-0.5" />
-            )}
-            <h1 className="text-xl font-bold font-mono text-foreground">{upperSymbol}</h1>
-            {profile?.name && (
-              <span className="text-sm text-muted-foreground">{profile.name}</span>
-            )}
-            {profile?.exchange && (
-              <Badge variant="outline">
-                {profile.exchange}
-              </Badge>
-            )}
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <StockLogo ticker={upperSymbol} size="lg" />
+          <div>
+            <h1 className="text-2xl font-semibold leading-tight">
+              {profile?.name ?? upperSymbol}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {upperSymbol}
+              {profile?.exchange ? ` · ${profile.exchange}` : ""}
+            </p>
           </div>
-
-          {/* Live price */}
-          {price != null && (
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold tabular-nums text-foreground">
-                {fmtCur(price)}
-              </span>
-              <span className={cn("text-sm font-medium tabular-nums flex items-center gap-0.5", isUp ? "text-positive" : "text-negative")}>
-                {isUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                {fmtCur(change)} ({fmtPct(changePct)})
-              </span>
-            </div>
-          )}
         </div>
 
-        {/* Action buttons */}
         <div className="flex items-center gap-1.5 shrink-0 mt-1">
           <Button variant="outline" size="sm" render={<Link href={`/research?ticker=${upperSymbol}`} />}>
             <FlaskConical />
@@ -263,49 +256,57 @@ export default async function StockDetailPage({ params }: Props) {
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="financials">Financials</TabsTrigger>
-          <TabsTrigger value="news">News</TabsTrigger>
-          <TabsTrigger value="hindsight">Hindsight</TabsTrigger>
-        </TabsList>
+      {/* ── 2-col layout ───────────────────────────────────────────────── */}
+      <div className="flex gap-6">
+        {/* ════ MAIN column ════ */}
+        <div className="flex-1 min-w-0">
+          <Tabs defaultValue="overview">
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="financials">Financials</TabsTrigger>
+              <TabsTrigger value="news">News</TabsTrigger>
+              <TabsTrigger value="theses">Theses</TabsTrigger>
+            </TabsList>
 
-        {/* ── OVERVIEW ─────────────────────────────────────────────────── */}
-        <TabsContent value="overview" className="mt-4 space-y-4">
-          {/* Chart */}
-          <TradingViewWidget
-            scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"
-            config={CANDLE_CHART_WIDGET_CONFIG(upperSymbol)}
-            className="custom-chart"
-            height={400}
-          />
+            {/* ── OVERVIEW ─────────────────────────────────────────── */}
+            <TabsContent value="overview" className="mt-4 space-y-4">
+              {/* Price block */}
+              {price != null && (
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-semibold tabular-nums">
+                      {fmtCur(price)}
+                    </span>
+                    <span className={cn(
+                      "text-sm font-medium tabular-nums flex items-center gap-0.5",
+                      isUp ? "text-positive" : "text-negative",
+                    )}>
+                      {isUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                      {fmtCur(change)} ({change != null && changePct != null ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%` : "—"})
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    At close · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </p>
+                </div>
+              )}
 
-          {/* Key stats bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-2 py-3 border-y">
-            <StatCell label="Prev Close" value={fmtCur(prevClose)} />
-            <StatCell label="Open" value={fmtCur(open)} />
-            <StatCell label="Day Range" value={`${fmtCur(low)} – ${fmtCur(high)}`} />
-            <StatCell label="52W Range" value={`${fmtCur(low52)} – ${fmtCur(high52)}`} />
-            <StatCell label="Market Cap" value={fmtBig(marketCap)} />
-            <StatCell label="P/E Ratio" value={peRatio ? fmt(peRatio) : "—"} />
-            <StatCell label="EPS" value={eps ? fmt(eps) : "—"} />
-            <StatCell label="Div Yield" value={divYield ? `${fmt(divYield)}%` : "—"} />
-          </div>
+              {/* Chart */}
+              <StockPriceChart candles={candles} />
 
-          {/* Main two-col */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-            {/* Left — News + Technical Analysis */}
-            <div className="lg:col-span-3 space-y-4">
-              {/* Technical Analysis */}
-              <TradingViewWidget
-                scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js"
-                config={TECHNICAL_ANALYSIS_WIDGET_CONFIG(upperSymbol)}
-                height={400}
-              />
+              {/* Stats grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-2 py-3 border-y">
+                <StatCell label="Prev Close" value={fmtCur(prevClose)} />
+                <StatCell label="Open" value={fmtCur(open)} />
+                <StatCell label="Day Range" value={`${fmtCur(low)} – ${fmtCur(high)}`} />
+                <StatCell label="52W Range" value={`${fmtCur(low52)} – ${fmtCur(high52)}`} />
+                <StatCell label="Market Cap" value={fmtBig(marketCap)} />
+                <StatCell label="P/E Ratio" value={peRatio ? fmt(peRatio) : "—"} />
+                <StatCell label="EPS" value={eps ? fmt(eps) : "—"} />
+                <StatCell label="Div Yield" value={divYield ? `${fmt(divYield)}%` : "—"} />
+              </div>
 
-              {/* Recent News */}
+              {/* News */}
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Recent News</p>
                 <Suspense fallback={
@@ -316,446 +317,333 @@ export default async function StockDetailPage({ params }: Props) {
                   <NewsTab symbol={upperSymbol} />
                 </Suspense>
               </div>
-            </div>
+            </TabsContent>
 
-            {/* Right — Company Info + Hindsight */}
-            <div className="lg:col-span-2 space-y-4">
-              {/* Company Info */}
-              {profile && (
-                <Card className="border-border">
-                  <CardContent className="px-4 pt-4 pb-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Company Info</p>
-                    <div className="space-y-0">
-                      {[
-                        { label: "Symbol", value: upperSymbol },
-                        { label: "Exchange", value: profile.exchange || "—" },
-                        { label: "Industry", value: profile.finnhubIndustry || "—" },
-                        { label: "IPO Date", value: profile.ipo || "—" },
-                        { label: "Country", value: profile.country || "—" },
-                        { label: "Currency", value: profile.currency || "—" },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                          <span className="text-xs text-muted-foreground">{label}</span>
-                          <span className="text-xs font-medium text-foreground text-right max-w-[60%] truncate">{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {profile.weburl && (
-                      <a
-                        href={profile.weburl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-3 flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        {profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                  </CardContent>
-                </Card>
+            {/* ── FINANCIALS ───────────────────────────────────────── */}
+            <TabsContent value="financials" className="mt-4">
+              {metrics ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {[
+                    { label: "P/E Ratio", value: fmt(metrics["peBasicExclExtraTTM"]) },
+                    { label: "Forward P/E", value: fmt(metrics["peTTM"]) },
+                    { label: "P/B Ratio", value: fmt(metrics["pbAnnual"]) },
+                    { label: "P/S Ratio", value: fmt(metrics["psTTM"]) },
+                    { label: "EPS (TTM)", value: fmtCur(metrics["epsBasicExclExtraAnnual"]) },
+                    { label: "ROE", value: metrics["roeRfy"] != null ? `${metrics["roeRfy"].toFixed(1)}%` : "—" },
+                    { label: "ROA", value: metrics["roaRfy"] != null ? `${metrics["roaRfy"].toFixed(1)}%` : "—" },
+                    { label: "Gross Margin", value: metrics["grossMarginTTM"] != null ? `${metrics["grossMarginTTM"].toFixed(1)}%` : "—" },
+                    { label: "Operating Margin", value: metrics["operatingMarginTTM"] != null ? `${metrics["operatingMarginTTM"].toFixed(1)}%` : "—" },
+                    { label: "Net Margin", value: metrics["netProfitMarginTTM"] != null ? `${metrics["netProfitMarginTTM"].toFixed(1)}%` : "—" },
+                    { label: "Debt/Equity", value: fmt(metrics["totalDebt/totalEquityAnnual"]) },
+                    { label: "Current Ratio", value: fmt(metrics["currentRatioAnnual"]) },
+                    { label: "Dividend Yield", value: metrics["dividendYieldIndicatedAnnual"] != null ? `${metrics["dividendYieldIndicatedAnnual"].toFixed(2)}%` : "—" },
+                    { label: "Beta", value: fmt(metrics["beta"]) },
+                    { label: "52W High", value: fmtCur(metrics["52WeekHigh"]) },
+                    { label: "52W Low", value: fmtCur(metrics["52WeekLow"]) },
+                  ]
+                    .filter((s) => s.value !== "—")
+                    .map((stat) => (
+                      <div key={stat.label} className="bg-muted/30 rounded-lg p-3">
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {stat.label}
+                        </p>
+                        <p className="text-sm font-medium tabular-nums mt-0.5">{stat.value}</p>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No financial data available for {upperSymbol}.
+                </div>
               )}
+            </TabsContent>
 
-              {/* Hindsight History */}
-              <Card className="border-border">
-                <CardContent className="px-4 pt-4 pb-3">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hindsight History</p>
-                    <span className="text-xs text-muted-foreground">
-                      {tickerTrades.length}t · {tickerTheses.length}r
-                    </span>
-                  </div>
-                  {tickerTrades.length === 0 && tickerTheses.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4 text-center">
-                      No history yet. Click Research to get started.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {tickerTheses.slice(0, 3).map((thesis) => (
-                        <Link
-                          key={thesis.id}
-                          href={`/runs/${thesis.researchRunId}`}
-                          className="flex items-start gap-2 p-2 rounded border border-border hover:bg-secondary/30 transition-colors"
-                        >
-                          <FlaskConical className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-[10px] px-1.5 py-0",
-                                  thesis.direction === "LONG" ? "border-primary/50 text-primary"
-                                    : thesis.direction === "SHORT" ? "border-amber-500/50 text-amber-500"
-                                    : "border-muted-foreground/50 text-muted-foreground"
-                                )}
-                              >
-                                {thesis.direction}
-                              </Badge>
-                              {thesis.status && thesis.status !== "ACTIVE" && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                  {thesis.status}
-                                </Badge>
-                              )}
-                              <span className="text-[10px] text-muted-foreground tabular-nums">
-                                {thesis.confidenceScore}%
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                              {thesis.reasoningSummary.slice(0, 60)}…
-                            </p>
-                          </div>
-                        </Link>
-                      ))}
-                      {tickerTrades.slice(0, 3).map((trade) => {
-                        const isOpen = trade.status === "OPEN";
-                        const pnl = trade.realizedPnl ?? 0;
-                        const pnlPos = pnl >= 0;
-                        return (
-                          <Link
-                            key={trade.id}
-                            href={`/trades/${trade.id}`}
-                            className="flex items-start gap-2 p-2 rounded border border-border hover:bg-secondary/30 transition-colors"
-                          >
-                            {trade.outcome === "WIN" ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 text-positive mt-0.5 shrink-0" />
-                            ) : trade.outcome === "LOSS" ? (
-                              <XCircle className="h-3.5 w-3.5 text-negative mt-0.5 shrink-0" />
-                            ) : (
-                              <Clock className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <Badge
-                                  variant="outline"
-                                  className={cn("text-[10px] px-1.5 py-0", trade.direction === "LONG" ? "border-primary/50 text-primary" : "border-amber-500/50 text-amber-500")}
-                                >
-                                  {trade.direction}
-                                </Badge>
-                                {!isOpen && (
-                                  <span className={cn("text-[10px] font-medium tabular-nums", pnlPos ? "text-positive" : "text-negative")}>
-                                    {pnlPos ? "+" : ""}{pnl.toFixed(2)}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
-                                Entry {fmtCur(trade.avgCost)}
-                                {trade.closePrice && ` → ${fmtCur(trade.closePrice)}`}
-                              </p>
-                            </div>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
+            {/* ── NEWS ─────────────────────────────────────────────── */}
+            <TabsContent value="news" className="mt-4 max-w-3xl">
+              <Suspense fallback={
+                <div className="space-y-3">
+                  {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
+                </div>
+              }>
+                <NewsTab symbol={upperSymbol} />
+              </Suspense>
+            </TabsContent>
 
-        {/* ── FINANCIALS ───────────────────────────────────────────────── */}
-        <TabsContent value="financials" className="mt-4 space-y-4">
-          {/* Key financial metrics from Finnhub */}
-          {metrics && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {[
-                { label: "P/E Ratio", value: fmt(metrics["peBasicExclExtraTTM"]) },
-                { label: "Forward P/E", value: fmt(metrics["peTTM"]) },
-                { label: "P/B Ratio", value: fmt(metrics["pbAnnual"]) },
-                { label: "P/S Ratio", value: fmt(metrics["psTTM"]) },
-                { label: "EPS (TTM)", value: fmtCur(metrics["epsBasicExclExtraAnnual"]) },
-                { label: "ROE", value: metrics["roeRfy"] != null ? `${metrics["roeRfy"].toFixed(1)}%` : "—" },
-                { label: "ROA", value: metrics["roaRfy"] != null ? `${metrics["roaRfy"].toFixed(1)}%` : "—" },
-                { label: "Gross Margin", value: metrics["grossMarginTTM"] != null ? `${metrics["grossMarginTTM"].toFixed(1)}%` : "—" },
-                { label: "Operating Margin", value: metrics["operatingMarginTTM"] != null ? `${metrics["operatingMarginTTM"].toFixed(1)}%` : "—" },
-                { label: "Net Margin", value: metrics["netProfitMarginTTM"] != null ? `${metrics["netProfitMarginTTM"].toFixed(1)}%` : "—" },
-                { label: "Debt/Equity", value: fmt(metrics["totalDebt/totalEquityAnnual"]) },
-                { label: "Current Ratio", value: fmt(metrics["currentRatioAnnual"]) },
-                { label: "Dividend Yield", value: metrics["dividendYieldIndicatedAnnual"] != null ? `${metrics["dividendYieldIndicatedAnnual"].toFixed(2)}%` : "—" },
-                { label: "Beta", value: fmt(metrics["beta"]) },
-                { label: "52W High", value: fmtCur(metrics["52WeekHigh"]) },
-                { label: "52W Low", value: fmtCur(metrics["52WeekLow"]) },
-              ]
-                .filter((s) => s.value !== "—")
-                .map((stat) => (
-                  <div key={stat.label} className="bg-muted/30 rounded-lg p-3">
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      {stat.label}
-                    </p>
-                    <p className="text-sm font-medium tabular-nums mt-0.5">{stat.value}</p>
-                  </div>
-                ))}
-            </div>
-          )}
-          <TradingViewWidget
-            scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-financials.js"
-            config={COMPANY_FINANCIALS_WIDGET_CONFIG(upperSymbol)}
-            height={500}
-          />
-        </TabsContent>
+            {/* ── THESES ──────────────────────────────────────────── */}
+            <TabsContent value="theses" className="mt-4 max-w-3xl">
+              {tickerTheses.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-sm text-muted-foreground">No previous research for {upperSymbol}.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Click Research to get started.</p>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {tickerTheses.map((thesis, i) => {
+                    const isActive = thesis.status === "ACTIVE" && thesis.direction !== "PASS";
+                    const dirColor = thesis.direction === "LONG"
+                      ? "border-primary/50 text-primary"
+                      : thesis.direction === "SHORT"
+                      ? "border-amber-500/50 text-amber-500"
+                      : "border-muted-foreground/50 text-muted-foreground";
+                    const statusColor = thesis.status === "INVALIDATED"
+                      ? "text-red-500"
+                      : thesis.status === "SUPERSEDED"
+                      ? "text-amber-500"
+                      : thesis.status === "CLOSED"
+                      ? "text-muted-foreground"
+                      : "text-blue-400";
 
-        {/* ── NEWS ─────────────────────────────────────────────────────── */}
-        <TabsContent value="news" className="mt-4 max-w-3xl">
-          <Suspense fallback={
-            <div className="space-y-3">
-              {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
-            </div>
-          }>
-            <NewsTab symbol={upperSymbol} />
-          </Suspense>
-        </TabsContent>
-
-        {/* ── HINDSIGHT ────────────────────────────────────────────────── */}
-        <TabsContent value="hindsight" className="mt-4 max-w-3xl">
-          {tickerTrades.length === 0 && tickerTheses.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-sm text-muted-foreground">No previous research or trades for {upperSymbol}.</p>
-              <p className="text-xs text-muted-foreground mt-1">Click Research to get started.</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* ── Thesis Timeline ─────────────────────────────────────── */}
-              {tickerTheses.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Thesis Timeline
-                    </p>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {tickerTheses.length} {tickerTheses.length === 1 ? "thesis" : "theses"}
-                    </span>
-                  </div>
-
-                  {/* Active thesis highlighted at top */}
-                  {(() => {
-                    const active = tickerTheses.find((t) => t.status === "ACTIVE" && t.direction !== "PASS");
-                    if (!active) return null;
                     return (
                       <Link
-                        href={`/runs/${active.researchRunId}`}
-                        className="flex items-start gap-3 p-3 rounded-lg border-2 border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors mb-3"
+                        key={thesis.id}
+                        href={`/runs/${thesis.researchRunId}`}
+                        className={cn(
+                          "flex gap-4 py-3 hover:bg-secondary/20 rounded px-2 transition-colors",
+                          isActive && "border-l-2 border-primary pl-3",
+                          i < tickerTheses.length - 1 && "border-b border-border",
+                        )}
                       >
-                        <FlaskConical className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                        {/* Date column */}
+                        <div className="w-20 shrink-0 pt-0.5">
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(thesis.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground/60">
+                            {new Date(thesis.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                          </p>
+                        </div>
+
+                        {/* Content column */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant={active.direction === "LONG" ? "positive" : "negative"}>
-                              {active.direction === "LONG" ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                              {active.direction}
+                            <Badge variant="outline" className={cn("text-[10px]", dirColor)}>
+                              {thesis.direction}
                             </Badge>
-                            <Badge variant="outline">ACTIVE</Badge>
                             <span className="text-xs text-muted-foreground tabular-nums">
-                              {active.confidenceScore}% conf
+                              {thesis.confidenceScore}%
                             </span>
-                            {active.entryPrice != null && (
-                              <span className="text-xs text-muted-foreground tabular-nums">
-                                Entry ${active.entryPrice.toFixed(2)}
-                              </span>
+                            {thesis.status && thesis.status !== "ACTIVE" && (
+                              <Badge variant="outline" className="text-[10px]">
+                                <span className={statusColor}>{thesis.status}</span>
+                              </Badge>
                             )}
-                            {active.targetPrice != null && (
-                              <span className="text-xs text-positive tabular-nums">
-                                Target ${active.targetPrice.toFixed(2)}
+                            {isActive && (
+                              <Badge variant="outline" className="text-[10px] text-blue-400 border-blue-400/50">
+                                ACTIVE
+                              </Badge>
+                            )}
+                            {thesis.parentThesisId && (
+                              <GitBranch className="h-2.5 w-2.5 text-muted-foreground/50" />
+                            )}
+                            {thesis.entryPrice != null && (
+                              <span className="text-[10px] text-muted-foreground tabular-nums">
+                                Entry ${thesis.entryPrice.toFixed(2)}
                               </span>
                             )}
                           </div>
-                          <p className="text-sm text-foreground/80 mt-1 leading-relaxed">
-                            {active.reasoningSummary.slice(0, 150)}
+                          <p className="text-sm text-muted-foreground mt-1 leading-relaxed line-clamp-2">
+                            {thesis.reasoningSummary}
                           </p>
-                          {(active.signalTypes as string[])?.length > 0 && (
+                          {(thesis.signalTypes as string[])?.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1.5">
-                              {(active.signalTypes as string[]).map((s) => (
-                                <Badge key={s} variant="outline" className="text-[9px] px-1 py-0">
-                                  {s.replace(/_/g, ' ')}
+                              {(thesis.signalTypes as string[]).slice(0, 4).map((s) => (
+                                <Badge key={s} variant="outline" className="text-[8px] px-1 py-0 h-3.5">
+                                  {s.replace(/_/g, " ")}
                                 </Badge>
                               ))}
                             </div>
                           )}
-                          <div className="flex items-center gap-2 mt-1.5">
-                            {active.researchRun?.agentConfig?.name && (
-                              <span className="text-[10px] text-muted-foreground">
-                                by {active.researchRun.agentConfig.name}
+                          {thesis.invalidReason && (
+                            <p className="text-[10px] text-red-500/70 mt-0.5 italic">
+                              {thesis.invalidReason}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            {thesis.researchRun?.agentConfig?.name && (
+                              <span className="text-[10px] text-muted-foreground/60">
+                                {thesis.researchRun.agentConfig.name}
                               </span>
                             )}
-                            <span className="text-[10px] text-muted-foreground">
-                              {new Date(active.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                            </span>
                           </div>
                         </div>
                       </Link>
                     );
-                  })()}
+                  })}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
 
-                  {/* Timeline of all theses */}
-                  <div className="relative">
-                    {/* Vertical timeline line */}
-                    <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
-
-                    <div className="space-y-0">
-                      {tickerTheses
-                        .filter((t) => !(t.status === "ACTIVE" && t.direction !== "PASS"))
-                        .map((thesis, i, arr) => {
-                          const StatusIcon = thesis.status === "INVALIDATED"
-                            ? Ban
-                            : thesis.status === "SUPERSEDED"
-                            ? Replace
-                            : thesis.status === "CLOSED"
-                            ? Lock
-                            : FlaskConical;
-
-                          const statusColor = thesis.status === "INVALIDATED"
-                            ? "text-red-500"
-                            : thesis.status === "SUPERSEDED"
-                            ? "text-muted-foreground"
-                            : thesis.status === "CLOSED"
-                            ? "text-muted-foreground"
-                            : "text-primary";
-
-                          const dirColor = thesis.direction === "LONG"
-                            ? "border-primary/50 text-primary"
-                            : thesis.direction === "SHORT"
-                            ? "border-amber-500/50 text-amber-500"
-                            : "border-muted-foreground/50 text-muted-foreground";
-
-                          const hasChain = thesis.parentThesisId != null;
-
-                          return (
-                            <Link
-                              key={thesis.id}
-                              href={`/runs/${thesis.researchRunId}`}
-                              className="relative flex items-start gap-3 pl-6 py-2.5 hover:bg-secondary/20 rounded transition-colors"
-                            >
-                              {/* Timeline dot */}
-                              <div className={cn("absolute left-0 top-3.5 h-3.5 w-3.5 rounded-full border-2 bg-background flex items-center justify-center", statusColor)}>
-                                <StatusIcon className="h-2 w-2" />
-                              </div>
-
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <Badge variant="outline" className={cn("text-[10px]", dirColor)}>
-                                    {thesis.direction}
-                                  </Badge>
-                                  {thesis.status && thesis.status !== "ACTIVE" && (
-                                    <Badge variant="outline" className="text-[10px]">
-                                      {thesis.status}
-                                    </Badge>
-                                  )}
-                                  <span className="text-[10px] text-muted-foreground tabular-nums">
-                                    {thesis.confidenceScore}%
-                                  </span>
-                                  {hasChain && (
-                                    <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                                      <GitBranch className="h-2.5 w-2.5" />
-                                      updated
-                                    </span>
-                                  )}
-                                  {thesis.entryPrice != null && (
-                                    <span className="text-[10px] text-muted-foreground tabular-nums">
-                                      ${thesis.entryPrice.toFixed(2)}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                                  {thesis.reasoningSummary.slice(0, 120)}
-                                </p>
-                                {(thesis.signalTypes as string[])?.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {(thesis.signalTypes as string[]).slice(0, 3).map((s) => (
-                                      <Badge key={s} variant="outline" className="text-[8px] px-1 py-0 h-3.5">
-                                        {s.replace(/_/g, ' ')}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                )}
-                                {thesis.invalidReason && (
-                                  <p className="text-[10px] text-red-500/70 mt-0.5 italic">
-                                    {thesis.invalidReason}
-                                  </p>
-                                )}
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  {thesis.researchRun?.agentConfig?.name && (
-                                    <span className="text-[10px] text-muted-foreground/60">
-                                      {thesis.researchRun.agentConfig.name}
-                                    </span>
-                                  )}
-                                  <span className="text-[10px] text-muted-foreground/60">
-                                    {new Date(thesis.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                  </span>
-                                </div>
-                              </div>
-                            </Link>
-                          );
-                        })}
+        {/* ════ SIDEBAR ════ */}
+        <div className="hidden lg:block w-80 shrink-0 space-y-4 sticky top-6 self-start">
+          {/* Company Info */}
+          {profile && (
+            <Card>
+              <CardContent className="px-4 pt-4 pb-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Company Info</p>
+                <div className="space-y-0">
+                  {[
+                    { label: "Symbol", value: upperSymbol },
+                    { label: "Exchange", value: profile.exchange || "—" },
+                    { label: "Industry", value: profile.finnhubIndustry || "—" },
+                    { label: "IPO Date", value: profile.ipo || "—" },
+                    { label: "Country", value: profile.country || "—" },
+                    { label: "Market Cap", value: fmtBig(marketCap) },
+                    { label: "P/E", value: peRatio ? fmt(peRatio) : "—" },
+                    { label: "52W Range", value: (low52 && high52) ? `${fmtCur(low52)} – ${fmtCur(high52)}` : "—" },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                      <span className="text-xs text-muted-foreground">{label}</span>
+                      <span className="text-xs font-medium text-foreground text-right max-w-[60%] truncate">{value}</span>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              )}
-
-              {/* ── Trade History ───────────────────────────────────────── */}
-              {tickerTrades.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Trade History
-                    </p>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {tickerTrades.length} {tickerTrades.length === 1 ? "trade" : "trades"}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {tickerTrades.map((trade) => {
-                      const isOpen = trade.status === "OPEN";
-                      const isWin = trade.outcome === "WIN";
-                      const isLoss = trade.outcome === "LOSS";
-                      const pnl = trade.realizedPnl ?? 0;
-                      const positionCost = trade.avgCost * trade.quantity;
-                      const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
-                      const pnlPos = pnl >= 0;
-                      return (
-                        <Link
-                          key={trade.id}
-                          href={`/trades/${trade.id}`}
-                          className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors"
-                        >
-                          {isWin ? (
-                            <CheckCircle2 className="h-4 w-4 text-positive mt-0.5 shrink-0" />
-                          ) : isLoss ? (
-                            <XCircle className="h-4 w-4 text-negative mt-0.5 shrink-0" />
-                          ) : (
-                            <Clock className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-xs",
-                                  trade.direction === "LONG" ? "border-primary/50 text-primary" : "border-amber-500/50 text-amber-500"
-                                )}
-                              >
-                                {trade.direction}
-                              </Badge>
-                              {!isOpen && (
-                                <span className={cn("text-xs font-medium tabular-nums", pnlPos ? "text-positive" : "text-negative")}>
-                                  {pnlPos ? "+" : ""}{pnlPct.toFixed(2)}%
-                                </span>
-                              )}
-                              <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30">
-                                {isOpen ? "Open" : isWin ? "Win" : isLoss ? "Loss" : "Closed"}
-                              </Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                              Entry ${trade.avgCost.toFixed(2)}
-                              {trade.closePrice && ` → Close $${trade.closePrice.toFixed(2)}`}
-                            </p>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
+                {profile.weburl && (
+                  <a
+                    href={profile.weburl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    {profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </CardContent>
+            </Card>
           )}
-        </TabsContent>
-      </Tabs>
+
+          {/* Analyst Consensus */}
+          {latestRec && totalAnalysts > 0 && (
+            <Card>
+              <CardContent className="px-4 pt-4 pb-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Analyst Consensus</p>
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge variant={consensus === "Buy" ? "positive" : consensus === "Sell" ? "negative" : "outline"}>
+                    {consensus}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{totalAnalysts} analysts</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs mb-2">
+                  <span className="text-red-500 tabular-nums">{bearish} <span className="text-muted-foreground">Bearish</span></span>
+                  <span className="text-muted-foreground tabular-nums">{neutral} <span>Neutral</span></span>
+                  <span className="text-emerald-500 tabular-nums">{bullish} <span className="text-muted-foreground">Bullish</span></span>
+                </div>
+                {/* Dot bar visualization */}
+                <div className="flex gap-[2px]">
+                  {Array.from({ length: totalAnalysts }).map((_, i) => {
+                    let color = "bg-muted-foreground/30"; // neutral
+                    if (i < bearish) color = "bg-red-500";
+                    else if (i >= bearish + neutral) color = "bg-emerald-500";
+                    return (
+                      <div
+                        key={i}
+                        className={cn("h-2 flex-1 rounded-sm", color)}
+                        style={{ maxWidth: "12px" }}
+                      />
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Hindsight History */}
+          <Card>
+            <CardContent className="px-4 pt-4 pb-3">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hindsight History</p>
+                <span className="text-xs text-muted-foreground">
+                  {tickerTrades.length}t · {tickerTheses.length}r
+                </span>
+              </div>
+              {tickerTrades.length === 0 && tickerTheses.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">
+                  No history yet. Click Research to get started.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {tickerTheses.slice(0, 3).map((thesis) => (
+                    <Link
+                      key={thesis.id}
+                      href={`/runs/${thesis.researchRunId}`}
+                      className="flex items-start gap-2 p-2 rounded border border-border hover:bg-secondary/30 transition-colors"
+                    >
+                      <FlaskConical className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] px-1.5 py-0",
+                              thesis.direction === "LONG" ? "border-primary/50 text-primary"
+                                : thesis.direction === "SHORT" ? "border-amber-500/50 text-amber-500"
+                                : "border-muted-foreground/50 text-muted-foreground"
+                            )}
+                          >
+                            {thesis.direction}
+                          </Badge>
+                          {thesis.status && thesis.status !== "ACTIVE" && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              {thesis.status}
+                            </Badge>
+                          )}
+                          <span className="text-[10px] text-muted-foreground tabular-nums">
+                            {thesis.confidenceScore}%
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                          {thesis.reasoningSummary.slice(0, 60)}…
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                  {tickerTrades.slice(0, 3).map((trade) => {
+                    const isOpen = trade.status === "OPEN";
+                    const pnl = trade.realizedPnl ?? 0;
+                    const pnlPos = pnl >= 0;
+                    return (
+                      <Link
+                        key={trade.id}
+                        href={`/trades/${trade.id}`}
+                        className="flex items-start gap-2 p-2 rounded border border-border hover:bg-secondary/30 transition-colors"
+                      >
+                        {trade.outcome === "WIN" ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-positive mt-0.5 shrink-0" />
+                        ) : trade.outcome === "LOSS" ? (
+                          <XCircle className="h-3.5 w-3.5 text-negative mt-0.5 shrink-0" />
+                        ) : (
+                          <Clock className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Badge
+                              variant="outline"
+                              className={cn("text-[10px] px-1.5 py-0", trade.direction === "LONG" ? "border-primary/50 text-primary" : "border-amber-500/50 text-amber-500")}
+                            >
+                              {trade.direction}
+                            </Badge>
+                            {!isOpen && (
+                              <span className={cn("text-[10px] font-medium tabular-nums", pnlPos ? "text-positive" : "text-negative")}>
+                                {pnlPos ? "+" : ""}{pnl.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
+                            Entry {fmtCur(trade.avgCost)}
+                            {trade.closePrice && ` → ${fmtCur(trade.closePrice)}`}
+                          </p>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
