@@ -269,9 +269,9 @@ function MonitorRow({
 
   return (
     <TableRow>
-      {/* Colored type icon with provider logo */}
+      {/* Colored type icon */}
       <TableCell>
-        <MonitorTypeIcon type={monitor.type} method={monitor.method} />
+        <MonitorTypeIcon type={monitor.type} />
       </TableCell>
 
       {/* Name + detail + expandable tickers */}
@@ -345,27 +345,25 @@ function MonitorRow({
 
 // ── Type Icons ───────────────────────────────────────────────────────────────
 
-function MonitorTypeIcon({ type, method }: { type: string; method?: string }) {
-  // Use real provider logos where possible
+function MonitorTypeIcon({ type }: { type: string }) {
   if (type === "DOMAIN") {
     return (
       <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-orange/10 text-brand-orange">
-        <PerplexityLogo className="h-3.5 w-3.5" />
+        <Globe className="h-3.5 w-3.5" />
       </div>
     );
   }
   if (type === "API") {
-    const isFinnhub = method === "finnhub";
     return (
       <div className="h-7 w-7 rounded-md flex items-center justify-center bg-purple-500/10 text-purple-500">
-        {isFinnhub ? <FinnhubLogo className="h-3.5 w-3.5" /> : <FmpLogo className="h-3.5 w-3.5" />}
+        <BarChart3 className="h-3.5 w-3.5" />
       </div>
     );
   }
-  // SEARCH — all Perplexity Sonar searches
+  // SEARCH
   return (
     <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
-      <PerplexityLogo className="h-3.5 w-3.5" />
+      <Search className="h-3.5 w-3.5" />
     </div>
   );
 }
@@ -407,11 +405,12 @@ function ApiCallVisual({ name, endpoint }: { name: string; endpoint: string }) {
   );
 }
 
-function ProviderLogo({ method }: { method: string }) {
-  if (method === "perplexity_sonar") return <PerplexityLogo className="h-3.5 w-3.5 text-muted-foreground" />;
-  if (method === "firecrawl") return <FirecrawlLogo className="h-3.5 w-3.5 text-muted-foreground" />;
-  if (method === "fmp") return <FmpLogo className="h-3.5 w-3.5 text-muted-foreground" />;
-  if (method === "finnhub") return <FinnhubLogo className="h-3.5 w-3.5 text-muted-foreground" />;
+function ProviderLogo({ method, size = "sm" }: { method: string; size?: "sm" | "md" }) {
+  const cls = size === "md" ? "h-5 w-5 text-foreground" : "h-3.5 w-3.5 text-muted-foreground";
+  if (method === "perplexity_sonar") return <PerplexityLogo className={cls} />;
+  if (method === "firecrawl") return <FirecrawlLogo className={cls} />;
+  if (method === "fmp") return <FmpLogo className={cls} />;
+  if (method === "finnhub") return <FinnhubLogo className={cls} />;
   return null;
 }
 
@@ -456,12 +455,12 @@ function MonitorInfoPopover({
         {/* Provider + how it works */}
         <div className="text-xs space-y-2">
           <div className="flex items-center gap-2">
-            <ProviderLogo method={monitor.method} />
+            <ProviderLogo method={monitor.method} size="md" />
             <span className="font-medium text-foreground">{methodLabel}</span>
             {isDomain && (
               <>
                 <span className="text-muted-foreground">+</span>
-                <FirecrawlLogo className="h-3.5 w-3.5 text-muted-foreground" />
+                <FirecrawlLogo className="h-5 w-5 text-foreground" />
                 <span className="font-medium text-foreground">Firecrawl</span>
               </>
             )}

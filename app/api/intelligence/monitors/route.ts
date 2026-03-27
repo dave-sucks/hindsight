@@ -13,9 +13,12 @@ export async function GET(req: NextRequest) {
 
   const monitors = await prisma.monitor.findMany({
     where: {
-      ...(type ? { type } : {}),
+      // Only show valid monitor types (excludes legacy PORTFOLIO/WATCHLIST)
+      type: type ?? { in: ["SEARCH", "DOMAIN", "API"] },
       ...(scope ? { scope } : {}),
       ...(analystId ? { analystId } : {}),
+      // Exclude legacy per-ticker monitors (ticker-search-*) — replaced by permanent portfolio/watchlist monitors
+      NOT: { id: { startsWith: "ticker-search-" } },
     },
     orderBy: [{ builtIn: "desc" }, { type: "asc" }, { createdAt: "asc" }],
     include: {
@@ -34,9 +37,10 @@ export async function GET(req: NextRequest) {
   const enriched = await Promise.all(
     monitors.map(async (m) => {
       if (m.builtIn && m.category === "TICKER" && m.type === "SEARCH") {
-        // Check config to determine if this tracks positions or watchlist items
+        // Check config or name to determine if this tracks positions or watchlist items
         const trackType = (m.config as Record<string, unknown> | null)?.track as string | undefined
-        if (trackType === "watchlist") {
+        const isWatchlist = trackType === "watchlist" || m.name.toLowerCase().includes("watchlist")
+        if (isWatchlist) {
           const items = await prisma.analystWatchlistItem.findMany({
             where: { status: "ACTIVE" },
             select: { symbol: true, reason: true, priority: true, analystId: true },
