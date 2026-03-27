@@ -53,6 +53,18 @@ function getStatusDisplay(status: string, outcome: string | null) {
   return { label: 'Closed', dotClass: 'bg-muted-foreground/40', tooltip: 'Position has been closed.' };
 }
 
+function verdictLabel(direction: string, confidence: number): { label: string; color: string } {
+  if (direction === 'PASS') return { label: 'Pass', color: 'text-muted-foreground' };
+  if (direction === 'LONG') {
+    if (confidence >= 80) return { label: 'Strong Buy', color: 'text-emerald-500' };
+    if (confidence >= 60) return { label: 'Buy', color: 'text-emerald-500' };
+    return { label: 'Lean Buy', color: 'text-emerald-500/70' };
+  }
+  if (confidence >= 80) return { label: 'Strong Sell', color: 'text-red-500' };
+  if (confidence >= 60) return { label: 'Sell', color: 'text-red-500' };
+  return { label: 'Lean Sell', color: 'text-red-500/70' };
+}
+
 function StatCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5 min-w-0">
@@ -300,24 +312,40 @@ export default async function TradeDetailPage({
                 <StatCell label="Hold" value={(trade.thesis?.holdDuration as string) ?? 'Swing'} />
               </div>
 
-              {/* Thesis reasoning (if available) */}
-              {trade.thesis && (
-                <div className="space-y-2">
-                  <h2 className="text-lg font-medium">Thesis</h2>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {trade.thesis.reasoningSummary}
-                  </p>
-                  {(trade.thesis.signalTypes as string[] ?? []).length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {(trade.thesis.signalTypes as string[]).map((s) => (
-                        <Badge key={s} variant="outline" className="text-[10px]">
-                          {s.replace(/_/g, ' ')}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Trade Thesis — featured card */}
+              {trade.thesis && (() => {
+                const v = verdictLabel(trade.thesis.direction as string, trade.thesis.confidenceScore);
+                return (
+                  <Card>
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Trade Thesis</p>
+                        <div className="flex items-center gap-2">
+                          <span className={cn('text-sm font-semibold', v.color)}>{v.label}</span>
+                          <span className="text-sm text-muted-foreground tabular-nums">{trade.thesis.confidenceScore}%</span>
+                        </div>
+                      </div>
+                      <p className="text-sm text-foreground leading-relaxed">
+                        {trade.thesis.reasoningSummary}
+                      </p>
+                      <div className="flex items-center gap-4 mt-3 text-xs tabular-nums">
+                        <span className="text-muted-foreground">Entry <span className="text-foreground font-medium">${trade.entryPrice.toFixed(2)}</span></span>
+                        <span className="text-muted-foreground">Target <span className="text-emerald-500 font-medium">${targetPrice.toFixed(2)}</span></span>
+                        <span className="text-muted-foreground">Stop <span className="text-red-500 font-medium">${stopPrice.toFixed(2)}</span></span>
+                      </div>
+                      {(trade.thesis.signalTypes as string[] ?? []).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t">
+                          {(trade.thesis.signalTypes as string[]).map((s) => (
+                            <Badge key={s} variant="outline">
+                              {s.replace(/_/g, ' ')}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
             </TabsContent>
 
             {/* ── THESES — Perplexity "Notable Price Movement" style ── */}
@@ -367,30 +395,32 @@ export default async function TradeDetailPage({
                           {/* Content */}
                           <div className="flex-1 min-w-0">
                             {/* First line: price + direction + confidence */}
-                            <div className="flex items-center gap-2">
-                              {t.entryPrice != null && (
-                                <span className="text-sm font-medium tabular-nums">
-                                  ${Number(t.entryPrice).toFixed(2)}
-                                </span>
-                              )}
-                              <span className={cn('text-sm font-medium', dirColor)}>
-                                {t.direction === 'LONG' ? '↗' : t.direction === 'SHORT' ? '↘' : '—'} {t.confidenceScore}%
-                              </span>
-                              {t.status === 'SUPERSEDED' && (
-                                <span className="text-xs text-amber-500">Superseded</span>
-                              )}
-                              {t.status === 'INVALIDATED' && (
-                                <span className="text-xs text-red-500">Invalidated</span>
-                              )}
-                              {isActive && (
-                                <span className="text-xs text-blue-400 font-medium">Active</span>
-                              )}
-                              {isCurrent && (
-                                <span className="text-xs text-primary font-medium">Trade Thesis</span>
-                              )}
-                            </div>
+                            {(() => {
+                              const v = verdictLabel(t.direction, t.confidenceScore);
+                              return (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={cn('text-sm font-semibold', v.color)}>
+                                    {v.label}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground tabular-nums">{t.confidenceScore}% confidence</span>
+                                  {t.entryPrice != null && (
+                                    <span className="text-xs text-muted-foreground tabular-nums">
+                                      · Entry ${Number(t.entryPrice).toFixed(2)}
+                                    </span>
+                                  )}
+                                  {t.status === 'SUPERSEDED' && (
+                                    <span className="text-xs text-amber-500">Superseded</span>
+                                  )}
+                                  {t.status === 'INVALIDATED' && (
+                                    <span className="text-xs text-red-500">Invalidated</span>
+                                  )}
+                                  {isCurrent && (
+                                    <span className="text-xs text-primary font-medium">Trade Thesis</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
 
-                            {/* Reasoning paragraph */}
                             <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                               {t.reasoningSummary}
                             </p>
