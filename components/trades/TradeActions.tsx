@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,14 +27,13 @@ interface TradeActionsProps {
   tradeId: string;
   ticker: string;
   isOpen: boolean;
+  runId?: string | null;
 }
 
-export function TradeActions({ tradeId, ticker, isOpen }: TradeActionsProps) {
+export function TradeActions({ tradeId, ticker, isOpen, runId }: TradeActionsProps) {
   const router = useRouter();
   const [action, setAction] = useState<'close' | 'cancel' | null>(null);
   const [loading, setLoading] = useState(false);
-
-  if (!isOpen) return null;
 
   async function handleAction() {
     if (!action) return;
@@ -58,25 +58,32 @@ export function TradeActions({ tradeId, ticker, isOpen }: TradeActionsProps) {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />}>
+          <MoreHorizontal className="h-4 w-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem
-            className="text-amber-500 focus:text-amber-500"
-            onClick={() => setAction('cancel')}
-          >
-            Cancel order
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="text-negative focus:text-negative"
-            onClick={() => setAction('close')}
-          >
-            Close trade
-          </DropdownMenuItem>
+          {runId && (
+            <DropdownMenuItem render={<Link href={`/runs/${runId}`} />}>
+              View run
+            </DropdownMenuItem>
+          )}
+          {isOpen && (
+            <>
+              {runId && <DropdownMenuSeparator />}
+              <DropdownMenuItem
+                className="text-amber-500 focus:text-amber-500"
+                onClick={() => setAction('cancel')}
+              >
+                Cancel order
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-negative focus:text-negative"
+                onClick={() => setAction('close')}
+              >
+                Close trade
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

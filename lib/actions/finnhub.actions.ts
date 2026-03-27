@@ -314,7 +314,10 @@ export async function getStockCandles(
     const from = now - days * 24 * 60 * 60;
     const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(symbol.toUpperCase())}&resolution=D&from=${from}&to=${now}&token=${token}`;
     const data = await fetchJSON<FinnhubCandleResponse>(url, 300);
-    if (!data || data.s !== 'ok' || !data.c?.length) return [];
+    if (!data || data.s !== 'ok' || !data.c?.length) {
+      console.warn('[getStockCandles] No data for', symbol, 'status:', data?.s, 'len:', data?.c?.length);
+      return [];
+    }
     return data.t.map((ts, i) => ({
       date: new Date(ts * 1000).toISOString().slice(0, 10),
       close: data.c[i],

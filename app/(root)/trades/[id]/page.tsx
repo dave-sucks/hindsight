@@ -225,7 +225,7 @@ export default async function TradeDetailPage({
             </p>
           </div>
         </div>
-        <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} />
+        <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />
       </div>
 
       {/* ── 2-col grid ─────────────────────────────────────────────────── */}
