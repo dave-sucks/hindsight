@@ -287,7 +287,9 @@ function MonitorRow({
           <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
             {monitor.name}
           </p>
-          <p className="text-xs text-muted-foreground truncate">{detail}</p>
+          {detail && (
+            <p className="text-xs text-muted-foreground truncate">{detail}</p>
+          )}
           {hasTickers && (
             <Collapsible open={tickersOpen} onOpenChange={setTickersOpen}>
               <CollapsibleTrigger
@@ -741,19 +743,10 @@ function AddMonitorInput({ onRefresh }: { onRefresh: () => void }) {
 
 function getMonitorDetail(monitor: Monitor): string {
   const config = monitor.config ?? {};
-  if (monitor.type === "SEARCH") {
-    const query = (config.query as string) ?? "";
-    return query ? `Perplexity Sonar searches "${query}" daily and returns structured signals (headlines, tickers, sentiment)` : "";
-  }
-  if (monitor.type === "DOMAIN") {
-    const domain = (config.domain as string) ?? "";
-    return domain ? `Perplexity Sonar searches ${domain} daily for new articles. Priority sources also get full-page extraction via Firecrawl.` : "";
-  }
-  if (monitor.type === "API") {
-    const endpoint = (config.endpoint as string) ?? "";
-    return endpoint ? `Calls FMP/Finnhub API (${endpoint}) and creates one aggregate signal with top results` : "";
-  }
-  if (monitor.type === "PORTFOLIO") return "Perplexity Sonar searches each open position ticker daily (e.g. \"AAPL stock news developments catalysts today\")";
-  if (monitor.type === "WATCHLIST") return "Perplexity Sonar searches each watchlist ticker daily (e.g. \"TSLA stock news developments catalysts today\")";
+  if (monitor.type === "SEARCH") return (config.query as string) ?? "";
+  if (monitor.type === "DOMAIN") return (config.domain as string) ?? "";
+  if (monitor.type === "API") return (config.endpoint as string) ?? "";
+  if (monitor.type === "PORTFOLIO") return "Searches each open position via Sonar";
+  if (monitor.type === "WATCHLIST") return "Searches each watchlist ticker via Sonar";
   return "";
 }
