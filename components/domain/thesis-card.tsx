@@ -349,29 +349,16 @@ export function ThesisCard({
         className="w-full sm:max-w-xl overflow-y-auto"
       >
         {/* ── Sheet header ──────────────────────────────────────── */}
-        <SheetHeader className="border-b pb-4">
-          <div className="flex items-center gap-3">
-            <StockLogo ticker={ticker} size="lg" />
-            <div>
-              <SheetTitle className="text-lg font-bold">
-                {displayName}
-              </SheetTitle>
-              <span className="text-xs font-mono text-muted-foreground">
-                {ticker}{exchange ? ` · ${exchange}` : ""}
-              </span>
-            </div>
+        <SheetHeader className="border-b pb-4 space-y-3">
+          {/* Top row: verdict + score */}
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant={verdict.variant}>
               {!isPass && <DirIcon className="h-3.5 w-3.5" />}
               {verdict.label}
             </Badge>
-            {hold_duration && (
-              <Badge variant="outline">
-                {hold_duration}
-              </Badge>
-            )}
             <span
               className={cn(
-                "ml-auto flex items-center justify-center rounded-full size-12 text-base font-bold tabular-nums",
+                "flex items-center justify-center rounded-full size-9 text-sm font-bold tabular-nums",
                 confidence_score >= 80
                   ? "bg-positive/10 text-positive"
                   : confidence_score >= 60
@@ -381,6 +368,13 @@ export function ThesisCard({
             >
               {confidence_score}
             </span>
+          </div>
+          {/* Bottom row: logo + name */}
+          <div className="flex items-center gap-3">
+            <StockLogo ticker={ticker} size="lg" />
+            <SheetTitle className="text-lg font-bold">
+              {displayName}
+            </SheetTitle>
           </div>
         </SheetHeader>
 
