@@ -12,48 +12,9 @@ import {
   type AlpacaCredentials,
 } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { finnhub, calcRSI, calcSMA } from "@/lib/agent/research-helpers";
 
 export const maxDuration = 120;
-
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
-
-// ── API helper ──────────────────────────────────────────────────────────────
-
-async function finnhub(path: string): Promise<{ data: unknown; error?: string }> {
-  const url = `https://finnhub.io/api/v1${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_KEY}`;
-  try {
-    const res = await fetch(url, { next: { revalidate: 300 } });
-    if (!res.ok) return { data: null, error: `Finnhub ${path.split("?")[0]} returned ${res.status}` };
-    return { data: await res.json() };
-  } catch (err) {
-    return { data: null, error: `Finnhub fetch failed: ${err instanceof Error ? err.message : "unknown"}` };
-  }
-}
-
-// ── Technical helpers ───────────────────────────────────────────────────────
-
-function calcRSI(closes: number[], period = 14): number | null {
-  if (closes.length < period + 1) return null;
-  let gains = 0, losses = 0;
-  for (let i = 1; i <= period; i++) {
-    const diff = closes[i] - closes[i - 1];
-    if (diff > 0) gains += diff; else losses -= diff;
-  }
-  let avgGain = gains / period, avgLoss = losses / period;
-  for (let i = period + 1; i < closes.length; i++) {
-    const diff = closes[i] - closes[i - 1];
-    avgGain = (avgGain * (period - 1) + (diff > 0 ? diff : 0)) / period;
-    avgLoss = (avgLoss * (period - 1) + (diff < 0 ? -diff : 0)) / period;
-  }
-  if (avgLoss === 0) return 100;
-  return Math.round((100 - 100 / (1 + avgGain / avgLoss)) * 10) / 10;
-}
-
-function calcSMA(closes: number[], period: number): number | null {
-  if (closes.length < period) return null;
-  const slice = closes.slice(-period);
-  return Math.round((slice.reduce((a, b) => a + b, 0) / period) * 100) / 100;
-}
 
 // ── Route ───────────────────────────────────────────────────────────────────
 

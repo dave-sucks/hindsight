@@ -107,9 +107,7 @@ function AnalystTradeRow({ trade }: { trade: PositionWithThesis }) {
       pnl={pnl}
       pnlPct={pnlPct}
       status={trade.status}
-      direction={trade.direction}
       openedAt={trade.openedAt}
-      outcome={trade.outcome}
     />
   );
 }
@@ -123,71 +121,19 @@ function WatchingRow({
   item: WatchlistItemView;
   onRemove: (symbol: string) => void;
 }) {
-  const directionColor = item.thesisDirection === "LONG"
-    ? "text-emerald-500"
-    : item.thesisDirection === "SHORT"
-      ? "text-red-500"
-      : "text-muted-foreground";
-
-  const priorityLabel = item.priority === "HIGH" ? "HIGH" : item.priority === "LOW" ? "LOW" : null;
-
-  const lastReviewedStr = item.lastReviewedAt
-    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
-        item.lastReviewedAt instanceof Date ? item.lastReviewedAt : new Date(item.lastReviewedAt),
-      )
-    : null;
-
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 last:border-0 group">
+    <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-accent/40 transition-colors border-b border-border/40 last:border-0 group">
       <Link href={`/stocks/${item.symbol}`} className="shrink-0">
         <StockLogo ticker={item.symbol} size="md" className="rounded-md" />
       </Link>
-      <Link href={`/stocks/${item.symbol}`} className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
-        <div className="flex items-center gap-1.5">
+      <Link href={`/stocks/${item.symbol}`} className="flex-1 min-w-0">
+        <div className="flex items-center justify-between">
           <span className="text-sm font-medium">{item.symbol}</span>
-          {item.thesisDirection && (
-            <span className={`text-[9px] font-medium uppercase ${directionColor}`}>{item.thesisDirection}</span>
-          )}
-          {priorityLabel && (
-            <Badge
-              variant={item.priority === "HIGH" ? "default" : "outline"}
-              className="text-[8px] px-1 py-0 h-3.5 leading-none"
-            >
-              {priorityLabel}
-            </Badge>
-          )}
-          {item.addedBy === "AGENT" && (
-            <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">AI</span>
-          )}
-          {item.conviction != null && (
-            <span className="text-[9px] text-muted-foreground tabular-nums">{item.conviction}%</span>
-          )}
         </div>
-        <p className="text-[10px] text-muted-foreground truncate">{item.reason}</p>
-        {(item.targetPrice != null || item.stopPrice != null || item.catalyst) && (
-          <div className="flex items-center gap-2 mt-0.5">
-            {item.targetPrice != null && (
-              <span className="text-[9px] text-muted-foreground tabular-nums">T: ${item.targetPrice.toFixed(2)}</span>
-            )}
-            {item.stopPrice != null && (
-              <span className="text-[9px] text-muted-foreground tabular-nums">S: ${item.stopPrice.toFixed(2)}</span>
-            )}
-            {item.catalyst && (
-              <span className="text-[9px] text-muted-foreground truncate">{item.catalyst}</span>
-            )}
-          </div>
-        )}
-        <div className="flex items-center gap-2 mt-0.5">
-          {item.thesisCount > 0 && (
-            <span className="text-[9px] text-muted-foreground tabular-nums">
-              {item.thesisCount} {item.thesisCount === 1 ? "thesis" : "theses"}
-            </span>
-          )}
-          {lastReviewedStr && (
-            <span className="text-[9px] text-muted-foreground/60">
-              reviewed {lastReviewedStr}
-            </span>
-          )}
+        <div className="flex items-center justify-between mt-0.5">
+          <span className="text-xs text-muted-foreground truncate">
+            {item.reason}
+          </span>
         </div>
       </Link>
       <button

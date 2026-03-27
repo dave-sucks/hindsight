@@ -10,6 +10,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { SegmentBar } from "@/components/ui/segment-bar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,23 +42,10 @@ function WinRateBar({ winRate, tradeCount }: { winRate: number | null; tradeCoun
 
   return (
     <div className="space-y-1">
-      <div className="flex gap-[2px]">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <div
-            key={i}
-            className={cn(
-              "h-2 flex-1",
-              i === 0 && "rounded-l-full",
-              i === 9 && "rounded-r-full",
-              i < filled
-                ? positive
-                  ? "bg-positive"
-                  : "bg-negative"
-                : "bg-muted"
-            )}
-          />
-        ))}
-      </div>
+      <SegmentBar
+        filled={filled}
+        fillColor={positive ? "bg-positive" : "bg-negative"}
+      />
       <div className="flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
         <span>{pct} win rate</span>
         <span>{tradeCount} total</span>

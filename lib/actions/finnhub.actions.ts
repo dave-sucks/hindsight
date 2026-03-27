@@ -281,3 +281,97 @@ export async function getStockMetrics(symbol: string): Promise<Record<string, nu
     return null;
   }
 }
+
+// ─── Stock candles (daily OHLCV) ────────────────────────────────────────────
+
+export type StockCandle = {
+  date: string;
+  close: number;
+  open: number;
+  high: number;
+  low: number;
+  volume: number;
+};
+
+type FinnhubCandleResponse = {
+  c: number[];
+  h: number[];
+  l: number[];
+  o: number[];
+  v: number[];
+  t: number[];
+  s: string;
+};
+
+export async function getStockCandles(
+  symbol: string,
+  days = 365,
+): Promise<StockCandle[]> {
+  // Use Alpaca Data API (IEX feed) — Finnhub candles blocked on free tier,
+  // FMP historical-price-full blocked on legacy plan.
+  try {
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      console.warn('[getStockCandles] No Alpaca credentials configured');
+      return [];
+    }
+
+    const end = new Date().toISOString().slice(0, 10);
+    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&feed=iex`;
+
+    const res = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret,
+      },
+      next: { revalidate: 300 },
+    });
+
+    if (!res.ok) {
+      console.warn('[getStockCandles] Alpaca error', res.status, await res.text().catch(() => ''));
+      return [];
+    }
+
+    const data = await res.json() as { bars?: { c: number; o: number; h: number; l: number; v: number; t: string }[] };
+    if (!data.bars?.length) return [];
+
+    return data.bars.map((bar) => ({
+      date: bar.t.slice(0, 10),
+      close: bar.c,
+      open: bar.o,
+      high: bar.h,
+      low: bar.l,
+      volume: bar.v,
+    }));
+  } catch (err) {
+    console.error('[getStockCandles] Error:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+// ─── Analyst recommendation trends ──────────────────────────────────────────
+
+export type RecommendationTrend = {
+  buy: number;
+  hold: number;
+  sell: number;
+  strongBuy: number;
+  strongSell: number;
+  period: string;
+};
+
+export async function getRecommendationTrends(
+  symbol: string,
+): Promise<RecommendationTrend[] | null> {
+  try {
+    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    if (!token) return null;
+    const url = `${FINNHUB_BASE_URL}/stock/recommendation?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
+    const data = await fetchJSON<RecommendationTrend[]>(url, 3600);
+    return Array.isArray(data) && data.length > 0 ? data : null;
+  } catch {
+    return null;
+  }
+}
