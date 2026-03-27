@@ -20,10 +20,9 @@ import {
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { SentimentBar } from "@/components/ui/segment-bar";
 import {
-  ArrowLeft,
   ExternalLink,
-  FlaskConical,
   BookmarkPlus,
   TrendingUp,
   TrendingDown,
@@ -208,16 +207,7 @@ export default async function StockDetailPage({ params }: Props) {
   const consensus = bullish > bearish ? "Buy" : bearish > bullish ? "Sell" : "Hold";
 
   return (
-    <div className="px-6 py-6 max-w-7xl mx-auto">
-      {/* Back nav */}
-      <Link
-        href="/stocks"
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit mb-4"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Stocks
-      </Link>
-
+    <div className="max-w-7xl mx-auto px-6 py-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
@@ -226,33 +216,27 @@ export default async function StockDetailPage({ params }: Props) {
             <h1 className="text-2xl font-semibold leading-tight">
               {profile?.name ?? upperSymbol}
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-xs font-mono uppercase text-muted-foreground tracking-wide mt-0.5">
               {upperSymbol}
               {profile?.exchange ? ` · ${profile.exchange}` : ""}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0 mt-1">
-          <Button variant="outline" size="sm" render={<Link href={`/research?ticker=${upperSymbol}`} />}>
-            <FlaskConical />
-            Research
-          </Button>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
-                <BookmarkPlus />
-              </TooltipTrigger>
-              <TooltipContent>Add to Watchlist</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
+              <BookmarkPlus />
+            </TooltipTrigger>
+            <TooltipContent>Add to Watchlist</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
-      {/* ── 2-col layout ───────────────────────────────────────────────── */}
-      <div className="flex gap-6">
+      {/* ── 2-col grid ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
         {/* ════ MAIN column ════ */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0">
           <Tabs defaultValue="overview">
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -452,7 +436,7 @@ export default async function StockDetailPage({ params }: Props) {
         </div>
 
         {/* ════ SIDEBAR ════ */}
-        <div className="hidden lg:block w-80 shrink-0 space-y-4 sticky top-6 self-start">
+        <div className="hidden lg:block space-y-4">
           {/* Company Info */}
           {profile && (
             <Card>
@@ -506,21 +490,14 @@ export default async function StockDetailPage({ params }: Props) {
                   <span className="text-muted-foreground tabular-nums">{neutral} <span>Neutral</span></span>
                   <span className="text-emerald-500 tabular-nums">{bullish} <span className="text-muted-foreground">Bullish</span></span>
                 </div>
-                {/* Dot bar visualization */}
-                <div className="flex gap-[2px]">
-                  {Array.from({ length: totalAnalysts }).map((_, i) => {
-                    let color = "bg-muted-foreground/30"; // neutral
-                    if (i < bearish) color = "bg-red-500";
-                    else if (i >= bearish + neutral) color = "bg-emerald-500";
-                    return (
-                      <div
-                        key={i}
-                        className={cn("h-2 flex-1 rounded-sm", color)}
-                        style={{ maxWidth: "12px" }}
-                      />
-                    );
-                  })}
-                </div>
+                <SentimentBar
+                  total={totalAnalysts}
+                  ranges={[
+                    { count: bearish, color: "bg-red-500" },
+                    { count: neutral, color: "bg-muted-foreground/30" },
+                    { count: bullish, color: "bg-emerald-500" },
+                  ]}
+                />
               </CardContent>
             </Card>
           )}

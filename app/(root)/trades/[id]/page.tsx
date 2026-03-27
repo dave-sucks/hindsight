@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { StockLogo } from '@/components/StockLogo';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,6 +12,7 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { StockPriceChart } from '@/components/stocks/StockPriceChart';
+import { SegmentBar } from '@/components/ui/segment-bar';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -22,7 +22,6 @@ import {
 } from '@/lib/actions/finnhub.actions';
 import { cn } from '@/lib/utils';
 import {
-  ArrowLeft,
   CheckCircle2,
   XCircle,
   Clock,
@@ -197,30 +196,16 @@ export default async function TradeDetailPage({
   const isQuoteUp = (changePct ?? 0) >= 0;
 
   return (
-    <div className="px-6 py-6 max-w-7xl mx-auto">
-      {/* Back nav */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-1.5 text-muted-foreground -ml-2 mb-4"
-        render={<Link href="/trades" />}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Paper Trades
-      </Button>
-
+    <div className="max-w-7xl mx-auto px-6 py-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <StockLogo ticker={trade.ticker} size="lg" />
           <div>
-            <h1 className="text-2xl font-semibold leading-tight">
-              {companyName ?? trade.ticker}
-            </h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-sm text-muted-foreground">
-                {trade.ticker}{exchange ? ` · ${exchange}` : ''} · {trade.direction}
-              </span>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold leading-tight">
+                {companyName ?? trade.ticker}
+              </h1>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger
@@ -235,36 +220,18 @@ export default async function TradeDetailPage({
                 </Tooltip>
               </TooltipProvider>
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-              {analystName && analystIdVal && (
-                <Link href={`/analysts/${analystIdVal}`} className="hover:text-foreground transition-colors">
-                  {analystName}
-                </Link>
-              )}
-              {analystName && <span className="opacity-30">·</span>}
-              <span>
-                Submitted {new Date(trade.createdAt).toLocaleDateString('en-US', {
-                  month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-                })}
-              </span>
-              {runId && (
-                <>
-                  <span className="opacity-30">·</span>
-                  <Link href={`/runs/${runId}`} className="hover:text-foreground transition-colors inline-flex items-center gap-0.5">
-                    View run <ExternalLink className="h-3 w-3" />
-                  </Link>
-                </>
-              )}
-            </div>
+            <p className="text-xs font-mono uppercase text-muted-foreground tracking-wide mt-0.5">
+              {trade.ticker}{exchange ? ` · ${exchange}` : ''}
+            </p>
           </div>
         </div>
         <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} />
       </div>
 
-      {/* ── 2-col layout ───────────────────────────────────────────────── */}
-      <div className="flex gap-6">
+      {/* ── 2-col grid ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
         {/* ════ MAIN column ════ */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0">
           <Tabs defaultValue="overview">
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -503,7 +470,7 @@ export default async function TradeDetailPage({
         </div>
 
         {/* ════ SIDEBAR ════ */}
-        <div className="hidden lg:block w-80 shrink-0 space-y-4 sticky top-6 self-start">
+        <div className="hidden lg:block space-y-4">
           {/* Trade Details Card */}
           <Card>
             <CardContent className="p-3 flex flex-col gap-1">
@@ -566,25 +533,10 @@ export default async function TradeDetailPage({
             <CardContent className="p-4 space-y-3">
               <h3 className="text-sm font-medium">Target Progress</h3>
               <div className="space-y-2">
-                <div className="flex gap-[2px]">
-                  {Array.from({ length: 10 }).map((_, i) => {
-                    const segmentPct = (i + 1) * 10;
-                    const isFilled = progressPct >= segmentPct;
-                    return (
-                      <div
-                        key={i}
-                        className={cn(
-                          'h-2 flex-1',
-                          i === 0 && 'rounded-l-full',
-                          i === 9 && 'rounded-r-full',
-                          isFilled
-                            ? isPos ? 'bg-positive' : 'bg-negative'
-                            : 'bg-muted'
-                        )}
-                      />
-                    );
-                  })}
-                </div>
+                <SegmentBar
+                  filled={progressPct / 10}
+                  fillColor={isPos ? 'bg-positive' : 'bg-negative'}
+                />
                 <div className="flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
                   <span>${stopPrice.toFixed(2)} stop</span>
                   <span className="font-medium text-foreground">{progressPct}%</span>
