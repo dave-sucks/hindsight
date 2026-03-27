@@ -1,4 +1,4 @@
-/** Real provider logos for the intelligence UI — sourced from Simple Icons and brand guidelines */
+/** Real provider logos for the intelligence UI */
 
 /** Perplexity AI — official logo from Simple Icons */
 export function PerplexityLogo({ className }: { className?: string }) {
@@ -9,34 +9,32 @@ export function PerplexityLogo({ className }: { className?: string }) {
   );
 }
 
-/** Firecrawl — flame icon matching their brand */
+/** Firecrawl — official flame logo from their Mintlify-hosted assets */
 export function FirecrawlLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-      <path d="M12 0C8.26 4.5 5 7.98 5 12.5 5 16.64 8.13 20 12 20s7-3.36 7-7.5C19 7.98 15.74 4.5 12 0zm0 18c-2.76 0-5-2.46-5-5.5C7 9.3 9.1 6.5 12 3.2c2.9 3.3 5 6.1 5 9.3 0 3.04-2.24 5.5-5 5.5zm-1.5-5.5c0 1.38.67 2.5 1.5 2.5s1.5-1.12 1.5-2.5c0-1.5-.75-3-1.5-4.5-.75 1.5-1.5 3-1.5 4.5z" />
+    <svg viewBox="0 0 28 40" className={className} fill="currentColor">
+      <path d="M23.3606 12.8281C21.8137 13.2873 20.6476 14.3261 19.7936 15.4544C19.6102 15.6966 19.228 15.5146 19.3008 15.2178C20.936 8.49401 18.7759 2.90556 12.0422 0.154735C11.7006 0.0147436 11.345 0.321324 11.4346 0.679702C14.4977 12.9779 1.61412 11.9406 3.24224 25.8823C3.27024 26.1217 3.00145 26.2855 2.80546 26.1455C2.19509 25.7073 1.51332 24.7932 1.04575 24.1506C0.908555 23.9616 0.611769 24.0148 0.548773 24.2402C0.176391 25.5869 0 26.8553 0 28.1152C0 33.0149 2.51847 37.328 6.33048 39.8283C6.54887 39.9711 6.82886 39.7667 6.75466 39.5161C6.55867 38.8581 6.44808 38.1638 6.43968 37.4456C6.43968 37.0046 6.46768 36.5539 6.53627 36.1339C6.69587 35.0784 7.06265 34.0732 7.67862 33.1577C9.79111 29.9869 14.0259 26.9239 13.3497 22.7647C13.3063 22.5015 13.6171 22.328 13.8131 22.5085C16.7964 25.2342 17.3871 28.9005 16.8972 32.1889C16.8552 32.4745 17.2135 32.6271 17.3941 32.4031C17.8505 31.832 18.4077 31.3308 19.0138 30.9542C19.165 30.8604 19.3666 30.9318 19.424 31.0998C19.7614 32.0811 20.2626 33.0023 20.7358 33.9234C21.3013 35.0308 21.6023 36.2949 21.5547 37.6332C21.5309 38.2842 21.4231 38.9141 21.2425 39.5133C21.1655 39.7667 21.4427 39.9781 21.6653 39.8325C25.4801 37.3322 28 33.0191 28 28.1166C28 26.4129 27.7018 24.7428 27.1376 23.1777C25.9547 19.8949 22.9533 17.4297 23.712 13.1515C23.7484 12.9471 23.5594 12.7693 23.3606 12.8281Z" />
     </svg>
   );
 }
 
-/** Finnhub — stylized bar chart matching their brand identity */
+/** Finnhub — angular fin shape matching their brand (shark fin / dorsal fin) */
 export function FinnhubLogo({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 20L12 3l4 8.5L20 8v12H4z" />
     </svg>
   );
 }
 
-/** Financial Modeling Prep — stacked chart bars matching their brand */
+/** Financial Modeling Prep — ascending bar chart matching their green bars brand icon */
 export function FmpLogo({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-      <path d="M3 3v18h18" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7 16l4-4 3 3 5-5" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="7" cy="16" r="1" />
-      <circle cx="11" cy="12" r="1" />
-      <circle cx="14" cy="15" r="1" />
-      <circle cx="19" cy="10" r="1" />
+      <rect x="2" y="14" width="4" height="8" rx="1" />
+      <rect x="8" y="10" width="4" height="12" rx="1" />
+      <rect x="14" y="6" width="4" height="16" rx="1" />
+      <rect x="20" y="2" width="4" height="20" rx="1" />
     </svg>
   );
 }
