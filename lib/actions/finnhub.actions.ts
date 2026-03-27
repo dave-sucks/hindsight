@@ -307,26 +307,46 @@ export async function getStockCandles(
   symbol: string,
   days = 365,
 ): Promise<StockCandle[]> {
+  // Use Alpaca Data API (IEX feed) — Finnhub candles blocked on free tier,
+  // FMP historical-price-full blocked on legacy plan.
   try {
-    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
-    if (!token) return [];
-    const now = Math.floor(Date.now() / 1000);
-    const from = now - days * 24 * 60 * 60;
-    const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(symbol.toUpperCase())}&resolution=D&from=${from}&to=${now}&token=${token}`;
-    const data = await fetchJSON<FinnhubCandleResponse>(url, 300);
-    if (!data || data.s !== 'ok' || !data.c?.length) {
-      console.warn('[getStockCandles] No data for', symbol, 'status:', data?.s, 'len:', data?.c?.length);
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      console.warn('[getStockCandles] No Alpaca credentials configured');
       return [];
     }
-    return data.t.map((ts, i) => ({
-      date: new Date(ts * 1000).toISOString().slice(0, 10),
-      close: data.c[i],
-      open: data.o[i],
-      high: data.h[i],
-      low: data.l[i],
-      volume: data.v[i],
+
+    const end = new Date().toISOString().slice(0, 10);
+    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&feed=iex`;
+
+    const res = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret,
+      },
+      next: { revalidate: 300 },
+    });
+
+    if (!res.ok) {
+      console.warn('[getStockCandles] Alpaca error', res.status, await res.text().catch(() => ''));
+      return [];
+    }
+
+    const data = await res.json() as { bars?: { c: number; o: number; h: number; l: number; v: number; t: string }[] };
+    if (!data.bars?.length) return [];
+
+    return data.bars.map((bar) => ({
+      date: bar.t.slice(0, 10),
+      close: bar.c,
+      open: bar.o,
+      high: bar.h,
+      low: bar.l,
+      volume: bar.v,
     }));
-  } catch {
+  } catch (err) {
+    console.error('[getStockCandles] Error:', err instanceof Error ? err.message : err);
     return [];
   }
 }

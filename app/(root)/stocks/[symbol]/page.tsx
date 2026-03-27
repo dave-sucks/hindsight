@@ -2,13 +2,12 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { StockLogo } from "@/components/StockLogo";
 import { StockPriceChart } from "@/components/stocks/StockPriceChart";
+import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import {
   getNews,
   getStockProfile,
@@ -17,13 +16,13 @@ import {
   getStockCandles,
   getRecommendationTrends,
 } from "@/lib/actions/finnhub.actions";
+import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { SentimentBar } from "@/components/ui/segment-bar";
 import {
   ExternalLink,
-  BookmarkPlus,
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
@@ -111,7 +110,7 @@ export default async function StockDetailPage({ params }: Props) {
   const userId = user?.id ?? "";
 
   // Fetch everything in parallel
-  const [profile, quote, metrics, candles, recommendations, tickerTrades, tickerTheses] = await Promise.all([
+  const [profile, quote, metrics, candles, recommendations, tickerTrades, tickerTheses, watchlistStatus] = await Promise.all([
     getStockProfile(upperSymbol),
     getStockQuote(upperSymbol),
     getStockMetrics(upperSymbol),
@@ -159,6 +158,7 @@ export default async function StockDetailPage({ params }: Props) {
           },
         })
       : Promise.resolve([]),
+    userId ? getWatchlistStatusForSymbol(upperSymbol) : Promise.resolve([]),
   ]);
 
   // Format helpers
@@ -223,14 +223,7 @@ export default async function StockDetailPage({ params }: Props) {
           </div>
         </div>
 
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
-              <BookmarkPlus />
-            </TooltipTrigger>
-            <TooltipContent>Add to Watchlist</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
       </div>
 
       {/* ── 2-col grid ─────────────────────────────────────────────────── */}
