@@ -14,14 +14,14 @@ Built for one user now, marketed later.
 - Supabase (Postgres + Auth + Realtime)
 - Prisma ORM (v7 with adapter-pg)
 - Inngest for background jobs and crons
-- Vercel (Next.js) + Railway (Python FastAPI)
+- Vercel (Next.js only — no Railway)
 - Vercel AI SDK v6 + AssistantUI (@assistant-ui/react)
 - TradingView Lightweight Charts for price charts
 - Recharts for performance/analytics charts
 
-## Architecture — Two Systems (Agent + Legacy Python)
+## Architecture — Agent + Intelligence Pipeline
 
-### The Agent (PRIMARY — what the "Run" button uses)
+### The Agent (what the "Run" button and morning cron both use)
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
 - Redirects to /runs/[id] → renders AgentThread component
 - AgentThread uses AI SDK v6 useChat → POST /api/research/agent
@@ -30,42 +30,56 @@ Built for one user now, marketed later.
 - Tools render as domain cards in UI (MarketContextCard, StockCard,
   ThesisArtifactSheet, TradeCard, etc.)
 - All research persisted to DB via tool execute functions
+- Morning cron (8 AM ET) runs same agent via generateText
 
-### Legacy Python Pipeline (CRON ONLY — needs migration)
-- morning-research.ts Inngest cron → POST to Python /research/run
-- Python FastAPI on Railway runs FinRobot 3-step pipeline:
-  Data-CoT → Concept-CoT → Thesis-CoT
-- Returns theses synchronously → morning-research places Alpaca trades
-- Also used by /api/research/run-stream (old SSE streaming path)
-- TODO: Migrate cron to use the agent instead of Python pipeline
+### V3 Intelligence Pipeline (background, pre-run)
+- 5 Inngest jobs run 6:30–7:45 AM ET before analysts wake up
+- Firm market sweep: Perplexity Sonar + FMP movers + Finnhub earnings
+- Portfolio/watchlist monitor: Sonar per-ticker searches
+- Domain monitor: domain-filtered Sonar + Firecrawl extraction
+- Signal router: scores and routes signals to analysts
+- Morning brief generator: GPT-4o synthesizes per-analyst briefs
+- Agent reads pre-gathered intelligence via read_morning_brief,
+  read_signals, read_artifact tools instead of rediscovering
 
 ### Data Sources
 - Finnhub: quotes, candles, earnings calendar, company metrics,
-  news, stock peers (PRIMARY for all quote data)
+  news, recommendations (PRIMARY for all quote data)
 - FMP: market movers (gainers/losers/actives), analyst targets,
-  SEC filings, options chain, press releases, historical prices
+  options chain, economic calendar
   NOTE: FMP /quote/ endpoint is DEPRECATED (403 on legacy plans).
-  All quote calls migrated to Finnhub.
 - Alpaca: paper trade execution, order fill, position tracking
-- StockTwits: trending tickers for scanner
+- Perplexity Sonar: web search for intelligence pipeline + agent
+- Firecrawl: full-page extraction for artifacts
 - SEC EDGAR: filings (10-K, 10-Q, 8-K, Form 4)
 
 ## Data Model (Prisma)
+### Core
 - AgentConfig — analyst persona config (name, analystPrompt,
   sectors, signals, confidence threshold, direction bias,
-  hold durations, position sizing, watchlist, exclusionList)
+  hold durations, position sizing, watchlist, exclusionList,
+  intelligencePolicy)
 - ResearchRun — one execution; links to AgentConfig; status
   (RUNNING/COMPLETE/FAILED); parameters JSON snapshot
 - RunEvent — SSE event from a run (type, title, message, payload)
 - RunMessage — persisted AI SDK messages for run replay
 - Thesis — stock analysis (direction, confidence, reasoning,
   bullets, risk flags, signal types, sourcesUsed, entry/target/stop)
-- Trade — paper order via Alpaca (direction, status, entryPrice,
-  shares, targetPrice, stopLoss, alpacaOrderId, exitStrategy)
-- TradeEvent — trade lifecycle log (PLACED, PRICE_CHECK,
+- Position — paper position via Alpaca (symbol, direction, avgCost,
+  qty, status, closePrice, outcome, agentEvaluation)
+- PositionEvent — position lifecycle log (OPENED, PRICE_CHECK,
   NEAR_TARGET, CLOSED, EVALUATED)
-- AccuracyReport — weekly per-analyst calibration (win rate,
-  signal accuracy, direction stats, GPT-4o narrative eval)
+- AccuracyReport — weekly per-analyst calibration
+### Intelligence (V3)
+- Monitor — unified tracked item (SEARCH/DOMAIN/API type, method,
+  config JSON, scope, analyst link, lastRunAt)
+- Signal — normalized evidence unit (headline, summary, tickers,
+  themes, sentiment, urgency, sourceUrls)
+- SignalBatch — groups signals by job run for dedup
+- AnalystSignalRoute — signal→analyst routing with relevance score
+- Artifact — extracted page content (markdown, summary, contentHash)
+- MorningBrief — per-analyst daily brief (market context,
+  portfolio alerts, watchlist updates, new opportunities, risk flags)
 
 ## Pages
 - / (Dashboard) — MarketPulseStrip (Finnhub WebSocket), portfolio
@@ -76,50 +90,51 @@ Built for one user now, marketed later.
   tabs for Runs and Trades
 - /runs — research run feed with status dots, analyst names,
   thesis counts, logo stacks
-- /runs/[id] — run detail with 3 render modes:
+- /runs/[id] — run detail with 2 render modes:
   - AgentThread (live agent, agentMode=true + RUNNING)
-  - RunLiveStream (legacy SSE polling, RUNNING)
   - RunUnifiedChat (completed runs, events→chat)
 - /trades — paper trade list with live P&L
 - /performance — accuracy reports, win rate charts
 - /stocks — stock search
 - /stocks/[symbol] — TradingView chart + stock detail
+- /intelligence — intelligence dashboard (signals, monitors, briefs,
+  activity, manual job triggers)
+- /agent-workflow — visual "How Hindsight Works" guide
 - /settings — app settings
 
 ## API Routes
 - /api/research/agent — AI SDK v6 agent (14 tools, streamText)
 - /api/research/agent-run — creates ResearchRun row, returns runId
-- /api/research/run-stream — legacy Python SSE pipeline
-- /api/research/events — SSE replay of RunEvent rows
-- /api/research/chat — legacy Python chat proxy
 - /api/research/trigger — Inngest manual trigger
 - /api/chat/analyst-builder — AI analyst creation chat
 - /api/chat/analyst-editor — AI analyst editing chat
 - /api/chat/run-followup — post-run discussion with trade tools
 - /api/agent-activity — dashboard activity stream
+- /api/intelligence/* — signals, monitors, briefs, activity CRUD
 - /api/quotes — Finnhub quote fallback
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools (lib/agent/tools.ts)
+## Agent Tools (lib/agent/tools.ts) — 14 tools
 ### Intelligence Tools (read pre-gathered data)
 1. read_morning_brief — today's pre-generated intelligence brief
 2. read_signals — signals routed by background discovery jobs
 3. read_artifact — full extracted article/document behind a signal
+4. web_search — live Perplexity Sonar search (budget-limited)
 
 ### Research Tools (live data validation)
-4. get_market_context — SPY/VIX/sector ETFs, macro events, regime
-5. get_stock_data — quote + company profile + financials + technicals + news
-6. get_earnings_data — earnings calendar, EPS, beat rate
-7. get_options_flow — put/call ratio, unusual contracts
-8. get_sec_filings — SEC EDGAR filings
+5. get_market_context — SPY/VIX/sector ETFs, macro events, regime
+6. get_stock_data — quote + company profile + financials + technicals + news
+7. get_earnings_data — earnings calendar, EPS, beat rate
+8. get_options_flow — put/call ratio, unusual contracts
+9. get_sec_filings — SEC EDGAR filings
 
 ### Action Tools
-9. record_thesis — persist thesis to DB (LONG/SHORT/PASS)
-10. place_trade — Alpaca market order, create Trade + TradeEvent
-11. close_position — close an existing open position
-12. manage_watchlist — add/remove/update watchlist items
-13. complete_run — mark run COMPLETE with ranked picks
+10. record_thesis — persist thesis to DB (LONG/SHORT/PASS)
+11. place_trade — Alpaca market order, create Position
+12. close_position — close an existing open position
+13. manage_watchlist — add/remove/update watchlist items
+14. complete_run — mark run COMPLETE with ranked picks
 
 ## Domain Components (components/domain/)
 - ThesisCard / ThesisArtifactSheet — thesis display + detail sheet
@@ -138,13 +153,19 @@ Built for one user now, marketed later.
 - AgentConfigCard — analyst config summary
 
 ## Inngest Crons (lib/inngest/functions/)
-- morning-research.ts — 8 AM ET Mon-Fri, per-analyst research
-  via Python pipeline (TODO: migrate to agent)
+### Intelligence Pipeline (6:30–7:45 AM ET Mon-Fri)
+- firm-market-sweep.ts — 6:30 AM, Sonar + FMP movers + earnings
+- portfolio-watchlist-monitor.ts — 7:00 AM, per-ticker Sonar
+- domain-monitor.ts — 7:15 AM, domain Sonar + Firecrawl
+- signal-router.ts — 7:30 AM, route signals to analysts
+- morning-brief-generator.ts — 7:45 AM, GPT-4o per-analyst brief
+### Agent + Trading
+- morning-research.ts — 8 AM ET Mon-Fri, per-analyst agent run
 - price-monitor.ts — hourly price check, exit evaluation
-- trade-evaluator.ts — GPT-4o post-trade evaluation
-- eod-evaluation.ts — end-of-day evaluation
-- weekly-digest.ts — Sunday 9 AM ET digest
-- accuracy-scorer.ts — weekly AccuracyReport generation
+- trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
+- eod-evaluation.ts — end-of-day price snapshots
+- weekly-digest.ts — Sunday 9 AM ET digest email
+- accuracy-scorer.ts — Sunday 10 AM, weekly AccuracyReport
 
 ## Manifest UI Components (components/manifest-ui/)
 External component library installed via `npx shadcn@latest add @manifest/<name>`.
@@ -221,24 +242,31 @@ The agent run page (`/runs/[id]`) renders via:
 1. Click "Run" → POST /api/research/agent-run → creates ResearchRun
 2. Redirect to /runs/[id] → AgentThread renders with autoStart
 3. AgentThread → useChat → POST /api/research/agent
-4. Agent route loads config + historical context (trades, accuracy)
-5. GPT-4.1 calls tools: market overview → scan → research → thesis → trade → summarize
+4. Agent route loads config + historical context (portfolio, watchlist,
+   briefs, trades, accuracy, intelligence policy)
+5. GPT-4.1 follows 8-phase workflow:
+   Phase 0: Portfolio check-in (injected context, no tools)
+   Phase 1: Read intelligence (morning brief + signals + web_search)
+   Phase 2: Review holdings (get_stock_data per ticker)
+   Phase 3: Review watchlist
+   Phase 4: Discover (from signals, web_search for verification)
+   Phase 5: Synthesize (pure reasoning, decision table)
+   Phase 6: Execute (place_trade, close_position, manage_watchlist)
+   Phase 7: Wrap up (complete_run with ranked picks)
 6. Each tool renders a domain card in the chat UI
-7. show_thesis persists Thesis to DB + renders ThesisArtifactSheet
-8. place_trade calls Alpaca + persists Trade to DB + renders TradeCard
-9. summarize_run marks run COMPLETE
+7. record_thesis persists Thesis to DB + renders ThesisArtifactSheet
+8. place_trade calls Alpaca + creates Position + renders TradeCard
+9. complete_run marks run COMPLETE, triggers briefing agent
 
 ## Known Issues / Tech Debt
-- morning-research cron still uses Python pipeline, not agent
 - FMP historical-price-full may 403 on legacy plan (affects
   technical analysis for small-cap/ADR tickers)
-- Scanner returns micro-cap/ADR tickers with no Finnhub candle
-  data, making technical analysis impossible
-- synthesizeEventsFromTheses() doesn't generate trade_placed
-  events for legacy runs
-- ResearchChatFull uses custom SSE (NOT useChat/AI SDK)
-- RunDetailClient.tsx is dead code (replaced by runs/[id])
-- /chat page redirects to /analysts (removed)
+- Old analysts created before V3 may need V3 infra backfill
+  (source packs, intelligence queries, intelligence policy)
+- read_signals returns 0 for analysts without routed signals
+  (fallback queries by sector/watchlist exist but not verified)
+- Morning brief tool UI shows counts but not full briefing content
+- python-service/ directory still in repo (archived, not deployed)
 
 ## Key Files
 ### Agent System
@@ -251,9 +279,8 @@ The agent run page (`/runs/[id]`) renders via:
 
 ### Run Pages
 - app/(root)/runs/[id]/page.tsx — run detail (AgentThread vs
-  RunLiveStream vs RunUnifiedChat based on mode/status)
+  RunUnifiedChat based on mode/status)
 - components/research/RunUnifiedChat.tsx — events→chat renderer
-- components/research/RunLiveStream.tsx — SSE polling for live runs
 - components/research/RunFollowupChat.tsx — post-run chat
 
 ### Analyst System
@@ -263,20 +290,23 @@ The agent run page (`/runs/[id]`) renders via:
 - app/api/chat/analyst-builder/route.ts — builder chat API
 - app/api/chat/analyst-editor/route.ts — editor chat API
 
-### Inngest Crons
-- lib/inngest/functions/morning-research.ts — daily research
-- lib/inngest/functions/price-monitor.ts — hourly price check
-- lib/inngest/functions/trade-evaluator.ts — post-trade eval
-- lib/inngest/functions/accuracy-scorer.ts — weekly accuracy
+### Intelligence Pipeline
+- lib/intelligence/sonar.ts — Perplexity Sonar API client
+- lib/intelligence/firecrawl.ts — Firecrawl extraction client
+- lib/intelligence/signals.ts — signal creation + dedup utilities
+- lib/intelligence/types.ts — intelligence type definitions
+- lib/inngest/functions/firm-market-sweep.ts — daily sweep
+- lib/inngest/functions/portfolio-watchlist-monitor.ts — ticker monitor
+- lib/inngest/functions/domain-monitor.ts — domain monitor
+- lib/inngest/functions/signal-router.ts — signal routing
+- lib/inngest/functions/morning-brief-generator.ts — brief generation
 
-### Python Service (Railway)
-- python-service/main.py — FastAPI app
-- python-service/routers/research.py — /research endpoints
-- python-service/services/finrobot.py — 3-step CoT pipeline
-- python-service/services/scanner.py — market candidate scanner
-- python-service/services/fmp.py — FMP client (Finnhub primary)
-- python-service/services/finnhub.py — Finnhub client
-- python-service/services/indicators.py — technical indicators
+### Inngest Crons
+- lib/inngest/functions/morning-research.ts — daily agent run
+- lib/inngest/functions/price-monitor.ts — hourly price check
+- lib/inngest/functions/trade-evaluator.ts — post-trade GPT-4o eval
+- lib/inngest/functions/eod-evaluation.ts — end-of-day snapshots
+- lib/inngest/functions/accuracy-scorer.ts — weekly accuracy
 
 ### Core Lib
 - lib/alpaca.ts — Alpaca paper trading client

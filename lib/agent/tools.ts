@@ -2145,7 +2145,7 @@ export function createResearchTools(ctx: ToolContext) {
         let filtered = routes;
         if (excludedCategories.length > 0) {
           filtered = routes.filter((r) => {
-            // Use signal sectors as a proxy for source category filtering
+            // Filter by signal's sectors (source category no longer on Artifact)
             const signalSectors = r.signal.sectors ?? [];
             return !signalSectors.some((s: string) => (excludedCategories as string[]).includes(s));
           });

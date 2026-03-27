@@ -177,12 +177,10 @@ model AgentConfig {
   emailAlerts           Boolean  @default(true)
   weeklyDigestEnabled   Boolean  @default(true)
   digestEmail           String?  // override email for digest; uses auth email when null
-  // V3: Intelligence layer — policy
+  // V3: Intelligence layer
   intelligencePolicy    Json?    // IntelligencePolicy type — controls signal budget, attention weights, search limits
-  // V3: Intelligence layer relations
   signalRoutes          AnalystSignalRoute[]
   morningBriefs         MorningBrief[]
-  // V4: Unified monitors
   monitors              Monitor[]
 
   createdAt             DateTime @default(now())
@@ -190,7 +188,7 @@ model AgentConfig {
 }
 
 // ─── V3: INTELLIGENCE LAYER ──────────────────────────────────────────────────
-// Persistent intelligence backbone: signals, artifacts, monitoring.
+// Persistent intelligence backbone: monitors, signals, artifacts, routing.
 // Background jobs populate this layer; analyst runtime reads from it.
 
 /// Unified monitor — anything the intelligence system watches.
@@ -214,10 +212,6 @@ model Monitor {
   sourceRunId String?   // which run created this (for dynamic monitors from briefing agent)
   lastRunAt   DateTime?
 
-  // Legacy FKs for migration tracking
-  legacyQueryId  String? // original IntelligenceQuery.id
-  legacySourceId String? // original Source.id
-
   signals     Signal[]
 
   createdAt   DateTime  @default(now())
@@ -232,7 +226,6 @@ model Monitor {
 /// A raw piece of content extracted from the web — article, transcript, filing page.
 model Artifact {
   id              String   @id @default(cuid())
-  sourceId        String?  // legacy FK, no longer enforced — kept for data continuity
   url             String
   title           String
   contentMarkdown String?  // full extracted content (Firecrawl output)

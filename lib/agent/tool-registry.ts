@@ -2,7 +2,7 @@
 // Structured data for all agent tools. Drives the tool documentation UI
 // and markdown export. Update this file when tools change.
 //
-// V3 architecture: 10 runtime tools across 8 phases. Discovery moved to
+// V3 architecture: 14 runtime tools across 8 phases. Discovery moved to
 // background intelligence pipeline. Portfolio state injected as context.
 
 // ── Enums ──────────────────────────────────────────────────────────────────
@@ -205,6 +205,27 @@ export const TOOLS: ToolDef[] = [
         type: "internal",
         endpointOrPath: "inline logic",
         exampleOutput: "RISK_ON — VIX < 20, SPY above SMA-20",
+      },
+    ],
+  },
+  {
+    name: "web_search",
+    stage: "Discovery",
+    type: "Retrieval",
+    summary: "Search the web for real-time information via Perplexity Sonar — breaking news, recent developments, niche topics not covered by pre-gathered signals",
+    goal: "Get live data when pre-gathered intelligence is insufficient. Useful for breaking news, verifying signal claims, or researching niche topics. Respects intelligence policy budget limits.",
+    phases: [1, 2, 3, 4],
+    tags: ["optional"],
+    sources: ["perplexity"],
+    resources: [
+      {
+        source: "perplexity",
+        title: "Sonar web search",
+        description: "Real-time web search via Perplexity Sonar API. Returns structured signals with headlines, summaries, tickers, themes, sentiment, and urgency. Supports recency filtering (hour, day, week, month).",
+        type: "api",
+        endpointOrPath: "searchSignals(query, { recency })",
+        exampleOutput: "5 results · \"NVIDIA GPU shortage eases as supply normalizes\" · sentiment: bullish · urgency: MEDIUM",
+        notes: ["Budget: max 5 searches per run (configurable via intelligence policy)", "Returns up to 10 structured signals per search"],
       },
     ],
   },
@@ -596,10 +617,10 @@ export interface RunPhase {
 
 export const RUN_PHASES: RunPhase[] = [
   { number: 0, name: "Portfolio Check-in", description: "Read injected context: holdings, watchlist, prior brief, performance stats. No tool calls — pure reasoning.", tools: [], stepBudget: "0 steps" },
-  { number: 1, name: "Read Intelligence", description: "Read pre-gathered intelligence: morning brief (market context, portfolio alerts, new opportunities) and routed signals. Optionally call get_market_context if brief is stale.", tools: ["read_morning_brief", "read_signals", "read_artifact", "get_market_context"], stepBudget: "1–3 steps" },
+  { number: 1, name: "Read Intelligence", description: "Read pre-gathered intelligence: morning brief (market context, portfolio alerts, new opportunities) and routed signals. Optionally call get_market_context if brief is stale, or web_search for breaking developments.", tools: ["read_morning_brief", "read_signals", "read_artifact", "get_market_context", "web_search"], stepBudget: "1–3 steps" },
   { number: 2, name: "Review Holdings", description: "Triage open positions near target/stop, with earnings, or from watch-tomorrow list.", tools: ["get_stock_data", "get_earnings_data", "get_options_flow", "record_thesis"], stepBudget: "1–6 steps" },
   { number: 3, name: "Review Watchlist", description: "Triage watchlist items by priority, review triggers and catalysts.", tools: ["get_stock_data", "record_thesis"], stepBudget: "1–4 steps" },
-  { number: 4, name: "Discover", description: "Review opportunities from intelligence signals and morning brief. Research new ideas. Reduced scope at max positions or RISK_OFF.", tools: ["get_stock_data", "get_options_flow", "get_earnings_data", "get_sec_filings", "record_thesis"], stepBudget: "2–8 steps" },
+  { number: 4, name: "Discover", description: "Review opportunities from intelligence signals and morning brief. Research new ideas. Use web_search for verification or niche topics. Reduced scope at max positions or RISK_OFF.", tools: ["get_stock_data", "get_options_flow", "get_earnings_data", "get_sec_filings", "web_search", "record_thesis"], stepBudget: "2–8 steps" },
   { number: 5, name: "Synthesize", description: "Pure reasoning. Output decision table: INITIATE, ADD, HOLD, REDUCE, EXIT, WATCH, REMOVE, PASS. Consider exposure, risk budget, conflicts.", tools: [], stepBudget: "0 steps" },
   { number: 6, name: "Execute", description: "Execute decisions in order (exits before entries). Place trades, close positions, manage watchlist.", tools: ["place_trade", "close_position", "manage_watchlist"], stepBudget: "1–5 steps" },
   { number: 7, name: "Wrap Up", description: "Call complete_run with ranked picks, market summary, overall assessment, exposure breakdown, and risk notes. The analyst does NOT self-reflect — a separate briefing agent handles that after the session.", tools: ["complete_run"], stepBudget: "1 step" },
