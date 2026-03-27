@@ -75,7 +75,8 @@ export function StockPriceChart({ candles, referenceLines }: Props) {
   const firstClose = data[0].close;
   const lastClose = data[data.length - 1].close;
   const isUp = lastClose >= firstClose;
-  const strokeColor = isUp ? 'hsl(var(--positive))' : 'hsl(var(--negative))';
+  // Use hex colors — CSS variables are oklch() which don't work in SVG stroke/fill
+  const strokeColor = isUp ? '#22c55e' : '#ef4444';
 
   return (
     <div

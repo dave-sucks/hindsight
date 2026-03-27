@@ -75,8 +75,7 @@ export function WatchlistDropdown({ symbol, analysts }: WatchlistDropdownProps) 
         {optimisticAnalysts.map((analyst) => (
           <DropdownMenuItem
             key={analyst.id}
-            onSelect={() => handleToggle(analyst)}
-            disabled={isPending}
+            onClick={() => handleToggle(analyst)}
           >
             <span>{analyst.name}</span>
             {analyst.isWatched && (

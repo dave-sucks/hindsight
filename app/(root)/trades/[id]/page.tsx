@@ -186,9 +186,9 @@ export default async function TradeDetailPage({
 
   // Chart reference lines for entry/target/stop
   const chartReferenceLines = [
-    { price: trade.entryPrice, color: 'hsl(var(--foreground))', label: 'Entry', dashed: true },
-    { price: targetPrice, color: 'hsl(var(--positive))', label: 'Target', dashed: true },
-    { price: stopPrice, color: 'hsl(var(--negative))', label: 'Stop', dashed: true },
+    { price: trade.entryPrice, color: '#a1a1aa', label: 'Entry', dashed: true },
+    { price: targetPrice, color: '#22c55e', label: 'Target', dashed: true },
+    { price: stopPrice, color: '#ef4444', label: 'Stop', dashed: true },
   ];
 
   // Quote data for stats grid

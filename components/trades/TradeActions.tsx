@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -63,7 +62,7 @@ export function TradeActions({ tradeId, ticker, isOpen, runId }: TradeActionsPro
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           {runId && (
-            <DropdownMenuItem render={<Link href={`/runs/${runId}`} />}>
+            <DropdownMenuItem onClick={() => window.location.href = `/runs/${runId}`}>
               View run
             </DropdownMenuItem>
           )}
