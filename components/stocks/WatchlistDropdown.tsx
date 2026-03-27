@@ -1,15 +1,15 @@
 'use client';
 
-import { useOptimistic, useTransition } from 'react';
-import { BookmarkPlus, BookmarkCheck, Check } from 'lucide-react';
+import * as React from 'react';
+import { BookmarkPlus, BookmarkCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   addWatchlistItem,
@@ -28,40 +28,25 @@ interface WatchlistDropdownProps {
 }
 
 export function WatchlistDropdown({ symbol, analysts }: WatchlistDropdownProps) {
-  const [isPending, startTransition] = useTransition();
+  const [state, setState] = React.useState(analysts);
 
-  const [optimisticAnalysts, setOptimistic] = useOptimistic(
-    analysts,
-    (current: Analyst[], analystId: string) =>
-      current.map((a) =>
-        a.id === analystId ? { ...a, isWatched: !a.isWatched } : a,
-      ),
-  );
-
-  const anyWatched = optimisticAnalysts.some((a) => a.isWatched);
+  const anyWatched = state.some((a) => a.isWatched);
   const Icon = anyWatched ? BookmarkCheck : BookmarkPlus;
 
-  function handleToggle(analyst: Analyst) {
-    startTransition(async () => {
-      setOptimistic(analyst.id);
-      try {
-        if (analyst.isWatched) {
-          await removeWatchlistItem(analyst.id, symbol);
-        } else {
-          await addWatchlistItem(analyst.id, symbol);
-        }
-      } catch (error) {
-        console.error('Watchlist toggle failed:', error);
-      }
-    });
+  function handleToggle(analystId: string, checked: boolean) {
+    setState((prev) =>
+      prev.map((a) => (a.id === analystId ? { ...a, isWatched: checked } : a)),
+    );
+
+    if (checked) {
+      addWatchlistItem(analystId, symbol).catch(console.error);
+    } else {
+      removeWatchlistItem(analystId, symbol).catch(console.error);
+    }
   }
 
   if (analysts.length === 0) {
-    return (
-      <Button variant="ghost" size="icon-sm" disabled>
-        <BookmarkPlus />
-      </Button>
-    );
+    return null;
   }
 
   return (
@@ -69,20 +54,19 @@ export function WatchlistDropdown({ symbol, analysts }: WatchlistDropdownProps) 
       <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />}>
         <Icon />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Add to Watchlist</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {optimisticAnalysts.map((analyst) => (
-          <DropdownMenuItem
-            key={analyst.id}
-            onClick={() => handleToggle(analyst)}
-          >
-            <span>{analyst.name}</span>
-            {analyst.isWatched && (
-              <Check className="ml-auto h-4 w-4 text-primary" />
-            )}
-          </DropdownMenuItem>
-        ))}
+      <DropdownMenuContent className="w-48">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Watchlists</DropdownMenuLabel>
+          {state.map((analyst) => (
+            <DropdownMenuCheckboxItem
+              key={analyst.id}
+              checked={analyst.isWatched}
+              onCheckedChange={(checked) => handleToggle(analyst.id, !!checked)}
+            >
+              {analyst.name}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
