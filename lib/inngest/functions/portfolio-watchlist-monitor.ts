@@ -2,6 +2,11 @@
 // Runs daily at 7:00 AM ET after the market sweep.
 // Searches for news/developments on every open position and watchlist item
 // across all analysts (deduplicated). Writes ticker-tagged signals.
+//
+// Uses TWO permanent built-in SEARCH monitors:
+//   - "Portfolio Searches" (monitor_portfolio_searches) — reads open positions at runtime
+//   - "Watchlist Searches" (monitor_watchlist_searches) — reads watchlist items at runtime
+// The monitor rows are permanent; tickers are determined dynamically each run.
 
 import { inngest } from "@/lib/inngest/client"
 import { prisma } from "@/lib/prisma"
@@ -12,6 +17,65 @@ import {
   completeSignalBatch,
   deduplicateSignals,
 } from "@/lib/intelligence/signals"
+
+const PORTFOLIO_MONITOR_ID = "monitor_portfolio_searches"
+const WATCHLIST_MONITOR_ID = "monitor_watchlist_searches"
+
+/** Ensure the two permanent monitor rows exist (idempotent).
+ *  Also cleans up old per-ticker monitor rows from the previous architecture. */
+async function ensurePermanentMonitors() {
+  // Clean up old per-ticker rows (ticker-search-aapl, etc.)
+  await prisma.monitor.deleteMany({
+    where: {
+      id: { startsWith: "ticker-search-" },
+      builtIn: true,
+      category: "TICKER",
+    },
+  })
+
+  await Promise.all([
+    prisma.monitor.upsert({
+      where: { id: PORTFOLIO_MONITOR_ID },
+      create: {
+        id: PORTFOLIO_MONITOR_ID,
+        name: "Portfolio Searches",
+        type: "SEARCH",
+        method: "perplexity_sonar",
+        config: { track: "positions" },
+        scope: "FIRM",
+        enabled: true,
+        builtIn: true,
+        origin: "SYSTEM",
+        category: "TICKER",
+      },
+      update: {
+        name: "Portfolio Searches",
+        type: "SEARCH",
+        enabled: true,
+      },
+    }),
+    prisma.monitor.upsert({
+      where: { id: WATCHLIST_MONITOR_ID },
+      create: {
+        id: WATCHLIST_MONITOR_ID,
+        name: "Watchlist Searches",
+        type: "SEARCH",
+        method: "perplexity_sonar",
+        config: { track: "watchlist" },
+        scope: "FIRM",
+        enabled: true,
+        builtIn: true,
+        origin: "SYSTEM",
+        category: "TICKER",
+      },
+      update: {
+        name: "Watchlist Searches",
+        type: "SEARCH",
+        enabled: true,
+      },
+    }),
+  ])
+}
 
 export const portfolioWatchlistMonitor = inngest.createFunction(
   {
@@ -25,64 +89,34 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
     { event: "intelligence/portfolio-monitor" },
   ],
   async ({ step }) => {
-    // ── Step 1: Collect tickers and upsert Monitor rows ─────────────────
+    // ── Step 1: Ensure permanent monitors + collect tickers ────────────
 
-    const tickerMonitors = await step.run("collect-tickers-and-upsert-monitors", async () => {
-      const [positions, watchlistItems] = await Promise.all([
-        prisma.position.findMany({
-          where: { status: "OPEN" },
-          select: { symbol: true },
-        }),
-        prisma.analystWatchlistItem.findMany({
-          where: { status: "ACTIVE" },
-          select: { symbol: true },
-        }),
-      ])
+    const { portfolioTickers, watchlistTickers } = await step.run(
+      "collect-tickers",
+      async () => {
+        await ensurePermanentMonitors()
 
-      const portfolioTickers = new Set<string>()
-      for (const p of positions) portfolioTickers.add(p.symbol)
+        const [positions, watchlistItems] = await Promise.all([
+          prisma.position.findMany({
+            where: { status: "OPEN" },
+            select: { symbol: true },
+          }),
+          prisma.analystWatchlistItem.findMany({
+            where: { status: "ACTIVE" },
+            select: { symbol: true },
+          }),
+        ])
 
-      const watchlistTickers = new Set<string>()
-      for (const w of watchlistItems) watchlistTickers.add(w.symbol)
-
-      const allTickers = new Set([...portfolioTickers, ...watchlistTickers])
-      const sorted = Array.from(allTickers).sort()
-
-      // Upsert a Monitor row for each ticker
-      const results: { symbol: string; monitorId: string }[] = []
-
-      for (const symbol of sorted) {
-        const deterministicId = `ticker-search-${symbol.toLowerCase()}`
-        const query = `${symbol} stock news developments catalysts today`
-
-        const monitor = await prisma.monitor.upsert({
-          where: { id: deterministicId },
-          create: {
-            id: deterministicId,
-            name: `${symbol} Ticker Search`,
-            type: "SEARCH",
-            method: "perplexity_sonar",
-            config: { query },
-            scope: "FIRM",
-            enabled: true,
-            builtIn: true,
-            origin: "SYSTEM",
-            category: "TICKER",
-          },
-          update: {
-            name: `${symbol} Ticker Search`,
-            config: { query },
-            enabled: true,
-          },
-        })
-
-        results.push({ symbol, monitorId: monitor.id })
+        return {
+          portfolioTickers: [...new Set(positions.map((p) => p.symbol))].sort(),
+          watchlistTickers: [...new Set(watchlistItems.map((w) => w.symbol))].sort(),
+        }
       }
+    )
 
-      return results
-    })
+    const allTickers = [...new Set([...portfolioTickers, ...watchlistTickers])].sort()
 
-    if (tickerMonitors.length === 0) {
+    if (allTickers.length === 0) {
       return { ran: 0, reason: "no-tickers-to-monitor" }
     }
 
@@ -92,16 +126,20 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
       return createSignalBatch("PORTFOLIO_MONITOR")
     })
 
-    // ── Step 3: Search for each ticker (sequential to respect rate limits) ─
+    // ── Step 3: Search each ticker (sequential to respect rate limits) ────
 
     let totalSignals = 0
     let tickersSearched = 0
     let tickersFailed = 0
 
-    for (const { symbol: ticker, monitorId } of tickerMonitors) {
+    for (const ticker of allTickers) {
+      const isPortfolio = portfolioTickers.includes(ticker)
+      const monitorId = isPortfolio ? PORTFOLIO_MONITOR_ID : WATCHLIST_MONITOR_ID
+
       const result = await step.run(`search-${ticker}`, async () => {
         try {
           const sonarResponse = await searchTicker(ticker)
+          const query = `${ticker} stock news developments catalysts today`
 
           const signalIds = await createSignalsFromSonar(
             batchId,
@@ -110,17 +148,11 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
             3,
             {
               searchTool: "PERPLEXITY_SONAR",
-              searchQuery: `${ticker} stock news developments catalysts today`,
+              searchQuery: query,
               searchContext: `ticker:${ticker}`,
               monitorId,
             }
           )
-
-          // Update lastRunAt on the monitor
-          await prisma.monitor.update({
-            where: { id: monitorId },
-            data: { lastRunAt: new Date() },
-          })
 
           return { success: true, signalCount: signalIds.length }
         } catch (error) {
@@ -140,13 +172,33 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
       }
     }
 
-    // ── Step 4: Deduplicate ────────────────────────────────────────────────
+    // ── Step 4: Update lastRunAt on both monitors ──────────────────────────
+
+    await step.run("update-monitors", async () => {
+      const now = new Date()
+      await Promise.all([
+        portfolioTickers.length > 0
+          ? prisma.monitor.update({
+              where: { id: PORTFOLIO_MONITOR_ID },
+              data: { lastRunAt: now },
+            })
+          : Promise.resolve(),
+        watchlistTickers.length > 0
+          ? prisma.monitor.update({
+              where: { id: WATCHLIST_MONITOR_ID },
+              data: { lastRunAt: now },
+            })
+          : Promise.resolve(),
+      ])
+    })
+
+    // ── Step 5: Deduplicate ────────────────────────────────────────────────
 
     const dupsRemoved = await step.run("deduplicate", async () => {
       return deduplicateSignals(batchId)
     })
 
-    // ── Step 5: Complete batch ─────────────────────────────────────────────
+    // ── Step 6: Complete batch ─────────────────────────────────────────────
 
     await step.run("complete-batch", async () => {
       await completeSignalBatch(batchId)
@@ -154,7 +206,9 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
 
     return {
       batchId,
-      tickersTotal: tickerMonitors.length,
+      portfolioTickers: portfolioTickers.length,
+      watchlistTickers: watchlistTickers.length,
+      tickersTotal: allTickers.length,
       tickersSearched,
       tickersFailed,
       signalsCreated: totalSignals,

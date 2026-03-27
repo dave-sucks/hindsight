@@ -177,12 +177,9 @@ model AgentConfig {
   emailAlerts           Boolean  @default(true)
   weeklyDigestEnabled   Boolean  @default(true)
   digestEmail           String?  // override email for digest; uses auth email when null
-  // V3: Intelligence layer — policy + primary source pack
+  // V3: Intelligence layer — policy
   intelligencePolicy    Json?    // IntelligencePolicy type — controls signal budget, attention weights, search limits
-  primarySourcePackId   String?  // FK to analyst's primary source pack (the one the builder proposed)
   // V3: Intelligence layer relations
-  sourcePacks           SourcePack[]
-  intelligenceQueries   IntelligenceQuery[]
   signalRoutes          AnalystSignalRoute[]
   morningBriefs         MorningBrief[]
   // V4: Unified monitors
@@ -193,83 +190,8 @@ model AgentConfig {
 }
 
 // ─── V3: INTELLIGENCE LAYER ──────────────────────────────────────────────────
-// Persistent intelligence backbone: sources, signals, artifacts, monitoring.
+// Persistent intelligence backbone: signals, artifacts, monitoring.
 // Background jobs populate this layer; analyst runtime reads from it.
-
-/// A tracked information source — a domain, RSS feed, newsletter, etc.
-model Source {
-  id              String   @id @default(cuid())
-  name            String   // "Seeking Alpha", "STAT News", "Reuters"
-  type            String   // "DOMAIN" | "RSS" | "NEWSLETTER" | "TWITTER" | "API"
-  url             String?  // base URL or feed URL
-  domain          String?  // "seekingalpha.com" — used for Sonar domain filtering
-  category        String   // "MARKET" | "SECTOR" | "COMPANY" | "THEMATIC" | "SOCIAL" | "EVENT"
-  qualityScore    Int      @default(3)  // 1-5, used in signal scoring
-  checkFrequency  String   @default("DAILY") // "HOURLY" | "DAILY" | "WEEKLY"
-  enabled         Boolean  @default(true)
-  lastCheckedAt   DateTime?
-
-  packs           SourcePackSource[]
-  artifacts       Artifact[]
-  checkpoints     MonitorCheckpoint[]
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@index([domain])
-  @@index([category])
-}
-
-/// A curated bundle of sources — firm-wide or analyst-specific.
-model SourcePack {
-  id          String   @id @default(cuid())
-  name        String   // "Firm Market Pack", "Earnings Play Tech Pack"
-  scope       String   // "FIRM" | "ANALYST"
-  analystId   String?  // null for FIRM scope
-  analyst     AgentConfig? @relation(fields: [analystId], references: [id], onDelete: Cascade)
-
-  sources     SourcePackSource[]
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([scope])
-  @@index([analystId])
-}
-
-/// Join table: which sources belong to which packs, with priority.
-model SourcePackSource {
-  id           String     @id @default(cuid())
-  packId       String
-  sourceId     String
-  pack         SourcePack @relation(fields: [packId], references: [id], onDelete: Cascade)
-  source       Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  priority     Int        @default(2) // 1=critical, 2=standard, 3=supplementary
-
-  @@unique([packId, sourceId])
-}
-
-/// A configurable search query that runs as part of the intelligence sweep.
-/// Can be firm-wide, analyst-specific, permanent, or temporary (from briefing agent).
-model IntelligenceQuery {
-  id          String    @id @default(cuid())
-  scope       String    // "FIRM" | "ANALYST"
-  analystId   String?
-  analyst     AgentConfig? @relation(fields: [analystId], references: [id], onDelete: Cascade)
-  query       String    // the actual search query text
-  category    String    // "MARKET" | "SECTOR" | "TICKER" | "THEMATIC" | "EVENT"
-  enabled     Boolean   @default(true)
-  expiresAt   DateTime? // null = permanent; set for temporary watches from briefing agent
-  createdBy   String    // "USER" | "BRIEFING_AGENT" | "ANALYST_BUILDER" | "ANALYST_RUNTIME"
-  sourceRunId String?   // which run/briefing created this (for dynamic queries)
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@index([scope, enabled])
-  @@index([analystId])
-  @@index([expiresAt])
-}
 
 /// Unified monitor — anything the intelligence system watches.
 /// Replaces the split across IntelligenceQuery + Source + SourcePack.
@@ -310,8 +232,7 @@ model Monitor {
 /// A raw piece of content extracted from the web — article, transcript, filing page.
 model Artifact {
   id              String   @id @default(cuid())
-  sourceId        String?
-  source          Source?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  sourceId        String?  // legacy FK, no longer enforced — kept for data continuity
   url             String
   title           String
   contentMarkdown String?  // full extracted content (Firecrawl output)
@@ -407,22 +328,6 @@ model AnalystSignalRoute {
   @@index([analystId, status])
   @@index([analystId, routedAt])
   @@index([signalId])
-}
-
-/// Tracks "since last checked" state for sources and queries.
-/// Used by source pack monitor and portfolio monitor for change detection.
-model MonitorCheckpoint {
-  id              String   @id @default(cuid())
-  sourceId        String?
-  source          Source?  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  queryHash       String?  // SHA256 of query text, for monitoring saved queries
-  lastCheckedAt   DateTime
-  lastContentHash String?  // to detect changes
-  resultCount     Int      @default(0)
-  nextCheckAt     DateTime?
-
-  @@index([sourceId])
-  @@index([queryHash])
 }
 
 /// Pre-run intelligence summary generated per analyst each morning.

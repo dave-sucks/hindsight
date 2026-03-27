@@ -118,7 +118,7 @@ export function AnalystEditorChat({
             watchlist: config.watchlist,
             exclusionList: config.exclusionList,
             // V3 intelligence fields
-            sourcePackProposal: config.sourcePackProposal,
+            domainMonitorProposal: config.domainMonitorProposal,
             intelligenceQueries: config.intelligenceQueries,
             intelligencePolicy: config.intelligencePolicy,
           });

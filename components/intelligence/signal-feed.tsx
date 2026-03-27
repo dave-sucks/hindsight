@@ -224,14 +224,21 @@ const SignalRow = memo(function SignalRow({
 
             <Separator orientation="vertical" className="h-3" />
 
-            {/* Provider logo + monitor name */}
+            {/* Provider logo + monitor name + query/domain */}
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <ProviderLogo method={signal.monitor?.method} />
-              {signal.monitor?.name
-                ? `via ${signal.monitor.name}`
-                : signal.sourceNames[0]
-                ? `via ${signal.sourceNames[0]}`
-                : `via ${JOB_LABELS[signal.batch?.jobType] ?? "Intelligence"}`}
+              <span className="font-medium text-foreground/70">
+                {signal.monitor?.name
+                  ? signal.monitor.name
+                  : signal.sourceNames[0]
+                  ? signal.sourceNames[0]
+                  : JOB_LABELS[signal.batch?.jobType] ?? "Intelligence"}
+              </span>
+              {signal.searchQuery && (
+                <span className="truncate max-w-[160px]">
+                  &middot; {signal.searchQuery}
+                </span>
+              )}
             </span>
 
             {signal.artifactId && (
@@ -337,12 +344,17 @@ function SignalDetail({
 
         <Separator />
 
-        {/* ── How it works ────────────────────────────────────────────── */}
+        {/* ── How it was discovered ─────────────────────────────────── */}
         <div className="text-xs space-y-2">
           <div className="flex items-center gap-2">
-            <discovery.toolIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+            <discovery.toolIcon className="h-4 w-4 shrink-0" />
             <span className="font-medium text-foreground">{discovery.toolName}</span>
-            <span className="text-muted-foreground">via {discovery.jobLabel}</span>
+            {signal.monitor?.name && (
+              <>
+                <span className="text-muted-foreground">&middot;</span>
+                <span className="text-foreground">{signal.monitor.name}</span>
+              </>
+            )}
             <span className="ml-auto text-muted-foreground tabular-nums">
               {relativeTime(signal.createdAt)}
             </span>

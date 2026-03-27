@@ -284,14 +284,14 @@ const FIELD_LABELS: Record<string, string> = {
   minMarketCapTier: "Market Cap",
   watchlist: "Watchlist",
   exclusionList: "Exclusion List",
-  sourcePackProposal: "Source Monitors",
+  domainMonitorProposal: "Domain Monitors",
   intelligenceQueries: "Search Monitors",
   intelligencePolicy: "Attention Policy",
 };
 
 function formatValue(key: string, val: unknown): string {
   if (val == null || val === "") return "—";
-  if (key === "sourcePackProposal" && typeof val === "object") {
+  if (key === "domainMonitorProposal" && typeof val === "object") {
     const pack = val as { sources?: Array<{ name: string }> };
     return pack.sources?.map((s) => s.name).join(", ") ?? "—";
   }

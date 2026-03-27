@@ -66,7 +66,7 @@ const configSchema = z.object({
     .optional()
     .describe("Tickers to never trade."),
   // Intelligence monitors — domain sources and search queries
-  sourcePackProposal: z
+  domainMonitorProposal: z
     .object({
       name: z.string().describe("Monitor group name, e.g. 'EV Industry Monitors'"),
       sources: z
@@ -163,7 +163,7 @@ Use these tools when the user's request benefits from current market context, bu
 
 ## Intelligence Layer
 The analyst has an intelligence layer: background monitors that search the web daily and route findings to the agent before each run.
-- **sourcePackProposal**: 4-6 domain monitors (websites). Think: what sources would a real analyst at this desk read every morning?
+- **domainMonitorProposal**: 4-6 domain monitors (websites). Think: what sources would a real analyst at this desk read every morning?
 - **intelligenceQueries**: 3-5 standing search queries. Think: what would this analyst Google before the market opens?
 - **intelligencePolicy**: Attention weights (holdingsAttention, watchlistAttention, discoveryAttention — sum to ~1.0) and budgets.
 
@@ -173,7 +173,7 @@ When the user asks to "set up intelligence" or "add monitoring" or "what sources
 - ALWAYS include ALL fields when calling suggest_config — it replaces the entire config
 - The analystPrompt must be COMPLETE (not a diff) — at least 3-5 paragraphs
 - When only changing numeric params (confidence, position size), keep the analystPrompt unchanged
-- Intelligence fields (sourcePackProposal, intelligenceQueries, intelligencePolicy) are OPTIONAL — only include them when specifically setting up or changing intelligence monitoring
+- Intelligence fields (domainMonitorProposal, intelligenceQueries, intelligencePolicy) are OPTIONAL — only include them when specifically setting up or changing intelligence monitoring
 - Explain trade-offs before making changes — don't just blindly do what's asked
 - If the user's change seems counterproductive, respectfully push back with reasoning`;
 }

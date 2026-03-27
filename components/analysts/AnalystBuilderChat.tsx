@@ -145,7 +145,7 @@ export function AnalystBuilderChat({
             watchlist: config.watchlist ?? [],
             exclusionList: config.exclusionList ?? [],
             // V3: Intelligence layer proposals
-            sourcePackProposal: config.sourcePackProposal,
+            domainMonitorProposal: config.domainMonitorProposal,
             intelligenceQueries: config.intelligenceQueries,
             intelligencePolicy: config.intelligencePolicy,
           });

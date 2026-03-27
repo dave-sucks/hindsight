@@ -269,9 +269,9 @@ function MonitorRow({
 
   return (
     <TableRow>
-      {/* Colored type icon */}
+      {/* Colored type icon with provider logo */}
       <TableCell>
-        <MonitorTypeIcon type={monitor.type} />
+        <MonitorTypeIcon type={monitor.type} method={monitor.method} />
       </TableCell>
 
       {/* Name + detail + expandable tickers */}
@@ -345,26 +345,27 @@ function MonitorRow({
 
 // ── Type Icons ───────────────────────────────────────────────────────────────
 
-function MonitorTypeIcon({ type }: { type: string }) {
-  // SEARCH — all Sonar searches, DOMAIN — Sonar + Firecrawl, API — FMP/Finnhub
+function MonitorTypeIcon({ type, method }: { type: string; method?: string }) {
+  // Use real provider logos where possible
   if (type === "DOMAIN") {
     return (
       <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-orange/10 text-brand-orange">
-        <Globe className="h-3.5 w-3.5" />
+        <PerplexityLogo className="h-3.5 w-3.5" />
       </div>
     );
   }
   if (type === "API") {
+    const isFinnhub = method === "finnhub";
     return (
       <div className="h-7 w-7 rounded-md flex items-center justify-center bg-purple-500/10 text-purple-500">
-        <BarChart3 className="h-3.5 w-3.5" />
+        {isFinnhub ? <FinnhubLogo className="h-3.5 w-3.5" /> : <FmpLogo className="h-3.5 w-3.5" />}
       </div>
     );
   }
   // SEARCH — all Perplexity Sonar searches
   return (
     <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
-      <Search className="h-3.5 w-3.5" />
+      <PerplexityLogo className="h-3.5 w-3.5" />
     </div>
   );
 }
@@ -457,6 +458,13 @@ function MonitorInfoPopover({
           <div className="flex items-center gap-2">
             <ProviderLogo method={monitor.method} />
             <span className="font-medium text-foreground">{methodLabel}</span>
+            {isDomain && (
+              <>
+                <span className="text-muted-foreground">+</span>
+                <FirecrawlLogo className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-medium text-foreground">Firecrawl</span>
+              </>
+            )}
             {monitor.lastRunAt && (
               <span className="text-muted-foreground ml-auto tabular-nums">
                 {relativeTime(monitor.lastRunAt)}
@@ -466,12 +474,12 @@ function MonitorInfoPopover({
           <p className="text-muted-foreground leading-relaxed">
             {(config.description as string) ??
               (isSearch
-                ? "This query is sent to Perplexity Sonar every weekday morning. Sonar searches the web and returns structured signals — each with a headline, summary, tickers, sentiment, and source URLs. Signals are then routed to matching analysts."
+                ? "Sent to Perplexity Sonar → searches the web → returns structured signals (headline, summary, tickers, sentiment, urgency, sources). Signals are routed to matching analysts."
                 : isApi
-                ? "This API endpoint is called during the market sweep. The response is parsed into one aggregate signal with the top results (e.g. top 10 gainers with price and % change)."
+                ? "Calls this endpoint directly → returns structured market data → parsed into one aggregate signal with the top results."
                 : isDomain
-                ? "This domain is sent to Perplexity Sonar as a domain-filtered search every weekday morning. Sonar only returns results from this website. High-priority domains also get full-page HTML extraction via Firecrawl, stored as artifacts."
-                : "This query is sent to Perplexity Sonar every weekday morning. Sonar searches the web and returns structured signals.")}
+                ? "Sent to Perplexity Sonar as a domain-filtered search → only returns results from this website. High-priority domains also get full-page extraction via Firecrawl."
+                : "Sent to Perplexity Sonar → searches the web → returns structured signals.")}
           </p>
         </div>
 
