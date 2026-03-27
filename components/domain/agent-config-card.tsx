@@ -40,7 +40,7 @@ export type AgentConfigData = {
   watchlist?: (string | { symbol: string; reason?: string; priority?: string })[];
   exclusionList?: string[];
   // V3: Intelligence layer proposals (passed through from builder, not rendered in card)
-  sourcePackProposal?: {
+  domainMonitorProposal?: {
     name: string;
     sources: Array<{
       name: string;

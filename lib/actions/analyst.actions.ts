@@ -725,7 +725,7 @@ interface BuilderConfig {
   watchlist?: string[];
   exclusionList?: string[];
   // V3: Intelligence layer proposals from the builder
-  sourcePackProposal?: {
+  domainMonitorProposal?: {
     name: string;
     sources: Array<{
       name: string;
@@ -878,8 +878,8 @@ export async function createAnalystFromBuilder(
     }
 
     // 3. Create domain monitors from source pack proposal
-    if (data.sourcePackProposal && data.sourcePackProposal.sources.length > 0) {
-      const proposal = data.sourcePackProposal;
+    if (data.domainMonitorProposal && data.domainMonitorProposal.sources.length > 0) {
+      const proposal = data.domainMonitorProposal;
 
       for (const src of proposal.sources) {
         const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
@@ -1183,14 +1183,14 @@ export async function updateAnalystFromBuilder(
     data: updateData,
   });
 
-  // Create domain monitors from sourcePackProposal (replace existing BUILDER-origin monitors)
-  if (data.sourcePackProposal && data.sourcePackProposal.sources.length > 0) {
+  // Create domain monitors from domainMonitorProposal (replace existing BUILDER-origin monitors)
+  if (data.domainMonitorProposal && data.domainMonitorProposal.sources.length > 0) {
     // Remove old builder-created domain monitors for this analyst
     await prisma.monitor.deleteMany({
       where: { analystId: id, type: "DOMAIN", origin: "BUILDER" },
     });
 
-    for (const src of data.sourcePackProposal.sources) {
+    for (const src of data.domainMonitorProposal.sources) {
       const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
         .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
       await prisma.monitor.create({
@@ -1212,7 +1212,7 @@ export async function updateAnalystFromBuilder(
         },
       });
     }
-    console.log(`[analyst] Replaced domain monitors for analyst ${id}: ${data.sourcePackProposal.sources.length} created`);
+    console.log(`[analyst] Replaced domain monitors for analyst ${id}: ${data.domainMonitorProposal.sources.length} created`);
   }
 
   // Create search monitors from intelligenceQueries (replace existing BUILDER-origin monitors)

@@ -61,15 +61,14 @@ import {
   Info,
   SlidersHorizontal,
   Lock,
-  BarChart3,
-  CalendarDays,
+  Activity,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Monitor } from "./types";
-import { relativeTime, ORIGIN_LABELS, MONITOR_METHOD_CONFIG } from "./types";
+import { relativeTime, ORIGIN_LABELS } from "./types";
 import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo } from "./icons";
 
 // ── Category tooltips ────────────────────────────────────────────────────────
@@ -117,7 +116,11 @@ export function MonitorList({ monitors, onRefresh }: MonitorListProps) {
       if (categoryFilter !== "ALL" && m.category !== categoryFilter) return false;
       if (search) {
         const q = search.toLowerCase();
-        const searchable = `${m.name} ${getMonitorDetail(m)}`.toLowerCase();
+        const cfg = m.config ?? {};
+        const extra = m.type === "SEARCH" ? (cfg.query as string) ?? ""
+          : m.type === "DOMAIN" ? (cfg.domain as string) ?? ""
+          : "";
+        const searchable = `${m.name} ${extra}`.toLowerCase();
         if (!searchable.includes(q)) return false;
       }
       return true;
@@ -262,10 +265,14 @@ function MonitorRow({
   onDelete: () => void;
 }) {
   const [tickersOpen, setTickersOpen] = useState(false);
-  const detail = getMonitorDetail(monitor);
   const hasTickers =
     monitor.monitoredTickers &&
     monitor.monitoredTickers.length > 0;
+
+  const config = monitor.config ?? {};
+  const isSearch = monitor.type === "SEARCH";
+  const isDomain = monitor.type === "DOMAIN";
+  const isApi = monitor.type === "API";
 
   return (
     <TableRow>
@@ -274,14 +281,34 @@ function MonitorRow({
         <MonitorTypeIcon type={monitor.type} />
       </TableCell>
 
-      {/* Name + detail + expandable tickers */}
+      {/* Name / detail — 1 line per type */}
       <TableCell>
         <div className="min-w-0">
-          <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
-            {monitor.name}
-          </p>
-          {detail && (
-            <p className="text-xs text-muted-foreground truncate">{detail}</p>
+          {isSearch && (
+            <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
+              {(config.query as string) ?? monitor.name}
+            </p>
+          )}
+          {isDomain && (
+            <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
+              {monitor.name}
+              <span className="text-xs text-muted-foreground font-mono ml-2">
+                {(config.domain as string) ?? ""}
+              </span>
+            </p>
+          )}
+          {isApi && (
+            <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
+              {monitor.name}
+              <span className="text-xs text-muted-foreground ml-2">
+                from {monitor.method === "finnhub" ? "Finnhub" : "FMP"}
+              </span>
+            </p>
+          )}
+          {!isSearch && !isDomain && !isApi && (
+            <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
+              {monitor.name}
+            </p>
           )}
           {hasTickers && (
             <Collapsible open={tickersOpen} onOpenChange={setTickersOpen}>
@@ -323,11 +350,13 @@ function MonitorRow({
         </span>
       </TableCell>
 
-      {/* Today's findings count */}
+      {/* Today's findings count — only show badge when > 0 */}
       <TableCell>
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {monitor._count.signals > 0 ? monitor._count.signals : "—"}
-        </span>
+        {monitor._count.signals > 0 && (
+          <Badge variant="secondary">
+            <span className="tabular-nums">{monitor._count.signals}</span>
+          </Badge>
+        )}
       </TableCell>
 
       {/* Enabled toggle */}
@@ -346,7 +375,6 @@ function MonitorRow({
 // ── Type Icons ───────────────────────────────────────────────────────────────
 
 function MonitorTypeIcon({ type }: { type: string }) {
-  // SEARCH — all Sonar searches, DOMAIN — Sonar + Firecrawl, API — FMP/Finnhub
   if (type === "DOMAIN") {
     return (
       <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-orange/10 text-brand-orange">
@@ -357,11 +385,11 @@ function MonitorTypeIcon({ type }: { type: string }) {
   if (type === "API") {
     return (
       <div className="h-7 w-7 rounded-md flex items-center justify-center bg-purple-500/10 text-purple-500">
-        <BarChart3 className="h-3.5 w-3.5" />
+        <Activity className="h-3.5 w-3.5" />
       </div>
     );
   }
-  // SEARCH — all Perplexity Sonar searches
+  // SEARCH
   return (
     <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
       <Search className="h-3.5 w-3.5" />
@@ -406,14 +434,6 @@ function ApiCallVisual({ name, endpoint }: { name: string; endpoint: string }) {
   );
 }
 
-function ProviderLogo({ method }: { method: string }) {
-  if (method === "perplexity_sonar") return <PerplexityLogo className="h-3.5 w-3.5 text-muted-foreground" />;
-  if (method === "firecrawl") return <FirecrawlLogo className="h-3.5 w-3.5 text-muted-foreground" />;
-  if (method === "fmp") return <FmpLogo className="h-3.5 w-3.5 text-muted-foreground" />;
-  if (method === "finnhub") return <FinnhubLogo className="h-3.5 w-3.5 text-muted-foreground" />;
-  return null;
-}
-
 // ── Detail Popover ───────────────────────────────────────────────────────────
 
 function MonitorInfoPopover({
@@ -427,8 +447,6 @@ function MonitorInfoPopover({
   const isSearch = monitor.type === "SEARCH";
   const isDomain = monitor.type === "DOMAIN";
   const isApi = monitor.type === "API";
-  const methodLabel = MONITOR_METHOD_CONFIG[monitor.method]?.label ?? monitor.method;
-
   return (
     <Popover>
       <PopoverTrigger
@@ -452,27 +470,73 @@ function MonitorInfoPopover({
 
         <Separator />
 
-        {/* Provider + how it works */}
-        <div className="text-xs space-y-2">
-          <div className="flex items-center gap-2">
-            <ProviderLogo method={monitor.method} />
-            <span className="font-medium text-foreground">{methodLabel}</span>
-            {monitor.lastRunAt && (
-              <span className="text-muted-foreground ml-auto tabular-nums">
-                {relativeTime(monitor.lastRunAt)}
-              </span>
-            )}
-          </div>
-          <p className="text-muted-foreground leading-relaxed">
-            {(config.description as string) ??
-              (isSearch
-                ? "This query is sent to Perplexity Sonar every weekday morning. Sonar searches the web and returns structured signals — each with a headline, summary, tickers, sentiment, and source URLs. Signals are then routed to matching analysts."
-                : isApi
-                ? "This API endpoint is called during the market sweep. The response is parsed into one aggregate signal with the top results (e.g. top 10 gainers with price and % change)."
-                : isDomain
-                ? "This domain is sent to Perplexity Sonar as a domain-filtered search every weekday morning. Sonar only returns results from this website. High-priority domains also get full-page HTML extraction via Firecrawl, stored as artifacts."
-                : "This query is sent to Perplexity Sonar every weekday morning. Sonar searches the web and returns structured signals.")}
-          </p>
+        {/* Provider rows — one per service involved */}
+        <div className="text-xs space-y-3">
+          {isSearch && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <PerplexityLogo className="h-4 w-4 text-foreground shrink-0" />
+                <span className="font-medium text-foreground">Perplexity Sonar</span>
+                {monitor.lastRunAt && (
+                  <span className="text-muted-foreground ml-auto tabular-nums">
+                    {relativeTime(monitor.lastRunAt)}
+                  </span>
+                )}
+              </div>
+              <p className="text-muted-foreground leading-relaxed">
+                Searches the web for this query and returns the best results. Each quality result becomes a finding with the headline, summary, and source URL. Findings are tagged with relevant stock tickers and scored so they can be routed to the right analysts.
+              </p>
+            </div>
+          )}
+
+          {isDomain && (
+            <>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <PerplexityLogo className="h-4 w-4 text-foreground shrink-0" />
+                  <span className="font-medium text-foreground">Perplexity Sonar</span>
+                  {monitor.lastRunAt && (
+                    <span className="text-muted-foreground ml-auto tabular-nums">
+                      {relativeTime(monitor.lastRunAt)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-muted-foreground leading-relaxed">
+                  Searches only within this website for recent articles and news. Does not crawl every page — it finds the most relevant recent content on the domain and returns findings with headlines, summaries, and source URLs.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <FirecrawlLogo className="h-4 w-4 text-foreground shrink-0" />
+                  <span className="font-medium text-foreground">Firecrawl</span>
+                </div>
+                <p className="text-muted-foreground leading-relaxed">
+                  For important articles Sonar finds, Firecrawl visits the actual page and extracts the full article text. This lets the agent read the complete article during a run instead of just the summary.
+                </p>
+              </div>
+            </>
+          )}
+
+          {isApi && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                {monitor.method === "finnhub"
+                  ? <FinnhubLogo className="h-4 w-4 text-foreground shrink-0" />
+                  : <FmpLogo className="h-4 w-4 text-foreground shrink-0" />}
+                <span className="font-medium text-foreground">
+                  {monitor.method === "finnhub" ? "Finnhub" : "FMP"}
+                </span>
+                {monitor.lastRunAt && (
+                  <span className="text-muted-foreground ml-auto tabular-nums">
+                    {relativeTime(monitor.lastRunAt)}
+                  </span>
+                )}
+              </div>
+              <p className="text-muted-foreground leading-relaxed">
+                {getApiDescription(monitor)}
+              </p>
+            </div>
+          )}
         </div>
 
         <Separator />
@@ -727,10 +791,22 @@ function AddMonitorInput({ onRefresh }: { onRefresh: () => void }) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getMonitorDetail(monitor: Monitor): string {
+function getApiDescription(monitor: Monitor): string {
   const config = monitor.config ?? {};
-  if (monitor.type === "SEARCH") return (config.query as string) ?? "";
-  if (monitor.type === "DOMAIN") return (config.domain as string) ?? "";
-  if (monitor.type === "API") return (config.endpoint as string) ?? "";
-  return "";
+  const endpoint = (config.endpoint as string) ?? "";
+
+  if (endpoint.includes("gainers")) {
+    return "Calls the FMP API every morning to get today's top 10 stocks with the biggest price gains. Returns one finding with a table of tickers, current prices, and percentage changes.";
+  }
+  if (endpoint.includes("losers")) {
+    return "Calls the FMP API every morning to get today's top 10 stocks with the biggest price drops. Returns one finding with a table of tickers, current prices, and percentage changes.";
+  }
+  if (endpoint.includes("actives")) {
+    return "Calls the FMP API every morning to get today's 10 most-traded stocks by volume. Returns one finding with a table of tickers, current prices, and trading volume.";
+  }
+  if (endpoint.includes("earnings")) {
+    return "Calls the Finnhub API to get all companies reporting earnings in the next 7 days. Returns one finding with a list of tickers, earnings dates, and EPS estimates.";
+  }
+  // Fallback to stored description
+  return (config.description as string) ?? "Calls this API endpoint and returns the results as a single finding.";
 }

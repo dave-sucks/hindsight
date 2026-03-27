@@ -2131,11 +2131,7 @@ export function createResearchTools(ctx: ToolContext) {
           include: {
             signal: {
               include: {
-                artifact: {
-                  include: {
-                    source: { select: { category: true } },
-                  },
-                },
+                artifact: true,
               },
             },
           },
@@ -2145,12 +2141,13 @@ export function createResearchTools(ctx: ToolContext) {
         });
 
         // Filter out excluded source categories in application code
-        // (Prisma doesn't support deep nested NOT-IN on optional relations cleanly)
+        // Category filtering is now based on signal sectors since Source model was removed
         let filtered = routes;
         if (excludedCategories.length > 0) {
           filtered = routes.filter((r) => {
-            const sourceCategory = r.signal.artifact?.source?.category;
-            return !sourceCategory || !(excludedCategories as string[]).includes(sourceCategory);
+            // Use signal sectors as a proxy for source category filtering
+            const signalSectors = r.signal.sectors ?? [];
+            return !signalSectors.some((s: string) => (excludedCategories as string[]).includes(s));
           });
         }
 

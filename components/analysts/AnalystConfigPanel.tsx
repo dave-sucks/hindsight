@@ -122,7 +122,7 @@ export function AnalystConfigPanel({
   const watchlist = config.watchlist ?? [];
   const exclusionList = config.exclusionList ?? [];
   const holdDurations = config.holdDurations ?? [];
-  const sources = config.sourcePackProposal?.sources ?? [];
+  const sources = config.domainMonitorProposal?.sources ?? [];
   const queries = config.intelligenceQueries ?? [];
   const policy = config.intelligencePolicy;
   const dm = directionMeta[direction] ?? directionMeta.BOTH;
@@ -267,17 +267,17 @@ export function AnalystConfigPanel({
 
               {watchlist.length > 0 && sources.length > 0 && <Separator />}
 
-              {/* Source Pack */}
+              {/* Domain Monitors */}
               {sources.length > 0 && (
                 <div>
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <Globe className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Source Pack
+                      Domain Monitors
                     </span>
-                    {config.sourcePackProposal?.name && (
+                    {config.domainMonitorProposal?.name && (
                       <span className="text-[10px] text-muted-foreground/60 ml-auto font-mono">
-                        {config.sourcePackProposal.name}
+                        {config.domainMonitorProposal.name}
                       </span>
                     )}
                   </div>

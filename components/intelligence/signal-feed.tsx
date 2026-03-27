@@ -29,19 +29,16 @@ import {
   CalendarDays,
   ExternalLink,
   FileText,
-  Flame,
   Globe,
-  Lock,
   Search,
 } from "lucide-react";
+import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
 import type { Signal } from "./types";
 import {
   relativeTime,
   JOB_LABELS,
-  URGENCY_CONFIG,
   SENTIMENT_CONFIG,
-  THEME_LABELS,
 } from "./types";
 import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo } from "./icons";
 
@@ -173,100 +170,54 @@ const SignalRow = memo(function SignalRow({
   signal: Signal;
   onSelect: (signal: Signal) => void;
 }) {
-  const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
-  const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
+  const primarySource = signal.sourceNames[0];
+  const primaryDomain = extractDomainFromUrls(signal.sourceUrls);
+  const sentimentDir = signal.sentiment === "BULLISH" ? "up" : signal.sentiment === "BEARISH" ? "down" : null;
 
   return (
     <Card
       className="p-4 cursor-pointer hover:bg-accent/50 transition-colors"
       onClick={() => onSelect(signal)}
     >
-      <div className="flex items-start gap-3">
-        {/* Urgency dot */}
-        <Tooltip>
-          <TooltipTrigger render={<span className="inline-flex" />}>
-            <span
-              className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", urgency.dot)}
-            />
-          </TooltipTrigger>
-          <TooltipContent side="left">{urgency.label} urgency</TooltipContent>
-        </Tooltip>
-
-        <div className="flex-1 min-w-0 space-y-1.5">
-          {/* Headline */}
-          <p className="text-sm font-medium leading-tight">{signal.headline}</p>
-
-          {/* Summary */}
-          <p className="text-xs text-muted-foreground line-clamp-2">
-            {signal.summary}
+      <div className="space-y-2">
+        {/* Row 1: headline left, ticker + arrow right */}
+        <div className="flex items-start gap-3">
+          <p className="text-sm font-medium leading-tight flex-1 min-w-0">
+            {signal.headline}
           </p>
-
-          {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {/* Tickers */}
-            {signal.tickers.slice(0, 5).map((t) => (
-              <Badge key={t} variant="secondary">
-                ${t}
-              </Badge>
-            ))}
-            {signal.tickers.length > 5 && (
-              <span className="text-xs text-muted-foreground">
-                +{signal.tickers.length - 5}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {signal.tickers.length > 0 && (
+              <span className="text-xs font-mono font-medium text-muted-foreground">
+                {signal.tickers.length === 1
+                  ? signal.tickers[0]
+                  : signal.tickers.slice(0, 2).join(", ")
+                }
+                {signal.tickers.length > 2 && ` +${signal.tickers.length - 2}`}
               </span>
             )}
-
-            <Separator orientation="vertical" className="h-3" />
-
-            {/* Sentiment */}
-            <span className={cn("text-xs font-medium", sentiment.className)}>
-              {sentiment.label}
-            </span>
-
-            <Separator orientation="vertical" className="h-3" />
-
-            {/* Provider logo + monitor name */}
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <ProviderLogo method={signal.monitor?.method} />
-              {signal.monitor?.name
-                ? `via ${signal.monitor.name}`
-                : signal.sourceNames[0]
-                ? `via ${signal.sourceNames[0]}`
-                : `via ${JOB_LABELS[signal.batch?.jobType] ?? "Intelligence"}`}
-            </span>
-
-            {signal.artifactId && (
-              <Tooltip>
-                <TooltipTrigger render={<span className="inline-flex" />}>
-                  <FileText className="h-3 w-3 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>Full article available</TooltipContent>
-              </Tooltip>
+            {sentimentDir && (
+              <PnlArrow direction={sentimentDir} className="h-4 w-4" />
             )}
           </div>
-
-          {/* Per-signal routing badges */}
-          {signal.routes && signal.routes.length > 0 && (
-            <div className="flex flex-wrap gap-1 pt-0.5">
-              {signal.routes.slice(0, 4).map((r) => (
-                <Tooltip key={r.id}>
-                  <TooltipTrigger render={<span className="inline-flex" />}>
-                    <Badge variant="outline" className="text-[10px]">
-                      {r.analyst.name}
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Relevance: {r.relevanceScore}% — {formatRouteReason(r.routeReason)}
-                  </TooltipContent>
-                </Tooltip>
-              ))}
-            </div>
-          )}
         </div>
 
-        {/* Time */}
-        <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-          {relativeTime(signal.createdAt)}
-        </span>
+        {/* Row 2: summary — text-sm for readability */}
+        <p className="text-sm text-muted-foreground line-clamp-2">
+          {signal.summary}
+        </p>
+
+        {/* Row 3: source logo + name, then timestamp */}
+        <div className="flex items-center gap-1.5">
+          {primaryDomain && (
+            <Favicon domain={primaryDomain} />
+          )}
+          {primarySource && (
+            <span className="text-xs text-muted-foreground">{primarySource}</span>
+          )}
+          <span className="text-xs text-muted-foreground tabular-nums ml-auto shrink-0">
+            {relativeTime(signal.createdAt)}
+          </span>
+        </div>
       </div>
     </Card>
   );
@@ -279,153 +230,135 @@ function SignalDetail({
 }: {
   signal: Signal;
 }) {
-  const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
   const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
   const discovery = inferDiscovery(signal);
+  const sentimentDir = signal.sentiment === "BULLISH" ? "up" : signal.sentiment === "BEARISH" ? "down" : null;
 
   return (
     <>
-      <SheetHeader className="space-y-4">
-        {/* ── Discovery header (matches config popover style) ─────── */}
-        <DiscoveryHeader discovery={discovery} signal={signal} />
-
-        {/* Title + summary */}
-        <div className="space-y-2">
-          <SheetTitle className="text-left leading-tight">
-            {signal.headline}
-          </SheetTitle>
-          <p className="text-sm text-muted-foreground">{signal.summary}</p>
-        </div>
+      {/* ── Headline + summary ──────────────────────────────────── */}
+      <SheetHeader className="space-y-3 pr-10">
+        <SheetTitle className="text-left leading-tight">
+          {signal.headline}
+        </SheetTitle>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {signal.summary}
+        </p>
       </SheetHeader>
 
-      <div className="px-6 pb-6 space-y-5">
-        {/* Classification badges — simplified */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">{signal.type}</Badge>
-          <Badge variant="secondary">
-            <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", urgency.dot)} />
-            {urgency.label}
-          </Badge>
-          {signal.sentiment !== "NEUTRAL" && (
-            <Badge variant="secondary">
-              <span className={cn("mr-1", sentiment.className)}>{sentiment.label}</span>
-            </Badge>
-          )}
-        </div>
+      <div className="px-4 pb-6 space-y-4">
+        {/* ── Tickers + sentiment arrow ───────────────────────────── */}
+        {signal.tickers.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {signal.tickers.map((t) => (
+              <span key={t} className="inline-flex items-center gap-1">
+                <span className="text-sm font-mono font-medium">{t}</span>
+                {sentimentDir && signal.tickers.length === 1 && (
+                  <PnlArrow direction={sentimentDir} className="h-4 w-4" />
+                )}
+              </span>
+            ))}
+            {sentimentDir && signal.tickers.length !== 1 && (
+              <span className="inline-flex items-center gap-1 ml-auto">
+                <span className={cn("text-xs font-medium", sentiment.className)}>
+                  {sentiment.label}
+                </span>
+                <PnlArrow direction={sentimentDir} className="h-4 w-4" />
+              </span>
+            )}
+          </div>
+        )}
 
-        {/* Tickers + Themes (translated, top 3) */}
-        {(signal.tickers.length > 0 || signal.themes.length > 0) && (
-          <div className="space-y-2">
-            {signal.tickers.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Tickers</span>
-                {signal.tickers.map((t) => (
-                  <Badge key={t} variant="secondary">${t}</Badge>
-                ))}
-              </div>
-            )}
-            {signal.themes.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground mr-1">Themes</span>
-                {signal.themes.slice(0, 3).map((t) => (
-                  <Badge key={t} variant="outline">{THEME_LABELS[t] ?? t.toLowerCase().replace(/_/g, " ")}</Badge>
-                ))}
-              </div>
-            )}
+        {/* ── Analysts ────────────────────────────────────────────── */}
+        {signal.routes && signal.routes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {signal.routes.map((r) => (
+              <Tooltip key={r.id}>
+                <TooltipTrigger render={<span className="inline-flex" />}>
+                  <Badge variant="outline">
+                    {r.analyst.name}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {r.relevanceScore}% — {formatRouteReason(r.routeReason)}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        )}
+
+        {/* ── Sources ─────────────────────────────────────────────── */}
+        {signal.sourceUrls.length > 0 && (
+          <div className="space-y-1">
+            {signal.sourceUrls.map((url, i) => {
+              let domain = url;
+              try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
+              const name = signal.sourceNames[i];
+              return (
+                <a
+                  key={i}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2.5 rounded-md px-2.5 py-2 -mx-2.5 hover:bg-accent/50 transition-colors group"
+                >
+                  <Favicon domain={domain} size={20} />
+                  <span className="flex-1 min-w-0">
+                    {name && (
+                      <span className="text-sm text-foreground">{name}</span>
+                    )}
+                    <span className="text-xs text-muted-foreground font-mono ml-1.5">
+                      {domain}
+                    </span>
+                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </a>
+              );
+            })}
+          </div>
+        )}
+
+        {signal.artifactId && (
+          <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2">
+            <FirecrawlLogo className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">
+              Full article extracted — available to agents during runs
+            </span>
           </div>
         )}
 
         <Separator />
 
-        {/* ── How it works ────────────────────────────────────────────── */}
-        <div className="text-xs space-y-2">
-          <div className="flex items-center gap-2">
-            <discovery.toolIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+        {/* ── Discovery ───────────────────────────────────────────── */}
+        <div className="space-y-2.5">
+          {/* Search query / domain visual first */}
+          {signal.searchQuery && (
+            <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+              <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <p className="text-xs text-foreground truncate">{signal.searchQuery}</p>
+            </div>
+          )}
+
+          {/* Provider logo + timestamp */}
+          <div className="flex items-center gap-2 text-xs">
+            <discovery.toolIcon className="h-4 w-4 shrink-0" />
             <span className="font-medium text-foreground">{discovery.toolName}</span>
-            <span className="text-muted-foreground">via {discovery.jobLabel}</span>
-            <span className="ml-auto text-muted-foreground tabular-nums">
+            <span className="text-muted-foreground tabular-nums ml-auto">
               {relativeTime(signal.createdAt)}
             </span>
           </div>
-          <p className="text-muted-foreground leading-relaxed">
-            {discovery.explanation}
-          </p>
+
+          {/* Monitor explanation */}
+          {signal.monitor?.name && (
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Via the <span className="text-foreground font-medium">{signal.monitor.name}</span> monitor
+              {signal.monitor.type === "SEARCH" && " which searches this query daily via Perplexity Sonar"}
+              {signal.monitor.type === "DOMAIN" && " which monitors this domain daily via Perplexity Sonar"}
+              {signal.monitor.type === "API" && " which calls this API endpoint daily"}
+              . Findings are scored and routed to matching analysts.
+            </p>
+          )}
         </div>
-
-        {/* ── Evidence Sources ────────────────────────────────────────── */}
-        {signal.sourceUrls.length > 0 && (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Sources
-              </p>
-              <div className="space-y-1">
-                {signal.sourceUrls.map((url, i) => {
-                  let domain = url;
-                  try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
-                  const name = signal.sourceNames[i];
-                  return (
-                    <a
-                      key={i}
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-sm hover:bg-accent/50 transition-colors group"
-                    >
-                      <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 min-w-0">
-                        {name && (
-                          <span className="text-foreground">{name}</span>
-                        )}
-                        <span className="text-xs text-muted-foreground ml-1 truncate">
-                          {domain}
-                        </span>
-                      </span>
-                      <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </a>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Artifact */}
-        {signal.artifactId && (
-          <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2">
-            <Flame className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              Full article extracted via Firecrawl
-            </span>
-          </div>
-        )}
-
-        {/* ── Per-signal routing ────────────────────────────────────── */}
-        {signal.routes && signal.routes.length > 0 && (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Routed to
-              </p>
-              <div className="space-y-1.5">
-                {signal.routes.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span>{r.analyst.name}</span>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-                      <span>{r.relevanceScore}%</span>
-                      <span className="text-muted-foreground">{formatRouteReason(r.routeReason)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
       </div>
     </>
   );
@@ -613,50 +546,20 @@ function inferQueryFromSignal(signal: Signal): string {
   return signal.headline.slice(0, 60);
 }
 
-/** Visual header matching config popover style */
-function DiscoveryHeader({ discovery, signal }: { discovery: Discovery; signal: Signal }) {
-  if (discovery.type === "domain") {
-    // Domain bar with lock icon (like config popover DomainVisual)
-    return (
-      <div className="space-y-1.5">
-        {discovery.sourceName && (
-          <p className="text-sm font-medium text-foreground">{discovery.sourceName}</p>
-        )}
-        <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-          <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
-          <p className="text-xs text-muted-foreground font-mono truncate">{discovery.visual}</p>
-          <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0">
-            {relativeTime(signal.createdAt)}
-          </span>
-        </div>
-      </div>
-    );
-  }
+// ── Favicon ──────────────────────────────────────────────────────────────────
+// Uses Google's favicon service for any domain.
 
-  if (discovery.type === "api") {
-    // API endpoint bar (like config popover ApiCallVisual)
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 font-mono">
-        <Badge variant="secondary">
-          GET
-        </Badge>
-        <p className="text-xs text-foreground truncate">{discovery.visual}</p>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0 font-sans">
-          {relativeTime(signal.createdAt)}
-        </span>
-      </div>
-    );
-  }
-
-  // search: Search bar (like config popover SearchQueryVisual)
+function Favicon({ domain, size = 16 }: { domain: string; size?: number }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-      <p className="text-sm text-foreground truncate">{discovery.visual}</p>
-      <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0">
-        {relativeTime(signal.createdAt)}
-      </span>
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://www.google.com/s2/favicons?sz=${size}&domain=${domain}`}
+      alt=""
+      width={size}
+      height={size}
+      className="shrink-0 rounded-sm"
+      loading="lazy"
+    />
   );
 }
 
@@ -668,17 +571,6 @@ const TOOL_CONFIG: Record<string, { name: string; icon: Icon }> = {
   FINNHUB: { name: "Finnhub", icon: FinnhubLogo },
   FIRECRAWL: { name: "Firecrawl", icon: FirecrawlLogo },
 };
-
-// ── Provider Logo (inline) ──────────────────────────────────────────────────
-
-function ProviderLogo({ method }: { method?: string | null }) {
-  if (!method) return null;
-  if (method === "perplexity_sonar") return <PerplexityLogo className="h-3 w-3" />;
-  if (method === "firecrawl") return <FirecrawlLogo className="h-3 w-3" />;
-  if (method === "fmp") return <FmpLogo className="h-3 w-3" />;
-  if (method === "finnhub") return <FinnhubLogo className="h-3 w-3" />;
-  return null;
-}
 
 // ── Aggregate Finding Card ──────────────────────────────────────────────────
 
@@ -697,7 +589,9 @@ function AggregateFindingCard({ signal }: { signal: Signal }) {
     <Card className="p-6">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <ProviderLogo method={signal.monitor?.method} />
+          {signal.monitor?.method === "finnhub"
+            ? <FinnhubLogo className="h-4 w-4 text-muted-foreground" />
+            : <FmpLogo className="h-4 w-4 text-muted-foreground" />}
           <p className="text-sm font-medium">{title}</p>
           <Badge variant="secondary">{signal.itemCount ?? data.length}</Badge>
         </div>

@@ -69,7 +69,7 @@ const configSchema = z.object({
     .optional()
     .describe("Tickers to never trade."),
   // Intelligence monitors — domain sources and search queries
-  sourcePackProposal: z
+  domainMonitorProposal: z
     .object({
       name: z.string().describe("Monitor group name, e.g. 'EV Industry Monitors'"),
       sources: z
@@ -199,7 +199,7 @@ Create short, memorable names that capture the analyst's personality:
 ## Intelligence Monitors
 When you call suggest_config, you MUST also propose monitors that power the analyst's daily intelligence:
 
-### Domain Monitors (sourcePackProposal)
+### Domain Monitors (domainMonitorProposal)
 Think like a research desk manager setting up a new analyst's information feeds. What 4-6 domain sources would a REAL analyst in this space read every morning?
 - **Tier-1 financial press** (Reuters, Bloomberg, WSJ) — quality 4-5, category MARKET
 - **Sector-specific outlets** (Electrek for EV, STAT News for biotech, The Information for tech) — quality 3-4, category SECTOR
@@ -227,7 +227,7 @@ Note: In addition to the monitors you propose, the system automatically monitors
 - NEVER call suggest_config without first calling at least get_market_context + one other research tool
 - Always call suggest_config with ALL required fields filled in
 - The analystPrompt field is the MOST important — make it thorough and specific
-- ALWAYS include sourcePackProposal, intelligenceQueries, and intelligencePolicy — these power the monitor pipeline
+- ALWAYS include domainMonitorProposal, intelligenceQueries, and intelligencePolicy — these power the monitor pipeline
 - Be conversational and enthusiastic — push the user to think deeper
 - This is paper trading (simulated) — remind users if they seem confused about real money
 - Use your research tools during brainstorming — don't just ask questions, bring data to the conversation
