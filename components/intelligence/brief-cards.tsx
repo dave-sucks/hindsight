@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import {
   AlertTriangle,
+  Flag,
   Sparkles,
   Eye,
 } from "lucide-react";
@@ -75,7 +76,7 @@ export function BriefCards({ briefs }: BriefCardsProps) {
           open={!!selected}
           onOpenChange={(open) => !open && setSelected(null)}
         >
-          <DialogContent className="max-w-2xl p-0">
+          <DialogContent className="sm:max-w-3xl p-0">
             <div className="max-h-[85vh] overflow-y-auto p-6">
               {selected && <BriefDetail brief={selected} />}
             </div>
@@ -315,14 +316,17 @@ function BriefDetail({ brief }: { brief: MorningBrief }) {
           <>
             <Separator />
             <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Risk Flags
-              </p>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <Flag className="h-3 w-3 text-red-500" />
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Risk Flags
+                </p>
+              </div>
+              <div className="space-y-1">
                 {risks.map((r, i) => (
-                  <Badge key={i} variant="destructive">
+                  <p key={i} className="text-sm text-muted-foreground">
                     {r}
-                  </Badge>
+                  </p>
                 ))}
               </div>
             </div>
