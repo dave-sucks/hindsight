@@ -57,6 +57,43 @@ export async function getWatchlistSymbolsByEmail(
   }
 }
 
+// ── Stock page: analyst watchlist status ─────────────────────────────────────
+
+export interface AnalystWatchlistStatus {
+  id: string;
+  name: string;
+  isWatched: boolean;
+}
+
+/** Get all analysts for the current user with whether each is watching this symbol. */
+export async function getWatchlistStatusForSymbol(
+  symbol: string,
+): Promise<AnalystWatchlistStatus[]> {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
+  const upper = symbol.toUpperCase();
+
+  const analysts = await prisma.agentConfig.findMany({
+    where: { userId },
+    select: {
+      id: true,
+      name: true,
+      watchlistItems: {
+        where: { symbol: upper, status: "ACTIVE" },
+        select: { id: true },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  return analysts.map((a) => ({
+    id: a.id,
+    name: a.name,
+    isWatched: a.watchlistItems.length > 0,
+  }));
+}
+
 // ── Queries ──────────────────────────────────────────────────────────────────
 
 /** Get all active watchlist items for an analyst, with thesis counts. */

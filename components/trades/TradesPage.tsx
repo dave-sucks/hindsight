@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { SegmentBar } from '@/components/ui/segment-bar';
 import {
   Dialog,
   DialogContent,
@@ -74,7 +75,7 @@ function formatRelativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// ─── Target progress dots (10 flat dots) ─────────────────────────────────────
+// ─── Target progress bar (unified SegmentBar) ────────────────────────────────
 
 function TargetDots({
   entry,
@@ -102,21 +103,11 @@ function TargetDots({
   const isPositive = direction === 'LONG' ? current >= entry : current <= entry;
 
   return (
-    <div className="flex gap-[3px] items-center">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <div
-          key={i}
-          className={cn(
-            'h-1.5 w-1.5 rounded-full',
-            i < filled
-              ? isPositive
-                ? 'bg-positive'
-                : 'bg-negative'
-              : 'bg-muted',
-          )}
-        />
-      ))}
-    </div>
+    <SegmentBar
+      filled={filled}
+      fillColor={isPositive ? 'bg-positive' : 'bg-negative'}
+      height="h-2.5"
+    />
   );
 }
 
