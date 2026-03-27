@@ -287,9 +287,7 @@ function MonitorRow({
           <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
             {monitor.name}
           </p>
-          {detail && (
-            <p className="text-xs text-muted-foreground truncate">{detail}</p>
-          )}
+          <p className="text-xs text-muted-foreground truncate">{detail}</p>
           {hasTickers && (
             <Collapsible open={tickersOpen} onOpenChange={setTickersOpen}>
               <CollapsibleTrigger
@@ -353,7 +351,7 @@ function MonitorRow({
 // ── Type Icons ───────────────────────────────────────────────────────────────
 
 function MonitorTypeIcon({ type }: { type: string }) {
-  // 3 types: Search (includes portfolio/watchlist), Domain, API
+  // 3 categories: Search (SEARCH/PORTFOLIO/WATCHLIST use Sonar), Domain (Sonar + Firecrawl), API (FMP/Finnhub)
   if (type === "DOMAIN") {
     return (
       <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-orange/10 text-brand-orange">
@@ -368,7 +366,7 @@ function MonitorTypeIcon({ type }: { type: string }) {
       </div>
     );
   }
-  // SEARCH, PORTFOLIO, WATCHLIST — all use Sonar search
+  // SEARCH, PORTFOLIO, WATCHLIST — all Perplexity Sonar searches
   return (
     <div className="h-7 w-7 rounded-md flex items-center justify-center bg-brand-blue/10 text-brand-blue">
       <Search className="h-3.5 w-3.5" />
@@ -743,10 +741,19 @@ function AddMonitorInput({ onRefresh }: { onRefresh: () => void }) {
 
 function getMonitorDetail(monitor: Monitor): string {
   const config = monitor.config ?? {};
-  if (monitor.type === "SEARCH") return (config.query as string) ?? "";
-  if (monitor.type === "DOMAIN") return (config.domain as string) ?? "";
-  if (monitor.type === "API") return (config.endpoint as string) ?? "";
-  if (monitor.type === "PORTFOLIO") return "Auto-searches all open positions via Sonar";
-  if (monitor.type === "WATCHLIST") return "Auto-searches all watchlist tickers via Sonar";
+  if (monitor.type === "SEARCH") {
+    const query = (config.query as string) ?? "";
+    return query ? `Perplexity Sonar searches "${query}" daily and returns structured signals (headlines, tickers, sentiment)` : "";
+  }
+  if (monitor.type === "DOMAIN") {
+    const domain = (config.domain as string) ?? "";
+    return domain ? `Perplexity Sonar searches ${domain} daily for new articles. Priority sources also get full-page extraction via Firecrawl.` : "";
+  }
+  if (monitor.type === "API") {
+    const endpoint = (config.endpoint as string) ?? "";
+    return endpoint ? `Calls FMP/Finnhub API (${endpoint}) and creates one aggregate signal with top results` : "";
+  }
+  if (monitor.type === "PORTFOLIO") return "Perplexity Sonar searches each open position ticker daily (e.g. \"AAPL stock news developments catalysts today\")";
+  if (monitor.type === "WATCHLIST") return "Perplexity Sonar searches each watchlist ticker daily (e.g. \"TSLA stock news developments catalysts today\")";
   return "";
 }

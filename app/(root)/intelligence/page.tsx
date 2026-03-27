@@ -29,7 +29,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -190,13 +189,11 @@ export default function IntelligencePage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Run Pipeline</DropdownMenuLabel>
                   <DropdownMenuItem onClick={() => triggerJob("full-pipeline", "Full Pipeline")}>
                     <Layers className="h-4 w-4" />
                     Run Full Pipeline
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Individual Steps</DropdownMenuLabel>
                   <DropdownMenuItem onClick={() => triggerJob("market-sweep", "Market Sweep")}>
                     <Search className="h-4 w-4" />
                     Market Sweep
