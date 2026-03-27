@@ -232,33 +232,64 @@ function SignalDetail({
 }) {
   const sentiment = SENTIMENT_CONFIG[signal.sentiment] ?? SENTIMENT_CONFIG.NEUTRAL;
   const discovery = inferDiscovery(signal);
+  const sentimentDir = signal.sentiment === "BULLISH" ? "up" : signal.sentiment === "BEARISH" ? "down" : null;
 
   return (
     <>
-      <SheetHeader className="space-y-4">
-        {/* ── Headline + summary (hero) ───────────────────────────── */}
-        <div className="space-y-3">
-          <div className="flex items-start gap-2.5">
-            <SheetTitle className="text-left leading-tight flex-1">
-              {signal.headline}
-            </SheetTitle>
-            {(signal.sentiment === "BULLISH" || signal.sentiment === "BEARISH") && (
-              <PnlArrow
-                direction={signal.sentiment === "BULLISH" ? "up" : "down"}
-                className="h-5 w-5 shrink-0 mt-0.5"
-              />
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {signal.summary}
-          </p>
-        </div>
+      {/* ── Headline + summary ──────────────────────────────────── */}
+      <SheetHeader className="space-y-3 pr-10">
+        <SheetTitle className="text-left leading-tight">
+          {signal.headline}
+        </SheetTitle>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {signal.summary}
+        </p>
       </SheetHeader>
 
-      <div className="px-6 pb-6 space-y-5">
-        {/* ── Sources ──────────────────────────────────────────────── */}
+      <div className="px-4 pb-6 space-y-4">
+        {/* ── Tickers + sentiment arrow ───────────────────────────── */}
+        {signal.tickers.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {signal.tickers.map((t) => (
+              <span key={t} className="inline-flex items-center gap-1">
+                <span className="text-sm font-mono font-medium">{t}</span>
+                {sentimentDir && signal.tickers.length === 1 && (
+                  <PnlArrow direction={sentimentDir} className="h-4 w-4" />
+                )}
+              </span>
+            ))}
+            {sentimentDir && signal.tickers.length !== 1 && (
+              <span className="inline-flex items-center gap-1 ml-auto">
+                <span className={cn("text-xs font-medium", sentiment.className)}>
+                  {sentiment.label}
+                </span>
+                <PnlArrow direction={sentimentDir} className="h-4 w-4" />
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* ── Analysts ────────────────────────────────────────────── */}
+        {signal.routes && signal.routes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {signal.routes.map((r) => (
+              <Tooltip key={r.id}>
+                <TooltipTrigger render={<span className="inline-flex" />}>
+                  <Badge variant="outline">
+                    {r.analyst.name}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {r.relevanceScore}% — {formatRouteReason(r.routeReason)}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        )}
+
+        {/* ── Sources ─────────────────────────────────────────────── */}
         {signal.sourceUrls.length > 0 && (
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {signal.sourceUrls.map((url, i) => {
               let domain = url;
               try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
@@ -287,22 +318,6 @@ function SignalDetail({
           </div>
         )}
 
-        {/* ── Tickers + Sentiment ──────────────────────────────────── */}
-        {(signal.tickers.length > 0 || signal.sentiment !== "NEUTRAL") && (
-          <div className="flex flex-wrap items-center gap-2">
-            {signal.tickers.map((t) => (
-              <Badge key={t} variant="secondary">
-                ${t}
-              </Badge>
-            ))}
-            {signal.sentiment !== "NEUTRAL" && (
-              <span className={cn("text-xs font-medium ml-auto", sentiment.className)}>
-                {sentiment.label}
-              </span>
-            )}
-          </div>
-        )}
-
         {signal.artifactId && (
           <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2">
             <FirecrawlLogo className="h-3.5 w-3.5 text-muted-foreground" />
@@ -314,11 +329,17 @@ function SignalDetail({
 
         <Separator />
 
-        {/* ── Discovery (how it was found) ────────────────────────── */}
+        {/* ── Discovery ───────────────────────────────────────────── */}
         <div className="space-y-2.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            How this was found
-          </p>
+          {/* Search query / domain visual first */}
+          {signal.searchQuery && (
+            <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+              <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <p className="text-xs text-foreground truncate">{signal.searchQuery}</p>
+            </div>
+          )}
+
+          {/* Provider logo + timestamp */}
           <div className="flex items-center gap-2 text-xs">
             <discovery.toolIcon className="h-4 w-4 shrink-0" />
             <span className="font-medium text-foreground">{discovery.toolName}</span>
@@ -326,12 +347,8 @@ function SignalDetail({
               {relativeTime(signal.createdAt)}
             </span>
           </div>
-          {signal.searchQuery && (
-            <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-              <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <p className="text-xs text-foreground truncate">{signal.searchQuery}</p>
-            </div>
-          )}
+
+          {/* Monitor explanation */}
           {signal.monitor?.name && (
             <p className="text-xs text-muted-foreground leading-relaxed">
               Via the <span className="text-foreground font-medium">{signal.monitor.name}</span> monitor
@@ -342,32 +359,6 @@ function SignalDetail({
             </p>
           )}
         </div>
-
-        {/* ── Routed to ───────────────────────────────────────────── */}
-        {signal.routes && signal.routes.length > 0 && (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Routed to
-              </p>
-              <div className="space-y-1.5">
-                {signal.routes.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span>{r.analyst.name}</span>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-                      <span>{r.relevanceScore}%</span>
-                      <span>{formatRouteReason(r.routeReason)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
       </div>
     </>
   );
