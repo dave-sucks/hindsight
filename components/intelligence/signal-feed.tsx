@@ -25,22 +25,19 @@ import {
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import {
-  ArrowDown,
-  ArrowUp,
   BarChart3,
   CalendarDays,
   ExternalLink,
   FileText,
   Globe,
-  Minus,
   Search,
 } from "lucide-react";
+import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
 import type { Signal } from "./types";
 import {
   relativeTime,
   JOB_LABELS,
-  URGENCY_CONFIG,
   SENTIMENT_CONFIG,
 } from "./types";
 import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo } from "./icons";
@@ -173,9 +170,9 @@ const SignalRow = memo(function SignalRow({
   signal: Signal;
   onSelect: (signal: Signal) => void;
 }) {
-  const urgency = URGENCY_CONFIG[signal.urgency] ?? URGENCY_CONFIG.LOW;
   const primarySource = signal.sourceNames[0];
   const primaryDomain = extractDomainFromUrls(signal.sourceUrls);
+  const sentimentDir = signal.sentiment === "BULLISH" ? "up" : signal.sentiment === "BEARISH" ? "down" : null;
 
   return (
     <Card
@@ -183,82 +180,44 @@ const SignalRow = memo(function SignalRow({
       onClick={() => onSelect(signal)}
     >
       <div className="space-y-2">
-        {/* Row 1: sentiment arrow + headline + time */}
-        <div className="flex items-start gap-2.5">
-          <SentimentArrow sentiment={signal.sentiment} urgency={signal.urgency} />
+        {/* Row 1: headline left, ticker + arrow right */}
+        <div className="flex items-start gap-3">
           <p className="text-sm font-medium leading-tight flex-1 min-w-0">
             {signal.headline}
           </p>
-          <span className="text-xs text-muted-foreground shrink-0 tabular-nums mt-0.5">
-            {relativeTime(signal.createdAt)}
-          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {signal.tickers.length > 0 && (
+              <span className="text-xs font-mono font-medium text-muted-foreground">
+                {signal.tickers.length === 1
+                  ? signal.tickers[0]
+                  : signal.tickers.slice(0, 2).join(", ")
+                }
+                {signal.tickers.length > 2 && ` +${signal.tickers.length - 2}`}
+              </span>
+            )}
+            {sentimentDir && (
+              <PnlArrow direction={sentimentDir} className="h-4 w-4" />
+            )}
+          </div>
         </div>
 
-        {/* Row 2: summary */}
-        <p className="text-xs text-muted-foreground line-clamp-2 pl-6">
+        {/* Row 2: summary — text-sm for readability */}
+        <p className="text-sm text-muted-foreground line-clamp-2">
           {signal.summary}
         </p>
 
-        {/* Row 3: source + tickers */}
-        <div className="flex items-center gap-2 pl-6">
-          {/* Source: favicon + name + domain */}
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 shrink">
-            {primaryDomain && (
-              <Favicon domain={primaryDomain} />
-            )}
-            {primarySource && (
-              <span className="text-foreground/80 truncate">{primarySource}</span>
-            )}
-            {primaryDomain && (
-              <span className="text-muted-foreground/60 font-mono text-[11px] truncate hidden sm:inline">
-                {primaryDomain}
-              </span>
-            )}
+        {/* Row 3: source logo + name, then timestamp */}
+        <div className="flex items-center gap-1.5">
+          {primaryDomain && (
+            <Favicon domain={primaryDomain} />
+          )}
+          {primarySource && (
+            <span className="text-xs text-muted-foreground">{primarySource}</span>
+          )}
+          <span className="text-xs text-muted-foreground tabular-nums ml-auto shrink-0">
+            {relativeTime(signal.createdAt)}
           </span>
-
-          {signal.artifactId && (
-            <Tooltip>
-              <TooltipTrigger render={<span className="inline-flex" />}>
-                <FileText className="h-3 w-3 text-muted-foreground/60" />
-              </TooltipTrigger>
-              <TooltipContent>Full article extracted</TooltipContent>
-            </Tooltip>
-          )}
-
-          {/* Tickers — pushed right */}
-          {signal.tickers.length > 0 && (
-            <div className="flex items-center gap-1 ml-auto shrink-0">
-              {signal.tickers.slice(0, 3).map((t) => (
-                <Badge key={t} variant="secondary">
-                  ${t}
-                </Badge>
-              ))}
-              {signal.tickers.length > 3 && (
-                <span className="text-[10px] text-muted-foreground tabular-nums">
-                  +{signal.tickers.length - 3}
-                </span>
-              )}
-            </div>
-          )}
         </div>
-
-        {/* Row 4: analyst routing badges */}
-        {signal.routes && signal.routes.length > 0 && (
-          <div className="flex flex-wrap gap-1 pl-6">
-            {signal.routes.slice(0, 4).map((r) => (
-              <Tooltip key={r.id}>
-                <TooltipTrigger render={<span className="inline-flex" />}>
-                  <Badge variant="outline" className="text-[10px]">
-                    {r.analyst.name}
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {r.relevanceScore}% — {formatRouteReason(r.routeReason)}
-                </TooltipContent>
-              </Tooltip>
-            ))}
-          </div>
-        )}
       </div>
     </Card>
   );
@@ -280,10 +239,15 @@ function SignalDetail({
         {/* ── Headline + summary (hero) ───────────────────────────── */}
         <div className="space-y-3">
           <div className="flex items-start gap-2.5">
-            <SentimentArrow sentiment={signal.sentiment} urgency={signal.urgency} />
             <SheetTitle className="text-left leading-tight flex-1">
               {signal.headline}
             </SheetTitle>
+            {(signal.sentiment === "BULLISH" || signal.sentiment === "BEARISH") && (
+              <PnlArrow
+                direction={signal.sentiment === "BULLISH" ? "up" : "down"}
+                className="h-5 w-5 shrink-0 mt-0.5"
+              />
+            )}
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {signal.summary}
@@ -589,34 +553,6 @@ function inferQueryFromSignal(signal: Signal): string {
     return signal.themes.slice(0, 2).map(t => t.toLowerCase().replace(/_/g, " ")).join(", ");
   }
   return signal.headline.slice(0, 60);
-}
-
-// ── Sentiment Arrow ──────────────────────────────────────────────────────────
-// Replaces the urgency dot. Color comes from sentiment, intensity from urgency.
-
-function SentimentArrow({ sentiment, urgency }: { sentiment: string; urgency: string }) {
-  const isHigh = urgency === "HIGH" || urgency === "BREAKING";
-
-  if (sentiment === "BULLISH") {
-    return (
-      <div className={cn("mt-0.5 shrink-0 rounded-full p-0.5", isHigh ? "bg-emerald-500/15" : "bg-emerald-500/10")}>
-        <ArrowUp className={cn("h-3.5 w-3.5", isHigh ? "text-emerald-500" : "text-emerald-500/70")} />
-      </div>
-    );
-  }
-  if (sentiment === "BEARISH") {
-    return (
-      <div className={cn("mt-0.5 shrink-0 rounded-full p-0.5", isHigh ? "bg-red-500/15" : "bg-red-500/10")}>
-        <ArrowDown className={cn("h-3.5 w-3.5", isHigh ? "text-red-500" : "text-red-500/70")} />
-      </div>
-    );
-  }
-  // NEUTRAL or MIXED
-  return (
-    <div className="mt-0.5 shrink-0 rounded-full p-0.5 bg-muted">
-      <Minus className="h-3.5 w-3.5 text-muted-foreground" />
-    </div>
-  );
 }
 
 // ── Favicon ──────────────────────────────────────────────────────────────────
