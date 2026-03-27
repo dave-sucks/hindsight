@@ -31,7 +31,7 @@ export default function NewAnalystPage() {
   const panelOpen = configData !== null;
 
   return (
-    <div className="relative h-[calc(100dvh-5.25rem)] overflow-hidden">
+    <div className="relative h-[calc(100dvh-3rem)] overflow-hidden">
       {/* Floating ghost buttons — no background, over the chat */}
       <div className="absolute top-2 left-3 z-20">
         <Button variant="ghost" size="icon" render={<Link href="/analysts" />}>

@@ -16,13 +16,7 @@ export {
   type TradeConfirmationData,
   type TradeConfirmationProps,
 } from "./trade-confirmation";
-export { StockCard, type StockCardData, type StockCardProps } from "./stock-card";
 export { PriceGauge } from "./price-gauge";
-export {
-  CatalystTimelineCard,
-  type CatalystTimelineData,
-  type CatalystTimelineCardProps,
-} from "./catalyst-timeline-card";
 export { HowItWorksSheet } from "./how-it-works-sheet";
 export {
   PortfolioReviewCard,

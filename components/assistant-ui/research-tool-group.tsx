@@ -5,7 +5,7 @@
  *
  * When consecutive tool calls are grouped by assistant-ui, this component
  * inspects the group and renders "research step" tools as steps inside a
- * single ChainOfThought block. Card-based tools (StockCard, TradeCard, etc.)
+ * single ChainOfThought block. Card-based tools (TradeCard, ThesisCard, etc.)
  * render normally alongside via {children}.
  *
  * Each step shows:
