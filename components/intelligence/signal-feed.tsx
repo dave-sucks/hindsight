@@ -26,7 +26,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
-  Briefcase,
   CalendarDays,
   ExternalLink,
   FileText,
@@ -437,7 +436,7 @@ function SignalDetail({
 // ticker bar, or API endpoint depending on how the signal was discovered.
 
 interface Discovery {
-  type: "search" | "portfolio" | "domain" | "api";
+  type: "search" | "domain" | "api";
   /** What to show in the visual bar */
   visual: string;
   /** Resolved tool name */
@@ -462,27 +461,27 @@ function inferDiscovery(signal: Signal): Discovery {
     if (signal.searchContext?.startsWith("ticker:")) {
       const ticker = signal.searchContext.replace("ticker:", "");
       return {
-        type: "portfolio",
-        visual: `$${ticker}`,
+        type: "search",
+        visual: signal.searchQuery ?? `${ticker} stock news developments catalysts today`,
         toolName,
         toolIcon,
         jobLabel,
-        explanation: `Sent "${signal.searchQuery ?? `${ticker} stock news`}" to Perplexity Sonar because ${ticker} is in an open position or on a watchlist. Each result becomes a signal.`,
+        explanation: `Sent "${signal.searchQuery ?? `${ticker} stock news developments catalysts today`}" to Perplexity Sonar. Each result becomes a signal with tickers, sentiment, and sources.`,
       };
     }
 
-    if (signal.searchContext?.startsWith("source_pack:")) {
-      const parts = signal.searchContext.replace("source_pack:", "").split(":");
-      const packName = parts[0] ?? "Sources";
-      const domains = parts[1]?.split(",").slice(0, 3) ?? [];
+    if (signal.searchContext?.startsWith("source_pack:") || signal.searchContext?.startsWith("domain_group:")) {
+      const parts = signal.searchContext.includes("source_pack:")
+        ? signal.searchContext.replace("source_pack:", "").split(":")
+        : signal.searchContext.replace("domain_group:", "").split(":");
+      const domains = (parts[1] ?? parts[0])?.split(",").slice(0, 3) ?? [];
       return {
         type: "domain",
-        visual: domains[0] ?? packName,
-        sourceName: packName,
+        visual: domains[0] ?? "monitored domains",
         toolName,
         toolIcon,
         jobLabel,
-        explanation: `Searched ${domains.length > 0 ? domains.join(", ") : "monitored domains"} via Perplexity Sonar (domain-filtered). High-value pages get full extraction via Firecrawl.`,
+        explanation: `Searched ${domains.length > 0 ? domains.join(", ") : "monitored domains"} via Perplexity Sonar (domain-filtered). High-priority domains also get full-page extraction via Firecrawl.`,
       };
     }
 
@@ -527,12 +526,12 @@ function inferDiscovery(signal: Signal): Discovery {
   if (jobType === "PORTFOLIO_MONITOR") {
     const ticker = signal.tickers[0] ?? "positions";
     return {
-      type: "portfolio",
-      visual: signal.tickers.length === 1 ? `$${ticker}` : signal.tickers.slice(0, 3).map(t => `$${t}`).join(", "),
+      type: "search",
+      visual: `${ticker} stock news developments catalysts today`,
       toolName: "Perplexity Sonar",
       toolIcon: PerplexityLogo,
       jobLabel,
-      explanation: `Searched "${ticker} stock news developments catalysts today" via Perplexity Sonar because this ticker is in an open position or on a watchlist. Each result becomes a signal.`,
+      explanation: `Sent "${ticker} stock news developments catalysts today" to Perplexity Sonar. Each result becomes a signal with tickers, sentiment, and sources.`,
     };
   }
 
@@ -616,19 +615,6 @@ function inferQueryFromSignal(signal: Signal): string {
 
 /** Visual header matching config popover style */
 function DiscoveryHeader({ discovery, signal }: { discovery: Discovery; signal: Signal }) {
-  if (discovery.type === "portfolio") {
-    // Ticker-focused: icon + ticker badge in a bar
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-        <Briefcase className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <p className="text-sm font-medium text-foreground">{discovery.visual}</p>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-          {relativeTime(signal.createdAt)}
-        </span>
-      </div>
-    );
-  }
-
   if (discovery.type === "domain") {
     // Domain bar with lock icon (like config popover DomainVisual)
     return (
