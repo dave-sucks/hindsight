@@ -27,11 +27,9 @@ import {
   XCircle,
   Clock,
   ArrowDownUp,
-  AlertCircle,
   Brain,
   ExternalLink,
   Target,
-  GitBranch,
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
@@ -355,98 +353,86 @@ export default async function TradeDetailPage({
               )}
             </TabsContent>
 
-            {/* ── THESES ──────────────────────────────────────────── */}
+            {/* ── THESES — Perplexity "Notable Price Movement" style ── */}
             <TabsContent value="theses" className="mt-4 max-w-3xl">
               {thesisChain.length === 0 ? (
                 <div className="py-12 text-center text-sm text-muted-foreground">
                   No thesis history for this position.
                 </div>
               ) : (
-                <div className="space-y-0">
-                  {thesisChain.map((t, i) => {
-                    const isCurrent = t.id === trade.thesis?.id;
-                    const isActive = t.status === 'ACTIVE';
-                    const dirColor = t.direction === 'LONG'
-                      ? 'border-primary/50 text-primary'
-                      : t.direction === 'SHORT'
-                      ? 'border-amber-500/50 text-amber-500'
-                      : 'border-muted-foreground/50 text-muted-foreground';
-                    const statusColor = t.status === 'INVALIDATED'
-                      ? 'text-red-500'
-                      : t.status === 'SUPERSEDED'
-                      ? 'text-amber-500'
-                      : t.status === 'CLOSED'
-                      ? 'text-muted-foreground'
-                      : 'text-blue-400';
+                <Card>
+                  <CardContent className="p-0">
+                    {thesisChain.map((t, i) => {
+                      const isCurrent = t.id === trade.thesis?.id;
+                      const isActive = t.status === 'ACTIVE';
+                      const dirColor = t.direction === 'LONG'
+                        ? 'text-emerald-500'
+                        : t.direction === 'SHORT'
+                        ? 'text-red-500'
+                        : 'text-muted-foreground';
 
-                    return (
-                      <Link
-                        key={t.id}
-                        href={`/runs/${t.researchRunId}`}
-                        className={cn(
-                          'flex gap-4 py-3 hover:bg-secondary/20 rounded px-2 transition-colors',
-                          isCurrent && 'border-l-2 border-primary pl-3 bg-primary/5',
-                          i < thesisChain.length - 1 && 'border-b border-border',
-                        )}
-                      >
-                        {/* Date column */}
-                        <div className="w-20 shrink-0 pt-0.5">
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground/60">
-                            {new Date(t.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                          </p>
-                        </div>
-
-                        {/* Content column */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="outline" className={cn('text-[10px]', dirColor)}>
-                              {t.direction}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {t.confidenceScore}%
-                            </span>
-                            {t.status && t.status !== 'ACTIVE' && (
-                              <Badge variant="outline" className="text-[10px]">
-                                <span className={statusColor}>{t.status}</span>
-                              </Badge>
-                            )}
-                            {isActive && (
-                              <Badge variant="outline" className="text-[10px] text-blue-400 border-blue-400/50">
-                                ACTIVE
-                              </Badge>
-                            )}
-                            {isCurrent && (
-                              <span className="text-[10px] text-primary font-medium">trade thesis</span>
-                            )}
-                            {t.parentThesisId && (
-                              <GitBranch className="h-2.5 w-2.5 text-muted-foreground/50" />
-                            )}
-                            {t.entryPrice != null && (
-                              <span className="text-[10px] text-muted-foreground tabular-nums">
-                                Entry ${Number(t.entryPrice).toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1 leading-relaxed line-clamp-2">
-                            {t.reasoningSummary}
-                          </p>
-                          {(t.signalTypes as string[])?.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1.5">
-                              {(t.signalTypes as string[]).slice(0, 4).map((s) => (
-                                <Badge key={s} variant="outline" className="text-[8px] px-1 py-0 h-3.5">
-                                  {s.replace(/_/g, ' ')}
-                                </Badge>
-                              ))}
-                            </div>
+                      return (
+                        <div
+                          key={t.id}
+                          className={cn(
+                            'flex gap-4 px-5 py-4',
+                            i < thesisChain.length - 1 && 'border-b border-border',
                           )}
+                        >
+                          {/* Date + dot column */}
+                          <div className="w-16 shrink-0 pt-1 text-right">
+                            <p className="text-xs text-muted-foreground font-medium">
+                              {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground/50 mt-0.5">
+                              {new Date(t.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                            </p>
+                          </div>
+
+                          {/* Dot */}
+                          <div className="flex flex-col items-center pt-2">
+                            <div className={cn(
+                              'h-2.5 w-2.5 rounded-full shrink-0',
+                              isCurrent ? 'bg-primary' : isActive ? 'bg-blue-400' : 'bg-muted-foreground/30',
+                            )} />
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            {/* First line: price + direction + confidence */}
+                            <div className="flex items-center gap-2">
+                              {t.entryPrice != null && (
+                                <span className="text-sm font-medium tabular-nums">
+                                  ${Number(t.entryPrice).toFixed(2)}
+                                </span>
+                              )}
+                              <span className={cn('text-sm font-medium', dirColor)}>
+                                {t.direction === 'LONG' ? '↗' : t.direction === 'SHORT' ? '↘' : '—'} {t.confidenceScore}%
+                              </span>
+                              {t.status === 'SUPERSEDED' && (
+                                <span className="text-xs text-amber-500">Superseded</span>
+                              )}
+                              {t.status === 'INVALIDATED' && (
+                                <span className="text-xs text-red-500">Invalidated</span>
+                              )}
+                              {isActive && (
+                                <span className="text-xs text-blue-400 font-medium">Active</span>
+                              )}
+                              {isCurrent && (
+                                <span className="text-xs text-primary font-medium">Trade Thesis</span>
+                              )}
+                            </div>
+
+                            {/* Reasoning paragraph */}
+                            <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                              {t.reasoningSummary}
+                            </p>
+                          </div>
                         </div>
-                      </Link>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
 

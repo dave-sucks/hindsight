@@ -25,15 +25,8 @@ import {
   ExternalLink,
   FlaskConical,
   BookmarkPlus,
-  CheckCircle2,
-  XCircle,
-  Clock,
   TrendingUp,
   TrendingDown,
-  GitBranch,
-  Ban,
-  Replace,
-  Lock,
 } from "lucide-react";
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -369,7 +362,7 @@ export default async function StockDetailPage({ params }: Props) {
               </Suspense>
             </TabsContent>
 
-            {/* ── THESES ──────────────────────────────────────────── */}
+            {/* ── THESES — Perplexity "Notable Price Movement" style ── */}
             <TabsContent value="theses" className="mt-4 max-w-3xl">
               {tickerTheses.length === 0 ? (
                 <div className="py-12 text-center">
@@ -377,99 +370,82 @@ export default async function StockDetailPage({ params }: Props) {
                   <p className="text-xs text-muted-foreground mt-1">Click Research to get started.</p>
                 </div>
               ) : (
-                <div className="space-y-0">
-                  {tickerTheses.map((thesis, i) => {
-                    const isActive = thesis.status === "ACTIVE" && thesis.direction !== "PASS";
-                    const dirColor = thesis.direction === "LONG"
-                      ? "border-primary/50 text-primary"
-                      : thesis.direction === "SHORT"
-                      ? "border-amber-500/50 text-amber-500"
-                      : "border-muted-foreground/50 text-muted-foreground";
-                    const statusColor = thesis.status === "INVALIDATED"
-                      ? "text-red-500"
-                      : thesis.status === "SUPERSEDED"
-                      ? "text-amber-500"
-                      : thesis.status === "CLOSED"
-                      ? "text-muted-foreground"
-                      : "text-blue-400";
+                <Card>
+                  <CardContent className="p-0">
+                    {tickerTheses.map((thesis, i) => {
+                      const isActive = thesis.status === "ACTIVE" && thesis.direction !== "PASS";
+                      const dirColor = thesis.direction === "LONG"
+                        ? "text-emerald-500"
+                        : thesis.direction === "SHORT"
+                        ? "text-red-500"
+                        : "text-muted-foreground";
 
-                    return (
-                      <Link
-                        key={thesis.id}
-                        href={`/runs/${thesis.researchRunId}`}
-                        className={cn(
-                          "flex gap-4 py-3 hover:bg-secondary/20 rounded px-2 transition-colors",
-                          isActive && "border-l-2 border-primary pl-3",
-                          i < tickerTheses.length - 1 && "border-b border-border",
-                        )}
-                      >
-                        {/* Date column */}
-                        <div className="w-20 shrink-0 pt-0.5">
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(thesis.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground/60">
-                            {new Date(thesis.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                          </p>
-                        </div>
-
-                        {/* Content column */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="outline" className={cn("text-[10px]", dirColor)}>
-                              {thesis.direction}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {thesis.confidenceScore}%
-                            </span>
-                            {thesis.status && thesis.status !== "ACTIVE" && (
-                              <Badge variant="outline" className="text-[10px]">
-                                <span className={statusColor}>{thesis.status}</span>
-                              </Badge>
-                            )}
-                            {isActive && (
-                              <Badge variant="outline" className="text-[10px] text-blue-400 border-blue-400/50">
-                                ACTIVE
-                              </Badge>
-                            )}
-                            {thesis.parentThesisId && (
-                              <GitBranch className="h-2.5 w-2.5 text-muted-foreground/50" />
-                            )}
-                            {thesis.entryPrice != null && (
-                              <span className="text-[10px] text-muted-foreground tabular-nums">
-                                Entry ${thesis.entryPrice.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1 leading-relaxed line-clamp-2">
-                            {thesis.reasoningSummary}
-                          </p>
-                          {(thesis.signalTypes as string[])?.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1.5">
-                              {(thesis.signalTypes as string[]).slice(0, 4).map((s) => (
-                                <Badge key={s} variant="outline" className="text-[8px] px-1 py-0 h-3.5">
-                                  {s.replace(/_/g, " ")}
-                                </Badge>
-                              ))}
-                            </div>
+                      return (
+                        <div
+                          key={thesis.id}
+                          className={cn(
+                            "flex gap-4 px-5 py-4",
+                            i < tickerTheses.length - 1 && "border-b border-border",
                           )}
-                          {thesis.invalidReason && (
-                            <p className="text-[10px] text-red-500/70 mt-0.5 italic">
-                              {thesis.invalidReason}
+                        >
+                          {/* Date + dot column */}
+                          <div className="w-16 shrink-0 pt-1 text-right">
+                            <p className="text-xs text-muted-foreground font-medium">
+                              {new Date(thesis.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                             </p>
-                          )}
-                          <div className="flex items-center gap-2 mt-1">
-                            {thesis.researchRun?.agentConfig?.name && (
-                              <span className="text-[10px] text-muted-foreground/60">
-                                {thesis.researchRun.agentConfig.name}
+                            <p className="text-[11px] text-muted-foreground/50 mt-0.5">
+                              {new Date(thesis.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                            </p>
+                          </div>
+
+                          {/* Dot */}
+                          <div className="flex flex-col items-center pt-2">
+                            <div className={cn(
+                              "h-2.5 w-2.5 rounded-full shrink-0",
+                              isActive ? "bg-blue-400" : "bg-muted-foreground/30",
+                            )} />
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            {/* First line: price + direction + confidence */}
+                            <div className="flex items-center gap-2">
+                              {thesis.entryPrice != null && (
+                                <span className="text-sm font-medium tabular-nums">
+                                  ${thesis.entryPrice.toFixed(2)}
+                                </span>
+                              )}
+                              <span className={cn("text-sm font-medium", dirColor)}>
+                                {thesis.direction === "LONG" ? "↗" : thesis.direction === "SHORT" ? "↘" : "—"} {thesis.confidenceScore}%
                               </span>
+                              {thesis.status === "SUPERSEDED" && (
+                                <span className="text-xs text-amber-500">Superseded</span>
+                              )}
+                              {thesis.status === "INVALIDATED" && (
+                                <span className="text-xs text-red-500">Invalidated</span>
+                              )}
+                              {isActive && (
+                                <span className="text-xs text-blue-400 font-medium">Active</span>
+                              )}
+                            </div>
+
+                            {/* Reasoning paragraph */}
+                            <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                              {thesis.reasoningSummary}
+                            </p>
+
+                            {/* Analyst name — subtle footer */}
+                            {thesis.researchRun?.agentConfig?.name && (
+                              <p className="text-xs text-muted-foreground/50 mt-2">
+                                {thesis.researchRun.agentConfig.name}
+                              </p>
                             )}
                           </div>
                         </div>
-                      </Link>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
           </Tabs>
@@ -549,99 +525,48 @@ export default async function StockDetailPage({ params }: Props) {
             </Card>
           )}
 
-          {/* Hindsight History */}
-          <Card>
-            <CardContent className="px-4 pt-4 pb-3">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hindsight History</p>
-                <span className="text-xs text-muted-foreground">
-                  {tickerTrades.length}t · {tickerTheses.length}r
-                </span>
-              </div>
-              {tickerTrades.length === 0 && tickerTheses.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">
-                  No history yet. Click Research to get started.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {tickerTheses.slice(0, 3).map((thesis) => (
-                    <Link
-                      key={thesis.id}
-                      href={`/runs/${thesis.researchRunId}`}
-                      className="flex items-start gap-2 p-2 rounded border border-border hover:bg-secondary/30 transition-colors"
-                    >
-                      <FlaskConical className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] px-1.5 py-0",
-                              thesis.direction === "LONG" ? "border-primary/50 text-primary"
-                                : thesis.direction === "SHORT" ? "border-amber-500/50 text-amber-500"
-                                : "border-muted-foreground/50 text-muted-foreground"
-                            )}
-                          >
-                            {thesis.direction}
-                          </Badge>
-                          {thesis.status && thesis.status !== "ACTIVE" && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              {thesis.status}
-                            </Badge>
-                          )}
-                          <span className="text-[10px] text-muted-foreground tabular-nums">
-                            {thesis.confidenceScore}%
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                          {thesis.reasoningSummary.slice(0, 60)}…
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
-                  {tickerTrades.slice(0, 3).map((trade) => {
-                    const isOpen = trade.status === "OPEN";
-                    const pnl = trade.realizedPnl ?? 0;
-                    const pnlPos = pnl >= 0;
+          {/* Hindsight Summary */}
+          {(tickerTrades.length > 0 || tickerTheses.length > 0) && (
+            <Card>
+              <CardContent className="px-4 pt-4 pb-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Hindsight</p>
+                <div className="space-y-0">
+                  <div className="flex items-center justify-between py-1.5 border-b">
+                    <span className="text-xs text-muted-foreground">Analyses</span>
+                    <span className="text-xs font-medium tabular-nums">{tickerTheses.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5 border-b">
+                    <span className="text-xs text-muted-foreground">Trades</span>
+                    <span className="text-xs font-medium tabular-nums">{tickerTrades.length}</span>
+                  </div>
+                  {(() => {
+                    const activeThesis = tickerTheses.find((t) => t.status === "ACTIVE" && t.direction !== "PASS");
+                    if (!activeThesis) return null;
                     return (
-                      <Link
-                        key={trade.id}
-                        href={`/trades/${trade.id}`}
-                        className="flex items-start gap-2 p-2 rounded border border-border hover:bg-secondary/30 transition-colors"
-                      >
-                        {trade.outcome === "WIN" ? (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-positive mt-0.5 shrink-0" />
-                        ) : trade.outcome === "LOSS" ? (
-                          <XCircle className="h-3.5 w-3.5 text-negative mt-0.5 shrink-0" />
-                        ) : (
-                          <Clock className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <Badge
-                              variant="outline"
-                              className={cn("text-[10px] px-1.5 py-0", trade.direction === "LONG" ? "border-primary/50 text-primary" : "border-amber-500/50 text-amber-500")}
-                            >
-                              {trade.direction}
-                            </Badge>
-                            {!isOpen && (
-                              <span className={cn("text-[10px] font-medium tabular-nums", pnlPos ? "text-positive" : "text-negative")}>
-                                {pnlPos ? "+" : ""}{pnl.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
-                            Entry {fmtCur(trade.avgCost)}
-                            {trade.closePrice && ` → ${fmtCur(trade.closePrice)}`}
-                          </p>
-                        </div>
+                      <div className="flex items-center justify-between py-1.5 border-b">
+                        <span className="text-xs text-muted-foreground">Current View</span>
+                        <span className={cn("text-xs font-medium", activeThesis.direction === "LONG" ? "text-emerald-500" : "text-red-500")}>
+                          {activeThesis.direction} {activeThesis.confidenceScore}%
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  {(() => {
+                    const openTrade = tickerTrades.find((t) => t.status === "OPEN");
+                    if (!openTrade) return null;
+                    return (
+                      <Link href={`/trades/${openTrade.id}`} className="flex items-center justify-between py-1.5 hover:bg-secondary/20 rounded transition-colors">
+                        <span className="text-xs text-muted-foreground">Open Position</span>
+                        <span className="text-xs font-medium text-blue-400">
+                          {openTrade.direction} · {fmtCur(openTrade.avgCost)}
+                        </span>
                       </Link>
                     );
-                  })}
+                  })()}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
