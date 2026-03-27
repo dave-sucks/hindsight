@@ -135,8 +135,31 @@ export async function PATCH(req: NextRequest) {
 }
 
 // DELETE /api/intelligence/monitors — delete a monitor (prevents deleting built-in)
+// Pass ?purge=non-builtin to delete ALL non-built-in monitors (fresh start)
+// Pass ?purge=all-non-api to delete all SEARCH + DOMAIN monitors that aren't built-in
 export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id")
+  const purge = req.nextUrl.searchParams.get("purge")
+
+  // Bulk purge modes
+  if (purge === "non-builtin") {
+    const result = await prisma.monitor.deleteMany({
+      where: { builtIn: false },
+    })
+    return NextResponse.json({ deleted: result.count, mode: "non-builtin" })
+  }
+
+  if (purge === "all-non-api") {
+    const result = await prisma.monitor.deleteMany({
+      where: {
+        builtIn: false,
+        type: { in: ["SEARCH", "DOMAIN"] },
+      },
+    })
+    return NextResponse.json({ deleted: result.count, mode: "all-non-api" })
+  }
+
+  // Single delete
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 })
   }
