@@ -53,7 +53,7 @@ export default async function AnalystEditPage({
     watchlist: config.watchlist,
     exclusionList: config.exclusionList,
     // Map existing monitors into the shape the panel expects
-    sourcePackProposal: domainMonitors.length > 0
+    domainMonitorProposal: domainMonitors.length > 0
       ? {
           name: `${config.name} Monitors`,
           sources: domainMonitors.map((m) => ({

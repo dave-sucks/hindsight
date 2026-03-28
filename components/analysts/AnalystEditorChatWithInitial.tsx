@@ -51,14 +51,13 @@ function EditorThread({
   const callbacks = useMemo(
     () => ({
       currentConfig,
-      onApplyConfig: onConfirmConfig,
+      onConfirmConfig,
       onConfigSuggested,
-      isApplying,
-      applied,
+      isCreating: isApplying,
       confirmLabel: "Apply Changes",
       confirmingLabel: "Applying...",
     }),
-    [currentConfig, onConfirmConfig, onConfigSuggested, isApplying, applied]
+    [currentConfig, onConfirmConfig, onConfigSuggested, isApplying]
   );
 
   return (
@@ -127,7 +126,7 @@ export function AnalystEditorChatWithInitial({
             watchlist: config.watchlist,
             exclusionList: config.exclusionList,
             // V3 intelligence fields
-            sourcePackProposal: config.sourcePackProposal,
+            domainMonitorProposal: config.domainMonitorProposal,
             intelligenceQueries: config.intelligenceQueries,
             intelligencePolicy: config.intelligencePolicy,
           });

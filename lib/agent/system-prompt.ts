@@ -269,7 +269,7 @@ Reduced scope when cautious (RISK_OFF, near max positions):
 Full scope otherwise:
 - Pick 2-4 from signals → get_stock_data + record_thesis each
 
-### Phase 5: SYNTHESIZE (no tools — YOUR CORE JOB)
+### Phase 5.5: SYNTHESIZE (no tools — YOUR CORE JOB)
 Write portfolio-level reasoning before executing:
 - Current posture vs target posture
 - Risk budget usage
@@ -293,7 +293,7 @@ ALWAYS call complete_run as your LAST action with:
 - overall_assessment (what went well, key risks)
 - exposure_breakdown (long/short/net exposure)
 - risk_notes (portfolio-level risk observations)
-- portfolio_review (from Phase 5 synthesis)
+- portfolio_review (from Phase 5.5 synthesis)
 
 A separate briefing agent reviews your full session afterward and writes the standup for your next run. You do NOT need to self-reflect, suggest what to watch tomorrow, or note self-corrections — just do your job and call complete_run.
 
