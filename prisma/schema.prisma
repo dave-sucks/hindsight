@@ -192,7 +192,7 @@ model AgentConfig {
 // Background jobs populate this layer; analyst runtime reads from it.
 
 /// Unified monitor — anything the intelligence system watches.
-/// Replaces the split across IntelligenceQuery + Source + SourcePack.
+/// Replaces the old split intelligence models.
 /// Each monitor represents one thing being checked: a search query, a domain,
 /// or an API endpoint.
 model Monitor {
@@ -294,7 +294,7 @@ model Signal {
 /// A group of signals from one intelligence job run.
 model SignalBatch {
   id          String    @id @default(cuid())
-  jobType     String    // "MARKET_SWEEP" | "PORTFOLIO_MONITOR" | "SOURCE_PACK" | "EMAIL_INGEST" | "MANUAL"
+  jobType     String    // "MARKET_SWEEP" | "PORTFOLIO_MONITOR" | "DOMAIN_MONITOR" | "EMAIL_INGEST" | "MANUAL"
   status      String    @default("RUNNING") // "RUNNING" | "COMPLETE" | "FAILED"
   signalCount Int       @default(0)
   metadata    Json?     // job-specific metadata (query count, sources checked, etc.)

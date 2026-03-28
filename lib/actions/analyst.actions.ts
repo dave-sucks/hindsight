@@ -877,7 +877,7 @@ export async function createAnalystFromBuilder(
       console.log(`[analyst] Created ${watchlistSymbols.length} watchlist items (legacy format) for analyst ${newAnalyst.id}`);
     }
 
-    // 3. Create domain monitors from source pack proposal
+    // 3. Create domain monitors from domain monitor proposal
     if (data.domainMonitorProposal && data.domainMonitorProposal.sources.length > 0) {
       const proposal = data.domainMonitorProposal;
 

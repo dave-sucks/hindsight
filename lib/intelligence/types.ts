@@ -58,7 +58,6 @@ export type BatchJobType =
   | "MARKET_SWEEP"
   | "PORTFOLIO_MONITOR"
   | "DOMAIN_MONITOR"
-  | "SOURCE_PACK"
   | "EMAIL_INGEST"
   | "MANUAL";
 

@@ -403,10 +403,8 @@ function inferDiscovery(signal: Signal): Discovery {
       };
     }
 
-    if (signal.searchContext?.startsWith("source_pack:") || signal.searchContext?.startsWith("domain_group:")) {
-      const parts = signal.searchContext.includes("source_pack:")
-        ? signal.searchContext.replace("source_pack:", "").split(":")
-        : signal.searchContext.replace("domain_group:", "").split(":");
+    if (signal.searchContext?.startsWith("domain_group:")) {
+      const parts = signal.searchContext.replace("domain_group:", "").split(":");
       const domains = (parts[1] ?? parts[0])?.split(",").slice(0, 3) ?? [];
       return {
         type: "domain",
@@ -468,7 +466,7 @@ function inferDiscovery(signal: Signal): Discovery {
     };
   }
 
-  if (jobType === "DOMAIN_MONITOR" || jobType === "SOURCE_PACK") {
+  if (jobType === "DOMAIN_MONITOR") {
     const domain = extractDomainFromUrls(signal.sourceUrls);
     return {
       type: "domain",

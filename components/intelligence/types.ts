@@ -128,7 +128,6 @@ export const JOB_LABELS: Record<string, string> = {
   MARKET_SWEEP: "Search Monitors",
   PORTFOLIO_MONITOR: "Ticker Searches",
   DOMAIN_MONITOR: "Domain Monitors",
-  SOURCE_PACK: "Domain Monitors",
   SIGNAL_ROUTER: "Route Findings",
   MORNING_BRIEF: "Generate Briefs",
   EMAIL_INGEST: "Email Ingest",
@@ -144,7 +143,7 @@ export const JOB_DESCRIPTIONS: Record<string, { short: string; long: string }> =
     short: "Monitors open positions and watchlist for price alerts and news",
     long: "Checks current prices and recent news for every open position and watchlist item across all analysts. Generates alerts for stop-loss proximity, target price hits, and material news that could affect trade thesis.",
   },
-  "Source Pack": {
+  "Domain Monitor": {
     short: "Searches monitored domains for new articles, filings, and releases",
     long: "For each enabled domain monitor, sends a domain-filtered search to Perplexity Sonar. Only results from that domain are returned. High-priority domains also get full-page HTML extraction via Firecrawl, stored as artifacts.",
   },

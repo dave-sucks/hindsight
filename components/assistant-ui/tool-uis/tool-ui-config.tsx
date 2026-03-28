@@ -109,7 +109,7 @@ const FIELD_LABELS: Record<string, string> = {
   minMarketCapTier: "Market Cap",
   watchlist: "Watchlist",
   exclusionList: "Exclusion List",
-  sourcePackProposal: "Domain Monitors",
+  domainMonitorProposal: "Domain Monitors",
   intelligenceQueries: "Search Monitors",
   intelligencePolicy: "Intelligence Policy",
 };
@@ -121,8 +121,8 @@ function formatValue(key: string, val: unknown): string {
     if (val.length === 0) return "—";
     return val.map((t) => (typeof t === "string" ? t : (t as { symbol: string }).symbol)).join(", ");
   }
-  // Domain monitors (sourcePackProposal)
-  if (key === "sourcePackProposal" && typeof val === "object" && val !== null) {
+  // Domain monitors (domainMonitorProposal)
+  if (key === "domainMonitorProposal" && typeof val === "object" && val !== null) {
     const sources = (val as { sources?: { name: string }[] }).sources;
     if (!sources || sources.length === 0) return "—";
     return `${sources.length} sources: ${sources.map((s) => s.name).join(", ")}`;
