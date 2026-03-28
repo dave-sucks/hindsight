@@ -2,8 +2,8 @@
  * Backfill V3 intelligence infrastructure for existing analysts.
  *
  * For each analyst missing Monitors or IntelligencePolicy:
- *   1. Creates DOMAIN monitors based on sectors/signals (replaces SourcePack)
- *   2. Creates SEARCH monitors from watchlist/sectors/signals (replaces IntelligenceQuery)
+ *   1. Creates DOMAIN monitors based on sectors/signals
+ *   2. Creates SEARCH monitors from watchlist/sectors/signals
  *   3. Sets a default IntelligencePolicy on the AgentConfig
  *
  * Usage:
@@ -219,7 +219,7 @@ async function backfill() {
     console.log(`\n[BACKFILL] ${analyst.name} (${analyst.id.slice(0, 8)})`);
     console.log(`  Needs: ${[needsPolicy && "policy", needsDomainMonitors && "domain monitors", needsSearchMonitors && "search monitors"].filter(Boolean).join(", ")}`);
 
-    // Generate DOMAIN monitors (replaces SourcePack)
+    // Generate DOMAIN monitors
     if (needsDomainMonitors) {
       const sources = generateDomainSources(analyst);
       console.log(`  Domain monitors: ${sources.length} sources`);

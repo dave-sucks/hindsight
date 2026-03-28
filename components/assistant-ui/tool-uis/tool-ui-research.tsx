@@ -32,7 +32,7 @@ import {
 } from "@/components/ai-elements/chain-of-thought";
 
 import { extractToolSources, SourceChips } from "./tool-ui-shared";
-import { SuggestConfigRender, SuggestConfigEditorRender } from "./tool-ui-config";
+import { SuggestConfigRender } from "./tool-ui-config";
 
 // ─── Research tool UI registrations (shared across agent, builder, editor) ───
 
@@ -551,16 +551,14 @@ export function useRegisterBuilderToolUIs() {
 }
 
 /**
- * Register suggest_config tool UI for the editor (shows diff card + apply button).
- * Also registers research tool UIs with domain cards where possible.
+ * Register suggest_config tool UI for the editor — same panel experience as builder.
+ * SuggestConfigRender detects onConfigSuggested → shows compact "see panel →" card.
  */
 export function useRegisterEditorToolUIs() {
-  // Reuse the SAME research tool UIs as the agent run (domain cards)
   useRegisterResearchToolUIs();
 
-  // Editor-only: suggest_config renders as diff card + apply button
   useAssistantToolUI({
     toolName: "suggest_config",
-    render: SuggestConfigEditorRender,
+    render: SuggestConfigRender,
   });
 }

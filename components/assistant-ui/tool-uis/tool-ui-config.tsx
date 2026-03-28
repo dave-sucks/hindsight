@@ -109,10 +109,38 @@ const FIELD_LABELS: Record<string, string> = {
   minMarketCapTier: "Market Cap",
   watchlist: "Watchlist",
   exclusionList: "Exclusion List",
+  domainMonitorProposal: "Domain Monitors",
+  intelligenceQueries: "Search Monitors",
+  intelligencePolicy: "Intelligence Policy",
 };
 
 function formatValue(key: string, val: unknown): string {
   if (val == null || val === "") return "—";
+  // Watchlist: array of strings or objects with .symbol
+  if (key === "watchlist" && Array.isArray(val)) {
+    if (val.length === 0) return "—";
+    return val.map((t) => (typeof t === "string" ? t : (t as { symbol: string }).symbol)).join(", ");
+  }
+  // Domain monitors (domainMonitorProposal)
+  if (key === "domainMonitorProposal" && typeof val === "object" && val !== null) {
+    const sources = (val as { sources?: { name: string }[] }).sources;
+    if (!sources || sources.length === 0) return "—";
+    return `${sources.length} sources: ${sources.map((s) => s.name).join(", ")}`;
+  }
+  // Search monitors (intelligenceQueries)
+  if (key === "intelligenceQueries" && Array.isArray(val)) {
+    if (val.length === 0) return "—";
+    return `${val.length} queries: ${val.map((q: { query?: string }) => q.query ?? "").join("; ")}`;
+  }
+  // Intelligence policy
+  if (key === "intelligencePolicy" && typeof val === "object" && val !== null) {
+    const p = val as Record<string, unknown>;
+    const parts: string[] = [];
+    if (p.maxSignalsPerRun) parts.push(`${p.maxSignalsPerRun} signals/run`);
+    if (p.liveSearchBudget) parts.push(`${p.liveSearchBudget} live searches`);
+    if (p.holdingsAttention) parts.push(`holdings ${Math.round(Number(p.holdingsAttention) * 100)}%`);
+    return parts.length > 0 ? parts.join(", ") : "Default policy";
+  }
   if (Array.isArray(val)) return val.length === 0 ? "—" : val.join(", ");
   if (key === "maxPositionSize" && typeof val === "number")
     return `$${val.toLocaleString()}`;
@@ -141,9 +169,18 @@ export const SuggestConfigEditorRender: ToolCallMessagePartComponent<
   AgentConfigData,
   AgentConfigData
 > = ({ args }) => {
-  const { currentConfig, onApplyConfig, isApplying, applied } =
+  const { currentConfig, onApplyConfig, onConfigSuggested, isApplying, applied } =
     useToolUICallbacks();
   const [showFull, setShowFull] = useState(false);
+
+  // Notify the panel when the AI suggests a new config
+  const configSuggestedRef = useRef(onConfigSuggested);
+  configSuggestedRef.current = onConfigSuggested;
+  useEffect(() => {
+    if (args && configSuggestedRef.current) {
+      configSuggestedRef.current(args);
+    }
+  }, [args]);
 
   if (!args || !currentConfig) return null;
 

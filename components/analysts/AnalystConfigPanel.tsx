@@ -38,6 +38,10 @@ interface AnalystConfigPanelProps {
   config: AgentConfigData;
   onConfirm: () => void;
   isCreating: boolean;
+  /** Button label — defaults to "Create Analyst" */
+  confirmLabel?: string;
+  /** Button label while loading — defaults to "Creating..." */
+  confirmingLabel?: string;
 }
 
 // ─── Direction helpers ────────────────────────────────────────────────────────
@@ -115,6 +119,8 @@ export function AnalystConfigPanel({
   config,
   onConfirm,
   isCreating,
+  confirmLabel = "Create Analyst",
+  confirmingLabel = "Creating...",
 }: AnalystConfigPanelProps) {
   const direction = config.directionBias ?? "BOTH";
   const sectors = config.sectors ?? [];
@@ -127,19 +133,23 @@ export function AnalystConfigPanel({
   const policy = config.intelligencePolicy;
   const dm = directionMeta[direction] ?? directionMeta.BOTH;
 
-  // Intro: full Silk background → shrink to landscape card after 2s
-  const [introActive, setIntroActive] = useState(true);
+  // Silk background — plays on mount and when applying changes
+  const [silkActive, setSilkActive] = useState(true);
   useEffect(() => {
-    const t = setTimeout(() => setIntroActive(false), 2000);
+    const t = setTimeout(() => setSilkActive(false), 2000);
     return () => clearTimeout(t);
   }, []);
+  // Re-trigger Silk animation when applying
+  useEffect(() => {
+    if (isCreating) setSilkActive(true);
+  }, [isCreating]);
 
   return (
     <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden relative">
       {/* Full-panel Silk intro — visible while "thinking", fades out */}
       <div
         className="absolute inset-0 z-[5] transition-opacity duration-1000 ease-out"
-        style={{ opacity: introActive ? 1 : 0, pointerEvents: "none" }}
+        style={{ opacity: silkActive ? 1 : 0, pointerEvents: "none" }}
       >
         <Silk speed={5} scale={0.85} color="#919191" noiseIntensity={1.5} rotation={0} />
       </div>
@@ -310,13 +320,13 @@ export function AnalystConfigPanel({
 
               {sources.length > 0 && queries.length > 0 && <Separator />}
 
-              {/* Standing Queries */}
+              {/* Search Monitors */}
               {queries.length > 0 && (
                 <div>
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <Search className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Standing Queries
+                      Search Monitors
                     </span>
                   </div>
                   <div className="space-y-1">
@@ -500,7 +510,7 @@ export function AnalystConfigPanel({
           className="w-full"
         >
           <Check className="h-4 w-4 mr-2" />
-          {isCreating ? "Creating..." : "Create Analyst"}
+          {isCreating ? confirmingLabel : confirmLabel}
         </Button>
       </div>
     </div>

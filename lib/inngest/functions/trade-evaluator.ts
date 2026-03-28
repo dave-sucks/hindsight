@@ -1,5 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -53,42 +55,33 @@ export const evaluateTrade = inngest.createFunction(
 
     const thesis = position.decisions[0]?.thesis;
 
-    // Step 2: Call Python service for GPT-4o evaluation
+    // Step 2: GPT-4o evaluation (direct call, no Railway dependency)
     const evaluation = await step.run("run-evaluation", async () => {
-      const pythonUrl = process.env.PYTHON_SERVICE_URL;
-      const secret = process.env.PYTHON_SERVICE_SECRET;
-
-      if (!pythonUrl) {
-        throw new Error("PYTHON_SERVICE_URL not configured");
-      }
-
       const holdDays = daysBetween(position.openedAt as unknown as string, position.closedAt as unknown as string | null);
+      const pnlPct = ((Number(position.closePrice) - Number(position.avgCost)) / Number(position.avgCost) * 100).toFixed(2);
 
-      const response = await fetch(`${pythonUrl}/research/evaluate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Service-Secret": secret ?? "",
-        },
-        body: JSON.stringify({
-          ticker: position.symbol,
-          direction: position.direction,
-          entry_price: position.avgCost,
-          close_price: position.closePrice,
-          outcome: position.outcome,
-          close_reason: position.closeReason ?? "MANUAL",
-          thesis_summary: thesis?.reasoningSummary ?? null,
-          signal_types: thesis?.signalTypes ?? [],
-          hold_days: holdDays,
-        }),
+      const { text } = await generateText({
+        model: openai("gpt-4o"),
+        system: "You are a trading coach evaluating closed paper trades. Be honest and constructive. Focus on what the analyst got right, what they missed, and what they should learn. Keep it to 3-4 paragraphs.",
+        prompt: `Evaluate this closed paper trade:
+
+Ticker: ${position.symbol}
+Direction: ${position.direction}
+Entry: $${position.avgCost}
+Exit: $${position.closePrice}
+P&L: ${pnlPct}%
+Outcome: ${position.outcome}
+Close reason: ${position.closeReason ?? "MANUAL"}
+Hold duration: ${holdDays} days
+${thesis?.reasoningSummary ? `\nOriginal thesis: ${thesis.reasoningSummary}` : ""}
+${thesis?.signalTypes?.length ? `Signal types: ${thesis.signalTypes.join(", ")}` : ""}
+${thesis?.thesisBullets?.length ? `\nKey bullets:\n${thesis.thesisBullets.map((b: string) => `- ${b}`).join("\n")}` : ""}
+
+Write an honest post-trade evaluation. Was the thesis correct? Was sizing appropriate? What should the analyst learn from this trade?`,
+        maxOutputTokens: 500,
       });
 
-      if (!response.ok) {
-        throw new Error(`Python service returned ${response.status}`);
-      }
-
-      const data = (await response.json()) as { evaluation_text: string };
-      return data.evaluation_text;
+      return text;
     });
 
     // Step 3: Store evaluation + write EVALUATED PositionEvent

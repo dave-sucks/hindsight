@@ -177,12 +177,10 @@ model AgentConfig {
   emailAlerts           Boolean  @default(true)
   weeklyDigestEnabled   Boolean  @default(true)
   digestEmail           String?  // override email for digest; uses auth email when null
-  // V3: Intelligence layer — policy
+  // V3: Intelligence layer
   intelligencePolicy    Json?    // IntelligencePolicy type — controls signal budget, attention weights, search limits
-  // V3: Intelligence layer relations
   signalRoutes          AnalystSignalRoute[]
   morningBriefs         MorningBrief[]
-  // V4: Unified monitors
   monitors              Monitor[]
 
   createdAt             DateTime @default(now())
@@ -190,11 +188,11 @@ model AgentConfig {
 }
 
 // ─── V3: INTELLIGENCE LAYER ──────────────────────────────────────────────────
-// Persistent intelligence backbone: signals, artifacts, monitoring.
+// Persistent intelligence backbone: monitors, signals, artifacts, routing.
 // Background jobs populate this layer; analyst runtime reads from it.
 
 /// Unified monitor — anything the intelligence system watches.
-/// Replaces the split across IntelligenceQuery + Source + SourcePack.
+/// Replaces the old split intelligence models.
 /// Each monitor represents one thing being checked: a search query, a domain,
 /// or an API endpoint.
 model Monitor {
@@ -214,10 +212,6 @@ model Monitor {
   sourceRunId String?   // which run created this (for dynamic monitors from briefing agent)
   lastRunAt   DateTime?
 
-  // Legacy FKs for migration tracking
-  legacyQueryId  String? // original IntelligenceQuery.id
-  legacySourceId String? // original Source.id
-
   signals     Signal[]
 
   createdAt   DateTime  @default(now())
@@ -232,7 +226,6 @@ model Monitor {
 /// A raw piece of content extracted from the web — article, transcript, filing page.
 model Artifact {
   id              String   @id @default(cuid())
-  sourceId        String?  // legacy FK, no longer enforced — kept for data continuity
   url             String
   title           String
   contentMarkdown String?  // full extracted content (Firecrawl output)
@@ -301,7 +294,7 @@ model Signal {
 /// A group of signals from one intelligence job run.
 model SignalBatch {
   id          String    @id @default(cuid())
-  jobType     String    // "MARKET_SWEEP" | "PORTFOLIO_MONITOR" | "SOURCE_PACK" | "EMAIL_INGEST" | "MANUAL"
+  jobType     String    // "MARKET_SWEEP" | "PORTFOLIO_MONITOR" | "DOMAIN_MONITOR" | "EMAIL_INGEST" | "MANUAL"
   status      String    @default("RUNNING") // "RUNNING" | "COMPLETE" | "FAILED"
   signalCount Int       @default(0)
   metadata    Json?     // job-specific metadata (query count, sources checked, etc.)
