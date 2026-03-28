@@ -316,13 +316,13 @@ export function AnalystConfigPanel({
 
               {sources.length > 0 && queries.length > 0 && <Separator />}
 
-              {/* Standing Queries */}
+              {/* Search Monitors */}
               {queries.length > 0 && (
                 <div>
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <Search className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Standing Queries
+                      Search Monitors
                     </span>
                   </div>
                   <div className="space-y-1">

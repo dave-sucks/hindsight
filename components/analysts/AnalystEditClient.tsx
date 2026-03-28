@@ -19,10 +19,8 @@ export function AnalystEditClient({
   currentConfig: Record<string, unknown>;
   initialMessage?: string;
 }) {
-  // Start with current config in the panel (always visible for edit)
-  const [configData, setConfigData] = useState<AgentConfigData>(
-    currentConfig as unknown as AgentConfigData
-  );
+  // Panel hidden until AI suggests changes (same behavior as builder)
+  const [configData, setConfigData] = useState<AgentConfigData | null>(null);
   const [confirmHandler, setConfirmHandler] = useState<(() => void) | null>(null);
   const [isApplying, setIsApplying] = useState(false);
 
@@ -38,6 +36,8 @@ export function AnalystEditClient({
     setIsApplying(applying);
   }, []);
 
+  const panelOpen = configData !== null;
+
   return (
     <div className="relative h-[calc(100dvh-3rem)] overflow-hidden">
       {/* Back button */}
@@ -47,12 +47,12 @@ export function AnalystEditClient({
         </Button>
       </div>
 
-      {/* 2-panel layout — same as builder */}
+      {/* Split layout — chat shrinks, panel grows (same as builder) */}
       <div className="h-full flex">
-        {/* Chat side */}
+        {/* Chat side — shrinks smoothly when panel opens */}
         <div
           className="min-h-0 transition-all duration-500 ease-out"
-          style={{ flex: "0 0 55%" }}
+          style={{ flex: panelOpen ? "0 0 55%" : "1 1 100%" }}
         >
           <AnalystEditorChatWithInitial
             analystId={analystId}
@@ -63,19 +63,24 @@ export function AnalystEditClient({
           />
         </div>
 
-        {/* Config panel — always visible for edit (shows current config) */}
+        {/* Config panel — grows in from right when AI suggests changes */}
         <div
-          className="min-h-0 overflow-hidden"
-          style={{ flex: "0 0 45%" }}
+          className="min-h-0 transition-all duration-500 ease-out overflow-hidden"
+          style={{
+            flex: panelOpen ? "0 0 45%" : "0 0 0%",
+            opacity: panelOpen ? 1 : 0,
+          }}
         >
           <div className="h-full p-3 pl-0">
-            <AnalystConfigPanel
-              config={configData}
-              onConfirm={confirmHandler ?? (() => {})}
-              isCreating={isApplying}
-              confirmLabel="Apply Changes"
-              confirmingLabel="Applying..."
-            />
+            {configData && (
+              <AnalystConfigPanel
+                config={configData}
+                onConfirm={confirmHandler ?? (() => {})}
+                isCreating={isApplying}
+                confirmLabel="Apply Changes"
+                confirmingLabel="Applying..."
+              />
+            )}
           </div>
         </div>
       </div>
