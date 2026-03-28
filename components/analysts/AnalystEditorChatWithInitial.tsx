@@ -108,7 +108,6 @@ export function AnalystEditorChatWithInitial({
 
   const handleConfirmConfig = useCallback(
     (config: AgentConfigData) => {
-      setApplied(false);
       onApplyingChange?.(true);
       startApplying(async () => {
         try {
@@ -130,9 +129,8 @@ export function AnalystEditorChatWithInitial({
             intelligenceQueries: config.intelligenceQueries,
             intelligencePolicy: config.intelligencePolicy,
           });
-          setApplied(true);
           onApplyingChange?.(false);
-          router.refresh();
+          router.push(`/analysts/${analystId}`);
         } catch (err) {
           console.error("Failed to apply config:", err);
           onApplyingChange?.(false);

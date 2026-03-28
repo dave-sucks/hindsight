@@ -133,19 +133,23 @@ export function AnalystConfigPanel({
   const policy = config.intelligencePolicy;
   const dm = directionMeta[direction] ?? directionMeta.BOTH;
 
-  // Intro: full Silk background → shrink to landscape card after 2s
-  const [introActive, setIntroActive] = useState(true);
+  // Silk background — plays on mount and when applying changes
+  const [silkActive, setSilkActive] = useState(true);
   useEffect(() => {
-    const t = setTimeout(() => setIntroActive(false), 2000);
+    const t = setTimeout(() => setSilkActive(false), 2000);
     return () => clearTimeout(t);
   }, []);
+  // Re-trigger Silk animation when applying
+  useEffect(() => {
+    if (isCreating) setSilkActive(true);
+  }, [isCreating]);
 
   return (
     <div className="flex flex-col h-full rounded-xl border bg-background shadow-2xl overflow-hidden relative">
       {/* Full-panel Silk intro — visible while "thinking", fades out */}
       <div
         className="absolute inset-0 z-[5] transition-opacity duration-1000 ease-out"
-        style={{ opacity: introActive ? 1 : 0, pointerEvents: "none" }}
+        style={{ opacity: silkActive ? 1 : 0, pointerEvents: "none" }}
       >
         <Silk speed={5} scale={0.85} color="#919191" noiseIntensity={1.5} rotation={0} />
       </div>
