@@ -17,13 +17,15 @@ import { updateAnalystFromBuilder } from "@/lib/actions/analyst.actions";
 
 function EditorThread({
   currentConfig,
-  onApplyConfig,
+  onConfirmConfig,
+  onConfigSuggested,
   isApplying,
   applied,
   initialMessage,
 }: {
   currentConfig: Record<string, unknown>;
-  onApplyConfig: (config: AgentConfigData) => void;
+  onConfirmConfig: (config: AgentConfigData) => void;
+  onConfigSuggested?: (config: AgentConfigData) => void;
   isApplying: boolean;
   applied: boolean;
   initialMessage?: string;
@@ -49,11 +51,14 @@ function EditorThread({
   const callbacks = useMemo(
     () => ({
       currentConfig,
-      onApplyConfig,
+      onApplyConfig: onConfirmConfig,
+      onConfigSuggested,
       isApplying,
       applied,
+      confirmLabel: "Apply Changes",
+      confirmingLabel: "Applying...",
     }),
-    [currentConfig, onApplyConfig, isApplying, applied]
+    [currentConfig, onConfirmConfig, onConfigSuggested, isApplying, applied]
   );
 
   return (
@@ -78,10 +83,14 @@ export function AnalystEditorChatWithInitial({
   analystId,
   currentConfig,
   initialMessage,
+  onConfigSuggested,
+  onApplyingChange,
 }: {
   analystId: string;
   currentConfig: Record<string, unknown>;
   initialMessage?: string;
+  onConfigSuggested?: (config: AgentConfigData, onConfirm: () => void) => void;
+  onApplyingChange?: (applying: boolean) => void;
 }) {
   const router = useRouter();
   const [isApplying, startApplying] = useTransition();
@@ -98,9 +107,10 @@ export function AnalystEditorChatWithInitial({
     ),
   });
 
-  const handleApplyConfig = useCallback(
+  const handleConfirmConfig = useCallback(
     (config: AgentConfigData) => {
       setApplied(false);
+      onApplyingChange?.(true);
       startApplying(async () => {
         try {
           await updateAnalystFromBuilder(analystId, {
@@ -122,20 +132,33 @@ export function AnalystEditorChatWithInitial({
             intelligencePolicy: config.intelligencePolicy,
           });
           setApplied(true);
+          onApplyingChange?.(false);
           router.refresh();
         } catch (err) {
           console.error("Failed to apply config:", err);
+          onApplyingChange?.(false);
         }
       });
     },
-    [analystId, router]
+    [analystId, router, onApplyingChange]
+  );
+
+  // When the AI suggests config, notify the parent (for panel) AND store the confirm handler
+  const handleConfigSuggested = useCallback(
+    (config: AgentConfigData) => {
+      if (onConfigSuggested) {
+        onConfigSuggested(config, () => handleConfirmConfig(config));
+      }
+    },
+    [onConfigSuggested, handleConfirmConfig]
   );
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <EditorThread
         currentConfig={currentConfig}
-        onApplyConfig={handleApplyConfig}
+        onConfirmConfig={handleConfirmConfig}
+        onConfigSuggested={onConfigSuggested ? handleConfigSuggested : undefined}
         isApplying={isApplying}
         applied={applied}
         initialMessage={initialMessage}

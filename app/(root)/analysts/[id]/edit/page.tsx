@@ -1,9 +1,7 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { ArrowLeft } from "lucide-react";
-import { AnalystEditorChatWithInitial } from "@/components/analysts/AnalystEditorChatWithInitial";
+import { AnalystEditClient } from "@/components/analysts/AnalystEditClient";
 
 type Params = { id: string };
 
@@ -30,8 +28,19 @@ export default async function AnalystEditPage({
 
   if (!config) return notFound();
 
+  // Load existing monitors for this analyst
+  const monitors = await prisma.monitor.findMany({
+    where: { analystId: id },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const domainMonitors = monitors.filter((m) => m.type === "DOMAIN");
+  const searchMonitors = monitors.filter((m) => m.type === "SEARCH");
+
+  // Build config object matching AgentConfigData shape (including intelligence)
   const currentConfig: Record<string, unknown> = {
     name: config.name,
+    description: config.description,
     analystPrompt: config.analystPrompt,
     directionBias: config.directionBias,
     holdDurations: config.holdDurations,
@@ -40,33 +49,40 @@ export default async function AnalystEditPage({
     minConfidence: config.minConfidence,
     maxPositionSize: config.maxPositionSize ? Number(config.maxPositionSize) : undefined,
     maxOpenPositions: config.maxOpenPositions,
+    minMarketCapTier: config.minMarketCapTier,
     watchlist: config.watchlist,
     exclusionList: config.exclusionList,
+    // Map existing monitors into the shape the panel expects
+    sourcePackProposal: domainMonitors.length > 0
+      ? {
+          name: `${config.name} Monitors`,
+          sources: domainMonitors.map((m) => ({
+            name: m.name,
+            domain: (m.config as Record<string, string>)?.domain ?? "",
+            category: m.category,
+            qualityScore: (m.config as Record<string, number>)?.qualityScore ?? 3,
+            reason: "",
+          })),
+        }
+      : undefined,
+    intelligenceQueries: searchMonitors.length > 0
+      ? searchMonitors.map((m) => ({
+          query: (m.config as Record<string, string>)?.query ?? m.name,
+          category: m.category,
+          reason: "",
+        }))
+      : undefined,
+    intelligencePolicy: config.intelligencePolicy
+      ? (config.intelligencePolicy as Record<string, unknown>)
+      : undefined,
   };
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-3rem)] overflow-hidden">
-      {/* Header */}
-      <div className="border-b px-6 py-3 flex items-center gap-3 shrink-0">
-        <Link
-          href={`/analysts/${id}`}
-          className="text-muted-foreground hover:text-foreground transition-colors shrink-0 -ml-1"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <span className="text-sm font-medium truncate">
-          Edit {config.name}
-        </span>
-      </div>
-
-      {/* Chat */}
-      <div className="flex-1 min-h-0">
-        <AnalystEditorChatWithInitial
-          analystId={id}
-          currentConfig={currentConfig}
-          initialMessage={message}
-        />
-      </div>
-    </div>
+    <AnalystEditClient
+      analystId={id}
+      analystName={config.name}
+      currentConfig={currentConfig}
+      initialMessage={message}
+    />
   );
 }

@@ -38,6 +38,10 @@ interface AnalystConfigPanelProps {
   config: AgentConfigData;
   onConfirm: () => void;
   isCreating: boolean;
+  /** Button label — defaults to "Create Analyst" */
+  confirmLabel?: string;
+  /** Button label while loading — defaults to "Creating..." */
+  confirmingLabel?: string;
 }
 
 // ─── Direction helpers ────────────────────────────────────────────────────────
@@ -115,6 +119,8 @@ export function AnalystConfigPanel({
   config,
   onConfirm,
   isCreating,
+  confirmLabel = "Create Analyst",
+  confirmingLabel = "Creating...",
 }: AnalystConfigPanelProps) {
   const direction = config.directionBias ?? "BOTH";
   const sectors = config.sectors ?? [];
@@ -500,7 +506,7 @@ export function AnalystConfigPanel({
           className="w-full"
         >
           <Check className="h-4 w-4 mr-2" />
-          {isCreating ? "Creating..." : "Create Analyst"}
+          {isCreating ? confirmingLabel : confirmLabel}
         </Button>
       </div>
     </div>

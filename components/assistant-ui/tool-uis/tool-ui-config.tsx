@@ -169,9 +169,18 @@ export const SuggestConfigEditorRender: ToolCallMessagePartComponent<
   AgentConfigData,
   AgentConfigData
 > = ({ args }) => {
-  const { currentConfig, onApplyConfig, isApplying, applied } =
+  const { currentConfig, onApplyConfig, onConfigSuggested, isApplying, applied } =
     useToolUICallbacks();
   const [showFull, setShowFull] = useState(false);
+
+  // Notify the panel when the AI suggests a new config
+  const configSuggestedRef = useRef(onConfigSuggested);
+  configSuggestedRef.current = onConfigSuggested;
+  useEffect(() => {
+    if (args && configSuggestedRef.current) {
+      configSuggestedRef.current(args);
+    }
+  }, [args]);
 
   if (!args || !currentConfig) return null;
 
