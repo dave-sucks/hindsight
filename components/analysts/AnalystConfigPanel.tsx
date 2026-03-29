@@ -84,27 +84,22 @@ export function AnalystConfigPanel({
       </div>
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="relative z-[6] shrink-0 px-4 pt-4 pb-3 border-b">
+      <div className="relative z-[6] shrink-0 p-3">
         <div className="flex items-center gap-3">
           <div className="size-12 rounded-full overflow-hidden shrink-0">
             <Silk speed={5} scale={0.85} color="#919191" noiseIntensity={1.5} rotation={0} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold truncate leading-tight">
+            <p className="text-base font-brand font-semibold truncate leading-tight">
               {config.name || "Untitled Analyst"}
             </p>
-            {config.description && (
-              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                {config.description}
-              </p>
-            )}
           </div>
         </div>
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────── */}
       <Tabs defaultValue="overview" className="relative z-[6] flex-1 flex flex-col min-h-0">
-        <div className="px-4 pt-1 shrink-0">
+        <div className="px-3 pt-1 shrink-0">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="intelligence">Intelligence</TabsTrigger>
@@ -115,9 +110,14 @@ export function AnalystConfigPanel({
         {/* ── Overview tab ───────────────────────────────────────── */}
         <TabsContent value="overview" className="flex-1 min-h-0 mt-0">
           <ScrollArea className="h-full">
-            <div>
+            <div className="p-3 w-full flex flex-col gap-3">
+              {config.description && (
+                <p className="text-base text-foreground">
+                  {config.description}
+                </p>
+              )}
               {config.analystPrompt && (
-                <div className="p-3 border-b">
+                <div>
                   <p className="text-sm font-medium mb-1">Strategy</p>
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     {config.analystPrompt}
@@ -126,8 +126,8 @@ export function AnalystConfigPanel({
               )}
 
               {exclusionList.length > 0 && (
-                <div className="p-3 border-b">
-                  <p className="text-sm font-medium mb-1.5">Excluded</p>
+                <div>
+                  <p className="text-sm font-medium mb-1">Excluded</p>
                   <div className="flex flex-col gap-1">
                     {exclusionList.map((symbol) => (
                       <div
@@ -143,7 +143,7 @@ export function AnalystConfigPanel({
               )}
 
               {exclusionList.length === 0 && !config.analystPrompt && (
-                <div className="text-xs text-muted-foreground/40 py-6 text-center">
+                <div className="text-xs text-muted-foreground/40 py-2 text-center">
                   No configuration details yet.
                 </div>
               )}
