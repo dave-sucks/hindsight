@@ -113,13 +113,16 @@ export function BarGauge(props: BarGaugeProps) {
   const colors = buildColors(modeProps, segments);
 
   return (
-    <div className={cn("flex flex-col gap-[1px]", className)}>
+    <div
+      className={cn("grid gap-[1px]", className)}
+      style={{ gridTemplateColumns: `repeat(${segments}, minmax(0, 1fr))` }}
+    >
       {colors.map((color, i) => (
         <div
           key={i}
-          className={cn("w-full h-[2px] rounded-[0.5px]", color)}
+          className={cn("h-[3px] rounded-[0.5px]", color)}
         />
-      )).reverse()}
+      ))}
     </div>
   );
 }
