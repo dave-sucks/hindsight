@@ -245,7 +245,7 @@ export function TeamSheetContent({ team }: { team: Team }) {
           <Badge variant="outline" className="text-[10px]">{team.schedule}</Badge>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          {team.summary}
+          {team.description}
         </p>
       </div>
 
