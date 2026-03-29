@@ -53,11 +53,12 @@ export function DynamicBreadcrumb() {
   return (
     <Breadcrumb>
       <BreadcrumbList>
-        {crumbs.map((crumb, i) => {
+        {crumbs.flatMap((crumb, i) => {
           const isLast = i === crumbs.length - 1;
-          return (
+          const items = [];
+          if (i > 0) items.push(<BreadcrumbSeparator key={`sep-${i}`} />);
+          items.push(
             <BreadcrumbItem key={crumb.href}>
-              {i > 0 && <BreadcrumbSeparator />}
               {isLast ? (
                 <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
               ) : (
@@ -67,6 +68,7 @@ export function DynamicBreadcrumb() {
               )}
             </BreadcrumbItem>
           );
+          return items;
         })}
       </BreadcrumbList>
     </Breadcrumb>

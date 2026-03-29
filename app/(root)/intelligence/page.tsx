@@ -331,8 +331,8 @@ function StatCard({
       <p
         className={cn(
           "text-2xl font-semibold tabular-nums mt-1",
-          variant === "positive" && "text-emerald-500",
-          variant === "negative" && "text-red-500",
+          variant === "positive" && "text-positive",
+          variant === "negative" && "text-negative",
           variant === "alert" && value > 0 && "text-amber-500"
         )}
       >

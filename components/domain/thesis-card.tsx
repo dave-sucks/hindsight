@@ -25,7 +25,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
-import { PriceGauge } from "@/components/domain/price-gauge";
+import { BarGauge, priceToRange } from "@/components/ui/bar-gauge";
 
 import type { SourceChipData } from "../chat/SourceChip";
 
@@ -443,11 +443,14 @@ function AnalysisContent({
       {/* Price gauge + levels */}
       {hasEntry && (hasTarget || hasStop) && (
         <div className="p-3 border-b space-y-2">
-          <PriceGauge
-            entry={entry_price!}
-            target={target_price}
-            stop={stop_loss}
-            direction={direction === "SHORT" ? "SHORT" : "LONG"}
+          <BarGauge
+            mode="range"
+            value={Math.max(0, Math.min(1, priceToRange({
+              entry: entry_price!,
+              target: target_price,
+              stop: stop_loss,
+              direction: direction === "SHORT" ? "SHORT" : "LONG",
+            })))}
           />
           <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
             <span>
@@ -611,11 +614,14 @@ function FundamentalsContent({ fundamentals }: { fundamentals: FundamentalsData 
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Analyst Consensus
           </span>
-          <div className="flex h-2 w-full overflow-hidden rounded-full">
-            <div className="bg-positive" style={{ width: `${(analyst_consensus.buy / total) * 100}%` }} />
-            <div className="bg-muted-foreground/30" style={{ width: `${(analyst_consensus.hold / total) * 100}%` }} />
-            <div className="bg-negative" style={{ width: `${(analyst_consensus.sell / total) * 100}%` }} />
-          </div>
+          <BarGauge
+            mode="distribution"
+            ranges={[
+              { count: analyst_consensus.buy, color: "bg-positive" },
+              { count: analyst_consensus.hold, color: "bg-muted-foreground/30" },
+              { count: analyst_consensus.sell, color: "bg-negative" },
+            ]}
+          />
           <div className="flex justify-between text-[10px] text-muted-foreground">
             <span>{analyst_consensus.buy} Buy</span>
             <span>{analyst_consensus.hold} Hold</span>

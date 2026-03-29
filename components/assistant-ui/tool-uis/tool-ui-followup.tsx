@@ -177,7 +177,7 @@ const PortfolioStatusRender: ToolCallMessagePartComponent = ({ result }) => {
             <p
               className={cn(
                 "text-sm tabular-nums font-semibold",
-                unrealized >= 0 ? "text-emerald-500" : "text-red-500"
+                unrealized >= 0 ? "text-positive" : "text-negative"
               )}
             >
               {unrealized >= 0 ? "+" : ""}${unrealized.toFixed(2)}
@@ -218,7 +218,7 @@ const CompareTickersRender: ToolCallMessagePartComponent = ({ result }) => {
       {recommended && (
         <p className="text-sm">
           Recommendation:{" "}
-          <span className="font-mono font-semibold text-emerald-500">
+          <span className="font-mono font-semibold text-positive">
             {recommended}
           </span>
         </p>
@@ -249,7 +249,7 @@ const PerformanceReportRender: ToolCallMessagePartComponent = ({
           <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             Wins
           </p>
-          <p className="text-sm tabular-nums font-semibold text-emerald-500">
+          <p className="text-sm tabular-nums font-semibold text-positive">
             {wins}
           </p>
         </div>
@@ -257,7 +257,7 @@ const PerformanceReportRender: ToolCallMessagePartComponent = ({
           <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             Losses
           </p>
-          <p className="text-sm tabular-nums font-semibold text-red-500">
+          <p className="text-sm tabular-nums font-semibold text-negative">
             {losses}
           </p>
         </div>

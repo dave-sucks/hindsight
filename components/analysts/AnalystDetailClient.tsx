@@ -93,9 +93,13 @@ function sliceByRange(
 
 // ── Sidebar trade row (uses shared TradeRow component) ───────────────────────
 
-function AnalystTradeRow({ trade }: { trade: PositionWithThesis }) {
-  const pnl = trade.status === "CLOSED" ? (trade.realizedPnl ?? 0) : 0;
-  const price = trade.closePrice ?? trade.avgCost;
+function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; livePrice?: number }) {
+  const isOpen = trade.status === "OPEN";
+  const currentPrice = isOpen ? (livePrice ?? trade.avgCost) : (trade.closePrice ?? trade.avgCost);
+  const pnl = isOpen
+    ? (currentPrice - trade.avgCost) * trade.quantity * (trade.direction === "SHORT" ? -1 : 1)
+    : (trade.realizedPnl ?? 0);
+  const price = currentPrice;
   const pnlPct =
     trade.avgCost > 0
       ? ((price - trade.avgCost) / trade.avgCost) * 100 *
@@ -208,10 +212,12 @@ export default function AnalystDetailClient({
   detail,
   hasRunning,
   initialWatchlist = [],
+  livePrices = {},
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
   initialWatchlist?: WatchlistItemView[];
+  livePrices?: Record<string, number>;
 }) {
   const { config: rawConfig, stats, recentTrades } = detail;
 
@@ -229,6 +235,7 @@ export default function AnalystDetailClient({
   const router = useRouter();
   const [configOpen, setConfigOpen] = useState(false);
   const [range, setRange] = useState<Range>("Max");
+  const [chartMode, setChartMode] = useState<"value" | "pnl">("value");
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
   const [, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -286,6 +293,32 @@ export default function AnalystDetailClient({
   };
 
   // ── Chart data ──────────────────────────────────────────────────────────
+  const openPositions = recentTrades.filter((t) => t.status === "OPEN");
+  const hasOpenPositions = openPositions.length > 0;
+
+  // Compute total unrealized P&L from live prices
+  const totalUnrealizedPnl = useMemo(() => {
+    return openPositions.reduce((sum, t) => {
+      const lp = livePrices[t.symbol];
+      if (lp == null) return sum;
+      const dir = t.direction === "SHORT" ? -1 : 1;
+      return sum + (lp - t.avgCost) * t.quantity * dir;
+    }, 0);
+  }, [openPositions, livePrices]);
+
+  // Total cost basis for open positions (initial investment)
+  const totalCostBasis = useMemo(() => {
+    return openPositions.reduce((sum, t) => sum + t.avgCost * t.quantity, 0);
+  }, [openPositions]);
+
+  // Current portfolio value from live prices
+  const totalCurrentValue = useMemo(() => {
+    return openPositions.reduce((sum, t) => {
+      const lp = livePrices[t.symbol] ?? t.avgCost;
+      return sum + lp * t.quantity;
+    }, 0);
+  }, [openPositions, livePrices]);
+
   const equityData = useMemo(() => {
     const closed = recentTrades
       .filter((t) => t.closedAt && t.realizedPnl != null)
@@ -293,38 +326,78 @@ export default function AnalystDetailClient({
         (a, b) =>
           new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime(),
       );
-    if (closed.length < 2) return [];
+
+    const points: { date: string; pnl: number; value: number }[] = [];
+
+    // Start at earliest trade open date
+    const allTrades = [...recentTrades].sort(
+      (a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime(),
+    );
+    if (allTrades.length > 0) {
+      points.push({
+        date: new Date(allTrades[0].openedAt).toISOString().slice(0, 10),
+        pnl: 0,
+        value: totalCostBasis,
+      });
+    }
+
+    // Add closed trade points (cumulative realized)
     let cum = 0;
-    return closed.map((t) => {
+    for (const t of closed) {
       cum += t.realizedPnl!;
-      return {
+      points.push({
         date: new Date(t.closedAt!).toISOString().slice(0, 10),
-        value: cum,
-      };
-    });
-  }, [recentTrades]);
+        pnl: cum,
+        value: totalCostBasis + cum,
+      });
+    }
+
+    // Add today's point with unrealized P&L
+    if (hasOpenPositions) {
+      const today = new Date().toISOString().slice(0, 10);
+      const lastPoint = points[points.length - 1];
+      const todayPnl = cum + totalUnrealizedPnl;
+      if (!lastPoint || lastPoint.date !== today) {
+        points.push({ date: today, pnl: todayPnl, value: totalCurrentValue + cum });
+      } else {
+        lastPoint.pnl = todayPnl;
+        lastPoint.value = totalCurrentValue + cum;
+      }
+    }
+
+    return points.length >= 2 ? points : [];
+  }, [recentTrades, hasOpenPositions, totalUnrealizedPnl, totalCostBasis, totalCurrentValue]);
 
   const filteredEquity = useMemo(
     () => sliceByRange(equityData, range),
     [equityData, range],
   );
 
-  const equityStroke =
-    equityData.length > 0 && equityData[equityData.length - 1].value >= 0
-      ? PNL_HEX.positive
-      : PNL_HEX.negative;
+  const chartDataKey = chartMode === "pnl" ? "pnl" : "value";
+
+  const equityStroke = useMemo(() => {
+    if (equityData.length === 0) return PNL_HEX.positive;
+    const last = equityData[equityData.length - 1];
+    const first = equityData[0];
+    // For value mode: green if current > initial, for pnl mode: green if >= 0
+    return chartMode === "pnl"
+      ? (last.pnl >= 0 ? PNL_HEX.positive : PNL_HEX.negative)
+      : (last.value >= first.value ? PNL_HEX.positive : PNL_HEX.negative);
+  }, [equityData, chartMode]);
 
   // ── Display values ──────────────────────────────────────────────────────
-  const pnlColorClass =
-    stats.totalTrades > 0
-      ? stats.totalPnl >= 0
-        ? "text-positive"
-        : "text-negative"
-      : "text-muted-foreground";
-  const pnlStr =
-    stats.totalTrades > 0
-      ? (stats.totalPnl >= 0 ? "+" : "") + formatCurrency(stats.totalPnl)
-      : "$0.00";
+  const totalPnl = stats.totalPnl + totalUnrealizedPnl;
+  const hasTrades = stats.totalTrades > 0 || hasOpenPositions;
+  const pnlColorClass = hasTrades
+    ? totalPnl >= 0 ? "text-positive" : "text-negative"
+    : "text-muted-foreground";
+  const overlayValue = chartMode === "pnl"
+    ? (hasTrades ? (totalPnl >= 0 ? "+" : "") + formatCurrency(totalPnl) : "$0.00")
+    : formatCurrency(totalCurrentValue);
+  const overlayLabel = chartMode === "pnl" ? "P&L" : "Value";
+  const overlayColorClass = chartMode === "pnl"
+    ? pnlColorClass
+    : "text-foreground";
 
   return (
     <>
@@ -452,59 +525,95 @@ export default function AnalystDetailClient({
           <div className="h-full rounded-xl border bg-background overflow-hidden flex flex-col">
             {/* Equity chart */}
             {equityData.length < 2 ? (
-              <div className="h-[200px] bg-muted/30 flex items-center justify-center shrink-0">
-                <p className="text-[10px] text-muted-foreground">
-                  No closed trades yet
+              <div className="h-[200px] bg-muted/30 flex flex-col items-center justify-center shrink-0 relative overflow-hidden">
+                {/* Animated sine wave placeholder */}
+                <svg
+                  viewBox="0 0 200 60"
+                  className="absolute inset-x-4 top-1/2 -translate-y-1/2 h-16 opacity-[0.08]"
+                  preserveAspectRatio="none"
+                >
+                  <path
+                    d="M0,30 Q25,10 50,30 T100,30 T150,30 T200,30"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="animate-pulse"
+                  />
+                </svg>
+                <p className="text-[10px] text-muted-foreground z-10">
+                  {hasOpenPositions
+                    ? "Positions open — chart updates on close"
+                    : "Waiting for first trade"}
                 </p>
               </div>
             ) : (
               <div className="relative shrink-0">
-                {/* P&L + Win Rate overlay */}
+                {/* Value/P&L overlay + mode toggle */}
                 <div className="absolute top-2 left-2 right-2 z-10 flex items-start justify-between">
                   <div>
                     <p
                       className={cn(
                         "text-lg font-semibold tabular-nums",
-                        pnlColorClass,
+                        overlayColorClass,
                       )}
                     >
-                      {pnlStr}
+                      {overlayValue}
                     </p>
-                    <p className="text-[10px] text-muted-foreground">Lifetime</p>
+                    <p className="text-[10px] text-muted-foreground">{overlayLabel}</p>
                   </div>
-                  {stats.winRate != null && (
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium tabular-nums",
-                        pnlBadgeClasses(stats.winRate - 0.5),
-                      )}
-                    >
-                      {Math.round(stats.winRate * 100)}% Success
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {stats.winRate != null && (
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium tabular-nums",
+                          pnlBadgeClasses(stats.winRate - 0.5),
+                        )}
+                      >
+                        {Math.round(stats.winRate * 100)}%
+                      </span>
+                    )}
+                  </div>
                 </div>
-                {/* Range tabs */}
-                <div className="absolute bottom-2 left-2 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-0.5 py-0.5">
-                  {RANGES.map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setRange(r)}
-                      className={cn(
-                        "px-1.5 py-0.5 text-[9px] rounded transition-colors",
-                        range === r
-                          ? "bg-muted text-foreground font-medium"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {r}
-                    </button>
-                  ))}
+                {/* Range tabs + mode toggle */}
+                <div className="absolute bottom-2 left-2 right-2 z-10 flex items-center justify-between">
+                  <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-0.5 py-0.5">
+                    {RANGES.map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setRange(r)}
+                        className={cn(
+                          "px-1.5 py-0.5 text-[9px] rounded transition-colors",
+                          range === r
+                            ? "bg-muted text-foreground font-medium"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-0.5 py-0.5">
+                    {(["value", "pnl"] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setChartMode(m)}
+                        className={cn(
+                          "px-1.5 py-0.5 text-[9px] rounded transition-colors",
+                          chartMode === m
+                            ? "bg-muted text-foreground font-medium"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {m === "value" ? "Value" : "P&L"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <ChartContainer
                   config={{
-                    value: {
-                      label: "P&L",
+                    [chartDataKey]: {
+                      label: chartMode === "pnl" ? "P&L" : "Value",
                       color: equityStroke,
                     },
                   } satisfies ChartConfig}
@@ -535,7 +644,14 @@ export default function AnalystDetailClient({
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="date" hide />
-                    <YAxis hide domain={["dataMin - 50", "dataMax + 50"]} />
+                    <YAxis
+                      hide
+                      domain={
+                        chartMode === "pnl"
+                          ? [(min: number) => -Math.max(Math.abs(min), 50), (max: number) => Math.max(Math.abs(max), 50)]
+                          : ["dataMin * 0.95", "dataMax * 1.05"]
+                      }
+                    />
                     <ChartTooltip
                       content={
                         <ChartTooltipContent
@@ -550,11 +666,11 @@ export default function AnalystDetailClient({
                     />
                     <Area
                       type="monotone"
-                      dataKey="value"
+                      dataKey={chartDataKey}
                       stroke={equityStroke}
                       strokeWidth={1.5}
                       fill="url(#analystEqGrad)"
-                      baseValue="dataMin"
+                      baseValue={chartMode === "pnl" ? 0 : "dataMin"}
                       dot={false}
                       activeDot={{ r: 2, fill: equityStroke }}
                       isAnimationActive={false}
@@ -592,7 +708,7 @@ export default function AnalystDetailClient({
                   <EducationEmptyState stateKey="analyst-trades" size="inline" />
                 ) : (
                   recentTrades.map((trade) => (
-                    <AnalystTradeRow key={trade.id} trade={trade} />
+                    <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
                   ))
                 )}
               </TabsContent>

@@ -16,7 +16,6 @@ export {
   type TradeConfirmationData,
   type TradeConfirmationProps,
 } from "./trade-confirmation";
-export { PriceGauge } from "./price-gauge";
 export { HowItWorksSheet } from "./how-it-works-sheet";
 export { EducationEmptyState, ConceptTooltip } from "./education-card";
 export {

@@ -38,16 +38,16 @@ export type DecisionSummaryCardProps = ComponentProps<typeof Card> &
 
 function actionColor(action: string): string {
   const a = action.toUpperCase();
-  if (a === "INITIATE" || a === "ADD") return "text-emerald-500";
-  if (a === "EXIT" || a === "REDUCE") return "text-red-500";
+  if (a === "INITIATE" || a === "ADD") return "text-positive";
+  if (a === "EXIT" || a === "REDUCE") return "text-negative";
   if (a === "HOLD" || a === "WATCH") return "text-muted-foreground";
   return "text-foreground";
 }
 
 function confidenceColor(confidence: number): string {
-  if (confidence >= 70) return "text-emerald-500";
+  if (confidence >= 70) return "text-positive";
   if (confidence >= 50) return "text-amber-500";
-  return "text-red-500";
+  return "text-negative";
 }
 
 // ─── DecisionSummaryCard ─────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ export function DecisionSummaryCard({
             {exposureBreakdown.longExposure != null && (
               <span>
                 <span className="uppercase tracking-wide">Long</span>{" "}
-                <span className="tabular-nums font-medium text-emerald-500">
+                <span className="tabular-nums font-medium text-positive">
                   ${exposureBreakdown.longExposure.toLocaleString()}
                 </span>
               </span>
@@ -145,7 +145,7 @@ export function DecisionSummaryCard({
             {exposureBreakdown.shortExposure != null && (
               <span>
                 <span className="uppercase tracking-wide">Short</span>{" "}
-                <span className="tabular-nums font-medium text-red-500">
+                <span className="tabular-nums font-medium text-negative">
                   ${exposureBreakdown.shortExposure.toLocaleString()}
                 </span>
               </span>
@@ -157,8 +157,8 @@ export function DecisionSummaryCard({
                   className={cn(
                     "tabular-nums font-medium",
                     exposureBreakdown.netExposure >= 0
-                      ? "text-emerald-500"
-                      : "text-red-500",
+                      ? "text-positive"
+                      : "text-negative",
                   )}
                 >
                   ${Math.abs(exposureBreakdown.netExposure).toLocaleString()}

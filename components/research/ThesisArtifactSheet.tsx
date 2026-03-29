@@ -10,7 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { ThesisCardData } from "@/components/domain";
-import { PriceGauge } from "@/components/domain/price-gauge";
+import { BarGauge, priceToRange } from "@/components/ui/bar-gauge";
 import {
   AlertCircle,
   CheckCircle2,
@@ -118,11 +118,14 @@ export function ThesisArtifactSheet({
 
           {/* Price gauge — visual overview */}
           {hasEntry && !isPass && (hasTarget || hasStop) && (
-            <PriceGauge
-              entry={thesis.entry_price!}
-              target={thesis.target_price}
-              stop={thesis.stop_loss}
-              direction={thesis.direction === "SHORT" ? "SHORT" : "LONG"}
+            <BarGauge
+              mode="range"
+              value={Math.max(0, Math.min(1, priceToRange({
+                entry: thesis.entry_price!,
+                target: thesis.target_price,
+                stop: thesis.stop_loss,
+                direction: thesis.direction === "SHORT" ? "SHORT" : "LONG",
+              })))}
             />
           )}
 

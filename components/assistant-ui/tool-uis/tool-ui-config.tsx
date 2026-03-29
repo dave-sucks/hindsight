@@ -36,37 +36,24 @@ export const SuggestConfigRender: ToolCallMessagePartComponent<
   if (!args) return null;
 
   if (hasPanelCallback) {
-    const dir = args.directionBias ?? "BOTH";
     return (
       <div className="my-2">
         <Card className="overflow-hidden p-0 gap-0">
-          <div className="p-3 border-b flex items-center justify-between gap-2">
+          <div className="px-3 py-2 border-b flex items-center justify-between gap-2">
             <span className="text-sm font-brand font-semibold truncate">
               {args.name ?? "Analyst"}
             </span>
-            <Badge
-              variant={
-                dir === "LONG"
-                  ? "positive"
-                  : dir === "SHORT"
-                    ? "negative"
-                    : "secondary"
-              }
-            >
-              {dir}
-            </Badge>
+            <span className="text-xs text-muted-foreground">Analyst</span>
           </div>
-          {args.description && (
-            <div className="p-3 border-b">
+          <div className="p-3">
+            {args.description && (
               <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
                 {args.description}
               </p>
-            </div>
-          )}
-          <div className="p-3">
-            <span className="text-[11px] text-muted-foreground">
-              See panel for full configuration →
-            </span>
+            )}
+            <p className="text-xs text-muted-foreground/60 mt-1.5">
+              Review the strategy, resources, and configuration in the panel.
+            </p>
           </div>
         </Card>
       </div>
