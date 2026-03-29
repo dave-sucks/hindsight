@@ -17,11 +17,9 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { StockLogo } from "@/components/StockLogo";
 import { StockCombobox } from "@/components/analysts/StockCombobox";
-import { Eye, X, Globe, Search, Zap } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
+import { X } from "lucide-react";
 import {
   updateAnalystField,
   addToWatchlist,
@@ -35,6 +33,9 @@ interface AnalystConfigSheetProps {
   config: AnalystConfig;
 }
 
+// ── Editable row — label left, input/dropdown right ──────────────────────────
+// Same visual weight as ConfigRow in AnalystConfigPanel: text-sm both sides
+
 function EditableRow({
   label,
   children,
@@ -43,8 +44,8 @@ function EditableRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between text-sm border-b border-border pb-1.5 pt-1.5">
-      <span className="text-muted-foreground">{label}</span>
+    <div className="flex items-center justify-between py-1.5 border-b border-border/40 last:border-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
       {children}
     </div>
   );
@@ -58,9 +59,8 @@ export function AnalystConfigSheet({
   const [isPending, startTransition] = useTransition();
   const [watchlist, setWatchlist] = useState(config.watchlist);
 
-  // Reset watchlist when config changes (e.g. after server revalidation)
+  // Sync watchlist when config changes
   if (config.watchlist !== watchlist && !isPending) {
-    // Only sync if the arrays are actually different
     const configStr = config.watchlist.join(",");
     const localStr = watchlist.join(",");
     if (configStr !== localStr) {
@@ -103,9 +103,9 @@ export function AnalystConfigSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="px-4 pb-6 space-y-5">
-          {/* Editable config rows */}
-          <div className="space-y-0.5">
+        <div>
+          {/* ── Config rows ────────────────────────────────────── */}
+          <div className="p-3 border-b">
             <EditableRow label="Direction">
               <Select
                 defaultValue={config.directionBias}
@@ -217,172 +217,153 @@ export function AnalystConfigSheet({
             </EditableRow>
           </div>
 
-          {/* Sectors */}
+          {/* ── Sectors ────────────────────────────────────────── */}
           {config.sectors.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-sm text-muted-foreground">Sectors</p>
-              <div className="flex flex-wrap gap-1">
+            <div className="p-3 border-b">
+              <p className="text-sm font-medium mb-1.5">Sectors</p>
+              <div className="flex flex-wrap gap-1.5">
                 {config.sectors.map((s) => (
-                  <Badge key={s} variant="secondary">
-                    {s}
-                  </Badge>
+                  <Badge key={s} variant="outline">{s}</Badge>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Signals */}
+          {/* ── Signals ────────────────────────────────────────── */}
           {config.signalTypes.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-sm text-muted-foreground">Signals</p>
-              <div className="flex flex-wrap gap-1">
+            <div className="p-3 border-b">
+              <p className="text-sm font-medium mb-1.5">Signals</p>
+              <div className="flex flex-wrap gap-1.5">
                 {config.signalTypes.map((s) => (
-                  <Badge key={s} variant="secondary">
-                    {s}
+                  <Badge key={s} variant="outline">
+                    {s.replace(/_/g, " ")}
                   </Badge>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Watching */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Watching</p>
+          {/* ── Watchlist — StockLogo rows ──────────────────────── */}
+          <div className="p-3 border-b">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-sm font-medium">Watchlist</p>
               <StockCombobox
                 onSelect={handleAddStock}
                 excludeSymbols={watchlist}
               />
             </div>
             {watchlist.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
+              <div>
                 {watchlist.map((symbol) => (
-                  <Badge key={symbol} variant="secondary">
-                    <Eye className="h-3 w-3" />
-                    {symbol}
+                  <div key={symbol} className="flex items-center gap-2 py-1.5 border-b border-border/40 last:border-0">
+                    <StockLogo ticker={symbol} size="sm" />
+                    <span className="font-mono text-[11px] font-medium flex-1">{symbol}</span>
                     <button
                       onClick={() => handleRemoveStock(symbol)}
-                      className="ml-0.5 rounded-full hover:bg-foreground/10 p-0.5"
+                      className="rounded-full hover:bg-foreground/10 p-0.5 text-muted-foreground"
                     >
                       <X className="h-3 w-3" />
                     </button>
-                  </Badge>
+                  </div>
                 ))}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground/70">
-                No stocks on the watchlist yet. Add stocks that this analyst should
-                prioritize during research runs.
+                No stocks on the watchlist yet.
               </p>
             )}
           </div>
 
-          {/* Intelligence Section */}
-          {(config.domainMonitors.length > 0 || config.searchMonitors.length > 0 || config.intelligencePolicy) && (
-            <>
-              <Separator />
+          {/* ── Domain Monitors ─────────────────────────────────── */}
+          {config.domainMonitors.length > 0 && (
+            <div className="p-3 border-b">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-sm font-medium">Sources</p>
+                <span className="text-[11px] text-muted-foreground tabular-nums">
+                  {config.domainMonitors.length}
+                </span>
+              </div>
+              {config.domainMonitors.map((m) => (
+                <div key={m.id} className="flex items-center gap-2 py-1.5 border-b border-border/40 last:border-0">
+                  <img
+                    src={`https://www.google.com/s2/favicons?domain=${m.domain}&sz=16`}
+                    alt=""
+                    width={14}
+                    height={14}
+                    className="size-3.5 rounded-sm shrink-0"
+                  />
+                  <span className="text-sm truncate flex-1">{m.name}</span>
+                  <span className="text-[11px] text-muted-foreground">{m.category}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
-              {/* Domain Monitors (Sources) */}
-              {config.domainMonitors.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Source Monitors</p>
-                    <span className="text-[10px] text-muted-foreground/60 ml-auto tabular-nums">
-                      {config.domainMonitors.length}
+          {/* ── Search Monitors ─────────────────────────────────── */}
+          {config.searchMonitors.length > 0 && (
+            <div className="p-3 border-b">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-sm font-medium">Search Queries</p>
+                <span className="text-[11px] text-muted-foreground tabular-nums">
+                  {config.searchMonitors.length}
+                </span>
+              </div>
+              {config.searchMonitors.map((m) => (
+                <div key={m.id} className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
+                  <span className="text-sm text-muted-foreground flex-1">{m.query}</span>
+                  <span className="text-[11px] text-muted-foreground">{m.category}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Intelligence Policy ─────────────────────────────── */}
+          {config.intelligencePolicy && (
+            <div className="p-3">
+              <p className="text-sm font-medium mb-1.5">Attention Policy</p>
+              <div className="space-y-0.5">
+                {typeof config.intelligencePolicy.holdingsAttention === "number" && (
+                  <div className="flex justify-between py-0.5">
+                    <span className="text-sm text-muted-foreground">Holdings</span>
+                    <span className="text-sm tabular-nums font-medium">
+                      {Math.round((config.intelligencePolicy.holdingsAttention as number) * 100)}%
                     </span>
                   </div>
-                  <div className="space-y-0">
-                    {config.domainMonitors.map((m) => (
-                      <div key={m.id} className="flex items-center gap-2 py-1 border-b border-border/40 last:border-0">
-                        <img
-                          src={`https://www.google.com/s2/favicons?domain=${m.domain}&sz=16`}
-                          alt=""
-                          width={14}
-                          height={14}
-                          className="size-3.5 rounded-sm shrink-0"
-                        />
-                        <span className="text-sm truncate flex-1">{m.name}</span>
-                        <Badge variant="secondary">{m.category}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Search Monitors (Queries) */}
-              {config.searchMonitors.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Search className="h-3.5 w-3.5 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Search Monitors</p>
-                    <span className="text-[10px] text-muted-foreground/60 ml-auto tabular-nums">
-                      {config.searchMonitors.length}
+                )}
+                {typeof config.intelligencePolicy.watchlistAttention === "number" && (
+                  <div className="flex justify-between py-0.5">
+                    <span className="text-sm text-muted-foreground">Watchlist</span>
+                    <span className="text-sm tabular-nums font-medium">
+                      {Math.round((config.intelligencePolicy.watchlistAttention as number) * 100)}%
                     </span>
                   </div>
-                  <div className="space-y-1">
-                    {config.searchMonitors.map((m) => (
-                      <div key={m.id} className="flex items-start gap-2 py-1 border-b border-border/40 last:border-0">
-                        <span className="text-sm text-foreground/80 flex-1">{m.query}</span>
-                        <Badge variant="secondary">{m.category}</Badge>
-                      </div>
-                    ))}
+                )}
+                {typeof config.intelligencePolicy.discoveryAttention === "number" && (
+                  <div className="flex justify-between py-0.5">
+                    <span className="text-sm text-muted-foreground">Discovery</span>
+                    <span className="text-sm tabular-nums font-medium">
+                      {Math.round((config.intelligencePolicy.discoveryAttention as number) * 100)}%
+                    </span>
                   </div>
-                </div>
-              )}
-
-              {/* Intelligence Policy */}
-              {config.intelligencePolicy && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Zap className="h-3.5 w-3.5 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Attention Policy</p>
+                )}
+                {typeof config.intelligencePolicy.maxSignalsPerRun === "number" && (
+                  <div className="flex justify-between py-0.5">
+                    <span className="text-[11px] text-muted-foreground">Signal budget</span>
+                    <span className="text-[11px] tabular-nums font-medium">
+                      {config.intelligencePolicy.maxSignalsPerRun as number}
+                    </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-                    {typeof config.intelligencePolicy.holdingsAttention === "number" && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Holdings</span>
-                        <span className="tabular-nums font-medium">
-                          {Math.round((config.intelligencePolicy.holdingsAttention as number) * 100)}%
-                        </span>
-                      </div>
-                    )}
-                    {typeof config.intelligencePolicy.watchlistAttention === "number" && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Watchlist</span>
-                        <span className="tabular-nums font-medium">
-                          {Math.round((config.intelligencePolicy.watchlistAttention as number) * 100)}%
-                        </span>
-                      </div>
-                    )}
-                    {typeof config.intelligencePolicy.discoveryAttention === "number" && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Discovery</span>
-                        <span className="tabular-nums font-medium">
-                          {Math.round((config.intelligencePolicy.discoveryAttention as number) * 100)}%
-                        </span>
-                      </div>
-                    )}
-                    {typeof config.intelligencePolicy.maxSignalsPerRun === "number" && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Signal budget</span>
-                        <span className="tabular-nums font-medium">
-                          {config.intelligencePolicy.maxSignalsPerRun as number}
-                        </span>
-                      </div>
-                    )}
-                    {typeof config.intelligencePolicy.allowLiveSearch === "boolean" && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Live search</span>
-                        <span className="font-medium">
-                          {(config.intelligencePolicy.allowLiveSearch as boolean) ? "On" : "Off"}
-                        </span>
-                      </div>
-                    )}
+                )}
+                {typeof config.intelligencePolicy.allowLiveSearch === "boolean" && (
+                  <div className="flex justify-between py-0.5">
+                    <span className="text-[11px] text-muted-foreground">Live search</span>
+                    <span className="text-[11px] font-medium">
+                      {(config.intelligencePolicy.allowLiveSearch as boolean) ? "On" : "Off"}
+                    </span>
                   </div>
-                </div>
-              )}
-            </>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </SheetContent>

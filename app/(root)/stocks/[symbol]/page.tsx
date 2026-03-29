@@ -7,6 +7,9 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StockLogo } from "@/components/StockLogo";
 import { StockPriceChart } from "@/components/stocks/StockPriceChart";
+import { StockThesesList } from "@/components/stocks/StockThesesList";
+import type { ThesisRowData } from "@/components/ui/thesis-row";
+import { ViewAllThesesLink } from "@/components/stocks/ViewAllThesesLink";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import {
   getNews,
@@ -25,22 +28,7 @@ import {
   ExternalLink,
   TrendingUp,
   TrendingDown,
-  ArrowRight,
 } from "lucide-react";
-
-// ─── Thesis verdict helper ───────────────────────────────────────────────────
-
-function verdictLabel(direction: string, confidence: number): { label: string; color: string } {
-  if (direction === "PASS") return { label: "Pass", color: "text-muted-foreground" };
-  if (direction === "LONG") {
-    if (confidence >= 80) return { label: "Strong Buy", color: "text-emerald-500" };
-    if (confidence >= 60) return { label: "Buy", color: "text-emerald-500" };
-    return { label: "Lean Buy", color: "text-emerald-500/70" };
-  }
-  if (confidence >= 80) return { label: "Strong Sell", color: "text-red-500" };
-  if (confidence >= 60) return { label: "Sell", color: "text-red-500" };
-  return { label: "Lean Sell", color: "text-red-500/70" };
-}
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -291,54 +279,24 @@ export default async function StockDetailPage({ params }: Props) {
                 <StatCell label="Div Yield" value={divYield ? `${fmt(divYield)}%` : "—"} />
               </div>
 
-              {/* Latest Thesis — featured card */}
+              {/* Latest Thesis */}
               {(() => {
-                const latest = tickerTheses.find((t) => t.status === "ACTIVE" && t.direction !== "PASS") ?? tickerTheses[0];
+                const latest = tickerTheses.find((t: { status: string; direction: string }) => t.status === "ACTIVE" && t.direction !== "PASS") ?? tickerTheses[0];
                 if (!latest) return null;
-                const v = verdictLabel(latest.direction, latest.confidenceScore);
-                return (
-                  <Card>
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Our AI's Take</p>
-                        <div className="flex items-center gap-2">
-                          <span className={cn("text-sm font-semibold", v.color)}>{v.label}</span>
-                          <span className="text-sm text-muted-foreground tabular-nums">{latest.confidenceScore}%</span>
-                        </div>
-                      </div>
-                      <p className="text-sm text-foreground leading-relaxed">
-                        {latest.reasoningSummary}
-                      </p>
-                      {(latest.entryPrice != null || latest.targetPrice != null || latest.stopLoss != null) && (
-                        <div className="flex items-center gap-4 mt-3 text-xs tabular-nums">
-                          {latest.entryPrice != null && (
-                            <span className="text-muted-foreground">Entry <span className="text-foreground font-medium">${latest.entryPrice.toFixed(2)}</span></span>
-                          )}
-                          {latest.targetPrice != null && (
-                            <span className="text-muted-foreground">Target <span className="text-emerald-500 font-medium">${latest.targetPrice.toFixed(2)}</span></span>
-                          )}
-                          {latest.stopLoss != null && (
-                            <span className="text-muted-foreground">Stop <span className="text-red-500 font-medium">${latest.stopLoss.toFixed(2)}</span></span>
-                          )}
-                        </div>
-                      )}
-                      {tickerTheses.length > 1 && (
-                        <div className="mt-3 pt-3 border-t">
-                          <button
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-                            onClick={() => {
-                              // Switch to theses tab — this is a server component so we use URL
-                              const tabTrigger = document.querySelector('[data-value="theses"]') as HTMLElement;
-                              tabTrigger?.click();
-                            }}
-                          >
-                            View all {tickerTheses.length} analyses <ArrowRight className="h-3 w-3" />
-                          </button>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
+                const rowData: ThesisRowData = {
+                  id: latest.id,
+                  ticker: upperSymbol,
+                  direction: latest.direction,
+                  confidenceScore: latest.confidenceScore,
+                  reasoningSummary: latest.reasoningSummary,
+                  entryPrice: latest.entryPrice,
+                  targetPrice: latest.targetPrice,
+                  stopLoss: latest.stopLoss,
+                  createdAt: latest.createdAt.toISOString(),
+                  analystName: latest.researchRun?.agentConfig?.name ?? null,
+                  runId: latest.researchRunId,
+                };
+                return <StockThesesList theses={[rowData]} />;
               })()}
 
               {/* News */}
@@ -406,98 +364,21 @@ export default async function StockDetailPage({ params }: Props) {
 
             {/* ── THESES — Perplexity "Notable Price Movement" style ── */}
             <TabsContent value="theses" className="mt-4 max-w-3xl">
-              {tickerTheses.length === 0 ? (
-                <div className="py-12 text-center">
-                  <p className="text-sm text-muted-foreground">No previous research for {upperSymbol}.</p>
-                  <p className="text-xs text-muted-foreground mt-1">Click Research to get started.</p>
-                </div>
-              ) : (
-                <Card>
-                  <CardContent className="p-0">
-                    {tickerTheses.map((thesis, i) => {
-                      const isActive = thesis.status === "ACTIVE" && thesis.direction !== "PASS";
-                      const dirColor = thesis.direction === "LONG"
-                        ? "text-emerald-500"
-                        : thesis.direction === "SHORT"
-                        ? "text-red-500"
-                        : "text-muted-foreground";
-
-                      return (
-                        <div
-                          key={thesis.id}
-                          className={cn(
-                            "flex gap-4 px-5 py-4",
-                            i < tickerTheses.length - 1 && "border-b border-border",
-                          )}
-                        >
-                          {/* Date + dot column */}
-                          <div className="w-16 shrink-0 pt-1 text-right">
-                            <p className="text-xs text-muted-foreground font-medium">
-                              {new Date(thesis.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground/50 mt-0.5">
-                              {new Date(thesis.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                            </p>
-                          </div>
-
-                          {/* Dot */}
-                          <div className="flex flex-col items-center pt-2">
-                            <div className={cn(
-                              "h-2.5 w-2.5 rounded-full shrink-0",
-                              isActive ? "bg-blue-400" : "bg-muted-foreground/30",
-                            )} />
-                          </div>
-
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            {/* Verdict line */}
-                            {(() => {
-                              const v = verdictLabel(thesis.direction, thesis.confidenceScore);
-                              return (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={cn("text-sm font-semibold", v.color)}>
-                                    {v.label}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground tabular-nums">{thesis.confidenceScore}% confidence</span>
-                                  {thesis.entryPrice != null && (
-                                    <span className="text-xs text-muted-foreground tabular-nums">
-                                      · Entry ${thesis.entryPrice.toFixed(2)}
-                                    </span>
-                                  )}
-                                  {thesis.targetPrice != null && (
-                                    <span className="text-xs text-emerald-500/70 tabular-nums">
-                                      → ${thesis.targetPrice.toFixed(2)}
-                                    </span>
-                                  )}
-                                  {thesis.status === "SUPERSEDED" && (
-                                    <span className="text-xs text-amber-500">Superseded</span>
-                                  )}
-                                  {thesis.status === "INVALIDATED" && (
-                                    <span className="text-xs text-red-500">Invalidated</span>
-                                  )}
-                                </div>
-                              );
-                            })()}
-
-                            {/* Reasoning paragraph */}
-                            <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                              {thesis.reasoningSummary}
-                            </p>
-
-                            {/* Analyst name */}
-                            {thesis.researchRun?.agentConfig?.name && (
-                              <p className="text-xs text-muted-foreground/50 mt-2">
-                                {thesis.researchRun.agentConfig.name}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              )}
+              <StockThesesList theses={tickerTheses.map((t: typeof tickerTheses[number]) => ({
+                id: t.id,
+                ticker: upperSymbol,
+                direction: t.direction,
+                confidenceScore: t.confidenceScore,
+                reasoningSummary: t.reasoningSummary,
+                entryPrice: t.entryPrice,
+                targetPrice: t.targetPrice,
+                stopLoss: t.stopLoss,
+                createdAt: t.createdAt.toISOString(),
+                analystName: t.researchRun?.agentConfig?.name ?? null,
+                runId: t.researchRunId,
+              }))} />
             </TabsContent>
+
           </Tabs>
         </div>
 

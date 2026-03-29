@@ -37,12 +37,10 @@ export const SuggestConfigRender: ToolCallMessagePartComponent<
 
   if (hasPanelCallback) {
     const dir = args.directionBias ?? "BOTH";
-    const hold = (args.holdDurations ?? ["SWING"]).join("/");
-    const conf = args.minConfidence ?? 65;
     return (
       <div className="my-2">
         <Card className="overflow-hidden p-0 gap-0">
-          <div className="px-3 py-2 border-b bg-muted flex items-center justify-between gap-2">
+          <div className="p-3 border-b flex items-center justify-between gap-2">
             <span className="text-sm font-brand font-semibold truncate">
               {args.name ?? "Analyst"}
             </span>
@@ -58,15 +56,16 @@ export const SuggestConfigRender: ToolCallMessagePartComponent<
               {dir}
             </Badge>
           </div>
-          <div className="px-3 py-1.5">
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 font-mono">
-              <span>{dir}</span>
-              <span className="opacity-30">&middot;</span>
-              <span>{hold}</span>
-              <span className="opacity-30">&middot;</span>
-              <span className="tabular-nums">{conf}% MIN</span>
-              <span className="opacity-30">&middot;</span>
-              <span className="text-foreground/50">see panel &rarr;</span>
+          {args.description && (
+            <div className="p-3 border-b">
+              <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
+                {args.description}
+              </p>
+            </div>
+          )}
+          <div className="p-3">
+            <span className="text-[11px] text-muted-foreground">
+              See panel for full configuration →
             </span>
           </div>
         </Card>
@@ -197,18 +196,18 @@ export const SuggestConfigEditorRender: ToolCallMessagePartComponent<
   return (
     <div className="my-2 space-y-3">
       <Card className="overflow-hidden p-0">
-        <div className="px-5 py-3 border-b flex items-center justify-between">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="p-3 border-b flex items-center justify-between">
+          <h4 className="text-sm font-medium">
             Proposed Changes
           </h4>
           <Badge variant="secondary">
             {diffs.length} {diffs.length === 1 ? "change" : "changes"}
           </Badge>
         </div>
-        <div className="px-5 py-4 space-y-3">
+        <div className="p-3 space-y-3">
           {diffs.map((d) => (
             <div key={d.label} className="text-sm">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
                 {d.label}
               </span>
               <div className="flex items-start gap-2.5 mt-1">
@@ -223,7 +222,7 @@ export const SuggestConfigEditorRender: ToolCallMessagePartComponent<
             </div>
           ))}
         </div>
-        <div className="px-5 pb-4">
+        <div className="p-3 border-t">
           <button
             onClick={() => setShowFull(!showFull)}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"

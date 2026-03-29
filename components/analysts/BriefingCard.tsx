@@ -4,14 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { TickerMarkdown } from "@/components/ui/ticker-markdown";
 import { formatCurrency } from "@/lib/format";
 import { StockLogo } from "@/components/StockLogo";
-import {
-  AlertCircle,
-  Calendar,
-  Clock,
-  Eye,
-  RefreshCw,
-  Shield,
-} from "lucide-react";
+import { Flag } from "lucide-react";
 import type { AnalystBriefingItem } from "@/lib/actions/analyst.actions";
 
 // ── Types for structured brief fields ────────────────────────────────────────
@@ -63,6 +56,7 @@ function safeArray<T>(value: unknown): T[] {
 }
 
 // ── BriefingCard ─────────────────────────────────────────────────────────────
+// Post-run brief. Same p-3 border-b section pattern as morning brief cards.
 
 export function BriefingCard({
   briefing,
@@ -81,23 +75,17 @@ export function BriefingCard({
   const selfCorrections = safeArray<SelfCorrection>(briefing.selfCorrections);
 
   return (
-    <div className="py-6 border-b border-border last:border-0">
-      {/* Date header + relative time */}
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Calendar className="h-3.5 w-3.5" />
-          <span className="font-medium">{formatDate(briefing.createdAt)}</span>
+    <div className="rounded-lg border bg-background">
+      {/* Header: date + relative time + stats */}
+      <div className="p-3 border-b">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">{formatDate(briefing.createdAt)}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {formatRelativeTime(briefing.createdAt)}
+          </span>
         </div>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="h-3 w-3" />
-          <span>{formatRelativeTime(briefing.createdAt)}</span>
-        </div>
-      </div>
-
-      {/* Stats line + market posture */}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4">
         {Object.keys(snapshot).length > 0 && (
-          <>
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1">
             <span>
               P&L{" "}
               <span className="tabular-nums font-medium">
@@ -108,103 +96,86 @@ export function BriefingCard({
             {wins != null && losses != null && (
               <span>
                 Record{" "}
-                <span className="tabular-nums font-medium">
-                  {wins}W / {losses}L
-                </span>
+                <span className="tabular-nums font-medium">{wins}W / {losses}L</span>
               </span>
             )}
             {openPositions != null && openPositions > 0 && (
               <span>
-                Open{" "}
-                <span className="tabular-nums font-medium">{openPositions}</span>
+                Open <span className="tabular-nums font-medium">{openPositions}</span>
               </span>
             )}
-          </>
-        )}
-        {briefing.marketPosture && (
-          <Badge variant="outline">
-            <Shield className="h-3 w-3" />
-            {briefing.marketPosture}
-          </Badge>
+            {briefing.marketPosture && (
+              <Badge variant="outline">{briefing.marketPosture}</Badge>
+            )}
+          </div>
         )}
       </div>
 
       {/* Narrative — the main briefing text */}
-      <TickerMarkdown>{briefing.narrative}</TickerMarkdown>
+      <div className="p-3 border-b">
+        <div className="text-sm leading-relaxed">
+          <TickerMarkdown>{briefing.narrative}</TickerMarkdown>
+        </div>
+      </div>
 
-      {/* Strategy notes — just italic text, no box */}
+      {/* Strategy notes */}
       {briefing.strategyNotes && (
-        <div className="mt-4 text-sm text-muted-foreground italic">
-          <TickerMarkdown>{briefing.strategyNotes}</TickerMarkdown>
+        <div className="p-3 border-b">
+          <div className="text-sm text-muted-foreground italic leading-relaxed">
+            <TickerMarkdown>{briefing.strategyNotes}</TickerMarkdown>
+          </div>
         </div>
       )}
 
       {/* Watch Tomorrow */}
       {watchItems.length > 0 && (
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <Eye className="h-3.5 w-3.5" />
-            Watch Tomorrow
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {watchItems.map((item, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm"
-              >
-                <StockLogo ticker={item.symbol} size="xs" />
-                <span className="font-medium">{item.symbol}</span>
-                {item.trigger && (
-                  <span className="text-muted-foreground text-xs">
-                    {item.trigger}
-                  </span>
-                )}
-                {item.suggestedAction && (
-                  <Badge variant="outline">{item.suggestedAction}</Badge>
-                )}
-              </div>
-            ))}
-          </div>
+        <div className="p-3 border-b space-y-2">
+          <p className="text-sm font-medium">Watch Tomorrow</p>
+          {watchItems.map((item, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <StockLogo ticker={item.symbol} size="sm" />
+              <span className="font-mono text-[11px] font-medium">{item.symbol}</span>
+              {item.trigger && (
+                <span className="text-xs text-muted-foreground">{item.trigger}</span>
+              )}
+              {item.suggestedAction && (
+                <span className="text-xs text-muted-foreground ml-auto">{item.suggestedAction}</span>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
       {/* Unresolved Items */}
       {unresolvedItems.length > 0 && (
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-amber-500">
-            <AlertCircle className="h-3.5 w-3.5" />
-            Unresolved
-          </div>
-          <div className="space-y-1.5">
-            {unresolvedItems.map((item, i) => (
-              <div key={i} className="text-sm text-muted-foreground">
+        <div className="p-3 border-b space-y-2">
+          <p className="text-sm font-medium">Unresolved</p>
+          {unresolvedItems.map((item, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <Flag className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
+              <div className="text-sm text-muted-foreground">
                 <span>{item.item}</span>
                 {item.impact && (
                   <span className="text-xs ml-1.5 opacity-70">— {item.impact}</span>
                 )}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Self-Corrections */}
       {selfCorrections.length > 0 && (
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <RefreshCw className="h-3.5 w-3.5" />
-            Self-Corrections
-          </div>
-          <div className="space-y-1.5">
-            {selfCorrections.map((item, i) => (
-              <div key={i} className="text-sm text-muted-foreground">
-                <span>{item.observation}</span>
-                {item.adjustment && (
-                  <span className="text-xs ml-1.5 opacity-70">→ {item.adjustment}</span>
-                )}
-              </div>
-            ))}
-          </div>
+        <div className="p-3 space-y-2">
+          <p className="text-sm font-medium">Self-Corrections</p>
+          {selfCorrections.map((item, i) => (
+            <p key={i} className="text-sm text-muted-foreground">
+              {item.observation}
+              {item.adjustment && (
+                <span className="text-xs ml-1.5 opacity-70">→ {item.adjustment}</span>
+              )}
+            </p>
+          ))}
         </div>
       )}
     </div>

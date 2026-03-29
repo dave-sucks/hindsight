@@ -14,8 +14,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ThesisCard } from '@/components/ThesisCard';
-import type { ThesisCardData, ThesisCardProfile } from '@/components/ThesisCard';
+import { ThesisRow } from '@/components/ui/thesis-row';
+import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { Bot } from 'lucide-react';
 import {
@@ -68,51 +68,43 @@ function sliceEquity(data: { date: string; value: number }[], range: Range) {
 
 type PickFilter = 'all' | 'open' | 'passed';
 
-function pickToThesisCardData(pick: RecentPick): ThesisCardData {
+function pickToThesisRow(pick: RecentPick): ThesisRowData {
   return {
     id: pick.id,
     ticker: pick.ticker,
     direction: pick.direction,
     confidenceScore: pick.confidenceScore,
-    holdDuration: '',
-    signalTypes: pick.signalTypes,
     reasoningSummary: pick.reasoningSummary,
     entryPrice: pick.entryPrice,
     targetPrice: pick.targetPrice,
     stopLoss: pick.stopLoss,
+    createdAt: pick.position?.openedAt ?? pick.createdAt,
+    currentPrice: pick.currentPrice,
+    companyName: pick.companyName,
+    analystName: pick.analystName,
+    analystId: pick.analystId,
+    runId: pick.runId,
+    sourcesUsed: pick.sourcesUsed,
+    decision: pick.decision,
     position: pick.position
       ? {
           id: pick.position.id,
-          realizedPnl: null,
           status: pick.position.status,
           avgCost: pick.position.avgCost,
-          closePrice: null,
+          quantity: pick.position.quantity,
         }
       : null,
-    // Use position entry time when available so the card shows "entry at 9:02 AM"
-    createdAt: pick.position?.openedAt ?? pick.createdAt,
-    currentPrice: pick.currentPrice,
-    analystName: pick.analystName,
-    sourcesUsed: pick.sourcesUsed,
-  };
-}
-
-function pickToProfile(pick: RecentPick): ThesisCardProfile {
-  return {
-    name: pick.ticker,
-    logo: `https://assets.parqet.com/logos/symbol/${pick.ticker}?format=svg`,
-    exchange: '',
   };
 }
 
 // ─── Recent picks section ─────────────────────────────────────────────────────
 
-function RecentPicksSection({ picks, profiles = {} }: { picks: RecentPick[]; profiles?: Record<string, ThesisCardProfile> }) {
+function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
   const [filter, setFilter] = useState<PickFilter>('all');
 
   const filtered = picks.filter((p) => {
     if (filter === 'open') return p.position?.status === 'OPEN';
-    if (filter === 'passed') return p.position === null;
+    if (filter === 'passed') return p.direction === 'PASS' || (!p.position && p.decision !== 'BUY');
     return true;
   });
 
@@ -159,10 +151,10 @@ function RecentPicksSection({ picks, profiles = {} }: { picks: RecentPick[]; pro
       ) : (
         <div className="space-y-3">
           {filtered.map((pick) => (
-            <ThesisCard
+            <ThesisRow
               key={pick.id}
-              thesis={pickToThesisCardData(pick)}
-              profile={profiles[pick.ticker] ?? pickToProfile(pick)}
+              thesis={pickToThesisRow(pick)}
+              showTicker={true}
             />
           ))}
         </div>
@@ -210,13 +202,11 @@ function Empty({ text, subtext }: { text: string; subtext?: string }) {
 interface DashboardClientProps {
   data?: DashboardData;
   userId?: string;
-  profiles?: Record<string, ThesisCardProfile>;
 }
 
 export default function DashboardClient({
   data,
   userId,
-  profiles = {},
 }: DashboardClientProps) {
   const [range, setRange] = useState<Range>('1M');
   const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(new Set());
@@ -410,7 +400,7 @@ export default function DashboardClient({
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-48 w-full rounded-lg" />)}
               </div>
             ) : (
-              <RecentPicksSection picks={recentPicks} profiles={profiles} />
+              <RecentPicksSection picks={recentPicks} />
             )}
 
 
@@ -467,6 +457,7 @@ export default function DashboardClient({
                       </div>
                     )}
                   </TabsContent>
+
                 </CardContent>
               </Card>
             </Tabs>
@@ -477,3 +468,4 @@ export default function DashboardClient({
     </div>
   );
 }
+

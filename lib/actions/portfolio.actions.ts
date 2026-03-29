@@ -58,14 +58,19 @@ export interface RecentPick {
   targetPrice: number | null;
   stopLoss: number | null;
   createdAt: string; // ISO
+  decision: string | null; // BUY | SELL | PASS | HOLD — actual action taken
   position: {
     id: string;
     status: string;
     avgCost: number;
+    quantity: number | null;
     openedAt: string; // ISO
   } | null;
   currentPrice: number | null;
+  companyName: string | null;
   analystName: string | null;
+  analystId: string | null;
+  runId: string;
   sourcesUsed: unknown;
 }
 
@@ -195,11 +200,10 @@ export async function getDashboardData(): Promise<DashboardData> {
     }),
   ]);
 
-  // ── 2. Fetch recent picks (last 20 actionable theses) ────────────────────
+  // ── 2. Fetch recent picks (all theses including PASS) ────────────────────
   const dbRecentPicks = await prisma.thesis.findMany({
     where: {
       userId,
-      direction: { in: ["LONG", "SHORT"] },
       createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
     },
     orderBy: { createdAt: "desc" },
@@ -207,6 +211,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     select: {
       id: true,
       ticker: true,
+      researchRunId: true,
       direction: true,
       confidenceScore: true,
       signalTypes: true,
@@ -217,18 +222,20 @@ export async function getDashboardData(): Promise<DashboardData> {
       createdAt: true,
       sourcesUsed: true,
       researchRun: {
-        select: { agentConfig: { select: { name: true } } },
+        select: { agentConfig: { select: { id: true, name: true } } },
       },
-      // Check if there's a trade decision with a position for this thesis
+      // Fetch ALL decisions (BUY, SELL, PASS, HOLD) to show actual action
       decisions: {
-        where: { decision: "BUY" },
         take: 1,
+        orderBy: { createdAt: "desc" as const },
         select: {
+          decision: true,
           position: {
             select: {
               id: true,
               status: true,
               avgCost: true,
+              quantity: true,
               openedAt: true,
             },
           },
@@ -248,6 +255,25 @@ export async function getDashboardData(): Promise<DashboardData> {
     } catch {
       // Fall back to entry price
     }
+  }
+
+  // ── 3b. Batch-fetch company names from Finnhub ──────────────────────────────
+  let nameMap: Record<string, string> = {};
+  try {
+    const { getStockProfile } = await import("@/lib/actions/finnhub.actions");
+    const profiles = await Promise.allSettled(
+      pickTickers.map(async (t) => {
+        const p = await getStockProfile(t);
+        return { ticker: t, name: p?.name ?? null };
+      })
+    );
+    for (const r of profiles) {
+      if (r.status === "fulfilled" && r.value.name) {
+        nameMap[r.value.ticker] = r.value.name;
+      }
+    }
+  } catch {
+    // Finnhub down — names will be null
   }
 
   // ── 4. Map open positions → MockTrade shape ────────────────────────────────
@@ -406,8 +432,8 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   // ── 11. Map recentPicks ────────────────────────────────────────────────────
   const recentPicks: RecentPick[] = dbRecentPicks.map((p) => {
-    const decision = p.decisions[0];
-    const position = decision?.position;
+    const dec = p.decisions[0];
+    const position = dec?.position;
     return {
       id: p.id,
       ticker: p.ticker,
@@ -419,16 +445,21 @@ export async function getDashboardData(): Promise<DashboardData> {
       targetPrice: p.targetPrice,
       stopLoss: p.stopLoss,
       createdAt: p.createdAt.toISOString(),
+      decision: dec?.decision ?? null,
       position: position
         ? {
             id: position.id,
             status: position.status,
             avgCost: position.avgCost,
+            quantity: position.quantity ?? null,
             openedAt: position.openedAt.toISOString(),
           }
         : null,
       currentPrice: priceMap[p.ticker] ?? null,
+      companyName: nameMap[p.ticker] ?? null,
       analystName: p.researchRun?.agentConfig?.name ?? null,
+      analystId: p.researchRun?.agentConfig?.id ?? null,
+      runId: p.researchRunId,
       sourcesUsed: p.sourcesUsed,
     };
   });
