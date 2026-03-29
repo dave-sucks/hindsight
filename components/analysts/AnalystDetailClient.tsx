@@ -22,7 +22,9 @@ import {
 } from "@/lib/actions/watchlist.actions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
-import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
+import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
+import { TeamSheetContent } from "@/components/domain/team-card";
+import { getTeam } from "@/lib/agent/workflow-registry";
 import { TradeRow } from "@/components/ui/trade-row";
 import { AnalystFindingsTab } from "@/components/analysts/AnalystFindingsTab";
 import { BriefCard } from "@/components/intelligence/brief-card";
@@ -46,7 +48,8 @@ import {
   Trash2,
   Loader2,
   EllipsisVertical,
-  BookOpen,
+  ScanSearch,
+  Workflow,
 } from "lucide-react";
 import {
   Dialog,
@@ -57,6 +60,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { EducationEmptyState } from "@/components/domain/education-card";
+import { FeatureCard, SkeletonLines, SkeletonBadges } from "@/components/domain/feature-showcase";
+import { Bot, ArrowLeftRight, Radar, Search, Target } from "lucide-react";
 import type {
   AnalystDetail,
   PositionWithThesis,
@@ -233,6 +239,7 @@ export default function AnalystDetailClient({
 
   const router = useRouter();
   const [configOpen, setConfigOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const [range, setRange] = useState<Range>("Max");
   const [chartMode, setChartMode] = useState<"value" | "pnl">("value");
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
@@ -457,6 +464,15 @@ export default function AnalystDetailClient({
                     Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setOverviewOpen(true)}>
+                    <ScanSearch className="h-3.5 w-3.5" />
+                    Agent Overview
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/agent-workflow")}>
+                    <Workflow className="h-3.5 w-3.5" />
+                    Full Workflow
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-negative focus:text-negative"
                     onClick={() => setDeleteOpen(true)}
@@ -466,9 +482,6 @@ export default function AnalystDetailClient({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <HowItWorksSheet flow="learning-loop">
-                <BookOpen className="h-4 w-4" />
-              </HowItWorksSheet>
               <RunResearchButton
                 analystId={config.id}
                 hasRunning={hasRunning}
@@ -704,9 +717,7 @@ export default function AnalystDetailClient({
 
               <TabsContent value={0} className="flex-1 overflow-y-auto">
                 {recentTrades.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground text-center py-6 px-2">
-                    No trades yet
-                  </p>
+                  <EducationEmptyState stateKey="analyst-trades" size="inline" />
                 ) : (
                   recentTrades.map((trade) => (
                     <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
@@ -722,13 +733,7 @@ export default function AnalystDetailClient({
                   />
                 </div>
                 {watchlistItems.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-6 px-4 space-y-2">
-                    <Eye className="h-8 w-8 text-muted-foreground/30" />
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      No stocks on the watchlist yet. Add stocks this analyst should
-                      prioritize during runs.
-                    </p>
-                  </div>
+                  <EducationEmptyState stateKey="analyst-watchlist" size="inline" />
                 ) : (
                   watchlistItems.map((item) => (
                     <WatchingRow
@@ -751,6 +756,21 @@ export default function AnalystDetailClient({
         onOpenChange={setConfigOpen}
         config={config}
       />
+
+      {/* Agent overview sheet */}
+      <Sheet open={overviewOpen} onOpenChange={setOverviewOpen}>
+        <SheetContent side="right" showCloseButton={false} className="w-full sm:max-w-md overflow-y-auto">
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+            <SheetTitle>Research Agent</SheetTitle>
+            <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
+              <X className="h-4 w-4" />
+            </SheetClose>
+          </div>
+          <div className="px-4 pb-6">
+            <TeamSheetContent team={getTeam("agent")} />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-[400px]">
@@ -808,6 +828,47 @@ function buildAllBriefs(analystName: string, morningBriefs: MorningBriefItem[], 
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
+// ── Feature showcase for empty analyst ────────────────────────────────────────
+
+function AnalystFeatureShowcase() {
+  return (
+    <div className="py-8 px-4 space-y-4 max-w-lg mx-auto">
+      <div className="text-center space-y-1">
+        <h2 className="text-lg font-semibold">Hit Run to get started</h2>
+        <p className="text-xs text-muted-foreground">
+          Your analyst is ready. Here&apos;s what happens when it runs.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <FeatureCard
+          icon={Bot}
+          title="Research Runs"
+          description="8-phase sessions with 14 tools — live quotes, earnings, SEC filings, options flow, web search."
+        >
+          <SkeletonBadges labels={["Finnhub", "FMP", "SEC", "Sonar", "Alpaca"]} />
+        </FeatureCard>
+
+        <FeatureCard
+          icon={FileText}
+          title="Daily Briefs"
+          description="Morning intelligence at 7:45 AM + post-run standups written by a separate reviewer agent."
+        >
+          <SkeletonLines count={3} />
+        </FeatureCard>
+
+        <FeatureCard
+          icon={ArrowLeftRight}
+          title="Paper Trades"
+          description="Automatic execution on Alpaca with live P&L, targets, stop-losses, and weekly accuracy scoring."
+        >
+          <SkeletonLines count={2} />
+        </FeatureCard>
+      </div>
+    </div>
+  );
+}
+
 // ── Snapshot tab: latest run brief inline + 3 recent cards ──────────────────
 
 function AnalystSnapshotSection({
@@ -826,15 +887,7 @@ function AnalystSnapshotSection({
   const cards = allBriefs.filter((b) => !(b.type === "run" && b.runBrief?.id === latestRunBrief?.id)).slice(0, 3);
 
   if (!latestRunBrief && cards.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-3">
-        <FileText className="h-10 w-10 text-muted-foreground/30" />
-        <p className="text-sm text-muted-foreground">No briefs yet</p>
-        <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
-          Briefs are generated by the intelligence pipeline and after each research run.
-        </p>
-      </div>
-    );
+    return <AnalystFeatureShowcase />;
   }
 
   return (
@@ -877,12 +930,7 @@ function AnalystAllBriefsSection({
   const allBriefs = buildAllBriefs(analystName, morningBriefs, runBriefs);
 
   if (allBriefs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-3">
-        <FileText className="h-10 w-10 text-muted-foreground/30" />
-        <p className="text-sm text-muted-foreground">No briefs yet</p>
-      </div>
-    );
+    return <AnalystFeatureShowcase />;
   }
 
   return (

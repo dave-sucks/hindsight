@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { Sparkles } from "lucide-react";
+import { ScanSearch } from "lucide-react";
 import { AgentThread } from "@/components/research/AgentThread";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
@@ -90,8 +90,8 @@ export default async function RunPage({
             autoStart={isLive}
             initialMessages={persistedMessages ?? undefined}
             headerAction={
-              <HowItWorksSheet flow="agent-run">
-                <Sparkles className="h-4 w-4" />
+              <HowItWorksSheet flow="agent">
+                <ScanSearch className="h-4 w-4" />
               </HowItWorksSheet>
             }
           />

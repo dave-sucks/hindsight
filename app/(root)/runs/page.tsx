@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { PlayCircle } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
+import { ConceptTooltip } from "@/components/domain/education-card";
+import { FeatureCard, FeatureShowcase, SkeletonBadges, SkeletonLines } from "@/components/domain/feature-showcase";
+import { Bot, Search, Target, ArrowLeftRight } from "lucide-react";
 
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - new Date(date).getTime();
@@ -59,18 +61,34 @@ export default async function RunsPage() {
       <div className="mb-4">
         <h1 className="text-2xl font-semibold">Runs</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Research sessions from all your analysts
+          Structured <ConceptTooltip concept="run">research sessions</ConceptTooltip> from all your analysts
         </p>
       </div>
 
       {runs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
-          <PlayCircle className="h-10 w-10 mb-4 opacity-30" />
-          <p className="text-sm font-medium">No runs yet</p>
-          <p className="text-xs mt-1">
-            Enable an analyst to start automated research runs
-          </p>
-        </div>
+        <FeatureShowcase
+          headline="No runs yet"
+          subtitle="Create an analyst and hit Run — or wait for the 8 AM daily cron."
+          action={{ label: "View Analysts", href: "/analysts" }}
+        >
+          <FeatureCard
+            icon={Bot}
+            title="8-Phase Workflow"
+            description="Read intelligence → review holdings → discover → synthesize → execute. Structured and auditable."
+          />
+          <FeatureCard
+            icon={Search}
+            title="14 Research Tools"
+            description="Live quotes, company data, technicals, earnings, SEC filings, options flow, web search."
+          >
+            <SkeletonBadges labels={["Finnhub", "FMP", "SEC", "Sonar"]} />
+          </FeatureCard>
+          <FeatureCard
+            icon={Target}
+            title="Thesis + Trade"
+            description="Every stock gets a verdict — LONG, SHORT, or PASS. High-conviction picks become real paper trades."
+          />
+        </FeatureShowcase>
       ) : (
         runs.map((run) => {
           const analystName =

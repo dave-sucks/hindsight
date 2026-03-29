@@ -230,8 +230,17 @@ export function MonitorList({ monitors, onRefresh }: MonitorListProps) {
           <TableBody>
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                  No monitors match your filters
+                <TableCell colSpan={6} className="text-center py-8">
+                  <p className="text-sm text-muted-foreground">
+                    {monitors.length === 0
+                      ? "No monitors configured"
+                      : "No monitors match your filters"}
+                  </p>
+                  {monitors.length === 0 && (
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      Monitors are search queries and tracked websites checked daily by the intelligence pipeline. Create an analyst to generate monitors automatically.
+                    </p>
+                  )}
                 </TableCell>
               </TableRow>
             )}

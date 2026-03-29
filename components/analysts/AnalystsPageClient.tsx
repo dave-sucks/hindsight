@@ -32,6 +32,9 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
+import { ConceptTooltip } from "@/components/domain/education-card";
+import { FeatureCard, FeatureShowcase, SkeletonBadges } from "@/components/domain/feature-showcase";
+import { Bot, Radar, Sparkles, BarChart3 } from "lucide-react";
 
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
 
@@ -213,9 +216,29 @@ function NewAnalystCard() {
 
 function AnalystsEmptyState() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <NewAnalystCard />
-    </div>
+    <FeatureShowcase
+      headline="Create your first AI analyst"
+      subtitle="Describe your trading style in conversation. The AI builder creates a complete strategy, watchlist, and intelligence setup."
+      action={{ label: "Create Analyst", href: "/analysts/new" }}
+    >
+      <FeatureCard
+        icon={Sparkles}
+        title="AI-Built Strategy"
+        description="Chat about your trading style. The builder researches live data and proposes a complete config."
+      />
+      <FeatureCard
+        icon={Radar}
+        title="Overnight Intelligence"
+        description="Background jobs gather market news, check tracked sources, and write personalized morning briefs."
+      />
+      <FeatureCard
+        icon={Bot}
+        title="Autonomous Research"
+        description="14 tools, 8-phase workflow, real paper trades on Alpaca. Runs daily at 8 AM or on demand."
+      >
+        <SkeletonBadges labels={["Finnhub", "FMP", "SEC", "Sonar", "Alpaca"]} />
+      </FeatureCard>
+    </FeatureShowcase>
   );
 }
 
@@ -249,7 +272,12 @@ export default function AnalystsPageClient({
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-semibold">Analysts</h1>
+      <div>
+        <h1 className="text-2xl font-semibold">Analysts</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          <ConceptTooltip concept="analyst">AI trading personas</ConceptTooltip> that research stocks and place paper trades autonomously
+        </p>
+      </div>
 
       {analysts.length === 0 ? (
         <AnalystsEmptyState />

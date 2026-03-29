@@ -83,6 +83,16 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
     logo: "https://www.google.com/s2/favicons?domain=alpaca.markets&sz=32",
     domain: "alpaca.markets",
   },
+  perplexity: {
+    color: "bg-teal-500",
+    logo: "https://www.google.com/s2/favicons?domain=perplexity.ai&sz=32",
+    domain: "perplexity.ai",
+  },
+  firecrawl: {
+    color: "bg-orange-500",
+    logo: "https://www.google.com/s2/favicons?domain=firecrawl.dev&sz=32",
+    domain: "firecrawl.dev",
+  },
   internal: {
     color: "bg-zinc-500",
     logo: "__hindsight__",
@@ -92,8 +102,11 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
 
 function getProviderMeta(provider: string): ProviderMeta {
   const key = provider.toLowerCase().replace(/[^a-z]/g, "");
+  // Exact match first
+  if (PROVIDER_META[key]) return PROVIDER_META[key];
+  // Fuzzy fallback (skip short keys like "x" to avoid false matches)
   for (const [k, v] of Object.entries(PROVIDER_META)) {
-    if (key.includes(k)) return v;
+    if (k.length > 2 && key.includes(k)) return v;
   }
   return { color: "bg-muted-foreground/50", logo: null, domain: null };
 }

@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { StockLogo } from "@/components/StockLogo";
 import { ExternalLink, Search, Flag } from "lucide-react";
+import { EducationEmptyState } from "@/components/domain/education-card";
 import { Favicon } from "@/components/intelligence/signal-feed";
 import type { Signal } from "@/components/intelligence/types";
 import {
@@ -51,14 +52,7 @@ export function AnalystFindingsTab({ analystId }: AnalystFindingsTabProps) {
   }
 
   if (signals.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-3">
-        <p className="text-sm text-muted-foreground">No findings routed to this analyst yet</p>
-        <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
-          Run the intelligence pipeline to discover and route signals based on this analyst&apos;s coverage area.
-        </p>
-      </div>
-    );
+    return <EducationEmptyState stateKey="analyst-findings" />;
   }
 
   return (

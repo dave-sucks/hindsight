@@ -17,6 +17,7 @@ export {
   type TradeConfirmationProps,
 } from "./trade-confirmation";
 export { HowItWorksSheet } from "./how-it-works-sheet";
+export { EducationEmptyState, ConceptTooltip } from "./education-card";
 export {
   PortfolioReviewCard,
   type PortfolioReviewData,

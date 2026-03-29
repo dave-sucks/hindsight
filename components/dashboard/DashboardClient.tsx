@@ -17,7 +17,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ThesisRow } from '@/components/ui/thesis-row';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
-import { Bot } from 'lucide-react';
+import { FeatureCard, SkeletonBadges } from '@/components/domain/feature-showcase';
+import { Sparkles, Radar, Bot } from 'lucide-react';
+import { HowItWorksSheet } from '@/components/domain/how-it-works-sheet';
+import { ScanSearch } from 'lucide-react';
 import {
   mockOpenTrades,
   mockEquityCurve,
@@ -136,11 +139,18 @@ function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
 
       {/* Cards */}
       {picks.length === 0 ? (
-        <div className="rounded-lg border px-4 py-10 flex flex-col items-center gap-2">
-          <Bot className="h-7 w-7 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground text-center">
-            No recent picks — run an analyst to generate theses.
-          </p>
+        <div className="space-y-3">
+          <div className="text-center py-4">
+            <p className="text-sm font-medium">Get started with Hindsight</p>
+            <p className="text-xs text-muted-foreground mt-1">Create an analyst to start seeing picks, trades, and intelligence here.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FeatureCard icon={Sparkles} title="Create an Analyst" description="Describe your strategy. The AI builder creates a complete trading persona." />
+            <FeatureCard icon={Radar} title="Intelligence Gathers" description="Background jobs search the web, check sources, and write morning briefs." />
+            <FeatureCard icon={Bot} title="Autonomous Research" description="14 tools, daily runs, paper trades, and a memory system that compounds.">
+              <SkeletonBadges labels={["Finnhub", "Sonar", "Alpaca"]} />
+            </FeatureCard>
+          </div>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-lg border px-4 py-8 flex flex-col items-center gap-2">
@@ -294,9 +304,14 @@ export default function DashboardClient({
                 </>
               ) : (
                 <>
-                  <p className="text-4xl font-semibold tabular-nums tracking-tight">
-                    {totalValueStr}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-4xl font-semibold tabular-nums tracking-tight">
+                      {totalValueStr}
+                    </p>
+                    <HowItWorksSheet flow="agent">
+                      <ScanSearch className="h-4 w-4" />
+                    </HowItWorksSheet>
+                  </div>
                   <p className="text-sm tabular-nums flex items-center gap-1 flex-wrap">
                     <span className={pnlPositive ? 'text-positive' : 'text-negative'}>
                       {pnlPositive ? '+' : '-'}${Math.abs(unrealizedPnl).toFixed(2)}{' '}
@@ -347,7 +362,7 @@ export default function DashboardClient({
                 </div>
               ) : equityData.length < 2 ? (
                 <div className="h-52 flex items-center justify-center">
-                  <p className="text-xs text-muted-foreground">No trade history yet</p>
+                  <p className="text-xs text-muted-foreground">The equity chart tracks portfolio value over time as trades open and close.</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
@@ -436,7 +451,7 @@ export default function DashboardClient({
                         {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
                       </div>
                     ) : openTrades.length === 0 ? (
-                      <Empty text="No open positions" subtext="Trades will appear here when opened." />
+                      <Empty text="No open positions" subtext="Positions appear when an analyst places a paper trade during a run." />
                     ) : (
                       <div>
                         {openTrades.map((t) => (
@@ -448,7 +463,7 @@ export default function DashboardClient({
 
                   <TabsContent value="closed" className="mt-0">
                     {closedTrades.length === 0 ? (
-                      <Empty text="No closed trades yet" />
+                      <Empty text="No closed trades yet" subtext="Trades close when they hit a target, stop-loss, or manual exit." />
                     ) : (
                       <div>
                         {closedTrades.map((t) => (

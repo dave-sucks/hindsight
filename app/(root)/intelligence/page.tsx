@@ -22,6 +22,7 @@ import {
   GitBranch,
   FileText,
   Layers,
+  ScanSearch,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,6 +37,8 @@ import { cn } from "@/lib/utils";
 import { SignalFeed } from "@/components/intelligence/signal-feed";
 import { MonitorList } from "@/components/intelligence/config-panel";
 import { BriefCards } from "@/components/intelligence/brief-cards";
+import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
+import { ConceptTooltip } from "@/components/domain/education-card";
 import type {
   Signal,
   MorningBrief,
@@ -174,6 +177,9 @@ export default function IntelligencePage() {
               <TabsTrigger value="briefs">Briefs</TabsTrigger>
             </TabsList>
             <div className="flex justify-end gap-1.5">
+              <HowItWorksSheet flow="intelligence">
+                <ScanSearch className="h-4 w-4" />
+              </HowItWorksSheet>
               <DropdownMenu>
                 <DropdownMenuTrigger render={
                   <Button
@@ -186,48 +192,46 @@ export default function IntelligencePage() {
                     ) : (
                       <Play className="h-4 w-4" />
                     )}
+                    Start Pipeline
                   </Button>
                 } />
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => triggerJob("full-pipeline", "Full Pipeline")}>
                     <Layers className="h-4 w-4" />
-                    Run Full Pipeline
+                    <span className="whitespace-nowrap">Run Full Pipeline</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => triggerJob("market-sweep", "Market Sweep")}>
                     <Search className="h-4 w-4" />
-                    Market Sweep
+                    <span className="whitespace-nowrap">Market Sweep</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => triggerJob("portfolio-monitor", "Portfolio Monitor")}>
                     <Radar className="h-4 w-4" />
-                    Portfolio &amp; Watchlist
+                    <span className="whitespace-nowrap">Portfolio &amp; Watchlist</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => triggerJob("domain-monitor", "Source Monitor")}>
                     <Globe className="h-4 w-4" />
-                    Domain Sources
+                    <span className="whitespace-nowrap">Domain Sources</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => triggerJob("signal-router", "Signal Router")}>
                     <GitBranch className="h-4 w-4" />
-                    Route Signals
+                    <span className="whitespace-nowrap">Route Signals</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => triggerJob("morning-brief", "Morning Briefs")}>
                     <FileText className="h-4 w-4" />
-                    Generate Briefs
+                    <span className="whitespace-nowrap">Generate Briefs</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={loadAll} disabled={loading}>
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    <span className="whitespace-nowrap">Refresh</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadAll}
-                disabled={loading}
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-              </Button>
             </div>
           </div>
 
