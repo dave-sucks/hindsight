@@ -103,7 +103,7 @@ export function AnalystConfigPanel({
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────── */}
-      <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
+      <Tabs defaultValue="overview" className="relative z-[6] flex-1 flex flex-col min-h-0">
         <div className="px-4 pt-1 shrink-0">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
