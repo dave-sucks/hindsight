@@ -18,7 +18,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChevronRight, Zap, Globe, Database, Cpu } from "lucide-react";
+import { Zap, Globe, Database, Cpu } from "lucide-react";
 import { ProviderIcon } from "@/components/chat/SourceChip";
 import type { Team, ToolEntry, SubStep, Resource, ResourceType } from "@/lib/agent/workflow-registry";
 
@@ -73,63 +73,93 @@ function ToolDetailDialog({
   if (!tool || !tool.resources?.length) return null;
 
   const hasMultiple = tool.resources.length > 1;
+  const single = tool.resources[0];
+  const singleMeta = RESOURCE_TYPE_META[single.type];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-2 mb-1">
-            <ProviderIcon provider={tool.provider} size={16} />
-            <code className="text-sm font-mono font-medium">{tool.name}</code>
-          </div>
-          <DialogTitle className="sr-only">{tool.name}</DialogTitle>
-          <DialogDescription>{tool.summary}</DialogDescription>
-        </DialogHeader>
-
         {hasMultiple ? (
-          <Tabs defaultValue={tool.resources[0].title}>
-            <TabsList className="w-full">
+          <>
+            {/* Multi-resource: tool header + tabs */}
+            <DialogHeader>
+              <div className="flex items-center gap-2 mb-1">
+                <ProviderIcon provider={tool.provider} size={16} />
+                <code className="text-sm font-mono font-medium">{tool.name}</code>
+              </div>
+              <DialogTitle className="sr-only">{tool.name}</DialogTitle>
+              <DialogDescription>{tool.summary}</DialogDescription>
+            </DialogHeader>
+            <Tabs defaultValue={tool.resources[0].title}>
+              <TabsList>
+                {tool.resources.map((r) => (
+                  <TabsTrigger key={r.title} value={r.title} className="text-xs">
+                    {r.title}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
               {tool.resources.map((r) => (
-                <TabsTrigger key={r.title} value={r.title} className="text-xs flex-1">
-                  {r.title}
-                </TabsTrigger>
+                <TabsContent key={r.title} value={r.title}>
+                  <ResourceTabContent resource={r} />
+                </TabsContent>
               ))}
-            </TabsList>
-            {tool.resources.map((r) => (
-              <TabsContent key={r.title} value={r.title}>
-                <ResourceDetail resource={r} />
-              </TabsContent>
-            ))}
-          </Tabs>
+            </Tabs>
+          </>
         ) : (
-          <ResourceDetail resource={tool.resources[0]} />
+          <>
+            {/* Single resource: old-style layout */}
+            <DialogHeader>
+              <div className="flex items-center gap-2 mb-1">
+                <ProviderIcon provider={single.source} size={16} />
+                <span className="text-sm font-medium">{single.source}</span>
+                <Badge variant="secondary" className="text-[10px]">
+                  {singleMeta.label}
+                </Badge>
+              </div>
+              <DialogTitle>{single.title}</DialogTitle>
+              <DialogDescription>{single.description}</DialogDescription>
+            </DialogHeader>
+            <ResourceEndpoint resource={single} />
+          </>
         )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function ResourceDetail({ resource }: { resource: Resource }) {
+/** For multi-resource tabs: description + endpoint */
+function ResourceTabContent({ resource }: { resource: Resource }) {
+  return (
+    <div className="space-y-3 pt-1">
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        {resource.description}
+      </p>
+      <ResourceEndpoint resource={resource} />
+    </div>
+  );
+}
+
+/** Endpoint bar + example + notes (shared between single and tabbed views) */
+function ResourceEndpoint({ resource }: { resource: Resource }) {
   const meta = RESOURCE_TYPE_META[resource.type];
   const TypeIcon = meta.icon;
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <ProviderIcon provider={resource.source} size={14} />
-        <span className="text-xs text-muted-foreground flex-1">{resource.description}</span>
-        <Badge variant="secondary" className="text-[10px]">{meta.label}</Badge>
+      {/* Endpoint bar */}
+      <div className="rounded-md border bg-muted/30 px-2.5 py-2 flex items-center gap-1.5">
+        <TypeIcon className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+        <code className="text-[11px] text-foreground break-all flex-1">
+          {resource.endpointOrPath}
+        </code>
+        {resource.type === "api" && (
+          <Badge variant="secondary" className="text-[10px] shrink-0">
+            GET
+          </Badge>
+        )}
       </div>
 
-      {/* Endpoint */}
-      <div className="rounded-md border bg-muted/30 px-2.5 py-2">
-        <div className="flex items-center gap-1.5">
-          <TypeIcon className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-          <code className="text-[11px] text-foreground break-all">{resource.endpointOrPath}</code>
-        </div>
-      </div>
-
-      {/* Example output */}
+      {/* Example */}
       {resource.exampleOutput && (
         <div>
           <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">
@@ -160,6 +190,17 @@ function ResourceDetail({ resource }: { resource: Resource }) {
   );
 }
 
+// ── Source pill ────────────────────────────────────────────────────────────
+
+function SourcePill({ provider }: { provider: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5">
+      <ProviderIcon provider={provider} size={12} />
+      <span className="text-[10px] text-muted-foreground">{provider}</span>
+    </span>
+  );
+}
+
 // ── Tool card ─────────────────────────────────────────────────────────────
 
 function ToolCard({
@@ -171,24 +212,28 @@ function ToolCard({
 }) {
   const hasDetail = tool.resources && tool.resources.length > 0;
 
+  // Collect unique providers from resources (or fall back to tool.provider)
+  const providers = tool.resources?.length
+    ? [...new Set(tool.resources.map((r) => r.source))]
+    : [tool.provider];
+
   return (
     <Card className="p-0 overflow-hidden">
       <button
         type="button"
         disabled={!hasDetail}
         onClick={onClick}
-        className="flex items-start gap-2 w-full text-left px-3 py-2.5 hover:bg-accent/30 transition-colors disabled:hover:bg-transparent group"
+        className="w-full text-left px-3 py-2.5 space-y-1.5 hover:bg-accent/30 transition-colors disabled:hover:bg-transparent"
       >
-        <ProviderIcon provider={tool.provider} size={14} />
-        <div className="flex-1 min-w-0">
-          <code className="text-xs font-mono font-medium">{tool.name}</code>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {tool.summary}
-          </p>
+        <code className="text-xs font-mono font-medium">{tool.name}</code>
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          {tool.summary}
+        </p>
+        <div className="flex items-center gap-1 flex-wrap pt-0.5">
+          {providers.map((p) => (
+            <SourcePill key={p} provider={p} />
+          ))}
         </div>
-        {hasDetail && (
-          <ChevronRight className="h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5" />
-        )}
       </button>
     </Card>
   );
