@@ -104,10 +104,10 @@ export function BarGauge(props: BarGaugeProps) {
   const { className, ...modeProps } = props;
 
   // Distribution mode: total bars = sum of counts, minimum 12
-  let segments = Math.max(12, props.segments ?? 24);
+  let segments = props.segments ?? 24;
   if (modeProps.mode === "distribution" && !props.segments) {
     const total = modeProps.ranges.reduce((sum, r) => sum + r.count, 0);
-    segments = Math.max(12, total);
+    segments = Math.max(segments, total);
   }
 
   const colors = buildColors(modeProps, segments);

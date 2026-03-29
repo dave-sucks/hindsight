@@ -101,7 +101,7 @@ function TargetDots({
     <BarGauge
       mode="range"
       value={Math.max(0, Math.min(1, progress))}
-      segments={12}
+      segments={8}
     />
   );
 }
@@ -237,7 +237,7 @@ export default function TradesPage({
               <TableHead className="text-right">Entry</TableHead>
               <TableHead className="text-right">Day Gain</TableHead>
               <TableHead className="text-right">Total Gain</TableHead>
-              <TableHead>Target</TableHead>
+              <TableHead className="w-20">Target</TableHead>
               <TableHead>Direction</TableHead>
               <TableHead>Placed</TableHead>
               <TableHead className="text-right">Stop</TableHead>
