@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { PlayCircle } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
+import { EducationEmptyState, ConceptTooltip } from "@/components/domain/education-card";
 
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - new Date(date).getTime();
@@ -59,18 +59,12 @@ export default async function RunsPage() {
       <div className="mb-4">
         <h1 className="text-2xl font-semibold">Runs</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Research sessions from all your analysts
+          Structured <ConceptTooltip concept="run">research sessions</ConceptTooltip> from all your analysts
         </p>
       </div>
 
       {runs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
-          <PlayCircle className="h-10 w-10 mb-4 opacity-30" />
-          <p className="text-sm font-medium">No runs yet</p>
-          <p className="text-xs mt-1">
-            Enable an analyst to start automated research runs
-          </p>
-        </div>
+        <EducationEmptyState stateKey="runs-list" />
       ) : (
         runs.map((run) => {
           const analystName =

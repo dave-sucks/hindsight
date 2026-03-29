@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
+import { useState } from 'react';
 import {
   LayoutDashboard,
   Bot,
@@ -18,6 +19,7 @@ import {
   Moon,
   Workflow,
   Radar,
+  Sparkles,
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
 import { SidebarMarquee } from '@/components/MarketPulseStrip';
@@ -44,6 +46,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { signOut } from '@/lib/actions/auth.actions';
+import { OnboardingDialog } from '@/components/domain/onboarding-dialog';
 
 const NAV_LINKS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -69,6 +72,7 @@ export default function AppSidebar({
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const [showTour, setShowTour] = useState(false);
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -173,6 +177,11 @@ export default function AppSidebar({
                   Agent Workflow
                 </DropdownMenuItem>
 
+                <DropdownMenuItem onClick={() => setShowTour(true)}>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Product Tour
+                </DropdownMenuItem>
+
                 {/* Theme toggle */}
                 <DropdownMenuItem onClick={() => setTheme(isDark ? 'light' : 'dark')}>
                   {isDark ? (
@@ -198,6 +207,12 @@ export default function AppSidebar({
       </SidebarFooter>
 
       <SidebarRail />
+
+      {/* Onboarding dialog — auto-shows on first visit, reopenable via Tour */}
+      <OnboardingDialog
+        forceOpen={showTour}
+        onOpenChange={(open) => { if (!open) setShowTour(false); }}
+      />
     </Sidebar>
   );
 }

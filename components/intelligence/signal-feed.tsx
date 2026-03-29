@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
+import { EducationEmptyState } from "@/components/domain/education-card";
 import { Search } from "lucide-react";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
@@ -106,9 +107,13 @@ export function SignalFeed({ signals }: SignalFeedProps) {
         {/* Signal list */}
         <div className="space-y-2">
           {filtered.length === 0 && (
-            <p className="text-sm text-muted-foreground py-8 text-center">
-              No signals match your filters
-            </p>
+            signals.length === 0 ? (
+              <EducationEmptyState stateKey="intelligence-signals" size="compact" />
+            ) : (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                No findings match your filters
+              </p>
+            )
           )}
           {filtered.map((signal) =>
             signal.aggregateType ? (

@@ -33,6 +33,7 @@ import {
   CONTEXT_LOADING_DETAILS,
   INTELLIGENCE_PIPELINE_STEPS,
   INTELLIGENCE_PIPELINE_DETAILS,
+  INTELLIGENCE_OVERVIEW_DETAILS,
   type FlowStep,
   type DetailSection,
 } from "@/lib/agent/workflow-data";
@@ -162,14 +163,15 @@ function DetailList({ sections }: { sections: DetailSection[] }) {
 
 // ── Sheet config ────────────────────────────────────────────────────────────
 
-type FlowType = "agent-run" | "analyst-builder" | "manual-run" | "cron-run" | "learning-loop" | "context-loading";
+export type FlowType = "agent-run" | "analyst-builder" | "manual-run" | "cron-run" | "learning-loop" | "context-loading" | "intelligence-pipeline";
 
 interface FlowConfig {
   title: string;
   content:
     | { type: "flow"; steps: FlowStep[] }
     | { type: "details"; sections: DetailSection[] }
-    | { type: "tabbed" };
+    | { type: "tabbed" }
+    | { type: "intelligence" };
 }
 
 const FLOW_CONFIG: Record<FlowType, FlowConfig> = {
@@ -196,6 +198,10 @@ const FLOW_CONFIG: Record<FlowType, FlowConfig> = {
   "context-loading": {
     title: "Context Loading",
     content: { type: "details", sections: CONTEXT_LOADING_DETAILS },
+  },
+  "intelligence-pipeline": {
+    title: "How Intelligence Works",
+    content: { type: "intelligence" },
   },
 };
 
@@ -283,6 +289,15 @@ export function HowItWorksSheet({
             <div className="px-4 pt-3 pb-4">
               {config.content.type === "flow" ? (
                 <FlowDiagram steps={config.content.steps} />
+              ) : config.content.type === "intelligence" ? (
+                <div className="space-y-6">
+                  <p className="text-sm text-muted-foreground">
+                    Five background jobs run every weekday morning before analysts wake up:
+                  </p>
+                  <FlowDiagram steps={INTELLIGENCE_PIPELINE_STEPS} />
+                  <Separator />
+                  <DetailList sections={INTELLIGENCE_OVERVIEW_DETAILS} />
+                </div>
               ) : (
                 <DetailList sections={config.content.sections} />
               )}

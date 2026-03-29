@@ -22,6 +22,7 @@ import {
   GitBranch,
   FileText,
   Layers,
+  Sparkles,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,6 +37,8 @@ import { cn } from "@/lib/utils";
 import { SignalFeed } from "@/components/intelligence/signal-feed";
 import { MonitorList } from "@/components/intelligence/config-panel";
 import { BriefCards } from "@/components/intelligence/brief-cards";
+import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
+import { ConceptTooltip } from "@/components/domain/education-card";
 import type {
   Signal,
   MorningBrief,
@@ -174,6 +177,9 @@ export default function IntelligencePage() {
               <TabsTrigger value="briefs">Briefs</TabsTrigger>
             </TabsList>
             <div className="flex justify-end gap-1.5">
+              <HowItWorksSheet flow="intelligence-pipeline">
+                <Sparkles className="h-4 w-4" />
+              </HowItWorksSheet>
               <DropdownMenu>
                 <DropdownMenuTrigger render={
                   <Button

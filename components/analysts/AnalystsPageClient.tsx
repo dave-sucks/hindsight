@@ -32,6 +32,7 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
+import { EducationEmptyState, ConceptTooltip } from "@/components/domain/education-card";
 
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
 
@@ -213,8 +214,8 @@ function NewAnalystCard() {
 
 function AnalystsEmptyState() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <NewAnalystCard />
+    <div className="space-y-6">
+      <EducationEmptyState stateKey="analysts-list" />
     </div>
   );
 }
@@ -249,7 +250,12 @@ export default function AnalystsPageClient({
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-semibold">Analysts</h1>
+      <div>
+        <h1 className="text-2xl font-semibold">Analysts</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          <ConceptTooltip concept="analyst">AI trading personas</ConceptTooltip> that research stocks and place paper trades autonomously
+        </p>
+      </div>
 
       {analysts.length === 0 ? (
         <AnalystsEmptyState />

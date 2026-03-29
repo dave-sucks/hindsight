@@ -154,7 +154,7 @@ export const INTELLIGENCE_PIPELINE_STEPS: FlowStep[] = [
     title: "Morning Brief Generator",
     icon: Brain,
     sources: ["Internal"],
-    summary: "GPT-4o-mini synthesizes each analyst's routed signals into a structured brief: market context, portfolio alerts, watchlist updates, new opportunities, and risk flags. This is what the analyst reads first when it runs.",
+    summary: "GPT-4o synthesizes each analyst's routed signals into a structured brief: market context, portfolio alerts, watchlist updates, new opportunities, and risk flags. This is what the analyst reads first when it runs.",
   },
 ];
 
@@ -186,6 +186,42 @@ export const INTELLIGENCE_PIPELINE_DETAILS: DetailSection[] = [
   },
 ];
 
+// ── Intelligence pipeline standalone details (for /intelligence page) ──────
+
+export const INTELLIGENCE_OVERVIEW_DETAILS: DetailSection[] = [
+  {
+    heading: "What is the intelligence pipeline?",
+    items: [
+      { label: "Overview", value: "Five background jobs run every weekday morning between 6:30–7:45 AM ET. They gather market news, check your analysts' tracked sources, search for news about open positions, score and route findings to relevant analysts, and synthesize everything into a morning brief. By the time analysts run at 8 AM, they already know what happened overnight." },
+      { label: "Why background jobs?", value: "Without the pipeline, each analyst would spend 3-5 tool calls scanning for candidates — calling market movers APIs, searching the web, checking earnings calendars. That wasted time and API budget rediscovering the same information every run. Now the analyst reads 1 pre-generated brief and gets straight to analysis." },
+    ],
+  },
+  {
+    heading: "Findings (signals)",
+    items: [
+      { label: "What are findings?", value: "A finding is a normalized piece of market intelligence — a news headline, an earnings beat, a macro event, a sector rotation signal. Each has a headline, summary, tickers, sentiment (bullish/bearish/neutral), urgency (BREAKING/HIGH/MEDIUM/LOW), and source attribution." },
+      { label: "Where they come from", value: "Search monitors (Perplexity Sonar web search), domain monitors (tracked websites via Sonar + Firecrawl article extraction), ticker monitors (per-position/watchlist Sonar searches), and API monitors (FMP market movers, Finnhub earnings calendar)." },
+      { label: "How routing works", value: "The signal router scores each finding against each analyst: +40 for ticker match, +20 for sector overlap, +15 for theme/keyword match, +15/+10 for BREAKING/HIGH urgency. Findings scoring 15+ get routed to that analyst. One finding can reach multiple analysts." },
+    ],
+  },
+  {
+    heading: "Monitors",
+    items: [
+      { label: "Search monitors", value: "Custom queries run every morning via Perplexity Sonar — e.g., 'semiconductor supply chain news', 'FDA drug approvals this week'. Created during analyst setup or dynamically by the briefing agent." },
+      { label: "Domain monitors", value: "Tracked websites (e.g., Electrek, STAT News, SEC.gov) checked daily via domain-filtered Sonar search. High-priority sources get full article extraction via Firecrawl." },
+      { label: "Dynamic monitors", value: "Temporary search monitors created by the post-run briefing agent with an expiration date. Example: 'NVIDIA Blackwell GPU supply chain update' (expires in 14 days). Picked up automatically by the next morning's sweep." },
+    ],
+  },
+  {
+    heading: "Morning briefs",
+    items: [
+      { label: "What's in a brief?", value: "Market context (3-4 sentences on regime, themes, macro), portfolio alerts (per-position flags like 'near target' or 'earnings this week'), watchlist updates (news on watched tickers), new opportunities (max 3, matched to mandate), attention priority (top 5 tickers to focus on), and risk flags (concrete, time-bound warnings)." },
+      { label: "Who writes them?", value: "GPT-4o reads each analyst's routed findings, current positions, and watchlist, then generates a structured brief. Each analyst gets its own personalized brief." },
+      { label: "How analysts use them", value: "The analyst calls read_morning_brief as its first tool call. If the brief has portfolio alerts, it prioritizes those holdings. If it has new opportunities, it uses them as the discovery pipeline. The brief replaces the need for the analyst to scan the market from scratch." },
+    ],
+  },
+];
+
 // ── Detail sections ────────────────────────────────────────────────────────
 
 export const MANUAL_RUN_DETAILS: DetailSection[] = [
@@ -201,7 +237,7 @@ export const MANUAL_RUN_DETAILS: DetailSection[] = [
   {
     heading: "How it differs from the daily cron",
     items: [
-      { label: "Same agent", value: "Same model (GPT-4.1), same 13 tools, same system prompt, same analyst memory. The research quality is identical." },
+      { label: "Same agent", value: "Same model (GPT-4.1), same 14 tools, same system prompt, same analyst memory. The research quality is identical." },
       { label: "Streaming", value: "Manual runs stream to your browser so you watch it happen. Cron runs execute on the server with no UI — you see the results after." },
       { label: "Position limits", value: "Manual runs give the agent the full max positions setting (e.g. 5). Cron runs calculate how many slots are left and only allow that many new positions." },
     ],
@@ -222,7 +258,7 @@ export const CRON_RUN_DETAILS: DetailSection[] = [
     items: [
       { label: "Schedule", value: "Every weekday at 8:00 AM Eastern, before the US market opens. Runs automatically — no human needed." },
       { label: "What happens", value: "The system finds all enabled analysts and runs each one sequentially. Each analyst gets its own full research session — just like clicking Run manually, but unattended." },
-      { label: "Same agent", value: "Same GPT-4.1 model, same 13 tools, same 8-phase workflow, same analyst memory. The only differences: it runs on the server (no streaming UI), each analyst gets a 4-minute time limit, and position slots are calculated automatically." },
+      { label: "Same agent", value: "Same GPT-4.1 model, same 14 tools, same 8-phase workflow, same analyst memory. The only differences: it runs on the server (no streaming UI), each analyst gets a 4-minute time limit, and position slots are calculated automatically." },
     ],
   },
   {

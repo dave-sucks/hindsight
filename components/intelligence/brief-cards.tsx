@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Card } from "@/components/ui/card";
 import { BriefCard } from "@/components/intelligence/brief-card";
+import { EducationEmptyState } from "@/components/domain/education-card";
 import { BriefDetailDialog } from "@/components/intelligence/brief-detail";
 import { normalizeIntelBrief } from "@/components/intelligence/brief-types";
 import type { UnifiedBrief } from "@/components/intelligence/brief-types";
@@ -19,16 +19,7 @@ export function BriefCards({ briefs }: BriefCardsProps) {
   const [selected, setSelected] = useState<UnifiedBrief | null>(null);
 
   if (briefs.length === 0) {
-    return (
-      <Card className="p-6">
-        <div className="text-center space-y-1">
-          <p className="text-sm text-muted-foreground">No morning briefs generated today</p>
-          <p className="text-xs text-muted-foreground">
-            Run the Morning Brief job from the pipeline trigger, or wait for the 7:45 AM cron
-          </p>
-        </div>
-      </Card>
-    );
+    return <EducationEmptyState stateKey="intelligence-briefs" size="compact" />;
   }
 
   const unified = briefs.map(normalizeIntelBrief);

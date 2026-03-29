@@ -40,7 +40,8 @@ import {
   type MockTrade,
   type TradeStatus,
 } from '@/lib/mock-data/trades';
-import { ArrowLeftRight, Loader2, MoreHorizontal } from 'lucide-react';
+import { Loader2, MoreHorizontal } from 'lucide-react';
+import { EducationEmptyState, ConceptTooltip } from '@/components/domain/education-card';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -114,19 +115,14 @@ function TargetDots({
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyState({ filtered }: { filtered: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
-      <ArrowLeftRight className="h-8 w-8 mb-3 opacity-30" />
-      <p className="text-sm">
-        {filtered ? 'No trades match your filters' : 'No paper trades yet'}
-      </p>
-      {!filtered && (
-        <p className="text-xs mt-1 max-w-xs leading-relaxed">
-          Trades are placed automatically when an analyst finds a high-confidence setup.
-        </p>
-      )}
-    </div>
-  );
+  if (filtered) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
+        <p className="text-sm">No trades match your filters</p>
+      </div>
+    );
+  }
+  return <EducationEmptyState stateKey="trades-list" />;
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
