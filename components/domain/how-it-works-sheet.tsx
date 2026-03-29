@@ -10,16 +10,14 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
 } from "@/components/ui/tooltip";
-import { TeamCard, FlowConnector } from "@/components/domain/team-card";
+import { TeamSheetContent } from "@/components/domain/team-card";
 import {
-  TEAMS,
   getTeam,
   exportWorkflowAsMarkdown,
   type TeamId,
@@ -27,46 +25,33 @@ import {
 
 // ── Copy button ────────────────────────────────────────────────────────────
 
-function CopyButton({
-  getText,
-  label,
-}: {
-  getText: () => string;
-  label: string;
-}) {
+function CopyButton() {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(getText()).then(() => {
+    navigator.clipboard.writeText(exportWorkflowAsMarkdown()).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [getText]);
+  }, []);
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger
-          render={
-            <Button variant="outline" size="sm" onClick={handleCopy} />
-          }
+          render={<Button variant="outline" size="icon-sm" onClick={handleCopy} />}
         >
-          {copied ? (
-            <Check className="h-3.5 w-3.5" />
-          ) : (
-            <Copy className="h-3.5 w-3.5" />
-          )}
-          {copied ? "Copied" : label}
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          {copied ? "Copied to clipboard" : "Copy as markdown"}
+          {copied ? "Copied" : "Copy workflow as markdown"}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
 }
 
-// ── FlowType (backwards compat for pages that import it) ───────────────────
+// ── FlowType alias (backwards compat) ──────────────────────────────────────
 
 export type FlowType = TeamId;
 
@@ -94,39 +79,17 @@ export function HowItWorksSheet({
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <SheetTitle>{team.title}</SheetTitle>
-          <div className="flex items-center gap-1.5">
-            <CopyButton
-              getText={() => exportWorkflowAsMarkdown()}
-              label="Copy"
-            />
+          <div className="flex items-center gap-1">
+            <CopyButton />
             <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
               <X className="h-4 w-4" />
             </SheetClose>
           </div>
         </div>
 
-        {/* Team card, always expanded */}
-        <div className="px-4 pb-4">
-          <TeamCard team={team} alwaysExpanded />
-        </div>
-
-        {/* Context: where this fits in the full flow */}
-        <Separator />
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-3">
-            Full workflow
-          </p>
-          <div className="flex flex-col items-center">
-            {TEAMS.map((t, i) => (
-              <div key={t.id} className="flex flex-col items-center w-full">
-                <TeamCard
-                  team={t}
-                  defaultExpanded={false}
-                />
-                {i < TEAMS.length - 1 && <FlowConnector />}
-              </div>
-            ))}
-          </div>
+        {/* Content */}
+        <div className="px-4 pb-6">
+          <TeamSheetContent team={team} />
         </div>
       </SheetContent>
     </Sheet>

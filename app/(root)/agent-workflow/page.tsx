@@ -1,11 +1,25 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { TeamCard, FlowConnector } from "@/components/domain/team-card";
-import { TEAMS, exportWorkflowAsMarkdown } from "@/lib/agent/workflow-registry";
+import {
+  Sheet,
+  SheetContent,
+  SheetClose,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  WorkflowStepRow,
+  FlowConnector,
+  TeamSheetContent,
+} from "@/components/domain/team-card";
+import {
+  TEAMS,
+  exportWorkflowAsMarkdown,
+  type Team,
+} from "@/lib/agent/workflow-registry";
 
 // ── Copy button ────────────────────────────────────────────────────────────
 
@@ -30,13 +44,15 @@ function CopyMarkdownButton() {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AgentWorkflowPage() {
+  const [activeTeam, setActiveTeam] = useState<Team | null>(null);
+
   return (
-    <div className="p-6 space-y-6 max-w-lg mx-auto">
+    <div className="p-6 space-y-4 max-w-xl mx-auto">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">How Hindsight Works</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            5 teams run in a daily loop. Click any team to see its steps and tools.
+            5 teams run in a daily loop. Open any step to see its workflow and tools.
           </p>
         </div>
         <CopyMarkdownButton />
@@ -44,15 +60,44 @@ export default function AgentWorkflowPage() {
 
       <Separator />
 
-      {/* Flow */}
-      <div className="flex flex-col items-center gap-0">
+      {/* Steps */}
+      <div>
         {TEAMS.map((team, i) => (
-          <div key={team.id} className="flex flex-col items-center w-full">
-            <TeamCard team={team} />
+          <div key={team.id}>
+            <WorkflowStepRow
+              team={team}
+              onOpenSheet={() => setActiveTeam(team)}
+            />
             {i < TEAMS.length - 1 && <FlowConnector />}
           </div>
         ))}
       </div>
+
+      {/* Sheet for selected team */}
+      <Sheet
+        open={activeTeam !== null}
+        onOpenChange={(open: boolean) => { if (!open) setActiveTeam(null); }}
+      >
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          className="w-full sm:max-w-md overflow-y-auto"
+        >
+          {activeTeam && (
+            <>
+              <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                <SheetTitle>{activeTeam.title}</SheetTitle>
+                <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
+                  <X className="h-4 w-4" />
+                </SheetClose>
+              </div>
+              <div className="px-4 pb-6">
+                <TeamSheetContent team={activeTeam} />
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
