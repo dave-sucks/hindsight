@@ -19,7 +19,7 @@ import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { EducationEmptyState } from '@/components/domain/education-card';
 import { HowItWorksSheet } from '@/components/domain/how-it-works-sheet';
-import { Sparkles } from 'lucide-react';
+import { ScanSearch } from 'lucide-react';
 import {
   mockOpenTrades,
   mockEquityCurve,
@@ -296,7 +296,7 @@ export default function DashboardClient({
                       {totalValueStr}
                     </p>
                     <HowItWorksSheet flow="agent">
-                      <Sparkles className="h-4 w-4" />
+                      <ScanSearch className="h-4 w-4" />
                     </HowItWorksSheet>
                   </div>
                   <p className="text-sm tabular-nums flex items-center gap-1 flex-wrap">

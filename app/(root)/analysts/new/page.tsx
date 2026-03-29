@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalystBuilderChat } from "@/components/analysts/AnalystBuilderChat";
 import { AnalystConfigPanel } from "@/components/analysts/AnalystConfigPanel";
@@ -40,7 +40,7 @@ export default function NewAnalystPage() {
       </div>
       <div className="absolute top-2 right-3 z-20">
         <HowItWorksSheet flow="builder">
-          <Sparkles className="h-4 w-4" />
+          <ScanSearch className="h-4 w-4" />
         </HowItWorksSheet>
       </div>
 

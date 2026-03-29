@@ -22,7 +22,9 @@ import {
 } from "@/lib/actions/watchlist.actions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
-import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
+import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
+import { TeamSheetContent } from "@/components/domain/team-card";
+import { getTeam } from "@/lib/agent/workflow-registry";
 import { TradeRow } from "@/components/ui/trade-row";
 import { AnalystFindingsTab } from "@/components/analysts/AnalystFindingsTab";
 import { BriefCard } from "@/components/intelligence/brief-card";
@@ -46,7 +48,8 @@ import {
   Trash2,
   Loader2,
   EllipsisVertical,
-  Sparkles,
+  ScanSearch,
+  Workflow,
 } from "lucide-react";
 import {
   Dialog,
@@ -234,6 +237,7 @@ export default function AnalystDetailClient({
 
   const router = useRouter();
   const [configOpen, setConfigOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const [range, setRange] = useState<Range>("Max");
   const [chartMode, setChartMode] = useState<"value" | "pnl">("value");
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
@@ -458,6 +462,15 @@ export default function AnalystDetailClient({
                     Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setOverviewOpen(true)}>
+                    <ScanSearch className="h-3.5 w-3.5" />
+                    Agent Overview
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/agent-workflow")}>
+                    <Workflow className="h-3.5 w-3.5" />
+                    Full Workflow
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-negative focus:text-negative"
                     onClick={() => setDeleteOpen(true)}
@@ -467,9 +480,6 @@ export default function AnalystDetailClient({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <HowItWorksSheet flow="agent">
-                <Sparkles className="h-4 w-4" />
-              </HowItWorksSheet>
               <RunResearchButton
                 analystId={config.id}
                 hasRunning={hasRunning}
@@ -744,6 +754,21 @@ export default function AnalystDetailClient({
         onOpenChange={setConfigOpen}
         config={config}
       />
+
+      {/* Agent overview sheet */}
+      <Sheet open={overviewOpen} onOpenChange={setOverviewOpen}>
+        <SheetContent side="right" showCloseButton={false} className="w-full sm:max-w-md overflow-y-auto">
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+            <SheetTitle>Research Agent</SheetTitle>
+            <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
+              <X className="h-4 w-4" />
+            </SheetClose>
+          </div>
+          <div className="px-4 pb-6">
+            <TeamSheetContent team={getTeam("agent")} />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-[400px]">
