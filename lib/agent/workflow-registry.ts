@@ -81,6 +81,10 @@ export interface Team {
   schedule: string;
   substeps: SubStep[];
   tools: ToolEntry[];
+  /** If this team has a system prompt, lazy-load it */
+  getPrompt?: () => Promise<string>;
+  /** Source file for the prompt (shown as reference if getPrompt is not available) */
+  promptSource?: string;
 }
 
 // ── Shared tools (referenced by multiple teams) ──────────────────────────
@@ -153,6 +157,8 @@ export const TEAMS: Team[] = [
       TOOL_GET_SEC_FILINGS,
       { name: "suggest_config", provider: "internal", summary: "Outputs the complete analyst configuration for review." },
     ],
+    getPrompt: () => import("@/lib/agent/builder-prompt-template").then((m) => m.BUILDER_PROMPT_TEMPLATE),
+    promptSource: "app/api/chat/analyst-builder/route.ts",
   },
 
   // ─── 2. Intelligence Pipeline ──────────────────────────────────────────
@@ -264,6 +270,8 @@ export const TEAMS: Team[] = [
       // Synthesis
       { name: "complete_run", provider: "internal", summary: "Wraps up session with ranked picks, market summary, risk notes." },
     ],
+    getPrompt: () => import("@/lib/agent/system-prompt-template").then((m) => m.SYSTEM_PROMPT_TEMPLATE),
+    promptSource: "lib/agent/system-prompt-template.ts",
   },
 
   // ─── 4. Briefing Agent ─────────────────────────────────────────────────
@@ -294,6 +302,7 @@ export const TEAMS: Team[] = [
         resources: [{ source: "internal", title: "Standup generation", description: "Structured output: narrative, strategy notes, posture, watch items, corrections, dynamic monitors.", type: "internal", endpointOrPath: "generateObject({ schema: standupSchema })", exampleOutput: "Narrative: 450 words · 3 watch items · 1 dynamic monitor" }],
       },
     ],
+    promptSource: "lib/agent/update-analyst-briefing.ts",
   },
 
   // ─── 5. Evaluation ─────────────────────────────────────────────────────

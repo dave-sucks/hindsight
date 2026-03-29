@@ -116,7 +116,7 @@ const configSchema = z.object({
 
 // ── System prompt ───────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are the Analyst Builder for Hindsight, an AI-powered paper trading platform.
+export const SYSTEM_PROMPT = `You are the Analyst Builder for Hindsight, an AI-powered paper trading platform.
 
 Your job: help users BRAINSTORM and CREATE a brilliant, unique trading analyst. You are a genius strategist who helps people figure out exactly what kind of edge they want to find in the market and turns that into a detailed, actionable agent configuration.
 

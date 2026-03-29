@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +20,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Zap, Globe, Database, Cpu } from "lucide-react";
+import { Zap, Globe, Database, Cpu, Copy, Check, ChevronDown } from "lucide-react";
+import { Markdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/chat/SourceChip";
 import type { Team, ToolEntry, SubStep, Resource, ResourceType } from "@/lib/agent/workflow-registry";
 
@@ -269,6 +272,16 @@ function SubStepRow({ step, index }: { step: SubStep; index: number }) {
 export function TeamSheetContent({ team }: { team: Team }) {
   const [selectedTool, setSelectedTool] = useState<ToolEntry | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptText, setPromptText] = useState<string | null>(null);
+  const [promptCopied, setPromptCopied] = useState(false);
+
+  // Lazy-load prompt when collapsible opens
+  useEffect(() => {
+    if (promptOpen && promptText === null && team.getPrompt) {
+      team.getPrompt().then(setPromptText);
+    }
+  }, [promptOpen, promptText, team]);
 
   const handleToolClick = useCallback((tool: ToolEntry) => {
     setSelectedTool(tool);
@@ -323,6 +336,67 @@ export function TeamSheetContent({ team }: { team: Team }) {
           ))}
         </div>
       </div>
+
+      {/* Prompt (collapsible) */}
+      {(team.getPrompt || team.promptSource) && (
+        <>
+          <Separator />
+          <Collapsible open={promptOpen} onOpenChange={setPromptOpen}>
+            <CollapsibleTrigger
+              render={
+                <button
+                  type="button"
+                  className="flex items-center gap-2 w-full text-left py-1 group"
+                />
+              }
+            >
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 flex-1">
+                System Prompt
+                {team.promptSource && (
+                  <span className="ml-1.5 normal-case tracking-normal font-normal text-muted-foreground/40">
+                    {team.promptSource}
+                  </span>
+                )}
+              </p>
+              <ChevronDown className={`h-3 w-3 text-muted-foreground/40 transition-transform ${promptOpen ? "rotate-180" : ""}`} />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              {team.getPrompt ? (
+                <div className="mt-2 space-y-2">
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (promptText) {
+                          navigator.clipboard.writeText(promptText);
+                          setPromptCopied(true);
+                          setTimeout(() => setPromptCopied(false), 2000);
+                        }
+                      }}
+                      disabled={!promptText}
+                    >
+                      {promptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      {promptCopied ? "Copied" : "Copy prompt"}
+                    </Button>
+                  </div>
+                  {promptText ? (
+                    <div className="max-h-96 overflow-y-auto rounded-md border bg-muted/20 px-3 py-2">
+                      <Markdown variant="compact">{promptText}</Markdown>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Loading prompt...</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Prompt defined in <code className="text-[11px]">{team.promptSource}</code>
+                </p>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        </>
+      )}
 
       <ToolDetailDialog
         tool={selectedTool}
