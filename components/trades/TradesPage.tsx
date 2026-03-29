@@ -101,7 +101,7 @@ function TargetDots({
     <BarGauge
       mode="range"
       value={Math.max(0, Math.min(1, progress))}
-      size="sm"
+      segments={12}
     />
   );
 }

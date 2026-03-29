@@ -25,10 +25,8 @@ type DistributionProps = {
 };
 
 type BarGaugeProps = (FillProps | RangeProps | DistributionProps) & {
-  /** Number of bars (default 24) */
+  /** Number of bars (minimum 12, default 24) */
   segments?: number;
-  /** Compact size for table cells */
-  size?: "default" | "sm";
   className?: string;
 };
 
@@ -103,26 +101,25 @@ export function priceToRange(opts: {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function BarGauge(props: BarGaugeProps) {
-  const { size = "default", className, ...modeProps } = props;
+  const { className, ...modeProps } = props;
 
-  // Distribution mode: total bars = sum of counts, minimum 20
-  let segments = props.segments ?? 24;
+  // Distribution mode: total bars = sum of counts, minimum 12
+  let segments = Math.max(12, props.segments ?? 24);
   if (modeProps.mode === "distribution" && !props.segments) {
     const total = modeProps.ranges.reduce((sum, r) => sum + r.count, 0);
-    segments = Math.max(20, total);
+    segments = Math.max(12, total);
   }
 
   const colors = buildColors(modeProps, segments);
-  const height = size === "sm" ? "h-2.5" : "h-3.5";
 
   return (
-    <div className={cn("flex gap-[1.5px]", className)}>
+    <div className={cn("flex flex-col gap-[1px]", className)}>
       {colors.map((color, i) => (
         <div
           key={i}
-          className={cn("flex-1 rounded-[1px]", height, color)}
+          className={cn("w-full h-[2px] rounded-[0.5px]", color)}
         />
-      ))}
+      )).reverse()}
     </div>
   );
 }
