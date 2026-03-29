@@ -42,7 +42,9 @@ import {
 } from '@/lib/mock-data/trades';
 import { Loader2, MoreHorizontal, ScanSearch } from 'lucide-react';
 import { HowItWorksSheet } from '@/components/domain/how-it-works-sheet';
-import { EducationEmptyState, ConceptTooltip } from '@/components/domain/education-card';
+import { ConceptTooltip } from '@/components/domain/education-card';
+import { FeatureCard, FeatureShowcase, SkeletonLines } from '@/components/domain/feature-showcase';
+import { Target, BarChart3, ShoppingCart } from 'lucide-react';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -118,7 +120,29 @@ function EmptyState({ filtered }: { filtered: boolean }) {
       </div>
     );
   }
-  return <EducationEmptyState stateKey="trades-list" />;
+  return (
+    <FeatureShowcase
+      headline="No paper trades yet"
+      subtitle="Trades are placed automatically when an analyst has high confidence in a thesis."
+      action={{ label: "View Analysts", href: "/analysts" }}
+    >
+      <FeatureCard
+        icon={Target}
+        title="Thesis-Driven"
+        description="Every trade starts with a written thesis — direction, confidence, entry/target/stop prices."
+      />
+      <FeatureCard
+        icon={ShoppingCart}
+        title="Alpaca Paper Trading"
+        description="Real market orders on a simulated account. Live P&L tracked from actual prices."
+      />
+      <FeatureCard
+        icon={BarChart3}
+        title="Performance Tracking"
+        description="Win rate, calibration scoring, and post-trade GPT-4o evaluation on every close."
+      />
+    </FeatureShowcase>
+  );
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────

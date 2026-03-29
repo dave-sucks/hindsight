@@ -61,6 +61,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { EducationEmptyState } from "@/components/domain/education-card";
+import { FeatureCard, SkeletonLines, SkeletonBadges } from "@/components/domain/feature-showcase";
+import { Bot, ArrowLeftRight, Radar, Search, Target } from "lucide-react";
 import type {
   AnalystDetail,
   PositionWithThesis,
@@ -826,6 +828,47 @@ function buildAllBriefs(analystName: string, morningBriefs: MorningBriefItem[], 
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
+// ── Feature showcase for empty analyst ────────────────────────────────────────
+
+function AnalystFeatureShowcase() {
+  return (
+    <div className="py-8 px-4 space-y-4 max-w-lg mx-auto">
+      <div className="text-center space-y-1">
+        <h2 className="text-lg font-semibold">Hit Run to get started</h2>
+        <p className="text-xs text-muted-foreground">
+          Your analyst is ready. Here&apos;s what happens when it runs.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <FeatureCard
+          icon={Bot}
+          title="Research Runs"
+          description="8-phase sessions with 14 tools — live quotes, earnings, SEC filings, options flow, web search."
+        >
+          <SkeletonBadges labels={["Finnhub", "FMP", "SEC", "Sonar", "Alpaca"]} />
+        </FeatureCard>
+
+        <FeatureCard
+          icon={FileText}
+          title="Daily Briefs"
+          description="Morning intelligence at 7:45 AM + post-run standups written by a separate reviewer agent."
+        >
+          <SkeletonLines count={3} />
+        </FeatureCard>
+
+        <FeatureCard
+          icon={ArrowLeftRight}
+          title="Paper Trades"
+          description="Automatic execution on Alpaca with live P&L, targets, stop-losses, and weekly accuracy scoring."
+        >
+          <SkeletonLines count={2} />
+        </FeatureCard>
+      </div>
+    </div>
+  );
+}
+
 // ── Snapshot tab: latest run brief inline + 3 recent cards ──────────────────
 
 function AnalystSnapshotSection({
@@ -844,7 +887,7 @@ function AnalystSnapshotSection({
   const cards = allBriefs.filter((b) => !(b.type === "run" && b.runBrief?.id === latestRunBrief?.id)).slice(0, 3);
 
   if (!latestRunBrief && cards.length === 0) {
-    return <EducationEmptyState stateKey="analyst-briefs" />;
+    return <AnalystFeatureShowcase />;
   }
 
   return (
@@ -887,7 +930,7 @@ function AnalystAllBriefsSection({
   const allBriefs = buildAllBriefs(analystName, morningBriefs, runBriefs);
 
   if (allBriefs.length === 0) {
-    return <EducationEmptyState stateKey="analyst-briefs" />;
+    return <AnalystFeatureShowcase />;
   }
 
   return (

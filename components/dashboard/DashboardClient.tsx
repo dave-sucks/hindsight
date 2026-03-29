@@ -17,7 +17,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ThesisRow } from '@/components/ui/thesis-row';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
-import { EducationEmptyState } from '@/components/domain/education-card';
+import { FeatureCard, SkeletonBadges } from '@/components/domain/feature-showcase';
+import { Sparkles, Radar, Bot } from 'lucide-react';
 import { HowItWorksSheet } from '@/components/domain/how-it-works-sheet';
 import { ScanSearch } from 'lucide-react';
 import {
@@ -138,7 +139,19 @@ function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
 
       {/* Cards */}
       {picks.length === 0 ? (
-        <EducationEmptyState stateKey="dashboard-picks" size="compact" />
+        <div className="space-y-3">
+          <div className="text-center py-4">
+            <p className="text-sm font-medium">Get started with Hindsight</p>
+            <p className="text-xs text-muted-foreground mt-1">Create an analyst to start seeing picks, trades, and intelligence here.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FeatureCard icon={Sparkles} title="Create an Analyst" description="Describe your strategy. The AI builder creates a complete trading persona." />
+            <FeatureCard icon={Radar} title="Intelligence Gathers" description="Background jobs search the web, check sources, and write morning briefs." />
+            <FeatureCard icon={Bot} title="Autonomous Research" description="14 tools, daily runs, paper trades, and a memory system that compounds.">
+              <SkeletonBadges labels={["Finnhub", "Sonar", "Alpaca"]} />
+            </FeatureCard>
+          </div>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-lg border px-4 py-8 flex flex-col items-center gap-2">
           <p className="text-sm text-muted-foreground text-center">

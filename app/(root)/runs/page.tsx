@@ -2,7 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { StockLogo } from "@/components/StockLogo";
-import { EducationEmptyState, ConceptTooltip } from "@/components/domain/education-card";
+import { ConceptTooltip } from "@/components/domain/education-card";
+import { FeatureCard, FeatureShowcase, SkeletonBadges, SkeletonLines } from "@/components/domain/feature-showcase";
+import { Bot, Search, Target, ArrowLeftRight } from "lucide-react";
 
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - new Date(date).getTime();
@@ -64,7 +66,29 @@ export default async function RunsPage() {
       </div>
 
       {runs.length === 0 ? (
-        <EducationEmptyState stateKey="runs-list" />
+        <FeatureShowcase
+          headline="No runs yet"
+          subtitle="Create an analyst and hit Run — or wait for the 8 AM daily cron."
+          action={{ label: "View Analysts", href: "/analysts" }}
+        >
+          <FeatureCard
+            icon={Bot}
+            title="8-Phase Workflow"
+            description="Read intelligence → review holdings → discover → synthesize → execute. Structured and auditable."
+          />
+          <FeatureCard
+            icon={Search}
+            title="14 Research Tools"
+            description="Live quotes, company data, technicals, earnings, SEC filings, options flow, web search."
+          >
+            <SkeletonBadges labels={["Finnhub", "FMP", "SEC", "Sonar"]} />
+          </FeatureCard>
+          <FeatureCard
+            icon={Target}
+            title="Thesis + Trade"
+            description="Every stock gets a verdict — LONG, SHORT, or PASS. High-conviction picks become real paper trades."
+          />
+        </FeatureShowcase>
       ) : (
         runs.map((run) => {
           const analystName =

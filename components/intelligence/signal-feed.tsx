@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
-import { EducationEmptyState } from "@/components/domain/education-card";
-import { Search } from "lucide-react";
+import { FeatureCard } from "@/components/domain/feature-showcase";
+import { Search, Globe, Newspaper, BarChart3 } from "lucide-react";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
 import type { Signal } from "./types";
@@ -108,7 +108,18 @@ export function SignalFeed({ signals }: SignalFeedProps) {
         <div className="space-y-2">
           {filtered.length === 0 && (
             signals.length === 0 ? (
-              <EducationEmptyState stateKey="intelligence-signals" size="compact" />
+              <div className="py-8 space-y-4 max-w-lg mx-auto">
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-medium">No findings yet</p>
+                  <p className="text-xs text-muted-foreground">Trigger the pipeline or wait for the 6:30 AM cron to start gathering intelligence.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <FeatureCard icon={Search} title="Search Monitors" description="Daily Perplexity Sonar queries for market news and sector trends." />
+                  <FeatureCard icon={Globe} title="Domain Sources" description="Tracked websites with full article extraction via Firecrawl." />
+                  <FeatureCard icon={BarChart3} title="Market Movers" description="FMP gainers, losers, and most active stocks." />
+                  <FeatureCard icon={Newspaper} title="Earnings Calendar" description="Finnhub earnings reports for the next 7 days." />
+                </div>
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground py-8 text-center">
                 No findings match your filters

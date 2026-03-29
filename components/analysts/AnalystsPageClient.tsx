@@ -32,7 +32,9 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
-import { EducationEmptyState, ConceptTooltip } from "@/components/domain/education-card";
+import { ConceptTooltip } from "@/components/domain/education-card";
+import { FeatureCard, FeatureShowcase, SkeletonBadges } from "@/components/domain/feature-showcase";
+import { Bot, Radar, Sparkles, BarChart3 } from "lucide-react";
 
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
 
@@ -214,9 +216,29 @@ function NewAnalystCard() {
 
 function AnalystsEmptyState() {
   return (
-    <div className="space-y-6">
-      <EducationEmptyState stateKey="analysts-list" />
-    </div>
+    <FeatureShowcase
+      headline="Create your first AI analyst"
+      subtitle="Describe your trading style in conversation. The AI builder creates a complete strategy, watchlist, and intelligence setup."
+      action={{ label: "Create Analyst", href: "/analysts/new" }}
+    >
+      <FeatureCard
+        icon={Sparkles}
+        title="AI-Built Strategy"
+        description="Chat about your trading style. The builder researches live data and proposes a complete config."
+      />
+      <FeatureCard
+        icon={Radar}
+        title="Overnight Intelligence"
+        description="Background jobs gather market news, check tracked sources, and write personalized morning briefs."
+      />
+      <FeatureCard
+        icon={Bot}
+        title="Autonomous Research"
+        description="14 tools, 8-phase workflow, real paper trades on Alpaca. Runs daily at 8 AM or on demand."
+      >
+        <SkeletonBadges labels={["Finnhub", "FMP", "SEC", "Sonar", "Alpaca"]} />
+      </FeatureCard>
+    </FeatureShowcase>
   );
 }
 
