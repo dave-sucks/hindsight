@@ -24,7 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { InfoRow } from "@/components/ui/info-row";
-import { Info } from "lucide-react";
+import { Info, Globe, Search } from "lucide-react";
 import {
   updateAnalystField,
 } from "@/lib/actions/analyst.actions";
@@ -199,39 +199,35 @@ export function AnalystConfigSheet({
                 <InfoRow
                   label="Live search"
                   value={(policy.allowLiveSearch as boolean) ? "On" : "Off"}
-                  border={false}
                 />
               )}
+
+              {config.sectors.length > 0 && (
+                <InfoRow label="Sectors">
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {config.sectors.map((s) => (
+                      <Badge key={s} variant="secondary">{titleCase(s)}</Badge>
+                    ))}
+                  </div>
+                </InfoRow>
+              )}
+
+              {config.signalTypes.length > 0 && (
+                <InfoRow label="Signals" border={false}>
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {config.signalTypes.map((s) => (
+                      <Badge key={s} variant="secondary">{titleCase(s)}</Badge>
+                    ))}
+                  </div>
+                </InfoRow>
+              )}
             </div>
-
-            {/* ── Sectors ────────────────────────────────────────── */}
-            {config.sectors.length > 0 && (
-              <div className="p-3 border-b">
-                <p className="text-sm font-medium mb-1.5">Sectors</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {config.sectors.map((s) => (
-                    <Badge key={s} variant="outline">{titleCase(s)}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── Signals ────────────────────────────────────────── */}
-            {config.signalTypes.length > 0 && (
-              <div className="p-3 border-b">
-                <p className="text-sm font-medium mb-1.5">Signals</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {config.signalTypes.map((s) => (
-                    <Badge key={s} variant="outline">{titleCase(s)}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* ── Sources ───────────────────────────────────────── */}
             {config.domainMonitors.length > 0 && (
               <div className="p-3 border-b">
                 <div className="flex items-center gap-1.5 mb-1.5">
+                  <Globe className="h-3.5 w-3.5 text-muted-foreground" />
                   <p className="text-sm font-medium">Sources</p>
                   <Tooltip>
                     <TooltipTrigger render={<span className="cursor-help" />}>
@@ -263,6 +259,7 @@ export function AnalystConfigSheet({
             {config.searchMonitors.length > 0 && (
               <div className="p-3 border-b">
                 <div className="flex items-center gap-1.5 mb-1.5">
+                  <Search className="h-3.5 w-3.5 text-muted-foreground" />
                   <p className="text-sm font-medium">Search Queries</p>
                   <Tooltip>
                     <TooltipTrigger render={<span className="cursor-help" />}>
