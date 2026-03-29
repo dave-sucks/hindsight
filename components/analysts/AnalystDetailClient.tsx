@@ -92,9 +92,13 @@ function sliceByRange(
 
 // ── Sidebar trade row (uses shared TradeRow component) ───────────────────────
 
-function AnalystTradeRow({ trade }: { trade: PositionWithThesis }) {
-  const pnl = trade.status === "CLOSED" ? (trade.realizedPnl ?? 0) : 0;
-  const price = trade.closePrice ?? trade.avgCost;
+function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; livePrice?: number }) {
+  const isOpen = trade.status === "OPEN";
+  const currentPrice = isOpen ? (livePrice ?? trade.avgCost) : (trade.closePrice ?? trade.avgCost);
+  const pnl = isOpen
+    ? (currentPrice - trade.avgCost) * trade.quantity * (trade.direction === "SHORT" ? -1 : 1)
+    : (trade.realizedPnl ?? 0);
+  const price = currentPrice;
   const pnlPct =
     trade.avgCost > 0
       ? ((price - trade.avgCost) / trade.avgCost) * 100 *
@@ -207,10 +211,12 @@ export default function AnalystDetailClient({
   detail,
   hasRunning,
   initialWatchlist = [],
+  livePrices = {},
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
   initialWatchlist?: WatchlistItemView[];
+  livePrices?: Record<string, number>;
 }) {
   const { config: rawConfig, stats, recentTrades } = detail;
 
@@ -285,6 +291,19 @@ export default function AnalystDetailClient({
   };
 
   // ── Chart data ──────────────────────────────────────────────────────────
+  const openPositions = recentTrades.filter((t) => t.status === "OPEN");
+  const hasOpenPositions = openPositions.length > 0;
+
+  // Compute total unrealized P&L from live prices
+  const totalUnrealizedPnl = useMemo(() => {
+    return openPositions.reduce((sum, t) => {
+      const lp = livePrices[t.symbol];
+      if (lp == null) return sum;
+      const dir = t.direction === "SHORT" ? -1 : 1;
+      return sum + (lp - t.avgCost) * t.quantity * dir;
+    }, 0);
+  }, [openPositions, livePrices]);
+
   const equityData = useMemo(() => {
     const closed = recentTrades
       .filter((t) => t.closedAt && t.realizedPnl != null)
@@ -292,15 +311,21 @@ export default function AnalystDetailClient({
         (a, b) =>
           new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime(),
       );
-    if (closed.length === 0) return [];
 
-    // Always start from zero so a single trade still shows a line
     const points: { date: string; value: number }[] = [];
-    if (closed.length === 1) {
-      // Add a zero-point at the open date of the first trade
-      const openDate = new Date(closed[0].openedAt ?? closed[0].closedAt!);
-      points.push({ date: openDate.toISOString().slice(0, 10), value: 0 });
+
+    // Start from zero at earliest trade open date
+    const allTrades = [...recentTrades].sort(
+      (a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime(),
+    );
+    if (allTrades.length > 0) {
+      points.push({
+        date: new Date(allTrades[0].openedAt).toISOString().slice(0, 10),
+        value: 0,
+      });
     }
+
+    // Add closed trade points (cumulative realized)
     let cum = 0;
     for (const t of closed) {
       cum += t.realizedPnl!;
@@ -309,10 +334,22 @@ export default function AnalystDetailClient({
         value: cum,
       });
     }
-    return points;
-  }, [recentTrades]);
 
-  const hasOpenPositions = recentTrades.some((t) => t.status === "OPEN");
+    // Add today's point with unrealized P&L if we have open positions
+    if (hasOpenPositions && totalUnrealizedPnl !== 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      const lastPoint = points[points.length - 1];
+      // Don't duplicate if last point is already today
+      if (!lastPoint || lastPoint.date !== today) {
+        points.push({ date: today, value: cum + totalUnrealizedPnl });
+      } else {
+        lastPoint.value = cum + totalUnrealizedPnl;
+      }
+    }
+
+    // Need at least 2 points for a line
+    return points.length >= 2 ? points : [];
+  }, [recentTrades, hasOpenPositions, totalUnrealizedPnl]);
 
   const filteredEquity = useMemo(
     () => sliceByRange(equityData, range),
@@ -325,16 +362,14 @@ export default function AnalystDetailClient({
       : PNL_HEX.negative;
 
   // ── Display values ──────────────────────────────────────────────────────
-  const pnlColorClass =
-    stats.totalTrades > 0
-      ? stats.totalPnl >= 0
-        ? "text-positive"
-        : "text-negative"
-      : "text-muted-foreground";
-  const pnlStr =
-    stats.totalTrades > 0
-      ? (stats.totalPnl >= 0 ? "+" : "") + formatCurrency(stats.totalPnl)
-      : "$0.00";
+  const totalPnl = stats.totalPnl + totalUnrealizedPnl;
+  const hasTrades = stats.totalTrades > 0 || hasOpenPositions;
+  const pnlColorClass = hasTrades
+    ? totalPnl >= 0 ? "text-positive" : "text-negative"
+    : "text-muted-foreground";
+  const pnlStr = hasTrades
+    ? (totalPnl >= 0 ? "+" : "") + formatCurrency(totalPnl)
+    : "$0.00";
 
   return (
     <>
@@ -620,7 +655,7 @@ export default function AnalystDetailClient({
                   </p>
                 ) : (
                   recentTrades.map((trade) => (
-                    <AnalystTradeRow key={trade.id} trade={trade} />
+                    <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
                   ))
                 )}
               </TabsContent>

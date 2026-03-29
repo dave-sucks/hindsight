@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAnalystDetail } from "@/lib/actions/analyst.actions";
 import { getWatchlistItems } from "@/lib/actions/watchlist.actions";
+import { getLatestPrices } from "@/lib/alpaca";
 import AnalystDetailClient from "@/components/analysts/AnalystDetailClient";
 
 type Params = { id: string };
@@ -52,11 +53,22 @@ export default async function AnalystDetailPage({
 
   if (!detail) notFound();
 
+  // Fetch live prices for open positions
+  const openSymbols = detail.recentTrades
+    .filter((t) => t.status === "OPEN")
+    .map((t) => t.symbol);
+  const uniqueSymbols = [...new Set(openSymbols)];
+  const livePrices: Record<string, number> =
+    uniqueSymbols.length > 0
+      ? await getLatestPrices(uniqueSymbols).catch(() => ({}))
+      : {};
+
   return (
     <AnalystDetailClient
       detail={detail}
       hasRunning={runningCount > 0}
       initialWatchlist={watchlistItems}
+      livePrices={livePrices}
     />
   );
 }
