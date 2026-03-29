@@ -90,7 +90,7 @@ export default async function RunPage({
             autoStart={isLive}
             initialMessages={persistedMessages ?? undefined}
             headerAction={
-              <HowItWorksSheet flow="agent-run">
+              <HowItWorksSheet flow="agent">
                 <Sparkles className="h-4 w-4" />
               </HowItWorksSheet>
             }

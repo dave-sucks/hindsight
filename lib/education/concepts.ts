@@ -157,19 +157,19 @@ export const EMPTY_STATES: Record<string, EmptyStateConfig> = {
     title: "Create your first analyst",
     description: "Analysts are AI personas that research stocks and trade autonomously. Describe your trading style, and the AI builder creates a complete strategy, watchlist, and intelligence setup.",
     action: { label: "Create Analyst", href: "/analysts/new" },
-    learnMoreFlow: "analyst-builder",
+    learnMoreFlow: "builder",
   },
   "analyst-briefs": {
     concept: "brief",
     title: "No briefs yet",
     description: "Morning briefs are generated at 7:45 AM from overnight intelligence. Post-run briefs are written after each research session. Run this analyst or wait for the daily cron to see briefs here.",
-    learnMoreFlow: "learning-loop",
+    learnMoreFlow: "briefing",
   },
   "analyst-findings": {
     concept: "signal",
     title: "No findings routed yet",
     description: "The intelligence pipeline gathers findings overnight and routes them to analysts by relevance. Set up search and domain monitors on this analyst to start receiving findings.",
-    learnMoreFlow: "intelligence-pipeline",
+    learnMoreFlow: "intelligence",
   },
   "analyst-trades": {
     concept: "trade",
@@ -188,7 +188,7 @@ export const EMPTY_STATES: Record<string, EmptyStateConfig> = {
     title: "No runs yet",
     description: "Research runs happen when you click Run on an analyst or automatically at 8 AM daily. Each run is a structured session where the analyst researches, analyzes, and trades.",
     action: { label: "View Analysts", href: "/analysts" },
-    learnMoreFlow: "manual-run",
+    learnMoreFlow: "agent",
   },
 
   // ── Trades ─────────────────────────────────────────────────
@@ -227,7 +227,7 @@ export const EMPTY_STATES: Record<string, EmptyStateConfig> = {
     concept: "signal",
     title: "No findings yet",
     description: "Findings are gathered by the intelligence pipeline — search monitors, domain monitors, and API monitors running every morning. Trigger the pipeline manually or wait for the 6:30 AM cron.",
-    learnMoreFlow: "intelligence-pipeline",
+    learnMoreFlow: "intelligence",
   },
   "intelligence-monitors": {
     concept: "monitor",
@@ -239,7 +239,7 @@ export const EMPTY_STATES: Record<string, EmptyStateConfig> = {
     concept: "brief",
     title: "No briefs generated",
     description: "Morning briefs are synthesized at 7:45 AM from routed findings. Run the Morning Brief job from the pipeline trigger, or wait for the daily cron.",
-    learnMoreFlow: "intelligence-pipeline",
+    learnMoreFlow: "intelligence",
   },
 
   // ── Performance ────────────────────────────────────────────

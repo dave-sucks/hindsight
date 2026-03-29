@@ -177,7 +177,7 @@ export default function IntelligencePage() {
               <TabsTrigger value="briefs">Briefs</TabsTrigger>
             </TabsList>
             <div className="flex justify-end gap-1.5">
-              <HowItWorksSheet flow="intelligence-pipeline">
+              <HowItWorksSheet flow="intelligence">
                 <Sparkles className="h-4 w-4" />
               </HowItWorksSheet>
               <DropdownMenu>

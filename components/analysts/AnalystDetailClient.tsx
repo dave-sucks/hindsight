@@ -394,7 +394,7 @@ export default function AnalystDetailClient({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <HowItWorksSheet flow="analyst-overview">
+              <HowItWorksSheet flow="agent">
                 <Sparkles className="h-4 w-4" />
               </HowItWorksSheet>
               <RunResearchButton

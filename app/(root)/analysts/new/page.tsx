@@ -39,7 +39,7 @@ export default function NewAnalystPage() {
         </Button>
       </div>
       <div className="absolute top-2 right-3 z-20">
-        <HowItWorksSheet flow="analyst-builder">
+        <HowItWorksSheet flow="builder">
           <Sparkles className="h-4 w-4" />
         </HowItWorksSheet>
       </div>

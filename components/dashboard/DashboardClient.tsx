@@ -295,7 +295,7 @@ export default function DashboardClient({
                     <p className="text-4xl font-semibold tabular-nums tracking-tight">
                       {totalValueStr}
                     </p>
-                    <HowItWorksSheet flow="dashboard">
+                    <HowItWorksSheet flow="agent">
                       <Sparkles className="h-4 w-4" />
                     </HowItWorksSheet>
                   </div>
