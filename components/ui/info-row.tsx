@@ -28,7 +28,7 @@ export function InfoRow({
   return (
     <div
       className={cn(
-        "flex items-center justify-between text-sm",
+        "flex items-center justify-between text-sm min-h-8",
         border && "border-b border-border pb-1",
         className,
       )}

@@ -24,7 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { InfoRow } from "@/components/ui/info-row";
-import { Info, Globe, Search } from "lucide-react";
+import { Info, Search } from "lucide-react";
 import {
   updateAnalystField,
 } from "@/lib/actions/analyst.actions";
@@ -227,7 +227,6 @@ export function AnalystConfigSheet({
             {config.domainMonitors.length > 0 && (
               <div className="p-3 border-b">
                 <div className="flex items-center gap-1.5 mb-1.5">
-                  <Globe className="h-3.5 w-3.5 text-muted-foreground" />
                   <p className="text-sm font-medium">Sources</p>
                   <Tooltip>
                     <TooltipTrigger render={<span className="cursor-help" />}>
@@ -240,7 +239,7 @@ export function AnalystConfigSheet({
                 </div>
                 <div className="flex flex-col gap-1">
                   {config.domainMonitors.map((m) => (
-                    <div key={m.id} className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0">
+                    <div key={m.id} className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 min-h-8">
                       <img
                         src={`https://www.google.com/s2/favicons?domain=${m.domain}&sz=16`}
                         alt=""
@@ -259,7 +258,6 @@ export function AnalystConfigSheet({
             {config.searchMonitors.length > 0 && (
               <div className="p-3 border-b">
                 <div className="flex items-center gap-1.5 mb-1.5">
-                  <Search className="h-3.5 w-3.5 text-muted-foreground" />
                   <p className="text-sm font-medium">Search Queries</p>
                   <Tooltip>
                     <TooltipTrigger render={<span className="cursor-help" />}>
@@ -272,7 +270,8 @@ export function AnalystConfigSheet({
                 </div>
                 <div className="flex flex-col gap-1">
                   {config.searchMonitors.map((m) => (
-                    <div key={m.id} className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0">
+                    <div key={m.id} className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 min-h-8">
+                      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <span className="flex-1">{m.query}</span>
                     </div>
                   ))}

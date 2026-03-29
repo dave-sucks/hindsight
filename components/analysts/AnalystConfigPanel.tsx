@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { Check, Globe, Search, Info } from "lucide-react";
+import { Check, Search, Info } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -187,7 +187,6 @@ export function AnalystConfigPanel({
                 {sources.length > 0 && (
                   <div className="p-3 border-b">
                     <div className="flex items-center gap-1.5 mb-1.5">
-                      <Globe className="h-3.5 w-3.5 text-muted-foreground" />
                       <p className="text-sm font-medium">Sources</p>
                       <Tooltip>
                         <TooltipTrigger render={<span className="cursor-help" />}>
@@ -203,7 +202,7 @@ export function AnalystConfigPanel({
                         <Tooltip key={s.domain}>
                           <TooltipTrigger
                             render={
-                              <div className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default">
+                              <div className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8">
                                 <img
                                   src={`https://www.google.com/s2/favicons?domain=${s.domain}&sz=16`}
                                   alt=""
@@ -226,7 +225,6 @@ export function AnalystConfigPanel({
                 {queries.length > 0 && (
                   <div className="p-3">
                     <div className="flex items-center gap-1.5 mb-1.5">
-                      <Search className="h-3.5 w-3.5 text-muted-foreground" />
                       <p className="text-sm font-medium">Search Queries</p>
                       <Tooltip>
                         <TooltipTrigger render={<span className="cursor-help" />}>
@@ -242,7 +240,8 @@ export function AnalystConfigPanel({
                         <Tooltip key={i}>
                           <TooltipTrigger
                             render={
-                              <div className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default">
+                              <div className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8">
+                                <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                                 <span className="flex-1">{q.query}</span>
                               </div>
                             }
