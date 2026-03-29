@@ -44,6 +44,7 @@ function WinRateBar({ winRate, tradeCount }: { winRate: number | null; tradeCoun
         mode="fill"
         value={winRate ?? 0}
         color={winRate != null && winRate >= 0.5 ? "positive" : "negative"}
+        segments={12}
       />
       <div className="flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
         <span>{pct} win rate</span>

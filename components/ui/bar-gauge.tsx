@@ -120,7 +120,7 @@ export function BarGauge(props: BarGaugeProps) {
       {colors.map((color, i) => (
         <div
           key={i}
-          className={cn("h-[3px] rounded-[0.5px]", color)}
+          className={cn("h-[3px] rounded-sm", color)}
         />
       ))}
     </div>
