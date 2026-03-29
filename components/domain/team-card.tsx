@@ -337,8 +337,10 @@ export function WorkflowStepCard({
 
 export function FlowConnector() {
   return (
-    <div className="flex items-center ml-[7px]">
-      <div className="w-px h-3 bg-border" />
+    <div className="flex flex-col items-center">
+      <div className="w-px h-4 bg-border" />
+      <div className="h-1.5 w-1.5 rounded-full border border-border bg-background" />
+      <div className="w-px h-4 bg-border" />
     </div>
   );
 }
