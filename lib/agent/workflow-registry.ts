@@ -216,10 +216,10 @@ export const TEAMS: Team[] = [
     summary:
       "Runs structured 8-phase research sessions. Reads intelligence, reviews holdings, discovers opportunities, and executes paper trades.",
     description:
-      "Each analyst runs as a GPT-4.1 agent with 14 tools and a 30-step budget. Before the first tool call, the system loads full context: strategy rules, portfolio with live P&L, watchlist, prior briefing, trade history, and accuracy stats. The agent follows an 8-phase workflow — reading pre-gathered intelligence first, then reviewing holdings and watchlist, discovering new opportunities, synthesizing a decision table, and executing trades. Runs happen daily at 8 AM (automated, 4-min timeout) or on demand (live streaming, 5-min timeout).",
+      "Each analyst runs as a GPT-4.1 agent with 14 tools and a 30-step budget. Before the first tool call, the system loads full context: strategy rules, portfolio with live P&L, watchlist, prior briefing, trade history, and accuracy stats. The agent follows an 8-phase workflow — reading pre-gathered intelligence first, then reviewing holdings and watchlist, discovering new opportunities, synthesizing a decision table, and executing trades. Runs happen weekdays at 8 AM (automated, 4-min timeout) or on demand (live streaming, 5-min timeout).",
     icon: Bot,
     model: "GPT-4.1",
-    schedule: "8:00 AM ET daily + on demand",
+    schedule: "8:00 AM ET weekdays + on demand",
     substeps: [
       { title: "Portfolio check-in", summary: "Acknowledges open positions, references prior brief's watch-tomorrow items. No tools." },
       { title: "Read intelligence", summary: "Reads morning brief and routed signals. Skips market context if brief is fresh." },
@@ -319,7 +319,7 @@ export const TEAMS: Team[] = [
     substeps: [
       { title: "Price monitor", time: "Hourly", summary: "Checks all open positions via Alpaca. Flags positions near target (80%) or stop-loss." },
       { title: "Trade evaluator", time: "On close", summary: "GPT-4o reviews each closed trade — was the thesis correct? What's the lesson?" },
-      { title: "EOD snapshot", time: "4 PM ET", summary: "Captures closing prices for all positions. Builds the equity curve." },
+      { title: "EOD snapshot", time: "5 PM ET", summary: "Captures closing prices for all positions. Builds the equity curve." },
       { title: "Accuracy scorer", time: "Sunday 10 AM", summary: "Calculates win rate, confidence calibration, and per-sector performance." },
     ],
     tools: [
