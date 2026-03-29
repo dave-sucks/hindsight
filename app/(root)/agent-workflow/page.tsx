@@ -11,7 +11,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  WorkflowStepRow,
+  WorkflowStepCard,
   FlowConnector,
   TeamSheetContent,
 } from "@/components/domain/team-card";
@@ -64,7 +64,7 @@ export default function AgentWorkflowPage() {
       <div>
         {TEAMS.map((team, i) => (
           <div key={team.id}>
-            <WorkflowStepRow
+            <WorkflowStepCard
               team={team}
               onOpenSheet={() => setActiveTeam(team)}
             />

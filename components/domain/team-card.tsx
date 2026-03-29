@@ -230,14 +230,11 @@ export function TeamSheetContent({ team }: { team: Team }) {
     setDialogOpen(true);
   }, []);
 
-  const Icon = team.icon;
-
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
+        <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-sm font-semibold">{team.title}</h2>
           {team.model && (
             <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
@@ -291,49 +288,48 @@ export function TeamSheetContent({ team }: { team: Team }) {
   );
 }
 
-// ── Workflow step row (for /agent-workflow page) ───────────────────────────
+// ── Workflow step card (for /agent-workflow page) ──────────────────────────
 
-export function WorkflowStepRow({
+export function WorkflowStepCard({
   team,
   onOpenSheet,
 }: {
   team: Team;
   onOpenSheet: () => void;
 }) {
-  const Icon = team.icon;
-
   return (
-    <div className="flex items-start gap-3 py-3">
-      <Icon className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{team.title}</span>
-          {team.model && (
-            <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
-          )}
-          <Badge variant="outline" className="text-[10px]">{team.schedule}</Badge>
+    <Card className="p-0 overflow-hidden">
+      <div className="flex items-start gap-3 px-4 py-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{team.title}</span>
+            {team.model && (
+              <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
+            )}
+            <Badge variant="outline" className="text-[10px]">{team.schedule}</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+            {team.summary}
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-          {team.summary}
-        </p>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={onOpenSheet}
+                  className="shrink-0 p-1.5 rounded-md hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground mt-0.5"
+                />
+              }
+            >
+              <SidebarOpenIcon />
+            </TooltipTrigger>
+            <TooltipContent side="left">View details</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onClick={onOpenSheet}
-                className="shrink-0 p-1.5 rounded-md hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground"
-              />
-            }
-          >
-            <SidebarOpenIcon />
-          </TooltipTrigger>
-          <TooltipContent side="left">View details</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    </div>
+    </Card>
   );
 }
 

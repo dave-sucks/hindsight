@@ -83,6 +83,16 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
     logo: "https://www.google.com/s2/favicons?domain=alpaca.markets&sz=32",
     domain: "alpaca.markets",
   },
+  perplexity: {
+    color: "bg-teal-500",
+    logo: "https://www.google.com/s2/favicons?domain=perplexity.ai&sz=32",
+    domain: "perplexity.ai",
+  },
+  firecrawl: {
+    color: "bg-orange-500",
+    logo: "https://www.google.com/s2/favicons?domain=firecrawl.dev&sz=32",
+    domain: "firecrawl.dev",
+  },
   internal: {
     color: "bg-zinc-500",
     logo: "__hindsight__",
