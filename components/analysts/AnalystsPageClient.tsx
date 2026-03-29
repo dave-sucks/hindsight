@@ -10,7 +10,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { SegmentBar } from "@/components/ui/segment-bar";
+import { BarGauge } from "@/components/ui/bar-gauge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,15 +36,14 @@ import type { AnalystListItem } from "@/lib/actions/analyst.actions";
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
 
 function WinRateBar({ winRate, tradeCount }: { winRate: number | null; tradeCount: number }) {
-  const filled = winRate != null ? Math.round(winRate * 10) : 0;
-  const positive = winRate != null && winRate >= 0.5;
   const pct = winRate != null ? `${Math.round(winRate * 100)}%` : "—";
 
   return (
     <div className="space-y-1">
-      <SegmentBar
-        filled={filled}
-        fillColor={positive ? "bg-positive" : "bg-negative"}
+      <BarGauge
+        mode="fill"
+        value={winRate ?? 0}
+        color={winRate != null && winRate >= 0.5 ? "positive" : "negative"}
       />
       <div className="flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
         <span>{pct} win rate</span>

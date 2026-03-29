@@ -16,7 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
-import { PriceGauge } from "@/components/domain/price-gauge";
+import { BarGauge, priceToRange } from "@/components/ui/bar-gauge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -194,11 +194,14 @@ export function TradeCard({
 
         {/* Price gauge (OPEN trades only) */}
         {!isClosed && (targetPrice != null || stopLoss != null) && (
-          <PriceGauge
-            entry={entryPrice}
-            target={targetPrice}
-            stop={stopLoss}
-            direction={direction}
+          <BarGauge
+            mode="range"
+            value={Math.max(0, Math.min(1, priceToRange({
+              entry: entryPrice,
+              target: targetPrice,
+              stop: stopLoss,
+              direction,
+            })))}
           />
         )}
       </div>

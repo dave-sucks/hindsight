@@ -23,7 +23,7 @@ import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
-import { SentimentBar } from "@/components/ui/segment-bar";
+import { BarGauge } from "@/components/ui/bar-gauge";
 import {
   ExternalLink,
   TrendingUp,
@@ -435,8 +435,8 @@ export default async function StockDetailPage({ params }: Props) {
                   <span className="text-muted-foreground tabular-nums">{neutral} <span>Neutral</span></span>
                   <span className="text-positive tabular-nums">{bullish} <span className="text-muted-foreground">Bullish</span></span>
                 </div>
-                <SentimentBar
-                  total={totalAnalysts}
+                <BarGauge
+                  mode="distribution"
                   ranges={[
                     { count: bearish, color: "bg-negative" },
                     { count: neutral, color: "bg-muted-foreground/30" },

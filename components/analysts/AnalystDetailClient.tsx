@@ -292,16 +292,27 @@ export default function AnalystDetailClient({
         (a, b) =>
           new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime(),
       );
-    if (closed.length < 2) return [];
+    if (closed.length === 0) return [];
+
+    // Always start from zero so a single trade still shows a line
+    const points: { date: string; value: number }[] = [];
+    if (closed.length === 1) {
+      // Add a zero-point at the open date of the first trade
+      const openDate = new Date(closed[0].openedAt ?? closed[0].closedAt!);
+      points.push({ date: openDate.toISOString().slice(0, 10), value: 0 });
+    }
     let cum = 0;
-    return closed.map((t) => {
+    for (const t of closed) {
       cum += t.realizedPnl!;
-      return {
+      points.push({
         date: new Date(t.closedAt!).toISOString().slice(0, 10),
         value: cum,
-      };
-    });
+      });
+    }
+    return points;
   }, [recentTrades]);
+
+  const hasOpenPositions = recentTrades.some((t) => t.status === "OPEN");
 
   const filteredEquity = useMemo(
     () => sliceByRange(equityData, range),
@@ -451,9 +462,25 @@ export default function AnalystDetailClient({
           <div className="h-full rounded-xl border bg-background overflow-hidden flex flex-col">
             {/* Equity chart */}
             {equityData.length < 2 ? (
-              <div className="h-[200px] bg-muted/30 flex items-center justify-center shrink-0">
-                <p className="text-[10px] text-muted-foreground">
-                  No closed trades yet
+              <div className="h-[200px] bg-muted/30 flex flex-col items-center justify-center shrink-0 relative overflow-hidden">
+                {/* Animated sine wave placeholder */}
+                <svg
+                  viewBox="0 0 200 60"
+                  className="absolute inset-x-4 top-1/2 -translate-y-1/2 h-16 opacity-[0.08]"
+                  preserveAspectRatio="none"
+                >
+                  <path
+                    d="M0,30 Q25,10 50,30 T100,30 T150,30 T200,30"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="animate-pulse"
+                  />
+                </svg>
+                <p className="text-[10px] text-muted-foreground z-10">
+                  {hasOpenPositions
+                    ? "Positions open — chart updates on close"
+                    : "Waiting for first trade"}
                 </p>
               </div>
             ) : (

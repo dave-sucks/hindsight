@@ -14,7 +14,7 @@ import {
 import { StockPriceChart } from '@/components/stocks/StockPriceChart';
 import { StockThesesList } from '@/components/stocks/StockThesesList';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
-import { SegmentBar } from '@/components/ui/segment-bar';
+import { BarGauge } from '@/components/ui/bar-gauge';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -474,9 +474,10 @@ export default async function TradeDetailPage({
             <CardContent className="p-3">
               <p className="text-sm font-medium mb-2">Target Progress</p>
               <div className="space-y-2">
-                <SegmentBar
-                  filled={progressPct / 10}
-                  fillColor={isPos ? 'bg-positive' : 'bg-negative'}
+                <BarGauge
+                  mode="fill"
+                  value={progressPct / 100}
+                  color={isPos ? 'positive' : 'negative'}
                 />
                 <div className="flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
                   <span>${stopPrice.toFixed(2)} stop</span>
