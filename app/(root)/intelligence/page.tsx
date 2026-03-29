@@ -195,7 +195,7 @@ export default function IntelligencePage() {
                     Start Pipeline
                   </Button>
                 } />
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => triggerJob("full-pipeline", "Full Pipeline")}>
                     <Layers className="h-4 w-4" />
                     <span className="whitespace-nowrap">Run Full Pipeline</span>
