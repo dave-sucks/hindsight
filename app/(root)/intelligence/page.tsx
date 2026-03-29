@@ -175,7 +175,7 @@ export default function IntelligencePage() {
             </TabsList>
             <div className="flex justify-end gap-1.5">
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+                <DropdownMenuTrigger render={
                   <Button
                     variant="outline"
                     size="sm"
@@ -187,7 +187,7 @@ export default function IntelligencePage() {
                       <Play className="h-4 w-4" />
                     )}
                   </Button>
-                </DropdownMenuTrigger>
+                } />
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => triggerJob("full-pipeline", "Full Pipeline")}>
                     <Layers className="h-4 w-4" />

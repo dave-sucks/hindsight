@@ -24,9 +24,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { TradeRow } from "@/components/ui/trade-row";
-import { Markdown } from "@/components/ui/markdown";
-import { BriefingFeed } from "@/components/analysts/BriefingFeed";
-import { MorningBriefFeed } from "@/components/analysts/MorningBriefFeed";
+import { AnalystFindingsTab } from "@/components/analysts/AnalystFindingsTab";
+import { BriefCard } from "@/components/intelligence/brief-card";
+import { BriefDetailDialog } from "@/components/intelligence/brief-detail";
+import { normalizeIntelBrief, normalizeRunBrief } from "@/components/intelligence/brief-types";
+import type { UnifiedBrief } from "@/components/intelligence/brief-types";
+import { TickerMarkdown } from "@/components/ui/ticker-markdown";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -366,11 +369,11 @@ export default function AnalystDetailClient({
             {/* Right Side Settings, Menu, and Run Research Button */}
             <div className="flex items-center gap-1 shrink-0">
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+                <DropdownMenuTrigger render={
                   <Button variant="ghost" size="icon-sm">
                     <EllipsisVertical />
                   </Button>
-                </DropdownMenuTrigger>
+                } />
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => router.push(`/analysts/${config.id}/edit`)}>
                     <Pencil />
@@ -400,55 +403,39 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
-          {/* ── Tabs: Briefings | Overview ───── */}
+          {/* ── Tabs: Snapshot | Briefs | Findings ───── */}
           <Tabs defaultValue={0}>
             <div className="px-4">
               <TabsList>
-                <TabsTrigger value={0}>
-                  Briefings
-                  {detail.briefings.length > 0 && (
-                    <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
-                      {detail.briefings.length}
-                    </span>
-                  )}
-                </TabsTrigger>
+                <TabsTrigger value={0}>Snapshot</TabsTrigger>
                 <TabsTrigger value={1}>
-                  Morning Briefs
-                  {detail.morningBriefs.length > 0 && (
+                  Briefs
+                  {(detail.briefings.length + detail.morningBriefs.length) > 0 && (
                     <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
-                      {detail.morningBriefs.length}
+                      {detail.briefings.length + detail.morningBriefs.length}
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value={2}>Overview</TabsTrigger>
+                <TabsTrigger value={2}>Findings</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value={0}>
-              <div className="max-w-3xl mx-auto px-4 md:px-8 py-6">
-                <BriefingFeed briefings={detail.briefings} />
-              </div>
+              <AnalystSnapshotSection
+                analystName={config.name}
+                morningBriefs={detail.morningBriefs}
+                runBriefs={detail.briefings}
+              />
             </TabsContent>
             <TabsContent value={1}>
-              <div className="max-w-3xl mx-auto px-4 md:px-8 py-6">
-                <MorningBriefFeed briefs={detail.morningBriefs} />
-              </div>
+              <AnalystAllBriefsSection
+                analystName={config.name}
+                morningBriefs={detail.morningBriefs}
+                runBriefs={detail.briefings}
+              />
             </TabsContent>
             <TabsContent value={2}>
-              <div className="max-w-3xl mx-auto px-4 md:px-8 py-6">
-                {config.analystPrompt && config.analystPrompt.trim().length > 0 ? (
-                  <Markdown variant="prose">{config.analystPrompt}</Markdown>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-20 space-y-3">
-                    <FileText className="h-10 w-10 text-muted-foreground/30" />
-                    <p className="text-sm text-muted-foreground">
-                      No strategy prompt yet
-                    </p>
-                    <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
-                      Use the chat below to brainstorm and create a detailed strategy
-                      prompt that will guide this analyst&apos;s research runs.
-                    </p>
-                  </div>
-                )}
+              <div className="w-full mx-auto px-4 py-6">
+                <AnalystFindingsTab analystId={config.id} />
               </div>
             </TabsContent>
           </Tabs>
@@ -682,5 +669,119 @@ export default function AnalystDetailClient({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// ── Analyst Briefs Section ───────────────────────────────────────────────────
+// Inline summary from most recent + 3-col grid of recent briefs + click to dialog
+
+import type { MorningBriefItem, AnalystBriefingItem } from "@/lib/actions/analyst.actions";
+
+// Helper to normalize all briefs into unified shape
+function buildAllBriefs(analystName: string, morningBriefs: MorningBriefItem[], runBriefs: AnalystBriefingItem[]): UnifiedBrief[] {
+  return [
+    ...morningBriefs.map((b) =>
+      normalizeIntelBrief({
+        ...b,
+        date: new Date(b.date).toISOString(),
+        generatedAt: new Date(b.generatedAt).toISOString(),
+        analyst: { id: "", name: analystName },
+      })
+    ),
+    ...runBriefs.map((b) => normalizeRunBrief(b, analystName)),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+// ── Snapshot tab: latest run brief inline + 3 recent cards ──────────────────
+
+function AnalystSnapshotSection({
+  analystName,
+  morningBriefs,
+  runBriefs,
+}: {
+  analystName: string;
+  morningBriefs: MorningBriefItem[];
+  runBriefs: AnalystBriefingItem[];
+}) {
+  const [selected, setSelected] = useState<UnifiedBrief | null>(null);
+  const latestRunBrief = runBriefs[0] ?? null;
+  const allBriefs = buildAllBriefs(analystName, morningBriefs, runBriefs);
+  // For the 3 cards, exclude the latest run brief since it's shown inline
+  const cards = allBriefs.filter((b) => !(b.type === "run" && b.runBrief?.id === latestRunBrief?.id)).slice(0, 3);
+
+  if (!latestRunBrief && cards.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-3">
+        <FileText className="h-10 w-10 text-muted-foreground/30" />
+        <p className="text-sm text-muted-foreground">No briefs yet</p>
+        <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
+          Briefs are generated by the intelligence pipeline and after each research run.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full mx-auto px-4 py-6 space-y-6">
+      {latestRunBrief && (
+        <div className="text-sm leading-relaxed">
+          <TickerMarkdown>{latestRunBrief.narrative}</TickerMarkdown>
+        </div>
+      )}
+
+      {cards.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {cards.map((b) => (
+            <BriefCard key={b.id} brief={b} onClick={() => setSelected(b)} />
+          ))}
+        </div>
+      )}
+
+      <BriefDetailDialog
+        brief={selected}
+        open={!!selected}
+        onOpenChange={(open) => !open && setSelected(null)}
+      />
+    </div>
+  );
+}
+
+// ── Briefs tab: all briefs as cards ─────────────────────────────────────────
+
+function AnalystAllBriefsSection({
+  analystName,
+  morningBriefs,
+  runBriefs,
+}: {
+  analystName: string;
+  morningBriefs: MorningBriefItem[];
+  runBriefs: AnalystBriefingItem[];
+}) {
+  const [selected, setSelected] = useState<UnifiedBrief | null>(null);
+  const allBriefs = buildAllBriefs(analystName, morningBriefs, runBriefs);
+
+  if (allBriefs.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-3">
+        <FileText className="h-10 w-10 text-muted-foreground/30" />
+        <p className="text-sm text-muted-foreground">No briefs yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full mx-auto px-4 py-6 space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {allBriefs.map((b) => (
+          <BriefCard key={b.id} brief={b} onClick={() => setSelected(b)} />
+        ))}
+      </div>
+
+      <BriefDetailDialog
+        brief={selected}
+        open={!!selected}
+        onOpenChange={(open) => !open && setSelected(null)}
+      />
+    </div>
   );
 }

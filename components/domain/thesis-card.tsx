@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { PriceGauge } from "@/components/domain/price-gauge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import type { SourceChipData } from "../chat/SourceChip";
 
@@ -348,80 +347,63 @@ export function ThesisCard({
         side="right"
         className="w-full sm:max-w-xl overflow-y-auto"
       >
-        {/* ── Sheet header ──────────────────────────────────────── */}
-        <SheetHeader className="border-b pb-4 space-y-3">
-          {/* Top row: verdict + score */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant={verdict.variant}>
-              {!isPass && <DirIcon className="h-3.5 w-3.5" />}
-              {verdict.label}
-            </Badge>
-            <span
-              className={cn(
-                "flex items-center justify-center rounded-full size-9 text-sm font-bold tabular-nums",
-                confidence_score >= 80
-                  ? "bg-positive/10 text-positive"
-                  : confidence_score >= 60
-                    ? "bg-amber-500/15 text-amber-500"
-                    : "bg-muted text-muted-foreground",
-              )}
-            >
-              {confidence_score}
-            </span>
-          </div>
-          {/* Bottom row: logo + name */}
-          <div className="flex items-center gap-3">
-            <StockLogo ticker={ticker} size="lg" />
-            <SheetTitle className="text-lg font-bold">
-              {displayName}
-            </SheetTitle>
-          </div>
+        {/* ── Header — logo + name + verdict + score ─────────── */}
+        <SheetHeader className="pb-0">
+          <SheetTitle className="sr-only">{displayName} Thesis</SheetTitle>
         </SheetHeader>
 
-        {fundamentals ? (
-          <Tabs defaultValue="analysis" className="p-4">
-            <TabsList variant="line">
-              <TabsTrigger value="analysis">Analysis</TabsTrigger>
-              <TabsTrigger value="data">Data</TabsTrigger>
-            </TabsList>
-            <TabsContent value="analysis" className="space-y-6 pt-4">
-              <AnalysisContent
-                signal_types={signal_types}
-                hasEntry={hasEntry}
-                hasTarget={hasTarget}
-                hasStop={hasStop}
-                entry_price={entry_price}
-                target_price={target_price}
-                stop_loss={stop_loss}
-                direction={direction}
-                rr={rr}
-                reasoning_summary={reasoning_summary}
-                thesis_bullets={thesis_bullets}
-                risk_flags={risk_flags}
-              />
-            </TabsContent>
-            <TabsContent value="data" className="space-y-4 pt-4">
-              <FundamentalsContent fundamentals={fundamentals} />
-            </TabsContent>
-          </Tabs>
-        ) : (
-          <div className="p-4 space-y-6">
-            <AnalysisContent
-              signal_types={signal_types}
-              hasEntry={hasEntry}
-              hasTarget={hasTarget}
-              hasStop={hasStop}
-              entry_price={entry_price}
-              target_price={target_price}
-              stop_loss={stop_loss}
-              direction={direction}
-              rr={rr}
-              reasoning_summary={reasoning_summary}
-              thesis_bullets={thesis_bullets}
-              risk_flags={risk_flags}
-            />
+        <div>
+          <div className="p-3 border-b">
+            <div className="flex items-center gap-3">
+              <StockLogo ticker={ticker} size="lg" />
+              <div className="flex-1 min-w-0">
+                <p className="text-lg font-semibold">{displayName}</p>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {ticker}{exchange ? ` · ${exchange}` : ""}
+                </span>
+              </div>
+              <Badge variant={verdict.variant}>
+                {!isPass && <DirIcon className="h-3.5 w-3.5" />}
+                {verdict.label}
+              </Badge>
+              <span
+                className={cn(
+                  "flex items-center justify-center rounded-full size-9 text-sm font-bold tabular-nums",
+                  confidence_score >= 80
+                    ? "bg-positive/10 text-positive"
+                    : confidence_score >= 60
+                      ? "bg-amber-500/15 text-amber-500"
+                      : "bg-muted text-muted-foreground",
+                )}
+              >
+                {confidence_score}
+              </span>
+            </div>
           </div>
-        )}
+
+          {/* ── Analysis content ─── */}
+          <AnalysisContent
+            signal_types={signal_types}
+            hasEntry={hasEntry}
+            hasTarget={hasTarget}
+            hasStop={hasStop}
+            entry_price={entry_price}
+            target_price={target_price}
+            stop_loss={stop_loss}
+            direction={direction}
+            rr={rr}
+            reasoning_summary={reasoning_summary}
+            thesis_bullets={thesis_bullets}
+            risk_flags={risk_flags}
+          />
+
+          {/* ── Fundamentals (inline, no tabs) ─── */}
+          {fundamentals && (
+            <div className="p-3 border-b">
+              <FundamentalsContent fundamentals={fundamentals} />
+            </div>
+          )}
+        </div>
       </SheetContent>
     </Sheet>
   );
@@ -458,93 +440,94 @@ function AnalysisContent({
 }) {
   return (
     <>
-      {signal_types.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {signal_types.map((s) => (
-            <Badge key={s} variant="outline">
-              {s.replace(/_/g, " ")}
-            </Badge>
-          ))}
-        </div>
-      )}
-
+      {/* Price gauge + levels */}
       {hasEntry && (hasTarget || hasStop) && (
-        <PriceGauge
-          entry={entry_price!}
-          target={target_price}
-          stop={stop_loss}
-          direction={direction === "SHORT" ? "SHORT" : "LONG"}
-        />
-      )}
-
-      {hasEntry && (
-        <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-          <span>
-            <span className="uppercase tracking-wide">Entry</span>{" "}
-            <span className="tabular-nums font-medium text-foreground/70">${entry_price!.toFixed(2)}</span>
-          </span>
-          {hasTarget && (
+        <div className="p-3 border-b space-y-2">
+          <PriceGauge
+            entry={entry_price!}
+            target={target_price}
+            stop={stop_loss}
+            direction={direction === "SHORT" ? "SHORT" : "LONG"}
+          />
+          <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
             <span>
-              <span className="uppercase tracking-wide">Target</span>{" "}
-              <span className="tabular-nums font-medium text-positive">${target_price!.toFixed(2)}</span>
+              Entry{" "}
+              <span className="tabular-nums font-medium text-foreground/70">${entry_price!.toFixed(2)}</span>
             </span>
-          )}
-          {hasStop && (
-            <span>
-              <span className="uppercase tracking-wide">Stop</span>{" "}
-              <span className="tabular-nums font-medium text-negative">${stop_loss!.toFixed(2)}</span>
-            </span>
-          )}
-          {rr != null && (
-            <span>
-              <span className="uppercase tracking-wide">R:R</span>{" "}
-              <span
-                className={cn(
-                  "tabular-nums font-medium",
-                  parseFloat(rr) >= 2
-                    ? "text-positive"
-                    : parseFloat(rr) >= 1
-                      ? "text-foreground/70"
-                      : "text-negative",
-                )}
-              >
-                {rr}&times;
+            {hasTarget && (
+              <span>
+                Target{" "}
+                <span className="tabular-nums font-medium text-positive">${target_price!.toFixed(2)}</span>
               </span>
-            </span>
-          )}
-        </div>
-      )}
-
-      {reasoning_summary && (
-        <div className="space-y-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Summary</span>
-          <p className="text-sm leading-relaxed text-foreground/80">{reasoning_summary}</p>
-        </div>
-      )}
-
-      {thesis_bullets.length > 0 && (
-        <div className="space-y-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-positive">Bull Case</span>
-          <div className="space-y-2">
-            {thesis_bullets.map((b, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm">
-                <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-positive" />
-                <span className="leading-relaxed">{b}</span>
-              </div>
-            ))}
+            )}
+            {hasStop && (
+              <span>
+                Stop{" "}
+                <span className="tabular-nums font-medium text-negative">${stop_loss!.toFixed(2)}</span>
+              </span>
+            )}
+            {rr != null && (
+              <span>
+                R:R{" "}
+                <span
+                  className={cn(
+                    "tabular-nums font-medium",
+                    parseFloat(rr) >= 2
+                      ? "text-positive"
+                      : parseFloat(rr) >= 1
+                        ? "text-foreground/70"
+                        : "text-negative",
+                  )}
+                >
+                  {rr}&times;
+                </span>
+              </span>
+            )}
           </div>
         </div>
       )}
 
+      {/* Reasoning */}
+      {reasoning_summary && (
+        <div className="p-3 border-b">
+          <p className="text-sm leading-relaxed">{reasoning_summary}</p>
+        </div>
+      )}
+
+      {/* Bull case */}
+      {thesis_bullets.length > 0 && (
+        <div className="p-3 border-b space-y-2">
+          <p className="text-sm font-medium">Bull Case</p>
+          {thesis_bullets.map((b, i) => (
+            <div key={i} className="flex items-start gap-2 text-sm">
+              <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-positive" />
+              <span className="leading-relaxed">{b}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Risks */}
       {risk_flags.length > 0 && (
-        <div className="space-y-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-amber-500">Risk Factors</span>
-          <div className="space-y-2">
-            {risk_flags.map((r, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
-                <span className="leading-relaxed">{r}</span>
-              </div>
+        <div className="p-3 border-b space-y-2">
+          <p className="text-sm font-medium">Risks</p>
+          {risk_flags.map((r, i) => (
+            <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+              <span className="leading-relaxed">{r}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Signal types */}
+      {signal_types.length > 0 && (
+        <div className="p-3 border-b">
+          <div className="flex flex-wrap gap-1.5">
+            {signal_types.map((s) => (
+              <Badge key={s} variant="outline">
+                {s.replace(/_/g, " ")}
+              </Badge>
             ))}
           </div>
         </div>

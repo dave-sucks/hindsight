@@ -201,19 +201,11 @@ export function ThesisCard({
 
   return (
     <>
-      {/*
-       * Outer wrapper: relative div. Full-card <Link> at z-0,
-       * all interactive content at z-10.
-       */}
-      <div className="relative rounded-lg border bg-background hover:border-foreground/25 transition-colors">
-        {/* Full-card link overlay */}
-        <Link
-          href={`/stocks/${thesis.ticker}`}
-          className="absolute inset-0 z-0 rounded-lg"
-          aria-label={`View ${thesis.ticker} thesis`}
-        />
-
-        <div className="relative z-10 pointer-events-none">
+      <Link
+        href={`/stocks/${thesis.ticker}`}
+        className="block rounded-lg border bg-background hover:border-foreground/25 transition-colors"
+      >
+        <div>
 
           {/* ── TOP: logo · name · status · price ── */}
           <div className="p-3 border-b">
@@ -256,7 +248,7 @@ export function ThesisCard({
                     )}
                     <span className="opacity-30">·</span>
                     <Tooltip>
-                      <TooltipTrigger render={<span className="cursor-default pointer-events-auto" />}>
+                      <TooltipTrigger render={<span className="cursor-default " />}>
                         {thesis.confidenceScore}%
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="max-w-xs text-xs">
@@ -296,17 +288,27 @@ export function ThesisCard({
 
           {/* ── SECOND: entry sentence + reasoning ── */}
           <div className="p-3 border-b space-y-1">
-            {/* Entry sentence — bigger, foreground */}
+            {/* Entry sentence — only show "Bought" if there's an actual position */}
             {(() => {
-              const ep = trade?.avgCost ?? thesis.entryPrice;
-              if (ep == null) return null;
-              const verb = isLong ? "Bought" : "Sold short";
-              const sharesText = thesis.sharesHeld != null ? `${thesis.sharesHeld} shares` : "shares";
-              return (
-                <p className="text-sm text-foreground font-medium">
-                  {verb} {sharesText} at <span className="tabular-nums">${ep.toFixed(2)}</span> entry{entryTime && <> at {entryTime}</>}
-                </p>
-              );
+              if (trade) {
+                const ep = trade.avgCost ?? thesis.entryPrice;
+                if (ep == null) return null;
+                const verb = isLong ? "Bought" : "Sold short";
+                const sharesText = thesis.sharesHeld != null ? `${thesis.sharesHeld} shares` : "shares";
+                return (
+                  <p className="text-sm text-foreground font-medium">
+                    {verb} {sharesText} at <span className="tabular-nums">${ep.toFixed(2)}</span>{entryTime && <> at {entryTime}</>}
+                  </p>
+                );
+              }
+              if (isPass) {
+                return (
+                  <p className="text-sm text-muted-foreground font-medium">
+                    Passed
+                  </p>
+                );
+              }
+              return null;
             })()}
 
             {/* Reasoning */}
@@ -322,8 +324,8 @@ export function ThesisCard({
             {sources.length > 0 && (
               <Popover>
                 <PopoverTrigger
-                  className="inline-flex h-6 items-center gap-1.5 text-[11px] px-1.5 -ml-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors pointer-events-auto bg-transparent border-0"
-                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex h-6 items-center gap-1.5 text-[11px] px-1.5 -ml-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors bg-transparent border-0"
+                  onClick={(e) => e.preventDefault()}
                 >
                   {/* Negative-margin avatar stack */}
                   <span className="flex items-center -space-x-1.5">
@@ -357,7 +359,7 @@ export function ThesisCard({
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-[11px] text-foreground hover:underline flex items-center gap-1 leading-snug"
-                              onClick={(e) => e.stopPropagation()}
+                              onClick={(e) => e.preventDefault()}
                             >
                               <span className="truncate">{src.title}</span>
                               <ExternalLink className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
@@ -392,7 +394,7 @@ export function ThesisCard({
             )}
           </div>
         </div>
-      </div>
+      </Link>
 
     </>
   );

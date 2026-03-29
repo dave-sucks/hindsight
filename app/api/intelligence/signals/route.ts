@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get("type")
   const urgency = req.nextUrl.searchParams.get("urgency")
   const batchId = req.nextUrl.searchParams.get("batchId")
+  const analystId = req.nextUrl.searchParams.get("analystId")
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50")
 
   const signals = await prisma.signal.findMany({
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest) {
       ...(type ? { type } : {}),
       ...(urgency ? { urgency } : {}),
       ...(batchId ? { batchId } : {}),
+      ...(analystId ? { routes: { some: { analystId } } } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: Math.min(limit, 200),

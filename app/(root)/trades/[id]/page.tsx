@@ -12,6 +12,8 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { StockPriceChart } from '@/components/stocks/StockPriceChart';
+import { StockThesesList } from '@/components/stocks/StockThesesList';
+import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { SegmentBar } from '@/components/ui/segment-bar';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
@@ -53,17 +55,6 @@ function getStatusDisplay(status: string, outcome: string | null) {
   return { label: 'Closed', dotClass: 'bg-muted-foreground/40', tooltip: 'Position has been closed.' };
 }
 
-function verdictLabel(direction: string, confidence: number): { label: string; color: string } {
-  if (direction === 'PASS') return { label: 'Pass', color: 'text-muted-foreground' };
-  if (direction === 'LONG') {
-    if (confidence >= 80) return { label: 'Strong Buy', color: 'text-emerald-500' };
-    if (confidence >= 60) return { label: 'Buy', color: 'text-emerald-500' };
-    return { label: 'Lean Buy', color: 'text-emerald-500/70' };
-  }
-  if (confidence >= 80) return { label: 'Strong Sell', color: 'text-red-500' };
-  if (confidence >= 60) return { label: 'Sell', color: 'text-red-500' };
-  return { label: 'Lean Sell', color: 'text-red-500/70' };
-}
 
 function StatCell({ label, value }: { label: string; value: string }) {
   return (
@@ -312,125 +303,45 @@ export default async function TradeDetailPage({
                 <StatCell label="Hold" value={(trade.thesis?.holdDuration as string) ?? 'Swing'} />
               </div>
 
-              {/* Trade Thesis — featured card */}
+              {/* Trade Thesis */}
               {trade.thesis && (() => {
-                const v = verdictLabel(trade.thesis.direction as string, trade.thesis.confidenceScore);
-                return (
-                  <Card>
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Trade Thesis</p>
-                        <div className="flex items-center gap-2">
-                          <span className={cn('text-sm font-semibold', v.color)}>{v.label}</span>
-                          <span className="text-sm text-muted-foreground tabular-nums">{trade.thesis.confidenceScore}%</span>
-                        </div>
-                      </div>
-                      <p className="text-sm text-foreground leading-relaxed">
-                        {trade.thesis.reasoningSummary}
-                      </p>
-                      <div className="flex items-center gap-4 mt-3 text-xs tabular-nums">
-                        <span className="text-muted-foreground">Entry <span className="text-foreground font-medium">${trade.entryPrice.toFixed(2)}</span></span>
-                        <span className="text-muted-foreground">Target <span className="text-emerald-500 font-medium">${targetPrice.toFixed(2)}</span></span>
-                        <span className="text-muted-foreground">Stop <span className="text-red-500 font-medium">${stopPrice.toFixed(2)}</span></span>
-                      </div>
-                      {(trade.thesis.signalTypes as string[] ?? []).length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t">
-                          {(trade.thesis.signalTypes as string[]).map((s) => (
-                            <Badge key={s} variant="outline">
-                              {s.replace(/_/g, ' ')}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
+                const rowData: ThesisRowData = {
+                  id: trade.thesis.id,
+                  ticker: trade.symbol,
+                  direction: trade.thesis.direction as string,
+                  confidenceScore: trade.thesis.confidenceScore,
+                  reasoningSummary: trade.thesis.reasoningSummary,
+                  entryPrice: trade.entryPrice,
+                  targetPrice: targetPrice,
+                  stopLoss: stopPrice,
+                  createdAt: trade.thesis.createdAt?.toISOString?.() ?? null,
+                  analystName: null,
+                  runId: trade.thesis.researchRunId ?? null,
+                  position: {
+                    id: trade.id,
+                    status: trade.status,
+                    avgCost: trade.entryPrice,
+                    quantity: trade.quantity,
+                  },
+                };
+                return <StockThesesList theses={[rowData]} />;
               })()}
             </TabsContent>
 
-            {/* ── THESES — Perplexity "Notable Price Movement" style ── */}
+            {/* ── THESES ── */}
             <TabsContent value="theses" className="mt-4 max-w-3xl">
-              {thesisChain.length === 0 ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  No thesis history for this position.
-                </div>
-              ) : (
-                <Card>
-                  <CardContent className="p-0">
-                    {thesisChain.map((t, i) => {
-                      const isCurrent = t.id === trade.thesis?.id;
-                      const isActive = t.status === 'ACTIVE';
-                      const dirColor = t.direction === 'LONG'
-                        ? 'text-emerald-500'
-                        : t.direction === 'SHORT'
-                        ? 'text-red-500'
-                        : 'text-muted-foreground';
-
-                      return (
-                        <div
-                          key={t.id}
-                          className={cn(
-                            'flex gap-4 px-5 py-4',
-                            i < thesisChain.length - 1 && 'border-b border-border',
-                          )}
-                        >
-                          {/* Date + dot column */}
-                          <div className="w-16 shrink-0 pt-1 text-right">
-                            <p className="text-xs text-muted-foreground font-medium">
-                              {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground/50 mt-0.5">
-                              {new Date(t.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                            </p>
-                          </div>
-
-                          {/* Dot */}
-                          <div className="flex flex-col items-center pt-2">
-                            <div className={cn(
-                              'h-2.5 w-2.5 rounded-full shrink-0',
-                              isCurrent ? 'bg-primary' : isActive ? 'bg-blue-400' : 'bg-muted-foreground/30',
-                            )} />
-                          </div>
-
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            {/* First line: price + direction + confidence */}
-                            {(() => {
-                              const v = verdictLabel(t.direction, t.confidenceScore);
-                              return (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={cn('text-sm font-semibold', v.color)}>
-                                    {v.label}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground tabular-nums">{t.confidenceScore}% confidence</span>
-                                  {t.entryPrice != null && (
-                                    <span className="text-xs text-muted-foreground tabular-nums">
-                                      · Entry ${Number(t.entryPrice).toFixed(2)}
-                                    </span>
-                                  )}
-                                  {t.status === 'SUPERSEDED' && (
-                                    <span className="text-xs text-amber-500">Superseded</span>
-                                  )}
-                                  {t.status === 'INVALIDATED' && (
-                                    <span className="text-xs text-red-500">Invalidated</span>
-                                  )}
-                                  {isCurrent && (
-                                    <span className="text-xs text-primary font-medium">Trade Thesis</span>
-                                  )}
-                                </div>
-                              );
-                            })()}
-
-                            <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                              {t.reasoningSummary}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              )}
+              <StockThesesList theses={thesisChain.map((t: typeof thesisChain[number]) => ({
+                id: t.id,
+                ticker: trade.symbol,
+                direction: t.direction,
+                confidenceScore: t.confidenceScore,
+                reasoningSummary: t.reasoningSummary,
+                entryPrice: Number(t.entryPrice) || null,
+                targetPrice: Number(t.targetPrice) || null,
+                stopLoss: Number(t.stopLoss) || null,
+                createdAt: t.createdAt.toISOString(),
+                runId: t.researchRunId ?? null,
+              }))} />
             </TabsContent>
 
             {/* ── EVALUATION ──────────────────────────────────────── */}
