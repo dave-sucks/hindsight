@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { SegmentBar } from '@/components/ui/segment-bar';
+import { BarGauge } from '@/components/ui/bar-gauge';
 import {
   Dialog,
   DialogContent,
@@ -75,7 +75,7 @@ function formatRelativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// ─── Target progress bar (unified SegmentBar) ────────────────────────────────
+// ─── Target progress bar ─────────────────────────────────────────────────────
 
 function TargetDots({
   entry,
@@ -93,20 +93,15 @@ function TargetDots({
   const range = target - stop;
   if (range === 0) return null;
 
-  let progress: number;
-  if (direction === 'LONG') {
-    progress = (current - stop) / range;
-  } else {
-    progress = (stop - current) / range;
-  }
-  const filled = Math.max(0, Math.min(10, Math.round(progress * 10)));
-  const isPositive = direction === 'LONG' ? current >= entry : current <= entry;
+  const progress = direction === 'LONG'
+    ? (current - stop) / range
+    : (stop - current) / range;
 
   return (
-    <SegmentBar
-      filled={filled}
-      fillColor={isPositive ? 'bg-positive' : 'bg-negative'}
-      height="h-2.5"
+    <BarGauge
+      mode="range"
+      value={Math.max(0, Math.min(1, progress))}
+      segments={8}
     />
   );
 }
@@ -242,7 +237,7 @@ export default function TradesPage({
               <TableHead className="text-right">Entry</TableHead>
               <TableHead className="text-right">Day Gain</TableHead>
               <TableHead className="text-right">Total Gain</TableHead>
-              <TableHead>Target</TableHead>
+              <TableHead className="w-20">Target</TableHead>
               <TableHead>Direction</TableHead>
               <TableHead>Placed</TableHead>
               <TableHead className="text-right">Stop</TableHead>

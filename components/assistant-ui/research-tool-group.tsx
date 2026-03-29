@@ -265,7 +265,7 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
           const buyPct = Math.round(((analyst.strong_buy ?? 0) + (analyst.buy ?? 0)) / total * 100);
           lines.push(
             <div key="analyst">
-              Analyst consensus: <span className={buyPct >= 60 ? "text-emerald-500" : buyPct <= 40 ? "text-red-500" : ""}>{buyPct}% Buy</span>
+              Analyst consensus: <span className={buyPct >= 60 ? "text-positive" : buyPct <= 40 ? "text-negative" : ""}>{buyPct}% Buy</span>
               {" · "}{total} analysts ({analyst.strong_buy ?? 0} strong buy, {analyst.buy ?? 0} buy, {analyst.hold ?? 0} hold, {analyst.sell ?? 0} sell)
             </div>
           );
@@ -331,7 +331,7 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
                 return (
                   <span key={i}>
                     {i > 0 && "  ·  "}
-                    <span className={beat ? "text-emerald-500" : "text-red-500"}>
+                    <span className={beat ? "text-positive" : "text-negative"}>
                       {q.period}: {beat ? "Beat" : "Miss"} by ${Math.abs(q.surprise).toFixed(2)} ({fmtPct(q.surprise_pct)})
                     </span>
                   </span>
