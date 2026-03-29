@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +18,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Zap, Globe, Database, Cpu, Copy, Check, ChevronDown } from "lucide-react";
+import { Zap, Globe, Database, Cpu, Copy, Check, MessageSquare } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/chat/SourceChip";
 import type { Team, ToolEntry, SubStep, Resource, ResourceType } from "@/lib/agent/workflow-registry";
@@ -277,22 +276,116 @@ function SubStepRow({ step, index }: { step: SubStep; index: number }) {
   );
 }
 
+// ── Prompt banner + dialog ──────────────────────────────────────────────────
+
+function PromptBanner({ team }: { team: Team }) {
+  const [open, setOpen] = useState(false);
+  const [promptText, setPromptText] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Lazy-load prompt when dialog opens
+  useEffect(() => {
+    if (open && promptText === null && team.getPrompt) {
+      team.getPrompt().then(setPromptText);
+    }
+  }, [open, promptText, team]);
+
+  const handleCopy = useCallback(() => {
+    if (promptText) {
+      navigator.clipboard.writeText(promptText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }, [promptText]);
+
+  return (
+    <>
+      <Card className="p-0 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-3 w-full text-left px-3 py-2.5 hover:bg-accent/30 transition-colors"
+        >
+          {/* GPT icon in rounded square */}
+          <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium">{team.title} Prompt</span>
+              {team.model && (
+                <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              {team.getPrompt
+                ? "View the full system prompt sent to the agent"
+                : `Defined in ${team.promptSource}`}
+            </p>
+          </div>
+        </button>
+      </Card>
+
+      {/* Prompt dialog — full-screen-ish like finding detail */}
+      {team.getPrompt && (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <DialogTitle className="text-sm">{team.title} Prompt</DialogTitle>
+                    {team.model && (
+                      <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
+                    )}
+                  </div>
+                  {team.promptSource && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      <code>{team.promptSource}</code>
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopy}
+                  disabled={!promptText}
+                >
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+              <DialogDescription className="sr-only">
+                System prompt for {team.title}
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* Scrollable prompt content */}
+            <div className="-mx-4 no-scrollbar max-h-[60vh] overflow-y-auto px-4">
+              {promptText ? (
+                <div className="rounded-lg border bg-muted/20 px-4 py-3">
+                  <Markdown variant="compact">{promptText}</Markdown>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground py-8 text-center">Loading prompt...</p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  );
+}
+
 // ── Team sheet content ─────────────────────────────────────────────────────
 // Renders a team's full content for use inside a sheet.
 
 export function TeamSheetContent({ team }: { team: Team }) {
   const [selectedTool, setSelectedTool] = useState<ToolEntry | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [promptOpen, setPromptOpen] = useState(false);
-  const [promptText, setPromptText] = useState<string | null>(null);
-  const [promptCopied, setPromptCopied] = useState(false);
-
-  // Lazy-load prompt when collapsible opens
-  useEffect(() => {
-    if (promptOpen && promptText === null && team.getPrompt) {
-      team.getPrompt().then(setPromptText);
-    }
-  }, [promptOpen, promptText, team]);
 
   const handleToolClick = useCallback((tool: ToolEntry) => {
     setSelectedTool(tool);
@@ -348,64 +441,16 @@ export function TeamSheetContent({ team }: { team: Team }) {
         </div>
       </div>
 
-      {/* Prompt (collapsible) */}
+      {/* Prompt banner + dialog */}
       {(team.getPrompt || team.promptSource) && (
         <>
           <Separator />
-          <Collapsible open={promptOpen} onOpenChange={setPromptOpen}>
-            <CollapsibleTrigger
-              render={
-                <button
-                  type="button"
-                  className="flex items-center gap-2 w-full text-left py-1 group"
-                />
-              }
-            >
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 flex-1">
-                System Prompt
-                {team.promptSource && (
-                  <span className="ml-1.5 normal-case tracking-normal font-normal text-muted-foreground/40">
-                    {team.promptSource}
-                  </span>
-                )}
-              </p>
-              <ChevronDown className={`h-3 w-3 text-muted-foreground/40 transition-transform ${promptOpen ? "rotate-180" : ""}`} />
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              {team.getPrompt ? (
-                <div className="mt-2 space-y-2">
-                  <div className="flex justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (promptText) {
-                          navigator.clipboard.writeText(promptText);
-                          setPromptCopied(true);
-                          setTimeout(() => setPromptCopied(false), 2000);
-                        }
-                      }}
-                      disabled={!promptText}
-                    >
-                      {promptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                      {promptCopied ? "Copied" : "Copy prompt"}
-                    </Button>
-                  </div>
-                  {promptText ? (
-                    <div className="max-h-96 overflow-y-auto rounded-md border bg-muted/20 px-3 py-2">
-                      <Markdown variant="compact">{promptText}</Markdown>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Loading prompt...</p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Prompt defined in <code className="text-[11px]">{team.promptSource}</code>
-                </p>
-              )}
-            </CollapsibleContent>
-          </Collapsible>
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
+              Prompt
+            </p>
+            <PromptBanner team={team} />
+          </div>
         </>
       )}
 
