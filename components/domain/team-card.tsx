@@ -13,7 +13,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -73,18 +72,24 @@ function ToolDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [activeIdx, setActiveIdx] = useState(0);
+
+  // Reset to first resource when tool changes
+  useEffect(() => { setActiveIdx(0); }, [tool]);
+
   if (!tool || !tool.resources?.length) return null;
 
   const hasMultiple = tool.resources.length > 1;
   const single = tool.resources[0];
   const singleMeta = RESOURCE_TYPE_META[single.type];
+  const active = tool.resources[activeIdx] ?? single;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         {hasMultiple ? (
           <>
-            {/* Multi-resource: tool header + tabs */}
+            {/* Multi-resource: tool header + badge selectors */}
             <DialogHeader>
               <div className="flex items-center gap-2 mb-1">
                 <ProviderIcon provider={tool.provider} size={16} />
@@ -93,24 +98,30 @@ function ToolDetailDialog({
               <DialogTitle className="sr-only">{tool.name}</DialogTitle>
               <DialogDescription>{tool.summary}</DialogDescription>
             </DialogHeader>
-            <Tabs defaultValue={tool.resources[0].title}>
-              <TabsList>
-                {tool.resources.map((r) => (
-                  <TabsTrigger key={r.title} value={r.title} className="text-xs">
-                    {r.title}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {tool.resources.map((r) => (
-                <TabsContent key={r.title} value={r.title}>
-                  <ResourceTabContent resource={r} />
-                </TabsContent>
+
+            {/* Badge row — scrollable for many resources */}
+            <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1">
+              {tool.resources.map((r, i) => (
+                <button
+                  key={r.title}
+                  type="button"
+                  onClick={() => setActiveIdx(i)}
+                  className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                    i === activeIdx
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-transparent text-muted-foreground border-border hover:bg-accent/50"
+                  }`}
+                >
+                  {r.title}
+                </button>
               ))}
-            </Tabs>
+            </div>
+
+            <ResourceTabContent resource={active} />
           </>
         ) : (
           <>
-            {/* Single resource: old-style layout */}
+            {/* Single resource: source header layout */}
             <DialogHeader>
               <div className="flex items-center gap-2 mb-1">
                 <ProviderIcon provider={single.source} size={16} />
