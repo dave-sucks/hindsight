@@ -320,7 +320,7 @@ export function AnalystConfigPanel({
       </Tabs>
 
       {/* ── Footer ─────────────────────────────────────────────── */}
-      <div className="shrink-0 border-t px-4 py-3 flex">
+      <div className="relative z-[6] shrink-0 border-t px-4 py-3 flex">
         <Button
           onClick={onConfirm}
           disabled={isCreating}
