@@ -176,8 +176,8 @@ export function PortfolioReviewCard({
               <span className="text-sm font-medium">{w.ticker}</span>
               {w.thesis_direction && (
                 <span className={`text-[9px] font-medium uppercase ${
-                  w.thesis_direction === "LONG" ? "text-emerald-500"
-                    : w.thesis_direction === "SHORT" ? "text-red-500"
+                  w.thesis_direction === "LONG" ? "text-positive"
+                    : w.thesis_direction === "SHORT" ? "text-negative"
                       : "text-muted-foreground"
                 }`}>{w.thesis_direction}</span>
               )}

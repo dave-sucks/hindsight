@@ -471,8 +471,8 @@ export default async function TradeDetailPage({
 
           {/* Target Progress */}
           <Card>
-            <CardContent className="p-4 space-y-3">
-              <h3 className="text-sm font-medium">Target Progress</h3>
+            <CardContent className="p-3">
+              <p className="text-sm font-medium mb-2">Target Progress</p>
               <div className="space-y-2">
                 <SegmentBar
                   filled={progressPct / 10}
@@ -485,23 +485,23 @@ export default async function TradeDetailPage({
                 </div>
               </div>
 
-              <div className="space-y-1.5 border-t pt-3">
-                <div className="flex items-center justify-between text-xs">
+              <div className="flex flex-col gap-1 border-t pt-3 mt-3">
+                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
                   <span className="text-muted-foreground">Entry</span>
-                  <span className="tabular-nums">${trade.entryPrice.toFixed(2)}</span>
+                  <span className="font-medium tabular-nums">${trade.entryPrice.toFixed(2)}</span>
                 </div>
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
                   <span className="text-positive">Target</span>
-                  <span className="tabular-nums text-positive">
+                  <span className="font-medium tabular-nums text-positive">
                     ${targetPrice.toFixed(2)}
                     <span className="text-muted-foreground ml-1">
                       +{(((targetPrice - trade.entryPrice) / trade.entryPrice) * 100).toFixed(1)}%
                     </span>
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-sm">
                   <span className="text-negative">Stop</span>
-                  <span className="tabular-nums text-negative">
+                  <span className="font-medium tabular-nums text-negative">
                     ${stopPrice.toFixed(2)}
                     <span className="text-muted-foreground ml-1">
                       −{(((trade.entryPrice - stopPrice) / trade.entryPrice) * 100).toFixed(1)}%
@@ -515,27 +515,25 @@ export default async function TradeDetailPage({
           {/* Stock Info */}
           {stockProfile && (
             <Card>
-              <CardContent className="px-4 pt-4 pb-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Stock Info</p>
-                <div className="space-y-0">
-                  {[
-                    { label: 'Symbol', value: trade.ticker },
-                    { label: 'Exchange', value: stockProfile.exchange || '—' },
-                    { label: 'Industry', value: stockProfile.finnhubIndustry || '—' },
-                    { label: 'Country', value: stockProfile.country || '—' },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                      <span className="text-xs text-muted-foreground">{label}</span>
-                      <span className="text-xs font-medium text-foreground text-right max-w-[60%] truncate">{value}</span>
-                    </div>
-                  ))}
-                </div>
+              <CardContent className="p-3 flex flex-col gap-1">
+                <p className="text-sm font-medium mb-0.5">Stock Info</p>
+                {[
+                  { label: 'Symbol', value: trade.ticker },
+                  { label: 'Exchange', value: stockProfile.exchange || '—' },
+                  { label: 'Industry', value: stockProfile.finnhubIndustry || '—' },
+                  { label: 'Country', value: stockProfile.country || '—' },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-medium text-right max-w-[60%] truncate">{value}</span>
+                  </div>
+                ))}
                 {stockProfile.weburl && (
                   <a
                     href={stockProfile.weburl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-3 flex items-center gap-1 text-xs text-primary hover:underline"
+                    className="mt-1 flex items-center gap-1 text-sm text-primary hover:underline"
                   >
                     {stockProfile.weburl.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
                     <ExternalLink className="h-3 w-3" />

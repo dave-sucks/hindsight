@@ -271,7 +271,7 @@ function AggregateFindingCard({ signal }: { signal: Signal }) {
                 <div className="flex items-center gap-4 tabular-nums">
                   <span className={cn(
                     "text-xs",
-                    isPositive ? "text-emerald-500" : "text-red-500"
+                    isPositive ? "text-positive" : "text-negative"
                   )}>
                     {isPositive ? "+" : ""}{change.toFixed(1)}%
                   </span>

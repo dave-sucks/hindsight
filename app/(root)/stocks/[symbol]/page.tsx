@@ -387,31 +387,29 @@ export default async function StockDetailPage({ params }: Props) {
           {/* Company Info */}
           {profile && (
             <Card>
-              <CardContent className="px-4 pt-4 pb-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Company Info</p>
-                <div className="space-y-0">
-                  {[
-                    { label: "Symbol", value: upperSymbol },
-                    { label: "Exchange", value: profile.exchange || "—" },
-                    { label: "Industry", value: profile.finnhubIndustry || "—" },
-                    { label: "IPO Date", value: profile.ipo || "—" },
-                    { label: "Country", value: profile.country || "—" },
-                    { label: "Market Cap", value: fmtBig(marketCap) },
-                    { label: "P/E", value: peRatio ? fmt(peRatio) : "—" },
-                    { label: "52W Range", value: (low52 && high52) ? `${fmtCur(low52)} – ${fmtCur(high52)}` : "—" },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                      <span className="text-xs text-muted-foreground">{label}</span>
-                      <span className="text-xs font-medium text-foreground text-right max-w-[60%] truncate">{value}</span>
-                    </div>
-                  ))}
-                </div>
+              <CardContent className="p-3 flex flex-col gap-1">
+                <p className="text-sm font-medium mb-0.5">Company Info</p>
+                {[
+                  { label: "Symbol", value: upperSymbol },
+                  { label: "Exchange", value: profile.exchange || "—" },
+                  { label: "Industry", value: profile.finnhubIndustry || "—" },
+                  { label: "IPO Date", value: profile.ipo || "—" },
+                  { label: "Country", value: profile.country || "—" },
+                  { label: "Market Cap", value: fmtBig(marketCap) },
+                  { label: "P/E", value: peRatio ? fmt(peRatio) : "—" },
+                  { label: "52W Range", value: (low52 && high52) ? `${fmtCur(low52)} – ${fmtCur(high52)}` : "—" },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-medium tabular-nums text-right max-w-[60%] truncate">{value}</span>
+                  </div>
+                ))}
                 {profile.weburl && (
                   <a
                     href={profile.weburl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-3 flex items-center gap-1 text-xs text-primary hover:underline"
+                    className="mt-1 flex items-center gap-1 text-sm text-primary hover:underline"
                   >
                     {profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}
                     <ExternalLink className="h-3 w-3" />
@@ -424,25 +422,25 @@ export default async function StockDetailPage({ params }: Props) {
           {/* Analyst Consensus */}
           {latestRec && totalAnalysts > 0 && (
             <Card>
-              <CardContent className="px-4 pt-4 pb-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Analyst Consensus</p>
-                <div className="flex items-center gap-2 mb-3">
+              <CardContent className="p-3">
+                <p className="text-sm font-medium mb-2">Analyst Consensus</p>
+                <div className="flex items-center gap-2 mb-2">
                   <Badge variant={consensus === "Buy" ? "positive" : consensus === "Sell" ? "negative" : "outline"}>
                     {consensus}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">{totalAnalysts} analysts</span>
+                  <span className="text-sm text-muted-foreground">{totalAnalysts} analysts</span>
                 </div>
-                <div className="flex items-center gap-3 text-xs mb-2">
-                  <span className="text-red-500 tabular-nums">{bearish} <span className="text-muted-foreground">Bearish</span></span>
+                <div className="flex items-center gap-3 text-sm mb-2">
+                  <span className="text-negative tabular-nums">{bearish} <span className="text-muted-foreground">Bearish</span></span>
                   <span className="text-muted-foreground tabular-nums">{neutral} <span>Neutral</span></span>
-                  <span className="text-emerald-500 tabular-nums">{bullish} <span className="text-muted-foreground">Bullish</span></span>
+                  <span className="text-positive tabular-nums">{bullish} <span className="text-muted-foreground">Bullish</span></span>
                 </div>
                 <SentimentBar
                   total={totalAnalysts}
                   ranges={[
-                    { count: bearish, color: "bg-red-500" },
+                    { count: bearish, color: "bg-negative" },
                     { count: neutral, color: "bg-muted-foreground/30" },
-                    { count: bullish, color: "bg-emerald-500" },
+                    { count: bullish, color: "bg-positive" },
                   ]}
                 />
               </CardContent>
@@ -452,42 +450,40 @@ export default async function StockDetailPage({ params }: Props) {
           {/* Hindsight Summary */}
           {(tickerTrades.length > 0 || tickerTheses.length > 0) && (
             <Card>
-              <CardContent className="px-4 pt-4 pb-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Hindsight</p>
-                <div className="space-y-0">
-                  <div className="flex items-center justify-between py-1.5 border-b">
-                    <span className="text-xs text-muted-foreground">Analyses</span>
-                    <span className="text-xs font-medium tabular-nums">{tickerTheses.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1.5 border-b">
-                    <span className="text-xs text-muted-foreground">Trades</span>
-                    <span className="text-xs font-medium tabular-nums">{tickerTrades.length}</span>
-                  </div>
-                  {(() => {
-                    const activeThesis = tickerTheses.find((t) => t.status === "ACTIVE" && t.direction !== "PASS");
-                    if (!activeThesis) return null;
-                    return (
-                      <div className="flex items-center justify-between py-1.5 border-b">
-                        <span className="text-xs text-muted-foreground">Current View</span>
-                        <span className={cn("text-xs font-medium", activeThesis.direction === "LONG" ? "text-emerald-500" : "text-red-500")}>
-                          {activeThesis.direction} {activeThesis.confidenceScore}%
-                        </span>
-                      </div>
-                    );
-                  })()}
-                  {(() => {
-                    const openTrade = tickerTrades.find((t) => t.status === "OPEN");
-                    if (!openTrade) return null;
-                    return (
-                      <Link href={`/trades/${openTrade.id}`} className="flex items-center justify-between py-1.5 hover:bg-secondary/20 rounded transition-colors">
-                        <span className="text-xs text-muted-foreground">Open Position</span>
-                        <span className="text-xs font-medium text-blue-400">
-                          {openTrade.direction} · {fmtCur(openTrade.avgCost)}
-                        </span>
-                      </Link>
-                    );
-                  })()}
+              <CardContent className="p-3 flex flex-col gap-1">
+                <p className="text-sm font-medium mb-0.5">Hindsight</p>
+                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                  <span className="text-muted-foreground">Analyses</span>
+                  <span className="font-medium tabular-nums">{tickerTheses.length}</span>
                 </div>
+                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                  <span className="text-muted-foreground">Trades</span>
+                  <span className="font-medium tabular-nums">{tickerTrades.length}</span>
+                </div>
+                {(() => {
+                  const activeThesis = tickerTheses.find((t) => t.status === "ACTIVE" && t.direction !== "PASS");
+                  if (!activeThesis) return null;
+                  return (
+                    <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                      <span className="text-muted-foreground">Current View</span>
+                      <span className={cn("font-medium", activeThesis.direction === "LONG" ? "text-positive" : "text-negative")}>
+                        {activeThesis.direction} {activeThesis.confidenceScore}%
+                      </span>
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  const openTrade = tickerTrades.find((t) => t.status === "OPEN");
+                  if (!openTrade) return null;
+                  return (
+                    <Link href={`/trades/${openTrade.id}`} className="flex items-center justify-between text-sm pb-1 hover:bg-secondary/20 rounded transition-colors">
+                      <span className="text-muted-foreground">Open Position</span>
+                      <span className="font-medium text-primary">
+                        {openTrade.direction} · {fmtCur(openTrade.avgCost)}
+                      </span>
+                    </Link>
+                  );
+                })()}
               </CardContent>
             </Card>
           )}

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { InfoRow } from "@/components/ui/info-row";
 import { StockLogo } from "@/components/StockLogo";
 import { StockCombobox } from "@/components/analysts/StockCombobox";
 import { X } from "lucide-react";
@@ -31,24 +32,6 @@ interface AnalystConfigSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   config: AnalystConfig;
-}
-
-// ── Editable row — label left, input/dropdown right ──────────────────────────
-// Same visual weight as ConfigRow in AnalystConfigPanel: text-sm both sides
-
-function EditableRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between py-1.5 border-b border-border/40 last:border-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      {children}
-    </div>
-  );
 }
 
 export function AnalystConfigSheet({
@@ -90,6 +73,8 @@ export function AnalystConfigSheet({
     });
   };
 
+  const policy = config.intelligencePolicy;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -105,8 +90,8 @@ export function AnalystConfigSheet({
 
         <div>
           {/* ── Config rows ────────────────────────────────────── */}
-          <div className="p-3 border-b">
-            <EditableRow label="Direction">
+          <div className="p-3 border-b flex flex-col gap-1">
+            <InfoRow label="Direction">
               <Select
                 defaultValue={config.directionBias}
                 onValueChange={(val) => saveField("directionBias", val)}
@@ -120,9 +105,9 @@ export function AnalystConfigSheet({
                   <SelectItem value="BOTH">BOTH</SelectItem>
                 </SelectContent>
               </Select>
-            </EditableRow>
+            </InfoRow>
 
-            <EditableRow label="Hold Duration">
+            <InfoRow label="Hold Duration">
               <Select
                 defaultValue={config.holdDurations[0] ?? "SWING"}
                 onValueChange={(val) => saveField("holdDurations", [val])}
@@ -136,9 +121,9 @@ export function AnalystConfigSheet({
                   <SelectItem value="POSITION">POSITION</SelectItem>
                 </SelectContent>
               </Select>
-            </EditableRow>
+            </InfoRow>
 
-            <EditableRow label="Min Confidence">
+            <InfoRow label="Min Confidence">
               <Input
                 type="number"
                 defaultValue={config.minConfidence}
@@ -152,9 +137,9 @@ export function AnalystConfigSheet({
                   }
                 }}
               />
-            </EditableRow>
+            </InfoRow>
 
-            <EditableRow label="Schedule">
+            <InfoRow label="Schedule">
               <Input
                 type="time"
                 defaultValue={config.scheduleTime}
@@ -165,9 +150,9 @@ export function AnalystConfigSheet({
                   }
                 }}
               />
-            </EditableRow>
+            </InfoRow>
 
-            <EditableRow label="Max Positions">
+            <InfoRow label="Max Positions">
               <Input
                 type="number"
                 defaultValue={config.maxOpenPositions}
@@ -181,9 +166,9 @@ export function AnalystConfigSheet({
                   }
                 }}
               />
-            </EditableRow>
+            </InfoRow>
 
-            <EditableRow label="Max Position Size">
+            <InfoRow label="Max Position Size">
               <Input
                 type="number"
                 defaultValue={config.maxPositionSize ?? 0}
@@ -197,9 +182,9 @@ export function AnalystConfigSheet({
                   }
                 }}
               />
-            </EditableRow>
+            </InfoRow>
 
-            <EditableRow label="Max Risk %">
+            <InfoRow label="Max Risk %" border={false}>
               <Input
                 type="number"
                 defaultValue={config.maxRiskPct ?? 2}
@@ -214,8 +199,34 @@ export function AnalystConfigSheet({
                   }
                 }}
               />
-            </EditableRow>
+            </InfoRow>
           </div>
+
+          {/* ── Attention Policy — same row style as config ───── */}
+          {policy && (
+            <div className="p-3 border-b flex flex-col gap-1">
+              <p className="text-sm font-medium mb-0.5">Attention Policy</p>
+              {typeof policy.holdingsAttention === "number" && (
+                <InfoRow label="Holdings" value={`${Math.round((policy.holdingsAttention as number) * 100)}%`} mono />
+              )}
+              {typeof policy.watchlistAttention === "number" && (
+                <InfoRow label="Watchlist" value={`${Math.round((policy.watchlistAttention as number) * 100)}%`} mono />
+              )}
+              {typeof policy.discoveryAttention === "number" && (
+                <InfoRow label="Discovery" value={`${Math.round((policy.discoveryAttention as number) * 100)}%`} mono />
+              )}
+              {typeof policy.maxSignalsPerRun === "number" && (
+                <InfoRow label="Signal budget" value={String(policy.maxSignalsPerRun as number)} mono />
+              )}
+              {typeof policy.allowLiveSearch === "boolean" && (
+                <InfoRow
+                  label="Live search"
+                  value={(policy.allowLiveSearch as boolean) ? "On" : "Off"}
+                  border={false}
+                />
+              )}
+            </div>
+          )}
 
           {/* ── Sectors ────────────────────────────────────────── */}
           {config.sectors.length > 0 && (
@@ -243,7 +254,7 @@ export function AnalystConfigSheet({
             </div>
           )}
 
-          {/* ── Watchlist — StockLogo rows ──────────────────────── */}
+          {/* ── Watchlist ──────────────────────────────────────── */}
           <div className="p-3 border-b">
             <div className="flex items-center justify-between mb-1.5">
               <p className="text-sm font-medium">Watchlist</p>
@@ -253,11 +264,11 @@ export function AnalystConfigSheet({
               />
             </div>
             {watchlist.length > 0 ? (
-              <div>
+              <div className="flex flex-col gap-1">
                 {watchlist.map((symbol) => (
-                  <div key={symbol} className="flex items-center gap-2 py-1.5 border-b border-border/40 last:border-0">
+                  <div key={symbol} className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0">
                     <StockLogo ticker={symbol} size="sm" />
-                    <span className="font-mono text-[11px] font-medium flex-1">{symbol}</span>
+                    <span className="font-mono tabular-nums font-medium flex-1">{symbol}</span>
                     <button
                       onClick={() => handleRemoveStock(symbol)}
                       className="rounded-full hover:bg-foreground/10 p-0.5 text-muted-foreground"
@@ -274,94 +285,49 @@ export function AnalystConfigSheet({
             )}
           </div>
 
-          {/* ── Domain Monitors ─────────────────────────────────── */}
+          {/* ── Sources ───────────────────────────────────────── */}
           {config.domainMonitors.length > 0 && (
             <div className="p-3 border-b">
               <div className="flex items-center justify-between mb-1.5">
                 <p className="text-sm font-medium">Sources</p>
-                <span className="text-[11px] text-muted-foreground tabular-nums">
+                <span className="text-sm text-muted-foreground tabular-nums">
                   {config.domainMonitors.length}
                 </span>
               </div>
-              {config.domainMonitors.map((m) => (
-                <div key={m.id} className="flex items-center gap-2 py-1.5 border-b border-border/40 last:border-0">
-                  <img
-                    src={`https://www.google.com/s2/favicons?domain=${m.domain}&sz=16`}
-                    alt=""
-                    width={14}
-                    height={14}
-                    className="size-3.5 rounded-sm shrink-0"
-                  />
-                  <span className="text-sm truncate flex-1">{m.name}</span>
-                  <span className="text-[11px] text-muted-foreground">{m.category}</span>
-                </div>
-              ))}
+              <div className="flex flex-col gap-1">
+                {config.domainMonitors.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0">
+                    <img
+                      src={`https://www.google.com/s2/favicons?domain=${m.domain}&sz=16`}
+                      alt=""
+                      width={14}
+                      height={14}
+                      className="size-3.5 rounded-sm shrink-0"
+                    />
+                    <span className="truncate flex-1">{m.name}</span>
+                    <span className="text-muted-foreground">{m.category}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* ── Search Monitors ─────────────────────────────────── */}
+          {/* ── Search Queries ─────────────────────────────────── */}
           {config.searchMonitors.length > 0 && (
             <div className="p-3 border-b">
               <div className="flex items-center justify-between mb-1.5">
                 <p className="text-sm font-medium">Search Queries</p>
-                <span className="text-[11px] text-muted-foreground tabular-nums">
+                <span className="text-sm text-muted-foreground tabular-nums">
                   {config.searchMonitors.length}
                 </span>
               </div>
-              {config.searchMonitors.map((m) => (
-                <div key={m.id} className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
-                  <span className="text-sm text-muted-foreground flex-1">{m.query}</span>
-                  <span className="text-[11px] text-muted-foreground">{m.category}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── Intelligence Policy ─────────────────────────────── */}
-          {config.intelligencePolicy && (
-            <div className="p-3">
-              <p className="text-sm font-medium mb-1.5">Attention Policy</p>
-              <div className="space-y-0.5">
-                {typeof config.intelligencePolicy.holdingsAttention === "number" && (
-                  <div className="flex justify-between py-0.5">
-                    <span className="text-sm text-muted-foreground">Holdings</span>
-                    <span className="text-sm tabular-nums font-medium">
-                      {Math.round((config.intelligencePolicy.holdingsAttention as number) * 100)}%
-                    </span>
+              <div className="flex flex-col gap-1">
+                {config.searchMonitors.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0">
+                    <span className="text-muted-foreground flex-1">{m.query}</span>
+                    <span className="text-muted-foreground">{m.category}</span>
                   </div>
-                )}
-                {typeof config.intelligencePolicy.watchlistAttention === "number" && (
-                  <div className="flex justify-between py-0.5">
-                    <span className="text-sm text-muted-foreground">Watchlist</span>
-                    <span className="text-sm tabular-nums font-medium">
-                      {Math.round((config.intelligencePolicy.watchlistAttention as number) * 100)}%
-                    </span>
-                  </div>
-                )}
-                {typeof config.intelligencePolicy.discoveryAttention === "number" && (
-                  <div className="flex justify-between py-0.5">
-                    <span className="text-sm text-muted-foreground">Discovery</span>
-                    <span className="text-sm tabular-nums font-medium">
-                      {Math.round((config.intelligencePolicy.discoveryAttention as number) * 100)}%
-                    </span>
-                  </div>
-                )}
-                {typeof config.intelligencePolicy.maxSignalsPerRun === "number" && (
-                  <div className="flex justify-between py-0.5">
-                    <span className="text-[11px] text-muted-foreground">Signal budget</span>
-                    <span className="text-[11px] tabular-nums font-medium">
-                      {config.intelligencePolicy.maxSignalsPerRun as number}
-                    </span>
-                  </div>
-                )}
-                {typeof config.intelligencePolicy.allowLiveSearch === "boolean" && (
-                  <div className="flex justify-between py-0.5">
-                    <span className="text-[11px] text-muted-foreground">Live search</span>
-                    <span className="text-[11px] font-medium">
-                      {(config.intelligencePolicy.allowLiveSearch as boolean) ? "On" : "Off"}
-                    </span>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
           )}
