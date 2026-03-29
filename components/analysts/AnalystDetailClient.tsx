@@ -46,7 +46,7 @@ import {
   Trash2,
   Loader2,
   EllipsisVertical,
-  BookOpen,
+  Sparkles,
 } from "lucide-react";
 import {
   Dialog,
@@ -394,8 +394,8 @@ export default function AnalystDetailClient({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <HowItWorksSheet flow="learning-loop">
-                <BookOpen className="h-4 w-4" />
+              <HowItWorksSheet flow="analyst-overview">
+                <Sparkles className="h-4 w-4" />
               </HowItWorksSheet>
               <RunResearchButton
                 analystId={config.id}

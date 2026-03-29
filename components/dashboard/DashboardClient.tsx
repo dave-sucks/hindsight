@@ -18,6 +18,8 @@ import { ThesisRow } from '@/components/ui/thesis-row';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { EducationEmptyState } from '@/components/domain/education-card';
+import { HowItWorksSheet } from '@/components/domain/how-it-works-sheet';
+import { Sparkles } from 'lucide-react';
 import {
   mockOpenTrades,
   mockEquityCurve,
@@ -289,9 +291,14 @@ export default function DashboardClient({
                 </>
               ) : (
                 <>
-                  <p className="text-4xl font-semibold tabular-nums tracking-tight">
-                    {totalValueStr}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-4xl font-semibold tabular-nums tracking-tight">
+                      {totalValueStr}
+                    </p>
+                    <HowItWorksSheet flow="dashboard">
+                      <Sparkles className="h-4 w-4" />
+                    </HowItWorksSheet>
+                  </div>
                   <p className="text-sm tabular-nums flex items-center gap-1 flex-wrap">
                     <span className={pnlPositive ? 'text-positive' : 'text-negative'}>
                       {pnlPositive ? '+' : '-'}${Math.abs(unrealizedPnl).toFixed(2)}{' '}

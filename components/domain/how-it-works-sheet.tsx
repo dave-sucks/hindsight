@@ -34,6 +34,12 @@ import {
   INTELLIGENCE_PIPELINE_STEPS,
   INTELLIGENCE_PIPELINE_DETAILS,
   INTELLIGENCE_OVERVIEW_DETAILS,
+  ANALYST_INTELLIGENCE_DETAILS,
+  ANALYST_BRIEF_DETAILS,
+  ANALYST_BUILDER_DETAILS,
+  TRADE_LIFECYCLE_DETAILS,
+  PERFORMANCE_DETAILS,
+  DASHBOARD_DETAILS,
   type FlowStep,
   type DetailSection,
 } from "@/lib/agent/workflow-data";
@@ -163,25 +169,56 @@ function DetailList({ sections }: { sections: DetailSection[] }) {
 
 // ── Sheet config ────────────────────────────────────────────────────────────
 
-export type FlowType = "agent-run" | "analyst-builder" | "manual-run" | "cron-run" | "learning-loop" | "context-loading" | "intelligence-pipeline";
+export type FlowType =
+  | "agent-run"
+  | "analyst-builder"
+  | "analyst-overview"
+  | "manual-run"
+  | "cron-run"
+  | "learning-loop"
+  | "context-loading"
+  | "intelligence-pipeline"
+  | "trade-lifecycle"
+  | "performance"
+  | "dashboard";
+
+interface TabDef {
+  value: string;
+  label: string;
+  sections: DetailSection[];
+  /** Optional flow diagram to show above sections */
+  flowSteps?: FlowStep[];
+}
 
 interface FlowConfig {
   title: string;
   content:
     | { type: "flow"; steps: FlowStep[] }
     | { type: "details"; sections: DetailSection[] }
-    | { type: "tabbed" }
-    | { type: "intelligence" };
+    | { type: "agent-run-tabbed" }
+    | { type: "intelligence" }
+    | { type: "tabs"; tabs: TabDef[] };
 }
 
 const FLOW_CONFIG: Record<FlowType, FlowConfig> = {
   "agent-run": {
     title: "Analyst Run Tools & Prompt",
-    content: { type: "tabbed" },
+    content: { type: "agent-run-tabbed" },
   },
   "analyst-builder": {
     title: "How the Analyst Builder Works",
     content: { type: "flow", steps: ANALYST_BUILDER_STEPS },
+  },
+  "analyst-overview": {
+    title: "How This Analyst Works",
+    content: {
+      type: "tabs",
+      tabs: [
+        { value: "intelligence", label: "Intelligence", sections: ANALYST_INTELLIGENCE_DETAILS, flowSteps: INTELLIGENCE_PIPELINE_STEPS },
+        { value: "briefs", label: "Briefs", sections: ANALYST_BRIEF_DETAILS },
+        { value: "building", label: "Building", sections: ANALYST_BUILDER_DETAILS },
+      ],
+    },
   },
   "manual-run": {
     title: "Manual Run",
@@ -203,7 +240,120 @@ const FLOW_CONFIG: Record<FlowType, FlowConfig> = {
     title: "How Intelligence Works",
     content: { type: "intelligence" },
   },
+  "trade-lifecycle": {
+    title: "How Trades Work",
+    content: { type: "details", sections: TRADE_LIFECYCLE_DETAILS },
+  },
+  "performance": {
+    title: "How Performance Is Measured",
+    content: { type: "details", sections: PERFORMANCE_DETAILS },
+  },
+  "dashboard": {
+    title: "Dashboard Overview",
+    content: { type: "details", sections: DASHBOARD_DETAILS },
+  },
 };
+
+// ── Sheet export ────────────────────────────────────────────────────────────
+
+// ── Close + Title header (shared) ──────────────────────────────────────────
+
+function SheetHeader({ title }: { title: string }) {
+  return (
+    <div className="flex items-center justify-between px-4 pt-4">
+      <SheetTitle>{title}</SheetTitle>
+      <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
+        <X className="h-4 w-4" />
+      </SheetClose>
+    </div>
+  );
+}
+
+// ── Agent-run tabbed content (Tools / Intelligence / Prompt) ───────────────
+
+function AgentRunTabbed({ title }: { title: string }) {
+  return (
+    <Tabs defaultValue="tools" className="flex flex-col flex-1 min-h-0">
+      <div className="flex items-center justify-between px-4 pt-4">
+        <TabsList>
+          <TabsTrigger value="tools">Tools</TabsTrigger>
+          <TabsTrigger value="intelligence">Intelligence</TabsTrigger>
+          <TabsTrigger value="prompt">Prompt</TabsTrigger>
+        </TabsList>
+        <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
+          <X className="h-4 w-4" />
+        </SheetClose>
+      </div>
+
+      <div className="px-4 pt-3 pb-2">
+        <SheetTitle>{title}</SheetTitle>
+      </div>
+
+      <TabsContent value="tools" className="px-4 pb-4">
+        <div className="mb-3">
+          <CopyButton getText={exportToolsAsMarkdown} label="Copy as markdown" />
+        </div>
+        <ToolCardList />
+      </TabsContent>
+
+      <TabsContent value="intelligence" className="px-4 pb-4 space-y-6">
+        <p className="text-sm text-muted-foreground">
+          Before your analyst runs, 5 background jobs gather intelligence:
+        </p>
+        <FlowDiagram steps={INTELLIGENCE_PIPELINE_STEPS} />
+        <Separator />
+        <p className="text-sm text-muted-foreground">
+          The analyst reads this pre-gathered intelligence in Phase 1 instead of scanning the web from scratch.
+        </p>
+        <DetailList sections={INTELLIGENCE_PIPELINE_DETAILS} />
+      </TabsContent>
+
+      <TabsContent value="prompt" className="px-4 pb-4">
+        <div className="mb-3">
+          <CopyButton getText={() => SYSTEM_PROMPT_TEMPLATE} label="Copy as markdown" />
+        </div>
+        <Markdown variant="compact">{SYSTEM_PROMPT_TEMPLATE}</Markdown>
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+// ── Generic tabbed content ─────────────────────────────────────────────────
+
+function GenericTabbed({ title, tabs }: { title: string; tabs: TabDef[] }) {
+  return (
+    <Tabs defaultValue={tabs[0]?.value} className="flex flex-col flex-1 min-h-0">
+      <div className="flex items-center justify-between px-4 pt-4">
+        <TabsList>
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
+          <X className="h-4 w-4" />
+        </SheetClose>
+      </div>
+
+      <div className="px-4 pt-3 pb-2">
+        <SheetTitle>{title}</SheetTitle>
+      </div>
+
+      {tabs.map((tab) => (
+        <TabsContent key={tab.value} value={tab.value} className="px-4 pb-4 space-y-6">
+          {tab.flowSteps && (
+            <>
+              <FlowDiagram steps={tab.flowSteps} />
+              <Separator />
+            </>
+          )}
+          <DetailList sections={tab.sections} />
+        </TabsContent>
+      ))}
+    </Tabs>
+  );
+}
 
 // ── Sheet export ────────────────────────────────────────────────────────────
 
@@ -215,7 +365,6 @@ export function HowItWorksSheet({
   children: React.ReactNode;
 }) {
   const config = FLOW_CONFIG[flow];
-  const isTabbed = config.content.type === "tabbed";
 
   return (
     <Sheet>
@@ -227,65 +376,13 @@ export function HowItWorksSheet({
         showCloseButton={false}
         className="w-full sm:max-w-lg overflow-y-auto"
       >
-        {isTabbed ? (
-          <Tabs defaultValue="tools" className="flex flex-col flex-1 min-h-0">
-            {/* Top bar: tabs left, close right — one row */}
-            <div className="flex items-center justify-between px-4 pt-4">
-              <TabsList>
-                <TabsTrigger value="tools">Tools</TabsTrigger>
-                <TabsTrigger value="intelligence">Intelligence</TabsTrigger>
-                <TabsTrigger value="prompt">Prompt</TabsTrigger>
-              </TabsList>
-              <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
-                <X className="h-4 w-4" />
-              </SheetClose>
-            </div>
-
-            {/* Title */}
-            <div className="px-4 pt-3 pb-2">
-              <SheetTitle>{config.title}</SheetTitle>
-            </div>
-
-            {/* Tools tab */}
-            <TabsContent value="tools" className="px-4 pb-4">
-              <div className="mb-3">
-                <CopyButton getText={exportToolsAsMarkdown} label="Copy as markdown" />
-              </div>
-              <ToolCardList />
-            </TabsContent>
-
-            {/* Intelligence pipeline tab */}
-            <TabsContent value="intelligence" className="px-4 pb-4 space-y-6">
-              <p className="text-sm text-muted-foreground">
-                Before your analyst runs, 5 background jobs gather intelligence:
-              </p>
-              <FlowDiagram steps={INTELLIGENCE_PIPELINE_STEPS} />
-              <Separator />
-              <p className="text-sm text-muted-foreground">
-                The analyst reads this pre-gathered intelligence in Phase 1 instead of scanning the web from scratch.
-              </p>
-              <DetailList sections={INTELLIGENCE_PIPELINE_DETAILS} />
-            </TabsContent>
-
-            {/* Prompt tab */}
-            <TabsContent value="prompt" className="px-4 pb-4">
-              <div className="mb-3">
-                <CopyButton getText={() => SYSTEM_PROMPT_TEMPLATE} label="Copy as markdown" />
-              </div>
-              <Markdown variant="compact">{SYSTEM_PROMPT_TEMPLATE}</Markdown>
-            </TabsContent>
-          </Tabs>
+        {config.content.type === "agent-run-tabbed" ? (
+          <AgentRunTabbed title={config.title} />
+        ) : config.content.type === "tabs" ? (
+          <GenericTabbed title={config.title} tabs={config.content.tabs} />
         ) : (
           <>
-            {/* Top bar: title left, close right — one row */}
-            <div className="flex items-center justify-between px-4 pt-4">
-              <SheetTitle>{config.title}</SheetTitle>
-              <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
-                <X className="h-4 w-4" />
-              </SheetClose>
-            </div>
-
-            {/* Body */}
+            <SheetHeader title={config.title} />
             <div className="px-4 pt-3 pb-4">
               {config.content.type === "flow" ? (
                 <FlowDiagram steps={config.content.steps} />

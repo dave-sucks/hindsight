@@ -40,7 +40,8 @@ import {
   type MockTrade,
   type TradeStatus,
 } from '@/lib/mock-data/trades';
-import { Loader2, MoreHorizontal } from 'lucide-react';
+import { Loader2, MoreHorizontal, Sparkles } from 'lucide-react';
+import { HowItWorksSheet } from '@/components/domain/how-it-works-sheet';
 import { EducationEmptyState, ConceptTooltip } from '@/components/domain/education-card';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -204,7 +205,12 @@ export default function TradesPage({
     <div className="space-y-0">
       {/* Header + filter tabs */}
       <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Trades</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">Trades</h1>
+          <HowItWorksSheet flow="trade-lifecycle">
+            <Sparkles className="h-4 w-4" />
+          </HowItWorksSheet>
+        </div>
         <div className="flex items-center gap-0.5 bg-muted/50 rounded-md border px-1 py-0.5">
           {tabs.map((t) => (
             <button
