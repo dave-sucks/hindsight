@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
-import { EmptyStateBg } from "@/components/domain/empty-state-bg";
+import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { Search } from "lucide-react";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
@@ -108,25 +108,11 @@ export function SignalFeed({ signals }: SignalFeedProps) {
         <div className="space-y-2">
           {filtered.length === 0 && (
             signals.length === 0 ? (
-              <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-20 px-4">
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
-                    maskComposite: "intersect",
-                    WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
-                    WebkitMaskComposite: "source-in",
-                  }}
-                >
-                  <EmptyStateBg />
-                </div>
-                <div className="relative z-10 flex flex-col items-center gap-2">
-                  <p className="text-base font-medium">No findings yet</p>
-                  <p className="text-sm text-muted-foreground text-center max-w-sm">
-                    The intelligence pipeline runs overnight — searching the web, tracking domains, and scanning market movers for your analysts.
-                  </p>
-                </div>
-              </div>
+              <SkeletonCardStack
+                count={3}
+                title="No findings yet"
+                subtitle="Every morning, your analysts' monitors search the web, scan market movers, and extract domain sources. Findings appear here automatically."
+              />
             ) : (
               <p className="text-sm text-muted-foreground py-8 text-center">
                 No findings match your filters

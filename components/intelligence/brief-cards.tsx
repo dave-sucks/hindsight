@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { BriefCard } from "@/components/intelligence/brief-card";
-import { EmptyStateBg } from "@/components/domain/empty-state-bg";
+import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { BriefDetailDialog } from "@/components/intelligence/brief-detail";
 import { normalizeIntelBrief } from "@/components/intelligence/brief-types";
 import type { UnifiedBrief } from "@/components/intelligence/brief-types";
@@ -20,25 +20,11 @@ export function BriefCards({ briefs }: BriefCardsProps) {
 
   if (briefs.length === 0) {
     return (
-      <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-20 px-4">
-        <div
-          className="absolute inset-0"
-          style={{
-            maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
-            maskComposite: "intersect",
-            WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
-            WebkitMaskComposite: "source-in",
-          }}
-        >
-          <EmptyStateBg />
-        </div>
-        <div className="relative z-10 flex flex-col items-center gap-2">
-          <p className="text-base font-medium">No briefs yet</p>
-          <p className="text-sm text-muted-foreground text-center max-w-sm">
-            Morning briefs are generated at 7:45 AM for each analyst. Post-run standups are written after every research session.
-          </p>
-        </div>
-      </div>
+      <SkeletonCardStack
+        count={2}
+        title="No briefs yet"
+        subtitle="Morning briefs are generated at 7:45 AM ET for each analyst. Post-run standups appear after every research session."
+      />
     );
   }
 

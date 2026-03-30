@@ -1,8 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { createClient } from "@/lib/supabase/server"
 
-// GET /api/intelligence/signals — list recent signals/findings with optional filters
+// GET /api/intelligence/signals — list recent signals/findings scoped to current user
 export async function GET(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  // Get this user's analyst IDs
+  const userAnalysts = await prisma.agentConfig.findMany({
+    where: { userId: user.id },
+    select: { id: true },
+  })
+  const analystIds = userAnalysts.map((a) => a.id)
+
   const ticker = req.nextUrl.searchParams.get("ticker")
   const type = req.nextUrl.searchParams.get("type")
   const urgency = req.nextUrl.searchParams.get("urgency")
@@ -17,6 +29,8 @@ export async function GET(req: NextRequest) {
       ...(urgency ? { urgency } : {}),
       ...(batchId ? { batchId } : {}),
       ...(analystId ? { routes: { some: { analystId } } } : {}),
+      // Scope to user: only signals routed to their analysts
+      routes: { some: { analystId: { in: analystIds } } },
     },
     orderBy: { createdAt: "desc" },
     take: Math.min(limit, 200),

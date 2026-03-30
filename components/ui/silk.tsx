@@ -130,7 +130,7 @@ export function Silk({
   );
 
   return (
-    <Canvas dpr={[1, 2]} frameloop="always" style={{ width: "100%", height: "100%" }}>
+    <Canvas dpr={[1, 2]} frameloop="always" style={{ width: "100%", height: "100%", display: "block" }}>
       <SilkPlane ref={meshRef} uniforms={uniforms} />
     </Canvas>
   );

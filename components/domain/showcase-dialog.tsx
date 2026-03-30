@@ -32,7 +32,7 @@ export function ShowcaseDialog({
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{subtitle}</DialogDescription>
 
-        <div className="overflow-hidden">{preview}</div>
+        <div className="overflow-hidden w-full">{preview}</div>
 
         <div className="p-6 space-y-2">
           <h2 className="text-lg font-semibold">{title}</h2>

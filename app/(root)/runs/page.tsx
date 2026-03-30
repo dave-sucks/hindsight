@@ -5,8 +5,8 @@ import { StockLogo } from "@/components/StockLogo";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConceptTooltip } from "@/components/domain/education-card";
-import { RunPreview } from "@/components/domain/run-preview";
 import { RunShowcaseTrigger, RunShowcaseButton } from "@/components/domain/run-showcase-trigger";
+import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - new Date(date).getTime();
@@ -89,7 +89,11 @@ export default async function RunsPage() {
       {runs.length === 0 ? (
         <div className="pt-8">
           <RunShowcaseTrigger />
-          <RunPreview />
+          <SkeletonCardStack
+            count={3}
+            title="No runs yet"
+            subtitle="You'll see runs from your analysts here once they run."
+          />
         </div>
       ) : (
         runs.map((run) => {

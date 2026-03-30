@@ -10,7 +10,6 @@ import {
   PlayCircle,
   ArrowLeftRight,
   BarChart3,
-  TrendingUp,
   Settings,
   LogOut,
   ChevronsUpDown,
@@ -29,13 +28,21 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,14 +55,16 @@ import {
 import { signOut } from '@/lib/actions/auth.actions';
 import { OnboardingDialog } from '@/components/domain/onboarding-dialog';
 
-const NAV_LINKS = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/analysts', label: 'Analysts', icon: Bot },
-  { href: '/runs', label: 'Runs', icon: PlayCircle },
-  { href: '/trades', label: 'Trades', icon: ArrowLeftRight },
-  { href: '/performance', label: 'Performance', icon: BarChart3 },
-  { href: '/stocks', label: 'Stocks', icon: TrendingUp },
-  { href: '/intelligence', label: 'Intelligence', icon: Radar },
+const MAIN_NAV = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, tooltip: 'Portfolio overview' },
+  { href: '/analysts', label: 'Analysts', icon: Bot, tooltip: 'AI trading personas' },
+  { href: '/runs', label: 'Runs', icon: PlayCircle, tooltip: 'Research sessions' },
+  { href: '/intelligence', label: 'Intelligence', icon: Radar, tooltip: 'Signals, monitors, briefs' },
+];
+
+const PORTFOLIO_NAV = [
+  { href: '/trades', label: 'Trades', icon: ArrowLeftRight, tooltip: 'Paper trades and P&L' },
+  { href: '/performance', label: 'Performance', icon: BarChart3, tooltip: 'Win rate and accuracy' },
 ];
 
 export default function AppSidebar({
@@ -73,6 +82,7 @@ export default function AppSidebar({
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [showTour, setShowTour] = useState(false);
+  const { isMobile, setOpenMobile } = useSidebar();
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -107,25 +117,62 @@ export default function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Nav */}
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {NAV_LINKS.map(({ href, label, icon: Icon }) => (
-                <SidebarMenuItem key={href}>
-                  <SidebarMenuButton
-                    render={<Link href={href} />}
-                    isActive={isActive(href)}
-                    tooltip={label}
-                  >
-                    <Icon />
-                    <span>{label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <TooltipProvider delayDuration={400}>
+          {/* Main nav */}
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {MAIN_NAV.map(({ href, label, icon: Icon, tooltip }) => (
+                  <SidebarMenuItem key={href}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <SidebarMenuButton
+                          render={<Link href={href} />}
+                          isActive={isActive(href)}
+                          onClick={() => isMobile && setOpenMobile(false)}
+                        >
+                          <Icon />
+                          <span>{label}</span>
+                        </SidebarMenuButton>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <p className="text-xs">{tooltip}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          {/* Portfolio group */}
+          <SidebarGroup>
+            <SidebarGroupLabel>Portfolio</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {PORTFOLIO_NAV.map(({ href, label, icon: Icon, tooltip }) => (
+                  <SidebarMenuItem key={href}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <SidebarMenuButton
+                          render={<Link href={href} />}
+                          isActive={isActive(href)}
+                          onClick={() => isMobile && setOpenMobile(false)}
+                        >
+                          <Icon />
+                          <span>{label}</span>
+                        </SidebarMenuButton>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <p className="text-xs">{tooltip}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </TooltipProvider>
       </SidebarContent>
 
       {/* Ticker marquee — above user footer */}
