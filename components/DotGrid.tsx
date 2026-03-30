@@ -1,9 +1,6 @@
 'use client';
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { gsap } from 'gsap';
-import { InertiaPlugin } from 'gsap/InertiaPlugin';
-
-gsap.registerPlugin(InertiaPlugin);
 
 const throttle = (func: (...args: any[]) => void, limit: number) => {
   let lastCall = 0;
@@ -224,8 +221,14 @@ const DotGrid: React.FC<DotGridProps> = ({
           gsap.killTweensOf(dot);
           const pushX = dot.cx - pr.x + vx * 0.005;
           const pushY = dot.cy - pr.y + vy * 0.005;
+          const mag = Math.hypot(pushX, pushY);
+          const maxPush = maxSpeed / resistance;
+          const scale = mag > maxPush ? maxPush / mag : 1;
           gsap.to(dot, {
-            inertia: { xOffset: pushX, yOffset: pushY, resistance },
+            xOffset: pushX * scale,
+            yOffset: pushY * scale,
+            duration: 0.3,
+            ease: 'power2.out',
             onComplete: () => {
               gsap.to(dot, {
                 xOffset: 0,
@@ -253,7 +256,10 @@ const DotGrid: React.FC<DotGridProps> = ({
           const pushX = (dot.cx - cx) * shockStrength * falloff;
           const pushY = (dot.cy - cy) * shockStrength * falloff;
           gsap.to(dot, {
-            inertia: { xOffset: pushX, yOffset: pushY, resistance },
+            xOffset: pushX,
+            yOffset: pushY,
+            duration: 0.3,
+            ease: 'power2.out',
             onComplete: () => {
               gsap.to(dot, {
                 xOffset: 0,
