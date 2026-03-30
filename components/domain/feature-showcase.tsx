@@ -1,38 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 // ── Feature card ───────────────────────────────────────────────────────────
-// Showcase card for empty states. Icon + title + description + optional
-// skeleton preview. Consistent pattern across all pages.
+// Marketing-style showcase card for empty states. Header + description on top,
+// preview asset on bottom with variable padding variants.
+
+const PREVIEW_CLASSES = {
+  padded: "p-3",
+  bleed: "p-0",
+  offset: "pt-3 pl-3 pr-0 pb-0",
+} as const;
 
 interface FeatureCardProps {
-  icon: LucideIcon;
   title: string;
   description: string;
+  /** Bottom section padding variant */
+  preview?: keyof typeof PREVIEW_CLASSES;
+  /** Click handler for detail dialog */
+  onClick?: () => void;
   /** Optional preview content (skeleton mockup, badge row, etc.) */
   children?: React.ReactNode;
 }
 
-export function FeatureCard({ icon: Icon, title, description, children }: FeatureCardProps) {
+export function FeatureCard({
+  title,
+  description,
+  preview = "padded",
+  onClick,
+  children,
+}: FeatureCardProps) {
   return (
-    <Card className="p-0 overflow-hidden">
-      <div className="px-4 pt-4 pb-3 space-y-2">
-        <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center">
-          <Icon className="h-4 w-4 text-muted-foreground" />
-        </div>
-        <div>
-          <p className="text-sm font-medium">{title}</p>
-          <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-            {description}
-          </p>
-        </div>
+    <Card
+      className={cn("p-0 overflow-hidden", onClick && "cursor-pointer hover:ring-1 hover:ring-foreground/10 transition-shadow")}
+      onClick={onClick}
+    >
+      <div className="p-3 space-y-0.5">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {description}
+        </p>
       </div>
       {children && (
-        <div className="px-4 pb-4 pt-1">
+        <div className={cn("aspect-[4/3] overflow-hidden", PREVIEW_CLASSES[preview])}>
           {children}
         </div>
       )}
@@ -44,11 +57,8 @@ export function FeatureCard({ icon: Icon, title, description, children }: Featur
 // Groups feature cards with an optional hero headline and CTA.
 
 interface FeatureShowcaseProps {
-  /** Bold headline */
   headline?: string;
-  /** Subtitle under headline */
   subtitle?: string;
-  /** CTA button */
   action?: { label: string; href: string };
   children: React.ReactNode;
 }

@@ -17,11 +17,17 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 /**
- * Blocking modal that forces users to enter their Alpaca API keys
- * before they can use the app. Rendered when hasAlpacaKey is false.
- * Cannot be dismissed — user must enter valid keys.
+ * Modal that prompts users to enter their Alpaca API keys.
+ * - allowSkip=true: user can dismiss and explore the app first.
+ * - allowSkip=false (default): user must connect before proceeding.
  */
-export function AlpacaKeyGate({ hasKey }: { hasKey: boolean }) {
+export function AlpacaKeyGate({
+  hasKey,
+  allowSkip = false,
+}: {
+  hasKey: boolean;
+  allowSkip?: boolean;
+}) {
   const [open, setOpen] = useState(!hasKey);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
@@ -55,8 +61,8 @@ export function AlpacaKeyGate({ hasKey }: { hasKey: boolean }) {
   }
 
   return (
-    <Dialog open={open}>
-      <DialogContent showCloseButton={false}>
+    <Dialog open={open} onOpenChange={allowSkip ? setOpen : undefined}>
+      <DialogContent showCloseButton={allowSkip}>
         <DialogHeader>
           <DialogTitle>
             <span className="flex items-center gap-2">
@@ -142,6 +148,16 @@ export function AlpacaKeyGate({ hasKey }: { hasKey: boolean }) {
           <Button onClick={handleSave} disabled={isPending} className="w-full">
             {isPending ? "Connecting..." : "Connect & Verify"}
           </Button>
+
+          {allowSkip && (
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+            >
+              Skip for now
+            </button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

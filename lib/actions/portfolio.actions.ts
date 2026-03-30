@@ -83,6 +83,10 @@ export interface DashboardData {
   recentRuns: RecentRunSummary[];
   todaysPicks: TodaysPick[];
   recentPicks: RecentPick[];
+  hasAlpacaKey: boolean;
+  analystCount: number;
+  hasCompletedRun: boolean;
+  hasBrief: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -173,6 +177,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       recentRuns: [],
       todaysPicks: [],
       recentPicks: [],
+      hasAlpacaKey: false,
+      analystCount: 0,
+      hasCompletedRun: false,
+      hasBrief: false,
     };
   }
 
@@ -479,5 +487,9 @@ export async function getDashboardData(): Promise<DashboardData> {
     recentRuns,
     todaysPicks,
     recentPicks,
+    hasAlpacaKey: alpacaCreds !== undefined,
+    analystCount: dbAgentConfigs.length,
+    hasCompletedRun: dbRecentRuns.some((r) => r.status === "COMPLETE"),
+    hasBrief: recentPicks.length > 0,
   };
 }

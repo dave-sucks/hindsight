@@ -63,7 +63,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                     </div>
                 </header>
                 <main className="flex-1">
-                    <AlpacaKeyGate hasKey={alpacaStatus.hasKey} />
+                    <AlpacaKeyGate hasKey={alpacaStatus.hasKey} allowSkip />
                     {children}
                 </main>
             </SidebarInset>

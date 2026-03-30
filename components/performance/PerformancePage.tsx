@@ -22,8 +22,7 @@ import {
   Cell,
   ReferenceLine,
 } from 'recharts';
-import { TrendingUp, Trophy, Target, BarChart3, ScanSearch } from 'lucide-react';
-import { HowItWorksSheet } from '@/components/domain/how-it-works-sheet';
+import { TrendingUp, Trophy, Target, BarChart3 } from 'lucide-react';
 
 // ─── Recharts dark theme constants ────────────────────────────────────────────
 const GRID_COLOR = 'var(--border)';
@@ -256,12 +255,7 @@ export default function PerformancePage({ data }: Props) {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-semibold text-foreground">Performance</h1>
-        <HowItWorksSheet flow="evaluation">
-          <ScanSearch className="h-4 w-4" />
-        </HowItWorksSheet>
-      </div>
+      <h1 className="text-2xl font-semibold text-foreground">Performance</h1>
 
       {/* ── Top stats bar ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">

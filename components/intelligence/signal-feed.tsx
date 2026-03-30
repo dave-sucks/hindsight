@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
-import { FeatureCard } from "@/components/domain/feature-showcase";
-import { Search, Globe, Newspaper, BarChart3 } from "lucide-react";
+import DotGrid from "@/components/DotGrid";
+import { Search } from "lucide-react";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
 import type { Signal } from "./types";
@@ -108,16 +108,30 @@ export function SignalFeed({ signals }: SignalFeedProps) {
         <div className="space-y-2">
           {filtered.length === 0 && (
             signals.length === 0 ? (
-              <div className="py-8 space-y-4 max-w-lg mx-auto">
-                <div className="text-center space-y-1">
-                  <p className="text-sm font-medium">No findings yet</p>
-                  <p className="text-xs text-muted-foreground">Trigger the pipeline or wait for the 6:30 AM cron to start gathering intelligence.</p>
+              <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-20 px-4">
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+                    maskComposite: "intersect",
+                    WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+                    WebkitMaskComposite: "source-in",
+                  }}
+                >
+                  <DotGrid
+                    dotSize={3}
+                    gap={10}
+                    baseColor="#3a3a3a"
+                    activeColor="#8a8a6a"
+                    proximity={90}
+                    shockRadius={120}
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <FeatureCard icon={Search} title="Search Monitors" description="Daily Perplexity Sonar queries for market news and sector trends." />
-                  <FeatureCard icon={Globe} title="Domain Sources" description="Tracked websites with full article extraction via Firecrawl." />
-                  <FeatureCard icon={BarChart3} title="Market Movers" description="FMP gainers, losers, and most active stocks." />
-                  <FeatureCard icon={Newspaper} title="Earnings Calendar" description="Finnhub earnings reports for the next 7 days." />
+                <div className="relative z-10 flex flex-col items-center gap-2">
+                  <p className="text-sm font-medium">No findings yet</p>
+                  <p className="text-xs text-muted-foreground text-center max-w-sm">
+                    The intelligence pipeline runs overnight — searching the web, tracking domains, and scanning market movers for your analysts.
+                  </p>
                 </div>
               </div>
             ) : (

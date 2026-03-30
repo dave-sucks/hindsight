@@ -32,9 +32,15 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
-import { ConceptTooltip } from "@/components/domain/education-card";
-import { FeatureCard, FeatureShowcase, SkeletonBadges } from "@/components/domain/feature-showcase";
-import { Bot, Radar, Sparkles, BarChart3 } from "lucide-react";
+import { AnalystBuilderProvider } from "@/components/analysts/AnalystBuilderChat";
+import { BuilderShowcaseTrigger, BuilderShowcaseButton } from "@/components/domain/run-showcase-trigger";
+import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
+import { useThreadRuntime } from "@assistant-ui/react";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+} from "@/components/ui/carousel";
 
 // ── Win-rate bar ──────────────────────────────────────────────────────────────
 
@@ -212,33 +218,90 @@ function NewAnalystCard() {
   );
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
+// ── Template suggestions ─────────────────────────────────────────────────────
+
+const TEMPLATES = [
+  {
+    title: "Momentum Trader",
+    description: "Watches for intraday breakouts on high-volume tech stocks. Uses RSI, volume spikes, and moving average crossovers to time entries.",
+    prompt:
+      "Build me a momentum trader that catches breakouts on high-volume stocks using RSI, volume spikes, and moving average crossovers.",
+  },
+  {
+    title: "Earnings Analyst",
+    description: "Trades the run-up before earnings announcements and rides post-earnings drift. Tracks EPS surprises and guidance changes.",
+    prompt:
+      "I want an analyst that trades around earnings — catches the run-up before announcements and rides post-earnings momentum.",
+  },
+  {
+    title: "Value Swing Trader",
+    description: "Buys oversold dips on quality large-cap stocks when technicals hit extremes. Targets a bounce back to the moving average.",
+    prompt:
+      "Create a swing trader that uses mean reversion — buys oversold dips on quality large-cap stocks when RSI drops below 30.",
+  },
+];
+
+// ── Template card that sends prompt into the thread ──────────────────────────
+
+function TemplateCard({ title, description, prompt }: typeof TEMPLATES[number]) {
+  const threadRuntime = useThreadRuntime();
+  return (
+    <button
+      onClick={() => {
+        threadRuntime.append({
+          role: "user",
+          content: [{ type: "text", text: prompt }],
+        });
+      }}
+      className="text-left"
+    >
+      <Card className="p-4 h-full hover:bg-muted/50 transition-colors cursor-pointer shadow-none">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+          {description}
+        </p>
+      </Card>
+    </button>
+  );
+}
+
+// ── Empty state — template cards + standalone composer ───────────────────────
 
 function AnalystsEmptyState() {
   return (
-    <FeatureShowcase
-      headline="Create your first AI analyst"
-      subtitle="Describe your trading style in conversation. The AI builder creates a complete strategy, watchlist, and intelligence setup."
-      action={{ label: "Create Analyst", href: "/analysts/new" }}
-    >
-      <FeatureCard
-        icon={Sparkles}
-        title="AI-Built Strategy"
-        description="Chat about your trading style. The builder researches live data and proposes a complete config."
-      />
-      <FeatureCard
-        icon={Radar}
-        title="Overnight Intelligence"
-        description="Background jobs gather market news, check tracked sources, and write personalized morning briefs."
-      />
-      <FeatureCard
-        icon={Bot}
-        title="Autonomous Research"
-        description="14 tools, 8-phase workflow, real paper trades on Alpaca. Runs daily at 8 AM or on demand."
-      >
-        <SkeletonBadges labels={["Finnhub", "FMP", "SEC", "Sonar", "Alpaca"]} />
-      </FeatureCard>
-    </FeatureShowcase>
+    <AnalystBuilderProvider>
+      <div className="flex flex-col h-[calc(100dvh-12rem)]">
+        {/* Spacer pushes cards toward bottom */}
+        <div className="flex-1" />
+
+        {/* Template cards — carousel on mobile, grid on desktop */}
+        <div className="mb-4">
+          {/* Desktop: grid */}
+          <div className="hidden sm:grid grid-cols-3 gap-3 w-full">
+            {TEMPLATES.map((t) => (
+              <TemplateCard key={t.title} {...t} />
+            ))}
+          </div>
+          {/* Mobile: carousel */}
+          <div className="sm:hidden">
+            <Carousel opts={{ align: "start" }}>
+              <CarouselContent className="-ml-3">
+                {TEMPLATES.map((t) => (
+                  <CarouselItem key={t.title} className="pl-3 basis-[80%]">
+                    <TemplateCard {...t} />
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+            </Carousel>
+          </div>
+        </div>
+
+        {/* Composer input — full width */}
+        <div className="w-full">
+          <HindsightComposer features={{ placeholder: "Describe any strategy, sector, or style…" }} />
+        </div>
+      </div>
+    </AnalystBuilderProvider>
   );
 }
 
@@ -270,25 +333,39 @@ export default function AnalystsPageClient({
     }
   }
 
+  if (analysts.length === 0) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto space-y-4">
+        <BuilderShowcaseTrigger />
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold">Analysts</h1>
+            <BuilderShowcaseButton />
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Describe any industry, sector, or strategy and we&apos;ll build an autonomous trading analyst for you.
+          </p>
+        </div>
+        <AnalystsEmptyState />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <div>
         <h1 className="text-2xl font-semibold">Analysts</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          <ConceptTooltip concept="analyst">AI trading personas</ConceptTooltip> that research stocks and place paper trades autonomously
+          AI trading personas that research stocks and place paper trades autonomously
         </p>
       </div>
 
-      {analysts.length === 0 ? (
-        <AnalystsEmptyState />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {analysts.map((analyst) => (
-            <AnalystCard key={analyst.id} analyst={analyst} onDelete={setDeleteTarget} />
-          ))}
-          <NewAnalystCard />
-        </div>
-      )}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {analysts.map((analyst) => (
+          <AnalystCard key={analyst.id} analyst={analyst} onDelete={setDeleteTarget} />
+        ))}
+        <NewAnalystCard />
+      </div>
 
       <Dialog
         open={!!deleteTarget}

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
+
 import {
   Area,
   AreaChart,
@@ -17,10 +18,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ThesisRow } from '@/components/ui/thesis-row';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
-import { FeatureCard, SkeletonBadges } from '@/components/domain/feature-showcase';
-import { Sparkles, Radar, Bot } from 'lucide-react';
-import { HowItWorksSheet } from '@/components/domain/how-it-works-sheet';
-import { ScanSearch } from 'lucide-react';
+import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
+import DotGrid from '@/components/DotGrid';
+import { Button } from '@/components/ui/button';
 import {
   mockOpenTrades,
   mockEquityCurve,
@@ -102,7 +102,11 @@ function pickToThesisRow(pick: RecentPick): ThesisRowData {
 
 // ─── Recent picks section ─────────────────────────────────────────────────────
 
-function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
+function RecentPicksSection({
+  picks,
+}: {
+  picks: RecentPick[];
+}) {
   const [filter, setFilter] = useState<PickFilter>('all');
 
   const filtered = picks.filter((p) => {
@@ -139,17 +143,39 @@ function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
 
       {/* Cards */}
       {picks.length === 0 ? (
-        <div className="space-y-3">
-          <div className="text-center py-4">
-            <p className="text-sm font-medium">Get started with Hindsight</p>
-            <p className="text-xs text-muted-foreground mt-1">Create an analyst to start seeing picks, trades, and intelligence here.</p>
+        <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-24 px-4">
+          {/* DotGrid with edge fade on all 4 sides */}
+          <div
+            className="absolute inset-0"
+            style={{
+              maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+              maskComposite: "intersect",
+              WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+              WebkitMaskComposite: "source-in",
+            }}
+          >
+            <DotGrid
+              dotSize={3}
+              gap={10}
+              baseColor="#3a3a3a"
+              activeColor="#8a8a6a"
+              proximity={90}
+              speedTrigger={280}
+              shockRadius={120}
+              shockStrength={3}
+              maxSpeed={5000}
+              resistance={1800}
+              returnDuration={1.6}
+            />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FeatureCard icon={Sparkles} title="Create an Analyst" description="Describe your strategy. The AI builder creates a complete trading persona." />
-            <FeatureCard icon={Radar} title="Intelligence Gathers" description="Background jobs search the web, check sources, and write morning briefs." />
-            <FeatureCard icon={Bot} title="Autonomous Research" description="14 tools, daily runs, paper trades, and a memory system that compounds.">
-              <SkeletonBadges labels={["Finnhub", "Sonar", "Alpaca"]} />
-            </FeatureCard>
+          <div className="relative z-10 flex flex-col items-center gap-3">
+            <p className="text-sm font-medium">Picks appear after your first run</p>
+            <p className="text-xs text-muted-foreground text-center max-w-xs">
+              Your analyst will research stocks, generate theses, and place paper trades autonomously.
+            </p>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/analysts">Create an Analyst</Link>
+            </Button>
           </div>
         </div>
       ) : filtered.length === 0 ? (
@@ -304,14 +330,9 @@ export default function DashboardClient({
                 </>
               ) : (
                 <>
-                  <div className="flex items-center gap-2">
-                    <p className="text-4xl font-semibold tabular-nums tracking-tight">
-                      {totalValueStr}
-                    </p>
-                    <HowItWorksSheet flow="agent">
-                      <ScanSearch className="h-4 w-4" />
-                    </HowItWorksSheet>
-                  </div>
+                  <p className="text-4xl font-semibold tabular-nums tracking-tight">
+                    {totalValueStr}
+                  </p>
                   <p className="text-sm tabular-nums flex items-center gap-1 flex-wrap">
                     <span className={pnlPositive ? 'text-positive' : 'text-negative'}>
                       {pnlPositive ? '+' : '-'}${Math.abs(unrealizedPnl).toFixed(2)}{' '}
@@ -480,6 +501,16 @@ export default function DashboardClient({
 
         </div>
       </div>
+
+      {/* Floating onboarding checklist */}
+      {!loading && (
+        <OnboardingChecklist
+          hasAlpacaKey={data?.hasAlpacaKey ?? false}
+          hasAnalyst={(data?.analystCount ?? 0) > 0}
+          hasCompletedRun={data?.hasCompletedRun ?? false}
+          hasBrief={data?.hasBrief ?? false}
+        />
+      )}
     </div>
   );
 }

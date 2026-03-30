@@ -61,8 +61,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { EducationEmptyState } from "@/components/domain/education-card";
-import { FeatureCard, SkeletonLines, SkeletonBadges } from "@/components/domain/feature-showcase";
-import { Bot, ArrowLeftRight, Radar, Search, Target } from "lucide-react";
+import DotGrid from "@/components/DotGrid";
+import { RunShowcaseTrigger } from "@/components/domain/run-showcase-trigger";
 import type {
   AnalystDetail,
   PositionWithThesis,
@@ -407,6 +407,7 @@ export default function AnalystDetailClient({
 
   return (
     <>
+      <RunShowcaseTrigger />
       <div className="lg:grid lg:grid-cols-3 h-[calc(100dvh-3rem)] overflow-y-auto lg:overflow-hidden">
         {/* ── Left: Analyst briefing ──────────────────────────────────── */}
         <div className="lg:col-span-2 lg:h-full lg:overflow-y-auto">
@@ -831,41 +832,41 @@ function buildAllBriefs(analystName: string, morningBriefs: MorningBriefItem[], 
 // ── Feature showcase for empty analyst ────────────────────────────────────────
 
 function AnalystFeatureShowcase() {
+  const [showDialog, setShowDialog] = useState(false);
+
   return (
-    <div className="py-8 px-4 space-y-4 max-w-lg mx-auto">
-      <div className="text-center space-y-1">
-        <h2 className="text-lg font-semibold">Hit Run to get started</h2>
-        <p className="text-xs text-muted-foreground">
-          Your analyst is ready. Here&apos;s what happens when it runs.
-        </p>
+    <>
+      {showDialog && <RunShowcaseTrigger />}
+      <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-20 px-4">
+        <div
+          className="absolute inset-0"
+          style={{
+            maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+            maskComposite: "intersect",
+            WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+            WebkitMaskComposite: "source-in",
+          }}
+        >
+          <DotGrid
+            dotSize={3}
+            gap={10}
+            baseColor="#3a3a3a"
+            activeColor="#8a8a6a"
+            proximity={90}
+            shockRadius={120}
+          />
+        </div>
+        <div className="relative z-10 flex flex-col items-center gap-3">
+          <p className="text-sm font-medium">Your analyst is ready</p>
+          <p className="text-xs text-muted-foreground text-center max-w-xs">
+            Hit Run above to start a research session. Your analyst will research stocks, generate theses, and place paper trades.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setShowDialog(true)}>
+            See how Runs work
+          </Button>
+        </div>
       </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <FeatureCard
-          icon={Bot}
-          title="Research Runs"
-          description="8-phase sessions with 14 tools — live quotes, earnings, SEC filings, options flow, web search."
-        >
-          <SkeletonBadges labels={["Finnhub", "FMP", "SEC", "Sonar", "Alpaca"]} />
-        </FeatureCard>
-
-        <FeatureCard
-          icon={FileText}
-          title="Daily Briefs"
-          description="Morning intelligence at 7:45 AM + post-run standups written by a separate reviewer agent."
-        >
-          <SkeletonLines count={3} />
-        </FeatureCard>
-
-        <FeatureCard
-          icon={ArrowLeftRight}
-          title="Paper Trades"
-          description="Automatic execution on Alpaca with live P&L, targets, stop-losses, and weekly accuracy scoring."
-        >
-          <SkeletonLines count={2} />
-        </FeatureCard>
-      </div>
-    </div>
+    </>
   );
 }
 
