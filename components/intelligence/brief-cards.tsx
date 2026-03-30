@@ -33,8 +33,8 @@ export function BriefCards({ briefs }: BriefCardsProps) {
           <EmptyStateBg />
         </div>
         <div className="relative z-10 flex flex-col items-center gap-2">
-          <p className="text-sm font-medium">No briefs yet</p>
-          <p className="text-xs text-muted-foreground text-center max-w-sm">
+          <p className="text-base font-medium">No briefs yet</p>
+          <p className="text-sm text-muted-foreground text-center max-w-sm">
             Morning briefs are generated at 7:45 AM for each analyst. Post-run standups are written after every research session.
           </p>
         </div>

@@ -121,8 +121,8 @@ export function SignalFeed({ signals }: SignalFeedProps) {
                   <EmptyStateBg />
                 </div>
                 <div className="relative z-10 flex flex-col items-center gap-2">
-                  <p className="text-sm font-medium">No findings yet</p>
-                  <p className="text-xs text-muted-foreground text-center max-w-sm">
+                  <p className="text-base font-medium">No findings yet</p>
+                  <p className="text-sm text-muted-foreground text-center max-w-sm">
                     The intelligence pipeline runs overnight — searching the web, tracking domains, and scanning market movers for your analysts.
                   </p>
                 </div>

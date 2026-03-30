@@ -132,8 +132,8 @@ function EmptyState({ filtered }: { filtered: boolean }) {
         <EmptyStateBg />
       </div>
       <div className="relative z-10 flex flex-col items-center gap-3">
-        <p className="text-sm font-medium">No paper trades yet</p>
-        <p className="text-xs text-muted-foreground text-center max-w-xs">
+        <p className="text-base font-medium">No paper trades yet</p>
+        <p className="text-sm text-muted-foreground text-center max-w-xs">
           Trades are placed automatically when an analyst has high confidence in a thesis during a research session.
         </p>
         <Button variant="outline" size="sm" asChild>

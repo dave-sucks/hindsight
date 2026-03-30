@@ -157,8 +157,8 @@ function RecentPicksSection({
             <EmptyStateBg />
           </div>
           <div className="relative z-10 flex flex-col items-center gap-3">
-            <p className="text-sm font-medium">Picks appear after your first run</p>
-            <p className="text-xs text-muted-foreground text-center max-w-xs">
+            <p className="text-base font-medium">Theses for your Stocks appear after Agents run</p>
+            <p className="text-sm text-muted-foreground text-center max-w-xs">
               Your analyst will research stocks, generate theses, and place paper trades autonomously.
             </p>
             <Button variant="outline" size="sm" asChild>

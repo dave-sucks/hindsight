@@ -870,8 +870,8 @@ function AnalystFeatureShowcase() {
           <EmptyStateBg />
         </div>
         <div className="relative z-10 flex flex-col items-center gap-3">
-          <p className="text-sm font-medium">Your analyst is ready</p>
-          <p className="text-xs text-muted-foreground text-center max-w-xs">
+          <p className="text-base font-medium">Your analyst is ready</p>
+          <p className="text-sm text-muted-foreground text-center max-w-xs">
             Hit Run above to start a research session. Your analyst will research stocks, generate theses, and place paper trades.
           </p>
           <Button variant="outline" size="sm" onClick={() => setShowDialog(true)}>
