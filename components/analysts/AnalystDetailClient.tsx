@@ -60,8 +60,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { EducationEmptyState } from "@/components/domain/education-card";
-import { EmptyStateBg } from "@/components/domain/empty-state-bg";
 import { RunShowcaseTrigger } from "@/components/domain/run-showcase-trigger";
+import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { RunShowcaseDialog } from "@/components/domain/showcase-dialog";
 import { ShowcaseIcon } from "@/components/ui/showcase-icon";
 import type {
@@ -872,37 +872,6 @@ function buildAllBriefs(analystName: string, morningBriefs: MorningBriefItem[], 
 
 // ── Feature showcase for empty analyst ────────────────────────────────────────
 
-function AnalystFeatureShowcase() {
-  const [showDialog, setShowDialog] = useState(false);
-
-  return (
-    <>
-      {showDialog && <RunShowcaseTrigger />}
-      <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-20 px-4">
-        <div
-          className="absolute inset-0"
-          style={{
-            maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
-            maskComposite: "intersect",
-            WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
-            WebkitMaskComposite: "source-in",
-          }}
-        >
-          <EmptyStateBg />
-        </div>
-        <div className="relative z-10 flex flex-col items-center gap-3">
-          <p className="text-base font-medium">Your analyst is ready</p>
-          <p className="text-sm text-muted-foreground text-center max-w-xs">
-            Hit Run above to start a research session. Your analyst will research stocks, generate theses, and place paper trades.
-          </p>
-          <Button variant="outline" size="sm" onClick={() => setShowDialog(true)}>
-            See how Runs work
-          </Button>
-        </div>
-      </div>
-    </>
-  );
-}
 
 // ── Snapshot tab: latest run brief inline + 3 recent cards ──────────────────
 
@@ -922,30 +891,24 @@ function AnalystSnapshotSection({
   const cards = allBriefs.filter((b) => !(b.type === "run" && b.runBrief?.id === latestRunBrief?.id)).slice(0, 3);
 
   if (!latestRunBrief && cards.length === 0) {
-    return <AnalystFeatureShowcase />;
+    return (
+      <div className="px-4 py-6">
+        <SkeletonCardStack
+          count={2}
+          title="No brief yet"
+          subtitle="Your analyst runs automatically each morning at 8 AM ET. You'll see a brief here after the first session."
+        />
+      </div>
+    );
   }
 
   return (
-    <div className="w-full mx-auto px-4 py-6 space-y-6">
+    <div className="w-full mx-auto px-4 py-6">
       {latestRunBrief && (
         <div className="text-sm leading-relaxed">
           <TickerMarkdown>{latestRunBrief.narrative}</TickerMarkdown>
         </div>
       )}
-
-      {cards.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {cards.map((b) => (
-            <BriefCard key={b.id} brief={b} onClick={() => setSelected(b)} />
-          ))}
-        </div>
-      )}
-
-      <BriefDetailDialog
-        brief={selected}
-        open={!!selected}
-        onOpenChange={(open) => !open && setSelected(null)}
-      />
     </div>
   );
 }
@@ -965,7 +928,15 @@ function AnalystAllBriefsSection({
   const allBriefs = buildAllBriefs(analystName, morningBriefs, runBriefs);
 
   if (allBriefs.length === 0) {
-    return <AnalystFeatureShowcase />;
+    return (
+      <div className="px-4 py-6">
+        <SkeletonCardStack
+          count={2}
+          title="No briefs yet"
+          subtitle="Morning briefs are generated at 7:45 AM ET. Post-run standups appear after each research session."
+        />
+      </div>
+    );
   }
 
   return (
