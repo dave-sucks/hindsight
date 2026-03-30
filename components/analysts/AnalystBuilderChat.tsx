@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useCallback, useTransition, useState } from "react";
+import { useMemo, useCallback, useTransition, useState, useRef, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { DefaultChatTransport } from "ai";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useThreadRuntime } from "@assistant-ui/react";
 import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
 import {
   useRegisterBuilderToolUIs,
@@ -53,18 +53,41 @@ const SUGGESTIONS = [
   },
 ];
 
-// ─── Inner component (needs to be inside AssistantRuntimeProvider) ──────────
+// ─── Hook: auto-send a prompt into the thread ────────────────────────────────
 
-function BuilderThread({
+function useAutoSend(prompt?: string) {
+  const threadRuntime = useThreadRuntime();
+  const hasSent = useRef(false);
+  useEffect(() => {
+    if (!prompt || hasSent.current) return;
+    hasSent.current = true;
+    const timer = setTimeout(() => {
+      threadRuntime.append({
+        role: "user",
+        content: [{ type: "text", text: prompt }],
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [prompt, threadRuntime]);
+}
+
+// ─── Inner: registers tool UIs + provides callbacks ──────────────────────────
+
+function BuilderInner({
   onConfirmConfig,
   onConfigSuggested,
   isCreating,
+  initialPrompt,
+  children,
 }: {
   onConfirmConfig: (config: AgentConfigData) => void;
   onConfigSuggested?: (config: AgentConfigData) => void;
   isCreating: boolean;
+  initialPrompt?: string;
+  children: ReactNode;
 }) {
   useRegisterBuilderToolUIs();
+  useAutoSend(initialPrompt);
 
   const callbacks = useMemo(
     () => ({
@@ -79,28 +102,28 @@ function BuilderThread({
 
   return (
     <ToolUICallbacksProvider value={callbacks}>
-      <Thread
-        welcomeConfig={BUILDER_WELCOME}
-        composerFeatures={{
-          tickerSearch: true,
-          placeholder: "Describe your ideal trading analyst…",
-        }}
-      />
+      {children}
     </ToolUICallbacksProvider>
   );
 }
 
-// ─── AnalystBuilderChat ─────────────────────────────────────────────────────
+// ─── Provider: runtime setup, composable with any children ───────────────────
+// Wrap your own layout with this to get the builder runtime.
+// Then render <Thread /> or just a <Composer /> — whatever you want.
 
-export function AnalystBuilderChat({
+export function AnalystBuilderProvider({
   currentConfig,
   onConfigSuggested,
   onCreatingChange,
+  initialPrompt,
+  children,
 }: {
   currentConfig?: Record<string, unknown>;
   onConfigSuggested?: (config: AgentConfigData, onConfirm: () => void) => void;
   onCreatingChange?: (creating: boolean) => void;
-} = {}) {
+  initialPrompt?: string;
+  children: ReactNode;
+}) {
   const router = useRouter();
   const [isCreating, startCreating] = useTransition();
 
@@ -115,11 +138,8 @@ export function AnalystBuilderChat({
     ),
   });
 
-  const [createError, setCreateError] = useState<string | null>(null);
-
   const handleConfirmConfig = useCallback(
     (config: AgentConfigData) => {
-      setCreateError(null);
       onCreatingChange?.(true);
       startCreating(async () => {
         try {
@@ -144,7 +164,6 @@ export function AnalystBuilderChat({
               | "SMALL",
             watchlist: config.watchlist ?? [],
             exclusionList: config.exclusionList ?? [],
-            // V3: Intelligence layer proposals
             domainMonitorProposal: config.domainMonitorProposal,
             intelligenceQueries: config.intelligenceQueries,
             intelligencePolicy: config.intelligencePolicy,
@@ -154,7 +173,6 @@ export function AnalystBuilderChat({
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Unknown error";
           console.error("Failed to create analyst:", err);
-          setCreateError(msg);
           toast.error(`Failed to create analyst: ${msg}`);
         } finally {
           onCreatingChange?.(false);
@@ -164,7 +182,6 @@ export function AnalystBuilderChat({
     [router, onCreatingChange]
   );
 
-  // Callback that the SuggestConfigRender calls to notify the page
   const handleConfigSuggestedInternal = useCallback(
     (config: AgentConfigData) => {
       if (onConfigSuggested) {
@@ -176,13 +193,48 @@ export function AnalystBuilderChat({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <BuilderThread
+      <BuilderInner
         onConfirmConfig={handleConfirmConfig}
         onConfigSuggested={
           onConfigSuggested ? handleConfigSuggestedInternal : undefined
         }
         isCreating={isCreating}
-      />
+        initialPrompt={initialPrompt}
+      >
+        {children}
+      </BuilderInner>
     </AssistantRuntimeProvider>
+  );
+}
+
+// ─── AnalystBuilderChat: full-page builder (used on /analysts/new) ───────────
+// This is the original component — provider + Thread in one shot.
+
+export function AnalystBuilderChat({
+  currentConfig,
+  onConfigSuggested,
+  onCreatingChange,
+  initialPrompt,
+}: {
+  currentConfig?: Record<string, unknown>;
+  onConfigSuggested?: (config: AgentConfigData, onConfirm: () => void) => void;
+  onCreatingChange?: (creating: boolean) => void;
+  initialPrompt?: string;
+} = {}) {
+  return (
+    <AnalystBuilderProvider
+      currentConfig={currentConfig}
+      onConfigSuggested={onConfigSuggested}
+      onCreatingChange={onCreatingChange}
+      initialPrompt={initialPrompt}
+    >
+      <Thread
+        welcomeConfig={BUILDER_WELCOME}
+        composerFeatures={{
+          tickerSearch: true,
+          placeholder: "Describe your ideal trading analyst…",
+        }}
+      />
+    </AnalystBuilderProvider>
   );
 }

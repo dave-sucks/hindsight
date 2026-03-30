@@ -65,6 +65,10 @@
   100% { transform: translateX(-50%); }
 }
 
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
 /* ── Light (Nova) ───────────────────────────────────────────────── */
 :root {
   --radius: 0.625rem;

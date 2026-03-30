@@ -49,7 +49,6 @@ import {
   Loader2,
   EllipsisVertical,
   ScanSearch,
-  Workflow,
 } from "lucide-react";
 import {
   Dialog,
@@ -61,8 +60,10 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { EducationEmptyState } from "@/components/domain/education-card";
-import { FeatureCard, SkeletonLines, SkeletonBadges } from "@/components/domain/feature-showcase";
-import { Bot, ArrowLeftRight, Radar, Search, Target } from "lucide-react";
+import { EmptyStateBg } from "@/components/domain/empty-state-bg";
+import { RunShowcaseTrigger } from "@/components/domain/run-showcase-trigger";
+import { RunShowcaseDialog } from "@/components/domain/showcase-dialog";
+import { ShowcaseIcon } from "@/components/ui/showcase-icon";
 import type {
   AnalystDetail,
   PositionWithThesis,
@@ -245,6 +246,7 @@ export default function AnalystDetailClient({
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
   const [, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [showRunShowcase, setShowRunShowcase] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   async function handleDelete() {
@@ -407,9 +409,11 @@ export default function AnalystDetailClient({
 
   return (
     <>
+      <RunShowcaseTrigger />
+      <RunShowcaseDialog open={showRunShowcase} onOpenChange={setShowRunShowcase} />
       <div className="lg:grid lg:grid-cols-3 h-[calc(100dvh-3rem)] overflow-y-auto lg:overflow-hidden">
         {/* ── Left: Analyst briefing ──────────────────────────────────── */}
-        <div className="lg:col-span-2 lg:h-full lg:overflow-y-auto">
+        <div className="lg:col-span-2 lg:h-full lg:overflow-y-auto flex flex-col">
           {/* Header */}
           <div className="flex items-start justify-between gap-4 p-4">
             {/* Left Side Analyst Name */}
@@ -454,30 +458,30 @@ export default function AnalystDetailClient({
                     <EllipsisVertical />
                   </Button>
                 } />
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => router.push(`/analysts/${config.id}/edit`)}>
-                    <Pencil />
+                    <Pencil className="h-3.5 w-3.5" />
                     Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setConfigOpen(true)}>
-                    <Settings2 />
+                    <Settings2 className="h-3.5 w-3.5" />
                     Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setShowRunShowcase(true)}>
+                    <ShowcaseIcon className="h-3.5 w-3.5" />
+                    How Runs Work
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setOverviewOpen(true)}>
                     <ScanSearch className="h-3.5 w-3.5" />
-                    Agent Overview
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/agent-workflow")}>
-                    <Workflow className="h-3.5 w-3.5" />
-                    Full Workflow
+                    Run Workflow
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-negative focus:text-negative"
                     onClick={() => setDeleteOpen(true)}
                   >
-                    <Trash2 className="h-3.5 w-3.5 mr-2" />
+                    <Trash2 className="h-3.5 w-3.5" />
                     Delete analyst
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -490,7 +494,7 @@ export default function AnalystDetailClient({
           </div>
 
           {/* ── Tabs: Snapshot | Briefs | Findings ───── */}
-          <Tabs defaultValue={0}>
+          <Tabs defaultValue={0} className="flex-1">
             <div className="px-4">
               <TabsList>
                 <TabsTrigger value={0}>Snapshot</TabsTrigger>
@@ -537,26 +541,53 @@ export default function AnalystDetailClient({
           <div className="h-full rounded-xl border bg-background overflow-hidden flex flex-col">
             {/* Equity chart */}
             {equityData.length < 2 ? (
-              <div className="h-[200px] bg-muted/30 flex flex-col items-center justify-center shrink-0 relative overflow-hidden">
-                {/* Animated sine wave placeholder */}
-                <svg
-                  viewBox="0 0 200 60"
-                  className="absolute inset-x-4 top-1/2 -translate-y-1/2 h-16 opacity-[0.08]"
-                  preserveAspectRatio="none"
+              <div className="h-[200px] shrink-0 relative">
+                {/* Value overlay — matches filled chart style */}
+                <div className="absolute top-2 left-2 right-2 z-10 flex items-start justify-between">
+                  <div>
+                    <p className="text-lg font-semibold tabular-nums text-muted-foreground">$0</p>
+                    <p className="text-[10px] text-muted-foreground">Value</p>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {hasOpenPositions ? "Updates on close" : "Waiting for first trade"}
+                  </p>
+                </div>
+                <ChartContainer
+                  config={{ value: { label: "Value", color: "var(--muted-foreground)" } } satisfies ChartConfig}
+                  className="h-full w-full"
                 >
-                  <path
-                    d="M0,30 Q25,10 50,30 T100,30 T150,30 T200,30"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className="animate-pulse"
-                  />
-                </svg>
-                <p className="text-[10px] text-muted-foreground z-10">
-                  {hasOpenPositions
-                    ? "Positions open — chart updates on close"
-                    : "Waiting for first trade"}
-                </p>
+                  <AreaChart
+                    data={[
+                      { date: "W1", value: 20 },
+                      { date: "W2", value: 35 },
+                      { date: "W3", value: 28 },
+                      { date: "W4", value: 45 },
+                      { date: "W5", value: 38 },
+                      { date: "W6", value: 55 },
+                      { date: "W7", value: 48 },
+                      { date: "W8", value: 62 },
+                    ]}
+                    margin={{ top: 50, right: 0, bottom: 0, left: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="emptyChartGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--muted-foreground)" stopOpacity={0.08} />
+                        <stop offset="100%" stopColor="var(--muted-foreground)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" hide />
+                    <YAxis hide domain={[0, 80]} />
+                    <Area
+                      type="natural"
+                      dataKey="value"
+                      stroke="var(--muted-foreground)"
+                      strokeWidth={1}
+                      strokeOpacity={0.2}
+                      fill="url(#emptyChartGrad)"
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ChartContainer>
               </div>
             ) : (
               <div className="relative shrink-0">
@@ -661,7 +692,7 @@ export default function AnalystDetailClient({
                       domain={
                         chartMode === "pnl"
                           ? [(min: number) => -Math.max(Math.abs(min), 50), (max: number) => Math.max(Math.abs(max), 50)]
-                          : ["dataMin * 0.95", "dataMax * 1.05"]
+                          : ["dataMin * 0.95", "dataMax * 1.15"]
                       }
                     />
                     <ChartTooltip
@@ -717,7 +748,18 @@ export default function AnalystDetailClient({
 
               <TabsContent value={0} className="flex-1 overflow-y-auto">
                 {recentTrades.length === 0 ? (
-                  <EducationEmptyState stateKey="analyst-trades" size="inline" />
+                  <div className="space-y-0 px-3 py-2">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-3 py-2.5">
+                        <div className="h-6 w-6 rounded-full bg-muted" />
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-2.5 w-16 rounded bg-muted" />
+                          <div className="h-2 w-24 rounded bg-muted/60" />
+                        </div>
+                        <div className="h-2.5 w-12 rounded bg-muted" />
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   recentTrades.map((trade) => (
                     <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
@@ -831,41 +873,34 @@ function buildAllBriefs(analystName: string, morningBriefs: MorningBriefItem[], 
 // ── Feature showcase for empty analyst ────────────────────────────────────────
 
 function AnalystFeatureShowcase() {
+  const [showDialog, setShowDialog] = useState(false);
+
   return (
-    <div className="py-8 px-4 space-y-4 max-w-lg mx-auto">
-      <div className="text-center space-y-1">
-        <h2 className="text-lg font-semibold">Hit Run to get started</h2>
-        <p className="text-xs text-muted-foreground">
-          Your analyst is ready. Here&apos;s what happens when it runs.
-        </p>
+    <>
+      {showDialog && <RunShowcaseTrigger />}
+      <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-20 px-4">
+        <div
+          className="absolute inset-0"
+          style={{
+            maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+            maskComposite: "intersect",
+            WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+            WebkitMaskComposite: "source-in",
+          }}
+        >
+          <EmptyStateBg />
+        </div>
+        <div className="relative z-10 flex flex-col items-center gap-3">
+          <p className="text-base font-medium">Your analyst is ready</p>
+          <p className="text-sm text-muted-foreground text-center max-w-xs">
+            Hit Run above to start a research session. Your analyst will research stocks, generate theses, and place paper trades.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setShowDialog(true)}>
+            See how Runs work
+          </Button>
+        </div>
       </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <FeatureCard
-          icon={Bot}
-          title="Research Runs"
-          description="8-phase sessions with 14 tools — live quotes, earnings, SEC filings, options flow, web search."
-        >
-          <SkeletonBadges labels={["Finnhub", "FMP", "SEC", "Sonar", "Alpaca"]} />
-        </FeatureCard>
-
-        <FeatureCard
-          icon={FileText}
-          title="Daily Briefs"
-          description="Morning intelligence at 7:45 AM + post-run standups written by a separate reviewer agent."
-        >
-          <SkeletonLines count={3} />
-        </FeatureCard>
-
-        <FeatureCard
-          icon={ArrowLeftRight}
-          title="Paper Trades"
-          description="Automatic execution on Alpaca with live P&L, targets, stop-losses, and weekly accuracy scoring."
-        >
-          <SkeletonLines count={2} />
-        </FeatureCard>
-      </div>
-    </div>
+    </>
   );
 }
 

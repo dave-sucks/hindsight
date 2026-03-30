@@ -40,11 +40,9 @@ import {
   type MockTrade,
   type TradeStatus,
 } from '@/lib/mock-data/trades';
-import { Loader2, MoreHorizontal, ScanSearch } from 'lucide-react';
-import { HowItWorksSheet } from '@/components/domain/how-it-works-sheet';
+import { Loader2, MoreHorizontal } from 'lucide-react';
 import { ConceptTooltip } from '@/components/domain/education-card';
-import { FeatureCard, FeatureShowcase, SkeletonLines } from '@/components/domain/feature-showcase';
-import { Target, BarChart3, ShoppingCart } from 'lucide-react';
+import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -121,27 +119,28 @@ function EmptyState({ filtered }: { filtered: boolean }) {
     );
   }
   return (
-    <FeatureShowcase
-      headline="No paper trades yet"
-      subtitle="Trades are placed automatically when an analyst has high confidence in a thesis."
-      action={{ label: "View Analysts", href: "/analysts" }}
-    >
-      <FeatureCard
-        icon={Target}
-        title="Thesis-Driven"
-        description="Every trade starts with a written thesis — direction, confidence, entry/target/stop prices."
-      />
-      <FeatureCard
-        icon={ShoppingCart}
-        title="Alpaca Paper Trading"
-        description="Real market orders on a simulated account. Live P&L tracked from actual prices."
-      />
-      <FeatureCard
-        icon={BarChart3}
-        title="Performance Tracking"
-        description="Win rate, calibration scoring, and post-trade GPT-4o evaluation on every close."
-      />
-    </FeatureShowcase>
+    <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-20 px-4">
+      <div
+        className="absolute inset-0"
+        style={{
+          maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+          maskComposite: "intersect",
+          WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)",
+          WebkitMaskComposite: "source-in",
+        }}
+      >
+        <EmptyStateBg />
+      </div>
+      <div className="relative z-10 flex flex-col items-center gap-3">
+        <p className="text-base font-medium">No paper trades yet</p>
+        <p className="text-sm text-muted-foreground text-center max-w-xs">
+          Trades are placed automatically when an analyst has high confidence in a thesis during a research session.
+        </p>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/analysts">Create an Analyst</Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -224,12 +223,7 @@ export default function TradesPage({
     <div className="space-y-0">
       {/* Header + filter tabs */}
       <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold">Trades</h1>
-          <HowItWorksSheet flow="agent">
-            <ScanSearch className="h-4 w-4" />
-          </HowItWorksSheet>
-        </div>
+        <h1 className="text-2xl font-semibold">Trades</h1>
         <div className="flex items-center gap-0.5 bg-muted/50 rounded-md border px-1 py-0.5">
           {tabs.map((t) => (
             <button

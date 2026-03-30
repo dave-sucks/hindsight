@@ -147,11 +147,6 @@ export function OnboardingDialog({
     if (forceOpen !== undefined) {
       setOpen(forceOpen);
       if (forceOpen) setStep(0);
-      return;
-    }
-    // Auto-show on first visit
-    if (!hasCompletedOnboarding()) {
-      setOpen(true);
     }
   }, [forceOpen]);
 

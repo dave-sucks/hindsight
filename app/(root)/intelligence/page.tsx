@@ -39,6 +39,7 @@ import { MonitorList } from "@/components/intelligence/config-panel";
 import { BriefCards } from "@/components/intelligence/brief-cards";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { ConceptTooltip } from "@/components/domain/education-card";
+import { IntelligenceShowcaseTrigger, IntelligenceShowcaseButton } from "@/components/domain/run-showcase-trigger";
 import type {
   Signal,
   MorningBrief,
@@ -154,6 +155,7 @@ export default function IntelligencePage() {
 
   return (
     <TooltipProvider>
+      <IntelligenceShowcaseTrigger />
       <div className="p-6 space-y-4">
         {/* Top bar: empty left | tabs center | refresh right */}
         <Tabs defaultValue="findings">
@@ -177,6 +179,7 @@ export default function IntelligencePage() {
               <TabsTrigger value="briefs">Briefs</TabsTrigger>
             </TabsList>
             <div className="flex justify-end gap-1.5">
+              <IntelligenceShowcaseButton />
               <HowItWorksSheet flow="intelligence">
                 <ScanSearch className="h-4 w-4" />
               </HowItWorksSheet>
