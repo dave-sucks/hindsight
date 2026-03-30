@@ -79,7 +79,7 @@ function UserBubble({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex justify-end py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-500">
       <div className="rounded-2xl rounded-br-sm bg-foreground/10 px-3 py-2 max-w-[85%]">
-        <p className="text-sm text-foreground/90 leading-relaxed">{children}</p>
+        <p className="text-sm text-white/90 leading-relaxed">{children}</p>
       </div>
     </div>
   );
@@ -87,7 +87,7 @@ function UserBubble({ children }: { children: React.ReactNode }) {
 
 function TextBlock({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-sm text-foreground/80 leading-relaxed py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-500">
+    <p className="text-sm text-white/80 leading-relaxed py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-500">
       {children}
     </p>
   );
@@ -97,8 +97,8 @@ function ToolBlock({ icon: Icon, label, sub, loading }: { icon: LucideIcon; labe
   return (
     <div className="py-1.5 animate-in fade-in-0 duration-300">
       <div className="flex items-center gap-1.5">
-        <Icon className="size-3.5 shrink-0 text-foreground/50" />
-        <span className="text-sm text-foreground/70">{label}</span>
+        <Icon className="size-3.5 shrink-0 text-white/50" />
+        <span className="text-sm text-white/70">{label}</span>
         {loading && (
           <div className="h-1.5 w-12 rounded-full bg-muted relative overflow-hidden">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-foreground/10 to-transparent" />
@@ -106,7 +106,7 @@ function ToolBlock({ icon: Icon, label, sub, loading }: { icon: LucideIcon; labe
         )}
       </div>
       {!loading && sub && (
-        <p className="ml-5 mt-0.5 text-xs text-foreground/50 leading-relaxed">{sub}</p>
+        <p className="ml-5 mt-0.5 text-xs text-white/50 leading-relaxed">{sub}</p>
       )}
     </div>
   );
@@ -143,7 +143,7 @@ export function BuilderPreview({ className }: { className?: string } = {}) {
   }
 
   return (
-    <div className={cn("w-full h-[300px] rounded-2xl overflow-hidden relative", className)}>
+    <div className={cn("w-full h-[300px] rounded-2xl overflow-hidden relative text-white", className)}>
       <div className="absolute inset-0">
         <Suspense fallback={<div className="w-full h-full bg-muted/40" />}>
           <Silk speed={3} scale={1} color="#6B7B5B" noiseIntensity={1.5} rotation={0} />

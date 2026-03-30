@@ -20,7 +20,7 @@ function T({ s, c }: { s: string; c: number }) {
   const pos = c >= 0;
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="font-brand font-bold text-foreground">${s}</span>
+      <span className="font-brand font-bold text-white">${s}</span>
       <span className={cn("rounded px-1 py-0.5 text-[10px]", pos ? "bg-positive/10 text-positive" : "bg-negative/10 text-negative")}>
         {pos ? "↗" : "↘"} {pos ? "+" : ""}{c.toFixed(2)}%
       </span>
@@ -49,7 +49,7 @@ const FAV = {
 
 function DocLink({ children }: { children: React.ReactNode }) {
   return (
-    <span className="font-medium underline decoration-foreground/20 underline-offset-2">{children}</span>
+    <span className="font-medium underline decoration-white/20 underline-offset-2">{children}</span>
   );
 }
 
@@ -130,7 +130,7 @@ const SCRIPT: Ev[] = [
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
           <span className="relative inline-flex rounded-full h-3 w-3 bg-positive" />
         </span>
-        <span className="text-xs text-foreground">BUY 58 shares MU @ $85.46 — $4,957 deployed</span>
+        <span className="text-xs text-white">BUY 58 shares MU @ $85.46 — $4,957 deployed</span>
         <Fav src={FAV.alpaca} />
       </span>
     ),
@@ -148,7 +148,7 @@ const SCRIPT: Ev[] = [
 
 function TextBlock({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-sm text-foreground/80 leading-relaxed py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-500">
+    <p className="text-sm text-white/80 leading-relaxed py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-500">
       {children}
     </p>
   );
@@ -168,8 +168,8 @@ function ToolBlock({
   return (
     <div className="py-1.5 animate-in fade-in-0 duration-300">
       <div className="flex items-center gap-1.5">
-        <Icon className="size-3.5 shrink-0 text-foreground/50" />
-        <span className="text-sm text-foreground/70">{label}</span>
+        <Icon className="size-3.5 shrink-0 text-white/50" />
+        <span className="text-sm text-white/70">{label}</span>
         {loading && (
           <div className="h-1.5 w-12 rounded-full bg-muted relative overflow-hidden">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-foreground/10 to-transparent" />
@@ -177,7 +177,7 @@ function ToolBlock({
         )}
       </div>
       {!loading && sub && (
-        <p className="ml-5 mt-0.5 text-xs text-foreground/50 leading-relaxed">{sub}</p>
+        <p className="ml-5 mt-0.5 text-xs text-white/50 leading-relaxed">{sub}</p>
       )}
     </div>
   );
@@ -216,7 +216,7 @@ export function RunPreview({ className }: { className?: string } = {}) {
   }
 
   return (
-    <div className={cn("w-full h-[300px] rounded-2xl overflow-hidden relative", className)}>
+    <div className={cn("w-full h-[300px] rounded-2xl overflow-hidden relative text-white", className)}>
       <div className="absolute inset-0">
         <Suspense fallback={<div className="w-full h-full bg-muted/40" />}>
           <Silk speed={3} scale={1} color="#7B7481" noiseIntensity={1.5} rotation={0} />

@@ -19,7 +19,7 @@ import { ThesisRow } from '@/components/ui/thesis-row';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
-import DotGrid from '@/components/DotGrid';
+import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { Button } from '@/components/ui/button';
 import {
   mockOpenTrades,
@@ -154,19 +154,7 @@ function RecentPicksSection({
               WebkitMaskComposite: "source-in",
             }}
           >
-            <DotGrid
-              dotSize={3}
-              gap={10}
-              baseColor="#3a3a3a"
-              activeColor="#8a8a6a"
-              proximity={90}
-              speedTrigger={280}
-              shockRadius={120}
-              shockStrength={3}
-              maxSpeed={5000}
-              resistance={1800}
-              returnDuration={1.6}
-            />
+            <EmptyStateBg />
           </div>
           <div className="relative z-10 flex flex-col items-center gap-3">
             <p className="text-sm font-medium">Picks appear after your first run</p>

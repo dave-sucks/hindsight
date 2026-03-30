@@ -61,7 +61,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { EducationEmptyState } from "@/components/domain/education-card";
-import DotGrid from "@/components/DotGrid";
+import { EmptyStateBg } from "@/components/domain/empty-state-bg";
 import { RunShowcaseTrigger } from "@/components/domain/run-showcase-trigger";
 import type {
   AnalystDetail,
@@ -539,18 +539,27 @@ export default function AnalystDetailClient({
             {/* Equity chart */}
             {equityData.length < 2 ? (
               <div className="h-[200px] bg-muted/30 flex flex-col items-center justify-center shrink-0 relative overflow-hidden">
-                {/* Animated sine wave placeholder */}
+                {/* Static placeholder area chart */}
                 <svg
-                  viewBox="0 0 200 60"
-                  className="absolute inset-x-4 top-1/2 -translate-y-1/2 h-16 opacity-[0.08]"
+                  viewBox="0 0 300 100"
+                  className="absolute inset-0 w-full h-full opacity-[0.06]"
                   preserveAspectRatio="none"
                 >
+                  <defs>
+                    <linearGradient id="emptyChartGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="currentColor" stopOpacity="0.4" />
+                      <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
                   <path
-                    d="M0,30 Q25,10 50,30 T100,30 T150,30 T200,30"
+                    d="M0,70 L30,65 L60,60 L90,55 L120,50 L150,45 L180,42 L210,38 L240,35 L270,30 L300,25 L300,100 L0,100 Z"
+                    fill="url(#emptyChartGrad)"
+                  />
+                  <path
+                    d="M0,70 L30,65 L60,60 L90,55 L120,50 L150,45 L180,42 L210,38 L240,35 L270,30 L300,25"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="2"
-                    className="animate-pulse"
+                    strokeWidth="1.5"
                   />
                 </svg>
                 <p className="text-[10px] text-muted-foreground z-10">
@@ -718,7 +727,18 @@ export default function AnalystDetailClient({
 
               <TabsContent value={0} className="flex-1 overflow-y-auto">
                 {recentTrades.length === 0 ? (
-                  <EducationEmptyState stateKey="analyst-trades" size="inline" />
+                  <div className="space-y-0 px-3 py-2">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-3 py-2.5">
+                        <div className="h-6 w-6 rounded-full bg-muted" />
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-2.5 w-16 rounded bg-muted" />
+                          <div className="h-2 w-24 rounded bg-muted/60" />
+                        </div>
+                        <div className="h-2.5 w-12 rounded bg-muted" />
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   recentTrades.map((trade) => (
                     <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
@@ -847,14 +867,7 @@ function AnalystFeatureShowcase() {
             WebkitMaskComposite: "source-in",
           }}
         >
-          <DotGrid
-            dotSize={3}
-            gap={10}
-            baseColor="#3a3a3a"
-            activeColor="#8a8a6a"
-            proximity={90}
-            shockRadius={120}
-          />
+          <EmptyStateBg />
         </div>
         <div className="relative z-10 flex flex-col items-center gap-3">
           <p className="text-sm font-medium">Your analyst is ready</p>

@@ -42,7 +42,7 @@ import {
 } from '@/lib/mock-data/trades';
 import { Loader2, MoreHorizontal } from 'lucide-react';
 import { ConceptTooltip } from '@/components/domain/education-card';
-import DotGrid from '@/components/DotGrid';
+import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -129,14 +129,7 @@ function EmptyState({ filtered }: { filtered: boolean }) {
           WebkitMaskComposite: "source-in",
         }}
       >
-        <DotGrid
-          dotSize={3}
-          gap={10}
-          baseColor="#3a3a3a"
-          activeColor="#8a8a6a"
-          proximity={90}
-          shockRadius={120}
-        />
+        <EmptyStateBg />
       </div>
       <div className="relative z-10 flex flex-col items-center gap-3">
         <p className="text-sm font-medium">No paper trades yet</p>

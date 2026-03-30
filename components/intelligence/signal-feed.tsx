@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
-import DotGrid from "@/components/DotGrid";
+import { EmptyStateBg } from "@/components/domain/empty-state-bg";
 import { Search } from "lucide-react";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
@@ -118,14 +118,7 @@ export function SignalFeed({ signals }: SignalFeedProps) {
                     WebkitMaskComposite: "source-in",
                   }}
                 >
-                  <DotGrid
-                    dotSize={3}
-                    gap={10}
-                    baseColor="#3a3a3a"
-                    activeColor="#8a8a6a"
-                    proximity={90}
-                    shockRadius={120}
-                  />
+                  <EmptyStateBg />
                 </div>
                 <div className="relative z-10 flex flex-col items-center gap-2">
                   <p className="text-sm font-medium">No findings yet</p>

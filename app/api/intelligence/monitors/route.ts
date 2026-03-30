@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
 
-// GET /api/intelligence/monitors — list all monitors with today's finding counts
+// GET /api/intelligence/monitors — list monitors scoped to the current user
 export async function GET(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const userId = user.id
+
   const type = req.nextUrl.searchParams.get("type") // SEARCH | DOMAIN | API
   const scope = req.nextUrl.searchParams.get("scope") // FIRM | ANALYST
   const analystId = req.nextUrl.searchParams.get("analystId")
@@ -11,12 +17,24 @@ export async function GET(req: NextRequest) {
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
 
+  // Get this user's analyst IDs for filtering
+  const userAnalystIds = await prisma.agentConfig.findMany({
+    where: { userId },
+    select: { id: true },
+  })
+  const analystIds = userAnalystIds.map((a) => a.id)
+
   const monitors = await prisma.monitor.findMany({
     where: {
       // Only show valid monitor types (excludes legacy PORTFOLIO/WATCHLIST)
       type: type ?? { in: ["SEARCH", "DOMAIN", "API"] },
       ...(scope ? { scope } : {}),
       ...(analystId ? { analystId } : {}),
+      // Scope to user: show monitors linked to their analysts, or FIRM monitors with no analyst
+      OR: [
+        { analystId: { in: analystIds } },
+        { analystId: null, scope: "FIRM" },
+      ],
       // Exclude legacy per-ticker monitors (ticker-search-*) — replaced by permanent portfolio/watchlist monitors
       NOT: { id: { startsWith: "ticker-search-" } },
     },
@@ -42,14 +60,14 @@ export async function GET(req: NextRequest) {
         const isWatchlist = trackType === "watchlist" || m.name.toLowerCase().includes("watchlist")
         if (isWatchlist) {
           const items = await prisma.analystWatchlistItem.findMany({
-            where: { status: "ACTIVE" },
+            where: { status: "ACTIVE", analystId: { in: analystIds } },
             select: { symbol: true, reason: true, priority: true, analystId: true },
           })
           return { ...m, monitoredTickers: items.map((i) => ({ ticker: i.symbol, reason: i.reason, priority: i.priority, analystId: i.analystId })) }
         }
         // Default: track open positions
         const positions = await prisma.position.findMany({
-          where: { status: "OPEN" },
+          where: { status: "OPEN", userId },
           select: { symbol: true, direction: true, analystId: true },
           distinct: ["symbol"],
         })

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { BriefCard } from "@/components/intelligence/brief-card";
-import DotGrid from "@/components/DotGrid";
+import { EmptyStateBg } from "@/components/domain/empty-state-bg";
 import { BriefDetailDialog } from "@/components/intelligence/brief-detail";
 import { normalizeIntelBrief } from "@/components/intelligence/brief-types";
 import type { UnifiedBrief } from "@/components/intelligence/brief-types";
@@ -30,14 +30,7 @@ export function BriefCards({ briefs }: BriefCardsProps) {
             WebkitMaskComposite: "source-in",
           }}
         >
-          <DotGrid
-            dotSize={3}
-            gap={10}
-            baseColor="#3a3a3a"
-            activeColor="#8a8a6a"
-            proximity={90}
-            shockRadius={120}
-          />
+          <EmptyStateBg />
         </div>
         <div className="relative z-10 flex flex-col items-center gap-2">
           <p className="text-sm font-medium">No briefs yet</p>
