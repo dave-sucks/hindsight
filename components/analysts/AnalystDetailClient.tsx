@@ -49,7 +49,6 @@ import {
   Loader2,
   EllipsisVertical,
   ScanSearch,
-  Workflow,
 } from "lucide-react";
 import {
   Dialog,
@@ -63,6 +62,8 @@ import { toast } from "sonner";
 import { EducationEmptyState } from "@/components/domain/education-card";
 import { EmptyStateBg } from "@/components/domain/empty-state-bg";
 import { RunShowcaseTrigger } from "@/components/domain/run-showcase-trigger";
+import { RunShowcaseDialog } from "@/components/domain/showcase-dialog";
+import { ShowcaseIcon } from "@/components/ui/showcase-icon";
 import type {
   AnalystDetail,
   PositionWithThesis,
@@ -245,6 +246,7 @@ export default function AnalystDetailClient({
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
   const [, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [showRunShowcase, setShowRunShowcase] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   async function handleDelete() {
@@ -408,9 +410,10 @@ export default function AnalystDetailClient({
   return (
     <>
       <RunShowcaseTrigger />
+      <RunShowcaseDialog open={showRunShowcase} onOpenChange={setShowRunShowcase} />
       <div className="lg:grid lg:grid-cols-3 h-[calc(100dvh-3rem)] overflow-y-auto lg:overflow-hidden">
         {/* ── Left: Analyst briefing ──────────────────────────────────── */}
-        <div className="lg:col-span-2 lg:h-full lg:overflow-y-auto">
+        <div className="lg:col-span-2 lg:h-full lg:overflow-y-auto flex flex-col">
           {/* Header */}
           <div className="flex items-start justify-between gap-4 p-4">
             {/* Left Side Analyst Name */}
@@ -455,30 +458,30 @@ export default function AnalystDetailClient({
                     <EllipsisVertical />
                   </Button>
                 } />
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => router.push(`/analysts/${config.id}/edit`)}>
-                    <Pencil />
+                    <Pencil className="h-3.5 w-3.5" />
                     Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setConfigOpen(true)}>
-                    <Settings2 />
+                    <Settings2 className="h-3.5 w-3.5" />
                     Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setShowRunShowcase(true)}>
+                    <ShowcaseIcon className="h-3.5 w-3.5" />
+                    How Runs Work
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setOverviewOpen(true)}>
                     <ScanSearch className="h-3.5 w-3.5" />
-                    Agent Overview
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/agent-workflow")}>
-                    <Workflow className="h-3.5 w-3.5" />
-                    Full Workflow
+                    Run Workflow
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-negative focus:text-negative"
                     onClick={() => setDeleteOpen(true)}
                   >
-                    <Trash2 className="h-3.5 w-3.5 mr-2" />
+                    <Trash2 className="h-3.5 w-3.5" />
                     Delete analyst
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -491,7 +494,7 @@ export default function AnalystDetailClient({
           </div>
 
           {/* ── Tabs: Snapshot | Briefs | Findings ───── */}
-          <Tabs defaultValue={0}>
+          <Tabs defaultValue={0} className="flex-1">
             <div className="px-4">
               <TabsList>
                 <TabsTrigger value={0}>Snapshot</TabsTrigger>
@@ -538,35 +541,53 @@ export default function AnalystDetailClient({
           <div className="h-full rounded-xl border bg-background overflow-hidden flex flex-col">
             {/* Equity chart */}
             {equityData.length < 2 ? (
-              <div className="h-[200px] bg-muted/30 flex flex-col items-center justify-center shrink-0 relative overflow-hidden">
-                {/* Static placeholder area chart */}
-                <svg
-                  viewBox="0 0 300 100"
-                  className="absolute inset-0 w-full h-full opacity-[0.06]"
-                  preserveAspectRatio="none"
+              <div className="h-[200px] shrink-0 relative">
+                {/* Value overlay — matches filled chart style */}
+                <div className="absolute top-2 left-2 right-2 z-10 flex items-start justify-between">
+                  <div>
+                    <p className="text-lg font-semibold tabular-nums text-muted-foreground">$0</p>
+                    <p className="text-[10px] text-muted-foreground">Value</p>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {hasOpenPositions ? "Updates on close" : "Waiting for first trade"}
+                  </p>
+                </div>
+                <ChartContainer
+                  config={{ value: { label: "Value", color: "var(--muted-foreground)" } } satisfies ChartConfig}
+                  className="h-full w-full"
                 >
-                  <defs>
-                    <linearGradient id="emptyChartGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="currentColor" stopOpacity="0.4" />
-                      <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M0,70 L30,65 L60,60 L90,55 L120,50 L150,45 L180,42 L210,38 L240,35 L270,30 L300,25 L300,100 L0,100 Z"
-                    fill="url(#emptyChartGrad)"
-                  />
-                  <path
-                    d="M0,70 L30,65 L60,60 L90,55 L120,50 L150,45 L180,42 L210,38 L240,35 L270,30 L300,25"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  />
-                </svg>
-                <p className="text-[10px] text-muted-foreground z-10">
-                  {hasOpenPositions
-                    ? "Positions open — chart updates on close"
-                    : "Waiting for first trade"}
-                </p>
+                  <AreaChart
+                    data={[
+                      { date: "W1", value: 20 },
+                      { date: "W2", value: 35 },
+                      { date: "W3", value: 28 },
+                      { date: "W4", value: 45 },
+                      { date: "W5", value: 38 },
+                      { date: "W6", value: 55 },
+                      { date: "W7", value: 48 },
+                      { date: "W8", value: 62 },
+                    ]}
+                    margin={{ top: 50, right: 0, bottom: 0, left: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="emptyChartGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--muted-foreground)" stopOpacity={0.08} />
+                        <stop offset="100%" stopColor="var(--muted-foreground)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" hide />
+                    <YAxis hide domain={[0, 80]} />
+                    <Area
+                      type="natural"
+                      dataKey="value"
+                      stroke="var(--muted-foreground)"
+                      strokeWidth={1}
+                      strokeOpacity={0.2}
+                      fill="url(#emptyChartGrad)"
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ChartContainer>
               </div>
             ) : (
               <div className="relative shrink-0">
@@ -671,7 +692,7 @@ export default function AnalystDetailClient({
                       domain={
                         chartMode === "pnl"
                           ? [(min: number) => -Math.max(Math.abs(min), 50), (max: number) => Math.max(Math.abs(max), 50)]
-                          : ["dataMin * 0.95", "dataMax * 1.05"]
+                          : ["dataMin * 0.95", "dataMax * 1.15"]
                       }
                     />
                     <ChartTooltip
