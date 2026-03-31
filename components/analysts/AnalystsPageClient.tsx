@@ -255,7 +255,7 @@ function TemplateCard({ title, description, prompt }: typeof TEMPLATES[number]) 
       }}
       className="text-left"
     >
-      <Card className="p-4 h-full hover:bg-muted/50 transition-colors cursor-pointer shadow-none">
+      <Card className="p-4 h-full hover:bg-muted/50 transition-colors cursor-pointer shadow-none ring-0 border">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
           {description}
@@ -285,9 +285,9 @@ function AnalystsEmptyState() {
           {/* Mobile: carousel */}
           <div className="sm:hidden">
             <Carousel opts={{ align: "start" }}>
-              <CarouselContent>
+              <CarouselContent className="-ml-3">
                 {TEMPLATES.map((t) => (
-                  <CarouselItem key={t.title} className="basis-[80%]">
+                  <CarouselItem key={t.title} className="pl-3 basis-[80%]">
                     <TemplateCard {...t} />
                   </CarouselItem>
                 ))}
