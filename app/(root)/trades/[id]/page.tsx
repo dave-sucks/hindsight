@@ -265,17 +265,19 @@ export default async function TradeDetailPage({
 
               {/* Price block */}
               <div className="flex items-center gap-2">
-                <span className="text-3xl font-semibold tabular-nums">
+                <span className="text-xl font-semibold tabular-nums">
                   {fmtCur(currentPrice)}
                 </span>
                 {stockQuote && (
                   <span className={cn(
-                    'text-sm tabular-nums flex items-center gap-1',
+                    'text-xl tabular-nums flex items-center gap-2',
                     isQuoteUp ? 'text-positive' : 'text-negative',
                   )}>
                     {isQuoteUp ? '+' : ''}{fmtCur(stockQuote.d)}
-                    {isQuoteUp ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-                    {changePct != null ? `${Math.abs(changePct).toFixed(2)}%` : '—'}
+                    <div className="flex items-center">
+                      {isQuoteUp ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-4 w-4" />}
+                      {changePct != null ? `${Math.abs(changePct).toFixed(2)}%` : '—'}
+                    </div>
                   </span>
                 )}
               </div>
@@ -283,33 +285,41 @@ export default async function TradeDetailPage({
               {/* Chart with holding summary row inside */}
               <StockPriceChart candles={candles} referenceLines={chartReferenceLines}>
                 {/* Holding summary — renders inside the chart card above the graph */}
-                <div className="px-4 py-2 border-b flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    {isOpen && (
-                      <span className="relative flex h-2.5 w-2.5 shrink-0">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
+                <TooltipProvider>
+                  <div className="px-4 py-2.5 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-sm">
+                    {/* Left: status dot + summary */}
+                    <div className="flex items-center gap-2">
+                      <Tooltip>
+                        <TooltipTrigger render={
+                          isOpen ? (
+                            <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
+                            </span>
+                          ) : (
+                            <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/40 cursor-default" />
+                          )
+                        } />
+                        <TooltipContent side="bottom" className="text-xs tabular-nums">
+                          {position.openedAt ? new Date(position.openedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
+                        </TooltipContent>
+                      </Tooltip>
+                      <span>
+                        {isOpen ? 'Holding' : 'Sold'}{' '}
+                        {trade.shares} shares at{' '}
+                        <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
+                        {' '}
+                        <span className="text-muted-foreground">({fmtCur(trade.entryPrice * trade.shares)} value)</span>
                       </span>
-                    )}
-                    <span>
-                      <span>{isOpen ? 'Holding' : 'Sold'}</span>{' '}
-                      {trade.shares} shares at{' '}
-                      <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
-                      {' '}
-                      <span className="">
-                        ({fmtCur(trade.entryPrice * trade.shares)} value)
-                      </span>
-                    </span>
-                    <span className={cn('tabular-nums flex items-center gap-1', isPos ? 'text-positive' : 'text-negative')}>
+                    </div>
+                    {/* Right: P&L */}
+                    <div className={cn('tabular-nums flex items-center gap-1 sm:ml-auto', isPos ? 'text-positive' : 'text-negative')}>
                       {isPos ? '+' : ''}{fmtCur(pnl)}
                       {isPos ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
                       {Math.abs(pnlPct).toFixed(2)}%
-                    </span>
+                    </div>
                   </div>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {position.openedAt ? new Date(position.openedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
-                  </span>
-                </div>
+                </TooltipProvider>
               </StockPriceChart>
 
               {/* Stats grid */}
