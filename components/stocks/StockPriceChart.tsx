@@ -81,7 +81,7 @@ export function StockPriceChart({ candles, referenceLines, children }: Props) {
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden border"
+      className="rounded-lg overflow-hidden border"
       style={{
         backgroundImage:
           'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
@@ -90,7 +90,8 @@ export function StockPriceChart({ candles, referenceLines, children }: Props) {
       }}
     >
       {children}
-      {/* Range pills — absolute top-left */}
+      <div className="relative">
+      {/* Range pills — absolute top-left of chart area */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
         {RANGES.map((r) => (
           <button
@@ -168,6 +169,7 @@ export function StockPriceChart({ candles, referenceLines, children }: Props) {
           />
         </AreaChart>
       </ResponsiveContainer>
+      </div>
     </div>
   );
 }
