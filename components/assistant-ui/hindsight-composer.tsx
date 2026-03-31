@@ -254,7 +254,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
               <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Add" />}>
                 <Plus className="size-4" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top">
+              <DropdownMenuContent align="start" side="top" className="w-52">
                 {extraMenuItems.length > 0 && (
                   <DropdownMenuGroup>
                     {extraMenuItems.map((item) => (
@@ -271,11 +271,11 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                     <DropdownMenuLabel>Sources</DropdownMenuLabel>
                     {integrations.map((intg) => (
                       <DropdownMenuItem key={intg.label} disabled>
-                        <intg.icon className="size-4 opacity-60" />
-                        <span className="flex-1 text-xs">{intg.label}</span>
+                        <intg.icon className="size-4 opacity-60 shrink-0" />
+                        <span className="flex-1 truncate text-xs">{intg.label}</span>
                         <span
                           className={cn(
-                            "h-1.5 w-1.5 rounded-full",
+                            "h-1.5 w-1.5 shrink-0 rounded-full",
                             intg.enabled ? "bg-emerald-500" : "bg-muted-foreground/30",
                           )}
                         />
@@ -294,13 +294,12 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                 <Slash className="size-3" />
                 Commands
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top">
+              <DropdownMenuContent align="start" side="top" className="w-48">
                 <DropdownMenuGroup>
                   {commands.map((cmd) => (
                     <DropdownMenuItem key={cmd.name} onClick={() => selectCommand(cmd)}>
                       <cmd.icon className="opacity-60" />
-                      <span className="font-medium">{cmd.label}</span>
-                      <span className="text-xs text-muted-foreground">{cmd.description}</span>
+                      {cmd.label}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuGroup>
@@ -315,7 +314,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                 <IconChartLine className="size-3" />
                 {selectedTicker ? selectedTicker.symbol : "Ticker"}
               </PopoverTrigger>
-              <PopoverContent side="top" align="start" className="p-0">
+              <PopoverContent side="top" align="start">
                 <Command shouldFilter={false}>
                   <CommandInput
                     placeholder="Search stocks…"
