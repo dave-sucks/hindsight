@@ -283,11 +283,11 @@ function AnalystsEmptyState() {
             ))}
           </div>
           {/* Mobile: carousel */}
-          <div className="sm:hidden py-1">
+          <div className="sm:hidden">
             <Carousel opts={{ align: "start" }}>
-              <CarouselContent className="-ml-3">
+              <CarouselContent>
                 {TEMPLATES.map((t) => (
-                  <CarouselItem key={t.title} className="pl-3 basis-[80%]">
+                  <CarouselItem key={t.title} className="basis-[80%]">
                     <TemplateCard {...t} />
                   </CarouselItem>
                 ))}
