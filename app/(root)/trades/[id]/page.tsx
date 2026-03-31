@@ -263,18 +263,36 @@ export default async function TradeDetailPage({
                 </div>
               )}
 
-              {/* Chart card with holding summary */}
-              <Card className="p-0 gap-0 overflow-hidden">
-                {/* Holding summary row */}
-                <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+              {/* Price block */}
+              <div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-semibold tabular-nums">
+                    {fmtCur(currentPrice)}
+                  </span>
+                  {stockQuote && (
+                    <span className={cn(
+                      'text-sm font-medium tabular-nums flex items-center gap-0.5',
+                      isQuoteUp ? 'text-positive' : 'text-negative',
+                    )}>
+                      {isQuoteUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                      {fmtCur(stockQuote.d)} ({changePct != null ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : '—'})
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Chart with holding summary row inside */}
+              <StockPriceChart candles={candles} referenceLines={chartReferenceLines}>
+                {/* Holding summary — renders inside the chart card above the graph */}
+                <div className="px-4 py-2.5 border-b flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm">
                     {isOpen && (
                       <span className="relative flex h-2.5 w-2.5 shrink-0">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
                       </span>
                     )}
-                    <span className="text-sm">
+                    <span>
                       <span className="font-medium">{isOpen ? 'Holding' : 'Sold'}</span>{' '}
                       {trade.shares} shares at{' '}
                       <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
@@ -283,7 +301,7 @@ export default async function TradeDetailPage({
                         ({fmtCur(trade.entryPrice * trade.shares)} value)
                       </span>
                     </span>
-                    <span className="text-sm tabular-nums">
+                    <span className="tabular-nums">
                       /
                       <span className={cn('ml-1 font-medium', isPos ? 'text-positive' : 'text-negative')}>
                         {isPos ? '+' : ''}{fmtCur(pnl)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
@@ -294,35 +312,7 @@ export default async function TradeDetailPage({
                     {position.openedAt ? new Date(position.openedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
                   </span>
                 </div>
-
-                {/* Price + chart */}
-                <div className="px-4 pt-3">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-semibold tabular-nums">
-                      {fmtCur(currentPrice)}
-                    </span>
-                    {stockQuote && (
-                      <span className={cn(
-                        'text-sm font-medium tabular-nums flex items-center gap-0.5',
-                        isQuoteUp ? 'text-positive' : 'text-negative',
-                      )}>
-                        {isQuoteUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                        {fmtCur(stockQuote.d)} ({changePct != null ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : '—'})
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                    <span className="tabular-nums">Entry {fmtCur(trade.entryPrice)}</span>
-                    <span>→</span>
-                    <span className={cn('tabular-nums font-medium', isPos ? 'text-positive' : 'text-negative')}>
-                      {isPos ? '+' : ''}{fmtCur(pnl)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
-                    </span>
-                    <span className="text-muted-foreground/60">·</span>
-                    <span>{trade.shares} shares</span>
-                  </div>
-                </div>
-                <StockPriceChart candles={candles} referenceLines={chartReferenceLines} />
-              </Card>
+              </StockPriceChart>
 
               {/* Stats grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-2 py-3 border-y">

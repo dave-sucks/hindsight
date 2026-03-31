@@ -25,6 +25,7 @@ type PriceReferenceLine = {
 type Props = {
   candles: StockCandle[];
   referenceLines?: PriceReferenceLine[];
+  children?: React.ReactNode;
 };
 
 // ─── Range config ───────────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ function formatDateLabel(dateStr: string): string {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function StockPriceChart({ candles, referenceLines }: Props) {
+export function StockPriceChart({ candles, referenceLines, children }: Props) {
   const [range, setRange] = useState<Range>('3M');
 
   const data = useMemo(() => {
@@ -88,6 +89,7 @@ export function StockPriceChart({ candles, referenceLines }: Props) {
         backgroundColor: 'hsl(var(--muted)/0.3)',
       }}
     >
+      {children}
       {/* Range pills — absolute top-left */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
         {RANGES.map((r) => (
