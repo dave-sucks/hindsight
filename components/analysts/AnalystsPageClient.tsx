@@ -283,7 +283,7 @@ function AnalystsEmptyState() {
             ))}
           </div>
           {/* Mobile: carousel */}
-          <div className="sm:hidden">
+          <div className="sm:hidden py-1">
             <Carousel opts={{ align: "start" }}>
               <CarouselContent className="-ml-3">
                 {TEMPLATES.map((t) => (
