@@ -198,7 +198,7 @@ export function ThesisCard({
 
           <div>
             {/* 1. Badge group: verdict | confidence */}
-            <div className="px-3 pt-1 pb-2 border-b">
+            <div className="px-3 pt-1 pb-2">
               <Tooltip>
                 <TooltipTrigger render={
                   <ButtonGroup className="cursor-default">
@@ -218,7 +218,7 @@ export function ThesisCard({
             </div>
 
             {/* 2. Stock identity row */}
-            <div className="px-3 py-2.5 border-b flex items-center gap-3">
+            <div className="px-3 py-2.5 flex items-center gap-3">
               <StockLogo ticker={ticker} size="lg" />
               <div className="flex-1 min-w-0">
                 <p className="text-lg font-semibold">{displayName}</p>
@@ -230,7 +230,7 @@ export function ThesisCard({
 
             {/* 3. Summary */}
             {(pass_reason || reasoning_summary) && (
-              <div className="p-3 border-b">
+              <div className="p-3">
                 <p className="text-sm leading-relaxed">{pass_reason || reasoning_summary}</p>
               </div>
             )}
@@ -366,7 +366,7 @@ export function ThesisCard({
 
         <div>
           {/* 1. Badge group: verdict | confidence */}
-          <div className="px-3 pt-1 pb-2 border-b">
+          <div className="px-3 pt-1 pb-2">
             <Tooltip>
               <TooltipTrigger render={
                 <ButtonGroup className="cursor-default">
@@ -387,7 +387,7 @@ export function ThesisCard({
           </div>
 
           {/* 2. Stock identity row */}
-          <div className="px-3 py-2.5 border-b flex items-center gap-3">
+          <div className="px-3 py-2.5 flex items-center gap-3">
             <StockLogo ticker={ticker} size="lg" />
             <div className="flex-1 min-w-0">
               <p className="text-lg font-semibold">{displayName}</p>
@@ -399,7 +399,7 @@ export function ThesisCard({
 
           {/* 3. Summary */}
           {reasoning_summary && (
-            <div className="p-3 border-b">
+            <div className="p-3">
               <p className="text-sm leading-relaxed">{reasoning_summary}</p>
             </div>
           )}
