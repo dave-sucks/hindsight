@@ -692,7 +692,7 @@ export default function AnalystDetailClient({
                       domain={
                         chartMode === "pnl"
                           ? [(min: number) => -Math.max(Math.abs(min), 50), (max: number) => Math.max(Math.abs(max), 50)]
-                          : ["dataMin * 0.95", "dataMax * 1.15"]
+                          : [(min: number) => min * 0.98, (max: number) => max + (max - min) * 0.25]
                       }
                     />
                     <ChartTooltip
