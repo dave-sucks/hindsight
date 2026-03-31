@@ -399,7 +399,7 @@ export default function DashboardClient({
                       interval={Math.max(1, Math.floor(equityData.length / 6))}
                       padding={{ left: 0, right: 0 }}
                     />
-                    <YAxis hide domain={[(min: number) => min * 0.98, (max: number) => max + (max - min) * 0.25]} />
+                    <YAxis hide domain={['dataMin * 0.98', 'dataMax * 1.25']} />
                     <Tooltip
                       contentStyle={{
                         background: 'var(--popover)',
