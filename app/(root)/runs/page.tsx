@@ -60,30 +60,30 @@ export default async function RunsPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-3">
-      <div className="flex items-start justify-between mb-4">
-        <div>
+      <div className="mb-4 space-y-1">
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold">Runs</h1>
             <RunShowcaseButton />
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Structured <ConceptTooltip concept="run">research sessions</ConceptTooltip> from all your analysts
-          </p>
+          {runs.length === 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button asChild>
+                    <Link href="/analysts">Create an Analyst</Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Create an analyst to start running research sessions</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
-        {runs.length === 0 && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button asChild>
-                  <Link href="/analysts">Create an Analyst</Link>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">Create an analyst to start running research sessions</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+        <p className="text-sm text-muted-foreground">
+          Structured <ConceptTooltip concept="run">research sessions</ConceptTooltip> from all your analysts
+        </p>
       </div>
 
       {runs.length === 0 ? (
