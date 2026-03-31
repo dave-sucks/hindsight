@@ -603,15 +603,3 @@ export function useRegisterBuilderToolUIs() {
   });
 }
 
-/**
- * Register suggest_config tool UI for the editor — same panel experience as builder.
- * SuggestConfigRender detects onConfigSuggested → shows compact "see panel →" card.
- */
-export function useRegisterEditorToolUIs() {
-  useRegisterResearchToolUIs();
-
-  useAssistantToolUI({
-    toolName: "suggest_config",
-    render: SuggestConfigRender,
-  });
-}

@@ -19,6 +19,8 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -128,6 +130,12 @@ export interface HindsightComposerFeatures {
     icon: FC<{ size?: number; className?: string }>;
     onClick: () => void;
   }>;
+  /** Capabilities shown in the + menu as info items */
+  capabilities?: Array<{
+    label: string;
+    description: string;
+    icon: FC<{ size?: number; className?: string }>;
+  }>;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -143,6 +151,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     autoMode: showAutoMode = false,
     placeholder = "Ask anything…",
     extraMenuItems = [],
+    capabilities = [],
   } = features;
 
   // Ticker state
@@ -325,6 +334,23 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuGroup>
+                  {capabilities.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                        Capabilities
+                      </DropdownMenuLabel>
+                      {capabilities.map((cap) => (
+                        <div key={cap.label} className="px-2 py-1.5 flex items-start gap-2">
+                          <cap.icon size={14} className="opacity-40 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-xs font-medium">{cap.label}</p>
+                            <p className="text-[11px] text-muted-foreground leading-tight">{cap.description}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

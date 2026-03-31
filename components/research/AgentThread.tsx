@@ -10,7 +10,7 @@
  * so users can ask questions, place trades, and manage positions.
  */
 
-import { useMemo, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useMemo, useCallback, type ReactNode } from "react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
@@ -18,6 +18,7 @@ import {
   AssistantRuntimeProvider,
   useThreadRuntime,
 } from "@assistant-ui/react";
+import { useAutoSend } from "@/hooks/useAutoSend";
 import { Thread } from "@/components/assistant-ui/thread";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import {
@@ -141,21 +142,7 @@ function AgentThreadInner({
 }) {
   useRegisterResearchToolUIs(runId);
   useRegisterFollowupToolUIs();
-
-  const threadRuntime = useThreadRuntime();
-
-  const hasSent = useRef(false);
-  useEffect(() => {
-    if (!autoStart || hasSent.current) return;
-    hasSent.current = true;
-    const timer = setTimeout(() => {
-      threadRuntime.append({
-        role: "user",
-        content: [{ type: "text", text: "Run" }],
-      });
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [autoStart, threadRuntime]);
+  useAutoSend({ message: autoStart ? "Run" : undefined, delay: 500 });
 
   return (
     <Tabs defaultValue={0} className="flex h-full flex-col">
