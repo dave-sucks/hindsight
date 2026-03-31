@@ -31,8 +31,8 @@ import {
   Brain,
   ExternalLink,
   Target,
-  TrendingUp,
-  TrendingDown,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react';
 import { TradeActions } from '@/components/trades/TradeActions';
 
@@ -264,27 +264,26 @@ export default async function TradeDetailPage({
               )}
 
               {/* Price block */}
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-semibold tabular-nums">
-                    {fmtCur(currentPrice)}
+              <div className="flex items-center gap-2">
+                <span className="text-3xl font-semibold tabular-nums">
+                  {fmtCur(currentPrice)}
+                </span>
+                {stockQuote && (
+                  <span className={cn(
+                    'text-sm tabular-nums flex items-center gap-1',
+                    isQuoteUp ? 'text-positive' : 'text-negative',
+                  )}>
+                    {isQuoteUp ? '+' : ''}{fmtCur(stockQuote.d)}
+                    {isQuoteUp ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+                    {changePct != null ? `${Math.abs(changePct).toFixed(2)}%` : '—'}
                   </span>
-                  {stockQuote && (
-                    <span className={cn(
-                      'text-sm font-medium tabular-nums flex items-center gap-0.5',
-                      isQuoteUp ? 'text-positive' : 'text-negative',
-                    )}>
-                      {isQuoteUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                      {fmtCur(stockQuote.d)} ({changePct != null ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : '—'})
-                    </span>
-                  )}
-                </div>
+                )}
               </div>
 
               {/* Chart with holding summary row inside */}
               <StockPriceChart candles={candles} referenceLines={chartReferenceLines}>
                 {/* Holding summary — renders inside the chart card above the graph */}
-                <div className="px-4 py-2.5 border-b flex flex-wrap items-center justify-between gap-2">
+                <div className="px-4 py-2 border-b flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm">
                     {isOpen && (
                       <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -293,19 +292,18 @@ export default async function TradeDetailPage({
                       </span>
                     )}
                     <span>
-                      <span className="font-medium">{isOpen ? 'Holding' : 'Sold'}</span>{' '}
+                      <span>{isOpen ? 'Holding' : 'Sold'}</span>{' '}
                       {trade.shares} shares at{' '}
                       <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
                       {' '}
-                      <span className="text-muted-foreground">
+                      <span className="">
                         ({fmtCur(trade.entryPrice * trade.shares)} value)
                       </span>
                     </span>
-                    <span className="tabular-nums">
-                      /
-                      <span className={cn('ml-1 font-medium', isPos ? 'text-positive' : 'text-negative')}>
-                        {isPos ? '+' : ''}{fmtCur(pnl)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
-                      </span>
+                    <span className={cn('tabular-nums flex items-center gap-1', isPos ? 'text-positive' : 'text-negative')}>
+                      {isPos ? '+' : ''}{fmtCur(pnl)}
+                      {isPos ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+                      {Math.abs(pnlPct).toFixed(2)}%
                     </span>
                   </div>
                   <span className="text-xs text-muted-foreground tabular-nums">
