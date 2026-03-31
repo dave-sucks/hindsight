@@ -1,4 +1,3 @@
-import AppSidebar from "@/components/Sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { MarketStatusPill } from "@/components/MarketPulseStrip";
 import SearchCommand from "@/components/SearchCommand";
@@ -8,8 +7,8 @@ import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { redirect } from "next/navigation";
 import { isMarketOpen } from "@/lib/market-hours";
 import { prisma } from "@/lib/prisma";
-import { AlpacaKeyGate } from "@/components/settings/AlpacaKeyGate";
 import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
+import { OnboardingShell } from "@/components/domain/onboarding-shell";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const supabase = await createClient();
@@ -47,9 +46,20 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     // Start from a $100k paper account, add realized P&L
     const portfolioValue = 100_000 + (pnlAggregate._sum.realizedPnl ?? 0);
 
+    const needsName = !user.user_metadata?.full_name;
+    const initialFullName = (user.user_metadata?.full_name as string) ?? "";
+
     return (
         <SidebarProvider>
-            <AppSidebar user={userObj} initialStocks={initialStocks} portfolioValue={portfolioValue} openTradeTickers={openTradeTickers} />
+            <OnboardingShell
+                user={userObj}
+                initialStocks={initialStocks}
+                portfolioValue={portfolioValue}
+                openTradeTickers={openTradeTickers}
+                needsName={needsName}
+                hasAlpacaKey={alpacaStatus.hasKey}
+                initialFullName={initialFullName}
+            />
             <SidebarInset>
                 {/* Top bar — sidebar toggle + search + theme */}
                 <header className="flex h-12 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
@@ -63,7 +73,6 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                     </div>
                 </header>
                 <main className="flex-1">
-                    <AlpacaKeyGate hasKey={alpacaStatus.hasKey} allowSkip />
                     {children}
                 </main>
             </SidebarInset>

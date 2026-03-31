@@ -281,11 +281,12 @@ export const TEAMS: Team[] = [
     summary:
       "A separate GPT-4o agent reviews each session and writes a standup memo — the analyst's memory for the next run.",
     description:
-      "After every research session, a separate briefing agent (GPT-4o) reads the full conversation transcript, portfolio state, and trade outcomes. It writes a structured standup: narrative (400-600 words), strategy notes, market posture, watch-tomorrow items, unresolved items, self-corrections, and 0-5 dynamic search monitors. The standup feeds into the next session's system prompt. The analyst MUST reference watch-tomorrow items in Phase 0. Dynamic monitors are picked up by the next morning's intelligence sweep automatically.",
+      "An independent Inngest function triggered by a \"research/run.completed\" event. When any research run completes — via the morning cron, manual \"Run\" button, or timeout with partial work — the event fires and this function runs in its own execution context with automatic retries. A GPT-4o agent reads the full conversation transcript, portfolio state, and trade outcomes. It writes a structured standup: narrative (400-600 words), strategy notes, market posture, watch-tomorrow items, unresolved items, self-corrections, and 0-5 dynamic search monitors. The standup feeds into the next session's system prompt. The analyst MUST reference watch-tomorrow items in Phase 0. Dynamic monitors are picked up by the next morning's intelligence sweep automatically.",
     icon: RotateCcw,
     model: "GPT-4o",
     schedule: "After every run",
     substeps: [
+      { title: "Verify run", summary: "Checks run is COMPLETE and no briefing already exists. Deduplicates if multiple events fire for the same run." },
       { title: "Read transcript", summary: "Reads the full conversation — every message, tool call, and result from the session." },
       { title: "Review portfolio", summary: "Checks current positions with unrealized P&L, trade outcomes, and pass decisions." },
       { title: "Write standup", summary: "Produces narrative, strategy notes, market posture, watch-tomorrow items, and self-corrections." },
