@@ -24,6 +24,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
+import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
 import { StockLogo } from "@/components/StockLogo";
 import { BarGauge, priceToRange } from "@/components/ui/bar-gauge";
 
@@ -191,80 +192,92 @@ export function ThesisCard({
           side="right"
           className="w-full sm:max-w-xl overflow-y-auto"
         >
-          <SheetHeader className="border-b pb-4">
-            <div className="flex items-center gap-3">
+          <SheetHeader className="pb-0">
+            <SheetTitle className="sr-only">{displayName} Thesis</SheetTitle>
+          </SheetHeader>
+
+          <div>
+            {/* 1. Badge group: verdict | confidence */}
+            <div className="px-3 pt-1 pb-2 border-b">
+              <Tooltip>
+                <TooltipTrigger render={
+                  <ButtonGroup className="cursor-default">
+                    <Badge variant={verdict.variant} className="rounded-r-none">
+                      {verdict.label}
+                    </Badge>
+                    <ButtonGroupSeparator />
+                    <Badge variant={verdict.variant} className="rounded-l-none tabular-nums">
+                      {confidence_score}%
+                    </Badge>
+                  </ButtonGroup>
+                } />
+                <TooltipContent side="bottom" className="text-xs max-w-xs">
+                  Confidence score — signal quality, data consistency, and directional conviction
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
+            {/* 2. Stock identity row */}
+            <div className="px-3 py-2.5 border-b flex items-center gap-3">
               <StockLogo ticker={ticker} size="lg" />
-              <div>
-                <SheetTitle className="text-lg font-bold">
-                  {displayName}
-                </SheetTitle>
-                <span className="text-xs font-mono text-muted-foreground">
+              <div className="flex-1 min-w-0">
+                <p className="text-lg font-semibold">{displayName}</p>
+                <span className="font-mono text-[11px] text-muted-foreground">
                   {ticker}{exchange ? ` · ${exchange}` : ""}
                 </span>
               </div>
-              <Badge variant={verdict.variant}>
-                {verdict.label}
-              </Badge>
-              <span
-                className={cn(
-                  "ml-auto flex items-center justify-center rounded-full size-12 text-base font-bold tabular-nums",
-                  "bg-muted text-muted-foreground",
-                )}
-              >
-                {confidence_score}
-              </span>
             </div>
-          </SheetHeader>
 
-          <div className="p-4 space-y-6">
+            {/* 3. Summary */}
+            {(pass_reason || reasoning_summary) && (
+              <div className="p-3 border-b">
+                <p className="text-sm leading-relaxed">{pass_reason || reasoning_summary}</p>
+              </div>
+            )}
+
+            {/* 4. Signal type badges */}
             {signal_types.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {signal_types.map((s) => (
-                  <Badge key={s} variant="outline">
-                    {s.replace(/_/g, " ")}
-                  </Badge>
+              <div className="px-3 py-2 border-b">
+                <div className="flex flex-wrap gap-1.5">
+                  {signal_types.map((s) => (
+                    <Badge key={s} variant="outline">
+                      {s.replace(/_/g, " ")}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 5. Analysis + risks */}
+            {thesis_bullets.length > 0 && (
+              <div className="p-3 border-b space-y-2">
+                <p className="text-sm font-medium">Analysis</p>
+                {thesis_bullets.map((b, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm">
+                    <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                    <span className="leading-relaxed">{b}</span>
+                  </div>
                 ))}
               </div>
             )}
 
-            {(pass_reason || reasoning_summary) && (
-              <div className="space-y-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pass Reason</span>
-                <p className="text-sm leading-relaxed text-foreground/80">
-                  {pass_reason || reasoning_summary}
-                </p>
-              </div>
-            )}
-
-            {thesis_bullets.length > 0 && (
-              <div className="space-y-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Analysis</span>
-                <div className="space-y-2">
-                  {thesis_bullets.map((b, i) => (
-                    <div key={i} className="flex items-start gap-2 text-sm">
-                      <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-                      <span className="leading-relaxed">{b}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {risk_flags.length > 0 && (
-              <div className="space-y-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-amber-500">Risk Factors</span>
-                <div className="space-y-2">
-                  {risk_flags.map((r, i) => (
-                    <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
-                      <span className="leading-relaxed">{r}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="p-3 border-b space-y-2">
+                <p className="text-sm font-medium">Risks</p>
+                {risk_flags.map((r, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                    <span className="leading-relaxed">{r}</span>
+                  </div>
+                ))}
               </div>
             )}
 
-            {fundamentals && <FundamentalsContent fundamentals={fundamentals} />}
+            {fundamentals && (
+              <div className="p-3 border-b">
+                <FundamentalsContent fundamentals={fundamentals} />
+              </div>
+            )}
           </div>
         </SheetContent>
       </Sheet>
@@ -347,43 +360,66 @@ export function ThesisCard({
         side="right"
         className="w-full sm:max-w-xl overflow-y-auto"
       >
-        {/* ── Header — logo + name + verdict + score ─────────── */}
         <SheetHeader className="pb-0">
           <SheetTitle className="sr-only">{displayName} Thesis</SheetTitle>
         </SheetHeader>
 
         <div>
-          <div className="p-3 border-b">
-            <div className="flex items-center gap-3">
-              <StockLogo ticker={ticker} size="lg" />
-              <div className="flex-1 min-w-0">
-                <p className="text-lg font-semibold">{displayName}</p>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  {ticker}{exchange ? ` · ${exchange}` : ""}
-                </span>
-              </div>
-              <Badge variant={verdict.variant}>
-                {!isPass && <DirIcon className="h-3.5 w-3.5" />}
-                {verdict.label}
-              </Badge>
-              <span
-                className={cn(
-                  "flex items-center justify-center rounded-full size-9 text-sm font-bold tabular-nums",
-                  confidence_score >= 80
-                    ? "bg-positive/10 text-positive"
-                    : confidence_score >= 60
-                      ? "bg-amber-500/15 text-amber-500"
-                      : "bg-muted text-muted-foreground",
-                )}
-              >
-                {confidence_score}
+          {/* 1. Badge group: verdict | confidence */}
+          <div className="px-3 pt-1 pb-2 border-b">
+            <Tooltip>
+              <TooltipTrigger render={
+                <ButtonGroup className="cursor-default">
+                  <Badge variant={verdict.variant} className="rounded-r-none">
+                    {!isPass && <DirIcon className="h-3 w-3" />}
+                    {verdict.label}
+                  </Badge>
+                  <ButtonGroupSeparator />
+                  <Badge variant={verdict.variant} className="rounded-l-none tabular-nums">
+                    {confidence_score}%
+                  </Badge>
+                </ButtonGroup>
+              } />
+              <TooltipContent side="bottom" className="text-xs max-w-xs">
+                Confidence score — signal quality, data consistency, and directional conviction
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
+          {/* 2. Stock identity row */}
+          <div className="px-3 py-2.5 border-b flex items-center gap-3">
+            <StockLogo ticker={ticker} size="lg" />
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-semibold">{displayName}</p>
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {ticker}{exchange ? ` · ${exchange}` : ""}
               </span>
             </div>
           </div>
 
-          {/* ── Analysis content ─── */}
+          {/* 3. Summary */}
+          {reasoning_summary && (
+            <div className="p-3 border-b">
+              <p className="text-sm leading-relaxed">{reasoning_summary}</p>
+            </div>
+          )}
+
+          {/* 4. Signal type badges */}
+          {signal_types.length > 0 && (
+            <div className="px-3 py-2 border-b">
+              <div className="flex flex-wrap gap-1.5">
+                {signal_types.map((s) => (
+                  <Badge key={s} variant="outline">
+                    {s.replace(/_/g, " ")}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 5. Price gauge + levels */}
           <AnalysisContent
-            signal_types={signal_types}
+            signal_types={[]}
             hasEntry={hasEntry}
             hasTarget={hasTarget}
             hasStop={hasStop}
@@ -392,12 +428,12 @@ export function ThesisCard({
             stop_loss={stop_loss}
             direction={direction}
             rr={rr}
-            reasoning_summary={reasoning_summary}
+            reasoning_summary={undefined}
             thesis_bullets={thesis_bullets}
             risk_flags={risk_flags}
           />
 
-          {/* ── Fundamentals (inline, no tabs) ─── */}
+          {/* Fundamentals */}
           {fundamentals && (
             <div className="p-3 border-b">
               <FundamentalsContent fundamentals={fundamentals} />
