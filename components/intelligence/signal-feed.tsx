@@ -31,14 +31,14 @@ interface SignalFeedProps {
 
 export function SignalFeed({ signals }: SignalFeedProps) {
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("ALL");
-  const [urgencyFilter, setUrgencyFilter] = useState("ALL");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [urgencyFilter, setUrgencyFilter] = useState("");
   const [selected, setSelected] = useState<Signal | null>(null);
 
   const filtered = useMemo(() => {
     return signals.filter((s) => {
-      if (typeFilter !== "ALL" && s.type !== typeFilter) return false;
-      if (urgencyFilter !== "ALL" && s.urgency !== urgencyFilter) return false;
+      if (typeFilter && s.type !== typeFilter) return false;
+      if (urgencyFilter && s.urgency !== urgencyFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -74,12 +74,12 @@ export function SignalFeed({ signals }: SignalFeedProps) {
               className="pl-9"
             />
           </div>
-          <Select value={typeFilter} onValueChange={(val) => val && setTypeFilter(val)}>
+          <Select value={typeFilter || undefined} onValueChange={(val) => setTypeFilter(val === "_all" ? "" : (val ?? ""))}>
             <SelectTrigger className="w-auto text-xs">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All types</SelectItem>
+              <SelectItem value="_all">All types</SelectItem>
               {signalTypes.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
@@ -87,12 +87,12 @@ export function SignalFeed({ signals }: SignalFeedProps) {
               ))}
             </SelectContent>
           </Select>
-          <Select value={urgencyFilter} onValueChange={(val) => val && setUrgencyFilter(val)}>
+          <Select value={urgencyFilter || undefined} onValueChange={(val) => setUrgencyFilter(val === "_all" ? "" : (val ?? ""))}>
             <SelectTrigger className="w-auto text-xs">
               <SelectValue placeholder="Urgency" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All urgency</SelectItem>
+              <SelectItem value="_all">All urgency</SelectItem>
               <SelectItem value="BREAKING">Breaking</SelectItem>
               <SelectItem value="HIGH">High</SelectItem>
               <SelectItem value="MEDIUM">Medium</SelectItem>
