@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
-import { useState } from 'react';
 import {
   LayoutDashboard,
   Bot,
@@ -53,7 +52,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { signOut } from '@/lib/actions/auth.actions';
-import { OnboardingDialog } from '@/components/domain/onboarding-dialog';
 
 const MAIN_NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, tooltip: 'Portfolio overview' },
@@ -72,16 +70,17 @@ export default function AppSidebar({
   initialStocks,
   portfolioValue,
   openTradeTickers = [],
+  onProductTour,
 }: {
   user: User;
   initialStocks: StockWithWatchlistStatus[];
   portfolioValue: number;
   openTradeTickers?: string[];
+  onProductTour?: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const [showTour, setShowTour] = useState(false);
   const { isMobile, setOpenMobile } = useSidebar();
 
   const isActive = (href: string) => {
@@ -224,7 +223,7 @@ export default function AppSidebar({
                   Agent Workflow
                 </DropdownMenuItem>
 
-                <DropdownMenuItem onClick={() => setShowTour(true)}>
+                <DropdownMenuItem onClick={() => onProductTour?.()}>
                   <Sparkles className="h-3.5 w-3.5" />
                   Product Tour
                 </DropdownMenuItem>
@@ -254,12 +253,6 @@ export default function AppSidebar({
       </SidebarFooter>
 
       <SidebarRail />
-
-      {/* Onboarding dialog — auto-shows on first visit, reopenable via Tour */}
-      <OnboardingDialog
-        forceOpen={showTour}
-        onOpenChange={(open) => { if (!open) setShowTour(false); }}
-      />
     </Sidebar>
   );
 }

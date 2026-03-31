@@ -7,7 +7,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
-import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import { inngest } from "@/lib/inngest/client";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
@@ -217,31 +217,26 @@ export async function POST(req: Request) {
           console.warn(`[agent] ⚠️ Run ${runId} still RUNNING after onFinish (reason=${finishReason}). Agent may not have called complete_run.`);
         }
 
-        // Briefing agent: runs AFTER the research agent finishes.
-        // Reads the full conversation (just persisted above) + portfolio state
-        // and writes the standup brief for the next run.
-        // IMPORTANT: await directly instead of waitUntil — onFinish is already
-        // post-stream, and waitUntil from inside async callbacks may not register
-        // with Vercel's runtime, causing briefings to silently never complete.
+        // Fire event for the independent briefing agent (Inngest function).
+        // The briefing runs in its own execution context with retries,
+        // so it can't be killed by this route's timeout.
         const briefingAnalystId = analystId || (await prisma.researchRun.findFirst({
           where: { id: runId },
           select: { agentConfigId: true },
         }))?.agentConfigId;
 
         if (briefingAnalystId) {
-          console.log(`[agent] Launching briefing agent for run ${runId} analyst=${briefingAnalystId}`);
           try {
-            await updateAnalystBriefing({
-              analystId: briefingAnalystId,
-              runId,
-              userId: user.id,
+            await inngest.send({
+              name: "research/run.completed",
+              data: { runId, analystId: briefingAnalystId, userId: user.id },
             });
-            console.log(`[agent] ✅ Briefing written for run ${runId}`);
+            console.log(`[agent] Fired research/run.completed for run ${runId} analyst=${briefingAnalystId}`);
           } catch (err) {
-            console.error("[agent] Briefing agent failed (non-fatal):", err);
+            console.error("[agent] Failed to fire briefing event (non-fatal):", err);
           }
         } else {
-          console.warn(`[agent] No analystId found for run ${runId} — briefing skipped`);
+          console.warn(`[agent] No analystId found for run ${runId} — briefing event not fired`);
         }
       },
     });

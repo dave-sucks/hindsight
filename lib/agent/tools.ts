@@ -11,7 +11,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
-import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import { inngest } from "@/lib/inngest/client";
 import { finnhub, calcRSI, calcSMA } from "@/lib/agent/research-helpers";
 import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity } from "@/lib/discovery/types";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
@@ -1643,10 +1643,14 @@ export function createResearchTools(ctx: ToolContext) {
             }
           }
 
-          // Briefing is generated AFTER the run completes by a separate briefing agent
-          // (triggered in the route's onFinish callback, NOT here in the tool)
-          if (!ctx.analystId) {
-            console.warn(`[tool] complete_run: no analystId in context (runId=${ctx.runId}) — briefing will be skipped in onFinish`);
+          // Fire event for the independent briefing agent (Inngest function)
+          if (ctx.analystId) {
+            await inngest.send({
+              name: "research/run.completed",
+              data: { runId: ctx.runId, analystId: ctx.analystId, userId: ctx.userId },
+            });
+          } else {
+            console.warn(`[tool] complete_run: no analystId in context (runId=${ctx.runId}) — briefing event not fired`);
           }
 
           logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);
