@@ -4,9 +4,11 @@ import { type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogClose,
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { X } from "lucide-react";
 import { RunPreview } from "@/components/domain/run-preview";
 import { IntelligencePreview } from "@/components/domain/intelligence-preview";
 import { BuilderPreview } from "@/components/domain/builder-preview";
@@ -28,9 +30,15 @@ export function ShowcaseDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{subtitle}</DialogDescription>
+
+        {/* White close button — always visible over dark Silk backgrounds */}
+        <DialogClose className="absolute top-3 right-3 z-10 rounded-full p-1.5 text-white/80 hover:text-white hover:bg-white/10 transition-colors">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogClose>
 
         <div className="overflow-hidden w-full">{preview}</div>
 
