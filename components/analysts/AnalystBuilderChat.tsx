@@ -3,8 +3,10 @@
 import { type ReactNode } from "react";
 import { AnalystChatProvider } from "@/components/analysts/AnalystChatProvider";
 import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
+import type { HindsightComposerFeatures } from "@/components/assistant-ui/hindsight-composer";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Globe, BarChart3, FileText, Activity } from "lucide-react";
+import { PerplexityLogo } from "@/components/intelligence/icons";
 
 const BUILDER_WELCOME: WelcomeConfig = {
   title: "Create a new analyst",
@@ -15,6 +17,18 @@ const BUILDER_WELCOME: WelcomeConfig = {
       <Sparkles className="size-5" />
     </div>
   ),
+};
+
+const BUILDER_COMPOSER: HindsightComposerFeatures = {
+  tickerSearch: true,
+  placeholder: "Describe your ideal trading analyst…",
+  integrations: [
+    { label: "Live market data", icon: Activity, enabled: true, description: "Finnhub quotes, earnings, company metrics" },
+    { label: "Web research", icon: PerplexityLogo, enabled: true, description: "Perplexity Sonar for live web search" },
+    { label: "Domain monitoring", icon: Globe, enabled: true, description: "Firecrawl for tracked website extraction" },
+    { label: "SEC filings", icon: FileText, enabled: true, description: "10-K, 10-Q, 8-K, Form 4 from EDGAR" },
+    { label: "Paper trading", icon: BarChart3, enabled: true, description: "Alpaca for simulated trades" },
+  ],
 };
 
 /**
@@ -71,10 +85,7 @@ export function AnalystBuilderChat({
     >
       <Thread
         welcomeConfig={BUILDER_WELCOME}
-        composerFeatures={{
-          tickerSearch: true,
-          placeholder: "Describe your ideal trading analyst…",
-        }}
+        composerFeatures={BUILDER_COMPOSER}
       />
     </AnalystBuilderProvider>
   );

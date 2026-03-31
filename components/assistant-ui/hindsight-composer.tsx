@@ -6,6 +6,7 @@ import {
   useCallback,
   useRef,
   type FC,
+  type ReactNode,
 } from "react";
 import {
   ComposerPrimitive,
@@ -36,17 +37,14 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { StockLogo } from "@/components/StockLogo";
 import { cn } from "@/lib/utils";
 import {
   IconPlus,
   IconSend,
-  IconWorld,
-  IconPaperclip,
-  IconWand,
   IconChartLine,
 } from "@tabler/icons-react";
 import {
-  DollarSign,
   Search,
   SquareIcon,
   TrendingUp,
@@ -55,6 +53,7 @@ import {
   GitCompare,
   Slash,
   X,
+  Loader2,
 } from "lucide-react";
 
 // ── Slash command definitions ──────────────────────────────────────────────
@@ -109,6 +108,15 @@ const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
 
 type TickerResult = { symbol: string; description: string };
 
+// ── Integration type ─────────────────────────────────────────────────────
+
+export interface ComposerIntegration {
+  label: string;
+  icon: FC<{ className?: string }>;
+  enabled: boolean;
+  description?: string;
+}
+
 // ── Composer features config ───────────────────────────────────────────────
 
 export interface HindsightComposerFeatures {
@@ -118,23 +126,17 @@ export interface HindsightComposerFeatures {
   commands?: SlashCommand[];
   /** Enable $ticker search. Default: false */
   tickerSearch?: boolean;
-  /** Show the plus menu with attach/web search options. Default: true */
+  /** Show the plus menu. Default: true */
   plusMenu?: boolean;
-  /** Show auto mode toggle. Default: false */
-  autoMode?: boolean;
   /** Placeholder text */
   placeholder?: string;
-  /** Additional plus menu items */
+  /** Active integrations/sources shown in + menu (like Claude's connectors) */
+  integrations?: ComposerIntegration[];
+  /** Additional plus menu action items */
   extraMenuItems?: Array<{
     label: string;
     icon: FC<{ size?: number; className?: string }>;
     onClick: () => void;
-  }>;
-  /** Capabilities shown in the + menu as info items */
-  capabilities?: Array<{
-    label: string;
-    description: string;
-    icon: FC<{ size?: number; className?: string }>;
   }>;
 }
 
@@ -148,26 +150,22 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     commands = DEFAULT_SLASH_COMMANDS,
     tickerSearch = false,
     plusMenu = true,
-    autoMode: showAutoMode = false,
     placeholder = "Ask anything…",
+    integrations = [],
     extraMenuItems = [],
-    capabilities = [],
   } = features;
 
   // Ticker state
   const [tickerOpen, setTickerOpen] = useState(false);
   const [tickerSearchQuery, setTickerSearchQuery] = useState("");
   const [tickerResults, setTickerResults] = useState<TickerResult[]>([]);
+  const [tickerLoading, setTickerLoading] = useState(false);
   const [selectedTicker, setSelectedTicker] = useState<{
     symbol: string;
     price: number | null;
   } | null>(null);
 
-  // Auto mode state
-  const [autoModeActive, setAutoModeActive] = useState(false);
-
   const composerRuntime = useComposerRuntime();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Select a slash command ─────────────────────────────────────────────
   const selectCommand = useCallback(
@@ -181,8 +179,10 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   useEffect(() => {
     if (!tickerOpen || !tickerSearchQuery.trim()) {
       setTickerResults([]);
+      setTickerLoading(false);
       return;
     }
+    setTickerLoading(true);
     const t = setTimeout(async () => {
       try {
         const res = await fetch(
@@ -192,6 +192,8 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
         setTickerResults(data.results ?? []);
       } catch {
         setTickerResults([]);
+      } finally {
+        setTickerLoading(false);
       }
     }, 200);
     return () => clearTimeout(t);
@@ -237,15 +239,6 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
 
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        className="sr-only"
-        onChange={() => {}}
-      />
-
       {/* ─── Main card container ──────────────────────────────────────── */}
       <div className="bg-background border border-border rounded-lg overflow-hidden transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20">
         {/* Context chips above input */}
@@ -253,12 +246,12 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
           <div className="flex flex-wrap gap-1.5 px-4 pt-3">
             <Badge
               variant="secondary"
-              className="gap-1 tabular-nums text-xs h-6"
+              className="gap-1.5 tabular-nums text-xs h-6"
             >
-              <DollarSign className="h-3 w-3" />
+              <StockLogo ticker={selectedTicker.symbol} size="sm" className="h-4 w-4" />
               {selectedTicker.symbol}
               {selectedTicker.price != null && (
-                <span className="text-muted-foreground ml-0.5">
+                <span className="text-muted-foreground">
                   ${selectedTicker.price.toFixed(2)}
                 </span>
               )}
@@ -282,7 +275,6 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
             rows={1}
             autoFocus
             aria-label="Message input"
-
           />
         </div>
 
@@ -304,67 +296,42 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                   <IconPlus className="size-3" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <IconPaperclip size={16} className="opacity-60" />
-                      Attach Files
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        const text = composerRuntime.getState().text;
-                        composerRuntime.setText(
-                          text
-                            ? `${text}\n[Search the web for latest news]`
-                            : "Search the web for latest news on ",
-                        );
-                      }}
-                    >
-                      <IconWorld size={16} className="opacity-60" />
-                      Web Search
-                    </DropdownMenuItem>
-                    {extraMenuItems.map((item) => (
-                      <DropdownMenuItem
-                        key={item.label}
-                        onClick={item.onClick}
-                      >
-                        <item.icon size={16} className="opacity-60" />
-                        {item.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                  {capabilities.length > 0 && (
+                  {/* Action items */}
+                  {extraMenuItems.length > 0 && (
+                    <DropdownMenuGroup>
+                      {extraMenuItems.map((item) => (
+                        <DropdownMenuItem
+                          key={item.label}
+                          onClick={item.onClick}
+                        >
+                          <item.icon size={16} className="opacity-60" />
+                          {item.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  )}
+
+                  {/* Active integrations / sources */}
+                  {integrations.length > 0 && (
                     <>
-                      <DropdownMenuSeparator />
+                      {extraMenuItems.length > 0 && <DropdownMenuSeparator />}
                       <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                        Capabilities
+                        Sources
                       </DropdownMenuLabel>
-                      {capabilities.map((cap) => (
-                        <div key={cap.label} className="px-2 py-1.5 flex items-start gap-2">
-                          <cap.icon size={14} className="opacity-40 mt-0.5 shrink-0" />
-                          <div>
-                            <p className="text-xs font-medium">{cap.label}</p>
-                            <p className="text-[11px] text-muted-foreground leading-tight">{cap.description}</p>
-                          </div>
+                      {integrations.map((intg) => (
+                        <div key={intg.label} className="px-2 py-1.5 flex items-center gap-2.5">
+                          <intg.icon className="h-4 w-4 shrink-0 opacity-60" />
+                          <span className="text-xs flex-1">{intg.label}</span>
+                          <span className={cn(
+                            "h-2 w-2 rounded-full shrink-0",
+                            intg.enabled ? "bg-positive" : "bg-muted-foreground/30",
+                          )} />
                         </div>
                       ))}
                     </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
-
-            {/* Auto mode toggle */}
-            {showAutoMode && (
-              <Button
-                variant={autoModeActive ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setAutoModeActive(!autoModeActive)}
-              >
-                <IconWand className="size-3" />
-                Auto
-              </Button>
             )}
 
             {/* Slash commands menu */}
@@ -389,7 +356,10 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                         onClick={() => selectCommand(cmd)}
                       >
                         <cmd.icon className="text-muted-foreground shrink-0" />
-                        {cmd.label}
+                        <div>
+                          <span className="font-medium">{cmd.label}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">{cmd.description}</span>
+                        </div>
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuGroup>
@@ -412,21 +382,27 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                   {selectedTicker ? selectedTicker.symbol : "Ticker"}
                 </PopoverTrigger>
                 <PopoverContent
-                  className="w-64 p-0"
+                  className="w-72 p-0"
                   side="top"
                   align="start"
                 >
-                  <Command>
+                  <Command shouldFilter={false}>
                     <CommandInput
-                      placeholder="Search ticker…"
+                      placeholder="Search stocks…"
                       value={tickerSearchQuery}
                       onValueChange={setTickerSearchQuery}
                     />
                     <CommandList>
-                      <CommandEmpty>
-                        {tickerSearchQuery ? "No results" : "Type to search"}
-                      </CommandEmpty>
-                      {tickerResults.length > 0 && (
+                      {tickerLoading ? (
+                        <div className="flex items-center justify-center py-6 gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">Searching...</span>
+                        </div>
+                      ) : tickerResults.length === 0 ? (
+                        <CommandEmpty>
+                          {tickerSearchQuery.trim() ? "No results" : "Type to search stocks"}
+                        </CommandEmpty>
+                      ) : (
                         <CommandGroup>
                           {tickerResults.map((r, i) => (
                             <CommandItem
@@ -434,12 +410,13 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                               value={r.symbol}
                               onSelect={() => selectTicker(r.symbol)}
                             >
-                              <span className="font-medium">
-                                {r.symbol}
-                              </span>
-                              <span className="ml-2 text-xs text-muted-foreground truncate">
-                                {r.description}
-                              </span>
+                              <StockLogo ticker={r.symbol} size="sm" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium">{r.symbol}</div>
+                                <div className="text-xs text-muted-foreground truncate">
+                                  {r.description}
+                                </div>
+                              </div>
                             </CommandItem>
                           ))}
                         </CommandGroup>

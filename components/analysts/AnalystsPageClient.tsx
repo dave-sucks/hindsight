@@ -34,6 +34,8 @@ import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
 import { BuilderShowcaseTrigger, BuilderShowcaseButton } from "@/components/domain/run-showcase-trigger";
 import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
+import { PerplexityLogo } from "@/components/intelligence/icons";
+import { Globe, BarChart3, FileText, Activity } from "lucide-react";
 import {
   Carousel,
   CarouselContent,
@@ -284,7 +286,16 @@ function AnalystsEmptyState() {
       {/* Standalone entry composer — navigates to /analysts/new on send */}
       <ChatEntryComposer
         targetUrl="/analysts/new"
-        features={{ placeholder: "Describe any strategy, sector, or style…" }}
+        features={{
+          placeholder: "Describe any strategy, sector, or style…",
+          integrations: [
+            { label: "Live market data", icon: Activity, enabled: true },
+            { label: "Web research", icon: PerplexityLogo, enabled: true },
+            { label: "Domain monitoring", icon: Globe, enabled: true },
+            { label: "SEC filings", icon: FileText, enabled: true },
+            { label: "Paper trading", icon: BarChart3, enabled: true },
+          ],
+        }}
         tooltip={{
           content: "Ask to build any analyst for any type of strategy, industry, or trading technique",
           storageKey: "analyst-composer",
