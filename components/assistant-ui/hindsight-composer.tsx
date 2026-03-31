@@ -313,22 +313,22 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
 
                   {/* Active integrations / sources */}
                   {integrations.length > 0 && (
-                    <>
+                    <DropdownMenuGroup>
                       {extraMenuItems.length > 0 && <DropdownMenuSeparator />}
                       <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
                         Sources
                       </DropdownMenuLabel>
                       {integrations.map((intg) => (
-                        <div key={intg.label} className="px-2 py-1.5 flex items-center gap-2.5">
+                        <DropdownMenuItem key={intg.label} disabled>
                           <intg.icon className="h-4 w-4 shrink-0 opacity-60" />
                           <span className="text-xs flex-1">{intg.label}</span>
                           <span className={cn(
                             "h-2 w-2 rounded-full shrink-0",
-                            intg.enabled ? "bg-positive" : "bg-muted-foreground/30",
+                            intg.enabled ? "bg-emerald-500" : "bg-muted-foreground/30",
                           )} />
-                        </div>
+                        </DropdownMenuItem>
                       ))}
-                    </>
+                    </DropdownMenuGroup>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
