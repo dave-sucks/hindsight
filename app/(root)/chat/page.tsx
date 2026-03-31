@@ -1,3 +1,5 @@
+"use client";
+
 import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
 import { BarChart3, Globe, TrendingUp } from "lucide-react";
 
