@@ -276,24 +276,15 @@ function AnalystsEmptyState() {
 
         {/* Template cards — carousel on mobile, grid on desktop */}
         <div className="mb-4">
-          {/* Desktop: grid */}
-          <div className="hidden sm:grid grid-cols-3 gap-3 w-full">
-            {TEMPLATES.map((t) => (
-              <TemplateCard key={t.title} {...t} />
-            ))}
-          </div>
-          {/* Mobile: carousel */}
-          <div className="sm:hidden">
-            <Carousel opts={{ align: "start" }}>
-              <CarouselContent className="-ml-3">
-                {TEMPLATES.map((t) => (
-                  <CarouselItem key={t.title} className="pl-3 basis-[80%]">
-                    <TemplateCard {...t} />
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-            </Carousel>
-          </div>
+          <Carousel opts={{ align: "start" }}>
+            <CarouselContent className="-ml-3 sm:grid sm:grid-cols-3">
+              {TEMPLATES.map((t) => (
+                <CarouselItem key={t.title} className="pl-3 basis-[80%] sm:basis-auto">
+                  <TemplateCard {...t} />
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+          </Carousel>
         </div>
 
         {/* Composer input — full width */}
