@@ -64,7 +64,7 @@ export function SignalFeed({ signals }: SignalFeedProps) {
     <TooltipProvider>
       <div className="space-y-4">
         {/* Filters */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -75,11 +75,11 @@ export function SignalFeed({ signals }: SignalFeedProps) {
             />
           </div>
           <Select value={typeFilter} onValueChange={(val) => val && setTypeFilter(val)}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
+            <SelectTrigger className="w-auto text-xs">
+              <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">Type</SelectItem>
+              <SelectItem value="ALL">All types</SelectItem>
               {signalTypes.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
@@ -88,20 +88,17 @@ export function SignalFeed({ signals }: SignalFeedProps) {
             </SelectContent>
           </Select>
           <Select value={urgencyFilter} onValueChange={(val) => val && setUrgencyFilter(val)}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
+            <SelectTrigger className="w-auto text-xs">
+              <SelectValue placeholder="Urgency" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">Urgency</SelectItem>
+              <SelectItem value="ALL">All urgency</SelectItem>
               <SelectItem value="BREAKING">Breaking</SelectItem>
               <SelectItem value="HIGH">High</SelectItem>
               <SelectItem value="MEDIUM">Medium</SelectItem>
               <SelectItem value="LOW">Low</SelectItem>
             </SelectContent>
           </Select>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {filtered.length} signals
-          </span>
         </div>
 
         {/* Signal list */}

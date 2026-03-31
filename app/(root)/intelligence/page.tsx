@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -126,12 +125,6 @@ export default function IntelligencePage() {
     loadBriefs();
   }, [loadBriefs]);
 
-  const todaySignals = useMemo(() => {
-    const now = new Date().toDateString();
-    return signals.filter(
-      (s) => new Date(s.createdAt).toDateString() === now
-    );
-  }, [signals]);
 
   return (
     <TooltipProvider>
@@ -140,20 +133,8 @@ export default function IntelligencePage() {
         <Tabs defaultValue="findings">
           <div className="flex items-center justify-between gap-2">
             <TabsList>
-              <TabsTrigger value="findings">
-                Findings
-                {todaySignals.length > 0 && (
-                  <Badge variant="secondary" className="ml-1.5">
-                    {todaySignals.length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="monitors">
-                Monitors
-                <Badge variant="secondary" className="ml-1.5">
-                  {monitors.length}
-                </Badge>
-              </TabsTrigger>
+              <TabsTrigger value="findings">Findings</TabsTrigger>
+              <TabsTrigger value="monitors">Monitors</TabsTrigger>
               <TabsTrigger value="briefs">Briefs</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-1.5">
