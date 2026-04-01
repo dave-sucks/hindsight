@@ -46,6 +46,7 @@ import {
   Send,
   Square,
   Slash,
+  Check,
   X,
   Loader2,
   Globe,
