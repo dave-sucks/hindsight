@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type FC } from "react";
-import { useComposerRuntime, useThreadRuntime } from "@assistant-ui/react";
+import { useState, useEffect, useCallback, useRef, type FC, type ComponentType } from "react";
+import { useAui, useAuiState } from "@assistant-ui/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,60 +14,54 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupTextarea,
+} from "@/components/ui/input-group";
 import { StockLogo } from "@/components/StockLogo";
-import { cn } from "@/lib/utils";
+import { searchStocks } from "@/lib/actions/finnhub.actions";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   Plus,
   Send,
   Square,
   Slash,
-  TrendingUp,
-  Search,
-  Briefcase,
-  GitCompare,
-  BarChart3,
+  Check,
   X,
   Loader2,
+  Globe,
+  BarChart3,
+  TrendingUp,
+  FileText,
+  Brain,
+  Briefcase,
+  History,
+  ArrowRight,
+  Search,
+  GitCompare,
 } from "lucide-react";
-import { IconChartLine } from "@tabler/icons-react";
 
-// ── Slash commands ─────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────
 
 export interface SlashCommand {
   name: string;
   label: string;
-  description: string;
-  icon: FC<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   template: string;
-}
-
-const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
-  { name: "research",    label: "/research",    description: "Deep-dive research on a ticker", icon: Search,    template: "/research "    },
-  { name: "trade",       label: "/trade",       description: "Place a paper trade",            icon: TrendingUp, template: "/trade "       },
-  { name: "portfolio",   label: "/portfolio",   description: "Check portfolio status",         icon: Briefcase, template: "/portfolio"     },
-  { name: "compare",     label: "/compare",     description: "Compare two or more tickers",   icon: GitCompare, template: "/compare "     },
-  { name: "performance", label: "/performance", description: "View performance report",        icon: BarChart3,  template: "/performance"  },
-];
-
-// ── Types ──────────────────────────────────────────────────────────────────
-
-export interface ComposerIntegration {
-  label: string;
-  icon: FC<{ className?: string }>;
-  enabled: boolean;
-  description?: string;
 }
 
 export interface HindsightComposerFeatures {
@@ -76,15 +70,38 @@ export interface HindsightComposerFeatures {
   tickerSearch?: boolean;
   plusMenu?: boolean;
   placeholder?: string;
-  integrations?: ComposerIntegration[];
-  extraMenuItems?: Array<{
-    label: string;
-    icon: FC<{ size?: number; className?: string }>;
-    onClick: () => void;
-  }>;
 }
 
-type TickerResult = { symbol: string; description: string };
+// ── Defaults ───────────────────────────────────────────────────────────────
+
+const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
+  { name: "research",    label: "/research",    icon: Search,      template: "/research "    },
+  { name: "trade",       label: "/trade",       icon: TrendingUp,  template: "/trade "       },
+  { name: "compare",     label: "/compare",     icon: GitCompare,  template: "/compare "     },
+  { name: "portfolio",   label: "/portfolio",   icon: Briefcase,   template: "/portfolio"    },
+  { name: "performance", label: "/performance", icon: BarChart3,   template: "/performance"  },
+];
+
+const CAPABILITIES = [
+  {
+    group: "Data & Research",
+    items: [
+      { label: "Web Search",        icon: Globe,      href: "/intelligence" },
+      { label: "Live Market Data",  icon: BarChart3,  href: "/intelligence" },
+      { label: "Options Flow",      icon: TrendingUp, href: "/intelligence" },
+      { label: "SEC Filings",       icon: FileText,   href: "/intelligence" },
+    ],
+  },
+  {
+    group: "Agent Context",
+    items: [
+      { label: "Morning Intelligence", icon: Brain,    href: "/intelligence" },
+      { label: "Portfolio Context",    icon: Briefcase, href: "/trades"      },
+      { label: "Performance History",  icon: History,  href: "/performance"  },
+      { label: "Paper Trading",        icon: TrendingUp, href: "/trades"     },
+    ],
+  },
+];
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -97,37 +114,24 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     tickerSearch = false,
     plusMenu = true,
     placeholder = "Ask anything…",
-    integrations = [],
-    extraMenuItems = [],
   } = features;
 
-  const composerRuntime = useComposerRuntime();
-  const threadRuntime = useThreadRuntime();
+  const aui = useAui();
+  const text = useAuiState((s) => s.composer.text);
+  const canSend = useAuiState((s) => s.composer.canSend);
+  const isRunning = useAuiState((s) => s.thread.isRunning);
 
-  // ── Local state ──────────────────────────────────────────────────────────
-  const [text, setText] = useState("");
-  const [isRunning, setIsRunning] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Track thread running state
-  useEffect(() => {
-    return threadRuntime.subscribe(() => {
-      setIsRunning(threadRuntime.getState().isRunning);
-    });
-  }, [threadRuntime]);
-
-  // ── Input handlers ────────────────────────────────────────────────────────
+  // ── Input sync ────────────────────────────────────────────────────────────
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setText(val);
-    composerRuntime.setText(val);
+    aui.composer().setText(e.target.value);
   };
 
   const handleSend = useCallback(() => {
-    if (!text.trim() || isRunning) return;
-    composerRuntime.send();
-    setText("");
-  }, [text, isRunning, composerRuntime]);
+    if (!canSend || isRunning) return;
+    aui.composer().send();
+  }, [canSend, isRunning, aui]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -139,245 +143,233 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   // ── Slash commands ────────────────────────────────────────────────────────
   const selectCommand = useCallback(
     (cmd: SlashCommand) => {
-      setText(cmd.template);
-      composerRuntime.setText(cmd.template);
+      aui.composer().setText(cmd.template);
       textareaRef.current?.focus();
     },
-    [composerRuntime],
+    [aui],
   );
 
   // ── Ticker search ─────────────────────────────────────────────────────────
-  const [tickerOpen, setTickerOpen] = useState(false);
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [tickerQuery, setTickerQuery] = useState("");
-  const [tickerResults, setTickerResults] = useState<TickerResult[]>([]);
+  const [tickerResults, setTickerResults] = useState<StockWithWatchlistStatus[]>([]);
   const [tickerLoading, setTickerLoading] = useState(false);
-  const [selectedTicker, setSelectedTicker] = useState<{
-    symbol: string;
-    price: number | null;
-  } | null>(null);
+  const [comboboxKey, setComboboxKey] = useState(0);
 
-  useEffect(() => {
-    if (!tickerOpen || !tickerQuery.trim()) {
+  const handleTickerSearch = useCallback(async () => {
+    if (!tickerQuery.trim()) {
       setTickerResults([]);
-      setTickerLoading(false);
       return;
     }
     setTickerLoading(true);
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/stocks/search?q=${encodeURIComponent(tickerQuery)}`);
-        const data = await res.json();
-        setTickerResults(data.results ?? []);
-      } catch {
-        setTickerResults([]);
-      } finally {
-        setTickerLoading(false);
-      }
-    }, 200);
-    return () => clearTimeout(t);
-  }, [tickerQuery, tickerOpen]);
+    try {
+      const results = await searchStocks(tickerQuery.trim());
+      setTickerResults(results);
+    } catch {
+      setTickerResults([]);
+    } finally {
+      setTickerLoading(false);
+    }
+  }, [tickerQuery]);
+
+  const debouncedTickerSearch = useDebounce(handleTickerSearch, 300);
+
+  useEffect(() => {
+    debouncedTickerSearch();
+  }, [tickerQuery]);
 
   const selectTicker = useCallback(
-    async (sym: string) => {
-      setTickerOpen(false);
+    (symbol: string) => {
+      setSelectedTicker(symbol);
       setTickerQuery("");
       setTickerResults([]);
-      setSelectedTicker({ symbol: sym, price: null });
-      const newText = text ? `${text} $${sym} ` : `$${sym} `;
-      setText(newText);
-      composerRuntime.setText(newText);
+      setComboboxKey((k) => k + 1); // reset combobox input
+      const newText = text ? `${text} $${symbol} ` : `$${symbol} `;
+      aui.composer().setText(newText);
       textareaRef.current?.focus();
-      try {
-        const res = await fetch(`/api/quotes?symbols=${encodeURIComponent(sym)}`);
-        const data = await res.json();
-        setSelectedTicker({ symbol: sym, price: data.quotes?.[0]?.price ?? null });
-      } catch { /* keep null */ }
     },
-    [text, composerRuntime],
+    [text, aui],
   );
 
   const clearTicker = useCallback(() => {
     if (!selectedTicker) return;
     const newText = text
-      .replace(`$${selectedTicker.symbol} `, "")
-      .replace(`$${selectedTicker.symbol}`, "");
-    setText(newText);
-    composerRuntime.setText(newText);
+      .replace(`$${selectedTicker} `, "")
+      .replace(`$${selectedTicker}`, "");
+    aui.composer().setText(newText);
     setSelectedTicker(null);
-  }, [selectedTicker, text, composerRuntime]);
+  }, [selectedTicker, text, aui]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="rounded-lg border bg-background transition-shadow focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring">
-      {/* Ticker chip */}
+    <InputGroup className="w-full">
+      {/* Ticker chip — block-start addon */}
       {selectedTicker && (
-        <div className="flex flex-wrap gap-1.5 px-3 pt-3">
-          <Badge variant="secondary">
-            <StockLogo ticker={selectedTicker.symbol} size="sm" className="h-4 w-4" />
-            <span className="tabular-nums">{selectedTicker.symbol}</span>
-            {selectedTicker.price != null && (
-              <span className="text-muted-foreground tabular-nums">
-                ${selectedTicker.price.toFixed(2)}
-              </span>
-            )}
+        <InputGroupAddon align="block-start">
+          <Badge variant="secondary" className="gap-1">
+            <StockLogo ticker={selectedTicker} size="sm" className="size-4" />
+            <span className="tabular-nums">{selectedTicker}</span>
             <button
               type="button"
               onClick={clearTicker}
-              className="text-muted-foreground hover:text-foreground"
+              className="ml-0.5 text-muted-foreground hover:text-foreground"
               aria-label="Remove ticker"
             >
-              <X className="h-3 w-3" />
+              <X className="size-3" />
             </button>
           </Badge>
-        </div>
+        </InputGroupAddon>
       )}
 
       {/* Textarea */}
-      <textarea
+      <InputGroupTextarea
         ref={textareaRef}
         value={text}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         rows={2}
-        className="w-full resize-none bg-transparent px-3 pt-3 pb-2 text-sm placeholder:text-muted-foreground focus:outline-none"
         aria-label="Message input"
       />
 
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-2 pb-2">
-        <div className="flex items-center gap-1">
+      {/* Bottom toolbar — block-end addon */}
+      <InputGroupAddon align="block-end">
+        <div className="flex w-full items-center justify-between">
+          <div className="flex items-center gap-1">
 
-          {/* + menu */}
-          {plusMenu && (
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Add" />}>
-                <Plus className="size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-52">
-                {extraMenuItems.length > 0 && (
-                  <DropdownMenuGroup>
-                    {extraMenuItems.map((item) => (
-                      <DropdownMenuItem key={item.label} onClick={item.onClick}>
-                        <item.icon size={16} />
-                        {item.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                )}
-                {integrations.length > 0 && (
-                  <DropdownMenuGroup>
-                    {extraMenuItems.length > 0 && <DropdownMenuSeparator />}
-                    <DropdownMenuLabel>Sources</DropdownMenuLabel>
-                    {integrations.map((intg) => (
-                      <DropdownMenuItem key={intg.label} disabled>
-                        <intg.icon className="size-4 opacity-60 shrink-0" />
-                        <span className="flex-1 truncate text-xs">{intg.label}</span>
-                        <span
-                          className={cn(
-                            "h-1.5 w-1.5 shrink-0 rounded-full",
-                            intg.enabled ? "bg-emerald-500" : "bg-muted-foreground/30",
-                          )}
+            {/* + Capabilities menu */}
+            {plusMenu && (
+              <TooltipProvider>
+                <Tooltip>
+                  <DropdownMenu>
+                    <TooltipTrigger
+                      render={
+                        <DropdownMenuTrigger
+                          render={
+                            <Button variant="ghost" size="icon-sm" aria-label="Capabilities" />
+                          }
                         />
+                      }
+                    >
+                      <Plus className="size-4" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Capabilities</TooltipContent>
+                    <DropdownMenuContent align="start" side="top" className="w-56">
+                    {CAPABILITIES.map((group, gi) => (
+                      <DropdownMenuGroup key={group.group}>
+                        {gi > 0 && <DropdownMenuSeparator />}
+                        <DropdownMenuLabel>{group.group}</DropdownMenuLabel>
+                        {group.items.map((item) => (
+                          <DropdownMenuItem key={item.label} onClick={() => {}}>
+                            <item.icon className="size-4" />
+                            <span className="flex-1">{item.label}</span>
+                            <Check className="size-3 text-emerald-500" />
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuGroup>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem onClick={() => window.location.href = "/agent-workflow"}>
+                        <ArrowRight className="size-4" />
+                        View all capabilities
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {/* Slash commands */}
+            {slashCommands && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button variant="ghost" size="sm" aria-label="Commands" />}
+                >
+                  <Slash className="size-3" />
+                  Commands
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" className="w-44">
+                  <DropdownMenuGroup>
+                    {commands.map((cmd) => (
+                      <DropdownMenuItem key={cmd.name} onClick={() => selectCommand(cmd)}>
+                        <cmd.icon className="size-4" />
+                        {cmd.label}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuGroup>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
-          {/* Slash commands */}
-          {slashCommands && (
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="sm" />}>
-                <Slash className="size-3" />
-                Commands
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-48">
-                <DropdownMenuGroup>
-                  {commands.map((cmd) => (
-                    <DropdownMenuItem key={cmd.name} onClick={() => selectCommand(cmd)}>
-                      <cmd.icon className="opacity-60" />
-                      {cmd.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* Ticker popover */}
-          {tickerSearch && (
-            <Popover open={tickerOpen} onOpenChange={setTickerOpen}>
-              <PopoverTrigger render={<Button variant="ghost" size="sm" />}>
-                <IconChartLine className="size-3" />
-                {selectedTicker ? selectedTicker.symbol : "Ticker"}
-              </PopoverTrigger>
-              <PopoverContent side="top" align="start">
-                <Command shouldFilter={false}>
-                  <CommandInput
-                    placeholder="Search stocks…"
-                    value={tickerQuery}
-                    onValueChange={setTickerQuery}
-                  />
-                  <CommandList>
+            {/* Ticker combobox */}
+            {tickerSearch && (
+              <Combobox
+                key={comboboxKey}
+                value={selectedTicker ?? ""}
+                onValueChange={(val) => { if (val) selectTicker(val as string); }}
+                onInputValueChange={(val) => setTickerQuery(val)}
+              >
+                <ComboboxInput
+                  className="h-7 w-36 text-xs"
+                  placeholder="Search ticker…"
+                  showTrigger={false}
+                  showClear={false}
+                />
+                <ComboboxContent>
+                  <ComboboxList>
                     {tickerLoading ? (
                       <div className="flex items-center justify-center gap-2 py-6">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
                         <span className="text-xs text-muted-foreground">Searching…</span>
                       </div>
-                    ) : tickerResults.length === 0 ? (
-                      <CommandEmpty>
-                        {tickerQuery.trim() ? "No results" : "Type to search stocks"}
-                      </CommandEmpty>
                     ) : (
-                      <CommandGroup>
-                        {tickerResults.map((r, i) => (
-                          <CommandItem
-                            key={`${r.symbol}-${i}`}
-                            value={r.symbol}
-                            onSelect={() => selectTicker(r.symbol)}
-                          >
-                            <StockLogo ticker={r.symbol} size="sm" />
+                      <>
+                        <ComboboxEmpty>
+                          {tickerQuery.trim() ? "No results" : "Type to search stocks"}
+                        </ComboboxEmpty>
+                        {tickerResults.map((stock) => (
+                          <ComboboxItem key={stock.symbol} value={stock.symbol}>
+                            <StockLogo ticker={stock.symbol} size="sm" />
                             <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium">{r.symbol}</div>
+                              <div className="text-sm font-medium">{stock.symbol}</div>
                               <div className="truncate text-xs text-muted-foreground">
-                                {r.description}
+                                {stock.name}
                               </div>
                             </div>
-                          </CommandItem>
+                          </ComboboxItem>
                         ))}
-                      </CommandGroup>
+                      </>
                     )}
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+            )}
+          </div>
+
+          {/* Send / Stop */}
+          {isRunning ? (
+            <Button
+              size="icon-sm"
+              onClick={() => aui.composer().cancel()}
+              aria-label="Stop"
+            >
+              <Square className="size-3 fill-current" />
+            </Button>
+          ) : (
+            <Button
+              size="icon-sm"
+              disabled={!canSend}
+              onClick={handleSend}
+              aria-label="Send"
+            >
+              <Send className="size-3" />
+            </Button>
           )}
         </div>
-
-        {/* Send / Stop */}
-        {isRunning ? (
-          <Button
-            size="icon-sm"
-            onClick={() => threadRuntime.interrupt?.()}
-            aria-label="Stop"
-          >
-            <Square className="size-3 fill-current" />
-          </Button>
-        ) : (
-          <Button
-            size="icon-sm"
-            disabled={!text.trim()}
-            onClick={handleSend}
-            aria-label="Send"
-          >
-            <Send className="size-3" />
-          </Button>
-        )}
-      </div>
-    </div>
+      </InputGroupAddon>
+    </InputGroup>
   );
 };
 

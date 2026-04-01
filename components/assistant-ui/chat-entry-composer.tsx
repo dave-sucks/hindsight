@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { DefaultChatTransport } from "ai";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
-import { AssistantRuntimeProvider, useThreadRuntime } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useAuiState } from "@assistant-ui/react";
 import { HindsightComposer, type HindsightComposerFeatures } from "./hindsight-composer";
 import { FirstVisitTooltip } from "@/components/ui/first-visit-tooltip";
 
@@ -33,28 +33,25 @@ function EntryComposerInner({
   features?: HindsightComposerFeatures;
 }) {
   const router = useRouter();
-  const threadRuntime = useThreadRuntime();
   const navigated = useRef(false);
+  const messages = useAuiState((s) => s.thread.messages);
 
   useEffect(() => {
-    return threadRuntime.subscribe(() => {
-      if (navigated.current) return;
-      const messages = threadRuntime.getState().messages;
-      const lastUser = [...messages].reverse().find((m) => m.role === "user");
-      if (!lastUser) return;
+    if (navigated.current) return;
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
 
-      const text = lastUser.content
-        .filter((p): p is { type: "text"; text: string } => p.type === "text")
-        .map((p) => p.text)
-        .join(" ")
-        .trim();
+    const text = (lastUser.content as Array<{ type: string; text?: string }>)
+      .filter((p) => p.type === "text")
+      .map((p) => p.text ?? "")
+      .join(" ")
+      .trim();
 
-      if (text) {
-        navigated.current = true;
-        router.push(`${targetUrl}?prompt=${encodeURIComponent(text)}`);
-      }
-    });
-  }, [threadRuntime, targetUrl, router]);
+    if (text) {
+      navigated.current = true;
+      router.push(`${targetUrl}?prompt=${encodeURIComponent(text)}`);
+    }
+  }, [messages, targetUrl, router]);
 
   return <HindsightComposer features={features} />;
 }
