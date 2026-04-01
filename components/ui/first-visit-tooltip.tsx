@@ -61,7 +61,7 @@ export function FirstVisitTooltip({
               align === "center" && "left-1/2 -translate-x-1/2",
               align === "end" && "right-0",
               variant === "brand"
-                ? "bg-emerald-500 text-white"
+                ? "bg-brand text-brand-foreground"
                 : "border bg-popover text-popover-foreground",
             )}
           >
@@ -73,7 +73,7 @@ export function FirstVisitTooltip({
                 className={cn(
                   "shrink-0 rounded p-0.5 transition-colors",
                   variant === "brand"
-                    ? "hover:bg-white/20"
+                    ? "hover:bg-brand-foreground/10"
                     : "hover:bg-muted",
                 )}
                 aria-label="Dismiss"
@@ -87,7 +87,7 @@ export function FirstVisitTooltip({
               className={cn(
                 "mt-1 text-xs leading-relaxed",
                 variant === "brand"
-                  ? "text-white/90"
+                  ? "text-brand-foreground/70"
                   : "text-muted-foreground",
               )}
             >
@@ -103,7 +103,7 @@ export function FirstVisitTooltip({
                 align === "center" && "left-1/2 -translate-x-1/2",
                 align === "end" && "right-4",
                 variant === "brand"
-                  ? "bg-emerald-500"
+                  ? "bg-brand"
                   : cn(
                       "border bg-popover",
                       side === "top"
