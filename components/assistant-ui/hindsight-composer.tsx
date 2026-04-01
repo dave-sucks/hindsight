@@ -46,7 +46,6 @@ import {
   Send,
   Square,
   Slash,
-  Check,
   X,
   Loader2,
   Globe,
@@ -255,30 +254,28 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
             {/* + Capabilities menu */}
             {plusMenu && (
               <TooltipProvider>
-                <Tooltip>
-                  <DropdownMenu>
+                <DropdownMenu>
+                  <Tooltip>
                     <TooltipTrigger
                       render={
                         <DropdownMenuTrigger
-                          render={
-                            <Button variant="outline" size="icon-sm" aria-label="Capabilities" />
-                          }
+                          render={<Button variant="outline" size="icon-sm" aria-label="Capabilities" />}
                         />
                       }
                     >
                       <Plus className="size-4" />
                     </TooltipTrigger>
                     <TooltipContent side="top">Capabilities</TooltipContent>
-                    <DropdownMenuContent align="start" side="top" className="w-56">
+                  </Tooltip>
+                  <DropdownMenuContent align="start" side="top" className="w-56">
                     {CAPABILITIES.map((group, gi) => (
                       <DropdownMenuGroup key={group.group}>
                         {gi > 0 && <DropdownMenuSeparator />}
                         <DropdownMenuLabel>{group.group}</DropdownMenuLabel>
                         {group.items.map((item) => (
-                          <DropdownMenuItem key={item.label} onClick={() => {}}>
+                          <DropdownMenuItem key={item.label}>
                             <item.icon className="size-4" />
-                            <span className="flex-1">{item.label}</span>
-                            <Check className="size-3 text-emerald-500" />
+                            {item.label}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuGroup>
@@ -290,9 +287,8 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                         View all capabilities
                       </DropdownMenuItem>
                     </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </Tooltip>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </TooltipProvider>
             )}
 
