@@ -100,21 +100,67 @@ const DEFAULT_STOCKS = [
 
 const CAPABILITIES = [
   {
-    group: "Data & Research",
+    group: "Live Data",
     items: [
-      { label: "Web Search",        icon: Globe,      href: "/intelligence" },
-      { label: "Live Market Data",  icon: BarChart3,  href: "/intelligence" },
-      { label: "Options Flow",      icon: TrendingUp, href: "/intelligence" },
-      { label: "SEC Filings",       icon: FileText,   href: "/intelligence" },
+      {
+        label: "Web Search",
+        description: "Live internet search via Perplexity Sonar — finds breaking news, earnings releases, and market-moving events in real time.",
+        logo: "https://www.google.com/s2/favicons?domain=perplexity.ai&sz=32",
+        icon: Globe,
+      },
+      {
+        label: "Market Data",
+        description: "Real-time quotes, earnings calendars, company metrics and news via Finnhub. Used for every stock lookup and price check.",
+        logo: "https://www.google.com/s2/favicons?domain=finnhub.io&sz=32",
+        icon: BarChart3,
+      },
+      {
+        label: "Options Flow",
+        description: "Put/call ratios and unusual contract activity via Financial Modeling Prep — surfaces institutional positioning signals.",
+        logo: "https://www.google.com/s2/favicons?domain=financialmodelingprep.com&sz=32",
+        icon: TrendingUp,
+      },
+      {
+        label: "SEC Filings",
+        description: "10-K, 10-Q, 8-K and Form 4 filings pulled directly from SEC EDGAR — insider activity, earnings, and risk disclosures.",
+        logo: "https://www.google.com/s2/favicons?domain=sec.gov&sz=32",
+        icon: FileText,
+      },
+      {
+        label: "Web Extraction",
+        description: "Full article and document extraction via Firecrawl — pulls complete content from any URL behind signals and headlines.",
+        logo: "https://www.google.com/s2/favicons?domain=firecrawl.dev&sz=32",
+        icon: Globe,
+      },
     ],
   },
   {
-    group: "Agent Context",
+    group: "Agent Intelligence",
     items: [
-      { label: "Morning Intelligence", icon: Brain,    href: "/intelligence" },
-      { label: "Portfolio Context",    icon: Briefcase, href: "/trades"      },
-      { label: "Performance History",  icon: History,  href: "/performance"  },
-      { label: "Paper Trading",        icon: TrendingUp, href: "/trades"     },
+      {
+        label: "Morning Brief",
+        description: "Pre-market intelligence generated nightly — firm-wide market sweep, signal routing, and analyst-specific insights ready before the open.",
+        logo: "https://www.google.com/s2/favicons?domain=openai.com&sz=32",
+        icon: Brain,
+      },
+      {
+        label: "Portfolio Context",
+        description: "Live Alpaca paper positions, P&L, and open orders injected into every agent run so it knows what you already hold.",
+        logo: "https://www.google.com/s2/favicons?domain=alpaca.markets&sz=32",
+        icon: Briefcase,
+      },
+      {
+        label: "Performance History",
+        description: "Past trade outcomes, win rates, and weekly calibration reports — the agent uses these to tune confidence thresholds and sizing.",
+        logo: null,
+        icon: History,
+      },
+      {
+        label: "Paper Trading",
+        description: "Live market orders via Alpaca paper trading — the agent places, tracks, and closes positions automatically based on its theses.",
+        logo: "https://www.google.com/s2/favicons?domain=alpaca.markets&sz=32",
+        icon: TrendingUp,
+      },
     ],
   },
 ];
@@ -268,16 +314,31 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                     </TooltipTrigger>
                     <TooltipContent side="top">Capabilities</TooltipContent>
                   </Tooltip>
-                  <DropdownMenuContent align="start" side="top" className="w-56">
+                  <DropdownMenuContent align="start" side="top" className="w-60">
                     {CAPABILITIES.map((group, gi) => (
                       <DropdownMenuGroup key={group.group}>
                         {gi > 0 && <DropdownMenuSeparator />}
                         <DropdownMenuLabel>{group.group}</DropdownMenuLabel>
                         {group.items.map((item) => (
-                          <DropdownMenuItem key={item.label}>
-                            <item.icon className="size-4" />
-                            {item.label}
-                          </DropdownMenuItem>
+                          <Tooltip key={item.label}>
+                            <TooltipTrigger render={<DropdownMenuItem />}>
+                              {item.logo ? (
+                                <img
+                                  src={item.logo}
+                                  alt=""
+                                  width={16}
+                                  height={16}
+                                  className="size-4 rounded-sm object-contain"
+                                />
+                              ) : (
+                                <item.icon className="size-4" />
+                              )}
+                              {item.label}
+                            </TooltipTrigger>
+                            <TooltipContent side="right">
+                              {item.description}
+                            </TooltipContent>
+                          </Tooltip>
                         ))}
                       </DropdownMenuGroup>
                     ))}
