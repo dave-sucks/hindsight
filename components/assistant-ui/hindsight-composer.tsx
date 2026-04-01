@@ -30,6 +30,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -70,11 +73,9 @@ import {
   Globe,
   BarChart3,
   TrendingUp,
-  FileText,
   Brain,
   Briefcase,
   History,
-  ArrowRight,
   Search,
   GitCompare,
   ChevronsUpDown,
@@ -116,70 +117,58 @@ const DEFAULT_STOCKS: TickerItem[] = [
   { symbol: "TSLA", name: "Tesla Inc." },
 ];
 
-const CAPABILITIES = [
+// Sources: live data connections shown with stacked provider logos
+const SOURCES = [
   {
-    group: "Live Data",
-    items: [
-      {
-        label: "Web Search",
-        description: "Live internet search via Perplexity Sonar — finds breaking news, earnings releases, and market-moving events in real time.",
-        logo: "https://www.google.com/s2/favicons?domain=perplexity.ai&sz=32",
-        icon: Globe,
-      },
-      {
-        label: "Market Data",
-        description: "Real-time quotes, earnings calendars, company metrics and news via Finnhub. Used for every stock lookup and price check.",
-        logo: "https://www.google.com/s2/favicons?domain=finnhub.io&sz=32",
-        icon: BarChart3,
-      },
-      {
-        label: "Options Flow",
-        description: "Put/call ratios and unusual contract activity via Financial Modeling Prep — surfaces institutional positioning signals.",
-        logo: "https://www.google.com/s2/favicons?domain=financialmodelingprep.com&sz=32",
-        icon: TrendingUp,
-      },
-      {
-        label: "SEC Filings",
-        description: "10-K, 10-Q, 8-K and Form 4 filings pulled directly from SEC EDGAR — insider activity, earnings, and risk disclosures.",
-        logo: "https://www.google.com/s2/favicons?domain=sec.gov&sz=32",
-        icon: FileText,
-      },
-      {
-        label: "Web Extraction",
-        description: "Full article and document extraction via Firecrawl — pulls complete content from any URL behind signals and headlines.",
-        logo: "https://www.google.com/s2/favicons?domain=firecrawl.dev&sz=32",
-        icon: Globe,
-      },
+    label: "Web Search",
+    description: "Live internet search via Perplexity Sonar plus full article extraction via Firecrawl — finds breaking news, earnings releases, and any URL behind a signal.",
+    icon: Globe,
+    logos: [
+      { domain: "perplexity.ai", name: "Perplexity" },
+      { domain: "firecrawl.dev", name: "Firecrawl" },
     ],
   },
   {
-    group: "Agent Intelligence",
-    items: [
-      {
-        label: "Morning Brief",
-        description: "Pre-market intelligence generated nightly — firm-wide market sweep, signal routing, and analyst-specific insights ready before the open.",
-        logo: "https://www.google.com/s2/favicons?domain=openai.com&sz=32",
-        icon: Brain,
-      },
-      {
-        label: "Portfolio Context",
-        description: "Live Alpaca paper positions, P&L, and open orders injected into every agent run so it knows what you already hold.",
-        logo: "https://www.google.com/s2/favicons?domain=alpaca.markets&sz=32",
-        icon: Briefcase,
-      },
-      {
-        label: "Performance History",
-        description: "Past trade outcomes, win rates, and weekly calibration reports — the agent uses these to tune confidence thresholds and sizing.",
-        logo: null,
-        icon: History,
-      },
-      {
-        label: "Paper Trading",
-        description: "Live market orders via Alpaca paper trading — the agent places, tracks, and closes positions automatically based on its theses.",
-        logo: "https://www.google.com/s2/favicons?domain=alpaca.markets&sz=32",
-        icon: TrendingUp,
-      },
+    label: "Live Market Data",
+    description: "Real-time quotes, earnings, and company metrics via Finnhub. Put/call ratios and options flow via FMP. 10-K, 10-Q, 8-K, and Form 4 filings from SEC EDGAR.",
+    icon: BarChart3,
+    logos: [
+      { domain: "finnhub.io", name: "Finnhub" },
+      { domain: "sec.gov", name: "SEC EDGAR" },
+      { domain: "financialmodelingprep.com", name: "FMP" },
     ],
+  },
+  {
+    label: "Alpaca Trading Account",
+    description: "Your connected Alpaca paper trading account — the agent reads live positions, P&L, and open orders, and can place, monitor, and close paper trades on your behalf.",
+    icon: TrendingUp,
+    logos: [
+      { domain: "alpaca.markets", name: "Alpaca" },
+    ],
+  },
+];
+
+// All individual connectors shown in the "All connectors" submenu
+const ALL_CONNECTORS = [
+  { domain: "perplexity.ai",             name: "Perplexity Sonar" },
+  { domain: "firecrawl.dev",             name: "Firecrawl" },
+  { domain: "finnhub.io",               name: "Finnhub" },
+  { domain: "sec.gov",                  name: "SEC EDGAR" },
+  { domain: "financialmodelingprep.com", name: "Financial Modeling Prep" },
+  { domain: "alpaca.markets",           name: "Alpaca" },
+];
+
+// Capabilities: agent intelligence (no external APIs, no logos)
+const CAPABILITIES = [
+  {
+    label: "Research & Monitors",
+    description: "Pre-market intelligence from nightly pipeline runs — firm-wide news sweeps, watchlist alerts, signal routing, and analyst-specific morning briefs ready before each run.",
+    icon: Brain,
+  },
+  {
+    label: "Portfolio Knowledge",
+    description: "Past trade outcomes, win rates, weekly calibration reports, and live portfolio context — used to tune the agent's confidence thresholds and position sizing decisions.",
+    icon: History,
   },
 ];
 
@@ -509,7 +498,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
           <div className="flex w-full items-center justify-between">
             <div className="flex items-center gap-1">
 
-              {/* + Capabilities menu */}
+              {/* + Sources & Capabilities menu */}
               {plusMenu && (
                 <TooltipProvider>
                   <DropdownMenu>
@@ -517,47 +506,102 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                       <TooltipTrigger
                         render={
                           <DropdownMenuTrigger
-                            render={<Button variant="outline" size="icon-sm" aria-label="Capabilities" />}
+                            render={<Button variant="outline" size="icon-sm" aria-label="Sources & Capabilities" />}
                           />
                         }
                       >
                         <Plus className="size-4" />
                       </TooltipTrigger>
-                      <TooltipContent side="top">Capabilities</TooltipContent>
+                      <TooltipContent side="top">Sources & Capabilities</TooltipContent>
                     </Tooltip>
-                    <DropdownMenuContent align="start" side="top" className="w-60">
-                      {CAPABILITIES.map((group, gi) => (
-                        <DropdownMenuGroup key={group.group}>
-                          {gi > 0 && <DropdownMenuSeparator />}
-                          <DropdownMenuLabel>{group.group}</DropdownMenuLabel>
-                          {group.items.map((item) => (
-                            <Tooltip key={item.label}>
-                              <TooltipTrigger render={<DropdownMenuItem />}>
-                                {item.logo ? (
+
+                    <DropdownMenuContent align="start" side="top" className="w-64">
+
+                      {/* ── Sources ── */}
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>Sources</DropdownMenuLabel>
+
+                        {SOURCES.map((source) => (
+                          <Tooltip key={source.label}>
+                            <TooltipTrigger render={<DropdownMenuItem />}>
+                              <source.icon className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="flex-1">{source.label}</span>
+                              {/* Stacked provider logos */}
+                              <div className="flex -space-x-1 ml-1">
+                                {source.logos.map((logo) => (
                                   <img
-                                    src={item.logo}
-                                    alt=""
+                                    key={logo.domain}
+                                    src={`https://www.google.com/s2/favicons?domain=${logo.domain}&sz=32`}
+                                    alt={logo.name}
+                                    title={logo.name}
                                     width={16}
                                     height={16}
-                                    className="size-4 rounded-sm object-contain"
+                                    className="size-4 rounded-full ring-1 ring-popover object-contain bg-white"
                                   />
-                                ) : (
-                                  <item.icon className="size-4" />
-                                )}
-                                {item.label}
-                              </TooltipTrigger>
-                              <TooltipContent side="right">{item.description}</TooltipContent>
-                            </Tooltip>
-                          ))}
-                        </DropdownMenuGroup>
-                      ))}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={() => (window.location.href = "/agent-workflow")}>
-                          <ArrowRight className="size-4" />
-                          View all capabilities
-                        </DropdownMenuItem>
+                                ))}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-56">
+                              {source.description}
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+
+                        {/* All connectors submenu */}
+                        <DropdownMenuSub>
+                          <DropdownMenuSubTrigger className="text-muted-foreground">
+                            <div className="flex -space-x-1 mr-1">
+                              {ALL_CONNECTORS.slice(0, 4).map((c) => (
+                                <img
+                                  key={c.domain}
+                                  src={`https://www.google.com/s2/favicons?domain=${c.domain}&sz=32`}
+                                  alt={c.name}
+                                  width={14}
+                                  height={14}
+                                  className="size-3.5 rounded-full ring-1 ring-popover object-contain bg-white"
+                                />
+                              ))}
+                            </div>
+                            All connectors
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent className="w-52">
+                            <DropdownMenuGroup>
+                              {ALL_CONNECTORS.map((connector) => (
+                                <DropdownMenuItem key={connector.domain}>
+                                  <img
+                                    src={`https://www.google.com/s2/favicons?domain=${connector.domain}&sz=32`}
+                                    alt={connector.name}
+                                    width={16}
+                                    height={16}
+                                    className="size-4 rounded-sm object-contain bg-white"
+                                  />
+                                  {connector.name}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuGroup>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
                       </DropdownMenuGroup>
+
+                      <DropdownMenuSeparator />
+
+                      {/* ── Capabilities ── */}
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>Capabilities</DropdownMenuLabel>
+
+                        {CAPABILITIES.map((cap) => (
+                          <Tooltip key={cap.label}>
+                            <TooltipTrigger render={<DropdownMenuItem />}>
+                              <cap.icon className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="flex-1">{cap.label}</span>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-56">
+                              {cap.description}
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </DropdownMenuGroup>
+
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TooltipProvider>
