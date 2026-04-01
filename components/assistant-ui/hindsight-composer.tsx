@@ -217,6 +217,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
+    <div className="rounded-lg bg-background">
     <InputGroup className="w-full">
       {/* Ticker chip — block-start addon */}
       {selectedTicker && (
@@ -261,7 +262,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                       render={
                         <DropdownMenuTrigger
                           render={
-                            <Button variant="ghost" size="icon-sm" aria-label="Capabilities" />
+                            <Button variant="outline" size="icon-sm" aria-label="Capabilities" />
                           }
                         />
                       }
@@ -300,7 +301,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
             {slashCommands && (
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  render={<Button variant="ghost" size="sm" aria-label="Commands" />}
+                  render={<Button variant="outline" size="sm" aria-label="Commands" />}
                 >
                   <Slash className="size-3" />
                   Commands
@@ -397,6 +398,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
         </div>
       </InputGroupAddon>
     </InputGroup>
+    </div>
   );
 };
 
