@@ -64,8 +64,8 @@ export function SignalFeed({ signals }: SignalFeedProps) {
     <TooltipProvider>
       <div className="space-y-4">
         {/* Filters */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 max-w-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative flex-1 sm:max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search signals..."
@@ -74,31 +74,33 @@ export function SignalFeed({ signals }: SignalFeedProps) {
               className="pl-9"
             />
           </div>
-          <Select value={typeFilter || undefined} onValueChange={(val) => setTypeFilter(val === "_all" ? "" : (val ?? ""))}>
-            <SelectTrigger className="w-auto text-xs">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_all">All types</SelectItem>
-              {signalTypes.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={urgencyFilter || undefined} onValueChange={(val) => setUrgencyFilter(val === "_all" ? "" : (val ?? ""))}>
-            <SelectTrigger className="w-auto text-xs">
-              <SelectValue placeholder="Urgency" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_all">All urgency</SelectItem>
-              <SelectItem value="BREAKING">Breaking</SelectItem>
-              <SelectItem value="HIGH">High</SelectItem>
-              <SelectItem value="MEDIUM">Medium</SelectItem>
-              <SelectItem value="LOW">Low</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={typeFilter || undefined} onValueChange={(val) => setTypeFilter(val === "_all" ? "" : (val ?? ""))}>
+              <SelectTrigger className="flex-1 sm:flex-none sm:w-auto text-xs">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All types</SelectItem>
+                {signalTypes.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={urgencyFilter || undefined} onValueChange={(val) => setUrgencyFilter(val === "_all" ? "" : (val ?? ""))}>
+              <SelectTrigger className="flex-1 sm:flex-none sm:w-auto text-xs">
+                <SelectValue placeholder="Urgency" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All urgency</SelectItem>
+                <SelectItem value="BREAKING">Breaking</SelectItem>
+                <SelectItem value="HIGH">High</SelectItem>
+                <SelectItem value="MEDIUM">Medium</SelectItem>
+                <SelectItem value="LOW">Low</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Signal list */}

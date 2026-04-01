@@ -63,6 +63,17 @@ export const postRunBriefing = inngest.createFunction(
     await step.run("generate-briefing", async () => {
       console.log(`[post-run-briefing] Generating briefing for run ${runId} analyst=${analystId}`);
       await updateAnalystBriefing({ analystId, runId, userId });
+
+      // updateAnalystBriefing swallows its own errors (non-fatal design).
+      // Verify the brief was actually written — if not, throw so Inngest retries this step.
+      const created = await prisma.analystBriefing.findFirst({
+        where: { runId },
+        select: { id: true },
+      });
+      if (!created) {
+        throw new Error(`[post-run-briefing] Briefing was not created for run ${runId} — updateAnalystBriefing failed silently. Check logs for [briefing] errors.`);
+      }
+
       console.log(`[post-run-briefing] ✅ Briefing written for run ${runId}`);
     });
 
