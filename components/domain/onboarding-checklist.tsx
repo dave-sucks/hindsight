@@ -72,7 +72,7 @@ export function OnboardingChecklist({
       )}
 
       {/* Floating bottom-right panel */}
-      <div className="fixed bottom-4 right-4 z-50 w-80">
+      <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-50 sm:w-80">
         <Card className="shadow-lg p-0 overflow-hidden">
           {/* Header — always visible, click to collapse */}
           <button

@@ -16,7 +16,6 @@ export {
 export {
   useRegisterResearchToolUIs,
   useRegisterBuilderToolUIs,
-  useRegisterEditorToolUIs,
 } from "./tool-ui-research";
 
 export {

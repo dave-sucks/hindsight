@@ -31,8 +31,8 @@ import {
   Brain,
   ExternalLink,
   Target,
-  TrendingUp,
-  TrendingDown,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react';
 import { TradeActions } from '@/components/trades/TradeActions';
 
@@ -264,34 +264,63 @@ export default async function TradeDetailPage({
               )}
 
               {/* Price block */}
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-semibold tabular-nums">
-                    {fmtCur(currentPrice)}
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-semibold tabular-nums">
+                  {fmtCur(currentPrice)}
+                </span>
+                {stockQuote && (
+                  <span className={cn(
+                    'text-xl tabular-nums flex items-center gap-2',
+                    isQuoteUp ? 'text-positive' : 'text-negative',
+                  )}>
+                    {isQuoteUp ? '+' : ''}{fmtCur(stockQuote.d)}
+                    <div className="flex items-center">
+                      {isQuoteUp ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-4 w-4" />}
+                      {changePct != null ? `${Math.abs(changePct).toFixed(2)}%` : '—'}
+                    </div>
                   </span>
-                  {stockQuote && (
-                    <span className={cn(
-                      'text-sm font-medium tabular-nums flex items-center gap-0.5',
-                      isQuoteUp ? 'text-positive' : 'text-negative',
-                    )}>
-                      {isQuoteUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                      {fmtCur(stockQuote.d)} ({changePct != null ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : '—'})
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                  <span className="tabular-nums">Entry {fmtCur(trade.entryPrice)}</span>
-                  <span>→</span>
-                  <span className={cn('tabular-nums font-medium', isPos ? 'text-positive' : 'text-negative')}>
-                    {isPos ? '+' : ''}{fmtCur(pnl)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
-                  </span>
-                  <span className="text-muted-foreground/60">·</span>
-                  <span>{trade.shares} shares</span>
-                </div>
+                )}
               </div>
 
-              {/* Chart with reference lines */}
-              <StockPriceChart candles={candles} referenceLines={chartReferenceLines} />
+              {/* Chart with holding summary row inside */}
+              <StockPriceChart candles={candles} referenceLines={chartReferenceLines}>
+                {/* Holding summary — renders inside the chart card above the graph */}
+                <TooltipProvider>
+                  <div className="px-4 py-2.5 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-sm">
+                    {/* Left: status dot + summary */}
+                    <div className="flex items-center gap-2">
+                      <Tooltip>
+                        <TooltipTrigger render={
+                          isOpen ? (
+                            <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
+                            </span>
+                          ) : (
+                            <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/40 cursor-default" />
+                          )
+                        } />
+                        <TooltipContent side="bottom" className="text-xs tabular-nums">
+                          {position.openedAt ? new Date(position.openedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
+                        </TooltipContent>
+                      </Tooltip>
+                      <span>
+                        {isOpen ? 'Holding' : 'Sold'}{' '}
+                        {trade.shares} shares at{' '}
+                        <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
+                        {' '}
+                        <span className="text-muted-foreground">({fmtCur(trade.entryPrice * trade.shares)} value)</span>
+                      </span>
+                    </div>
+                    {/* Right: P&L */}
+                    <div className={cn('tabular-nums flex items-center gap-1 sm:ml-auto', isPos ? 'text-positive' : 'text-negative')}>
+                      {isPos ? '+' : ''}{fmtCur(pnl)}
+                      {isPos ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+                      {Math.abs(pnlPct).toFixed(2)}%
+                    </div>
+                  </div>
+                </TooltipProvider>
+              </StockPriceChart>
 
               {/* Stats grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-2 py-3 border-y">

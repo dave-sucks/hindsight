@@ -16,7 +16,7 @@ import {
   Sun,
   Moon,
   Workflow,
-  Radar,
+  SatelliteDish,
   Sparkles,
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
@@ -57,7 +57,7 @@ const MAIN_NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, tooltip: 'Portfolio overview' },
   { href: '/analysts', label: 'Analysts', icon: Bot, tooltip: 'AI trading personas' },
   { href: '/runs', label: 'Runs', icon: PlayCircle, tooltip: 'Research sessions' },
-  { href: '/intelligence', label: 'Intelligence', icon: Radar, tooltip: 'Signals, monitors, briefs' },
+  { href: '/intelligence', label: 'Intelligence', icon: SatelliteDish, tooltip: 'Signals, monitors, briefs' },
 ];
 
 const PORTFOLIO_NAV = [

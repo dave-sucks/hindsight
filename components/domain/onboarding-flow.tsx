@@ -4,13 +4,14 @@ import { useState, useEffect, useTransition, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogClose,
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, ArrowLeft, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { saveApiKey } from "@/lib/actions/api-keys.actions";
@@ -378,7 +379,7 @@ function TourStep({
 
 // ── Onboarding Flow (orchestrator) ───────────────────────────────────────────
 
-type OnboardingStep = "name" | "alpaca" | "tour";
+type OnboardingStep = "name" | "alpaca";
 
 export function OnboardingFlow({
   needsName,
@@ -391,7 +392,6 @@ export function OnboardingFlow({
 }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<OnboardingStep>("name");
-  const [tourSlide, setTourSlide] = useState(0);
 
   // Determine initial step on mount
   useEffect(() => {
@@ -402,7 +402,9 @@ export function OnboardingFlow({
     } else if (!hasAlpacaKey) {
       setStep("alpaca");
     } else {
-      setStep("tour");
+      // Nothing left — mark done
+      markOnboardingComplete();
+      return;
     }
     setOpen(true);
   }, [needsName, hasAlpacaKey]);
@@ -416,15 +418,9 @@ export function OnboardingFlow({
     if (!hasAlpacaKey) {
       setStep("alpaca");
     } else {
-      setStep("tour");
-      setTourSlide(0);
+      finish();
     }
-  }, [hasAlpacaKey]);
-
-  const advanceFromAlpaca = useCallback(() => {
-    setStep("tour");
-    setTourSlide(0);
-  }, []);
+  }, [hasAlpacaKey, finish]);
 
   if (!open) return null;
 
@@ -437,7 +433,6 @@ export function OnboardingFlow({
         <DialogTitle className="sr-only">
           {step === "name" && "Welcome to Hindsight"}
           {step === "alpaca" && "Connect Alpaca"}
-          {step === "tour" && TOUR_SLIDES[tourSlide].title}
         </DialogTitle>
         <DialogDescription className="sr-only">
           Onboarding flow
@@ -452,19 +447,8 @@ export function OnboardingFlow({
 
         {step === "alpaca" && (
           <AlpacaStep
-            onComplete={advanceFromAlpaca}
-            onSkip={advanceFromAlpaca}
-          />
-        )}
-
-        {step === "tour" && (
-          <TourStep
-            slideIndex={tourSlide}
-            onNext={() => setTourSlide((s) => s + 1)}
-            onPrev={() => setTourSlide((s) => s - 1)}
-            onFinish={finish}
-            isFirst={tourSlide === 0}
-            isLast={tourSlide === TOUR_SLIDES.length - 1}
+            onComplete={finish}
+            onSkip={finish}
           />
         )}
       </DialogContent>
@@ -490,13 +474,19 @@ export function ProductTourDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogTitle className="sr-only">
           {TOUR_SLIDES[slideIndex]?.title ?? "Product Tour"}
         </DialogTitle>
         <DialogDescription className="sr-only">
           Product tour
         </DialogDescription>
+
+        {/* White close button — always visible over dark Silk backgrounds */}
+        <DialogClose className="absolute top-3 right-3 z-10 rounded-full p-1.5 text-white/80 hover:text-white hover:bg-white/10 transition-colors">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogClose>
 
         <TourStep
           slideIndex={slideIndex}

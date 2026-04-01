@@ -157,19 +157,17 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         const time = formatTime(pos.openedAt ?? t.createdAt);
         return (
           <div className={cn("px-4 py-2.5 border-b", posBg(pos.status))}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <Tooltip>
-                  <TooltipTrigger render={<span className="shrink-0"><Badge variant={badge.variant}>{badge.label}</Badge></span>} />
-                  <TooltipContent side="bottom">{badge.tip}</TooltipContent>
-                </Tooltip>
-                <span className="text-sm">
-                  {pos.quantity && <>{pos.quantity} shares @ </>}
-                  <span className="tabular-nums font-medium">{$(pos.avgCost)}</span>
-                  {t.targetPrice && t.targetPrice > 0 && <>, targeting <span className="tabular-nums font-medium">{$(t.targetPrice)}</span></>}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Tooltip>
+                <TooltipTrigger render={<span className="shrink-0"><Badge variant={badge.variant}>{badge.label}</Badge></span>} />
+                <TooltipContent side="bottom">{badge.tip}</TooltipContent>
+              </Tooltip>
+              <span className="text-sm">
+                {pos.quantity && <>{pos.quantity} shares @ </>}
+                <span className="tabular-nums font-medium">{$(pos.avgCost)}</span>
+                {t.targetPrice && t.targetPrice > 0 && <>, targeting <span className="tabular-nums font-medium">{$(t.targetPrice)}</span></>}
+              </span>
+              <div className="flex items-center gap-2 ml-auto">
                 {mktVal != null && (
                   <Tooltip>
                     <TooltipTrigger render={<span className="text-sm tabular-nums font-medium cursor-default">{$k(mktVal)}</span>} />

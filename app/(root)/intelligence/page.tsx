@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -32,13 +29,11 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 import { SignalFeed } from "@/components/intelligence/signal-feed";
 import { MonitorList } from "@/components/intelligence/config-panel";
 import { BriefCards } from "@/components/intelligence/brief-cards";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
-import { ConceptTooltip } from "@/components/domain/education-card";
 import { IntelligenceShowcaseTrigger, IntelligenceShowcaseButton } from "@/components/domain/run-showcase-trigger";
 import type {
   Signal,
@@ -130,55 +125,19 @@ export default function IntelligencePage() {
     loadBriefs();
   }, [loadBriefs]);
 
-  // ── Stats ────────────────────────────────────────────────────────────────
-
-  const todaySignals = useMemo(() => {
-    const now = new Date().toDateString();
-    return signals.filter(
-      (s) => new Date(s.createdAt).toDateString() === now
-    );
-  }, [signals]);
-
-  const stats = useMemo(() => {
-    const breakingHigh = todaySignals.filter(
-      (s) => s.urgency === "BREAKING" || s.urgency === "HIGH"
-    ).length;
-    const bullish = todaySignals.filter(
-      (s) => s.sentiment === "BULLISH"
-    ).length;
-    const bearish = todaySignals.filter(
-      (s) => s.sentiment === "BEARISH"
-    ).length;
-    const monitorsActive = monitors.filter((m) => m.enabled).length;
-    return { breakingHigh, bullish, bearish, monitorsActive };
-  }, [todaySignals, monitors]);
 
   return (
     <TooltipProvider>
       <IntelligenceShowcaseTrigger />
       <div className="p-6 space-y-4">
-        {/* Top bar: empty left | tabs center | refresh right */}
         <Tabs defaultValue="findings">
-          <div className="grid grid-cols-3 items-center">
-            <div />
-            <TabsList className="mx-auto">
-              <TabsTrigger value="findings">
-                Findings
-                {todaySignals.length > 0 && (
-                  <Badge variant="secondary" className="ml-1.5">
-                    {todaySignals.length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="monitors">
-                Monitors
-                <Badge variant="secondary" className="ml-1.5">
-                  {monitors.length}
-                </Badge>
-              </TabsTrigger>
+          <div className="flex items-center justify-between gap-2">
+            <TabsList>
+              <TabsTrigger value="findings">Findings</TabsTrigger>
+              <TabsTrigger value="monitors">Monitors</TabsTrigger>
               <TabsTrigger value="briefs">Briefs</TabsTrigger>
             </TabsList>
-            <div className="flex justify-end gap-1.5">
+            <div className="flex items-center gap-1.5">
               <IntelligenceShowcaseButton />
               <HowItWorksSheet flow="intelligence">
                 <ScanSearch className="h-4 w-4" />
@@ -195,7 +154,7 @@ export default function IntelligencePage() {
                     ) : (
                       <Play className="h-4 w-4" />
                     )}
-                    Start Pipeline
+                    <span className="hidden sm:inline">Start Pipeline</span>
                   </Button>
                 } />
                 <DropdownMenuContent align="end" className="w-48">
@@ -240,36 +199,6 @@ export default function IntelligencePage() {
 
           {/* Findings tab */}
           <TabsContent value="findings" className="space-y-6 pt-4" keepMounted>
-            {/* Stats strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <StatCard
-                label="Today's Findings"
-                value={todaySignals.length}
-              />
-              <StatCard
-                label="Breaking / High"
-                value={stats.breakingHigh}
-                variant={stats.breakingHigh > 0 ? "alert" : "default"}
-              />
-              <StatCard
-                label="Bullish"
-                value={stats.bullish}
-                variant={stats.bullish > 0 ? "positive" : "default"}
-              />
-              <StatCard
-                label="Bearish"
-                value={stats.bearish}
-                variant={stats.bearish > 0 ? "negative" : "default"}
-              />
-              <StatCard
-                label="Monitors Active"
-                value={stats.monitorsActive}
-              />
-            </div>
-
-            <Separator />
-
-            {/* Finding feed */}
             <SignalFeed signals={signals} />
           </TabsContent>
 
@@ -313,35 +242,6 @@ export default function IntelligencePage() {
   );
 }
 
-// ── Stat Card ───────────────────────────────────────────────────────────────
-
-function StatCard({
-  label,
-  value,
-  variant = "default",
-}: {
-  label: string;
-  value: number;
-  variant?: "default" | "positive" | "negative" | "alert";
-}) {
-  return (
-    <Card className="p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "text-2xl font-semibold tabular-nums mt-1",
-          variant === "positive" && "text-positive",
-          variant === "negative" && "text-negative",
-          variant === "alert" && value > 0 && "text-amber-500"
-        )}
-      >
-        {value}
-      </p>
-    </Card>
-  );
-}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

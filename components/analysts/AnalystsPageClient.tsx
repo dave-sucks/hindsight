@@ -32,10 +32,8 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn } from "@/lib/utils";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
-import { AnalystBuilderProvider } from "@/components/analysts/AnalystBuilderChat";
 import { BuilderShowcaseTrigger, BuilderShowcaseButton } from "@/components/domain/run-showcase-trigger";
-import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
-import { useThreadRuntime } from "@assistant-ui/react";
+import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
 import {
   Carousel,
   CarouselContent,
@@ -244,18 +242,15 @@ const TEMPLATES = [
 // ── Template card that sends prompt into the thread ──────────────────────────
 
 function TemplateCard({ title, description, prompt }: typeof TEMPLATES[number]) {
-  const threadRuntime = useThreadRuntime();
+  const router = useRouter();
   return (
     <button
       onClick={() => {
-        threadRuntime.append({
-          role: "user",
-          content: [{ type: "text", text: prompt }],
-        });
+        router.push(`/analysts/new?prompt=${encodeURIComponent(prompt)}`);
       }}
       className="text-left"
     >
-      <Card className="p-4 h-full hover:bg-muted/50 transition-colors cursor-pointer shadow-none">
+      <Card className="p-4 h-full hover:bg-muted/50 transition-colors cursor-pointer shadow-none ring-0 border">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
           {description}
@@ -269,39 +264,36 @@ function TemplateCard({ title, description, prompt }: typeof TEMPLATES[number]) 
 
 function AnalystsEmptyState() {
   return (
-    <AnalystBuilderProvider>
-      <div className="flex flex-col h-[calc(100dvh-12rem)]">
-        {/* Spacer pushes cards toward bottom */}
-        <div className="flex-1" />
+    <div className="flex flex-col h-[calc(100dvh-12rem)]">
+      {/* Spacer pushes cards toward bottom */}
+      <div className="flex-1" />
 
-        {/* Template cards — carousel on mobile, grid on desktop */}
-        <div className="mb-4">
-          {/* Desktop: grid */}
-          <div className="hidden sm:grid grid-cols-3 gap-3 w-full">
+      {/* Template cards — carousel on mobile, grid on desktop */}
+      <div className="mb-4">
+        <Carousel opts={{ align: "start" }}>
+          <CarouselContent className="-ml-3 sm:grid sm:grid-cols-3">
             {TEMPLATES.map((t) => (
-              <TemplateCard key={t.title} {...t} />
+              <CarouselItem key={t.title} className="pl-3 basis-[80%] sm:basis-auto">
+                <TemplateCard {...t} />
+              </CarouselItem>
             ))}
-          </div>
-          {/* Mobile: carousel */}
-          <div className="sm:hidden">
-            <Carousel opts={{ align: "start" }}>
-              <CarouselContent className="-ml-3">
-                {TEMPLATES.map((t) => (
-                  <CarouselItem key={t.title} className="pl-3 basis-[80%]">
-                    <TemplateCard {...t} />
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-            </Carousel>
-          </div>
-        </div>
-
-        {/* Composer input — full width */}
-        <div className="w-full">
-          <HindsightComposer features={{ placeholder: "Describe any strategy, sector, or style…" }} />
-        </div>
+          </CarouselContent>
+        </Carousel>
       </div>
-    </AnalystBuilderProvider>
+
+      {/* Standalone entry composer — navigates to /analysts/new on send */}
+      <ChatEntryComposer
+        targetUrl="/analysts/new"
+        features={{
+          placeholder: "Describe any strategy, sector, or style…",
+        }}
+        tooltip={{
+          title: "Build any analyst",
+          description: "Describe a strategy, sector, or style and I'll create a custom analyst for you.",
+          storageKey: "analyst-composer",
+        }}
+      />
+    </div>
   );
 }
 

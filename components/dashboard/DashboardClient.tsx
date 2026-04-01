@@ -20,6 +20,7 @@ import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
+import { ProductTourDialog } from '@/components/domain/onboarding-flow';
 import { Button } from '@/components/ui/button';
 import {
   mockOpenTrades,
@@ -108,6 +109,7 @@ function RecentPicksSection({
   picks: RecentPick[];
 }) {
   const [filter, setFilter] = useState<PickFilter>('all');
+  const [showTour, setShowTour] = useState(false);
 
   const filtered = picks.filter((p) => {
     if (filter === 'open') return p.position?.status === 'OPEN';
@@ -157,13 +159,19 @@ function RecentPicksSection({
             <EmptyStateBg />
           </div>
           <div className="relative z-10 flex flex-col items-center gap-3">
-            <p className="text-base font-medium">Theses for your Stocks appear after Agents run</p>
+            <p className="text-base font-medium text-center">Theses for your Stocks appear after Agents run</p>
             <p className="text-sm text-muted-foreground text-center max-w-xs">
               Your analyst will research stocks, generate theses, and place paper trades autonomously.
             </p>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/analysts">Create an Analyst</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/analysts">Create an Analyst</Link>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowTour(true)}>
+                Product Overview
+              </Button>
+            </div>
+            <ProductTourDialog open={showTour} onOpenChange={setShowTour} />
           </div>
         </div>
       ) : filtered.length === 0 ? (
@@ -391,7 +399,7 @@ export default function DashboardClient({
                       interval={Math.max(1, Math.floor(equityData.length / 6))}
                       padding={{ left: 0, right: 0 }}
                     />
-                    <YAxis hide domain={['dataMin - 500', 'dataMax + 500']} />
+                    <YAxis hide domain={['dataMin * 0.98', 'dataMax * 1.25']} />
                     <Tooltip
                       contentStyle={{
                         background: 'var(--popover)',

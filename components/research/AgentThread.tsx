@@ -10,14 +10,11 @@
  * so users can ask questions, place trades, and manage positions.
  */
 
-import { useMemo, useEffect, useRef, useCallback, type ReactNode } from "react";
-import { DefaultChatTransport } from "ai";
+import { useCallback, type ReactNode } from "react";
 import type { UIMessage } from "ai";
-import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
-import {
-  AssistantRuntimeProvider,
-  useThreadRuntime,
-} from "@assistant-ui/react";
+import { useAui } from "@assistant-ui/react";
+import { ChatRuntime } from "@/components/chat/chat-runtime";
+import { useAutoSend } from "@/hooks/useAutoSend";
 import { Thread } from "@/components/assistant-ui/thread";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import {
@@ -63,24 +60,12 @@ export function AgentThread({
   // Live runs use the agent route; completed runs use followup route
   const isFollowupMode = !autoStart && !!initialMessages;
 
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: isFollowupMode ? "/api/chat/run-followup" : "/api/research/agent",
-        body: isFollowupMode
-          ? { runId, analystId }
-          : { runId, analystId, config },
-      }),
-    [runId, analystId, config, isFollowupMode],
-  );
-
-  const runtime = useChatRuntime({
-    transport,
-    ...(initialMessages ? { messages: initialMessages } : {}),
-  });
-
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
+    <ChatRuntime
+      api={isFollowupMode ? "/api/chat/run-followup" : "/api/research/agent"}
+      body={isFollowupMode ? { runId, analystId } : { runId, analystId, config }}
+      messages={initialMessages}
+    >
       <AgentThreadInner
         runId={runId}
         analystName={analystName}
@@ -88,25 +73,23 @@ export function AgentThread({
         isFollowupMode={isFollowupMode}
         headerAction={headerAction}
       />
-    </AssistantRuntimeProvider>
+    </ChatRuntime>
   );
 }
 
 // ─── Quick reply pills for completed runs ───────────────────────────────────
 
 function FollowupQuickReplies() {
-  const threadRuntime = useThreadRuntime();
+  const aui = useAui();
 
   const handleSelect = useCallback(
     (reply: QuickReplyType) => {
       if (reply.label) {
-        threadRuntime.append({
-          role: "user",
-          content: [{ type: "text", text: reply.label }],
-        });
+        aui.composer().setText(reply.label);
+        aui.composer().send();
       }
     },
-    [threadRuntime],
+    [aui],
   );
 
   return (
@@ -141,21 +124,7 @@ function AgentThreadInner({
 }) {
   useRegisterResearchToolUIs(runId);
   useRegisterFollowupToolUIs();
-
-  const threadRuntime = useThreadRuntime();
-
-  const hasSent = useRef(false);
-  useEffect(() => {
-    if (!autoStart || hasSent.current) return;
-    hasSent.current = true;
-    const timer = setTimeout(() => {
-      threadRuntime.append({
-        role: "user",
-        content: [{ type: "text", text: "Run" }],
-      });
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [autoStart, threadRuntime]);
+  useAutoSend({ message: autoStart ? "Run" : undefined, delay: 500 });
 
   return (
     <Tabs defaultValue={0} className="flex h-full flex-col">

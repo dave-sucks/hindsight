@@ -25,6 +25,7 @@ type PriceReferenceLine = {
 type Props = {
   candles: StockCandle[];
   referenceLines?: PriceReferenceLine[];
+  children?: React.ReactNode;
 };
 
 // ─── Range config ───────────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ function formatDateLabel(dateStr: string): string {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function StockPriceChart({ candles, referenceLines }: Props) {
+export function StockPriceChart({ candles, referenceLines, children }: Props) {
   const [range, setRange] = useState<Range>('3M');
 
   const data = useMemo(() => {
@@ -80,7 +81,7 @@ export function StockPriceChart({ candles, referenceLines }: Props) {
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden border"
+      className="rounded-lg overflow-hidden border"
       style={{
         backgroundImage:
           'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
@@ -88,7 +89,9 @@ export function StockPriceChart({ candles, referenceLines }: Props) {
         backgroundColor: 'hsl(var(--muted)/0.3)',
       }}
     >
-      {/* Range pills — absolute top-left */}
+      {children}
+      <div className="relative">
+      {/* Range pills — absolute top-left of chart area */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
         {RANGES.map((r) => (
           <button
@@ -123,7 +126,7 @@ export function StockPriceChart({ candles, referenceLines }: Props) {
             interval={Math.max(1, Math.floor(data.length / 6))}
             padding={{ left: 0, right: 0 }}
           />
-          <YAxis hide domain={['dataMin - 2', 'dataMax + 2']} />
+          <YAxis hide domain={['dataMin * 0.98', 'dataMax * 1.15']} />
           <Tooltip
             contentStyle={{
               background: 'var(--popover)',
@@ -166,6 +169,7 @@ export function StockPriceChart({ candles, referenceLines }: Props) {
           />
         </AreaChart>
       </ResponsiveContainer>
+      </div>
     </div>
   );
 }

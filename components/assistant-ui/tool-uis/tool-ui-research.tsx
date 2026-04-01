@@ -9,7 +9,7 @@ import {
   Briefcase,
   HelpCircle,
   Eye,
-  Radar,
+  SatelliteDish,
   Zap,
 } from "lucide-react";
 
@@ -33,6 +33,27 @@ import {
 
 import { extractToolSources, SourceChips } from "./tool-ui-shared";
 import { SuggestConfigRender } from "./tool-ui-config";
+
+import { useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+/** Expandable section inside a brief tool UI */
+function BriefExpandable({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ml-5 mb-1">
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+      >
+        <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
+        {label}
+      </button>
+      {open && <div className="mt-1 space-y-1 pl-4">{children}</div>}
+    </div>
+  );
+}
 
 // ─── Research tool UI registrations (shared across agent, builder, editor) ───
 
@@ -81,7 +102,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           <ChainOfThought defaultOpen>
             <ChainOfThoughtHeader>Reading morning intelligence brief...</ChainOfThoughtHeader>
             <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Radar} label="Loading today's brief" status="active" />
+              <ChainOfThoughtStep icon={SatelliteDish} label="Loading today's brief" status="active" />
               <ChainOfThoughtStep icon={BarChart3} label="Market context" status="pending" />
               <ChainOfThoughtStep icon={Briefcase} label="Portfolio alerts" status="pending" />
             </ChainOfThoughtContent>
@@ -95,25 +116,57 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           <ChainOfThought defaultOpen>
             <ChainOfThoughtHeader>No morning brief available</ChainOfThoughtHeader>
             <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Radar} label="Intelligence jobs may not have run yet" status="complete" />
+              <ChainOfThoughtStep icon={SatelliteDish} label="Intelligence jobs may not have run yet" status="complete" />
             </ChainOfThoughtContent>
           </ChainOfThought>
         );
       }
 
-      const marketCtx = typeof r.marketContext === "string" ? r.marketContext.slice(0, 100) : "";
-      const alertCount = Array.isArray(r.portfolioAlerts) ? r.portfolioAlerts.length : 0;
-      const watchCount = Array.isArray(r.watchlistUpdates) ? r.watchlistUpdates.length : 0;
-      const oppCount = Array.isArray(r.newOpportunities) ? r.newOpportunities.length : 0;
+      const marketCtx = typeof r.marketContext === "string" ? r.marketContext : "";
+      const alerts = Array.isArray(r.portfolioAlerts) ? r.portfolioAlerts as Record<string, unknown>[] : [];
+      const watches = Array.isArray(r.watchlistUpdates) ? r.watchlistUpdates as Record<string, unknown>[] : [];
+      const opps = Array.isArray(r.newOpportunities) ? r.newOpportunities as Record<string, unknown>[] : [];
 
       return (
         <ChainOfThought defaultOpen>
           <ChainOfThoughtHeader>Morning intelligence brief</ChainOfThoughtHeader>
           <ChainOfThoughtContent>
-            <ChainOfThoughtStep icon={BarChart3} label={marketCtx ? `${marketCtx}…` : "Market context loaded"} status="complete" />
-            <ChainOfThoughtStep icon={Briefcase} label={`${alertCount} portfolio alert${alertCount !== 1 ? "s" : ""}`} status="complete" />
-            <ChainOfThoughtStep icon={Eye} label={`${watchCount} watchlist update${watchCount !== 1 ? "s" : ""}`} status="complete" />
-            <ChainOfThoughtStep icon={Zap} label={`${oppCount} new opportunit${oppCount !== 1 ? "ies" : "y"}`} status="complete" />
+            <ChainOfThoughtStep icon={BarChart3} label={marketCtx ? `${marketCtx.slice(0, 100)}…` : "Market context loaded"} status="complete" />
+            {marketCtx.length > 100 && (
+              <BriefExpandable label="Full market context">
+                <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{marketCtx}</p>
+              </BriefExpandable>
+            )}
+            <ChainOfThoughtStep icon={Briefcase} label={`${alerts.length} portfolio alert${alerts.length !== 1 ? "s" : ""}`} status="complete" />
+            {alerts.length > 0 && (
+              <BriefExpandable label="View alerts">
+                {alerts.map((a, i) => (
+                  <p key={i} className="text-xs text-muted-foreground leading-relaxed">
+                    {typeof a === "string" ? a : (a.headline as string) ?? (a.summary as string) ?? JSON.stringify(a)}
+                  </p>
+                ))}
+              </BriefExpandable>
+            )}
+            <ChainOfThoughtStep icon={Eye} label={`${watches.length} watchlist update${watches.length !== 1 ? "s" : ""}`} status="complete" />
+            {watches.length > 0 && (
+              <BriefExpandable label="View updates">
+                {watches.map((w, i) => (
+                  <p key={i} className="text-xs text-muted-foreground leading-relaxed">
+                    {typeof w === "string" ? w : (w.headline as string) ?? (w.summary as string) ?? JSON.stringify(w)}
+                  </p>
+                ))}
+              </BriefExpandable>
+            )}
+            <ChainOfThoughtStep icon={Zap} label={`${opps.length} new opportunit${opps.length !== 1 ? "ies" : "y"}`} status="complete" />
+            {opps.length > 0 && (
+              <BriefExpandable label="View opportunities">
+                {opps.map((o, i) => (
+                  <p key={i} className="text-xs text-muted-foreground leading-relaxed">
+                    {typeof o === "string" ? o : (o.headline as string) ?? (o.summary as string) ?? JSON.stringify(o)}
+                  </p>
+                ))}
+              </BriefExpandable>
+            )}
           </ChainOfThoughtContent>
           <SourceChips sources={[{ provider: "Intelligence Pipeline", title: "Morning Brief", excerpt: `${r.signalCount ?? 0} signals synthesized` }]} />
         </ChainOfThought>
@@ -550,15 +603,3 @@ export function useRegisterBuilderToolUIs() {
   });
 }
 
-/**
- * Register suggest_config tool UI for the editor — same panel experience as builder.
- * SuggestConfigRender detects onConfigSuggested → shows compact "see panel →" card.
- */
-export function useRegisterEditorToolUIs() {
-  useRegisterResearchToolUIs();
-
-  useAssistantToolUI({
-    toolName: "suggest_config",
-    render: SuggestConfigRender,
-  });
-}
