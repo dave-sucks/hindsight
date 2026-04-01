@@ -20,14 +20,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxTrigger,
-} from "@/components/ui/combobox";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { ChevronsUpDown, CheckIcon } from "lucide-react";
 import {
   InputGroup,
   InputGroupAddon,
@@ -54,6 +59,7 @@ import {
   ArrowRight,
   Search,
   GitCompare,
+  ChevronsUpDown,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -81,6 +87,15 @@ const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
   { name: "compare",     label: "/compare",     icon: GitCompare,  template: "/compare "     },
   { name: "portfolio",   label: "/portfolio",   icon: Briefcase,   template: "/portfolio"    },
   { name: "performance", label: "/performance", icon: BarChart3,   template: "/performance"  },
+];
+
+const DEFAULT_STOCKS = [
+  { symbol: "AAPL", name: "Apple Inc." },
+  { symbol: "MSFT", name: "Microsoft Corp." },
+  { symbol: "NVDA", name: "NVIDIA Corp." },
+  { symbol: "GOOGL", name: "Alphabet Inc." },
+  { symbol: "AMZN", name: "Amazon.com Inc." },
+  { symbol: "TSLA", name: "Tesla Inc." },
 ];
 
 const CAPABILITIES = [
@@ -151,21 +166,21 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   );
 
   // ── Ticker search ─────────────────────────────────────────────────────────
+  const [tickerOpen, setTickerOpen] = useState(false);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [tickerQuery, setTickerQuery] = useState("");
-  const [tickerResults, setTickerResults] = useState<StockWithWatchlistStatus[]>([]);
+  const [tickerResults, setTickerResults] = useState<{ symbol: string; name: string }[]>(DEFAULT_STOCKS);
   const [tickerLoading, setTickerLoading] = useState(false);
-  const [comboboxKey, setComboboxKey] = useState(0);
 
   const handleTickerSearch = useCallback(async () => {
     if (!tickerQuery.trim()) {
-      setTickerResults([]);
+      setTickerResults(DEFAULT_STOCKS);
       return;
     }
     setTickerLoading(true);
     try {
       const results = await searchStocks(tickerQuery.trim());
-      setTickerResults(results);
+      setTickerResults(results.map((r) => ({ symbol: r.symbol, name: r.name })));
     } catch {
       setTickerResults([]);
     } finally {
@@ -181,15 +196,14 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
 
   const selectTicker = useCallback(
     (symbol: string) => {
-      setSelectedTicker(symbol);
+      setSelectedTicker(symbol === selectedTicker ? null : symbol);
+      setTickerOpen(false);
       setTickerQuery("");
-      setTickerResults([]);
-      setComboboxKey((k) => k + 1); // reset combobox input
       const newText = text ? `${text} $${symbol} ` : `$${symbol} `;
       aui.composer().setText(newText);
       textareaRef.current?.focus();
     },
-    [text, aui],
+    [text, aui, selectedTicker],
   );
 
   const clearTicker = useCallback(() => {
@@ -306,44 +320,58 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
 
             {/* Ticker combobox */}
             {tickerSearch && (
-              <Combobox
-                key={comboboxKey}
-                value={selectedTicker ?? ""}
-                onValueChange={(val) => { if (val) selectTicker(val as string); }}
-                onInputValueChange={(val) => setTickerQuery(val)}
-              >
-                <ComboboxTrigger render={<Button variant="ghost" size="sm" />}>
-                  {selectedTicker ?? "Ticker"}
-                </ComboboxTrigger>
-                <ComboboxContent>
-                  <ComboboxInput placeholder="Search ticker…" showTrigger={false} showClear={false} />
-                  <ComboboxList>
-                    {tickerLoading ? (
-                      <div className="flex items-center justify-center gap-2 py-6">
-                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Searching…</span>
-                      </div>
-                    ) : (
-                      <>
-                        <ComboboxEmpty>
-                          {tickerQuery.trim() ? "No results" : "Type to search stocks"}
-                        </ComboboxEmpty>
-                        {tickerResults.map((stock) => (
-                          <ComboboxItem key={stock.symbol} value={stock.symbol}>
-                            <StockLogo ticker={stock.symbol} size="sm" />
-                            <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium">{stock.symbol}</div>
-                              <div className="truncate text-xs text-muted-foreground">
-                                {stock.name}
-                              </div>
-                            </div>
-                          </ComboboxItem>
-                        ))}
-                      </>
-                    )}
-                  </ComboboxList>
-                </ComboboxContent>
-              </Combobox>
+              <Popover open={tickerOpen} onOpenChange={setTickerOpen}>
+                <PopoverTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      role="combobox"
+                      aria-expanded={tickerOpen}
+                    />
+                  }
+                >
+                  {selectedTicker ?? "Stocks"}
+                  <ChevronsUpDown className="opacity-50" />
+                </PopoverTrigger>
+                <PopoverContent className="p-0">
+                  <Command shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search stocks…"
+                      value={tickerQuery}
+                      onValueChange={setTickerQuery}
+                    />
+                    <CommandList>
+                      {tickerLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-6">
+                          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Searching…</span>
+                        </div>
+                      ) : (
+                        <>
+                          <CommandEmpty>No stocks found.</CommandEmpty>
+                          <CommandGroup>
+                            {tickerResults.map((stock) => (
+                              <CommandItem
+                                key={stock.symbol}
+                                value={stock.symbol}
+                                onSelect={() => selectTicker(stock.symbol)}
+                              >
+                                <StockLogo ticker={stock.symbol} size="sm" />
+                                <span className="font-medium">{stock.symbol}</span>
+                                <span className="text-muted-foreground truncate">{stock.name}</span>
+                                <Check
+                                  className={selectedTicker === stock.symbol ? "ml-auto opacity-100" : "ml-auto opacity-0"}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             )}
           </div>
 
