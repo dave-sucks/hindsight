@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { cn } from "@/lib/utils";
-import { Globe, FileText, Radar, BarChart3 } from "lucide-react";
+import { Globe, FileText, SatelliteDish, BarChart3 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 const Silk = lazy(() =>
@@ -34,7 +34,7 @@ type Ev =
 const SCRIPT: Ev[] = [
   {
     type: "tool",
-    icon: Radar,
+    icon: SatelliteDish,
     label: "Running firm market sweep",
     sub: <>Scanning market movers, sector rotation, and macro events for today<Fav src={FAV.fmp} /><Fav src={FAV.finnhub} /></>,
     at: 0,

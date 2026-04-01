@@ -65,7 +65,6 @@ import {
   type TickerItem,
 } from "./suggestion-list";
 import {
-  Plus,
   Send,
   Square,
   Slash,
@@ -73,12 +72,14 @@ import {
   Globe,
   BarChart3,
   TrendingUp,
-  Brain,
+  BanknoteArrowUp,
+  HatGlasses,
+  NotebookTabs,
+  Settings2,
+  DollarSign,
   Briefcase,
-  History,
   Search,
   GitCompare,
-  ChevronsUpDown,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -131,7 +132,7 @@ const SOURCES = [
   {
     label: "Live Market Data",
     description: "Real-time quotes, earnings, and company metrics via Finnhub. Put/call ratios and options flow via FMP. 10-K, 10-Q, 8-K, and Form 4 filings from SEC EDGAR.",
-    icon: BarChart3,
+    icon: TrendingUp,
     logos: [
       { domain: "finnhub.io", name: "Finnhub" },
       { domain: "sec.gov", name: "SEC EDGAR" },
@@ -141,7 +142,7 @@ const SOURCES = [
   {
     label: "Alpaca Trading Account",
     description: "Your connected Alpaca paper trading account — the agent reads live positions, P&L, and open orders, and can place, monitor, and close paper trades on your behalf.",
-    icon: TrendingUp,
+    icon: BanknoteArrowUp,
     logos: [
       { domain: "alpaca.markets", name: "Alpaca" },
     ],
@@ -163,12 +164,12 @@ const CAPABILITIES = [
   {
     label: "Research & Monitors",
     description: "Pre-market intelligence from nightly pipeline runs — firm-wide news sweeps, watchlist alerts, signal routing, and analyst-specific morning briefs ready before each run.",
-    icon: Brain,
+    icon: HatGlasses,
   },
   {
     label: "Portfolio Knowledge",
     description: "Past trade outcomes, win rates, weekly calibration reports, and live portfolio context — used to tune the agent's confidence thresholds and position sizing decisions.",
-    icon: History,
+    icon: NotebookTabs,
   },
 ];
 
@@ -498,7 +499,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
           <div className="flex w-full items-center justify-between">
             <div className="flex items-center gap-1">
 
-              {/* + Sources & Capabilities menu */}
+              {/* Settings2 — Sources & Capabilities (first in toolbar) */}
               {plusMenu && (
                 <TooltipProvider>
                   <DropdownMenu>
@@ -506,11 +507,11 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                       <TooltipTrigger
                         render={
                           <DropdownMenuTrigger
-                            render={<Button variant="outline" size="icon-sm" aria-label="Sources & Capabilities" />}
+                            render={<Button variant="ghost" size="icon-sm" aria-label="Sources & Capabilities" />}
                           />
                         }
                       >
-                        <Plus className="size-4" />
+                        <Settings2 className="size-4" />
                       </TooltipTrigger>
                       <TooltipContent side="top">Sources & Capabilities</TooltipContent>
                     </Tooltip>
@@ -526,7 +527,6 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                             <TooltipTrigger render={<DropdownMenuItem />}>
                               <source.icon className="size-4 shrink-0 text-muted-foreground" />
                               <span className="flex-1">{source.label}</span>
-                              {/* Stacked provider logos */}
                               <div className="flex -space-x-1 ml-1">
                                 {source.logos.map((logo) => (
                                   <img
@@ -600,6 +600,26 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                             </TooltipContent>
                           </Tooltip>
                         ))}
+
+                        {/* Commands submenu — last item in Capabilities */}
+                        {slashCommands && (
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger>
+                              <Slash className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="flex-1">Commands</span>
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-44">
+                              <DropdownMenuGroup>
+                                {commands.map((cmd) => (
+                                  <DropdownMenuItem key={cmd.name} onClick={() => insertCommand(cmd)}>
+                                    <cmd.icon className="size-4" />
+                                    {cmd.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuGroup>
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+                        )}
                       </DropdownMenuGroup>
 
                     </DropdownMenuContent>
@@ -607,43 +627,21 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                 </TooltipProvider>
               )}
 
-              {/* / Commands dropdown */}
-              {slashCommands && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={<Button variant="outline" size="sm" aria-label="Commands" />}
-                  >
-                    <Slash className="size-3" />
-                    Commands
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" side="top" className="w-44">
-                    <DropdownMenuGroup>
-                      {commands.map((cmd) => (
-                        <DropdownMenuItem key={cmd.name} onClick={() => insertCommand(cmd)}>
-                          <cmd.icon className="size-4" />
-                          {cmd.label}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-
-              {/* @ Stocks combobox */}
+              {/* $ Stocks combobox (ghost, no chevron) */}
               {tickerSearch && (
                 <Popover open={tickerOpen} onOpenChange={setTickerOpen}>
                   <PopoverTrigger
                     render={
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
                         role="combobox"
                         aria-expanded={tickerOpen}
                       />
                     }
                   >
+                    <DollarSign className="size-3.5" />
                     Stocks
-                    <ChevronsUpDown className="opacity-50" />
                   </PopoverTrigger>
                   <PopoverContent className="p-0 w-64">
                     <Command shouldFilter={false}>

@@ -9,7 +9,7 @@ import {
   Briefcase,
   HelpCircle,
   Eye,
-  Radar,
+  SatelliteDish,
   Zap,
 } from "lucide-react";
 
@@ -102,7 +102,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           <ChainOfThought defaultOpen>
             <ChainOfThoughtHeader>Reading morning intelligence brief...</ChainOfThoughtHeader>
             <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Radar} label="Loading today's brief" status="active" />
+              <ChainOfThoughtStep icon={SatelliteDish} label="Loading today's brief" status="active" />
               <ChainOfThoughtStep icon={BarChart3} label="Market context" status="pending" />
               <ChainOfThoughtStep icon={Briefcase} label="Portfolio alerts" status="pending" />
             </ChainOfThoughtContent>
@@ -116,7 +116,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           <ChainOfThought defaultOpen>
             <ChainOfThoughtHeader>No morning brief available</ChainOfThoughtHeader>
             <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Radar} label="Intelligence jobs may not have run yet" status="complete" />
+              <ChainOfThoughtStep icon={SatelliteDish} label="Intelligence jobs may not have run yet" status="complete" />
             </ChainOfThoughtContent>
           </ChainOfThought>
         );
