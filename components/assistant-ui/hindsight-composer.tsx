@@ -32,7 +32,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { ChevronsUpDown, CheckIcon } from "lucide-react";
+
 import {
   InputGroup,
   InputGroupAddon,
