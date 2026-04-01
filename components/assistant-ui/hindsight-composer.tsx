@@ -490,7 +490,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      <InputGroup className="w-full bg-background/60 backdrop-blur-sm">
+      <InputGroup className="w-full bg-background/80 backdrop-blur-sm">
         {/* TipTap rich-text editor (replaces textarea) */}
         <EditorContent editor={editor} className="w-full" />
 
