@@ -217,7 +217,6 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="rounded-lg bg-background">
     <InputGroup className="w-full">
       {/* Ticker chip — block-start addon */}
       {selectedTicker && (
@@ -388,7 +387,6 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
           ) : (
             <Button
               size="icon-sm"
-              disabled={!canSend}
               onClick={handleSend}
               aria-label="Send"
             >
@@ -398,7 +396,6 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
         </div>
       </InputGroupAddon>
     </InputGroup>
-    </div>
   );
 };
 
