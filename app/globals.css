@@ -221,3 +221,24 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* ── TipTap editor ───────────────────────────────────────────────── */
+
+/* Placeholder text */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--muted-foreground);
+  pointer-events: none;
+  height: 0;
+}
+
+/* Ensure mention chips don't break layout */
+.tiptap .mention {
+  display: inline;
+}
+
+/* Remove default ProseMirror focus outline (InputGroup handles it) */
+.tiptap:focus {
+  outline: none;
+}

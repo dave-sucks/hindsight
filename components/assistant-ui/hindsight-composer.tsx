@@ -1,9 +1,28 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type FC, type ComponentType } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  type FC,
+  type ComponentType,
+} from "react";
+import { flushSync } from "react-dom";
+import {
+  useEditor,
+  EditorContent,
+  ReactNodeViewRenderer,
+  NodeViewWrapper,
+  type NodeViewProps,
+} from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Mention from "@tiptap/extension-mention";
+import { Extension } from "@tiptap/core";
+import Placeholder from "@tiptap/extension-placeholder";
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,22 +51,21 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupTextarea,
-} from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 import { StockLogo } from "@/components/StockLogo";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { useDebounce } from "@/hooks/useDebounce";
+import {
+  SuggestionList,
+  type SuggestionListHandle,
+  type SuggestionItem,
+  type TickerItem,
+} from "./suggestion-list";
 import {
   Plus,
   Send,
   Square,
   Slash,
-  Check,
-  X,
   Loader2,
   Globe,
   BarChart3,
@@ -89,7 +107,7 @@ const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
   { name: "performance", label: "/performance", icon: BarChart3,   template: "/performance"  },
 ];
 
-const DEFAULT_STOCKS = [
+const DEFAULT_STOCKS: TickerItem[] = [
   { symbol: "AAPL", name: "Apple Inc." },
   { symbol: "MSFT", name: "Microsoft Corp." },
   { symbol: "NVDA", name: "NVIDIA Corp." },
@@ -165,6 +183,44 @@ const CAPABILITIES = [
   },
 ];
 
+// ── MentionChip — inline NodeView rendered inside the editor ───────────────
+
+const MentionChip: FC<NodeViewProps> = ({ node }) => {
+  const char = (node.attrs.mentionSuggestionChar ?? "@") as string;
+  const id = node.attrs.id as string;
+
+  const chipClass =
+    "inline-flex items-center gap-1 rounded px-1.5 py-0.5 bg-secondary text-secondary-foreground text-xs font-medium mx-0.5 select-none cursor-default align-middle";
+
+  if (char === "/") {
+    const cmd = DEFAULT_SLASH_COMMANDS.find((c) => c.name === id);
+    const Icon = cmd?.icon ?? Slash;
+    return (
+      <NodeViewWrapper as="span" className={chipClass}>
+        <Icon className="size-3 pointer-events-none" />
+        <span>{id}</span>
+      </NodeViewWrapper>
+    );
+  }
+
+  return (
+    <NodeViewWrapper as="span" className={chipClass}>
+      <StockLogo ticker={id} size="sm" className="size-3 pointer-events-none" />
+      <span className="tabular-nums">{id}</span>
+    </NodeViewWrapper>
+  );
+};
+
+// ── Suggestion popup state ─────────────────────────────────────────────────
+
+interface SuggestionPopupState {
+  char: "@" | "/";
+  items: SuggestionItem[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  command: (props: any) => void;
+  clientRect: (() => DOMRect | null) | null;
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = ({
@@ -179,43 +235,244 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   } = features;
 
   const aui = useAui();
-  const text = useAuiState((s) => s.composer.text);
-  const canSend = useAuiState((s) => s.composer.canSend);
   const isRunning = useAuiState((s) => s.thread.isRunning);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // ── Suggestion popup ──────────────────────────────────────────────────────
+  const [suggestionPopup, setSuggestionPopup] = useState<SuggestionPopupState | null>(null);
+  const listRef = useRef<SuggestionListHandle | null>(null);
 
-  // ── Input sync ────────────────────────────────────────────────────────────
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    aui.composer().setText(e.target.value);
-  };
+  // ── Stable ref for handleSend (avoids stale closures in TipTap extension) ─
+  const handleSendRef = useRef<() => void>(() => {});
 
-  const handleSend = useCallback(() => {
-    if (!canSend || isRunning) return;
-    aui.composer().send();
-  }, [canSend, isRunning, aui]);
+  // ── Capture initial feature values for the useMemo closure ────────────────
+  const initRef = useRef({ slashCommands, commands, tickerSearch, placeholder });
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  // ── Build TipTap extensions exactly once ──────────────────────────────────
+  const extensions = useMemo(() => {
+    const { slashCommands: sc, commands: cmds, tickerSearch: ts, placeholder: ph } =
+      initRef.current;
 
-  // ── Slash commands ────────────────────────────────────────────────────────
-  const selectCommand = useCallback(
-    (cmd: SlashCommand) => {
-      aui.composer().setText(cmd.template);
-      textareaRef.current?.focus();
+    // Extension: intercept Enter to send (Shift+Enter passes through for hard break)
+    const EnterToSend = Extension.create({
+      name: "enterToSend",
+      priority: 100,
+      addKeyboardShortcuts() {
+        return {
+          Enter: () => {
+            // If suggestion popup is open, let it handle Enter
+            if (listRef.current) return false;
+            handleSendRef.current();
+            return true;
+          },
+        };
+      },
+    });
+
+    // Mention extension with @ (tickers) and / (commands) triggers
+    const CustomMention = Mention.extend({
+      addNodeView() {
+        return ReactNodeViewRenderer(MentionChip);
+      },
+    }).configure({
+      HTMLAttributes: {},
+      renderText({ node }: { node: { attrs: Record<string, unknown> } }) {
+        const char = (node.attrs.mentionSuggestionChar ?? "@") as string;
+        return char === "/" ? `/${node.attrs.id as string}` : `$${node.attrs.id as string}`;
+      },
+      suggestions: [
+        // @ticker suggestion
+        ...(ts
+          ? [
+              {
+                char: "@" as const,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                items: async ({ query }: any): Promise<TickerItem[]> => {
+                  if (!query.trim()) return DEFAULT_STOCKS;
+                  try {
+                    const results = await searchStocks(query.trim());
+                    return results.map((r) => ({ symbol: r.symbol, name: r.name }));
+                  } catch {
+                    return DEFAULT_STOCKS;
+                  }
+                },
+                render: () => ({
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onStart: (props: any) => {
+                    flushSync(() =>
+                      setSuggestionPopup({
+                        char: "@",
+                        items: props.items as SuggestionItem[],
+                        command: props.command,
+                        clientRect: props.clientRect,
+                      }),
+                    );
+                  },
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onUpdate: (props: any) => {
+                    flushSync(() =>
+                      setSuggestionPopup({
+                        char: "@",
+                        items: props.items as SuggestionItem[],
+                        command: props.command,
+                        clientRect: props.clientRect,
+                      }),
+                    );
+                  },
+                  onExit: () => {
+                    flushSync(() => setSuggestionPopup(null));
+                  },
+                  onKeyDown: ({ event }: { event: KeyboardEvent }) => {
+                    return listRef.current?.onKeyDown(event) ?? false;
+                  },
+                }),
+              },
+            ]
+          : []),
+
+        // /command suggestion
+        ...(sc
+          ? [
+              {
+                char: "/" as const,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                items: async ({ query }: any): Promise<SlashCommand[]> => {
+                  const q = (query as string).toLowerCase().trim();
+                  return (cmds as SlashCommand[]).filter(
+                    (cmd) => !q || cmd.name.includes(q) || cmd.label.toLowerCase().includes(q),
+                  );
+                },
+                render: () => ({
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onStart: (props: any) => {
+                    flushSync(() =>
+                      setSuggestionPopup({
+                        char: "/",
+                        items: props.items as SuggestionItem[],
+                        command: props.command,
+                        clientRect: props.clientRect,
+                      }),
+                    );
+                  },
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onUpdate: (props: any) => {
+                    flushSync(() =>
+                      setSuggestionPopup({
+                        char: "/",
+                        items: props.items as SuggestionItem[],
+                        command: props.command,
+                        clientRect: props.clientRect,
+                      }),
+                    );
+                  },
+                  onExit: () => {
+                    flushSync(() => setSuggestionPopup(null));
+                  },
+                  onKeyDown: ({ event }: { event: KeyboardEvent }) => {
+                    return listRef.current?.onKeyDown(event) ?? false;
+                  },
+                }),
+              },
+            ]
+          : []),
+      ],
+    });
+
+    return [
+      StarterKit.configure({
+        bold: false,
+        italic: false,
+        strike: false,
+        code: false,
+        codeBlock: false,
+        blockquote: false,
+        heading: false,
+        bulletList: false,
+        orderedList: false,
+        listItem: false,
+        listKeymap: false,
+        horizontalRule: false,
+        link: false,
+        underline: false,
+        dropcursor: false,
+        gapcursor: false,
+        trailingNode: false,
+      }),
+      Placeholder.configure({ placeholder: ph }),
+      CustomMention,
+      EnterToSend,
+    ];
+  }, []); // stable — feature values captured via ref at mount
+
+  // ── Editor ────────────────────────────────────────────────────────────────
+  const editor = useEditor({
+    extensions,
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        "data-slot": "input-group-control",
+        class: [
+          "min-h-[4.5rem] w-full px-3 py-2 text-sm leading-relaxed",
+          "bg-transparent outline-none focus:outline-none",
+          "[&>p]:m-0 [&>p+p]:mt-1",
+        ].join(" "),
+      },
     },
-    [aui],
+    onUpdate({ editor: e }) {
+      // Keep assistant-ui composer in sync so canSend works
+      const text = e.getText({ blockSeparator: "\n" }).trim();
+      aui.composer().setText(text);
+    },
+  });
+
+  // ── Send ──────────────────────────────────────────────────────────────────
+  const handleSend = useCallback(() => {
+    if (!editor || isRunning) return;
+    if (listRef.current) return; // suggestion popup open — don't send
+    const text = editor.getText({ blockSeparator: "\n" }).trim();
+    if (!text) return;
+    aui.composer().setText(text);
+    aui.composer().send();
+    editor.commands.clearContent(true);
+  }, [editor, isRunning, aui]);
+
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
+
+  // ── Toolbar: insert ticker chip ───────────────────────────────────────────
+  const insertTicker = useCallback(
+    (symbol: string, name: string) => {
+      editor
+        ?.chain()
+        .focus()
+        .insertContent([
+          { type: "mention", attrs: { id: symbol, label: name, mentionSuggestionChar: "@" } },
+          { type: "text", text: " " },
+        ])
+        .run();
+    },
+    [editor],
   );
 
-  // ── Ticker search ─────────────────────────────────────────────────────────
+  // ── Toolbar: insert command chip ──────────────────────────────────────────
+  const insertCommand = useCallback(
+    (cmd: SlashCommand) => {
+      editor
+        ?.chain()
+        .focus()
+        .insertContent([
+          { type: "mention", attrs: { id: cmd.name, label: cmd.label, mentionSuggestionChar: "/" } },
+          { type: "text", text: " " },
+        ])
+        .run();
+    },
+    [editor],
+  );
+
+  // ── Ticker toolbar popover ────────────────────────────────────────────────
   const [tickerOpen, setTickerOpen] = useState(false);
-  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [tickerQuery, setTickerQuery] = useState("");
-  const [tickerResults, setTickerResults] = useState<{ symbol: string; name: string }[]>(DEFAULT_STOCKS);
+  const [tickerResults, setTickerResults] = useState<TickerItem[]>(DEFAULT_STOCKS);
   const [tickerLoading, setTickerLoading] = useState(false);
 
   const handleTickerSearch = useCallback(async () => {
@@ -240,220 +497,186 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     debouncedTickerSearch();
   }, [tickerQuery]);
 
-  const selectTicker = useCallback(
-    (symbol: string) => {
-      setSelectedTicker(symbol === selectedTicker ? null : symbol);
-      setTickerOpen(false);
-      setTickerQuery("");
-      const newText = text ? `${text} $${symbol} ` : `$${symbol} `;
-      aui.composer().setText(newText);
-      textareaRef.current?.focus();
-    },
-    [text, aui, selectedTicker],
-  );
-
-  const clearTicker = useCallback(() => {
-    if (!selectedTicker) return;
-    const newText = text
-      .replace(`$${selectedTicker} `, "")
-      .replace(`$${selectedTicker}`, "");
-    aui.composer().setText(newText);
-    setSelectedTicker(null);
-  }, [selectedTicker, text, aui]);
-
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <InputGroup className="w-full">
-      {/* Ticker chip — block-start addon */}
-      {selectedTicker && (
-        <InputGroupAddon align="block-start">
-          <Badge variant="secondary" className="gap-1">
-            <StockLogo ticker={selectedTicker} size="sm" className="size-4" />
-            <span className="tabular-nums">{selectedTicker}</span>
-            <button
-              type="button"
-              onClick={clearTicker}
-              className="ml-0.5 text-muted-foreground hover:text-foreground"
-              aria-label="Remove ticker"
-            >
-              <X className="size-3" />
-            </button>
-          </Badge>
-        </InputGroupAddon>
-      )}
+    <>
+      <InputGroup className="w-full">
+        {/* TipTap rich-text editor (replaces textarea) */}
+        <EditorContent editor={editor} className="w-full" />
 
-      {/* Textarea */}
-      <InputGroupTextarea
-        ref={textareaRef}
-        value={text}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        rows={2}
-        aria-label="Message input"
-      />
+        {/* Bottom toolbar */}
+        <InputGroupAddon align="block-end">
+          <div className="flex w-full items-center justify-between">
+            <div className="flex items-center gap-1">
 
-      {/* Bottom toolbar — block-end addon */}
-      <InputGroupAddon align="block-end">
-        <div className="flex w-full items-center justify-between">
-          <div className="flex items-center gap-1">
-
-            {/* + Capabilities menu */}
-            {plusMenu && (
-              <TooltipProvider>
-                <DropdownMenu>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <DropdownMenuTrigger
-                          render={<Button variant="outline" size="icon-sm" aria-label="Capabilities" />}
-                        />
-                      }
-                    >
-                      <Plus className="size-4" />
-                    </TooltipTrigger>
-                    <TooltipContent side="top">Capabilities</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent align="start" side="top" className="w-60">
-                    {CAPABILITIES.map((group, gi) => (
-                      <DropdownMenuGroup key={group.group}>
-                        {gi > 0 && <DropdownMenuSeparator />}
-                        <DropdownMenuLabel>{group.group}</DropdownMenuLabel>
-                        {group.items.map((item) => (
-                          <Tooltip key={item.label}>
-                            <TooltipTrigger render={<DropdownMenuItem />}>
-                              {item.logo ? (
-                                <img
-                                  src={item.logo}
-                                  alt=""
-                                  width={16}
-                                  height={16}
-                                  className="size-4 rounded-sm object-contain"
-                                />
-                              ) : (
-                                <item.icon className="size-4" />
-                              )}
-                              {item.label}
-                            </TooltipTrigger>
-                            <TooltipContent side="right">
-                              {item.description}
-                            </TooltipContent>
-                          </Tooltip>
-                        ))}
+              {/* + Capabilities menu */}
+              {plusMenu && (
+                <TooltipProvider>
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <DropdownMenuTrigger
+                            render={<Button variant="outline" size="icon-sm" aria-label="Capabilities" />}
+                          />
+                        }
+                      >
+                        <Plus className="size-4" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Capabilities</TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent align="start" side="top" className="w-60">
+                      {CAPABILITIES.map((group, gi) => (
+                        <DropdownMenuGroup key={group.group}>
+                          {gi > 0 && <DropdownMenuSeparator />}
+                          <DropdownMenuLabel>{group.group}</DropdownMenuLabel>
+                          {group.items.map((item) => (
+                            <Tooltip key={item.label}>
+                              <TooltipTrigger render={<DropdownMenuItem />}>
+                                {item.logo ? (
+                                  <img
+                                    src={item.logo}
+                                    alt=""
+                                    width={16}
+                                    height={16}
+                                    className="size-4 rounded-sm object-contain"
+                                  />
+                                ) : (
+                                  <item.icon className="size-4" />
+                                )}
+                                {item.label}
+                              </TooltipTrigger>
+                              <TooltipContent side="right">{item.description}</TooltipContent>
+                            </Tooltip>
+                          ))}
+                        </DropdownMenuGroup>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem onClick={() => (window.location.href = "/agent-workflow")}>
+                          <ArrowRight className="size-4" />
+                          View all capabilities
+                        </DropdownMenuItem>
                       </DropdownMenuGroup>
-                    ))}
-                    <DropdownMenuSeparator />
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TooltipProvider>
+              )}
+
+              {/* / Commands dropdown */}
+              {slashCommands && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button variant="outline" size="sm" aria-label="Commands" />}
+                  >
+                    <Slash className="size-3" />
+                    Commands
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="top" className="w-44">
                     <DropdownMenuGroup>
-                      <DropdownMenuItem onClick={() => window.location.href = "/agent-workflow"}>
-                        <ArrowRight className="size-4" />
-                        View all capabilities
-                      </DropdownMenuItem>
+                      {commands.map((cmd) => (
+                        <DropdownMenuItem key={cmd.name} onClick={() => insertCommand(cmd)}>
+                          <cmd.icon className="size-4" />
+                          {cmd.label}
+                        </DropdownMenuItem>
+                      ))}
                     </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </TooltipProvider>
-            )}
+              )}
 
-            {/* Slash commands */}
-            {slashCommands && (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={<Button variant="outline" size="sm" aria-label="Commands" />}
-                >
-                  <Slash className="size-3" />
-                  Commands
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" className="w-44">
-                  <DropdownMenuGroup>
-                    {commands.map((cmd) => (
-                      <DropdownMenuItem key={cmd.name} onClick={() => selectCommand(cmd)}>
-                        <cmd.icon className="size-4" />
-                        {cmd.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+              {/* @ Stocks combobox */}
+              {tickerSearch && (
+                <Popover open={tickerOpen} onOpenChange={setTickerOpen}>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        role="combobox"
+                        aria-expanded={tickerOpen}
+                      />
+                    }
+                  >
+                    Stocks
+                    <ChevronsUpDown className="opacity-50" />
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 w-64">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder="Search stocks…"
+                        value={tickerQuery}
+                        onValueChange={setTickerQuery}
+                      />
+                      <CommandList>
+                        {tickerLoading ? (
+                          <div className="flex items-center justify-center gap-2 py-6">
+                            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">Searching…</span>
+                          </div>
+                        ) : (
+                          <>
+                            <CommandEmpty>No stocks found.</CommandEmpty>
+                            <CommandGroup>
+                              {tickerResults.map((stock) => (
+                                <CommandItem
+                                  key={stock.symbol}
+                                  value={stock.symbol}
+                                  onSelect={() => {
+                                    insertTicker(stock.symbol, stock.name);
+                                    setTickerOpen(false);
+                                    setTickerQuery("");
+                                    setTickerResults(DEFAULT_STOCKS);
+                                  }}
+                                >
+                                  <StockLogo ticker={stock.symbol} size="sm" />
+                                  <span className="font-medium">{stock.symbol}</span>
+                                  <span className="text-muted-foreground truncate">{stock.name}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </>
+                        )}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
 
-            {/* Ticker combobox */}
-            {tickerSearch && (
-              <Popover open={tickerOpen} onOpenChange={setTickerOpen}>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      role="combobox"
-                      aria-expanded={tickerOpen}
-                    />
-                  }
-                >
-                  {selectedTicker ?? "Stocks"}
-                  <ChevronsUpDown className="opacity-50" />
-                </PopoverTrigger>
-                <PopoverContent className="p-0">
-                  <Command shouldFilter={false}>
-                    <CommandInput
-                      placeholder="Search stocks…"
-                      value={tickerQuery}
-                      onValueChange={setTickerQuery}
-                    />
-                    <CommandList>
-                      {tickerLoading ? (
-                        <div className="flex items-center justify-center gap-2 py-6">
-                          <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground">Searching…</span>
-                        </div>
-                      ) : (
-                        <>
-                          <CommandEmpty>No stocks found.</CommandEmpty>
-                          <CommandGroup>
-                            {tickerResults.map((stock) => (
-                              <CommandItem
-                                key={stock.symbol}
-                                value={stock.symbol}
-                                onSelect={() => selectTicker(stock.symbol)}
-                              >
-                                <StockLogo ticker={stock.symbol} size="sm" />
-                                <span className="font-medium">{stock.symbol}</span>
-                                <span className="text-muted-foreground truncate">{stock.name}</span>
-                                <Check
-                                  className={selectedTicker === stock.symbol ? "ml-auto opacity-100" : "ml-auto opacity-0"}
-                                />
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </>
-                      )}
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+            {/* Send / Stop */}
+            {isRunning ? (
+              <Button
+                size="icon-sm"
+                onClick={() => aui.composer().cancel()}
+                aria-label="Stop"
+              >
+                <Square className="size-3 fill-current" />
+              </Button>
+            ) : (
+              <Button
+                size="icon-sm"
+                onClick={handleSend}
+                aria-label="Send"
+              >
+                <Send className="size-3" />
+              </Button>
             )}
           </div>
+        </InputGroupAddon>
+      </InputGroup>
 
-          {/* Send / Stop */}
-          {isRunning ? (
-            <Button
-              size="icon-sm"
-              onClick={() => aui.composer().cancel()}
-              aria-label="Stop"
-            >
-              <Square className="size-3 fill-current" />
-            </Button>
-          ) : (
-            <Button
-              size="icon-sm"
-              onClick={handleSend}
-              aria-label="Send"
-            >
-              <Send className="size-3" />
-            </Button>
-          )}
-        </div>
-      </InputGroupAddon>
-    </InputGroup>
+      {/* Floating suggestion popup — rendered via portal outside the InputGroup */}
+      {suggestionPopup && (
+        <SuggestionList
+          ref={listRef}
+          char={suggestionPopup.char}
+          items={suggestionPopup.items}
+          command={suggestionPopup.command}
+          clientRect={suggestionPopup.clientRect}
+        />
+      )}
+    </>
   );
 };
 
