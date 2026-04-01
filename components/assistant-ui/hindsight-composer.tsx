@@ -26,6 +26,7 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
+  ComboboxTrigger,
 } from "@/components/ui/combobox";
 import {
   InputGroup,
@@ -311,13 +312,11 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                 onValueChange={(val) => { if (val) selectTicker(val as string); }}
                 onInputValueChange={(val) => setTickerQuery(val)}
               >
-                <ComboboxInput
-                  className="h-7 w-36 text-xs"
-                  placeholder="Search ticker…"
-                  showTrigger={false}
-                  showClear={false}
-                />
+                <ComboboxTrigger render={<Button variant="ghost" size="sm" />}>
+                  {selectedTicker ?? "Ticker"}
+                </ComboboxTrigger>
                 <ComboboxContent>
+                  <ComboboxInput placeholder="Search ticker…" showTrigger={false} showClear={false} />
                   <ComboboxList>
                     {tickerLoading ? (
                       <div className="flex items-center justify-center gap-2 py-6">
