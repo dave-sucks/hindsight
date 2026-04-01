@@ -18,7 +18,8 @@ interface ChatEntryComposerProps {
   features?: HindsightComposerFeatures;
   /** First-visit tooltip config */
   tooltip?: {
-    content: string;
+    title: string;
+    description: string;
     storageKey: string;
   };
   className?: string;
@@ -79,7 +80,7 @@ export function ChatEntryComposer({
 
   if (tooltip) {
     return (
-      <FirstVisitTooltip content={tooltip.content} storageKey={tooltip.storageKey}>
+      <FirstVisitTooltip title={tooltip.title} description={tooltip.description} storageKey={tooltip.storageKey}>
         {composer}
       </FirstVisitTooltip>
     );

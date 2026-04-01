@@ -81,6 +81,7 @@ import {
   Search,
   GitCompare,
 } from "lucide-react";
+import { FirstVisitTooltip } from "@/components/ui/first-visit-tooltip";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -501,6 +502,14 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
 
               {/* Settings2 — Sources & Capabilities (first in toolbar) */}
               {plusMenu && (
+                <FirstVisitTooltip
+                  title="Your analyst's toolkit"
+                  description="See every data source and capability your analyst has access to — live market data, web research, SEC filings, and more."
+                  storageKey="composer-capabilities"
+                  variant="brand"
+                  side="top"
+                  align="start"
+                >
                 <TooltipProvider>
                   <DropdownMenu>
                     <Tooltip>
@@ -625,6 +634,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TooltipProvider>
+                </FirstVisitTooltip>
               )}
 
               {/* $ Stocks combobox (ghost, no chevron) */}

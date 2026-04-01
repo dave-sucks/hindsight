@@ -16,7 +16,8 @@ export default function ChatPage() {
         <ChatEntryComposer
           targetUrl="/analysts/new"
           tooltip={{
-            content: "Type a ticker, question, or /command to get started",
+            title: "Start here",
+            description: "Type a ticker, question, or / for commands to get started.",
             storageKey: "chat-entry",
           }}
           features={{

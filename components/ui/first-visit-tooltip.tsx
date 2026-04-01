@@ -1,19 +1,29 @@
 "use client";
 
 import { useState, useEffect, type ReactNode } from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface FirstVisitTooltipProps {
-  content: string;
+  /** Bold header */
+  title: string;
+  /** Subtitle / description */
+  description: string;
   storageKey: string;
   side?: "top" | "bottom";
+  align?: "start" | "center" | "end";
+  /** "brand" = emerald green background */
+  variant?: "default" | "brand";
   children: ReactNode;
 }
 
 export function FirstVisitTooltip({
-  content,
+  title,
+  description,
   storageKey,
   side = "top",
+  align = "start",
+  variant = "default",
   children,
 }: FirstVisitTooltipProps) {
   const [show, setShow] = useState(false);
@@ -30,40 +40,76 @@ export function FirstVisitTooltip({
     setShow(false);
   }
 
-  // Render children normally — tooltip is absolutely positioned alongside them,
-  // NOT wrapping them inside a trigger (which breaks nested interactive elements).
   return (
     <div className="relative">
       {children}
 
       {show && (
         <>
-          {/* Dismiss on any click outside the tooltip */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={dismiss}
-            aria-hidden="true"
-          />
+          {/* Dismiss backdrop */}
+          <div className="fixed inset-0 z-40" onClick={dismiss} aria-hidden="true" />
+
           <div
             role="tooltip"
             className={cn(
-              "absolute left-1/2 -translate-x-1/2 z-50",
-              "w-max max-w-xs px-3 py-2",
-              "rounded-md border bg-popover shadow-md",
-              "text-sm text-popover-foreground",
+              "absolute z-50 w-60 rounded-xl px-3 py-2.5 shadow-lg",
               "animate-in fade-in-0 zoom-in-95 duration-200",
               side === "top"
                 ? "bottom-[calc(100%+10px)]"
                 : "top-[calc(100%+10px)]",
+              align === "start" && "left-0",
+              align === "center" && "left-1/2 -translate-x-1/2",
+              align === "end" && "right-0",
+              variant === "brand"
+                ? "bg-emerald-500 text-white"
+                : "border bg-popover text-popover-foreground",
             )}
           >
-            {content}
+            {/* Header row */}
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold leading-snug">{title}</p>
+              <button
+                onClick={dismiss}
+                className={cn(
+                  "shrink-0 rounded p-0.5 transition-colors",
+                  variant === "brand"
+                    ? "hover:bg-white/20"
+                    : "hover:bg-muted",
+                )}
+                aria-label="Dismiss"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+
+            {/* Description */}
+            <p
+              className={cn(
+                "mt-1 text-xs leading-relaxed",
+                variant === "brand"
+                  ? "text-white/90"
+                  : "text-muted-foreground",
+              )}
+            >
+              {description}
+            </p>
+
+            {/* Arrow */}
             <span
               className={cn(
-                "absolute left-1/2 -translate-x-1/2 h-2 w-2 rotate-45 border bg-popover",
-                side === "top"
-                  ? "bottom-[-5px] border-t-0 border-l-0"
-                  : "top-[-5px] border-b-0 border-r-0",
+                "absolute h-2.5 w-2.5 rotate-45",
+                side === "top" ? "bottom-[-5px]" : "top-[-5px]",
+                align === "start" && "left-4",
+                align === "center" && "left-1/2 -translate-x-1/2",
+                align === "end" && "right-4",
+                variant === "brand"
+                  ? "bg-emerald-500"
+                  : cn(
+                      "border bg-popover",
+                      side === "top"
+                        ? "border-t-0 border-l-0"
+                        : "border-b-0 border-r-0",
+                    ),
               )}
             />
           </div>
