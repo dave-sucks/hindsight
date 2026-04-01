@@ -2,9 +2,7 @@
 
 import { useMemo, useCallback, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { DefaultChatTransport } from "ai";
-import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import { ChatRuntime } from "@/components/chat/chat-runtime";
 import {
   useRegisterBuilderToolUIs,
   ToolUICallbacksProvider,
@@ -140,19 +138,11 @@ export function AnalystChatProvider({
   initialPrompt,
   children,
 }: AnalystChatProviderProps) {
-  const runtime = useChatRuntime({
-    transport: useMemo(
-      () =>
-        new DefaultChatTransport({
-          api: mode === "builder" ? "/api/chat/analyst-builder" : "/api/chat/analyst-editor",
-          body: currentConfig ? { currentConfig } : undefined,
-        }),
-      [mode, currentConfig],
-    ),
-  });
-
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
+    <ChatRuntime
+      api={mode === "builder" ? "/api/chat/analyst-builder" : "/api/chat/analyst-editor"}
+      body={currentConfig ? { currentConfig } : undefined}
+    >
       <ChatProviderInner
         mode={mode}
         analystId={analystId}
@@ -163,6 +153,6 @@ export function AnalystChatProvider({
       >
         {children}
       </ChatProviderInner>
-    </AssistantRuntimeProvider>
+    </ChatRuntime>
   );
 }

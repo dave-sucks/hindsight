@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useMemo, useCallback, useRef, useTransition } from "react";
+import { useState, useMemo, useTransition } from "react";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
@@ -71,7 +71,7 @@ import type {
 import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
 import { useRouter } from "next/navigation";
-import { Send } from "lucide-react";
+import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -163,52 +163,16 @@ function WatchingRow({
 // ── Floating composer (redirects to editor page on send) ─────────────────
 
 function FloatingEditorComposer({ analystId }: { analystId: string }) {
-  const router = useRouter();
-  const [text, setText] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const handleSend = useCallback(() => {
-    const msg = text.trim();
-    if (!msg) return;
-    router.push(`/analysts/${analystId}/edit?message=${encodeURIComponent(msg)}`);
-  }, [text, analystId, router]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
-
-  return ( 
-    <div className="max-w-3xl mx-auto z-10">
-      <div className="bg-background/80 backdrop-blur-sm border border-border rounded-lg overflow-hidden transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20">
-        <div className="px-3 pt-3 pb-2 grow">
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask a question or suggest strategy changes…"
-            rows={1}
-            className="w-full bg-transparent! p-0 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-foreground placeholder-muted-foreground resize-none border-none outline-none text-sm min-h-10 max-h-[25vh]"
-          />
-        </div>
-        <div className="mb-2 px-2 flex items-center justify-end">
-          <Button
-            size="icon-sm"
-            disabled={!text.trim()}
-            onClick={handleSend}
-            aria-label="Send message"
-          >
-            <Send className="size-3" />
-          </Button>
-        </div>
-      </div>
-    </div>
+  return (
+    <ChatEntryComposer
+      targetUrl={`/analysts/${analystId}/edit`}
+      queryParam="message"
+      features={{
+        placeholder: "Ask a question or suggest strategy changes…",
+        tickerSearch: true,
+        slashCommands: true,
+      }}
+    />
   );
 }
 

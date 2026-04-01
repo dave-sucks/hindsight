@@ -1,18 +1,19 @@
 "use client";
 
-import { useMemo, useRef, useEffect } from "react";
+import { useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { DefaultChatTransport } from "ai";
-import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
-import { AssistantRuntimeProvider, useAuiState } from "@assistant-ui/react";
+import { useAuiState } from "@assistant-ui/react";
 import { HindsightComposer, type HindsightComposerFeatures } from "./hindsight-composer";
+import { ChatRuntime } from "@/components/chat/chat-runtime";
 import { FirstVisitTooltip } from "@/components/ui/first-visit-tooltip";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface ChatEntryComposerProps {
-  /** Target URL to navigate to. Prompt appended as ?prompt=<encoded> */
+  /** Target URL to navigate to. Prompt appended as ?<queryParam>=<encoded> */
   targetUrl: string;
+  /** Query param name used when navigating. Defaults to "prompt". */
+  queryParam?: string;
   /** Features to pass to HindsightComposer */
   features?: HindsightComposerFeatures;
   /** First-visit tooltip config */
@@ -27,9 +28,11 @@ interface ChatEntryComposerProps {
 
 function EntryComposerInner({
   targetUrl,
+  queryParam = "prompt",
   features,
 }: {
   targetUrl: string;
+  queryParam?: string;
   features?: HindsightComposerFeatures;
 }) {
   const router = useRouter();
@@ -49,9 +52,9 @@ function EntryComposerInner({
 
     if (text) {
       navigated.current = true;
-      router.push(`${targetUrl}?prompt=${encodeURIComponent(text)}`);
+      router.push(`${targetUrl}?${queryParam}=${encodeURIComponent(text)}`);
     }
-  }, [messages, targetUrl, router]);
+  }, [messages, targetUrl, queryParam, router]);
 
   return <HindsightComposer features={features} />;
 }
@@ -60,23 +63,17 @@ function EntryComposerInner({
 
 export function ChatEntryComposer({
   targetUrl,
+  queryParam = "prompt",
   features,
   tooltip,
   className,
 }: ChatEntryComposerProps) {
   // Lightweight runtime with a no-op transport — we navigate before it fires
-  const runtime = useChatRuntime({
-    transport: useMemo(
-      () => new DefaultChatTransport({ api: "/api/noop" }),
-      [],
-    ),
-  });
-
   const composer = (
     <div className={className}>
-      <AssistantRuntimeProvider runtime={runtime}>
-        <EntryComposerInner targetUrl={targetUrl} features={features} />
-      </AssistantRuntimeProvider>
+      <ChatRuntime api="/api/noop">
+        <EntryComposerInner targetUrl={targetUrl} queryParam={queryParam} features={features} />
+      </ChatRuntime>
     </div>
   );
 

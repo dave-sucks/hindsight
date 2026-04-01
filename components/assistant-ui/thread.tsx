@@ -86,7 +86,7 @@ export const Thread: FC<ThreadProps> = ({
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
       style={{
-        ["--thread-max-width" as string]: "44rem",
+        ["--thread-max-width" as string]: "48rem",
       }}
     >
       <ThreadPrimitive.Viewport
