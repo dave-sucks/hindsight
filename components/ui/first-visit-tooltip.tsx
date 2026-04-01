@@ -52,7 +52,7 @@ export function FirstVisitTooltip({
           <div
             role="tooltip"
             className={cn(
-              "absolute z-50 w-60 rounded-xl px-3 py-2.5 shadow-lg",
+              "absolute z-50 w-72 rounded-xl px-3 py-2.5 shadow-lg",
               "animate-in fade-in-0 zoom-in-95 duration-200",
               side === "top"
                 ? "bottom-[calc(100%+10px)]"
@@ -67,7 +67,7 @@ export function FirstVisitTooltip({
           >
             {/* Header row */}
             <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-semibold leading-snug">{title}</p>
+              <p className="text-sm font-medium leading-snug">{title}</p>
               <button
                 onClick={dismiss}
                 className={cn(

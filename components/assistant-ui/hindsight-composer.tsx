@@ -504,7 +504,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
               {plusMenu && (
                 <FirstVisitTooltip
                   title="Your analyst's toolkit"
-                  description="See every data source and capability your analyst has access to — live market data, web research, SEC filings, and more."
+                  description="Market data, web research, SEC filings, and Alpaca trading — everything your analyst can access."
                   storageKey="composer-capabilities"
                   variant="brand"
                   side="top"
