@@ -13,7 +13,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { ChevronDownIcon, Loader2Icon } from "lucide-react";
+import { ChevronRightIcon, Loader2Icon } from "lucide-react";
 
 // ── ToolProgress (root) ────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ export const ToolProgress = memo(
 
     return (
       <Collapsible open={open} onOpenChange={setOpen}>
-        <div className={cn("not-prose w-full", className)} data-open={open || undefined} {...props}>
+        <div className={cn("not-prose w-full my-3", className)} data-open={open || undefined} {...props}>
           {children}
         </div>
       </Collapsible>
@@ -36,7 +36,7 @@ export const ToolProgress = memo(
 );
 ToolProgress.displayName = "ToolProgress";
 
-// ── Header ─────────────────────────────────────────────────────────────────
+// ── Header (inline — chevron right after text, not full-width) ─────────────
 
 export type ToolProgressHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
   loading?: boolean;
@@ -47,17 +47,17 @@ export const ToolProgressHeader = memo(
   ({ className, loading, icon: Icon, children, ...props }: ToolProgressHeaderProps) => (
     <CollapsibleTrigger
       className={cn(
-        "flex w-full items-center gap-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none",
+        "inline-flex items-center gap-1.5 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none",
         className
       )}
       {...props}
     >
       {Icon && <Icon className="size-3.5 shrink-0" />}
-      <span className="flex-1 text-left">{children}</span>
+      <span>{children}</span>
       {loading ? (
-        <Loader2Icon className="size-3.5 animate-spin" />
+        <Loader2Icon className="size-3 animate-spin" />
       ) : (
-        <ChevronDownIcon className="size-3.5 transition-transform [[data-open]_&]:rotate-180" />
+        <ChevronRightIcon className="size-3 transition-transform [[data-open]_&]:rotate-90" />
       )}
     </CollapsibleTrigger>
   )
@@ -71,7 +71,7 @@ export type ToolProgressContentProps = ComponentProps<typeof CollapsibleContent>
 export const ToolProgressContent = memo(
   ({ className, ...props }: ToolProgressContentProps) => (
     <CollapsibleContent
-      className={cn("space-y-1 pb-2", className)}
+      className={cn("space-y-1.5 pt-1 pb-1", className)}
       {...props}
     />
   )
@@ -88,7 +88,7 @@ export const ToolProgressItem = memo(
   ({ className, active, children, ...props }: ToolProgressItemProps) => (
     <div
       className={cn(
-        "flex items-start gap-2.5 text-sm pl-1",
+        "flex items-start gap-2 text-sm",
         active ? "text-foreground" : "text-muted-foreground",
         className
       )}
@@ -96,8 +96,8 @@ export const ToolProgressItem = memo(
     >
       <span
         className={cn(
-          "mt-[7px] size-1 shrink-0 rounded-full",
-          active ? "bg-foreground animate-pulse" : "bg-muted-foreground/50"
+          "mt-[7px] size-[5px] shrink-0 rounded-full",
+          active ? "bg-foreground animate-pulse" : "bg-muted-foreground/40"
         )}
       />
       <span className="flex-1 min-w-0">{children}</span>
@@ -106,7 +106,7 @@ export const ToolProgressItem = memo(
 );
 ToolProgressItem.displayName = "ToolProgressItem";
 
-// ── Ticker Item (logo + ticker + tag + summary) ────────────────────────────
+// ── Ticker Item (inline: logo + $TICKER + (tag) + summary) ─────────────────
 
 export type ToolProgressTickerItemProps = ComponentProps<"div"> & {
   ticker: string;
@@ -116,30 +116,33 @@ export type ToolProgressTickerItemProps = ComponentProps<"div"> & {
 
 export const ToolProgressTickerItem = memo(
   ({ className, ticker, tag, children, ...props }: ToolProgressTickerItemProps) => (
-    <div className={cn("pl-1 space-y-0.5", className)} {...props}>
-      <div className="flex items-center gap-2">
+    <div
+      className={cn("flex items-start gap-2 text-sm text-muted-foreground", className)}
+      {...props}
+    >
+      <span className="mt-[7px] size-[5px] shrink-0 rounded-full bg-muted-foreground/40" />
+      <span className="flex-1 min-w-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={`https://assets.parqet.com/logos/symbol/${ticker}`}
           alt=""
-          width={16}
-          height={16}
-          className="size-4 shrink-0 rounded-sm"
+          width={14}
+          height={14}
+          className="size-3.5 shrink-0 rounded-sm inline-block align-text-bottom mr-1"
           loading="lazy"
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
         />
-        <span className="text-xs font-mono font-medium">${ticker}</span>
-        {tag && (
-          <span className="text-[10px] text-muted-foreground">{tag}</span>
-        )}
-      </div>
-      <p className="text-sm text-muted-foreground pl-6">{children}</p>
+        <span className="font-mono text-xs font-medium text-foreground">${ticker}</span>
+        {tag && <span className="text-muted-foreground"> ({tag})</span>}
+        <span className="text-muted-foreground"> — </span>
+        {children}
+      </span>
     </div>
   )
 );
 ToolProgressTickerItem.displayName = "ToolProgressTickerItem";
 
-// ── Sources (inline favicon + domain badges) ───────────────────────────────
+// ── Sources (inline favicon + domain) ──────────────────────────────────────
 
 export type ToolProgressSourcesProps = ComponentProps<"div"> & {
   domains: string[];
@@ -151,11 +154,11 @@ export const ToolProgressSources = memo(
 
     return (
       <div
-        className={cn("flex items-center gap-3 pt-1 pl-1", className)}
+        className={cn("flex items-center gap-3 pt-1", className)}
         {...props}
       >
         {domains.map((domain) => (
-          <span key={domain} className="inline-flex items-center gap-1 text-xs text-muted-foreground/70">
+          <span key={domain} className="inline-flex items-center gap-1 text-xs text-muted-foreground/60">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`https://www.google.com/s2/favicons?sz=16&domain=${domain}`}
