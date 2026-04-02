@@ -59,9 +59,9 @@ export function FindingDetailDialog({ signal, open, onOpenChange }: FindingDetai
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-background sm:max-w-3xl">
         {/* Search bar */}
-        <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-1.5">
+        <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 min-w-0">
           <MonitorIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-sm text-foreground/80 truncate flex-1">{query}</span>
+          <span className="text-sm text-foreground/80 truncate flex-1 min-w-0">{query}</span>
           {usedPerplexity && (
             <ToolPopover
               icon={PerplexityLogo}

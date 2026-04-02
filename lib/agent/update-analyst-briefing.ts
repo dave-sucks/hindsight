@@ -404,7 +404,17 @@ ${previousBriefing.selfCorrections ? `Self-Corrections: ${JSON.stringify(previou
         }).join("\n")
       : "No pass decisions recorded yet.";
 
+    const today = new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: "America/New_York",
+    });
+
     const briefingPrompt = `You are a portfolio desk editor reviewing the research session of an AI analyst named "${config.name}". Your job is to write the standup brief that this analyst will see at the START of its next session. This brief is the analyst's memory — it's the most important document for run-to-run continuity.
+
+Today's date is ${today}. All dates in your output must be relative to today.
 
 You have access to the FULL research conversation transcript below. Read it carefully — the analyst's actual reasoning, tool calls, and decisions are all here. Do not rely solely on the summary stats; the conversation reveals nuances the numbers miss.
 
