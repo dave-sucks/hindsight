@@ -128,11 +128,11 @@ export const ToolProgressTickerItem = memo(
           alt=""
           width={14}
           height={14}
-          className="size-3.5 shrink-0 rounded-sm inline-block align-text-bottom mr-1"
+          className="size-3.5 shrink-0 rounded-full inline-block align-text-bottom mr-1"
           loading="lazy"
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
         />
-        <span className="font-mono text-xs font-medium text-foreground">${ticker}</span>
+        <span className="font-mono text-xs font-medium">${ticker}</span>
         {tag && <span> ({tag})</span>}
         <span> — </span>
         {children}

@@ -4,9 +4,8 @@
  * ResearchToolGroup — groups consecutive research tool calls into a single
  * collapsible block ("Researching $AAPL").
  *
- * Each step renders as a flat dot + one-line summary. No per-step icons,
- * no rich descriptions, no nested expandables. Source domains are collected
- * and shown once at the bottom.
+ * Ticker-specific steps render as ToolProgressTickerItem (logo + $TICKER + summary).
+ * Non-ticker steps render as plain ToolProgressItem (dot + text).
  */
 
 import { useMessage } from "@assistant-ui/react";
@@ -17,6 +16,7 @@ import {
   ToolProgressHeader,
   ToolProgressContent,
   ToolProgressItem,
+  ToolProgressTickerItem,
   ToolProgressSources,
 } from "@/components/ai-elements/tool-progress";
 
@@ -32,11 +32,24 @@ function fmtPct(n: number | null | undefined): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
-// ── Step Config (simplified — label functions only) ─────────────────────────
+function fmtCompact(n: number | null | undefined): string {
+  if (n == null) return "";
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
+  return `$${n.toLocaleString()}`;
+}
+
+// ── Step Config ─────────────────────────────────────────────────────────────
 
 interface ResearchStepConfig {
+  /** Whether this step is about a specific ticker (renders as ToolProgressTickerItem) */
+  tickerStep?: boolean;
   loadingLabel: (ticker: string, args?: Record<string, unknown>) => string;
+  /** For non-ticker steps: full label text */
   completeLabel: (ticker: string, result: Record<string, unknown>) => string;
+  /** For ticker steps: summary text after "$TICKER — " */
+  tickerSummary?: (result: Record<string, unknown>) => string;
   sources?: string[];
 }
 
@@ -56,22 +69,47 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
   },
 
   get_stock_data: {
+    tickerStep: true,
     sources: ["finnhub.io"],
     loadingLabel: (ticker) => `Pulling ${ticker} data...`,
     completeLabel: (ticker, result) => {
-      const quote = result.quote as { price?: number; change_pct?: number } | null;
       const company = result.company as { name?: string } | null;
-      const technicals = result.technicals as { trend?: string; rsi_14?: number } | null;
+      const quote = result.quote as { price?: number; change_pct?: number } | null;
       let label = `Got ${ticker}`;
       if (company?.name) label += ` — ${company.name}`;
       if (quote?.price != null) label += `, ${fmtPrice(quote.price)} (${fmtPct(quote.change_pct)})`;
-      if (technicals?.trend) label += `. Trend: ${technicals.trend}`;
-      if (technicals?.rsi_14 != null) label += `, RSI ${technicals.rsi_14.toFixed(1)}`;
       return label;
+    },
+    tickerSummary: (result) => {
+      const company = result.company as { name?: string; sector?: string; market_cap?: number } | null;
+      const quote = result.quote as { price?: number; change_pct?: number } | null;
+      const financials = result.financials as { pe_ratio?: number } | null;
+      const analyst = result.analyst_consensus as { buy?: number; hold?: number; sell?: number; strong_buy?: number; strong_sell?: number } | null;
+
+      const parts: string[] = [];
+      if (company?.name) parts.push(company.name);
+      if (quote?.price != null) parts.push(`${fmtPrice(quote.price)} (${fmtPct(quote.change_pct)})`);
+
+      const metaParts: string[] = [];
+      if (company?.sector) metaParts.push(company.sector);
+      if (company?.market_cap) metaParts.push(fmtCompact(company.market_cap * 1e6));
+      if (financials?.pe_ratio != null) metaParts.push(`P/E ${financials.pe_ratio.toFixed(1)}`);
+
+      if (analyst) {
+        const total = (analyst.strong_buy ?? 0) + (analyst.buy ?? 0) + (analyst.hold ?? 0) + (analyst.sell ?? 0) + (analyst.strong_sell ?? 0);
+        if (total > 0) {
+          const buyPct = Math.round(((analyst.strong_buy ?? 0) + (analyst.buy ?? 0)) / total * 100);
+          metaParts.push(`${buyPct}% Buy`);
+        }
+      }
+
+      if (metaParts.length > 0) parts.push(metaParts.join(" · "));
+      return parts.join(". ");
     },
   },
 
   get_earnings_data: {
+    tickerStep: true,
     sources: ["finnhub.io"],
     loadingLabel: (ticker) => `Checking earnings for ${ticker}...`,
     completeLabel: (ticker, result) => {
@@ -82,9 +120,18 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
       if (beatRate && beatRate !== "no history") label += `. Beat rate: ${beatRate}`;
       return label;
     },
+    tickerSummary: (result) => {
+      const nextEarnings = result.next_earnings as { date?: string } | null;
+      const beatRate = result.beat_rate as string | undefined;
+      const parts: string[] = [];
+      if (nextEarnings?.date) parts.push(`next report ${nextEarnings.date}`);
+      if (beatRate && beatRate !== "no history") parts.push(`beat rate: ${beatRate}`);
+      return parts.length > 0 ? `Earnings — ${parts.join(", ")}` : "No earnings data";
+    },
   },
 
   get_options_flow: {
+    tickerStep: true,
     sources: ["financialmodelingprep.com"],
     loadingLabel: (ticker) => `Scanning options for ${ticker}...`,
     completeLabel: (ticker, result) => {
@@ -93,9 +140,16 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
       const pcr = result.put_call_ratio;
       return `Options for ${ticker} — P/C ratio ${pcr ?? "N/A"}, signal: ${signal}`;
     },
+    tickerSummary: (result) => {
+      if (result.available === false) return "No options data available";
+      const signal = (result.signal as string) ?? "neutral";
+      const pcr = result.put_call_ratio;
+      return `Options — P/C ratio ${pcr ?? "N/A"}, signal: ${signal}`;
+    },
   },
 
   get_sec_filings: {
+    tickerStep: true,
     sources: ["sec.gov"],
     loadingLabel: (ticker) => `Checking SEC filings for ${ticker}...`,
     completeLabel: (ticker, result) => {
@@ -103,6 +157,12 @@ export const RESEARCH_STEPS: Record<string, ResearchStepConfig> = {
       const count = Array.isArray(filings) ? filings.length : 0;
       if (count === 0) return `No recent SEC filings for ${ticker}`;
       return `${count} SEC filing${count !== 1 ? "s" : ""} for ${ticker}`;
+    },
+    tickerSummary: (result) => {
+      const filings = (result.filings ?? result) as unknown[];
+      const count = Array.isArray(filings) ? filings.length : 0;
+      if (count === 0) return "No recent SEC filings";
+      return `${count} SEC filing${count !== 1 ? "s" : ""}`;
     },
   },
 
@@ -149,7 +209,6 @@ function extractTicker(args: Record<string, unknown>): string {
   return (args.ticker as string) ?? (args.symbol as string) ?? "";
 }
 
-/** Extract search result items from web_search result for display */
 function extractSearchItems(result: Record<string, unknown>): Array<{ headline: string; domain: string }> {
   const results = result.results as Array<{ headline: string; sourceUrls?: string[] }> | undefined;
   if (!results) return [];
@@ -206,7 +265,6 @@ export function ResearchToolGroup({
     return <>{children}</>;
   }
 
-  // Dynamic header
   const tickers = [...new Set(stepParts.map((s) => extractTicker(s.args)).filter(Boolean))];
   const hasMarketTools = stepParts.some((s) => s.toolName === "get_market_context");
   const hasWebSearch = stepParts.some((s) => s.toolName === "web_search");
@@ -221,8 +279,6 @@ export function ResearchToolGroup({
           : "Research";
 
   const anyLoading = stepParts.some((s) => s.result === undefined);
-
-  // Collect all unique source domains
   const allSources = [...new Set(stepParts.flatMap((s) => s.config.sources ?? []))];
 
   return (
@@ -235,18 +291,33 @@ export function ResearchToolGroup({
           {stepParts.map((step) => {
             const ticker = extractTicker(step.args);
             const isComplete = step.result !== undefined;
-            const label = isComplete
-              ? step.config.completeLabel(ticker, step.result!)
-              : step.config.loadingLabel(ticker, step.args);
 
+            // Loading state: always plain item
+            if (!isComplete) {
+              return (
+                <ToolProgressItem key={step.key} active>
+                  {step.config.loadingLabel(ticker, step.args)}
+                </ToolProgressItem>
+              );
+            }
+
+            // Ticker-specific steps: render with logo + $TICKER + summary
+            if (step.config.tickerStep && ticker && step.config.tickerSummary) {
+              return (
+                <ToolProgressTickerItem key={step.key} ticker={ticker}>
+                  {step.config.tickerSummary(step.result!)}
+                </ToolProgressTickerItem>
+              );
+            }
+
+            // Non-ticker steps (market context, portfolio, web search): plain item
             return (
               <div key={step.key}>
-                <ToolProgressItem active={!isComplete}>{label}</ToolProgressItem>
-                {/* Web search results: show top 3 as sub-items */}
-                {isComplete && step.toolName === "web_search" && (() => {
+                <ToolProgressItem>{step.config.completeLabel(ticker, step.result!)}</ToolProgressItem>
+                {step.toolName === "web_search" && (() => {
                   const items = extractSearchItems(step.result!);
                   return items.length > 0 ? (
-                    <div className="pl-4 space-y-0.5 mt-0.5">
+                    <div className="pl-5 space-y-0.5 mt-0.5">
                       {items.map((item, i) => (
                         <ToolProgressItem key={i}>
                           {item.domain ? `${item.domain} — ` : ""}{item.headline}
