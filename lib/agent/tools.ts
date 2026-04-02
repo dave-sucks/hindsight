@@ -13,9 +13,16 @@ type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" 
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import { finnhub, calcRSI, calcSMA } from "@/lib/agent/research-helpers";
-import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity } from "@/lib/discovery/types";
+import type { MacroEvent } from "@/lib/discovery/types";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
 import { searchSignals } from "@/lib/intelligence/sonar";
+import type {
+  ToolSource, TickerFinding, ResearchToolResult, NewsItem, SignalItem,
+  MarketContextData, StockDataData, EarningsDataData, OptionsFlowData,
+  SecFilingsData, MorningBriefToolData, SignalsToolData, ArtifactToolData,
+  WebSearchToolData,
+} from "@/lib/agent/tool-types";
+import { toSourceRefs, sourceRefsToToolSources } from "@/lib/agent/tool-types";
 
 const FMP_KEY = process.env.FMP_API_KEY!;
 
@@ -236,7 +243,7 @@ export function createResearchTools(ctx: ToolContext) {
       description:
         "Get current market conditions: S&P 500, VIX, sector ETF performance, macro events, and regime classification. A quick price snapshot for market orientation.",
       inputSchema: emptyParams,
-      execute: async (): Promise<MarketOverviewResult> => {
+      execute: async (): Promise<ResearchToolResult<MarketContextData>> => {
         const _t0 = Date.now();
         logToolStart("get_market_context", ctx.runId, undefined, stats);
         const errors: string[] = [];
@@ -302,8 +309,8 @@ export function createResearchTools(ctx: ToolContext) {
         }
 
         // ── SPY trend + regime classification ──────────────────────────────
-        let spyTrend: MarketOverviewResult["spy_trend"] = null;
-        let regime: MarketOverviewResult["regime"] = "NEUTRAL";
+        let spyTrend: { sma_20: number; position: "above" | "below"; pct_from_sma: number } | null = null;
+        let regime: "RISK_ON" | "RISK_OFF" | "NEUTRAL" = "NEUTRAL";
         let fiveDayReturn = 0;
 
         const spyCandle = spyCandleResult.data as { c?: number[]; s?: string } | null;
@@ -356,7 +363,7 @@ export function createResearchTools(ctx: ToolContext) {
         }
 
         // ── Earnings density (next 5 days) ─────────────────────────────────
-        let earningsDensity: EarningsDensity = { count: 0, period: `${today}–${fiveDaysForward}` };
+        let earningsDensity: { count: number; period: string } = { count: 0, period: `${today}–${fiveDaysForward}` };
         try {
           const earningsRaw = earningsDensityResult.data as { earningsCalendar?: { symbol: string }[] } | null;
           if (earningsRaw?.earningsCalendar) {
@@ -372,61 +379,63 @@ export function createResearchTools(ctx: ToolContext) {
         // Sector quotes — sorted by daily change. Sector candle fetches removed
         // to save 11 Finnhub API calls per run (~18% of rate limit budget).
         // The daily change_pct is sufficient for regime classification.
-        const sectors: SectorQuote[] = sectorsRaw
+        const sectors = sectorsRaw
           .filter((s): s is NonNullable<typeof s> => s != null)
           .map((s) => ({
             symbol: s.symbol,
-            price: s.price,
-            change_pct: s.changesPercentage,
+            changePct: s.changesPercentage,
           }))
-          .sort((a, b) => b.change_pct - a.change_pct);
+          .sort((a, b) => b.changePct - a.changePct);
 
         logToolEnd("get_market_context", _t0, ctx.runId, `SPY=${spyData ? `$${spyData.price}` : "null"} regime=${regime}`, stats);
+
+        // ── Build envelope ────────────────────────────────────────────
+        const fPct = (n: number | null | undefined) => n != null ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}%` : "";
+
+        const summaryParts: string[] = [];
+        if (spyData) summaryParts.push(`SPY $${spyData.price} (${fPct(spyData.changesPercentage)})`);
+        if (vixLevel !== null) summaryParts.push(`VIX ${vixLevel.toFixed(1)}`);
+        summaryParts.push(`Regime: ${regime}`);
+        if (macroEventsToday.length > 0) summaryParts.push(`${macroEventsToday.length} macro event${macroEventsToday.length !== 1 ? "s" : ""} today`);
+        if (earningsDensity.count > 0) summaryParts.push(`${earningsDensity.count} earnings ${earningsDensity.period}`);
+
+        const envelopeTickers: TickerFinding[] = [];
+        if (spyData) {
+          envelopeTickers.push({
+            ticker: "SPY",
+            summary: `$${spyData.price} (${fPct(spyData.changesPercentage)})${spyTrend ? `, ${spyTrend.position} SMA-20 by ${fPct(spyTrend.pct_from_sma)}` : ""}`,
+          });
+        }
+
         return {
-          spy: spyData
-            ? {
-                price: spyData.price,
-                change_pct: spyData.changesPercentage,
-                day_high: spyData.dayHigh,
-                day_low: spyData.dayLow,
-              }
-            : null,
-          vix: vixLevel !== null
-            ? { level: vixLevel, change_pct: vixChangePct }
-            : null,
-          sectors,
-          regime,
-          spy_trend: spyTrend,
-          macro_events_today: macroEventsToday,
-          earnings_density: earningsDensity,
-          // Tell the agent exactly what failed so it can adapt
-          ...(errors.length > 0 ? { api_errors: errors, note: `Some data sources failed: ${errors.join("; ")}. Analyze what's available and proceed.` } : {}),
+          summary: summaryParts.join(". ") + ".",
+          tickers: envelopeTickers,
           _sources: [
             {
               provider: "Finnhub",
               title: "SPY Real-Time Quote",
               url: "https://finnhub.io/docs/api/quote",
-              excerpt: spyData ? `SPY $${spyData.price} (${spyData.changesPercentage > 0 ? "+" : ""}${spyData.changesPercentage?.toFixed(2)}%)` : "SPY quote unavailable",
+              excerpt: spyData ? `SPY $${spyData.price} (${fPct(spyData.changesPercentage)})` : "SPY quote unavailable",
             },
             {
               provider: "Finnhub",
               title: "CBOE VIX Index",
               url: "https://finnhub.io/docs/api/quote",
-              excerpt: vixLevel !== null ? `VIX at ${vixLevel.toFixed(1)}${vixChangePct != null ? ` (${vixChangePct > 0 ? "+" : ""}${vixChangePct.toFixed(1)}%)` : ""}` : "VIX data unavailable",
+              excerpt: vixLevel !== null ? `VIX at ${vixLevel.toFixed(1)}${vixChangePct != null ? ` (${fPct(vixChangePct)})` : ""}` : "VIX data unavailable",
             },
             {
               provider: "Finnhub",
               title: "S&P 500 Sector ETF Performance",
               url: "https://finnhub.io/docs/api/quote",
               excerpt: sectors.length > 0
-                ? `Top: ${sectors[0].symbol} ${sectors[0].change_pct > 0 ? "+" : ""}${sectors[0].change_pct?.toFixed(1)}% | Bottom: ${sectors[sectors.length - 1].symbol} ${sectors[sectors.length - 1].change_pct?.toFixed(1)}%`
+                ? `Top: ${sectors[0].symbol} ${fPct(sectors[0].changePct)} | Bottom: ${sectors[sectors.length - 1].symbol} ${fPct(sectors[sectors.length - 1].changePct)}`
                 : "Sector data unavailable",
             },
             {
               provider: "Finnhub",
               title: "SPY 30-Day Candles (SMA-20 + Regime)",
               url: "https://finnhub.io/docs/api/stock-candles",
-              excerpt: spyTrend ? `SPY ${spyTrend.position} SMA-20 ($${spyTrend.sma_20}) by ${spyTrend.pct_from_sma > 0 ? "+" : ""}${spyTrend.pct_from_sma}%` : "SPY candle data unavailable",
+              excerpt: spyTrend ? `SPY ${spyTrend.position} SMA-20 ($${spyTrend.sma_20.toFixed(2)}) by ${fPct(spyTrend.pct_from_sma)}` : "SPY candle data unavailable",
             },
             {
               provider: "FMP",
@@ -441,6 +450,22 @@ export function createResearchTools(ctx: ToolContext) {
               excerpt: `${earningsDensity.count} earnings reports ${earningsDensity.period}`,
             },
           ],
+          data: {
+            spy: spyData
+              ? { price: spyData.price, changePct: spyData.changesPercentage, dayHigh: spyData.dayHigh, dayLow: spyData.dayLow }
+              : null,
+            vix: vixLevel !== null
+              ? { level: vixLevel, changePct: vixChangePct }
+              : null,
+            regime,
+            spyTrend: spyTrend
+              ? { sma20: spyTrend.sma_20, position: spyTrend.position, pctFromSma: spyTrend.pct_from_sma }
+              : null,
+            sectors,
+            macroEvents: macroEventsToday,
+            earningsDensity,
+            ...(errors.length > 0 ? { apiErrors: errors } : {}),
+          },
         };
       },
     }),
@@ -608,102 +633,107 @@ export function createResearchTools(ctx: ToolContext) {
         }
 
         logToolEnd("get_stock_data", _t0, ctx.runId, `ticker=${ticker}`, stats);
+
+        // ── Normalize to camelCase data ───────────────────────────────
+        const fPct = (n: number | null | undefined) => n != null ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}%` : "";
+        const fCompact = (n: number | null | undefined) => {
+          if (n == null) return "";
+          if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
+          if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+          if (n >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
+          return `$${n.toLocaleString()}`;
+        };
+
+        const quoteData = quote && quote.c
+          ? { price: quote.c as number, change: (quote.d as number) ?? 0, changePct: (quote.dp as number) ?? 0, high: quote.h as number, low: quote.l as number, open: quote.o as number, prevClose: quote.pc as number }
+          : null;
+        const companyData = profile && profile.name
+          ? { name: profile.name as string, sector: (profile.finnhubIndustry as string) ?? "", marketCap: profile.marketCapitalization ? (profile.marketCapitalization as number) * 1_000_000 : null, exchange: (profile.exchange as string) ?? "", country: (profile.country as string) ?? "" }
+          : null;
+        const financialsData = financials?.metric
+          ? { peRatio: financials.metric.peNormalizedAnnual as number | null, pbRatio: financials.metric.pbAnnual as number | null, high52w: financials.metric["52WeekHigh"] as number | null, low52w: financials.metric["52WeekLow"] as number | null, avgVolume10d: financials.metric["10DayAverageTradingVolume"] as number | null, beta: financials.metric.beta as number | null }
+          : null;
+        const consensusData = latestRec
+          ? { buy: latestRec.buy as number, hold: latestRec.hold as number, sell: latestRec.sell as number, strongBuy: latestRec.strongBuy as number, strongSell: latestRec.strongSell as number }
+          : null;
+        const techData = technicals
+          ? { currentPrice: technicals.current_price, rsi14: technicals.rsi_14, sma20: technicals.sma_20, sma50: technicals.sma_50, priceVsSma20: technicals.price_vs_sma20, priceVsSma50: technicals.price_vs_sma50, positionIn52wRange: technicals.position_in_52w_range, volumeRatio: technicals.volume_ratio, trend: technicals.trend }
+          : null;
+        const targetsData = priceTargets
+          ? { consensus: priceTargets.consensus, high: priceTargets.high, low: priceTargets.low, median: priceTargets.median, numAnalysts: priceTargets.num_analysts }
+          : null;
+        const newsData: NewsItem[] = recentNews;
+
+        // ── Build summary ─────────────────────────────────────────────
+        const sParts: string[] = [];
+        if (companyData?.name) sParts.push(`${ticker} — ${companyData.name}`);
+        else sParts.push(ticker);
+        if (quoteData) sParts.push(`$${quoteData.price} (${fPct(quoteData.changePct)})`);
+
+        const metaParts: string[] = [];
+        if (companyData?.sector) metaParts.push(companyData.sector);
+        if (companyData?.marketCap) metaParts.push(fCompact(companyData.marketCap));
+        if (financialsData?.peRatio != null) metaParts.push(`P/E ${financialsData.peRatio.toFixed(1)}`);
+        if (consensusData) {
+          const total = consensusData.strongBuy + consensusData.buy + consensusData.hold + consensusData.sell + consensusData.strongSell;
+          if (total > 0) metaParts.push(`${Math.round((consensusData.strongBuy + consensusData.buy) / total * 100)}% Buy`);
+        }
+        if (metaParts.length > 0) sParts.push(metaParts.join(" · "));
+        if (techData) {
+          const techParts: string[] = [];
+          if (techData.rsi14 != null) techParts.push(`RSI ${techData.rsi14.toFixed(1)}`);
+          if (techData.trend && techData.trend !== "unknown") techParts.push(techData.trend.split(" ")[0]);
+          if (techParts.length > 0) sParts.push(techParts.join(", "));
+        }
+        if (newsData.length > 0) sParts.push(`${newsData.length} news`);
+
+        const tickerSummaryParts: string[] = [];
+        if (companyData?.name) tickerSummaryParts.push(companyData.name);
+        if (metaParts.length > 0) tickerSummaryParts.push(metaParts.join(" · "));
+        if (techData?.rsi14 != null) tickerSummaryParts.push(`RSI ${techData.rsi14.toFixed(1)} ${techData.trend?.split(" ")[0] ?? ""}`);
+
         return {
-          quote: quote && quote.c
-            ? {
-                price: quote.c,
-                change: quote.d,
-                change_pct: quote.dp,
-                high: quote.h,
-                low: quote.l,
-                open: quote.o,
-                prev_close: quote.pc,
-              }
-            : null,
-          company: profile && profile.name
-            ? {
-                name: profile.name as string,
-                sector: profile.finnhubIndustry as string,
-                market_cap: profile.marketCapitalization
-                  ? (profile.marketCapitalization as number) * 1_000_000
-                  : null,
-                exchange: profile.exchange as string,
-                country: profile.country as string,
-              }
-            : null,
-          financials: financials?.metric
-            ? {
-                pe_ratio: financials.metric.peNormalizedAnnual as number | null,
-                pb_ratio: financials.metric.pbAnnual as number | null,
-                high_52w: financials.metric["52WeekHigh"] as number | null,
-                low_52w: financials.metric["52WeekLow"] as number | null,
-                avg_volume_10d: financials.metric[
-                  "10DayAverageTradingVolume"
-                ] as number | null,
-                beta: financials.metric.beta as number | null,
-              }
-            : null,
-          analyst_consensus: latestRec
-            ? {
-                buy: latestRec.buy,
-                hold: latestRec.hold,
-                sell: latestRec.sell,
-                strong_buy: latestRec.strongBuy,
-                strong_sell: latestRec.strongSell,
-              }
-            : null,
-          news: recentNews,
-          technicals,
-          price_targets: priceTargets,
-          ...(errors.length > 0 ? { api_errors: errors } : {}),
+          summary: sParts.join(". ") + ".",
+          tickers: [{ ticker, tag: "Research", summary: tickerSummaryParts.join(". ") }],
           _sources: [
             {
               provider: "Finnhub",
               title: `${ticker} Real-Time Quote`,
-              excerpt: quote && quote.c ? `$${quote.c} ${quote.dp > 0 ? "+" : ""}${quote.dp?.toFixed(2)}% | High $${quote.h} Low $${quote.l}` : "Quote unavailable",
+              excerpt: quoteData ? `$${quoteData.price} ${fPct(quoteData.changePct)} | High $${quoteData.high} Low $${quoteData.low}` : "Quote unavailable",
             },
             {
               provider: "Finnhub",
               title: `${ticker} Company Profile`,
-              excerpt: profile && profile.name ? `${profile.name} | ${profile.finnhubIndustry} | ${profile.exchange}` : "Profile unavailable",
+              excerpt: companyData ? `${companyData.name} | ${companyData.sector} | ${companyData.exchange}` : "Profile unavailable",
             },
             {
               provider: "Finnhub",
               title: `${ticker} Key Financials`,
-              excerpt: financials?.metric
-                ? `P/E ${(financials.metric.peNormalizedAnnual as number | null)?.toFixed(1) ?? "—"} | Beta ${(financials.metric.beta as number | null)?.toFixed(2) ?? "—"} | 52W $${(financials.metric["52WeekLow"] as number | null)?.toFixed(0) ?? "?"}-$${(financials.metric["52WeekHigh"] as number | null)?.toFixed(0) ?? "?"}`
+              excerpt: financialsData
+                ? `P/E ${financialsData.peRatio?.toFixed(1) ?? "—"} | Beta ${financialsData.beta?.toFixed(2) ?? "—"} | 52W $${financialsData.low52w?.toFixed(0) ?? "?"}-$${financialsData.high52w?.toFixed(0) ?? "?"}`
                 : "Financials unavailable",
             },
-            ...(latestRec
-              ? [{
-                  provider: "Finnhub",
-                  title: `${ticker} Analyst Consensus`,
-                  excerpt: `Buy ${latestRec.buy + latestRec.strongBuy} | Hold ${latestRec.hold} | Sell ${latestRec.sell + latestRec.strongSell}`,
-                }]
+            ...(consensusData
+              ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus`, excerpt: `Buy ${consensusData.buy + consensusData.strongBuy} | Hold ${consensusData.hold} | Sell ${consensusData.sell + consensusData.strongSell}` }]
               : []),
-            ...recentNews.map((n: { source: string; headline: string; url: string; summary: string }) => ({
-              provider: n.source,
-              title: n.headline,
-              url: n.url,
-              excerpt: n.summary,
-            })),
-            ...(technicals
-              ? [{
-                  provider: techProvider,
-                  title: `${ticker} 90-Day Price History`,
-                  url: techProvider === "Finnhub" ? "https://finnhub.io/docs/api/stock-candles" : `https://financialmodelingprep.com/financial-statements/${ticker}`,
-                  excerpt: `RSI ${technicals.rsi_14?.toFixed(1) ?? "—"} | SMA20 $${technicals.sma_20?.toFixed(2) ?? "—"} | SMA50 $${technicals.sma_50?.toFixed(2) ?? "—"} | 52W position ${technicals.position_in_52w_range}`,
-                }]
+            ...newsData.map((n) => ({ provider: n.source, title: n.headline, url: n.url, excerpt: n.summary })),
+            ...(techData
+              ? [{ provider: techProvider, title: `${ticker} 90-Day Price History`, url: techProvider === "Finnhub" ? "https://finnhub.io/docs/api/stock-candles" : `https://financialmodelingprep.com/financial-statements/${ticker}`, excerpt: `RSI ${techData.rsi14?.toFixed(1) ?? "—"} | SMA20 $${techData.sma20?.toFixed(2) ?? "—"} | SMA50 $${techData.sma50?.toFixed(2) ?? "—"} | 52W position ${techData.positionIn52wRange}` }]
               : []),
-            ...(priceTargets
-              ? [{
-                  provider: "FMP",
-                  title: `${ticker} Analyst Price Targets`,
-                  url: `https://financialmodelingprep.com/api/v4/price-target-consensus?symbol=${ticker}`,
-                  excerpt: `Consensus $${priceTargets.consensus ?? "—"} | High $${priceTargets.high ?? "—"} | Low $${priceTargets.low ?? "—"} | ${priceTargets.num_analysts ?? 0} analysts`,
-                }]
+            ...(targetsData
+              ? [{ provider: "FMP", title: `${ticker} Analyst Price Targets`, url: `https://financialmodelingprep.com/api/v4/price-target-consensus?symbol=${ticker}`, excerpt: `Consensus $${targetsData.consensus ?? "—"} | High $${targetsData.high ?? "—"} | Low $${targetsData.low ?? "—"} | ${targetsData.numAnalysts ?? 0} analysts` }]
               : []),
           ],
+          data: {
+            quote: quoteData,
+            company: companyData,
+            financials: financialsData,
+            technicals: techData,
+            analystConsensus: consensusData,
+            priceTargets: targetsData,
+            news: newsData,
+            ...(errors.length > 0 ? { apiErrors: errors } : {}),
+          },
         };
       },
     }),
@@ -757,31 +787,27 @@ export function createResearchTools(ctx: ToolContext) {
           unusualContracts.sort((a, b) => b.premium - a.premium);
 
           logToolEnd("get_options_flow", _t0, ctx.runId, `ticker=${ticker} src=fmp`, stats);
+          const pcr = totalCallVol > 0 ? Math.round((totalPutVol / totalCallVol) * 100) / 100 : null;
+          const sig = totalCallVol > 0 && totalPutVol / totalCallVol < 0.7
+            ? "bullish (low put/call ratio)"
+            : totalCallVol > 0 && totalPutVol / totalCallVol > 1.3
+              ? "bearish (high put/call ratio)"
+              : "neutral";
+          const topContracts = unusualContracts.slice(0, 3);
           return {
-            available: true,
-            put_call_ratio:
-              totalCallVol > 0
-                ? Math.round((totalPutVol / totalCallVol) * 100) / 100
-                : null,
-            total_call_volume: totalCallVol,
-            total_put_volume: totalPutVol,
-            contracts_available: fmpData.length,
-            unusual_contracts: unusualContracts.slice(0, 3),
-            signal:
-              totalCallVol > 0 && totalPutVol / totalCallVol < 0.7
-                ? "bullish (low put/call ratio)"
-                : totalCallVol > 0 && totalPutVol / totalCallVol > 1.3
-                  ? "bearish (high put/call ratio)"
-                  : "neutral",
-            data_source: "fmp",
-            _sources: [
-              {
-                provider: "FMP",
-                title: `${ticker} Options Chain`,
-                url: `https://financialmodelingprep.com/api/v3/options/chain/${ticker}`,
-                excerpt: `P/C ratio ${totalCallVol > 0 ? (totalPutVol / totalCallVol).toFixed(2) : "—"} | ${totalCallVol.toLocaleString()} calls / ${totalPutVol.toLocaleString()} puts | ${unusualContracts.length} unusual contracts`,
-              },
-            ],
+            summary: `${ticker} options — P/C ratio ${pcr ?? "N/A"}, ${sig.split(" ")[0]}. ${topContracts.length} unusual contract${topContracts.length !== 1 ? "s" : ""}.`,
+            tickers: [{ ticker, tag: "Research", summary: `P/C ${pcr ?? "N/A"} ${sig.split(" ")[0]}, ${topContracts.length} unusual contracts` }],
+            _sources: [{ provider: "FMP", title: `${ticker} Options Chain`, url: `https://financialmodelingprep.com/api/v3/options/chain/${ticker}`, excerpt: `P/C ratio ${pcr ?? "—"} | ${totalCallVol.toLocaleString()} calls / ${totalPutVol.toLocaleString()} puts | ${topContracts.length} unusual contracts` }],
+            data: {
+              available: true,
+              putCallRatio: pcr,
+              totalCallVolume: totalCallVol,
+              totalPutVolume: totalPutVol,
+              contractsAvailable: fmpData.length,
+              unusualContracts: topContracts,
+              signal: sig,
+              dataSource: "fmp",
+            },
           };
         }
 
@@ -807,46 +833,44 @@ export function createResearchTools(ctx: ToolContext) {
           );
 
           logToolEnd("get_options_flow", _t0, ctx.runId, `ticker=${ticker} src=finnhub`, stats);
+          const pcr2 = totalCallVol > 0 ? Math.round((totalPutVol / totalCallVol) * 100) / 100 : null;
+          const sig2 = totalCallVol > 0 && totalPutVol / totalCallVol < 0.7
+            ? "bullish (low put/call ratio)"
+            : totalCallVol > 0 && totalPutVol / totalCallVol > 1.3
+              ? "bearish (high put/call ratio)"
+              : "neutral";
           return {
-            available: true,
-            put_call_ratio:
-              totalCallVol > 0
-                ? Math.round((totalPutVol / totalCallVol) * 100) / 100
-                : null,
-            total_call_volume: totalCallVol,
-            total_put_volume: totalPutVol,
-            expiration: options?.expirationDate as string | undefined,
-            contracts_available: calls.length + puts.length,
-            signal:
-              totalCallVol > 0 && totalPutVol / totalCallVol < 0.7
-                ? "bullish (low put/call ratio)"
-                : totalCallVol > 0 && totalPutVol / totalCallVol > 1.3
-                  ? "bearish (high put/call ratio)"
-                  : "neutral",
-            data_source: "finnhub",
-            _sources: [
-              {
-                provider: "Finnhub",
-                title: `${ticker} Options Chain`,
-                url: "https://finnhub.io/docs/api/stock-option-chain",
-                excerpt: `P/C ratio ${totalCallVol > 0 ? (totalPutVol / totalCallVol).toFixed(2) : "—"} | ${calls.length} calls / ${puts.length} puts`,
-              },
-            ],
+            summary: `${ticker} options — P/C ratio ${pcr2 ?? "N/A"}, ${sig2.split(" ")[0]}.`,
+            tickers: [{ ticker, tag: "Research", summary: `P/C ${pcr2 ?? "N/A"} ${sig2.split(" ")[0]}` }],
+            _sources: [{ provider: "Finnhub", title: `${ticker} Options Chain`, url: "https://finnhub.io/docs/api/stock-option-chain", excerpt: `P/C ratio ${pcr2 ?? "—"} | ${calls.length} calls / ${puts.length} puts` }],
+            data: {
+              available: true,
+              putCallRatio: pcr2,
+              totalCallVolume: totalCallVol,
+              totalPutVolume: totalPutVol,
+              contractsAvailable: calls.length + puts.length,
+              unusualContracts: [],
+              signal: sig2,
+              dataSource: "finnhub",
+            },
           };
         }
 
         logToolEnd("get_options_flow", _t0, ctx.runId, `ticker=${ticker} no_data`, stats);
         return {
-          available: false,
-          note: `No options data available for ${ticker}. This may be a smaller-cap stock without liquid options, or the options data providers may be temporarily unavailable.`,
-          _sources: [
-            {
-              provider: "Finnhub",
-              title: `${ticker} Options Chain (No Data)`,
-              url: "https://finnhub.io/docs/api/stock-option-chain",
-              excerpt: "No options contracts found — may be small-cap or illiquid",
-            },
-          ],
+          summary: `No options data available for ${ticker}.`,
+          tickers: [{ ticker, tag: "Research", summary: "No options data — may be small-cap or illiquid" }],
+          _sources: [{ provider: "Finnhub", title: `${ticker} Options Chain (No Data)`, url: "https://finnhub.io/docs/api/stock-option-chain", excerpt: "No options contracts found" }],
+          data: {
+            available: false,
+            putCallRatio: null,
+            totalCallVolume: 0,
+            totalPutVolume: 0,
+            contractsAvailable: 0,
+            unusualContracts: [],
+            signal: "unavailable",
+            dataSource: "none",
+          },
         };
       },
     }),
@@ -874,57 +898,35 @@ export function createResearchTools(ctx: ToolContext) {
         );
 
         logToolEnd("get_earnings_data", _t0, ctx.runId, `ticker=${ticker}`, stats);
+
+        const nextEarnings = upcoming
+          ? { date: upcoming.date as string, epsEstimate: upcoming.epsEstimate as number | null }
+          : null;
+        const beatRate = history.length > 0
+          ? (() => {
+              const periods = history.map((e: { period?: string }) => e.period).filter(Boolean) as string[];
+              const range = periods.length >= 2 ? `${periods[periods.length - 1]}–${periods[0]}` : periods[0] || "recent";
+              return `${Math.round((beats.length / history.length) * 100)}% (${beats.length}/${history.length} quarters, ${range})`;
+            })()
+          : "no history";
+        const recentQuarters = history.slice(0, 4).map(
+          (e: { period: string; actual: number; estimate: number; surprise: number; surprisePercent: number }) => ({
+            period: e.period, actualEps: e.actual, estimatedEps: e.estimate, surprise: e.surprise, surprisePct: e.surprisePercent,
+          }),
+        );
+
+        const sParts: string[] = [ticker];
+        if (nextEarnings) sParts.push(`next earnings ${nextEarnings.date}${nextEarnings.epsEstimate != null ? ` (est. $${nextEarnings.epsEstimate})` : ""}`);
+        if (beatRate !== "no history") sParts.push(`Beat rate: ${beatRate}`);
+
         return {
-          next_earnings: upcoming
-            ? {
-                date: upcoming.date as string,
-                eps_estimate: upcoming.epsEstimate as number | null,
-              }
-            : null,
-          beat_rate:
-            history.length > 0
-              ? (() => {
-                  const periods = history
-                    .map((e: { period?: string }) => e.period)
-                    .filter(Boolean) as string[];
-                  const range =
-                    periods.length >= 2
-                      ? `${periods[periods.length - 1]}–${periods[0]}`
-                      : periods[0] || "recent";
-                  return `${Math.round((beats.length / history.length) * 100)}% (${beats.length}/${history.length} quarters, ${range})`;
-                })()
-              : "no history",
-          recent_quarters: history.slice(0, 4).map(
-            (e: {
-              period: string;
-              actual: number;
-              estimate: number;
-              surprise: number;
-              surprisePercent: number;
-            }) => ({
-              period: e.period,
-              actual_eps: e.actual,
-              estimated_eps: e.estimate,
-              surprise: e.surprise,
-              surprise_pct: e.surprisePercent,
-            }),
-          ),
+          summary: sParts.join(" — ") + ".",
+          tickers: [{ ticker, tag: "Research", summary: `${nextEarnings ? `Next earnings ${nextEarnings.date}` : "No upcoming earnings"}. Beat rate: ${beatRate}` }],
           _sources: [
-            {
-              provider: "Finnhub",
-              title: `${ticker} Earnings Calendar`,
-              url: "https://finnhub.io/docs/api/earnings-calendar",
-              excerpt: upcoming ? `Next earnings: ${upcoming.date}${upcoming.epsEstimate != null ? ` (est. $${upcoming.epsEstimate})` : ""}` : "No upcoming earnings date",
-            },
-            {
-              provider: "Finnhub",
-              title: `${ticker} Earnings History`,
-              url: "https://finnhub.io/docs/api/company-earnings",
-              excerpt: history.length > 0
-                ? `Beat rate: ${Math.round((beats.length / history.length) * 100)}% over ${history.length} quarters`
-                : "No earnings history available",
-            },
+            { provider: "Finnhub", title: `${ticker} Earnings Calendar`, url: "https://finnhub.io/docs/api/earnings-calendar", excerpt: nextEarnings ? `Next earnings: ${nextEarnings.date}${nextEarnings.epsEstimate != null ? ` (est. $${nextEarnings.epsEstimate})` : ""}` : "No upcoming earnings date" },
+            { provider: "Finnhub", title: `${ticker} Earnings History`, url: "https://finnhub.io/docs/api/company-earnings", excerpt: history.length > 0 ? `Beat rate: ${Math.round((beats.length / history.length) * 100)}% over ${history.length} quarters` : "No earnings history available" },
           ],
+          data: { nextEarnings, beatRate, recentQuarters },
         };
       },
     }),
@@ -1322,12 +1324,12 @@ export function createResearchTools(ctx: ToolContext) {
             status: "FILLED" as const,
             direction: args.direction,
             shares: args.shares,
-            entry_price: fillPrice,
-            target_price: args.target_price,
-            stop_loss: args.stop_loss,
-            position_id: position.id,
-            order_id: order.id,
-            alpaca_order_id: alpacaOrder.id,
+            entryPrice: fillPrice,
+            targetPrice: args.target_price,
+            stopLoss: args.stop_loss,
+            positionId: position.id,
+            orderId: order.id,
+            alpacaOrderId: alpacaOrder.id,
             message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
             _sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }],
             ...(portfolioUpdate ? { portfolioUpdate } : {}),
@@ -1474,13 +1476,13 @@ export function createResearchTools(ctx: ToolContext) {
             success: true,
             ticker,
             reason: args.reason,
-            closed_qty: position.quantity,
+            shares: position.quantity,
             status: "CLOSED" as const,
             direction: position.direction,
-            entry_price: position.avgCost,
-            close_price: result.closePrice,
-            realized_pnl: result.realizedPnl,
-            pnl_pct: Math.round(pnlPct * 100) / 100,
+            entryPrice: position.avgCost,
+            closePrice: result.closePrice,
+            realizedPnl: result.realizedPnl,
+            pnlPct: Math.round(pnlPct * 100) / 100,
             outcome: result.outcome,
             message: `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${result.realizedPnl >= 0 ? "+" : ""}${result.realizedPnl.toFixed(2)}`,
             _sources: [{ provider: "Alpaca", title: `Close ${ticker}` }],
@@ -1680,17 +1682,18 @@ export function createResearchTools(ctx: ToolContext) {
           } catch { /* non-fatal */ }
 
           logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length} briefing=${briefingStatus}`, stats);
+          const eb = args.exposure_breakdown;
           return {
             status: "complete",
             analyzed: args.ranked_picks.length,
             traded,
             briefing: briefingStatus,
-            market_summary: args.market_summary,
-            ranked_picks: args.ranked_picks,
-            exposure_breakdown: args.exposure_breakdown ?? null,
-            risk_notes: args.risk_notes ?? [],
-            overall_assessment: args.overall_assessment,
-            portfolio_review: args.portfolio_review ?? null,
+            marketSummary: args.market_summary,
+            rankedPicks: args.ranked_picks,
+            exposureBreakdown: eb ? { longExposure: eb.long_exposure, shortExposure: eb.short_exposure, netExposure: eb.net_exposure } : undefined,
+            riskNotes: args.risk_notes ?? [],
+            overallAssessment: args.overall_assessment,
+            portfolioReview: args.portfolio_review ?? null,
           };
         } catch (err) {
           console.error(`[tool] complete_run FAILED:`, err instanceof Error ? err.message : err);
@@ -2071,10 +2074,23 @@ export function createResearchTools(ctx: ToolContext) {
             if (filings.length >= 8) break;
           }
           logToolEnd("get_sec_filings", _t0, ctx.runId, `symbol=${args.symbol} count=${filings.length}`, stats);
-          return { filings, count: filings.length };
+          const types = filings.map((f) => f.type);
+          return {
+            summary: filings.length > 0
+              ? `${args.symbol} — ${filings.length} SEC filing${filings.length !== 1 ? "s" : ""} (${[...new Set(types)].join(", ")}).`
+              : `No recent SEC filings for ${args.symbol}.`,
+            tickers: [{ ticker: args.symbol, tag: "Research", summary: filings.length > 0 ? `${filings.length} SEC filing${filings.length !== 1 ? "s" : ""}` : "No recent filings" }],
+            _sources: [{ provider: "SEC EDGAR", title: `${args.symbol} EDGAR Filings`, url: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${args.symbol}&type=&dateb=&owner=include&count=40` }],
+            data: { filings, count: filings.length },
+          };
         } catch (err) {
           logToolEnd("get_sec_filings", _t0, ctx.runId, `symbol=${args.symbol} FAILED`, stats);
-          return { filings: [], error: err instanceof Error ? err.message : "Failed" };
+          return {
+            summary: `SEC filings lookup failed for ${args.symbol}.`,
+            tickers: [],
+            _sources: [{ provider: "SEC EDGAR", title: `${args.symbol} EDGAR Filings` }],
+            data: { filings: [], count: 0 },
+          };
         }
       },
     }),
@@ -2086,7 +2102,7 @@ export function createResearchTools(ctx: ToolContext) {
         "Read today's pre-generated intelligence brief. Contains market context, portfolio alerts, watchlist updates, new opportunities, and risk flags — all gathered by background jobs before your session started. Call this in Phase 0 to understand what happened overnight.",
       inputSchema: emptyParams,
       execute: async () => {
-        if (!ctx.analystId) return { error: "No analyst context — cannot read brief" };
+        if (!ctx.analystId) return { summary: "No analyst context — cannot read brief.", _sources: [], data: { available: false } };
         logToolStart("read_morning_brief", ctx.runId, undefined, stats);
 
         const today = new Date();
@@ -2103,22 +2119,40 @@ export function createResearchTools(ctx: ToolContext) {
 
         if (!brief) {
           return {
-            available: false,
-            message: "No morning brief available for today. Intelligence jobs may not have run yet. Proceed with live research tools.",
+            summary: "No morning brief available for today. Intelligence jobs may not have run yet.",
+            tickers: [],
+            _sources: [],
+            data: { available: false } as MorningBriefToolData,
           };
         }
 
+        // ── Flatten the 3 DB arrays into unified tickers[] ────────────
+        const alerts = Array.isArray(brief.portfolioAlerts) ? brief.portfolioAlerts as { ticker: string; alert: string; urgency: string; signalIds: string[] }[] : [];
+        const watches = Array.isArray(brief.watchlistUpdates) ? brief.watchlistUpdates as { ticker: string; update: string; recommendation: string; signalIds: string[] }[] : [];
+        const opps = Array.isArray(brief.newOpportunities) ? brief.newOpportunities as { headline: string; tickers: string[]; thesisSeed: string; signalIds: string[] }[] : [];
+
+        const tickers: TickerFinding[] = [
+          ...alerts.map((a) => ({ ticker: a.ticker, tag: "Holding", summary: a.alert })),
+          ...watches.map((w) => ({ ticker: w.ticker, tag: "Watching", summary: w.update })),
+          ...opps.map((o) => ({ ticker: o.tickers?.[0] ?? "?", tag: "Opportunity", summary: o.thesisSeed || o.headline })),
+        ];
+
         return {
-          available: true,
-          date: brief.date.toISOString().slice(0, 10),
-          marketContext: brief.marketContext,
-          portfolioAlerts: brief.portfolioAlerts,
-          watchlistUpdates: brief.watchlistUpdates,
-          newOpportunities: brief.newOpportunities,
-          attentionPriority: brief.attentionPriority,
-          riskFlags: brief.riskFlags,
-          signalCount: brief.signalCount,
-          generatedAt: brief.generatedAt.toISOString(),
+          summary: `Morning brief: ${alerts.length} portfolio alert${alerts.length !== 1 ? "s" : ""}, ${watches.length} watchlist update${watches.length !== 1 ? "s" : ""}, ${opps.length} opportunit${opps.length !== 1 ? "ies" : "y"}. ${brief.signalCount} signals.`,
+          tickers,
+          _sources: [{ provider: "Hindsight Intelligence", title: "Morning Brief" }],
+          data: {
+            available: true,
+            date: brief.date.toISOString().slice(0, 10),
+            marketContext: brief.marketContext ?? undefined,
+            attentionPriority: brief.attentionPriority,
+            riskFlags: brief.riskFlags,
+            signalCount: brief.signalCount,
+            generatedAt: brief.generatedAt.toISOString(),
+            portfolioAlerts: alerts,
+            watchlistUpdates: watches,
+            newOpportunities: opps,
+          } satisfies MorningBriefToolData,
         };
       },
     }),
@@ -2134,7 +2168,7 @@ export function createResearchTools(ctx: ToolContext) {
         limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy)"),
       }),
       execute: async ({ tickers, themes, type, urgency, limit = 20 }) => {
-        if (!ctx.analystId) return { error: "No analyst context — cannot read signals" };
+        if (!ctx.analystId) return { summary: "No analyst context — cannot read signals.", tickers: [], _sources: [], data: { count: 0, signals: [] } };
 
         // ── Apply intelligence policy constraints ──────────────────────
         const policy = ctx.intelligencePolicy;
@@ -2228,61 +2262,68 @@ export function createResearchTools(ctx: ToolContext) {
             });
 
             if (fallbackSignals.length > 0) {
+              const fbSignals: SignalItem[] = fallbackSignals.map((s) => ({
+                signalId: s.id,
+                type: s.type,
+                headline: s.headline,
+                summary: s.summary ?? "",
+                tickers: s.tickers,
+                themes: s.themes,
+                sentiment: s.sentiment ?? "NEUTRAL",
+                urgency: s.urgency ?? "MEDIUM",
+                freshness: s.freshness ?? undefined,
+                sources: toSourceRefs(s.sourceNames, s.sourceUrls),
+                relevanceScore: 0,
+                routeReason: "fallback_sector_watchlist_match",
+                artifactId: s.artifactId,
+              }));
+              const urgent = fbSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
+              const bullish = fbSignals.filter((s) => s.sentiment === "BULLISH").length;
+              const bearish = fbSignals.filter((s) => s.sentiment === "BEARISH").length;
               return {
-                count: fallbackSignals.length,
-                fallback: true,
-                fallbackReason: "No routed signals found — falling back to sector/watchlist match",
-                policyApplied: {
-                  maxSignals: policyMaxSignals,
-                  minUrgency: urgencyOrder[effectiveMinIdx],
-                  minSourceQuality,
-                  excludedCategories,
-                },
-                signals: fallbackSignals.map((s) => ({
-                  signalId: s.id,
-                  type: s.type,
-                  headline: s.headline,
-                  summary: s.summary,
-                  tickers: s.tickers,
-                  themes: s.themes,
-                  sentiment: s.sentiment,
-                  urgency: s.urgency,
-                  freshness: s.freshness,
-                  sourceNames: s.sourceNames,
-                  sourceUrls: s.sourceUrls,
-                  relevanceScore: 0,
-                  routeReason: "fallback_sector_watchlist_match",
-                  artifactId: s.artifactId,
-                })),
+                summary: `${fbSignals.length} signal${fbSignals.length !== 1 ? "s" : ""} (${urgent} urgent, ${bullish} bullish, ${bearish} bearish). Fallback: sector/watchlist match.`,
+                tickers: fbSignals.map((s) => ({ ticker: s.tickers[0] ?? "MACRO", tag: s.urgency, summary: s.headline })),
+                _sources: sourceRefsToToolSources(fbSignals.flatMap((s) => s.sources)),
+                data: {
+                  count: fbSignals.length,
+                  fallback: true,
+                  fallbackReason: "No routed signals found — falling back to sector/watchlist match",
+                  policyApplied: { maxSignals: policyMaxSignals, minUrgency: urgencyOrder[effectiveMinIdx], minSourceQuality, excludedCategories },
+                  signals: fbSignals,
+                } satisfies SignalsToolData,
               };
             }
           }
         }
 
+        const mappedSignals: SignalItem[] = finalRoutes.map((r) => ({
+          signalId: r.signal.id,
+          type: r.signal.type,
+          headline: r.signal.headline,
+          summary: r.signal.summary ?? "",
+          tickers: r.signal.tickers,
+          themes: r.signal.themes,
+          sentiment: r.signal.sentiment ?? "NEUTRAL",
+          urgency: r.signal.urgency ?? "MEDIUM",
+          freshness: r.signal.freshness ?? undefined,
+          sources: toSourceRefs(r.signal.sourceNames, r.signal.sourceUrls),
+          relevanceScore: r.relevanceScore,
+          routeReason: r.routeReason ?? undefined,
+          artifactId: r.signal.artifactId,
+        }));
+        const urgent = mappedSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
+        const bullish = mappedSignals.filter((s) => s.sentiment === "BULLISH").length;
+        const bearish = mappedSignals.filter((s) => s.sentiment === "BEARISH").length;
+
         return {
-          count: finalRoutes.length,
-          policyApplied: {
-            maxSignals: policyMaxSignals,
-            minUrgency: urgencyOrder[effectiveMinIdx],
-            minSourceQuality,
-            excludedCategories,
-          },
-          signals: finalRoutes.map((r) => ({
-            signalId: r.signal.id,
-            type: r.signal.type,
-            headline: r.signal.headline,
-            summary: r.signal.summary,
-            tickers: r.signal.tickers,
-            themes: r.signal.themes,
-            sentiment: r.signal.sentiment,
-            urgency: r.signal.urgency,
-            freshness: r.signal.freshness,
-            sourceNames: r.signal.sourceNames,
-            sourceUrls: r.signal.sourceUrls,
-            relevanceScore: r.relevanceScore,
-            routeReason: r.routeReason,
-            artifactId: r.signal.artifactId,
-          })),
+          summary: `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} (${urgent} urgent, ${bullish} bullish, ${bearish} bearish).`,
+          tickers: mappedSignals.map((s) => ({ ticker: s.tickers[0] ?? "MACRO", tag: s.urgency, summary: s.headline })),
+          _sources: sourceRefsToToolSources(mappedSignals.flatMap((s) => s.sources)),
+          data: {
+            count: mappedSignals.length,
+            policyApplied: { maxSignals: policyMaxSignals, minUrgency: urgencyOrder[effectiveMinIdx], minSourceQuality, excludedCategories },
+            signals: mappedSignals,
+          } satisfies SignalsToolData,
         };
       },
     }),
@@ -2301,18 +2342,28 @@ export function createResearchTools(ctx: ToolContext) {
         });
 
         if (!artifact) {
-          return { error: `Artifact ${artifactId} not found` };
+          return { summary: `Artifact ${artifactId} not found.`, _sources: [], data: { title: "", url: "", publishedAt: null, contentSummary: null, contentMarkdown: null } };
         }
 
+        const title = artifact.title ?? "Untitled";
+        const url = artifact.url ?? "";
+        const content = artifact.contentMarkdown?.slice(0, 4000) ?? null;
+        const wordCount = content ? content.split(/\s+/).length : 0;
+        let domain = "";
+        try { domain = url ? new URL(url).hostname.replace(/^www\./, "") : ""; } catch { /* */ }
+
         return {
-          title: artifact.title,
-          url: artifact.url,
-          publishedAt: artifact.publishedAt?.toISOString() ?? null,
-          contentSummary: artifact.contentSummary,
-          contentMarkdown: artifact.contentMarkdown?.slice(0, 4000) ?? null, // cap to avoid token bloat
-          _sources: artifact.url
-            ? [{ title: artifact.title ?? "Source", url: artifact.url, provider: "Firecrawl", excerpt: artifact.contentSummary ?? "" }]
+          summary: `${domain ? `${domain}: ` : ""}${title}${wordCount > 0 ? ` (${wordCount.toLocaleString()} words)` : ""}.`,
+          _sources: url
+            ? [{ title, url, provider: domain || "Firecrawl", excerpt: artifact.contentSummary ?? "" }]
             : [],
+          data: {
+            title,
+            url,
+            publishedAt: artifact.publishedAt?.toISOString() ?? null,
+            contentSummary: artifact.contentSummary,
+            contentMarkdown: content,
+          } satisfies ArtifactToolData,
         };
       },
     }),
@@ -2353,40 +2404,41 @@ export function createResearchTools(ctx: ToolContext) {
           stats.other++;
           const sonarResult = await searchSignals(query, { recency, model: "sonar" });
 
-          const results = sonarResult.signals.map((s) => ({
+          const results: SignalItem[] = sonarResult.signals.map((s) => ({
             headline: s.headline,
             summary: s.summary,
             tickers: s.tickers,
             themes: s.themes,
             sentiment: s.sentiment,
             urgency: s.urgency,
-            sourceNames: s.sourceNames,
-            sourceUrls: s.sourceUrls,
+            sources: toSourceRefs(s.sourceNames, s.sourceUrls),
           }));
 
+          const allSourceRefs = results.flatMap((r) => r.sources);
+
           return {
-            query,
-            resultCount: results.length,
-            budgetUsed: liveSearchCount,
-            budgetMax: budget,
-            results,
-            _sources: results.flatMap((r) =>
-              r.sourceUrls.map((url, i) => {
-                let domain = "";
-                try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* */ }
-                return {
-                  title: r.sourceNames[i] ?? domain,
-                  url,
-                  provider: domain,
-                  excerpt: r.summary,
-                };
-              })
-            ),
+            summary: `Found ${results.length} result${results.length !== 1 ? "s" : ""} for "${query.slice(0, 60)}". Budget: ${liveSearchCount}/${budget}.`,
+            tickers: results
+              .filter((r) => r.tickers.length > 0)
+              .map((r) => ({ ticker: r.tickers[0], tag: r.sentiment, summary: r.headline })),
+            _sources: sourceRefsToToolSources(allSourceRefs),
+            data: {
+              query,
+              resultCount: results.length,
+              budgetUsed: liveSearchCount,
+              budgetMax: budget,
+              results,
+            } satisfies WebSearchToolData,
           };
         } catch (e) {
           stats.errors++;
           const msg = e instanceof Error ? e.message : String(e);
-          return { error: `Search failed: ${msg}` };
+          return {
+            summary: `Search failed: ${msg}`,
+            tickers: [],
+            _sources: [],
+            data: { query, resultCount: 0, budgetUsed: liveSearchCount, budgetMax: budget, results: [] } satisfies WebSearchToolData,
+          };
         }
       },
     }),

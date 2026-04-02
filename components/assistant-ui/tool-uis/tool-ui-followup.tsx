@@ -10,142 +10,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Shared renderers from research tools — no duplication
 import {
-  ThesisCard,
-  type ThesisCardData,
-  TradeCard,
-  TradeConfirmation,
-} from "@/components/domain";
-
-// ── research_ticker / get_thesis → ThesisCard ───────────────────────────────
-
-const ResearchTickerRender: ToolCallMessagePartComponent = ({ result }) => {
-  if (!result || typeof result !== "object") return null;
-  const r = result as Record<string, unknown>;
-  if (r.error) {
-    return (
-      <div className="text-sm text-red-500 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
-        {String(r.error)}
-      </div>
-    );
-  }
-  const thesis: ThesisCardData = {
-    ticker: String(r.ticker ?? ""),
-    direction: String(r.direction ?? "PASS") as "LONG" | "SHORT" | "PASS",
-    confidence_score: Number(r.confidence_score ?? 0),
-    reasoning_summary: String(r.reasoning_summary ?? ""),
-    thesis_bullets: Array.isArray(r.thesis_bullets)
-      ? (r.thesis_bullets as string[])
-      : [],
-    risk_flags: Array.isArray(r.risk_flags)
-      ? (r.risk_flags as string[])
-      : [],
-    entry_price: typeof r.entry_price === "number" ? r.entry_price : null,
-    target_price: typeof r.target_price === "number" ? r.target_price : null,
-    stop_loss: typeof r.stop_loss === "number" ? r.stop_loss : null,
-    hold_duration: String(r.hold_duration ?? "SWING"),
-    signal_types: Array.isArray(r.signal_types)
-      ? (r.signal_types as string[])
-      : [],
-  };
-  return (
-    <div className="my-2">
-      <ThesisCard {...thesis} />
-    </div>
-  );
-};
-ResearchTickerRender.displayName = "ResearchTickerRender";
-
-// ── place_trade → TradeConfirmation (pending) / TradeCard (result) ───────────
-
-const PlaceTradeRender: ToolCallMessagePartComponent = ({ args, result, status }) => {
-  // Pending state — show confirmation preview
-  if (!result && args && typeof args === "object") {
-    const a = args as Record<string, unknown>;
-    const dir = String(a.direction ?? "LONG").toUpperCase();
-    return (
-      <div className="my-2">
-        <TradeConfirmation
-          ticker={String(a.ticker ?? "")}
-          direction={dir === "SHORT" ? "SHORT" : "LONG"}
-          shares={typeof a.shares === "number" ? a.shares : undefined}
-          estimatedPrice={typeof a.price === "number" ? a.price : null}
-          estimatedCost={
-            typeof a.price === "number" && typeof a.shares === "number"
-              ? a.price * a.shares
-              : null
-          }
-          action="BUY"
-          onConfirm={() => {}}
-          onCancel={() => {}}
-          isExecuting
-          resolved="confirmed"
-          className="max-w-md"
-        />
-      </div>
-    );
-  }
-
-  if (!result || typeof result !== "object") return null;
-  const r = result as Record<string, unknown>;
-  if (r.error) {
-    return (
-      <div className="text-sm text-red-500 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
-        {String(r.error)}
-      </div>
-    );
-  }
-  const dir = String(r.direction ?? "LONG").toUpperCase();
-  return (
-    <div className="my-2">
-      <TradeCard
-        ticker={String(r.ticker ?? "")}
-        direction={dir === "SHORT" ? "SHORT" : "LONG"}
-        entryPrice={typeof r.fillPrice === "number" ? r.fillPrice : 0}
-        shares={typeof r.shares === "number" ? r.shares : undefined}
-        status="OPEN"
-        className="max-w-md"
-      />
-    </div>
-  );
-};
-PlaceTradeRender.displayName = "PlaceTradeRender";
-
-// ── close_position → TradeCard (closed state) ──────────────────────────────
-
-const ClosePositionRender: ToolCallMessagePartComponent = ({ result }) => {
-  if (!result || typeof result !== "object") return null;
-  const r = result as Record<string, unknown>;
-  if (r.error) {
-    return (
-      <div className="text-sm text-red-500 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
-        {String(r.error)}
-      </div>
-    );
-  }
-  const dir = String(r.direction ?? "LONG").toUpperCase();
-  const pnl = typeof r.realizedPnl === "number" ? r.realizedPnl : null;
-  const outcome = String(r.outcome ?? "").toUpperCase();
-  return (
-    <div className="my-2">
-      <TradeCard
-        ticker={String(r.ticker ?? "")}
-        direction={dir === "SHORT" ? "SHORT" : "LONG"}
-        entryPrice={typeof r.entryPrice === "number" ? r.entryPrice : 0}
-        closePrice={typeof r.closePrice === "number" ? r.closePrice : null}
-        realizedPnl={pnl}
-        outcome={
-          outcome === "WIN" || outcome === "LOSS" || outcome === "BREAKEVEN"
-            ? outcome
-            : null
-        }
-        status="CLOSED"
-        className="max-w-md"
-      />
-    </div>
-  );
-};
-ClosePositionRender.displayName = "ClosePositionRender";
+  thesisRender,
+  placeTradeRender,
+  closePositionRender,
+} from "./tool-ui-research";
 
 // ── portfolio_status ────────────────────────────────────────────────────────
 
@@ -299,16 +169,13 @@ ExplainDecisionRender.displayName = "ExplainDecisionRender";
 
 // ─── Registration hook for run-followup tools ───────────────────────────────
 
-/**
- * Register all trading/research/portfolio tool UIs for the run-followup chat.
- */
 export function useRegisterFollowupToolUIs() {
-  useAssistantToolUI({ toolName: "research_ticker", render: ResearchTickerRender });
-  useAssistantToolUI({ toolName: "get_thesis", render: ResearchTickerRender });
-  useAssistantToolUI({ toolName: "place_trade", render: PlaceTradeRender });
-  useAssistantToolUI({ toolName: "close_position", render: ClosePositionRender });
-  useAssistantToolUI({ toolName: "modify_position", render: ClosePositionRender });
-  useAssistantToolUI({ toolName: "add_to_position", render: PlaceTradeRender });
+  useAssistantToolUI({ toolName: "research_ticker", render: thesisRender });
+  useAssistantToolUI({ toolName: "get_thesis", render: thesisRender });
+  useAssistantToolUI({ toolName: "place_trade", render: placeTradeRender });
+  useAssistantToolUI({ toolName: "close_position", render: closePositionRender });
+  useAssistantToolUI({ toolName: "modify_position", render: closePositionRender });
+  useAssistantToolUI({ toolName: "add_to_position", render: placeTradeRender });
   useAssistantToolUI({ toolName: "portfolio_status", render: PortfolioStatusRender });
   useAssistantToolUI({ toolName: "compare_tickers", render: CompareTickersRender });
   useAssistantToolUI({ toolName: "performance_report", render: PerformanceReportRender });
