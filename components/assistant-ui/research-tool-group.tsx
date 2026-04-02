@@ -17,8 +17,8 @@ import {
   ToolProgressContent,
   ToolProgressItem,
   ToolProgressTickerItem,
-  ToolProgressSources,
 } from "@/components/ai-elements/tool-progress";
+import { extractToolSources, SourceChips } from "@/components/assistant-ui/tool-uis/tool-ui-shared";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -279,7 +279,10 @@ export function ResearchToolGroup({
           : "Research";
 
   const anyLoading = stepParts.some((s) => s.result === undefined);
-  const allSources = [...new Set(stepParts.flatMap((s) => s.config.sources ?? []))];
+  // Collect _sources from all completed tool results
+  const allSources = stepParts
+    .filter((s) => s.result !== undefined)
+    .flatMap((s) => extractToolSources(s.result!));
 
   return (
     <>
@@ -329,7 +332,7 @@ export function ResearchToolGroup({
               </div>
             );
           })}
-          <ToolProgressSources domains={allSources} />
+          <SourceChips sources={allSources} />
         </ToolProgressContent>
       </ToolProgress>
       {children}

@@ -3,6 +3,7 @@ export {
   ToolUICallbacksProvider,
   useToolUICallbacks,
   extractToolSources,
+  SourceChips,
   type SourceData,
   type ToolUICallbacks,
 } from "./tool-ui-shared";

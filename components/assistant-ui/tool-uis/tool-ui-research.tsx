@@ -20,11 +20,10 @@ import {
   ToolProgressContent,
   ToolProgressItem,
   ToolProgressTickerItem,
-  ToolProgressSources,
 } from "@/components/ai-elements/tool-progress";
 import { ClampedText } from "@/components/ai-elements/clamped-text";
 
-import { extractToolSources } from "./tool-ui-shared";
+import { extractToolSources, SourceChips } from "./tool-ui-shared";
 import { SuggestConfigRender } from "./tool-ui-config";
 
 // ─── Research tool UI registrations ────────────────────────────────────────
@@ -108,7 +107,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
               );
             })}
 
-            <ToolProgressSources domains={["perplexity.ai", "finnhub.io"]} />
+            <SourceChips sources={extractToolSources(r)} />
           </ToolProgressContent>
         </ToolProgress>
       );
@@ -151,7 +150,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             {count > 5 && (
               <ToolProgressItem>+{count - 5} more signals</ToolProgressItem>
             )}
-            <ToolProgressSources domains={["perplexity.ai"]} />
+            <SourceChips sources={extractToolSources(r)} />
           </ToolProgressContent>
         </ToolProgress>
       );
@@ -199,7 +198,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           </ToolProgressHeader>
           <ToolProgressContent>
             <ToolProgressItem>{title}</ToolProgressItem>
-            {domain && <ToolProgressSources domains={[domain]} />}
+            <SourceChips sources={extractToolSources(r).length > 0 ? extractToolSources(r) : (domain ? [{ provider: domain, title, url }] : [])} />
           </ToolProgressContent>
         </ToolProgress>
       );
