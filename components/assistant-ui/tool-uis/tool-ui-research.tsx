@@ -1,17 +1,7 @@
 "use client";
 
 import { useAssistantToolUI } from "@assistant-ui/react";
-import {
-  BarChart3,
-  Activity,
-  CheckCircle2,
-  FileText,
-  Briefcase,
-  HelpCircle,
-  Eye,
-  SatelliteDish,
-  Zap,
-} from "lucide-react";
+import { CheckCircle2, HelpCircle } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,100 +15,52 @@ import {
 } from "@/components/domain";
 import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
 import {
-  ChainOfThought,
-  ChainOfThoughtHeader,
-  ChainOfThoughtStep,
-  ChainOfThoughtContent,
-} from "@/components/ai-elements/chain-of-thought";
+  ToolProgress,
+  ToolProgressHeader,
+  ToolProgressContent,
+  ToolProgressItem,
+  ToolProgressTickerItem,
+  ToolProgressSources,
+} from "@/components/ai-elements/tool-progress";
+import { ClampedText } from "@/components/ai-elements/clamped-text";
 
-import { extractToolSources, SourceChips } from "./tool-ui-shared";
+import { extractToolSources } from "./tool-ui-shared";
 import { SuggestConfigRender } from "./tool-ui-config";
 
-import { useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+// ─── Research tool UI registrations ────────────────────────────────────────
 
-/** Expandable section inside a brief tool UI */
-function BriefExpandable({ label, children }: { label: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="ml-5 mb-1">
-      <button
-        onClick={() => setOpen(!open)}
-        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-      >
-        <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
-        {label}
-      </button>
-      {open && <div className="mt-1 space-y-1 pl-4">{children}</div>}
-    </div>
-  );
-}
-
-// ─── Research tool UI registrations (shared across agent, builder, editor) ───
-
-/**
- * Register all 14 research tool UIs used by the agent.
- * Extracted from AgentThread.tsx so any chat context can render the same
- * rich domain cards. Sources aggregated in Sources tab.
- */
 export function useRegisterResearchToolUIs(_runId?: string) {
-  // ── Market context (was: market_overview + detect_market_themes) ────
-  useAssistantToolUI({
-    toolName: "get_market_context",
-    render: () => null,
-  });
+  // ── Research tools rendered by ResearchToolGroup (return null) ──────
+  useAssistantToolUI({ toolName: "get_market_context", render: () => null });
+  useAssistantToolUI({ toolName: "get_stock_data", render: () => null });
+  useAssistantToolUI({ toolName: "get_earnings_data", render: () => null });
+  useAssistantToolUI({ toolName: "get_options_flow", render: () => null });
+  useAssistantToolUI({ toolName: "get_sec_filings", render: () => null });
 
-  // ── Stock data → CoT only (rendered by ResearchToolGroup, no separate card) ──
-  useAssistantToolUI({
-    toolName: "get_stock_data",
-    render: () => null,
-  });
-
-  // ── Earnings data — rendered as CoT step by ResearchToolGroup ───────
-  useAssistantToolUI({
-    toolName: "get_earnings_data",
-    render: () => null,
-  });
-
-  // ── Options flow — rendered as CoT step by ResearchToolGroup ────────
-  useAssistantToolUI({
-    toolName: "get_options_flow",
-    render: () => null,
-  });
-
-  // ── SEC Filings — rendered as CoT step by ResearchToolGroup ─────────
-  useAssistantToolUI({
-    toolName: "get_sec_filings",
-    render: () => null,
-  });
-
-  // ── V3 Intelligence Layer — CoT steps ────────────────────────────────────
+  // ── Intelligence: Morning Brief ────────────────────────────────────
   useAssistantToolUI({
     toolName: "read_morning_brief",
     render: ({ result }) => {
       if (!result) {
         return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Reading morning intelligence brief...</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={SatelliteDish} label="Loading today's brief" status="active" />
-              <ChainOfThoughtStep icon={BarChart3} label="Market context" status="pending" />
-              <ChainOfThoughtStep icon={Briefcase} label="Portfolio alerts" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
+          <ToolProgress defaultOpen>
+            <ToolProgressHeader loading>Reading morning brief...</ToolProgressHeader>
+            <ToolProgressContent>
+              <ToolProgressItem active>Loading intelligence</ToolProgressItem>
+            </ToolProgressContent>
+          </ToolProgress>
         );
       }
 
       const r = result as Record<string, unknown>;
       if (r.available === false) {
         return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>No morning brief available</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={SatelliteDish} label="Intelligence jobs may not have run yet" status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
+          <ToolProgress defaultOpen>
+            <ToolProgressHeader>No morning brief available</ToolProgressHeader>
+            <ToolProgressContent>
+              <ToolProgressItem>Intelligence jobs may not have run yet</ToolProgressItem>
+            </ToolProgressContent>
+          </ToolProgress>
         );
       }
 
@@ -128,71 +70,66 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       const opps = Array.isArray(r.newOpportunities) ? r.newOpportunities as Record<string, unknown>[] : [];
 
       return (
-        <ChainOfThought defaultOpen>
-          <ChainOfThoughtHeader>Morning intelligence brief</ChainOfThoughtHeader>
-          <ChainOfThoughtContent>
-            <ChainOfThoughtStep icon={BarChart3} label={marketCtx ? `${marketCtx.slice(0, 100)}…` : "Market context loaded"} status="complete" />
-            {marketCtx.length > 100 && (
-              <BriefExpandable label="Full market context">
-                <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{marketCtx}</p>
-              </BriefExpandable>
-            )}
-            <ChainOfThoughtStep icon={Briefcase} label={`${alerts.length} portfolio alert${alerts.length !== 1 ? "s" : ""}`} status="complete" />
-            {alerts.length > 0 && (
-              <BriefExpandable label="View alerts">
-                {alerts.map((a, i) => (
-                  <p key={i} className="text-xs text-muted-foreground leading-relaxed">
-                    {typeof a === "string" ? a : (a.headline as string) ?? (a.summary as string) ?? JSON.stringify(a)}
-                  </p>
-                ))}
-              </BriefExpandable>
-            )}
-            <ChainOfThoughtStep icon={Eye} label={`${watches.length} watchlist update${watches.length !== 1 ? "s" : ""}`} status="complete" />
-            {watches.length > 0 && (
-              <BriefExpandable label="View updates">
-                {watches.map((w, i) => (
-                  <p key={i} className="text-xs text-muted-foreground leading-relaxed">
-                    {typeof w === "string" ? w : (w.headline as string) ?? (w.summary as string) ?? JSON.stringify(w)}
-                  </p>
-                ))}
-              </BriefExpandable>
-            )}
-            <ChainOfThoughtStep icon={Zap} label={`${opps.length} new opportunit${opps.length !== 1 ? "ies" : "y"}`} status="complete" />
-            {opps.length > 0 && (
-              <BriefExpandable label="View opportunities">
-                {opps.map((o, i) => (
-                  <p key={i} className="text-xs text-muted-foreground leading-relaxed">
-                    {typeof o === "string" ? o : (o.headline as string) ?? (o.summary as string) ?? JSON.stringify(o)}
-                  </p>
-                ))}
-              </BriefExpandable>
-            )}
-          </ChainOfThoughtContent>
-          <SourceChips sources={[{ provider: "Intelligence Pipeline", title: "Morning Brief", excerpt: `${r.signalCount ?? 0} signals synthesized` }]} />
-        </ChainOfThought>
+        <ToolProgress defaultOpen>
+          <ToolProgressHeader>Morning intelligence brief</ToolProgressHeader>
+          <ToolProgressContent>
+            {marketCtx && <ClampedText>{marketCtx}</ClampedText>}
+
+            {alerts.map((a, i) => (
+              <ToolProgressTickerItem
+                key={`alert-${i}`}
+                ticker={(a.ticker as string) ?? "?"}
+                tag="Holding"
+              >
+                {(a.alert as string) ?? (a.headline as string) ?? (a.summary as string) ?? ""}
+              </ToolProgressTickerItem>
+            ))}
+
+            {watches.map((w, i) => (
+              <ToolProgressTickerItem
+                key={`watch-${i}`}
+                ticker={(w.ticker as string) ?? "?"}
+                tag="Watching"
+              >
+                {(w.update as string) ?? (w.headline as string) ?? (w.summary as string) ?? ""}
+              </ToolProgressTickerItem>
+            ))}
+
+            {opps.map((o, i) => {
+              const ticker = Array.isArray(o.tickers) ? (o.tickers as string[])[0] : null;
+              return (
+                <ToolProgressTickerItem
+                  key={`opp-${i}`}
+                  ticker={ticker ?? "?"}
+                  tag="Opportunity"
+                >
+                  {(o.thesisSeed as string) ?? (o.headline as string) ?? (o.summary as string) ?? ""}
+                </ToolProgressTickerItem>
+              );
+            })}
+
+            <ToolProgressSources domains={["perplexity.ai", "finnhub.io"]} />
+          </ToolProgressContent>
+        </ToolProgress>
       );
     },
   });
 
+  // ── Intelligence: Signals ──────────────────────────────────────────
   useAssistantToolUI({
     toolName: "read_signals",
     render: ({ args, result }) => {
       const filterTickers = (args as Record<string, unknown>)?.tickers as string[] | undefined;
-      const filterType = (args as Record<string, unknown>)?.type as string | undefined;
 
       if (!result) {
-        const filterCtx = filterTickers?.length
-          ? ` for ${filterTickers.join(", ")}`
-          : filterType
-            ? ` (${filterType})`
-            : "";
+        const ctx = filterTickers?.length ? ` for ${filterTickers.join(", ")}` : "";
         return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Reading routed signals{filterCtx}...</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Zap} label="Querying intelligence feed" status="active" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
+          <ToolProgress defaultOpen>
+            <ToolProgressHeader loading>Reading signals{ctx}...</ToolProgressHeader>
+            <ToolProgressContent>
+              <ToolProgressItem active>Querying intelligence feed</ToolProgressItem>
+            </ToolProgressContent>
+          </ToolProgress>
         );
       }
 
@@ -202,62 +139,61 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       const urgent = signals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
       const bullish = signals.filter((s) => s.sentiment === "BULLISH").length;
       const bearish = signals.filter((s) => s.sentiment === "BEARISH").length;
-      const top3 = signals.slice(0, 3).map((s) => s.headline as string).filter(Boolean);
       const allTickers = [...new Set(signals.flatMap((s) => Array.isArray(s.tickers) ? s.tickers as string[] : []))];
-      const sourceNames = [...new Set(signals.flatMap((s) => Array.isArray(s.sourceNames) ? s.sourceNames as string[] : []))];
 
       return (
-        <ChainOfThought defaultOpen>
-          <ChainOfThoughtHeader>
+        <ToolProgress defaultOpen>
+          <ToolProgressHeader>
             Read {count} signal{count !== 1 ? "s" : ""} ({urgent} urgent, {bullish} bullish, {bearish} bearish)
-          </ChainOfThoughtHeader>
-          <ChainOfThoughtContent>
-            {top3.map((headline, i) => (
-              <ChainOfThoughtStep key={i} icon={Zap} label={headline} status="complete" />
+          </ToolProgressHeader>
+          <ToolProgressContent>
+            {signals.slice(0, 5).map((s, i) => (
+              <ToolProgressItem key={i}>{s.headline as string}</ToolProgressItem>
             ))}
-            {count > 3 && (
-              <ChainOfThoughtStep icon={Zap} label={`+${count - 3} more signals`} status="complete" />
+            {count > 5 && (
+              <ToolProgressItem>+{count - 5} more signals</ToolProgressItem>
             )}
-          </ChainOfThoughtContent>
-          {allTickers.length > 0 && (
-            <div className="mt-1.5 flex items-center gap-1 flex-wrap px-1">
-              {allTickers.slice(0, 8).map((t) => (
-                <Badge key={t} variant="secondary">${t}</Badge>
-              ))}
-              {allTickers.length > 8 && (
-                <span className="text-[11px] text-muted-foreground">+{allTickers.length - 8}</span>
-              )}
-            </div>
-          )}
-          <SourceChips sources={sourceNames.map((n) => ({ provider: n, title: `${n} signals` }))} />
-        </ChainOfThought>
+            {allTickers.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap pl-1 pt-1">
+                {allTickers.slice(0, 8).map((t) => (
+                  <Badge key={t} variant="secondary">${t}</Badge>
+                ))}
+                {allTickers.length > 8 && (
+                  <span className="text-[11px] text-muted-foreground">+{allTickers.length - 8}</span>
+                )}
+              </div>
+            )}
+            <ToolProgressSources domains={["perplexity.ai"]} />
+          </ToolProgressContent>
+        </ToolProgress>
       );
     },
   });
 
+  // ── Intelligence: Artifact ─────────────────────────────────────────
   useAssistantToolUI({
     toolName: "read_artifact",
     render: ({ result }) => {
       if (!result) {
         return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Reading full article...</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={FileText} label="Extracting article content" status="active" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
+          <ToolProgress defaultOpen>
+            <ToolProgressHeader loading>Reading article...</ToolProgressHeader>
+            <ToolProgressContent>
+              <ToolProgressItem active>Extracting content</ToolProgressItem>
+            </ToolProgressContent>
+          </ToolProgress>
         );
       }
 
       const r = result as Record<string, unknown>;
       if (r.error) {
         return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Article not found</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={FileText} label={String(r.error)} status="complete" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
+          <ToolProgress defaultOpen>
+            <ToolProgressHeader>Article not found</ToolProgressHeader>
+            <ToolProgressContent>
+              <ToolProgressItem>{String(r.error)}</ToolProgressItem>
+            </ToolProgressContent>
+          </ToolProgress>
         );
       }
 
@@ -268,35 +204,30 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       let domain = "";
       try { domain = url ? new URL(url).hostname.replace(/^www\./, "") : ""; } catch { /* */ }
 
-      const sources = extractToolSources(r);
-
       return (
-        <ChainOfThought defaultOpen>
-          <ChainOfThoughtHeader>
+        <ToolProgress defaultOpen>
+          <ToolProgressHeader>
             {domain ? `${domain}: ` : ""}{title} ({wordCount.toLocaleString()} words)
-          </ChainOfThoughtHeader>
-          <ChainOfThoughtContent>
-            <ChainOfThoughtStep icon={FileText} label={title} status="complete" />
-          </ChainOfThoughtContent>
-          <SourceChips sources={sources.length > 0 ? sources : (domain ? [{ provider: domain, title, url }] : [])} />
-        </ChainOfThought>
+          </ToolProgressHeader>
+          <ToolProgressContent>
+            <ToolProgressItem>{title}</ToolProgressItem>
+            {domain && <ToolProgressSources domains={[domain]} />}
+          </ToolProgressContent>
+        </ToolProgress>
       );
     },
   });
 
-  // ── Thesis → ThesisCard (compact preview, opens sheet on click) ────
-  // Shared render for record_thesis (new) and show_thesis (backward compat alias)
+  // ── Thesis → ThesisCard ────────────────────────────────────────────
   const thesisRender = ({ result }: { result?: Record<string, unknown> }) => {
     if (!result) {
       return (
-        <ChainOfThought defaultOpen>
-          <ChainOfThoughtHeader>Building thesis</ChainOfThoughtHeader>
-          <ChainOfThoughtContent>
-            <ChainOfThoughtStep icon={CheckCircle2} label="Data collected" status="complete" />
-            <ChainOfThoughtStep icon={BarChart3} label="Generating direction + confidence" status="active" />
-            <ChainOfThoughtStep icon={FileText} label="Writing full analysis" status="pending" />
-          </ChainOfThoughtContent>
-        </ChainOfThought>
+        <ToolProgress defaultOpen>
+          <ToolProgressHeader loading>Building thesis...</ToolProgressHeader>
+          <ToolProgressContent>
+            <ToolProgressItem active>Generating analysis</ToolProgressItem>
+          </ToolProgressContent>
+        </ToolProgress>
       );
     }
 
@@ -333,22 +264,20 @@ export function useRegisterResearchToolUIs(_runId?: string) {
   };
 
   useAssistantToolUI({ toolName: "record_thesis", render: thesisRender });
-  // Backward compat alias for old persisted messages
   useAssistantToolUI({ toolName: "show_thesis", render: thesisRender });
 
-  // ── Portfolio state → kept for backward compat with old persisted messages ──
+  // ── Portfolio state → PortfolioReviewCard ──────────────────────────
   useAssistantToolUI({
     toolName: "get_portfolio_state",
     render: ({ result }) => {
       if (!result) {
         return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>Loading portfolio state</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={BarChart3} label="Fetching positions and theses" status="active" />
-              <ChainOfThoughtStep icon={Activity} label="Loading account balances" status="pending" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
+          <ToolProgress defaultOpen>
+            <ToolProgressHeader loading>Loading portfolio...</ToolProgressHeader>
+            <ToolProgressContent>
+              <ToolProgressItem active>Fetching positions</ToolProgressItem>
+            </ToolProgressContent>
+          </ToolProgress>
         );
       }
 
@@ -373,7 +302,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Close position → inline result card ─────────────────────────
+  // ── Close position ─────────────────────────────────────────────────
   useAssistantToolUI({
     toolName: "close_position",
     render: ({ result }) => {
@@ -385,7 +314,6 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
-      // NO_POSITION or FAILED — clean inline message
       if (result.status === "NO_POSITION") {
         return (
           <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
@@ -421,7 +349,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Place trade → OrderConfirm (pending) / TradeCard (filled) ─────
+  // ── Place trade → OrderConfirm / TradeCard ─────────────────────────
   useAssistantToolUI({
     toolName: "place_trade",
     render: ({ result }) => {
@@ -463,61 +391,41 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Run summary → DecisionSummaryCard ──────────────────────────────────
-  // Shared render for complete_run (new) and summarize_run (backward compat alias)
+  // ── Run summary → DecisionSummaryCard ──────────────────────────────
   const runSummaryRender = ({ result }: { result?: Record<string, unknown> }) => {
     if (!result) {
       return (
-        <ChainOfThought defaultOpen>
-          <ChainOfThoughtHeader>Portfolio synthesis</ChainOfThoughtHeader>
-          <ChainOfThoughtContent>
-            <ChainOfThoughtStep icon={BarChart3} label="Ranking picks by conviction" status="active" />
-            <ChainOfThoughtStep icon={Activity} label="Calculating exposure" status="pending" />
-          </ChainOfThoughtContent>
-        </ChainOfThought>
+        <ToolProgress defaultOpen>
+          <ToolProgressHeader loading>Synthesizing decisions...</ToolProgressHeader>
+          <ToolProgressContent>
+            <ToolProgressItem active>Ranking picks</ToolProgressItem>
+          </ToolProgressContent>
+        </ToolProgress>
       );
     }
 
     const rankedPicks = (result.ranked_picks ?? []) as {
-      rank: number;
-      ticker: string;
-      direction: string;
-      confidence: number;
-      reasoning: string;
-      action: string;
+      rank: number; ticker: string; direction: string;
+      confidence: number; reasoning: string; action: string;
     }[];
 
     const exposure = result.exposure_breakdown as {
-      long_exposure: number;
-      short_exposure: number;
-      net_exposure: number;
-      sector_concentration?: string;
+      long_exposure: number; short_exposure: number; net_exposure: number;
     } | null;
-
-    // Decision picks for the V2 DecisionSummaryCard
-    const decisionPicks = rankedPicks.map((p) => ({
-      rank: p.rank,
-      ticker: p.ticker,
-      direction: p.direction,
-      confidence: p.confidence,
-      reasoning: p.reasoning,
-      action: p.action,
-    }));
 
     return (
       <div className="my-2">
         <DecisionSummaryCard
-          rankedPicks={decisionPicks}
+          rankedPicks={rankedPicks.map((p) => ({
+            rank: p.rank, ticker: p.ticker, direction: p.direction,
+            confidence: p.confidence, reasoning: p.reasoning, action: p.action,
+          }))}
           marketSummary={result.market_summary as string}
-          exposureBreakdown={
-            exposure
-              ? {
-                  longExposure: exposure.long_exposure,
-                  shortExposure: exposure.short_exposure,
-                  netExposure: exposure.net_exposure,
-                }
-              : undefined
-          }
+          exposureBreakdown={exposure ? {
+            longExposure: exposure.long_exposure,
+            shortExposure: exposure.short_exposure,
+            netExposure: exposure.net_exposure,
+          } : undefined}
           riskNotes={(result.risk_notes ?? []) as string[]}
           overallAssessment={result.overall_assessment as string}
           portfolioReview={result.portfolio_review as string | undefined}
@@ -527,10 +435,9 @@ export function useRegisterResearchToolUIs(_runId?: string) {
   };
 
   useAssistantToolUI({ toolName: "complete_run", render: runSummaryRender });
-  // Backward compat alias for old persisted messages
   useAssistantToolUI({ toolName: "summarize_run", render: runSummaryRender });
 
-  // ── Watchlist management → inline status card ───────────────────────
+  // ── Watchlist management ───────────────────────────────────────────
   useAssistantToolUI({
     toolName: "manage_watchlist",
     render: ({ args, result }) => {
@@ -540,14 +447,11 @@ export function useRegisterResearchToolUIs(_runId?: string) {
 
       if (!result) {
         return (
-          <ChainOfThought defaultOpen>
-            <ChainOfThoughtHeader>
-              {action === "ADD" ? `Adding $${ticker} to watchlist` : action === "REMOVE" ? `Removing $${ticker} from watchlist` : `Updating $${ticker} watchlist entry`}
-            </ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep icon={Eye} label={`${action} watchlist item`} status="active" />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
+          <ToolProgress defaultOpen>
+            <ToolProgressHeader loading>
+              {action === "ADD" ? `Adding $${ticker} to watchlist` : action === "REMOVE" ? `Removing $${ticker}` : `Updating $${ticker}`}
+            </ToolProgressHeader>
+          </ToolProgress>
         );
       }
 
@@ -586,20 +490,9 @@ export function useRegisterResearchToolUIs(_runId?: string) {
   });
 }
 
-// ─── Registration hooks ─────────────────────────────────────────────────────
+// ─── Builder tools ──────────────────────────────────────────────────────────
 
-/**
- * Register suggest_config tool UI for the builder (shows full config card + create button).
- * Also registers research tool UIs with domain cards where possible.
- */
 export function useRegisterBuilderToolUIs() {
-  // Reuse the SAME research tool UIs as the agent run (domain cards)
   useRegisterResearchToolUIs();
-
-  // Builder-only: suggest_config renders as config card + create button
-  useAssistantToolUI({
-    toolName: "suggest_config",
-    render: SuggestConfigRender,
-  });
+  useAssistantToolUI({ toolName: "suggest_config", render: SuggestConfigRender });
 }
-

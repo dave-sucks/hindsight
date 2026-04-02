@@ -2,7 +2,6 @@
 export {
   ToolUICallbacksProvider,
   useToolUICallbacks,
-  SourceChips,
   extractToolSources,
   type SourceData,
   type ToolUICallbacks,
