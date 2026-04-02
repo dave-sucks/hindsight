@@ -2,6 +2,7 @@
 
 import { memo, useRef, useState, useEffect, type ComponentProps } from "react";
 import { cn } from "@/lib/utils";
+import { DotIcon } from "lucide-react";
 
 export type ClampedTextProps = ComponentProps<"div"> & {
   lines?: number;
@@ -24,22 +25,22 @@ export const ClampedText = memo(
       : undefined;
 
     return (
-      <div className={cn("pl-1", className)} {...props}>
-        <div
-          ref={ref}
-          className={cn("text-sm text-muted-foreground", clampClass)}
-        >
-          {children}
+      <div className={cn("flex items-start gap-1 text-sm text-muted-foreground", className)} {...props}>
+        <DotIcon className="size-5 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div ref={ref} className={clampClass}>
+            {children}
+          </div>
+          {needsClamp && !expanded && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground/70 hover:text-foreground mt-0.5"
+              onClick={() => setExpanded(true)}
+            >
+              Show more
+            </button>
+          )}
         </div>
-        {needsClamp && !expanded && (
-          <button
-            type="button"
-            className="text-xs text-muted-foreground/70 hover:text-foreground mt-0.5"
-            onClick={() => setExpanded(true)}
-          >
-            Show more
-          </button>
-        )}
       </div>
     );
   }

@@ -2,7 +2,6 @@
 
 /**
  * ToolProgress — simplified tool execution display.
- * Replaces ChainOfThought for all tool UIs.
  * One level of collapse. Flat dot lists. No per-item icons.
  */
 
@@ -13,7 +12,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { ChevronRightIcon, Loader2Icon } from "lucide-react";
+import { ChevronRightIcon, DotIcon, Loader2Icon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 // ── ToolProgress (root) ────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ export const ToolProgress = memo(
 );
 ToolProgress.displayName = "ToolProgress";
 
-// ── Header (inline — chevron right after text, not full-width) ─────────────
+// ── Header (inline — chevron right after text) ─────────────────────────────
 
 export type ToolProgressHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
   loading?: boolean;
@@ -71,14 +71,14 @@ export type ToolProgressContentProps = ComponentProps<typeof CollapsibleContent>
 export const ToolProgressContent = memo(
   ({ className, ...props }: ToolProgressContentProps) => (
     <CollapsibleContent
-      className={cn("space-y-1.5 pt-1 pb-1", className)}
+      className={cn("space-y-1 pt-1 pb-1", className)}
       {...props}
     />
   )
 );
 ToolProgressContent.displayName = "ToolProgressContent";
 
-// ── Item (dot + text) ──────────────────────────────────────────────────────
+// ── Item (DotIcon + text — same pattern as Notion/Claude CoT) ──────────────
 
 export type ToolProgressItemProps = ComponentProps<"div"> & {
   active?: boolean;
@@ -88,16 +88,16 @@ export const ToolProgressItem = memo(
   ({ className, active, children, ...props }: ToolProgressItemProps) => (
     <div
       className={cn(
-        "flex items-start gap-2 text-sm",
+        "flex items-start gap-1 text-sm",
         active ? "text-foreground" : "text-muted-foreground",
         className
       )}
       {...props}
     >
-      <span
+      <DotIcon
         className={cn(
-          "mt-[7px] size-[5px] shrink-0 rounded-full",
-          active ? "bg-foreground animate-pulse" : "bg-muted-foreground/40"
+          "size-5 shrink-0 mt-0.5",
+          active && "animate-pulse"
         )}
       />
       <span className="flex-1 min-w-0">{children}</span>
@@ -106,7 +106,7 @@ export const ToolProgressItem = memo(
 );
 ToolProgressItem.displayName = "ToolProgressItem";
 
-// ── Ticker Item (inline: logo + $TICKER + (tag) + summary) ─────────────────
+// ── Ticker Item (dot + inline logo + $TICKER (tag) — summary) ──────────────
 
 export type ToolProgressTickerItemProps = ComponentProps<"div"> & {
   ticker: string;
@@ -117,10 +117,10 @@ export type ToolProgressTickerItemProps = ComponentProps<"div"> & {
 export const ToolProgressTickerItem = memo(
   ({ className, ticker, tag, children, ...props }: ToolProgressTickerItemProps) => (
     <div
-      className={cn("flex items-start gap-2 text-sm text-muted-foreground", className)}
+      className={cn("flex items-start gap-1 text-sm text-muted-foreground", className)}
       {...props}
     >
-      <span className="mt-[7px] size-[5px] shrink-0 rounded-full bg-muted-foreground/40" />
+      <DotIcon className="size-5 shrink-0 mt-0.5" />
       <span className="flex-1 min-w-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -133,8 +133,8 @@ export const ToolProgressTickerItem = memo(
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
         />
         <span className="font-mono text-xs font-medium text-foreground">${ticker}</span>
-        {tag && <span className="text-muted-foreground"> ({tag})</span>}
-        <span className="text-muted-foreground"> — </span>
+        {tag && <span> ({tag})</span>}
+        <span> — </span>
         {children}
       </span>
     </div>
@@ -142,7 +142,7 @@ export const ToolProgressTickerItem = memo(
 );
 ToolProgressTickerItem.displayName = "ToolProgressTickerItem";
 
-// ── Sources (inline favicon + domain) ──────────────────────────────────────
+// ── Sources (uses Badge — matches InlineCitationCardTrigger style) ──────────
 
 export type ToolProgressSourcesProps = ComponentProps<"div"> & {
   domains: string[];
@@ -154,11 +154,11 @@ export const ToolProgressSources = memo(
 
     return (
       <div
-        className={cn("flex items-center gap-3 pt-1", className)}
+        className={cn("flex items-center gap-1.5 pt-1.5", className)}
         {...props}
       >
         {domains.map((domain) => (
-          <span key={domain} className="inline-flex items-center gap-1 text-xs text-muted-foreground/60">
+          <Badge key={domain} variant="secondary" className="font-normal text-muted-foreground rounded-full gap-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`https://www.google.com/s2/favicons?sz=16&domain=${domain}`}
@@ -169,7 +169,7 @@ export const ToolProgressSources = memo(
               loading="lazy"
             />
             {domain}
-          </span>
+          </Badge>
         ))}
       </div>
     );
