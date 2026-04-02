@@ -57,7 +57,7 @@ export function FindingDetailDialog({ signal, open, onOpenChange }: FindingDetai
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="bg-background sm:max-w-3xl">
         {/* Search bar */}
         <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-1.5">
           <MonitorIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />

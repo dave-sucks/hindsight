@@ -85,6 +85,7 @@ const briefingSchema = z.object({
           .describe("A specific, searchable query for a temporary search monitor. E.g. 'Tesla China manufacturing partnership developments', 'AMD data center GPU market share Q2 2026'"),
         category: z
           .enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"])
+          .catch("THEMATIC")
           .describe("Query category — TICKER for company-specific, SECTOR for industry trends, THEMATIC for cross-cutting themes, EVENT for catalysts/dates, MARKET for macro"),
         reason: z
           .string()
@@ -93,6 +94,7 @@ const briefingSchema = z.object({
           .number()
           .min(1)
           .max(30)
+          .catch(7)
           .describe("How many days this query should remain active. 3-7 for near-term catalysts, 14-30 for longer-term monitoring."),
       })
     )
