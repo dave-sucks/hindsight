@@ -139,8 +139,6 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       const urgent = signals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
       const bullish = signals.filter((s) => s.sentiment === "BULLISH").length;
       const bearish = signals.filter((s) => s.sentiment === "BEARISH").length;
-      const allTickers = [...new Set(signals.flatMap((s) => Array.isArray(s.tickers) ? s.tickers as string[] : []))];
-
       return (
         <ToolProgress defaultOpen>
           <ToolProgressHeader>
@@ -152,16 +150,6 @@ export function useRegisterResearchToolUIs(_runId?: string) {
             ))}
             {count > 5 && (
               <ToolProgressItem>+{count - 5} more signals</ToolProgressItem>
-            )}
-            {allTickers.length > 0 && (
-              <div className="flex items-center gap-1 flex-wrap pl-1 pt-1">
-                {allTickers.slice(0, 8).map((t) => (
-                  <Badge key={t} variant="secondary">${t}</Badge>
-                ))}
-                {allTickers.length > 8 && (
-                  <span className="text-[11px] text-muted-foreground">+{allTickers.length - 8}</span>
-                )}
-              </div>
             )}
             <ToolProgressSources domains={["perplexity.ai"]} />
           </ToolProgressContent>
