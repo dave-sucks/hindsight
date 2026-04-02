@@ -12,9 +12,9 @@ function useAutoShow(key: string) {
 
   useEffect(() => {
     const storageKey = `hindsight-showcase-${key}`;
-    if (!sessionStorage.getItem(storageKey)) {
+    if (!localStorage.getItem(storageKey)) {
       setOpen(true);
-      sessionStorage.setItem(storageKey, "1");
+      localStorage.setItem(storageKey, "1");
     }
   }, [key]);
 

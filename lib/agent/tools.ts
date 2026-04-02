@@ -11,7 +11,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
-import { inngest } from "@/lib/inngest/client";
+import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import { finnhub, calcRSI, calcSMA } from "@/lib/agent/research-helpers";
 import type { MarketOverviewResult, MacroEvent, SectorQuote, EarningsDensity } from "@/lib/discovery/types";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
@@ -1643,22 +1643,48 @@ export function createResearchTools(ctx: ToolContext) {
             }
           }
 
-          // Fire event for the independent briefing agent (Inngest function)
+          // Generate post-run briefing directly — no Inngest, no events, just call it.
+          // This is the LAST tool the agent calls, so the extra 10-20s for GPT-4o is fine.
+          let briefingStatus: "success" | "failed" | "skipped" = "skipped";
           if (ctx.analystId) {
-            await inngest.send({
-              name: "research/run.completed",
-              data: { runId: ctx.runId, analystId: ctx.analystId, userId: ctx.userId },
-            });
+            try {
+              console.log(`[tool] complete_run: generating briefing for analyst=${ctx.analystId} run=${ctx.runId}`);
+              await updateAnalystBriefing({ analystId: ctx.analystId, runId: ctx.runId, userId: ctx.userId });
+              briefingStatus = "success";
+              console.log(`[tool] complete_run: ✅ briefing written for run=${ctx.runId}`);
+            } catch (briefErr) {
+              briefingStatus = "failed";
+              console.error(`[tool] complete_run: briefing generation failed for run=${ctx.runId}:`, briefErr instanceof Error ? briefErr.message : briefErr);
+            }
           } else {
-            console.warn(`[tool] complete_run: no analystId in context (runId=${ctx.runId}) — briefing event not fired`);
+            console.warn(`[tool] complete_run: no analystId in context (runId=${ctx.runId}) — briefing skipped`);
           }
 
-          logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length}`, stats);
-          // Return ALL args so DecisionSummaryCard can render them
+          // Record briefing event so it's visible in the run UI
+          try {
+            await prisma.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: "briefing_generated",
+                title: briefingStatus === "success"
+                  ? "Portfolio briefing written"
+                  : briefingStatus === "failed"
+                    ? "Portfolio briefing failed"
+                    : "Portfolio briefing skipped (no analyst)",
+                message: briefingStatus === "success"
+                  ? "GPT-4o reviewed the full session and wrote the standup brief for the next run."
+                  : null,
+                payload: { briefingStatus } as object,
+              },
+            });
+          } catch { /* non-fatal */ }
+
+          logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length} briefing=${briefingStatus}`, stats);
           return {
             status: "complete",
             analyzed: args.ranked_picks.length,
             traded,
+            briefing: briefingStatus,
             market_summary: args.market_summary,
             ranked_picks: args.ranked_picks,
             exposure_breakdown: args.exposure_breakdown ?? null,
@@ -1675,8 +1701,18 @@ export function createResearchTools(ctx: ToolContext) {
               data: { status: "COMPLETE", completedAt: new Date() },
             });
           } catch { /* already tried */ }
+          // Try to generate briefing even on partial failure
+          let briefingStatus: "success" | "failed" | "skipped" = "skipped";
+          if (ctx.analystId) {
+            try {
+              await updateAnalystBriefing({ analystId: ctx.analystId, runId: ctx.runId, userId: ctx.userId });
+              briefingStatus = "success";
+            } catch {
+              briefingStatus = "failed";
+            }
+          }
           logToolEnd("complete_run", _t0, ctx.runId, "FAILED", stats);
-          return { status: "complete", analyzed: args.ranked_picks.length, traded: 0, error: err instanceof Error ? err.message : "complete_run failed" };
+          return { status: "complete", analyzed: args.ranked_picks.length, traded: 0, briefing: briefingStatus, error: err instanceof Error ? err.message : "complete_run failed" };
         }
       },
     }),

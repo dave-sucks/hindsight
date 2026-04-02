@@ -2,8 +2,8 @@
 export {
   ToolUICallbacksProvider,
   useToolUICallbacks,
-  SourceChips,
   extractToolSources,
+  SourceChips,
   type SourceData,
   type ToolUICallbacks,
 } from "./tool-ui-shared";

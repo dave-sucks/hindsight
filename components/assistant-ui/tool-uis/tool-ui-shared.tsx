@@ -60,6 +60,8 @@ export function extractToolSources(result: Record<string, unknown>): SourceData[
   return [];
 }
 
+// ─── Source Chips (InlineCitation badge + hover carousel) ──────────────────
+
 const PROVIDER_DOMAINS: Record<string, string> = {
   finnhub: "https://finnhub.io",
   fmp: "https://financialmodelingprep.com",
@@ -73,14 +75,12 @@ const PROVIDER_DOMAINS: Record<string, string> = {
   sec: "https://sec.gov",
 };
 
-/** Get a valid URL for a source (needed by InlineCitationCardTrigger) */
 function sourceUrl(s: SourceData): string {
   if (s.url) return s.url;
   const key = s.provider.toLowerCase().replace(/[^a-z ]/g, "");
   return PROVIDER_DOMAINS[key] ?? `https://${s.provider.toLowerCase().replace(/[^a-z]/g, "")}.com`;
 }
 
-/** Favicon from a URL */
 function faviconFromUrl(url: string): string | null {
   try {
     return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`;
@@ -89,12 +89,12 @@ function faviconFromUrl(url: string): string | null {
   }
 }
 
-/** Provider row with favicon + name for carousel items */
 function ProviderRow({ provider, url }: { provider: string; url: string }) {
   const favicon = faviconFromUrl(url);
   return (
     <div className="flex items-center gap-2 mb-1">
       {favicon && (
+        // eslint-disable-next-line @next/next/no-img-element
         <img src={favicon} alt="" width={16} height={16} className="size-4 shrink-0 rounded-sm" />
       )}
       <span className="text-xs font-medium text-muted-foreground">{provider}</span>

@@ -7,7 +7,6 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
-import { inngest } from "@/lib/inngest/client";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
@@ -191,8 +190,34 @@ export async function POST(req: Request) {
         const elapsed = Date.now() - t0;
         console.log(`[agent] ✅ onFinish runId=${runId} elapsed=${elapsed}ms reason=${finishReason} totalTokens=${usage?.totalTokens ?? "?"} responseMsgs=${response.messages.length}`);
 
-        // Persist all messages from this exchange so the conversation can be replayed.
         if (!runId) return;
+
+        // ── 1. Ensure run is not stuck RUNNING ──────────────────────────────
+        // If the agent hit the step limit, errored, or stopped without calling
+        // complete_run, the run stays RUNNING forever. Fix it here.
+        const currentRun = await prisma.researchRun.findFirst({
+          where: { id: runId },
+          select: { status: true, agentConfigId: true },
+        });
+        if (currentRun?.status === "RUNNING") {
+          // Check if any work was done (theses or trades)
+          const [thesisCount, tradeCount] = await Promise.all([
+            prisma.thesis.count({ where: { researchRunId: runId } }),
+            prisma.tradeDecision.count({ where: { runId } }),
+          ]);
+          const hasWork = thesisCount > 0 || tradeCount > 0;
+          const finalStatus = hasWork ? "COMPLETE" : "FAILED";
+          await prisma.researchRun.update({
+            where: { id: runId },
+            data: {
+              status: finalStatus,
+              completedAt: new Date(),
+            },
+          });
+          console.warn(`[agent] ⚠️ Run ${runId} was still RUNNING after onFinish (reason=${finishReason}). Marked ${finalStatus} (theses=${thesisCount}, trades=${tradeCount}).`);
+        }
+
+        // ── 2. Persist messages ─────────────────────────────────────────────
         try {
           const allMessages = [...messages, ...response.messages];
           await prisma.runMessage.deleteMany({ where: { runId } });
@@ -208,37 +233,39 @@ export async function POST(req: Request) {
           console.error("[agent] Failed to persist messages:", err);
         }
 
-        // If the agent was stopped early (e.g. step limit, or model decided to stop
-        // without calling complete_run), check if the run is still RUNNING and mark it
-        const currentRun = await prisma.researchRun.findFirst({
+        // ── 3. Safety net: fire Inngest event for runs that didn't call complete_run
+        // The primary briefing path is inside the complete_run tool itself (direct call).
+        // This only matters if the agent was killed before calling complete_run but
+        // we still marked it COMPLETE above (had partial work).
+        const updatedRun = await prisma.researchRun.findFirst({
           where: { id: runId },
           select: { status: true },
         });
-        if (currentRun?.status === "RUNNING") {
-          console.warn(`[agent] ⚠️ Run ${runId} still RUNNING after onFinish (reason=${finishReason}). Agent may not have called complete_run.`);
+        if (updatedRun?.status !== "COMPLETE") {
+          console.log(`[agent] Run ${runId} is ${updatedRun?.status ?? "unknown"} — skipping briefing`);
+          return;
         }
 
-        // Fire event for the independent briefing agent (Inngest function).
-        // The briefing runs in its own execution context with retries,
-        // so it can't be killed by this route's timeout.
-        const briefingAnalystId = analystId || (await prisma.researchRun.findFirst({
-          where: { id: runId },
-          select: { agentConfigId: true },
-        }))?.agentConfigId;
+        // Check if briefing was already written by complete_run
+        const existingBriefing = await prisma.analystBriefing.findFirst({
+          where: { runId },
+          select: { id: true },
+        });
+        if (existingBriefing) {
+          console.log(`[agent] Briefing already exists for run ${runId} — skipping`);
+          return;
+        }
 
+        // No briefing yet — agent didn't call complete_run but we marked it COMPLETE.
+        // Generate briefing directly here.
+        const briefingAnalystId = analystId || currentRun?.agentConfigId || null;
         if (briefingAnalystId) {
-          // Primary: generate briefing inline (guaranteed to run within this waitUntil window)
-          // Inngest event is belt-and-suspenders for when it's properly synced
-          await updateAnalystBriefing({ analystId: briefingAnalystId, runId, userId: user.id });
-
           try {
-            await inngest.send({
-              name: "research/run.completed",
-              data: { runId, analystId: briefingAnalystId, userId: user.id },
-            });
-            console.log(`[agent] Fired research/run.completed for run ${runId} analyst=${briefingAnalystId}`);
+            console.log(`[agent] No briefing from complete_run — generating in onFinish for run ${runId}`);
+            await updateAnalystBriefing({ analystId: briefingAnalystId, runId, userId: user.id });
+            console.log(`[agent] ✅ Briefing written in onFinish for run ${runId}`);
           } catch (err) {
-            console.error("[agent] Failed to fire briefing event (non-fatal):", err);
+            console.error(`[agent] Briefing failed in onFinish for run ${runId}:`, err);
           }
         } else {
           console.warn(`[agent] No analystId found for run ${runId} — briefing skipped`);

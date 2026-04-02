@@ -190,15 +190,8 @@ export const morningResearch = inngest.createFunction(
             console.warn("[morning-research] Failed to persist messages:", msgErr);
           }
 
-          // Primary: generate briefing directly (runs inside this Inngest step, guaranteed)
+          // Generate briefing directly (runs inside this Inngest step, guaranteed execution)
           await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId });
-
-          // Belt-and-suspenders: also fire event for post-run-briefing Inngest function
-          // (deduplicates via existingBriefing check, safe to fire even if brief already written)
-          await inngest.send({
-            name: "research/run.completed",
-            data: { runId: run.id, analystId: config.id, userId: config.userId },
-          });
 
           return { tradesPlaced, steps: steps.length, toolCalls, elapsedMs: elapsed };
         } catch (err) {
@@ -228,13 +221,9 @@ export const morningResearch = inngest.createFunction(
             },
           });
 
-          // Generate briefing + fire event for timed-out runs with partial work (marked COMPLETE)
+          // Generate briefing for timed-out runs with partial work (marked COMPLETE)
           if (finalStatus === "COMPLETE") {
             await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId });
-            await inngest.send({
-              name: "research/run.completed",
-              data: { runId: run.id, analystId: config.id, userId: config.userId },
-            });
           }
 
           return { error: message, partialTheses, partialTrades };
