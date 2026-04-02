@@ -6,6 +6,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
 
@@ -189,9 +190,11 @@ export const morningResearch = inngest.createFunction(
             console.warn("[morning-research] Failed to persist messages:", msgErr);
           }
 
-          // Fire briefing event — the post-run-briefing Inngest function handles
-          // generation independently with its own retries and timeout.
-          // The function deduplicates, so it's safe even if complete_run already fired this.
+          // Primary: generate briefing directly (runs inside this Inngest step, guaranteed)
+          await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId });
+
+          // Belt-and-suspenders: also fire event for post-run-briefing Inngest function
+          // (deduplicates via existingBriefing check, safe to fire even if brief already written)
           await inngest.send({
             name: "research/run.completed",
             data: { runId: run.id, analystId: config.id, userId: config.userId },
@@ -225,8 +228,9 @@ export const morningResearch = inngest.createFunction(
             },
           });
 
-          // Fire briefing event for timed-out runs with partial work (marked COMPLETE)
+          // Generate briefing + fire event for timed-out runs with partial work (marked COMPLETE)
           if (finalStatus === "COMPLETE") {
+            await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId });
             await inngest.send({
               name: "research/run.completed",
               data: { runId: run.id, analystId: config.id, userId: config.userId },

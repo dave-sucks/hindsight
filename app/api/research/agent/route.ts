@@ -10,6 +10,7 @@ import { buildRunInput } from "@/lib/agent/run-input";
 import { inngest } from "@/lib/inngest/client";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 
 export const maxDuration = 300; // 5 min — agent makes 100+ API calls with retry logic
 
@@ -226,6 +227,10 @@ export async function POST(req: Request) {
         }))?.agentConfigId;
 
         if (briefingAnalystId) {
+          // Primary: generate briefing inline (guaranteed to run within this waitUntil window)
+          // Inngest event is belt-and-suspenders for when it's properly synced
+          await updateAnalystBriefing({ analystId: briefingAnalystId, runId, userId: user.id });
+
           try {
             await inngest.send({
               name: "research/run.completed",
@@ -236,7 +241,7 @@ export async function POST(req: Request) {
             console.error("[agent] Failed to fire briefing event (non-fatal):", err);
           }
         } else {
-          console.warn(`[agent] No analystId found for run ${runId} — briefing event not fired`);
+          console.warn(`[agent] No analystId found for run ${runId} — briefing skipped`);
         }
       },
     });
