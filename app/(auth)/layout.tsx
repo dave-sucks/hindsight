@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import HindsightLogo from "@/components/HindsightLogo";
+import { AuthPreview } from "./auth-preview";
 
 const Layout = async ({ children }: { children : React.ReactNode }) => {
     const supabase = await createClient();
@@ -20,18 +21,8 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
                 <div className="flex-1">{children}</div>
             </section>
 
-            <section className="hidden lg:flex flex-col flex-1 bg-card border-l border-border px-12 py-12 overflow-hidden">
-                <div className="z-10 relative mt-auto mb-16">
-                    <blockquote className="text-lg font-medium text-foreground leading-relaxed mb-6">
-                        &ldquo;The AI research is genuinely impressive. It catches patterns I would have missed and explains exactly why each trade makes sense.&rdquo;
-                    </blockquote>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <cite className="text-sm font-semibold text-foreground not-italic">- Ethan R.</cite>
-                            <p className="text-xs text-muted-foreground mt-0.5">Retail Investor</p>
-                        </div>
-                    </div>
-                </div>
+            <section className="hidden lg:flex flex-col flex-1 border-l border-border overflow-hidden relative">
+                <AuthPreview />
             </section>
         </main>
     )
