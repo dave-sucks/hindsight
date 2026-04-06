@@ -12,13 +12,17 @@
  * narrative for the next run.
  */
 
-import { generateObject } from "ai";
+import { generateObject, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { DynamicQueryOutput } from "@/lib/intelligence/types";
 
 // ── Schema for the briefing agent's output ──────────────────────────────────
+// IMPORTANT: All fields are REQUIRED (no .optional() or .catch()) because
+// OpenAI structured outputs strict mode requires every property to be in the
+// `required` array. Optional fields cause silent generateObject failures.
+// The model is told to use empty strings/arrays when content doesn't apply.
 
 const briefingSchema = z.object({
   narrative: z
@@ -34,73 +38,47 @@ const briefingSchema = z.object({
   marketPosture: z
     .string()
     .describe(
-      "2-3 word market stance summary, e.g. 'cautiously bullish', 'defensive', 'risk-on'. Based on the analyst's actual behavior this session, not just what they said."
+      "2-3 word market stance summary, e.g. 'cautiously bullish', 'defensive', 'risk-on'."
     ),
   watchTomorrow: z
     .array(
       z.object({
         symbol: z.string(),
-        trigger: z
-          .string()
-          .describe("Specific condition, e.g. 'price < $145', 'RSI < 30', 'earnings this week'"),
-        suggestedAction: z
-          .string()
-          .describe("What to do if triggered, e.g. 'INITIATE LONG', 'EXIT', 'review thesis'"),
-        priority: z.enum(["HIGH", "NORMAL"]).optional(),
+        trigger: z.string().describe("Specific condition, e.g. 'price < $145'"),
+        suggestedAction: z.string().describe("What to do if triggered"),
+        priority: z.enum(["HIGH", "NORMAL"]).describe("HIGH if urgent, NORMAL otherwise"),
       })
     )
-    .describe(
-      "2-5 most important things to check next session. Derived from: positions near targets/stops, unresolved research, catalysts mentioned, watchlist items with triggers."
-    ),
+    .describe("2-5 things to check next session. Empty array if nothing notable."),
   unresolvedItems: z
     .array(
       z.object({
         item: z.string().describe("What couldn't be resolved"),
-        impact: z.string().describe("Why it matters for the portfolio"),
-        affectedPositions: z.array(z.string()).optional(),
+        impact: z.string().describe("Why it matters"),
+        affectedPositions: z.array(z.string()).describe("Tickers affected, empty array if none"),
       })
     )
-    .describe(
-      "Data gaps, pending catalysts, failed tool calls, tickers the analyst wanted to research but ran out of steps for."
-    ),
+    .describe("Data gaps, pending catalysts, unfinished research. Empty array if none."),
   selfCorrections: z
     .array(
       z.object({
-        observation: z
-          .string()
-          .describe("Pattern noticed in analyst behavior — concentration risk, momentum chasing, ignoring stops, etc."),
-        adjustment: z
-          .string()
-          .describe("Concrete adjustment for next session"),
+        observation: z.string().describe("Pattern noticed in analyst behavior"),
+        adjustment: z.string().describe("Concrete adjustment for next session"),
       })
     )
-    .describe(
-      "Behavioral patterns to correct. Be honest — the analyst can't see this prompt, only the output. Flag real issues."
-    ),
+    .describe("Behavioral patterns to correct. Empty array if none."),
   dynamicQueries: z
     .array(
       z.object({
-        query: z
-          .string()
-          .describe("A specific, searchable query for a temporary search monitor. E.g. 'Tesla China manufacturing partnership developments', 'AMD data center GPU market share Q2 2026'"),
+        query: z.string().describe("A specific, searchable query"),
         category: z
           .enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"])
-          .catch("THEMATIC")
-          .describe("Query category — TICKER for company-specific, SECTOR for industry trends, THEMATIC for cross-cutting themes, EVENT for catalysts/dates, MARKET for macro"),
-        reason: z
-          .string()
-          .describe("Why this query matters — what gap it fills or what risk it monitors. Reference specific positions/watchlist items."),
-        expires_days: z
-          .number()
-          .min(1)
-          .max(30)
-          .catch(7)
-          .describe("How many days this query should remain active. 3-7 for near-term catalysts, 14-30 for longer-term monitoring."),
+          .describe("Query category"),
+        reason: z.string().describe("Why this query matters"),
+        expires_days: z.number().describe("Days to keep active, 1-30"),
       })
     )
-    .describe(
-      "Temporary search monitors to add to the analyst's monitoring pipeline. These run daily as Perplexity Sonar searches and generate findings automatically. Only propose monitors for things NOT already covered by existing monitors. Focus on: unresolved research gaps from this session, upcoming catalysts that need monitoring, emerging themes the analyst identified but couldn't fully research, and risk factors on open positions that need tracking. 0-5 monitors max."
-    ),
+    .describe("Temporary search monitors to add. 0-5 queries. Empty array if none needed."),
 });
 
 interface BriefingContext {
@@ -124,11 +102,24 @@ export async function updateAnalystBriefing({
   try {
     const t0 = Date.now();
 
+    // Hard-fail on bad inputs — these would silently corrupt the upsert
+    if (!runId || runId.length === 0) {
+      throw new Error(`updateAnalystBriefing called with empty runId (analystId=${analystId})`);
+    }
+    if (!analystId || analystId.length === 0) {
+      throw new Error(`updateAnalystBriefing called with empty analystId (runId=${runId})`);
+    }
+    if (!userId || userId.length === 0) {
+      throw new Error(`updateAnalystBriefing called with empty userId (runId=${runId})`);
+    }
+
     // Load everything in parallel — allSettled so one failure doesn't kill the rest
     const results = await Promise.allSettled([
-      // 0: analyst config
-      prisma.agentConfig.findFirst({
-        where: { id: analystId, userId },
+      // 0: analyst config — look up by id only, NOT userId.
+      // If the run was created with a stale userId mismatch, the briefing
+      // would silently skip. Run lifecycle already enforces ownership upstream.
+      prisma.agentConfig.findUnique({
+        where: { id: analystId },
       }),
       // 1: the full research conversation
       prisma.runMessage.findFirst({
@@ -241,8 +232,7 @@ export async function updateAnalystBriefing({
     const recentPassDecisions = val(9, []);
 
     if (!config) {
-      console.warn(`[briefing] Analyst ${analystId} not found, skipping`);
-      return;
+      throw new Error(`Analyst ${analystId} not found in DB. Cannot write briefing without analyst FK.`);
     }
 
     // ── Extract conversation transcript ──────────────────────────────────────
@@ -473,60 +463,110 @@ Bad dynamic monitors (don't create these):
 
 Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term catalysts, 7-14 for medium-term monitoring, up to 30 for longer tracking.`;
 
-    const { object } = await generateObject({
-      model: openai("gpt-4o"),
-      schema: briefingSchema,
-      prompt: briefingPrompt,
-    });
+    // ── Generate briefing with fallback chain ──────────────────────────────
+    // Layer 1: generateObject with strict schema (best output)
+    // Layer 2: generateText + manual JSON parse (more permissive)
+    // Layer 3: minimal data-only briefing (no LLM, always works)
+
+    type BriefingObject = z.infer<typeof briefingSchema>;
+    let object: BriefingObject | null = null;
+    let generationMethod = "generateObject";
+
+    // Layer 1
+    try {
+      const result = await generateObject({
+        model: openai("gpt-4o"),
+        schema: briefingSchema,
+        prompt: briefingPrompt,
+      });
+      object = result.object;
+      console.log(`[briefing] Layer 1 (generateObject) succeeded for run=${runId}`);
+    } catch (l1Err) {
+      console.warn(
+        `[briefing] Layer 1 (generateObject) failed for run=${runId}:`,
+        l1Err instanceof Error ? l1Err.message : l1Err
+      );
+    }
+
+    // Layer 2: generateText with JSON request
+    if (!object) {
+      try {
+        const textResult = await generateText({
+          model: openai("gpt-4o"),
+          prompt: `${briefingPrompt}\n\n## Output Format\nRespond with ONLY a valid JSON object matching this exact shape (no markdown, no prose, no code fences):\n{\n  "narrative": "<400-600 word markdown briefing>",\n  "strategyNotes": "<100-200 word strategy assessment>",\n  "marketPosture": "<2-3 word stance>",\n  "watchTomorrow": [{"symbol":"TICKER","trigger":"...","suggestedAction":"...","priority":"NORMAL"}],\n  "unresolvedItems": [{"item":"...","impact":"...","affectedPositions":[]}],\n  "selfCorrections": [{"observation":"...","adjustment":"..."}],\n  "dynamicQueries": [{"query":"...","category":"THEMATIC","reason":"...","expires_days":7}]\n}\n\nUse empty arrays [] for any sections that don't apply. All fields are required.`,
+        });
+        // Strip code fences if present
+        const cleanText = textResult.text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "");
+        const parsed = JSON.parse(cleanText);
+        // Lenient parse — fill in missing fields with defaults
+        object = {
+          narrative: typeof parsed.narrative === "string" ? parsed.narrative : "",
+          strategyNotes: typeof parsed.strategyNotes === "string" ? parsed.strategyNotes : "",
+          marketPosture: typeof parsed.marketPosture === "string" ? parsed.marketPosture : "neutral",
+          watchTomorrow: Array.isArray(parsed.watchTomorrow) ? parsed.watchTomorrow : [],
+          unresolvedItems: Array.isArray(parsed.unresolvedItems) ? parsed.unresolvedItems : [],
+          selfCorrections: Array.isArray(parsed.selfCorrections) ? parsed.selfCorrections : [],
+          dynamicQueries: Array.isArray(parsed.dynamicQueries) ? parsed.dynamicQueries : [],
+        };
+        generationMethod = "generateText+parse";
+        console.log(`[briefing] Layer 2 (generateText) succeeded for run=${runId}`);
+      } catch (l2Err) {
+        console.warn(
+          `[briefing] Layer 2 (generateText) failed for run=${runId}:`,
+          l2Err instanceof Error ? l2Err.message : l2Err
+        );
+      }
+    }
+
+    // Layer 3: minimal data-only briefing — no LLM, always works
+    if (!object) {
+      console.warn(`[briefing] Using Layer 3 (minimal stub) for run=${runId}`);
+      const tradedTickers = runTrades.map((t: { symbol: string }) => `$${t.symbol}`).join(", ") || "no new positions";
+      const openTickers = openTrades.map((t: { symbol: string }) => `$${t.symbol}`).join(", ") || "no open positions";
+      object = {
+        narrative: `## Session ${new Date().toISOString().slice(0, 10)}\n\nThis briefing was generated as a fallback because GPT-4o briefing generation failed. Raw session data:\n\n- **Open positions:** ${openTickers}\n- **Trades this session:** ${tradedTickers}\n- **Theses generated:** ${runTheses.length}\n- **Win rate (recent):** ${winRateStr}\n- **Total closed P&L:** ${closedPnl >= 0 ? "+" : ""}$${closedPnl.toFixed(2)}\n\nReview Vercel runtime logs for the underlying briefing generation error.`,
+        strategyNotes: `Fallback briefing — full GPT-4o analysis unavailable. Win rate ${winRateStr}, ${wins}W / ${losses}L over ${recentClosedTrades.length} closed trades.`,
+        marketPosture: openTrades.length > 0 ? "active" : "cash",
+        watchTomorrow: [],
+        unresolvedItems: [
+          {
+            item: "GPT-4o briefing generation failed",
+            impact: "Next session will not have rich strategic context. Check Vercel logs for [briefing] errors.",
+            affectedPositions: openTrades.map((t: { symbol: string }) => t.symbol),
+          },
+        ],
+        selfCorrections: [],
+        dynamicQueries: [],
+      };
+      generationMethod = "minimal-stub";
+    }
 
     // ── Persist the briefing row ─────────────────────────────────────────────
+    // Single attempt with all V2 fields. The V2 columns have existed in the
+    // schema for months — the fallback was dead code based on stale assumptions.
 
-    const coreData = {
+    const briefingData = {
       analystId,
       runId,
       userId,
-      narrative: object.narrative,
+      narrative: object.narrative || "(empty)",
       marketContext: marketContext as object | undefined,
       theses: thesesData as object[],
       trades: tradesData as object[],
       portfolioSnapshot: portfolioSnapshot as object,
-      strategyNotes: object.strategyNotes,
-    };
-
-    const v2Data = {
-      marketPosture: object.marketPosture,
+      strategyNotes: object.strategyNotes || "(empty)",
+      marketPosture: object.marketPosture || "neutral",
       watchTomorrow: object.watchTomorrow as object[],
       unresolvedItems: object.unresolvedItems as object[],
       selfCorrections: object.selfCorrections as object[],
     };
 
-    // Try with V2 fields first, fall back to core-only if columns don't exist
-    try {
-      const fullData = { ...coreData, ...v2Data };
-      await prisma.analystBriefing.upsert({
-        where: { runId },
-        create: fullData,
-        update: fullData,
-      });
-    } catch (v2Err: unknown) {
-      const errMsg = v2Err instanceof Error ? v2Err.message : String(v2Err);
-      if (
-        errMsg.includes("marketPosture") ||
-        errMsg.includes("watchTomorrow") ||
-        errMsg.includes("unresolvedItems") ||
-        errMsg.includes("selfCorrections") ||
-        errMsg.includes("Unknown arg")
-      ) {
-        console.warn("[briefing] V2 columns not available, falling back to core schema");
-        await prisma.analystBriefing.upsert({
-          where: { runId },
-          create: coreData,
-          update: coreData,
-        });
-      } else {
-        throw v2Err;
-      }
-    }
+    await prisma.analystBriefing.upsert({
+      where: { runId },
+      create: briefingData,
+      update: briefingData,
+    });
+    console.log(`[briefing] Persisted briefing row for run=${runId} (method=${generationMethod})`);
 
     // ── Persist dynamic queries as Monitor rows ─────────────────────────────
     const dynamicQueries: DynamicQueryOutput[] = object.dynamicQueries ?? [];
@@ -545,8 +585,8 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
               enabled: true,
               builtIn: false,
               origin: "BRIEFING_AGENT",
-              category: dq.category,
-              expiresAt: new Date(now.getTime() + dq.expires_days * 24 * 60 * 60 * 1000),
+              category: dq.category ?? "THEMATIC",
+              expiresAt: new Date(now.getTime() + Math.min(Math.max(dq.expires_days ?? 7, 1), 30) * 24 * 60 * 60 * 1000),
               sourceRunId: runId,
             },
           });
@@ -564,10 +604,15 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
       `[briefing] Created briefing for ${config.name} (${analystId}) runId=${runId} in ${elapsed}ms (briefing agent via GPT-4o, ${dynamicQueries.length} dynamic queries)`
     );
   } catch (err) {
+    // RETHROW: callers MUST be able to detect failures.
+    // Previous design swallowed errors and lied about success — caused weeks
+    // of "successful" briefings that never wrote rows. Never again.
     console.error(
-      `[briefing] Failed to create briefing for analyst ${analystId}:`,
+      `[briefing] Failed to create briefing for analyst ${analystId} runId=${runId}:`,
       err
     );
-    // Non-fatal — don't throw
+    throw err instanceof Error
+      ? err
+      : new Error(`Briefing generation failed: ${String(err)}`);
   }
 }

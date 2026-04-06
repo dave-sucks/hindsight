@@ -53,13 +53,15 @@ export default async function RunPage({
     run.status === "RUNNING" &&
     Date.now() - new Date(run.startedAt).getTime() > STALE_THRESHOLD_MS;
 
-  // Mark stale runs as FAILED in the background so they don't keep appearing as live
+  // Mark stale runs as FAILED — atomic, only if still RUNNING
   if (isStale) {
-    await prisma.researchRun.update({
-      where: { id: run.id },
+    const staleResult = await prisma.researchRun.updateMany({
+      where: { id: run.id, status: "RUNNING" },
       data: { status: "FAILED", completedAt: new Date() },
     });
-    run.status = "FAILED";
+    if (staleResult.count > 0) {
+      run.status = "FAILED";
+    }
   }
 
   // Parse persisted messages for completed/failed runs

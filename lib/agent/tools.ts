@@ -1563,22 +1563,13 @@ export function createResearchTools(ctx: ToolContext) {
             return a === "INITIATE" || a === "ADD" || a === "TRADE";
           }).length;
 
-          // Idempotency check — if run is already COMPLETE, skip the update
-          const existingRun = await prisma.researchRun.findUnique({
-            where: { id: ctx.runId },
-            select: { status: true },
+          // Atomic: only transition non-COMPLETE → COMPLETE.
+          // If already COMPLETE (e.g., duplicate call), this is a no-op.
+          const completeResult = await prisma.researchRun.updateMany({
+            where: { id: ctx.runId, status: { not: "COMPLETE" } },
+            data: { status: "COMPLETE", completedAt: new Date() },
           });
-
-          if (existingRun?.status !== "COMPLETE") {
-            // Mark run COMPLETE
-            await prisma.researchRun.update({
-              where: { id: ctx.runId },
-              data: {
-                status: "COMPLETE",
-                completedAt: new Date(),
-              },
-            });
-          } else {
+          if (completeResult.count === 0) {
             console.log(`[tool] complete_run: run ${ctx.runId} already COMPLETE, skipping status update`);
           }
 
@@ -1645,24 +1636,45 @@ export function createResearchTools(ctx: ToolContext) {
             }
           }
 
-          // Generate post-run briefing directly — no Inngest, no events, just call it.
-          // This is the LAST tool the agent calls, so the extra 10-20s for GPT-4o is fine.
+          // Generate post-run briefing directly. updateAnalystBriefing now
+          // throws on failure (used to silently swallow). We ALSO verify the
+          // row was actually written, in case future bugs sneak past again.
+          console.log(`[tool] complete_run: ENTERING briefing block for run=${ctx.runId} analystId=${ctx.analystId ?? "MISSING"}`);
           let briefingStatus: "success" | "failed" | "skipped" = "skipped";
+          let briefingError: string | null = null;
           if (ctx.analystId) {
             try {
-              console.log(`[tool] complete_run: generating briefing for analyst=${ctx.analystId} run=${ctx.runId}`);
+              console.log(`[tool] complete_run: calling updateAnalystBriefing for analyst=${ctx.analystId} run=${ctx.runId}`);
+              const briefStart = Date.now();
               await updateAnalystBriefing({ analystId: ctx.analystId, runId: ctx.runId, userId: ctx.userId });
-              briefingStatus = "success";
-              console.log(`[tool] complete_run: ✅ briefing written for run=${ctx.runId}`);
+              console.log(`[tool] complete_run: updateAnalystBriefing returned for run=${ctx.runId} in ${Date.now() - briefStart}ms`);
+              // VERIFY the briefing row actually exists. Trust nothing.
+              const writtenBrief = await prisma.analystBriefing.findFirst({
+                where: { runId: ctx.runId },
+                select: { id: true },
+              });
+              if (writtenBrief) {
+                briefingStatus = "success";
+                console.log(`[tool] complete_run: ✅ briefing written and verified for run=${ctx.runId} (id=${writtenBrief.id})`);
+              } else {
+                briefingStatus = "failed";
+                briefingError = "updateAnalystBriefing returned without throwing but no AnalystBriefing row was persisted. Check [briefing] logs.";
+                console.error(`[tool] complete_run: ❌ ${briefingError}`);
+              }
             } catch (briefErr) {
               briefingStatus = "failed";
-              console.error(`[tool] complete_run: briefing generation failed for run=${ctx.runId}:`, briefErr instanceof Error ? briefErr.message : briefErr);
+              briefingError = briefErr instanceof Error ? briefErr.message : String(briefErr);
+              console.error(`[tool] complete_run: briefing generation THREW for run=${ctx.runId}:`, briefingError);
             }
           } else {
+            briefingError = "No analyst linked to this run — briefing requires an analyst context.";
             console.warn(`[tool] complete_run: no analystId in context (runId=${ctx.runId}) — briefing skipped`);
           }
+          console.log(`[tool] complete_run: EXITING briefing block for run=${ctx.runId} status=${briefingStatus}`);
 
-          // Record briefing event so it's visible in the run UI
+          // Record briefing event so it's visible in the run UI.
+          // Include the error in the payload AND the message so the chat UI
+          // surfaces the failure to the user without needing Vercel logs.
           try {
             await prisma.runEvent.create({
               data: {
@@ -1671,15 +1683,20 @@ export function createResearchTools(ctx: ToolContext) {
                 title: briefingStatus === "success"
                   ? "Portfolio briefing written"
                   : briefingStatus === "failed"
-                    ? "Portfolio briefing failed"
-                    : "Portfolio briefing skipped (no analyst)",
+                    ? "Portfolio briefing FAILED"
+                    : "Portfolio briefing skipped",
                 message: briefingStatus === "success"
                   ? "GPT-4o reviewed the full session and wrote the standup brief for the next run."
-                  : null,
-                payload: { briefingStatus } as object,
+                  : briefingError ?? "Briefing generation did not run.",
+                payload: {
+                  briefingStatus,
+                  ...(briefingError ? { error: briefingError } : {}),
+                } as object,
               },
             });
-          } catch { /* non-fatal */ }
+          } catch (evtErr) {
+            console.error(`[tool] complete_run: failed to write briefing_generated event:`, evtErr);
+          }
 
           logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length} briefing=${briefingStatus}`, stats);
           const eb = args.exposure_breakdown;
@@ -1688,6 +1705,7 @@ export function createResearchTools(ctx: ToolContext) {
             analyzed: args.ranked_picks.length,
             traded,
             briefing: briefingStatus,
+            briefingError,
             marketSummary: args.market_summary,
             rankedPicks: args.ranked_picks,
             exposureBreakdown: eb ? { longExposure: eb.long_exposure, shortExposure: eb.short_exposure, netExposure: eb.net_exposure } : undefined,
@@ -1699,23 +1717,56 @@ export function createResearchTools(ctx: ToolContext) {
           console.error(`[tool] complete_run FAILED:`, err instanceof Error ? err.message : err);
           // Best-effort: try to mark run COMPLETE even if everything else failed
           try {
-            await prisma.researchRun.update({
-              where: { id: ctx.runId },
+            await prisma.researchRun.updateMany({
+              where: { id: ctx.runId, status: { not: "COMPLETE" } },
               data: { status: "COMPLETE", completedAt: new Date() },
             });
           } catch { /* already tried */ }
-          // Try to generate briefing even on partial failure
+          // Try to generate briefing even on partial failure, with verification.
           let briefingStatus: "success" | "failed" | "skipped" = "skipped";
+          let briefingError: string | null = null;
           if (ctx.analystId) {
             try {
               await updateAnalystBriefing({ analystId: ctx.analystId, runId: ctx.runId, userId: ctx.userId });
-              briefingStatus = "success";
-            } catch {
+              const writtenBrief = await prisma.analystBriefing.findFirst({
+                where: { runId: ctx.runId },
+                select: { id: true },
+              });
+              if (writtenBrief) {
+                briefingStatus = "success";
+              } else {
+                briefingStatus = "failed";
+                briefingError = "Briefing returned without error but no row was written.";
+              }
+            } catch (briefErr) {
               briefingStatus = "failed";
+              briefingError = briefErr instanceof Error ? briefErr.message : String(briefErr);
             }
           }
+          // Surface the failure in the chat UI even when complete_run threw
+          try {
+            await prisma.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: "briefing_generated",
+                title: briefingStatus === "success"
+                  ? "Portfolio briefing written"
+                  : briefingStatus === "failed"
+                    ? "Portfolio briefing FAILED"
+                    : "Portfolio briefing skipped",
+                message: briefingStatus === "success"
+                  ? "Briefing written despite complete_run error."
+                  : briefingError ?? "Briefing did not run.",
+                payload: {
+                  briefingStatus,
+                  ...(briefingError ? { error: briefingError } : {}),
+                  completeRunError: err instanceof Error ? err.message : String(err),
+                } as object,
+              },
+            });
+          } catch { /* nothing more we can do */ }
           logToolEnd("complete_run", _t0, ctx.runId, "FAILED", stats);
-          return { status: "complete", analyzed: args.ranked_picks.length, traded: 0, briefing: briefingStatus, error: err instanceof Error ? err.message : "complete_run failed" };
+          return { status: "complete", analyzed: args.ranked_picks.length, traded: 0, briefing: briefingStatus, briefingError, error: err instanceof Error ? err.message : "complete_run failed" };
         }
       },
     }),

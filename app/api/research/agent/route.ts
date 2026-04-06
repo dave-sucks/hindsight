@@ -13,14 +13,23 @@ import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 
 export const maxDuration = 300; // 5 min — agent makes 100+ API calls with retry logic
 
-// Helper: mark a run as FAILED so it doesn't stay RUNNING forever
+// Helper: mark a run as FAILED so it doesn't stay RUNNING forever.
+// Uses atomic conditional update — only transitions RUNNING → FAILED.
+// Cannot overwrite COMPLETE even under concurrent execution.
 async function markRunFailed(runId: string | undefined, reason: string) {
   if (!runId) return;
   try {
-    await prisma.researchRun.update({
-      where: { id: runId },
+    // Atomic: updateMany with status guard in WHERE clause.
+    // Prisma's update() only filters by PK; updateMany supports arbitrary WHERE.
+    // If status is already COMPLETE or FAILED, count = 0 and nothing changes.
+    const result = await prisma.researchRun.updateMany({
+      where: { id: runId, status: "RUNNING" },
       data: { status: "FAILED", completedAt: new Date() },
     });
+    if (result.count === 0) {
+      console.log(`[agent] markRunFailed skipped: run ${runId} is not RUNNING (already terminal)`);
+      return;
+    }
     await prisma.runEvent.create({
       data: {
         runId,
@@ -195,38 +204,35 @@ export async function POST(req: Request) {
         // ── 1. Ensure run is not stuck RUNNING ──────────────────────────────
         // If the agent hit the step limit, errored, or stopped without calling
         // complete_run, the run stays RUNNING forever. Fix it here.
-        const currentRun = await prisma.researchRun.findFirst({
-          where: { id: runId },
-          select: { status: true, agentConfigId: true },
+        // Check if any work was done (theses or trades)
+        const [thesisCount, tradeCount] = await Promise.all([
+          prisma.thesis.count({ where: { researchRunId: runId } }),
+          prisma.tradeDecision.count({ where: { runId } }),
+        ]);
+        const hasWork = thesisCount > 0 || tradeCount > 0;
+        const finalStatus = hasWork ? "COMPLETE" : "FAILED";
+        // Atomic: only transition RUNNING → terminal. If complete_run already
+        // marked it COMPLETE, this is a no-op (count = 0).
+        const stuckResult = await prisma.researchRun.updateMany({
+          where: { id: runId, status: "RUNNING" },
+          data: { status: finalStatus, completedAt: new Date() },
         });
-        if (currentRun?.status === "RUNNING") {
-          // Check if any work was done (theses or trades)
-          const [thesisCount, tradeCount] = await Promise.all([
-            prisma.thesis.count({ where: { researchRunId: runId } }),
-            prisma.tradeDecision.count({ where: { runId } }),
-          ]);
-          const hasWork = thesisCount > 0 || tradeCount > 0;
-          const finalStatus = hasWork ? "COMPLETE" : "FAILED";
-          await prisma.researchRun.update({
-            where: { id: runId },
-            data: {
-              status: finalStatus,
-              completedAt: new Date(),
-            },
-          });
+        if (stuckResult.count > 0) {
           console.warn(`[agent] ⚠️ Run ${runId} was still RUNNING after onFinish (reason=${finishReason}). Marked ${finalStatus} (theses=${thesisCount}, trades=${tradeCount}).`);
         }
 
-        // ── 2. Persist messages ─────────────────────────────────────────────
+        // ── 2. Persist messages (atomic — old messages preserved on failure) ──
         try {
           const allMessages = [...messages, ...response.messages];
-          await prisma.runMessage.deleteMany({ where: { runId } });
-          await prisma.runMessage.create({
-            data: {
-              runId,
-              role: "thread",
-              content: JSON.stringify(allMessages),
-            },
+          await prisma.$transaction(async (tx) => {
+            await tx.runMessage.deleteMany({ where: { runId } });
+            await tx.runMessage.create({
+              data: {
+                runId,
+                role: "thread",
+                content: JSON.stringify(allMessages),
+              },
+            });
           });
           console.log(`[agent] Persisted ${allMessages.length} messages for runId=${runId}`);
         } catch (err) {
@@ -258,7 +264,10 @@ export async function POST(req: Request) {
 
         // No briefing yet — agent didn't call complete_run but we marked it COMPLETE.
         // Generate briefing directly here.
-        const briefingAnalystId = analystId || currentRun?.agentConfigId || null;
+        const runForBriefing = !analystId
+          ? await prisma.researchRun.findFirst({ where: { id: runId }, select: { agentConfigId: true } })
+          : null;
+        const briefingAnalystId = analystId || runForBriefing?.agentConfigId || null;
         if (briefingAnalystId) {
           try {
             console.log(`[agent] No briefing from complete_run — generating in onFinish for run ${runId}`);
