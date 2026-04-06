@@ -152,39 +152,47 @@ export const morningResearch = inngest.createFunction(
           });
 
           // Ensure run is marked COMPLETE (complete_run tool should have done this,
-          // but belt-and-suspenders in case the agent didn't call it)
-          const currentRun = await prisma.researchRun.findUnique({ where: { id: run.id } });
-          if (currentRun && currentRun.status === "RUNNING") {
-            await prisma.researchRun.update({
-              where: { id: run.id },
-              data: {
-                status: "COMPLETE",
-                completedAt: new Date(),
-                parameters: {
-                  ...(currentRun.parameters as object),
-                  tradesPlaced,
-                  agentSteps: steps.length,
-                  agentToolCalls: toolCalls,
-                  elapsedMs: elapsed,
-                } as object,
-              },
-            });
+          // but belt-and-suspenders in case the agent didn't call it).
+          // Atomic: only transition RUNNING → COMPLETE. No-op if already COMPLETE.
+          const beltResult = await prisma.researchRun.updateMany({
+            where: { id: run.id, status: "RUNNING" },
+            data: { status: "COMPLETE", completedAt: new Date() },
+          });
+          // Enrich parameters with run metadata (non-critical, separate write)
+          if (beltResult.count > 0) {
+            try {
+              const freshRun = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } });
+              await prisma.researchRun.update({
+                where: { id: run.id },
+                data: {
+                  parameters: {
+                    ...((freshRun?.parameters as object) ?? {}),
+                    tradesPlaced,
+                    agentSteps: steps.length,
+                    agentToolCalls: toolCalls,
+                    elapsedMs: elapsed,
+                  } as object,
+                },
+              });
+            } catch { /* parameter enrichment is non-critical */ }
           }
 
-          // Persist full conversation messages for replay (same format as agent route)
+          // Persist full conversation messages for replay (atomic — old messages preserved on failure)
           try {
             const userMessage = {
               role: "user",
               content: [{ type: "text", text: "Begin your research session. Follow all phases in order." }],
             };
             const allMessages = [userMessage, ...response.messages];
-            await prisma.runMessage.deleteMany({ where: { runId: run.id } });
-            await prisma.runMessage.create({
-              data: {
-                runId: run.id,
-                role: "thread",
-                content: JSON.stringify(allMessages),
-              },
+            await prisma.$transaction(async (tx) => {
+              await tx.runMessage.deleteMany({ where: { runId: run.id } });
+              await tx.runMessage.create({
+                data: {
+                  runId: run.id,
+                  role: "thread",
+                  content: JSON.stringify(allMessages),
+                },
+              });
             });
           } catch (msgErr) {
             console.warn("[morning-research] Failed to persist messages:", msgErr);
@@ -207,22 +215,31 @@ export const morningResearch = inngest.createFunction(
           const hasPartialWork = partialTheses > 0 || partialTrades > 0;
 
           const finalStatus = isTimeout && hasPartialWork ? "COMPLETE" : "FAILED";
-          await prisma.researchRun.update({
-            where: { id: run.id },
-            data: {
-              status: finalStatus,
-              completedAt: new Date(),
-              parameters: {
-                ...(run.parameters as object),
-                error: message,
-                failedAt: new Date().toISOString(),
-                ...(hasPartialWork ? { partialTheses, partialTrades, timedOut: true } : {}),
-              } as object,
-            },
+          // Atomic: only transition RUNNING → terminal. If complete_run already
+          // marked it COMPLETE, this is a no-op and we preserve that status.
+          const timeoutResult = await prisma.researchRun.updateMany({
+            where: { id: run.id, status: "RUNNING" },
+            data: { status: finalStatus, completedAt: new Date() },
           });
+          // Enrich parameters with error metadata (non-critical, separate write)
+          try {
+            const freshRun = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } });
+            await prisma.researchRun.update({
+              where: { id: run.id },
+              data: {
+                parameters: {
+                  ...((freshRun?.parameters as object) ?? {}),
+                  error: message,
+                  failedAt: new Date().toISOString(),
+                  ...(hasPartialWork ? { partialTheses, partialTrades, timedOut: true } : {}),
+                } as object,
+              },
+            });
+          } catch { /* parameter enrichment is non-critical */ }
 
-          // Generate briefing for timed-out runs with partial work (marked COMPLETE)
-          if (finalStatus === "COMPLETE") {
+          // Generate briefing for runs that ended up COMPLETE (either we set it or complete_run did)
+          const finalRun = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { status: true } });
+          if (finalRun?.status === "COMPLETE") {
             await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId });
           }
 

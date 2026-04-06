@@ -1,10 +1,75 @@
 "use client";
 
 import { useAssistantToolUI } from "@assistant-ui/react";
-import { CheckCircle2, HelpCircle } from "lucide-react";
+import { CheckCircle2, HelpCircle, AlertCircle, AlertTriangle } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+
+// ─── Briefing status banner ────────────────────────────────────────────────
+// Surfaces the post-run briefing result directly in the chat. Replaces the
+// invisible "briefing_generated" RunEvent which was previously written but
+// never rendered. The user must always be able to see whether the brief
+// actually generated, and if not, why.
+
+function BriefingStatusBanner({
+  status,
+  error,
+}: {
+  status: "success" | "failed" | "skipped";
+  error: string | null;
+}) {
+  if (status === "success") {
+    return (
+      <Card className="p-4">
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="size-5 text-emerald-500 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Portfolio briefing written</p>
+            <p className="text-sm text-muted-foreground">
+              GPT-4o reviewed the full session and wrote the standup brief for the next run.
+            </p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  if (status === "failed") {
+    return (
+      <Card className="p-4">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="size-5 text-red-500 shrink-0 mt-0.5" />
+          <div className="space-y-1 min-w-0 flex-1">
+            <p className="text-sm font-medium text-red-500">Portfolio briefing FAILED</p>
+            <p className="text-sm text-muted-foreground">
+              The post-run briefing did not generate. Your next session will not have updated context.
+            </p>
+            {error && (
+              <p className="text-xs font-mono text-muted-foreground break-words pt-1">
+                {error}
+              </p>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="size-5 text-muted-foreground shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Portfolio briefing skipped</p>
+          <p className="text-sm text-muted-foreground">
+            {error ?? "No analyst linked to this run."}
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
 import {
   ThesisCard,
   type ThesisCardData,
@@ -366,8 +431,13 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       );
     }
 
+    // Briefing status — surfaces success / failure / skipped directly in chat
+    // so the user can see whether the post-run brief was actually written.
+    const briefingStatus = result.briefing as "success" | "failed" | "skipped" | undefined;
+    const briefingError = (result.briefingError ?? result.briefing_error) as string | null | undefined;
+
     return (
-      <div className="my-2">
+      <div className="my-2 space-y-2">
         <DecisionSummaryCard
           rankedPicks={(result.rankedPicks ?? result.ranked_picks ?? []) as { rank: number; ticker: string; direction: string; confidence: number; reasoning: string; action: string }[]}
           marketSummary={(result.marketSummary ?? result.market_summary ?? "") as string}
@@ -385,6 +455,9 @@ export function useRegisterResearchToolUIs(_runId?: string) {
           overallAssessment={(result.overallAssessment ?? result.overall_assessment ?? "") as string}
           portfolioReview={(result.portfolioReview ?? result.portfolio_review) as string | undefined}
         />
+        {briefingStatus && (
+          <BriefingStatusBanner status={briefingStatus} error={briefingError ?? null} />
+        )}
       </div>
     );
   };

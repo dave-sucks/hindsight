@@ -33,6 +33,25 @@ export async function POST(req: Request) {
     : null;
 
   try {
+    // Prevent concurrent runs for the same analyst — two simultaneous runs
+    // can race past duplicate-position checks and create conflicting trades.
+    if (agentConfigId) {
+      const existingRun = await prisma.researchRun.findFirst({
+        where: {
+          agentConfigId: agentConfigId,
+          status: "RUNNING",
+        },
+        select: { id: true, startedAt: true },
+      });
+      if (existingRun) {
+        console.warn(`[agent-run] BLOCKED: analyst ${agentConfigId} already has RUNNING run ${existingRun.id}`);
+        return Response.json(
+          { error: "This analyst already has a run in progress.", existingRunId: existingRun.id },
+          { status: 409 },
+        );
+      }
+    }
+
     const run = await prisma.researchRun.create({
       data: {
         userId: user.id,

@@ -77,45 +77,50 @@ export async function closeOpenPosition(
         ? "LOSS"
         : "BREAKEVEN";
 
-  // 5. Create closing sell Order
-  await prisma.order.create({
-    data: {
-      positionId,
-      userId: position.userId,
-      symbol: position.symbol,
-      side: position.direction === "LONG" ? "SELL" : "BUY",
-      orderType: "MARKET",
-      quantity: position.quantity,
-      status: "FILLED",
-      filledPrice: closePrice,
-      filledQty: position.quantity,
-      filledAt: new Date(),
-    },
-  });
-
-  // 6. Update Position record
-  await prisma.position.update({
-    where: { id: positionId },
-    data: {
-      status: "CLOSED",
-      closePrice,
-      closeReason: reason,
-      realizedPnl,
-      outcome,
-      closedAt: new Date(),
-    },
-  });
-
-  // 7. Write CLOSED PositionEvent
+  // 5-7. Create Order, update Position, write PositionEvent atomically.
+  // All three represent a single logical close — partial writes cause
+  // inconsistent state that confuses downstream crons.
   const sign = realizedPnl >= 0 ? "+" : "";
-  await prisma.positionEvent.create({
-    data: {
-      positionId,
-      eventType: "CLOSED",
-      description: `Position closed (${reason}) at $${closePrice.toFixed(2)}. P&L: ${sign}$${realizedPnl.toFixed(2)} — ${outcome}`,
-      priceAt: closePrice,
-      pnlAt: realizedPnl,
-    },
+  await prisma.$transaction(async (tx) => {
+    // Create closing sell Order
+    await tx.order.create({
+      data: {
+        positionId,
+        userId: position.userId,
+        symbol: position.symbol,
+        side: position.direction === "LONG" ? "SELL" : "BUY",
+        orderType: "MARKET",
+        quantity: position.quantity,
+        status: "FILLED",
+        filledPrice: closePrice,
+        filledQty: position.quantity,
+        filledAt: new Date(),
+      },
+    });
+
+    // Update Position record
+    await tx.position.update({
+      where: { id: positionId },
+      data: {
+        status: "CLOSED",
+        closePrice,
+        closeReason: reason,
+        realizedPnl,
+        outcome,
+        closedAt: new Date(),
+      },
+    });
+
+    // Write CLOSED PositionEvent
+    await tx.positionEvent.create({
+      data: {
+        positionId,
+        eventType: "CLOSED",
+        description: `Position closed (${reason}) at $${closePrice.toFixed(2)}. P&L: ${sign}$${realizedPnl.toFixed(2)} — ${outcome}`,
+        priceAt: closePrice,
+        pnlAt: realizedPnl,
+      },
+    });
   });
 
   // 8. Fire Inngest event for post-trade agent evaluation
