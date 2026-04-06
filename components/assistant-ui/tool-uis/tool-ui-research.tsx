@@ -26,6 +26,131 @@ import { ClampedText } from "@/components/ai-elements/clamped-text";
 import { extractToolSources, SourceChips } from "./tool-ui-shared";
 import { SuggestConfigRender } from "./tool-ui-config";
 
+// ─── Shared render functions (exported for tool-ui-followup.tsx reuse) ──────
+
+export const thesisRender = ({ result }: { result?: Record<string, unknown> }) => {
+  if (!result) {
+    return (
+      <ToolProgress defaultOpen>
+        <ToolProgressHeader loading>Building thesis...</ToolProgressHeader>
+        <ToolProgressContent>
+          <ToolProgressItem active>Generating analysis</ToolProgressItem>
+        </ToolProgressContent>
+      </ToolProgress>
+    );
+  }
+
+  const sources = extractToolSources(result);
+  const thesis: ThesisCardData = {
+    ticker: result.ticker as string,
+    direction: result.direction as "LONG" | "SHORT" | "PASS",
+    confidence_score: result.confidence_score as number,
+    reasoning_summary: result.reasoning_summary as string,
+    thesis_bullets: (result.thesis_bullets ?? []) as string[],
+    risk_flags: (result.risk_flags ?? []) as string[],
+    entry_price: (result.entry_price as number) ?? null,
+    target_price: (result.target_price as number) ?? null,
+    stop_loss: (result.stop_loss as number) ?? null,
+    hold_duration: (result.hold_duration as string) ?? "SWING",
+    signal_types: (result.signal_types ?? []) as string[],
+    company_name: (result.company_name as string) ?? null,
+    exchange: (result.exchange as string) ?? null,
+    sources: sources.map((s) => ({
+      provider: s.provider,
+      title: s.title,
+      url: s.url,
+      excerpt: s.excerpt,
+    })),
+    fundamentals: (result.fundamentals as ThesisCardData["fundamentals"]) ?? null,
+    status: (result.status as ThesisCardData["status"]) ?? undefined,
+  };
+
+  return (
+    <div className="my-2">
+      <ThesisCard {...thesis} />
+    </div>
+  );
+};
+
+export const placeTradeRender = ({ result }: { result?: Record<string, unknown> }) => {
+  if (!result) {
+    return (
+      <div className="my-2 max-w-md">
+        <OrderConfirm
+          data={{
+            productName: "Placing trade…",
+            productVariant: "Submitting to Alpaca Paper",
+          }}
+          control={{ isLoading: true }}
+        />
+      </div>
+    );
+  }
+
+  if (result.status === "FAILED" || result.success === false) {
+    return (
+      <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
+        Trade failed: {String(result.message)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-2">
+      <TradeCard
+        ticker={result.ticker as string}
+        direction={result.direction as "LONG" | "SHORT"}
+        entryPrice={typeof result.entryPrice === "number" ? result.entryPrice : 0}
+        shares={typeof result.shares === "number" ? result.shares : undefined}
+        targetPrice={typeof result.targetPrice === "number" ? result.targetPrice : undefined}
+        stopLoss={typeof result.stopLoss === "number" ? result.stopLoss : undefined}
+        status="OPEN"
+      />
+    </div>
+  );
+};
+
+export const closePositionRender = ({ result }: { result?: Record<string, unknown> }) => {
+  if (!result) {
+    return (
+      <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
+        Closing position…
+      </div>
+    );
+  }
+
+  if (result.status === "NO_POSITION") {
+    return (
+      <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
+        {String(result.message)}
+      </div>
+    );
+  }
+
+  if (result.status === "FAILED" || result.success === false) {
+    return (
+      <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
+        Close failed: {String(result.message)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-2">
+      <TradeCard
+        ticker={result.ticker as string}
+        direction={result.direction as "LONG" | "SHORT"}
+        entryPrice={typeof result.entryPrice === "number" ? result.entryPrice : 0}
+        shares={typeof result.shares === "number" ? result.shares : undefined}
+        closePrice={typeof result.closePrice === "number" ? result.closePrice : undefined}
+        realizedPnl={typeof result.realizedPnl === "number" ? result.realizedPnl : undefined}
+        outcome={(result.outcome as "WIN" | "LOSS" | "BREAKEVEN") ?? null}
+        status="CLOSED"
+      />
+    </div>
+  );
+};
+
 // ─── Research tool UI registrations ────────────────────────────────────────
 
 export function useRegisterResearchToolUIs(_runId?: string) {
@@ -36,7 +161,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
   useAssistantToolUI({ toolName: "get_options_flow", render: () => null });
   useAssistantToolUI({ toolName: "get_sec_filings", render: () => null });
 
-  // ── Intelligence: Morning Brief ────────────────────────────────────
+  // ── Intelligence: Morning Brief — generic envelope rendering ──────
   useAssistantToolUI({
     toolName: "read_morning_brief",
     render: ({ result }) => {
@@ -52,7 +177,11 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       }
 
       const r = result as Record<string, unknown>;
-      if (r.available === false) {
+      const summary = r.summary as string | undefined;
+      const tickers = r.tickers as { ticker: string; tag?: string; summary: string }[] | undefined;
+      const data = r.data as Record<string, unknown> | undefined;
+
+      if (data?.available === false || r.available === false) {
         return (
           <ToolProgress defaultOpen>
             <ToolProgressHeader>No morning brief available</ToolProgressHeader>
@@ -63,49 +192,26 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
-      const marketCtx = typeof r.marketContext === "string" ? r.marketContext : "";
-      const alerts = Array.isArray(r.portfolioAlerts) ? r.portfolioAlerts as Record<string, unknown>[] : [];
-      const watches = Array.isArray(r.watchlistUpdates) ? r.watchlistUpdates as Record<string, unknown>[] : [];
-      const opps = Array.isArray(r.newOpportunities) ? r.newOpportunities as Record<string, unknown>[] : [];
+      // Read marketContext from data envelope or legacy top-level
+      const marketCtx = (data?.marketContext as string) ?? (r.marketContext as string) ?? "";
 
       return (
         <ToolProgress defaultOpen>
-          <ToolProgressHeader>Morning intelligence brief</ToolProgressHeader>
+          <ToolProgressHeader>{summary ?? "Morning intelligence brief"}</ToolProgressHeader>
           <ToolProgressContent>
             {marketCtx && <ClampedText>{marketCtx}</ClampedText>}
 
-            {alerts.map((a, i) => (
-              <ToolProgressTickerItem
-                key={`alert-${i}`}
-                ticker={(a.ticker as string) ?? "?"}
-                tag="Holding"
-              >
-                {(a.alert as string) ?? (a.headline as string) ?? (a.summary as string) ?? ""}
-              </ToolProgressTickerItem>
-            ))}
-
-            {watches.map((w, i) => (
-              <ToolProgressTickerItem
-                key={`watch-${i}`}
-                ticker={(w.ticker as string) ?? "?"}
-                tag="Watching"
-              >
-                {(w.update as string) ?? (w.headline as string) ?? (w.summary as string) ?? ""}
-              </ToolProgressTickerItem>
-            ))}
-
-            {opps.map((o, i) => {
-              const ticker = Array.isArray(o.tickers) ? (o.tickers as string[])[0] : null;
-              return (
-                <ToolProgressTickerItem
-                  key={`opp-${i}`}
-                  ticker={ticker ?? "?"}
-                  tag="Opportunity"
-                >
-                  {(o.thesisSeed as string) ?? (o.headline as string) ?? (o.summary as string) ?? ""}
+            {tickers && tickers.length > 0 ? (
+              // Unified envelope rendering
+              tickers.map((t, i) => (
+                <ToolProgressTickerItem key={i} ticker={t.ticker} tag={t.tag}>
+                  {t.summary}
                 </ToolProgressTickerItem>
-              );
-            })}
+              ))
+            ) : (
+              // Fallback for old persisted runs without envelope
+              <ToolProgressItem>Brief loaded</ToolProgressItem>
+            )}
 
             <SourceChips sources={extractToolSources(r)} />
           </ToolProgressContent>
@@ -114,7 +220,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Intelligence: Signals ──────────────────────────────────────────
+  // ── Intelligence: Signals — generic envelope rendering ────────────
   useAssistantToolUI({
     toolName: "read_signals",
     render: ({ args, result }) => {
@@ -133,22 +239,26 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       }
 
       const r = result as Record<string, unknown>;
-      const count = typeof r.count === "number" ? r.count : 0;
-      const signals = Array.isArray(r.signals) ? r.signals as Record<string, unknown>[] : [];
-      const urgent = signals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
-      const bullish = signals.filter((s) => s.sentiment === "BULLISH").length;
-      const bearish = signals.filter((s) => s.sentiment === "BEARISH").length;
+      const summary = r.summary as string | undefined;
+      const tickers = r.tickers as { ticker: string; tag?: string; summary: string }[] | undefined;
+
       return (
         <ToolProgress defaultOpen>
-          <ToolProgressHeader>
-            Read {count} signal{count !== 1 ? "s" : ""} ({urgent} urgent, {bullish} bullish, {bearish} bearish)
-          </ToolProgressHeader>
+          <ToolProgressHeader>{summary ?? "Signals loaded"}</ToolProgressHeader>
           <ToolProgressContent>
-            {signals.slice(0, 5).map((s, i) => (
-              <ToolProgressItem key={i}>{s.headline as string}</ToolProgressItem>
-            ))}
-            {count > 5 && (
-              <ToolProgressItem>+{count - 5} more signals</ToolProgressItem>
+            {tickers && tickers.length > 0 ? (
+              <>
+                {tickers.slice(0, 8).map((t, i) => (
+                  <ToolProgressTickerItem key={i} ticker={t.ticker} tag={t.tag}>
+                    {t.summary}
+                  </ToolProgressTickerItem>
+                ))}
+                {tickers.length > 8 && (
+                  <ToolProgressItem>+{tickers.length - 8} more signals</ToolProgressItem>
+                )}
+              </>
+            ) : (
+              <ToolProgressItem>No signals found</ToolProgressItem>
             )}
             <SourceChips sources={extractToolSources(r)} />
           </ToolProgressContent>
@@ -157,7 +267,7 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Intelligence: Artifact ─────────────────────────────────────────
+  // ── Intelligence: Artifact — generic envelope rendering ───────────
   useAssistantToolUI({
     toolName: "read_artifact",
     render: ({ result }) => {
@@ -173,7 +283,9 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       }
 
       const r = result as Record<string, unknown>;
-      if (r.error) {
+      const summary = r.summary as string | undefined;
+
+      if (!summary && r.error) {
         return (
           <ToolProgress defaultOpen>
             <ToolProgressHeader>Article not found</ToolProgressHeader>
@@ -184,21 +296,11 @@ export function useRegisterResearchToolUIs(_runId?: string) {
         );
       }
 
-      const title = typeof r.title === "string" ? r.title : "Untitled";
-      const url = typeof r.url === "string" ? r.url : "";
-      const content = typeof r.contentMarkdown === "string" ? r.contentMarkdown : "";
-      const wordCount = content ? content.split(/\s+/).length : 0;
-      let domain = "";
-      try { domain = url ? new URL(url).hostname.replace(/^www\./, "") : ""; } catch { /* */ }
-
       return (
         <ToolProgress defaultOpen>
-          <ToolProgressHeader>
-            {domain ? `${domain}: ` : ""}{title} ({wordCount.toLocaleString()} words)
-          </ToolProgressHeader>
+          <ToolProgressHeader>{summary ?? "Article loaded"}</ToolProgressHeader>
           <ToolProgressContent>
-            <ToolProgressItem>{title}</ToolProgressItem>
-            <SourceChips sources={extractToolSources(r).length > 0 ? extractToolSources(r) : (domain ? [{ provider: domain, title, url }] : [])} />
+            <SourceChips sources={extractToolSources(r).length > 0 ? extractToolSources(r) : []} />
           </ToolProgressContent>
         </ToolProgress>
       );
@@ -206,50 +308,6 @@ export function useRegisterResearchToolUIs(_runId?: string) {
   });
 
   // ── Thesis → ThesisCard ────────────────────────────────────────────
-  const thesisRender = ({ result }: { result?: Record<string, unknown> }) => {
-    if (!result) {
-      return (
-        <ToolProgress defaultOpen>
-          <ToolProgressHeader loading>Building thesis...</ToolProgressHeader>
-          <ToolProgressContent>
-            <ToolProgressItem active>Generating analysis</ToolProgressItem>
-          </ToolProgressContent>
-        </ToolProgress>
-      );
-    }
-
-    const sources = extractToolSources(result as Record<string, unknown>);
-    const thesis: ThesisCardData = {
-      ticker: result.ticker as string,
-      direction: result.direction as "LONG" | "SHORT" | "PASS",
-      confidence_score: result.confidence_score as number,
-      reasoning_summary: result.reasoning_summary as string,
-      thesis_bullets: (result.thesis_bullets ?? []) as string[],
-      risk_flags: (result.risk_flags ?? []) as string[],
-      entry_price: (result.entry_price as number) ?? null,
-      target_price: (result.target_price as number) ?? null,
-      stop_loss: (result.stop_loss as number) ?? null,
-      hold_duration: (result.hold_duration as string) ?? "SWING",
-      signal_types: (result.signal_types ?? []) as string[],
-      company_name: (result.company_name as string) ?? null,
-      exchange: (result.exchange as string) ?? null,
-      sources: sources.map((s) => ({
-        provider: s.provider,
-        title: s.title,
-        url: s.url,
-        excerpt: s.excerpt,
-      })),
-      fundamentals: (result.fundamentals as ThesisCardData["fundamentals"]) ?? null,
-      status: (result.status as ThesisCardData["status"]) ?? undefined,
-    };
-
-    return (
-      <div className="my-2">
-        <ThesisCard {...thesis} />
-      </div>
-    );
-  };
-
   useAssistantToolUI({ toolName: "record_thesis", render: thesisRender });
   useAssistantToolUI({ toolName: "show_thesis", render: thesisRender });
 
@@ -289,96 +347,13 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Close position ─────────────────────────────────────────────────
-  useAssistantToolUI({
-    toolName: "close_position",
-    render: ({ result }) => {
-      if (!result) {
-        return (
-          <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
-            Closing position…
-          </div>
-        );
-      }
+  // ── Close position — direct passthrough to TradeCard ───────────────
+  useAssistantToolUI({ toolName: "close_position", render: closePositionRender });
 
-      if (result.status === "NO_POSITION") {
-        return (
-          <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
-            {String(result.message)}
-          </div>
-        );
-      }
+  // ── Place trade — direct passthrough to TradeCard ─────────────────
+  useAssistantToolUI({ toolName: "place_trade", render: placeTradeRender });
 
-      if (result.status === "FAILED" || result.success === false) {
-        return (
-          <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-            Close failed: {String(result.message)}
-          </div>
-        );
-      }
-
-      const pnl = typeof result.realized_pnl === "number" ? result.realized_pnl : 0;
-
-      return (
-        <div className="my-2">
-          <TradeCard
-            ticker={result.ticker as string}
-            direction={result.direction as "LONG" | "SHORT"}
-            entryPrice={typeof result.entry_price === "number" ? result.entry_price : 0}
-            shares={typeof result.closed_qty === "number" ? result.closed_qty : undefined}
-            closePrice={typeof result.close_price === "number" ? result.close_price : undefined}
-            realizedPnl={pnl}
-            outcome={(result.outcome as "WIN" | "LOSS" | "BREAKEVEN") ?? null}
-            status="CLOSED"
-          />
-        </div>
-      );
-    },
-  });
-
-  // ── Place trade → OrderConfirm / TradeCard ─────────────────────────
-  useAssistantToolUI({
-    toolName: "place_trade",
-    render: ({ result }) => {
-      if (!result) {
-        return (
-          <div className="my-2 max-w-md">
-            <OrderConfirm
-              data={{
-                productName: "Placing trade…",
-                productVariant: "Submitting to Alpaca Paper",
-              }}
-              control={{ isLoading: true }}
-            />
-          </div>
-        );
-      }
-
-      if (result.status === "FAILED" || result.success === false) {
-        return (
-          <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-            Trade failed: {String(result.message)}
-          </div>
-        );
-      }
-
-      return (
-        <div className="my-2">
-          <TradeCard
-            ticker={result.ticker as string}
-            direction={result.direction as "LONG" | "SHORT"}
-            entryPrice={typeof result.entry_price === "number" ? result.entry_price : 0}
-            shares={typeof result.shares === "number" ? result.shares : undefined}
-            targetPrice={typeof result.target_price === "number" ? result.target_price : undefined}
-            stopLoss={typeof result.stop_loss === "number" ? result.stop_loss : undefined}
-            status="OPEN"
-          />
-        </div>
-      );
-    },
-  });
-
-  // ── Run summary → DecisionSummaryCard ──────────────────────────────
+  // ── Run summary → DecisionSummaryCard — direct passthrough ────────
   const runSummaryRender = ({ result }: { result?: Record<string, unknown> }) => {
     if (!result) {
       return (
@@ -391,31 +366,24 @@ export function useRegisterResearchToolUIs(_runId?: string) {
       );
     }
 
-    const rankedPicks = (result.ranked_picks ?? []) as {
-      rank: number; ticker: string; direction: string;
-      confidence: number; reasoning: string; action: string;
-    }[];
-
-    const exposure = result.exposure_breakdown as {
-      long_exposure: number; short_exposure: number; net_exposure: number;
-    } | null;
-
     return (
       <div className="my-2">
         <DecisionSummaryCard
-          rankedPicks={rankedPicks.map((p) => ({
-            rank: p.rank, ticker: p.ticker, direction: p.direction,
-            confidence: p.confidence, reasoning: p.reasoning, action: p.action,
-          }))}
-          marketSummary={result.market_summary as string}
-          exposureBreakdown={exposure ? {
-            longExposure: exposure.long_exposure,
-            shortExposure: exposure.short_exposure,
-            netExposure: exposure.net_exposure,
-          } : undefined}
-          riskNotes={(result.risk_notes ?? []) as string[]}
-          overallAssessment={result.overall_assessment as string}
-          portfolioReview={result.portfolio_review as string | undefined}
+          rankedPicks={(result.rankedPicks ?? result.ranked_picks ?? []) as { rank: number; ticker: string; direction: string; confidence: number; reasoning: string; action: string }[]}
+          marketSummary={(result.marketSummary ?? result.market_summary ?? "") as string}
+          exposureBreakdown={
+            result.exposureBreakdown
+              ? result.exposureBreakdown as { longExposure?: number; shortExposure?: number; netExposure?: number }
+              : result.exposure_breakdown
+                ? (() => {
+                    const eb = result.exposure_breakdown as { long_exposure?: number; short_exposure?: number; net_exposure?: number };
+                    return { longExposure: eb.long_exposure, shortExposure: eb.short_exposure, netExposure: eb.net_exposure };
+                  })()
+                : undefined
+          }
+          riskNotes={(result.riskNotes ?? result.risk_notes ?? []) as string[]}
+          overallAssessment={(result.overallAssessment ?? result.overall_assessment ?? "") as string}
+          portfolioReview={(result.portfolioReview ?? result.portfolio_review) as string | undefined}
         />
       </div>
     );

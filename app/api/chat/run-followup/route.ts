@@ -302,9 +302,9 @@ ${tradeSummary || "No trades placed in this run."}
           return {
             ...args,
             status: "filled" as const,
-            fill_price: fillPrice,
-            trade_id: position.id,
-            alpaca_order_id: alpacaOrder.id,
+            entryPrice: fillPrice,
+            positionId: position.id,
+            alpacaOrderId: alpacaOrder.id,
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Trade failed";
@@ -382,15 +382,17 @@ ${tradeSummary || "No trades placed in this run."}
             return {
               ticker,
               status: "closed" as const,
-              close_price: closePrice,
-              realized_pnl: pnl,
+              closePrice,
+              realizedPnl: pnl,
+              entryPrice: position.avgCost,
               shares: position.quantity,
               direction: position.direction,
-              alpaca_order_id: order.id,
+              outcome: (pnl ?? 0) > 0 ? "WIN" as const : (pnl ?? 0) < 0 ? "LOSS" as const : "BREAKEVEN" as const,
+              alpacaOrderId: order.id,
             };
           }
 
-          return { ticker, status: "closed" as const, alpaca_order_id: order.id, note: "Position closed on Alpaca" };
+          return { ticker, status: "closed" as const, alpacaOrderId: order.id, note: "Position closed on Alpaca" };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Close failed";
           return { ticker, status: "failed" as const, error: msg };

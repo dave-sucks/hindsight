@@ -300,28 +300,39 @@ A separate briefing agent reviews your full session afterward and writes the sta
 ### CRITICAL: Output Formatting
 NEVER output phase labels like "Phase 0:", "Phase 1:", etc. in your messages. The phases above are internal workflow structure for YOU — the user should never see them. Write naturally as an analyst sharing findings, not as an agent announcing workflow steps.`);
 
-  // ── Section 9: Tool Reference ────────────────────────────────────────
+  // ── Section 9: Tool Return Format ─────────────────────────────────────
+  sections.push(`## Tool Return Format
+
+Research and intelligence tools return a unified envelope:
+- **summary**: Human-readable one-liner — read this for quick context before digging into data
+- **tickers**: Per-ticker findings as \`{ ticker, tag, summary }\` — normalized across all tools
+- **_sources**: Source attribution for citations
+- **data**: Tool-specific structured payload — dig into this for specifics (exact P/E ratio, individual filings, full signal details, etc.)
+
+Action tools (record_thesis, place_trade, close_position, manage_watchlist, complete_run) return domain-specific shapes with camelCase fields.`);
+
+  // ── Section 10: Tool Reference ───────────────────────────────────────
   sections.push(`## Tool Reference
 
 ### Intelligence Tools (Phase 1 — read pre-gathered data)
-- **read_morning_brief** — Today's pre-generated intelligence brief: market context, portfolio alerts, watchlist updates, new opportunities, risk flags. Call FIRST.
-- **read_signals** — Signals routed to you by background discovery jobs. Filter by tickers, themes, urgency. Signals marked as READ after retrieval.
-- **read_artifact** — Full extracted article/document content behind a signal. Use when a signal headline is interesting and you need the full text.
+- **read_morning_brief** — Today's pre-generated intelligence brief. summary gives the overview, tickers[] has per-ticker findings tagged Holding/Watching/Opportunity, data has full marketContext and raw alerts.
+- **read_signals** — Signals routed to you by background discovery jobs. Filter by tickers, themes, urgency. tickers[] has one entry per signal. data.signals has full signal objects with sources.
+- **read_artifact** — Full extracted article/document content behind a signal. summary has title and word count, data.contentMarkdown has the full text.
 
 ### Research Tools (live data — use for validation and deep dives)
-- **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, regime. SKIP if morning brief is available.
-- **get_stock_data** — Quote, profile, financials, technicals, analyst consensus, news.
-- **get_earnings_data** — Upcoming date, EPS estimates, beat rate.
-- **get_options_flow** — Put/call ratio, unusual contracts.
-- **get_sec_filings** — Recent SEC filings (10-K, 10-Q, 8-K, Form 4).
-- **web_search** — Live web search for real-time information. Use when pre-gathered signals are insufficient. Budget-limited by your intelligence policy.
+- **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, regime. summary gives the snapshot, data has full structured quotes and macro events. SKIP if morning brief is available.
+- **get_stock_data** — Quote, profile, financials, technicals, analyst consensus, news. summary gives the one-liner, tickers[0].summary has the key metrics, data has full structured objects.
+- **get_earnings_data** — Upcoming date, EPS estimates, beat rate. summary and data.recentQuarters for details.
+- **get_options_flow** — Put/call ratio, unusual contracts. summary gives the signal, data has full contract details.
+- **get_sec_filings** — Recent SEC filings (10-K, 10-Q, 8-K, Form 4). data.filings has the list.
+- **web_search** — Live web search via Perplexity Sonar. Budget-limited by your intelligence policy. tickers[] has findings, data.results has full search results.
 
 ### Action Tools (Phase 6-7 — execute decisions)
 - **record_thesis** — Persist thesis to DB. Returns thesis_id needed for trading. MANDATORY for every researched ticker.
-- **place_trade** — Execute paper trade via Alpaca. Requires thesis_id.
-- **close_position** — Close an existing open position by ticker.
+- **place_trade** — Execute paper trade via Alpaca. Requires thesis_id. Returns entryPrice, targetPrice, stopLoss (camelCase).
+- **close_position** — Close an existing open position by ticker. Returns entryPrice, closePrice, realizedPnl, outcome.
 - **manage_watchlist** — Add, remove, or update a watchlist item.
-- **complete_run** — Mark run complete with ranked picks and portfolio assessment. ALWAYS call last.`);
+- **complete_run** — Mark run complete with rankedPicks and portfolio assessment. ALWAYS call last.`);
 
   // ── Section 10: Rules ────────────────────────────────────────────────
   sections.push(`## Rules

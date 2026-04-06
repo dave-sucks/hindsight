@@ -41,19 +41,17 @@ export const useToolUICallbacks = () => useContext(ToolUICallbacksContext);
 
 // ─── Source attribution helpers ─────────────────────────────────────────────
 
-export interface SourceData {
-  provider: string;
-  title: string;
-  url?: string;
-  excerpt?: string;
-}
+import type { ToolSource } from "@/lib/agent/tool-types";
 
-/** Extract _sources from a tool result, falling back to provider-only strings */
-export function extractToolSources(result: Record<string, unknown>): SourceData[] {
+/** @deprecated Use ToolSource from lib/agent/tool-types.ts */
+export type SourceData = ToolSource;
+
+/** Extract _sources from a tool result */
+export function extractToolSources(result: Record<string, unknown>): ToolSource[] {
   const raw = result._sources;
   if (Array.isArray(raw)) {
     return raw.filter(
-      (s): s is SourceData =>
+      (s): s is ToolSource =>
         typeof s === "object" && s !== null && "provider" in s && "title" in s,
     );
   }
@@ -75,7 +73,7 @@ const PROVIDER_DOMAINS: Record<string, string> = {
   sec: "https://sec.gov",
 };
 
-function sourceUrl(s: SourceData): string {
+function sourceUrl(s: ToolSource): string {
   if (s.url) return s.url;
   const key = s.provider.toLowerCase().replace(/[^a-z ]/g, "");
   return PROVIDER_DOMAINS[key] ?? `https://${s.provider.toLowerCase().replace(/[^a-z]/g, "")}.com`;
@@ -102,7 +100,7 @@ function ProviderRow({ provider, url }: { provider: string; url: string }) {
   );
 }
 
-export function SourceChips({ sources }: { sources: SourceData[] }) {
+export function SourceChips({ sources }: { sources: ToolSource[] }) {
   if (!sources.length) return null;
   const urls = sources.map(sourceUrl);
 
