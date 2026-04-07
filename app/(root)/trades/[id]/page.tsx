@@ -1,3 +1,4 @@
+import type React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
@@ -48,11 +49,54 @@ function EventIcon({ type }: { type: string }) {
   }
 }
 
-function getStatusDisplay(status: string, outcome: string | null) {
-  if (status === 'OPEN') return { label: 'Held', dotClass: 'bg-blue-400 animate-pulse', tooltip: 'This position is actively held.' };
-  if (outcome === 'WIN')  return { label: 'Won', dotClass: 'bg-positive', tooltip: 'Position closed with a profit.' };
+function getStatusDisplay(
+  positionStatus: string,
+  outcome: string | null,
+  hasPendingOrder: boolean,
+  hasFilledBuy: boolean,
+) {
+  if (positionStatus === 'OPEN') {
+    if (!hasFilledBuy && hasPendingOrder) {
+      return {
+        label: 'Pending fill',
+        dotClass: 'bg-amber-500 animate-pulse',
+        tooltip: 'Buy order submitted to Alpaca but not yet filled. The position is recorded but not actually held.',
+      };
+    }
+    if (hasPendingOrder) {
+      return {
+        label: 'Closing…',
+        dotClass: 'bg-amber-500 animate-pulse',
+        tooltip: 'Sell order submitted but not yet filled. Still holding shares until Alpaca confirms.',
+      };
+    }
+    return {
+      label: 'Holding',
+      dotClass: 'bg-positive animate-pulse',
+      tooltip: 'Order filled — paper shares held in your Alpaca account.',
+    };
+  }
+  if (positionStatus === 'CANCELLED') {
+    return {
+      label: 'Cancelled',
+      dotClass: 'bg-muted-foreground/40',
+      tooltip: 'Position cancelled before any fill.',
+    };
+  }
+  if (outcome === 'WIN')  return { label: 'Won', dotClass: 'bg-positive', tooltip: 'Position closed at a profit.' };
   if (outcome === 'LOSS') return { label: 'Loss', dotClass: 'bg-negative', tooltip: 'Position closed at a loss.' };
   return { label: 'Closed', dotClass: 'bg-muted-foreground/40', tooltip: 'Position has been closed.' };
+}
+
+function fmtDateTime(d: Date | string): string {
+  return new Date(d).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 
@@ -81,6 +125,7 @@ export default async function TradeDetailPage({
     include: {
       events: { orderBy: { createdAt: 'asc' } },
       analyst: { select: { id: true, name: true } },
+      orders: { orderBy: { createdAt: 'asc' } },
       decisions: {
         take: 1,
         include: {
@@ -95,6 +140,12 @@ export default async function TradeDetailPage({
   });
 
   if (!position || position.userId !== user?.id) notFound();
+
+  const orders = position.orders;
+  const hasPendingOrder = orders.some((o) => o.status === 'PENDING');
+  const hasFilledBuy = orders.some((o) => o.side === 'BUY' && o.status === 'FILLED');
+  const openingBuy = orders.find((o) => o.side === 'BUY');
+  const closingSell = orders.filter((o) => o.side === 'SELL').slice(-1)[0];
 
   // Load thesis chain for this stock
   const thesisChain = await prisma.thesis.findMany({
@@ -156,7 +207,7 @@ export default async function TradeDetailPage({
   const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
   const isPos = pnl >= 0;
 
-  const status = getStatusDisplay(position.status, position.outcome ?? null);
+  const status = getStatusDisplay(position.status, position.outcome ?? null, hasPendingOrder, hasFilledBuy);
   const targetPrice = position.targetPrice ?? position.avgCost * 1.1;
   const stopPrice = position.stopLoss ?? position.avgCost * 0.9;
 
@@ -292,20 +343,33 @@ export default async function TradeDetailPage({
                       <Tooltip>
                         <TooltipTrigger render={
                           isOpen ? (
-                            <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
-                            </span>
+                            hasPendingOrder ? (
+                              <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+                              </span>
+                            ) : (
+                              <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
+                              </span>
+                            )
                           ) : (
                             <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/40 cursor-default" />
                           )
                         } />
-                        <TooltipContent side="bottom" className="text-xs tabular-nums">
-                          {position.openedAt ? new Date(position.openedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
+                        <TooltipContent side="bottom">
+                          <div className="tabular-nums">
+                            <div>Position opened {fmtDateTime(position.openedAt)}</div>
+                            {openingBuy?.filledAt && <div>Buy filled {fmtDateTime(openingBuy.filledAt)}</div>}
+                            {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
+                          </div>
                         </TooltipContent>
                       </Tooltip>
                       <span>
-                        {isOpen ? 'Holding' : 'Sold'}{' '}
+                        {isOpen
+                          ? (hasFilledBuy ? 'Holding' : 'Pending')
+                          : 'Sold'}{' '}
                         {trade.shares} shares at{' '}
                         <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
                         {' '}
@@ -444,17 +508,77 @@ export default async function TradeDetailPage({
           {/* Trade Details Card */}
           <Card>
             <CardContent className="p-3 flex flex-col gap-1">
-              {[
-                { label: 'Direction', value: trade.direction },
-                { label: 'Shares', value: String(trade.shares) },
-                { label: 'Position Cost', value: `$${positionCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
-                { label: 'Market Value', value: `$${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
-                ...(analystName ? [{ label: 'Analyst', value: analystName }] : []),
-                { label: 'Submitted', value: new Date(trade.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) },
-              ].map(({ label, value }) => (
+              {([
+                { label: 'Direction', value: trade.direction, tip: null },
+                { label: 'Shares', value: String(trade.shares), tip: null },
+                { label: 'Position Cost', value: `$${positionCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
+                { label: 'Market Value', value: `$${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
+                ...(analystName ? [{ label: 'Analyst', value: analystName, tip: null as React.ReactNode }] : []),
+                { label: 'Position opened', value: fmtDateTime(position.openedAt), tip: null },
+                ...(openingBuy
+                  ? [{
+                      label: 'Buy order',
+                      value: openingBuy.filledAt
+                        ? fmtDateTime(openingBuy.filledAt)
+                        : 'Pending fill',
+                      pending: openingBuy.status === 'PENDING',
+                      tip: (
+                        <div>
+                          <div>{openingBuy.filledAt ? `Filled ${fmtDateTime(openingBuy.filledAt)}` : `Ordered ${fmtDateTime(openingBuy.createdAt)}`}</div>
+                          {openingBuy.status === 'PENDING' && (
+                            <div className="text-amber-500">Awaiting fill · reconciles every 5 min</div>
+                          )}
+                          {openingBuy.alpacaOrderId && (
+                            <div className="opacity-60 font-mono text-[10px]">Alpaca {openingBuy.alpacaOrderId}</div>
+                          )}
+                        </div>
+                      ),
+                    }]
+                  : []),
+                ...(closingSell
+                  ? [{
+                      label: 'Sell order',
+                      value: closingSell.filledAt
+                        ? fmtDateTime(closingSell.filledAt)
+                        : 'Pending fill',
+                      pending: closingSell.status === 'PENDING',
+                      tip: (
+                        <div>
+                          <div>{closingSell.filledAt ? `Filled ${fmtDateTime(closingSell.filledAt)}` : `Ordered ${fmtDateTime(closingSell.createdAt)}`}</div>
+                          {closingSell.status === 'PENDING' && (
+                            <div className="text-amber-500">Awaiting fill · reconciles every 5 min</div>
+                          )}
+                          {closingSell.alpacaOrderId && (
+                            <div className="opacity-60 font-mono text-[10px]">Alpaca {closingSell.alpacaOrderId}</div>
+                          )}
+                        </div>
+                      ),
+                    }]
+                  : []),
+              ] as Array<{ label: string; value: string; tip: React.ReactNode | null; pending?: boolean }>).map(({ label, value, tip, pending }) => (
                 <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
                   <span className="text-muted-foreground">{label}</span>
-                  <span className="font-medium tabular-nums">{value}</span>
+                  {tip ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <span
+                              className={cn(
+                                'font-medium tabular-nums cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
+                                pending && 'text-amber-500',
+                              )}
+                            >
+                              {value}
+                            </span>
+                          }
+                        />
+                        <TooltipContent side="left" className="text-xs max-w-xs">{tip}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <span className="font-medium tabular-nums">{value}</span>
+                  )}
                 </div>
               ))}
 

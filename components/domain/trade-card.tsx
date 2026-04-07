@@ -25,7 +25,7 @@ export type TradeCardData = {
   direction: "LONG" | "SHORT";
   entryPrice: number;
   shares?: number;
-  status?: "OPEN" | "CLOSED" | "CANCELLED";
+  status?: "OPEN" | "PENDING" | "CLOSED" | "CANCELLED";
   outcome?: "WIN" | "LOSS" | "BREAKEVEN" | null;
   closePrice?: number | null;
   realizedPnl?: number | null;
@@ -33,6 +33,10 @@ export type TradeCardData = {
   stopLoss?: number | null;
   companyName?: string | null;
   exchange?: string | null;
+  // Order lifecycle metadata
+  placedAt?: string | null;
+  filledAt?: string | null;
+  alpacaOrderId?: string | null;
 };
 
 export type TradeCardProps = ComponentProps<typeof Card> & TradeCardData;
@@ -44,17 +48,32 @@ const STATUS_CONFIG: Record<
   { label: string; dotClass: string; icon: typeof CheckCircle2 }
 > = {
   OPEN: {
-    label: "Open",
-    dotClass: "bg-blue-400 animate-pulse",
+    label: "Holding",
+    dotClass: "bg-positive",
+    icon: CheckCircle2,
+  },
+  PENDING: {
+    label: "Pending",
+    dotClass: "bg-amber-500 animate-pulse",
     icon: Clock,
   },
-  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground", icon: CheckCircle2 },
+  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground/60", icon: CheckCircle2 },
   CANCELLED: {
     label: "Cancelled",
-    dotClass: "bg-muted-foreground/40",
+    dotClass: "border border-muted-foreground/60 bg-transparent",
     icon: XCircle,
   },
 };
+
+function fmtDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -82,6 +101,9 @@ export function TradeCard({
   stopLoss,
   companyName,
   exchange,
+  placedAt,
+  filledAt,
+  alpacaOrderId,
   className,
   ...cardProps
 }: TradeCardProps) {
@@ -120,10 +142,35 @@ export function TradeCard({
                   {companyName ?? ticker}
                 </p>
                 {/* Status badge inline */}
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground bg-transparent shrink-0">
-                  <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusCfg.dotClass)} />
-                  {statusCfg.label}
-                </span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground bg-transparent shrink-0 cursor-default">
+                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusCfg.dotClass)} />
+                        {statusCfg.label}
+                      </span>
+                    }
+                  />
+                  <TooltipContent side="bottom">
+                    <div>
+                      <div>
+                        {filledAt
+                          ? `Filled ${fmtDateTime(filledAt)}`
+                          : placedAt
+                            ? `Ordered ${fmtDateTime(placedAt)}`
+                            : statusCfg.label}
+                      </div>
+                      {status === "PENDING" && !filledAt && (
+                        <div className="text-amber-500">Awaiting fill</div>
+                      )}
+                      {alpacaOrderId && (
+                        <div className="opacity-60 font-mono text-[10px]">
+                          Alpaca {alpacaOrderId.slice(0, 8)}…
+                        </div>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               </div>
               {/* Ticker · Exchange · Confidence */}
               <div className="font-mono text-[11px] text-muted-foreground leading-tight mt-0.5 flex items-center gap-1 flex-wrap">
