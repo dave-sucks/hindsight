@@ -2156,16 +2156,20 @@ export function createResearchTools(ctx: ToolContext) {
         if (!ctx.analystId) return { summary: "No analyst context — cannot read brief.", _sources: [], data: { available: false } };
         logToolStart("read_morning_brief", ctx.runId, undefined, stats);
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const brief = await prisma.morningBrief.findUnique({
+        // Find the most recent MorningBrief for this analyst from the last 36 hours.
+        // We previously used findUnique with a strict date match against a @db.Date
+        // column, which has timezone footguns: setHours(0,0,0,0) on Vercel uses UTC,
+        // and the resulting Date object can be coerced to the wrong calendar day
+        // when compared against Postgres DATE values via the pg driver.
+        // 36 hours covers the case where the cron ran early morning but the agent
+        // runs late at night the same day, and excludes briefs older than yesterday.
+        const since = new Date(Date.now() - 36 * 60 * 60 * 1000);
+        const brief = await prisma.morningBrief.findFirst({
           where: {
-            analystId_date: {
-              analystId: ctx.analystId,
-              date: today,
-            },
+            analystId: ctx.analystId,
+            generatedAt: { gte: since },
           },
+          orderBy: { generatedAt: "desc" },
         });
 
         if (!brief) {
