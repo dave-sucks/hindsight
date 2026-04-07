@@ -358,10 +358,12 @@ export default async function TradeDetailPage({
                             <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/40 cursor-default" />
                           )
                         } />
-                        <TooltipContent side="bottom" className="text-xs tabular-nums space-y-0.5">
-                          <p>Position opened {fmtDateTime(position.openedAt)}</p>
-                          {openingBuy?.filledAt && <p>Buy filled {fmtDateTime(openingBuy.filledAt)}</p>}
-                          {hasPendingOrder && <p className="text-amber-500">Has pending order — see Orders panel</p>}
+                        <TooltipContent side="bottom">
+                          <div className="tabular-nums">
+                            <div>Position opened {fmtDateTime(position.openedAt)}</div>
+                            {openingBuy?.filledAt && <div>Buy filled {fmtDateTime(openingBuy.filledAt)}</div>}
+                            {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
+                          </div>
                         </TooltipContent>
                       </Tooltip>
                       <span>
@@ -521,17 +523,13 @@ export default async function TradeDetailPage({
                         : 'Pending fill',
                       pending: openingBuy.status === 'PENDING',
                       tip: (
-                        <div className="space-y-1">
-                          <p className="font-medium">{openingBuy.status}</p>
-                          <p>Submitted {fmtDateTime(openingBuy.createdAt)}</p>
-                          {openingBuy.filledAt && <p>Filled {fmtDateTime(openingBuy.filledAt)}</p>}
+                        <div>
+                          <div>{openingBuy.filledAt ? `Filled ${fmtDateTime(openingBuy.filledAt)}` : `Ordered ${fmtDateTime(openingBuy.createdAt)}`}</div>
                           {openingBuy.status === 'PENDING' && (
-                            <p className="text-amber-500">Awaiting Alpaca fill — reconciles every 5 min</p>
+                            <div className="text-amber-500">Awaiting fill · reconciles every 5 min</div>
                           )}
                           {openingBuy.alpacaOrderId && (
-                            <p className="font-mono text-[10px] text-muted-foreground/70 break-all">
-                              Alpaca: {openingBuy.alpacaOrderId}
-                            </p>
+                            <div className="opacity-60 font-mono text-[10px]">Alpaca {openingBuy.alpacaOrderId}</div>
                           )}
                         </div>
                       ),
@@ -545,17 +543,13 @@ export default async function TradeDetailPage({
                         : 'Pending fill',
                       pending: closingSell.status === 'PENDING',
                       tip: (
-                        <div className="space-y-1">
-                          <p className="font-medium">{closingSell.status}</p>
-                          <p>Submitted {fmtDateTime(closingSell.createdAt)}</p>
-                          {closingSell.filledAt && <p>Filled {fmtDateTime(closingSell.filledAt)}</p>}
+                        <div>
+                          <div>{closingSell.filledAt ? `Filled ${fmtDateTime(closingSell.filledAt)}` : `Ordered ${fmtDateTime(closingSell.createdAt)}`}</div>
                           {closingSell.status === 'PENDING' && (
-                            <p className="text-amber-500">Awaiting Alpaca fill — reconciles every 5 min</p>
+                            <div className="text-amber-500">Awaiting fill · reconciles every 5 min</div>
                           )}
                           {closingSell.alpacaOrderId && (
-                            <p className="font-mono text-[10px] text-muted-foreground/70 break-all">
-                              Alpaca: {closingSell.alpacaOrderId}
-                            </p>
+                            <div className="opacity-60 font-mono text-[10px]">Alpaca {closingSell.alpacaOrderId}</div>
                           )}
                         </div>
                       ),

@@ -34,12 +34,12 @@ import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PnlArrow } from '@/components/ui/pnl-arrow';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { TRADE_STATUS_DISPLAY, shortAlpacaId } from '@/lib/trade-status';
 import { closeTrade, cancelTrade } from '@/lib/actions/closeTrade.actions';
 import {
   mockOpenTrades,
   mockClosedTrades,
   type MockTrade,
-  type TradeStatus,
 } from '@/lib/mock-data/trades';
 import { Loader2, MoreHorizontal } from 'lucide-react';
 import { ConceptTooltip } from '@/components/domain/education-card';
@@ -57,26 +57,6 @@ interface TradesPageProps {
 type FilterTab = 'ALL' | 'OPEN' | 'CLOSED' | 'WON' | 'LOST';
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<TradeStatus, { label: string; dotClass: string; tip: string }> = {
-  OPEN: {
-    label: 'Holding',
-    dotClass: 'bg-positive animate-pulse',
-    tip: 'Order filled — paper shares held in your Alpaca account.',
-  },
-  PENDING: {
-    label: 'Pending fill',
-    dotClass: 'bg-amber-500 animate-pulse',
-    tip: 'Order submitted to Alpaca but not yet filled. Common outside regular market hours.',
-  },
-  CLOSED_WIN: { label: 'Won', dotClass: 'bg-positive', tip: 'Closed at a profit.' },
-  CLOSED_LOSS: { label: 'Loss', dotClass: 'bg-negative', tip: 'Closed at a loss.' },
-  CLOSED_EXPIRED: {
-    label: 'Expired',
-    dotClass: 'bg-muted-foreground/40',
-    tip: 'Closed without a clear outcome (cancelled, time-based exit, etc.).',
-  },
-};
 
 function formatRelativeTime(dateStr: string): string {
   const diffMs = Date.now() - new Date(dateStr).getTime();
@@ -290,7 +270,13 @@ export default function TradesPage({
           </TableHeader>
           <TableBody>
             {filtered.map((trade) => {
-              const cfg = STATUS_CONFIG[trade.status] ?? { label: trade.status, dotClass: 'bg-muted-foreground/40', tip: '' };
+              const cfg = TRADE_STATUS_DISPLAY[trade.status] ?? TRADE_STATUS_DISPLAY.OPEN;
+              const timeLabel = cfg.timeLabel({
+                placedAt: trade.placedAt,
+                filledAt: trade.filledAt,
+                closedAt: trade.closedAt,
+              });
+              const shortId = shortAlpacaId(trade.alpacaOrderId);
               const isOpen = trade.status === 'OPEN' || trade.status === 'PENDING';
               const isPending = trade.status === 'PENDING';
               const isStalePrice = trade.priceSource === 'missing';
@@ -327,31 +313,18 @@ export default function TradesPage({
                       <TooltipTrigger
                         render={
                           <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default">
-                            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${cfg.dotClass}`} />
+                            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', cfg.dotClass)} />
                             {cfg.label}
                           </span>
                         }
                       />
-                      <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
-                        <p>{cfg.tip}</p>
-                        {trade.placedAt && (
-                          <p className="text-muted-foreground">
-                            Order placed {formatExactTime(trade.placedAt)}
-                          </p>
-                        )}
-                        {trade.filledAt && (
-                          <p className="text-muted-foreground">
-                            Filled {formatExactTime(trade.filledAt)} @ ${trade.entryPrice.toFixed(2)}
-                          </p>
-                        )}
-                        {!trade.filledAt && isPending && (
-                          <p className="text-amber-500">Awaiting Alpaca fill confirmation</p>
-                        )}
-                        {trade.alpacaOrderId && (
-                          <p className="text-muted-foreground/70 font-mono text-[10px]">
-                            Alpaca: {trade.alpacaOrderId.slice(0, 8)}…
-                          </p>
-                        )}
+                      <TooltipContent side="bottom">
+                        <div>
+                          <div>{timeLabel}</div>
+                          {shortId && (
+                            <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>
+                          )}
+                        </div>
                       </TooltipContent>
                     </Tooltip>
                   </TableCell>
@@ -369,20 +342,19 @@ export default function TradesPage({
                           </span>
                         }
                       />
-                      <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
-                        {trade.priceSource === 'alpaca' && (
-                          <p>Live price via Alpaca {trade.priceUpdatedAt && `· ${formatExactTime(trade.priceUpdatedAt)}`}</p>
-                        )}
-                        {trade.priceSource === 'finnhub' && (
-                          <p>Price via Finnhub fallback {trade.priceUpdatedAt && `· ${formatExactTime(trade.priceUpdatedAt)}`}</p>
-                        )}
-                        {(trade.priceSource === 'missing' || trade.priceSource === undefined) && isOpen && (
-                          <>
-                            <p className="text-amber-500">No live price available right now.</p>
-                            <p className="text-muted-foreground">Showing entry price ${trade.entryPrice.toFixed(2)} as a placeholder. Day gain / total gain will read $0 until a quote comes through.</p>
-                          </>
-                        )}
-                        {!isOpen && <p>Closing price.</p>}
+                      <TooltipContent side="bottom">
+                        <div>
+                          {trade.priceSource === 'alpaca' && (
+                            <div>Live via Alpaca{trade.priceUpdatedAt && ` · ${formatExactTime(trade.priceUpdatedAt)}`}</div>
+                          )}
+                          {trade.priceSource === 'finnhub' && (
+                            <div>Via Finnhub{trade.priceUpdatedAt && ` · ${formatExactTime(trade.priceUpdatedAt)}`}</div>
+                          )}
+                          {(trade.priceSource === 'missing' || trade.priceSource === undefined) && isOpen && (
+                            <div>No live price — showing entry ${trade.entryPrice.toFixed(2)}</div>
+                          )}
+                          {!isOpen && <div>Closing price</div>}
+                        </div>
                       </TooltipContent>
                     </Tooltip>
                   </TableCell>
@@ -457,15 +429,15 @@ export default function TradesPage({
                           </span>
                         }
                       />
-                      <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
-                        {trade.placedAt && (
-                          <p>Order placed: <span className="tabular-nums">{formatExactTime(trade.placedAt)}</span></p>
-                        )}
-                        {trade.filledAt ? (
-                          <p>Filled: <span className="tabular-nums">{formatExactTime(trade.filledAt)}</span></p>
-                        ) : isPending ? (
-                          <p className="text-amber-500">Awaiting fill</p>
-                        ) : null}
+                      <TooltipContent side="bottom">
+                        <div>
+                          {trade.placedAt && <div>Ordered {formatExactTime(trade.placedAt)}</div>}
+                          {trade.filledAt
+                            ? <div>Filled {formatExactTime(trade.filledAt)}</div>
+                            : isPending
+                              ? <div className="text-amber-500">Awaiting fill</div>
+                              : null}
+                        </div>
                       </TooltipContent>
                     </Tooltip>
                   </TableCell>

@@ -1,7 +1,14 @@
 // Mock data — structure matches the real Prisma Position schema shape for easy swap-in
 
 export type TradeDirection = 'LONG' | 'SHORT';
-export type TradeStatus = 'OPEN' | 'PENDING' | 'CLOSED_WIN' | 'CLOSED_LOSS' | 'CLOSED_EXPIRED';
+export type TradeStatus =
+  | 'OPEN'
+  | 'PENDING'
+  | 'CLOSED_WIN'
+  | 'CLOSED_LOSS'
+  | 'CLOSED_EXPIRED'
+  | 'CANCELLED'
+  | 'REJECTED';
 export type PriceSource = 'alpaca' | 'finnhub' | 'missing';
 
 export interface MockTrade {
@@ -24,18 +31,16 @@ export interface MockTrade {
   analystName?: string;
   alpacaOrderId?: string;
 
-  // ── Order lifecycle (populated from Order row) ─────────────────────────────
-  /** When the order was submitted to Alpaca */
+  // ── Order lifecycle (derived from latest Order row) ───────────────────────
+  /** When the latest order was submitted to Alpaca */
   placedAt?: string;
-  /** When Alpaca confirmed the fill — undefined means still awaiting fill */
+  /** When the latest order filled — undefined if still pending */
   filledAt?: string;
-  /** Raw order status from Order.status: PENDING | FILLED | CANCELLED | REJECTED */
+  /** Raw latest Order.status: PENDING | FILLED | CANCELLED | REJECTED */
   orderStatus?: string;
 
   // ── Price freshness metadata ──────────────────────────────────────────────
-  /** Where the currentPrice came from. 'missing' means we fell back to entryPrice. */
   priceSource?: PriceSource;
-  /** ISO timestamp of the live price fetch (only set when source !== 'missing') */
   priceUpdatedAt?: string;
 }
 

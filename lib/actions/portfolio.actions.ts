@@ -94,6 +94,7 @@ export interface DashboardData {
 
 function mapStatus(status: string, outcome: string | null): TradeStatus {
   if (status === "OPEN") return "OPEN";
+  if (status === "CANCELLED") return "CANCELLED";
   if (outcome === "WIN") return "CLOSED_WIN";
   if (outcome === "LOSS") return "CLOSED_LOSS";
   return "CLOSED_EXPIRED";
@@ -214,7 +215,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       orderBy: { openedAt: "desc" },
     }),
     prisma.position.findMany({
-      where: { userId, status: "CLOSED" },
+      where: { userId, status: { in: ["CLOSED", "CANCELLED"] } },
       include: {
         analyst: { select: { name: true } },
       },
@@ -312,7 +313,12 @@ export async function getDashboardData(): Promise<DashboardData> {
     const currentPrice = livePrice ?? p.avgCost;
     const { dollars, pct } = calcPnl(p.direction, p.avgCost, currentPrice, p.quantity);
     const order = p.orders?.[0];
-    const isFilled = !order || order.status === "FILLED" || order.filledAt != null;
+    // Derive the display status from Position.status + latest Order.status.
+    // Position stays OPEN until its BUY actually fills; the PENDING/REJECTED
+    // view-model statuses are UI-only denormalizations.
+    let displayStatus: TradeStatus = "OPEN";
+    if (order?.status === "REJECTED") displayStatus = "REJECTED";
+    else if (order?.status === "PENDING" || (order && order.filledAt == null)) displayStatus = "PENDING";
     return {
       id: p.id,
       ticker: p.symbol,
@@ -322,7 +328,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       targetPrice: p.targetPrice ?? p.avgCost * 1.1,
       stopPrice: p.stopLoss ?? p.avgCost * 0.9,
       confidenceScore: 0, // TODO: join via TradeDecision → Thesis
-      status: isFilled ? ("OPEN" as const) : ("PENDING" as const),
+      status: displayStatus,
       pnl: livePrice !== undefined ? dollars : 0,
       pnlPct: livePrice !== undefined ? pct : 0,
       openedAt: p.openedAt.toISOString(),

@@ -216,6 +216,7 @@ function DashboardTradeRow({
       status={trade.status}
       placedAt={trade.placedAt}
       filledAt={trade.filledAt}
+      closedAt={trade.closedAt}
       priceSource={trade.priceSource}
       priceUpdatedAt={trade.priceUpdatedAt}
       alpacaOrderId={trade.alpacaOrderId}

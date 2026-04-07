@@ -45,26 +45,23 @@ export type TradeCardProps = ComponentProps<typeof Card> & TradeCardData;
 
 const STATUS_CONFIG: Record<
   string,
-  { label: string; dotClass: string; icon: typeof CheckCircle2; tip: string }
+  { label: string; dotClass: string; icon: typeof CheckCircle2 }
 > = {
   OPEN: {
     label: "Holding",
-    dotClass: "bg-positive animate-pulse",
+    dotClass: "bg-positive",
     icon: CheckCircle2,
-    tip: "Order filled — paper shares held in your Alpaca account.",
   },
   PENDING: {
-    label: "Pending fill",
+    label: "Pending",
     dotClass: "bg-amber-500 animate-pulse",
     icon: Clock,
-    tip: "Order submitted to Alpaca but not yet filled. Common outside regular market hours.",
   },
-  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground", icon: CheckCircle2, tip: "Position closed." },
+  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground/60", icon: CheckCircle2 },
   CANCELLED: {
     label: "Cancelled",
-    dotClass: "bg-muted-foreground/40",
+    dotClass: "border border-muted-foreground/60 bg-transparent",
     icon: XCircle,
-    tip: "Order cancelled before fill.",
   },
 };
 
@@ -154,18 +151,24 @@ export function TradeCard({
                       </span>
                     }
                   />
-                  <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
-                    <p>{statusCfg.tip}</p>
-                    {placedAt && <p className="text-muted-foreground">Order placed {fmtDateTime(placedAt)}</p>}
-                    {filledAt && <p className="text-muted-foreground">Filled {fmtDateTime(filledAt)} @ ${entryPrice.toFixed(2)}</p>}
-                    {!filledAt && status === "PENDING" && (
-                      <p className="text-amber-500">Awaiting Alpaca fill confirmation</p>
-                    )}
-                    {alpacaOrderId && (
-                      <p className="font-mono text-[10px] text-muted-foreground/70">
-                        Alpaca: {alpacaOrderId.slice(0, 8)}…
-                      </p>
-                    )}
+                  <TooltipContent side="bottom">
+                    <div>
+                      <div>
+                        {filledAt
+                          ? `Filled ${fmtDateTime(filledAt)}`
+                          : placedAt
+                            ? `Ordered ${fmtDateTime(placedAt)}`
+                            : statusCfg.label}
+                      </div>
+                      {status === "PENDING" && !filledAt && (
+                        <div className="text-amber-500">Awaiting fill</div>
+                      )}
+                      {alpacaOrderId && (
+                        <div className="opacity-60 font-mono text-[10px]">
+                          Alpaca {alpacaOrderId.slice(0, 8)}…
+                        </div>
+                      )}
+                    </div>
                   </TooltipContent>
                 </Tooltip>
               </div>

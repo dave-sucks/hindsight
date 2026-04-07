@@ -4,20 +4,12 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, pnlColor } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
+import { TRADE_STATUS_DISPLAY, shortAlpacaId } from "@/lib/trade-status";
+import type { TradeStatus } from "@/lib/mock-data/trades";
 
 // ── TradeRow ─────────────────────────────────────────────────────────────────
-// Compact trade list item: logo, ticker + price, position value, P&L + badge.
-// Used everywhere: dashboard sidebar, analyst detail, anywhere trades are listed.
-//
-// Status semantics (the thing that was confusing):
-//   "OPEN"     — Alpaca order filled, paper shares are held. The "Holding" pill.
-//   "PENDING"  — Order submitted to Alpaca but no fill yet (e.g. after-hours).
-//                Renders an amber "Pending fill" pill.
-//   anything else (CLOSED_*) — closed position, no badge.
-//
-// Price freshness:
-//   priceSource === "missing" → live quote unavailable; we render an amber
-//   "no live price" indicator instead of fake "+$0.00" P&L.
+// Compact trade list item. One dot, one ticker, one price, one P&L.
+// The dot color + tooltip encodes the entire status story — no text label.
 
 interface TradeRowProps {
   id: string;
@@ -29,6 +21,7 @@ interface TradeRowProps {
   pnlPct: number;
   status: string;
   openedAt?: Date | string;
+  closedAt?: string;
   placedAt?: string;
   filledAt?: string;
   priceSource?: "alpaca" | "finnhub" | "missing";
@@ -38,20 +31,17 @@ interface TradeRowProps {
   className?: string;
 }
 
-function fmtExact(d: string | Date): string {
-  return new Date(d).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
 function fmtShort(d: Date | string): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
     d instanceof Date ? d : new Date(d),
   );
+}
+
+function fmtPriceSource(source: string | undefined, updatedAt: string | undefined): string {
+  if (source === "alpaca") return `Live via Alpaca${updatedAt ? ` · ${new Date(updatedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}` : ""}`;
+  if (source === "finnhub") return `Via Finnhub${updatedAt ? ` · ${new Date(updatedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}` : ""}`;
+  if (source === "missing") return "No live price — showing entry";
+  return "";
 }
 
 export function TradeRow({
@@ -64,6 +54,7 @@ export function TradeRow({
   pnlPct,
   status,
   openedAt,
+  closedAt,
   placedAt,
   filledAt,
   priceSource,
@@ -79,6 +70,11 @@ export function TradeRow({
   const isOpen = status === "OPEN" || isPending;
   const isStalePrice = isOpen && priceSource === "missing";
 
+  const cfg = TRADE_STATUS_DISPLAY[(status as TradeStatus)] ?? TRADE_STATUS_DISPLAY.OPEN;
+  const timeLabel = cfg.timeLabel({ placedAt, filledAt, closedAt });
+  const shortId = shortAlpacaId(alpacaOrderId);
+  const priceSourceLabel = isOpen ? fmtPriceSource(priceSource, priceUpdatedAt) : null;
+
   return (
     <Link
       href={`/trades/${id}`}
@@ -93,73 +89,40 @@ export function TradeRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className={cn("h-1.5 w-1.5 rounded-full shrink-0 cursor-default", cfg.dotClass)} />
+                }
+              />
+              <TooltipContent side="top">
+                <div>
+                  <div>{timeLabel}</div>
+                  {shortId && <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>}
+                </div>
+              </TooltipContent>
+            </Tooltip>
             <span className="text-sm font-medium">{ticker}</span>
-            {isPending && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="inline-flex items-center gap-1 text-[9px] font-medium uppercase text-amber-500 cursor-default">
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                      Pending fill
-                    </span>
-                  }
-                />
-                <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
-                  <p>Order submitted to Alpaca but not yet filled.</p>
-                  {placedAt && <p>Placed {fmtExact(placedAt)}</p>}
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {!isPending && status === "OPEN" && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="text-[9px] font-medium uppercase text-positive/80 cursor-default">
-                      Holding
-                    </span>
-                  }
-                />
-                <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
-                  <p>Paper shares held in your Alpaca account.</p>
-                  {filledAt && <p>Filled {fmtExact(filledAt)}{entryPrice != null && ` @ $${entryPrice.toFixed(2)}`}</p>}
-                  {alpacaOrderId && (
-                    <p className="font-mono text-[10px] text-muted-foreground/70">
-                      Alpaca: {alpacaOrderId.slice(0, 8)}…
-                    </p>
-                  )}
-                </TooltipContent>
-              </Tooltip>
-            )}
           </div>
           <Tooltip>
             <TooltipTrigger
               render={
                 <span className="inline-flex items-center gap-1 text-sm tabular-nums font-light cursor-default">
-                  {isStalePrice && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  )}
                   ${currentPrice.toFixed(2)}
                 </span>
               }
             />
-            <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
-              {priceSource === "alpaca" && (
-                <p>Live price via Alpaca{priceUpdatedAt && ` · ${fmtExact(priceUpdatedAt)}`}</p>
-              )}
-              {priceSource === "finnhub" && (
-                <p>Price via Finnhub fallback{priceUpdatedAt && ` · ${fmtExact(priceUpdatedAt)}`}</p>
-              )}
-              {(priceSource === "missing" || priceSource === undefined) && isOpen && (
-                <>
-                  <p className="text-amber-500">No live price available right now.</p>
-                  {entryPrice != null && (
-                    <p className="text-muted-foreground">
-                      Showing entry price ${entryPrice.toFixed(2)} as a placeholder.
-                    </p>
-                  )}
-                </>
-              )}
-              {!isOpen && <p>Closing price.</p>}
+            <TooltipContent side="top">
+              <div>
+                {priceSourceLabel ? (
+                  <div>{priceSourceLabel}</div>
+                ) : (
+                  <div>Closing price</div>
+                )}
+                {isStalePrice && entryPrice != null && (
+                  <div className="opacity-60 text-[10px]">Showing entry ${entryPrice.toFixed(2)}</div>
+                )}
+              </div>
             </TooltipContent>
           </Tooltip>
         </div>
