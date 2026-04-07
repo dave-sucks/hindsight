@@ -151,13 +151,44 @@ export const morningResearch = inngest.createFunction(
             },
           });
 
-          // Ensure run is marked COMPLETE (complete_run tool should have done this,
-          // but belt-and-suspenders in case the agent didn't call it).
-          // Atomic: only transition RUNNING → COMPLETE. No-op if already COMPLETE.
+          // Ensure run is marked terminal. complete_run normally does this,
+          // but if the agent stopped mid-workflow without calling it we
+          // need to do it here AND honestly report the outcome.
+          //
+          // hasWork mirrors the agent route's onFinish logic: if the agent
+          // produced zero theses and zero trade decisions, it bailed out
+          // before reaching Phase 5/6/7 — that's a failed run, not a
+          // legitimate "no picks today". Marking it FAILED makes the
+          // failure visible in /runs instead of pretending nothing happened.
+          const [thesisCount, decisionCount] = await Promise.all([
+            prisma.thesis.count({ where: { researchRunId: run.id } }),
+            prisma.tradeDecision.count({ where: { runId: run.id } }),
+          ]);
+          const hasWork = thesisCount > 0 || decisionCount > 0;
+          const finalStatus = hasWork ? "COMPLETE" : "FAILED";
+          // Atomic: only transition RUNNING → terminal. No-op if complete_run
+          // already marked it COMPLETE.
           const beltResult = await prisma.researchRun.updateMany({
             where: { id: run.id, status: "RUNNING" },
-            data: { status: "COMPLETE", completedAt: new Date() },
+            data: { status: finalStatus, completedAt: new Date() },
           });
+          if (beltResult.count > 0 && !hasWork) {
+            console.warn(
+              `[morning-research] ⚠️ ${config.name} run=${run.id} bailed before Phase 5+ — ${steps.length} steps, ${toolCalls} tool calls, 0 theses, 0 decisions. Marked FAILED.`
+            );
+            // Surface the failure in the run UI
+            try {
+              await prisma.runEvent.create({
+                data: {
+                  runId: run.id,
+                  type: "run_failed",
+                  title: "Run did not complete",
+                  message: `Agent stopped after ${steps.length} steps and ${toolCalls} tool calls without calling record_thesis or complete_run. No theses or trade decisions were produced.`,
+                  payload: { steps: steps.length, toolCalls, thesisCount, decisionCount } as object,
+                },
+              });
+            } catch { /* event write is best-effort */ }
+          }
           // Enrich parameters with run metadata (non-critical, separate write)
           if (beltResult.count > 0) {
             try {
