@@ -1,3 +1,4 @@
+import type React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
@@ -502,80 +503,88 @@ export default async function TradeDetailPage({
 
         {/* ════ SIDEBAR ════ */}
         <div className="hidden lg:block space-y-4">
-          {/* Orders Card — the actual Alpaca order lifecycle */}
-          <Card>
-            <CardContent className="p-3 space-y-2">
-              <p className="text-sm font-medium">Orders</p>
-              {orders.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No orders recorded.</p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {orders.map((o) => {
-                    const dot =
-                      o.status === 'FILLED' ? 'bg-positive' :
-                      o.status === 'PENDING' ? 'bg-amber-500 animate-pulse' :
-                      o.status === 'CANCELLED' ? 'bg-muted-foreground/40' :
-                      o.status === 'REJECTED' ? 'bg-negative' :
-                      'bg-muted-foreground/40';
-                    return (
-                      <div key={o.id} className="flex flex-col gap-0.5 text-xs border-b border-border pb-1.5 last:border-0 last:pb-0">
-                        <div className="flex items-center justify-between">
-                          <span className="inline-flex items-center gap-1.5 font-medium">
-                            <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />
-                            {o.side} {o.quantity} @ {o.filledPrice ? `$${o.filledPrice.toFixed(2)}` : 'market'}
-                          </span>
-                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{o.status}</span>
-                        </div>
-                        <div className="text-[10px] text-muted-foreground tabular-nums pl-3">
-                          Submitted {fmtDateTime(o.createdAt)}
-                        </div>
-                        {o.filledAt && (
-                          <div className="text-[10px] text-muted-foreground tabular-nums pl-3">
-                            Filled {fmtDateTime(o.filledAt)}
-                          </div>
-                        )}
-                        {!o.filledAt && o.status === 'PENDING' && (
-                          <div className="text-[10px] text-amber-500 tabular-nums pl-3">
-                            Awaiting Alpaca fill — reconciles every 5 min
-                          </div>
-                        )}
-                        {o.alpacaOrderId && (
-                          <div className="text-[9px] font-mono text-muted-foreground/60 pl-3 truncate">
-                            {o.alpacaOrderId}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Trade Details Card */}
           <Card>
             <CardContent className="p-3 flex flex-col gap-1">
-              {[
-                { label: 'Direction', value: trade.direction },
-                { label: 'Shares', value: String(trade.shares) },
-                { label: 'Position Cost', value: `$${positionCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
-                { label: 'Market Value', value: `$${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
-                ...(analystName ? [{ label: 'Analyst', value: analystName }] : []),
-                { label: 'Position opened', value: fmtDateTime(position.openedAt) },
-                ...(openingBuy?.filledAt
-                  ? [{ label: 'Buy filled', value: fmtDateTime(openingBuy.filledAt) }]
-                  : openingBuy && openingBuy.status === 'PENDING'
-                    ? [{ label: 'Buy', value: 'Pending fill' }]
-                    : []),
-                ...(closingSell?.filledAt
-                  ? [{ label: 'Sell filled', value: fmtDateTime(closingSell.filledAt) }]
-                  : closingSell && closingSell.status === 'PENDING'
-                    ? [{ label: 'Sell', value: 'Pending fill' }]
-                    : []),
-              ].map(({ label, value }) => (
+              {([
+                { label: 'Direction', value: trade.direction, tip: null },
+                { label: 'Shares', value: String(trade.shares), tip: null },
+                { label: 'Position Cost', value: `$${positionCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
+                { label: 'Market Value', value: `$${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
+                ...(analystName ? [{ label: 'Analyst', value: analystName, tip: null as React.ReactNode }] : []),
+                { label: 'Position opened', value: fmtDateTime(position.openedAt), tip: null },
+                ...(openingBuy
+                  ? [{
+                      label: 'Buy order',
+                      value: openingBuy.filledAt
+                        ? fmtDateTime(openingBuy.filledAt)
+                        : 'Pending fill',
+                      pending: openingBuy.status === 'PENDING',
+                      tip: (
+                        <div className="space-y-1">
+                          <p className="font-medium">{openingBuy.status}</p>
+                          <p>Submitted {fmtDateTime(openingBuy.createdAt)}</p>
+                          {openingBuy.filledAt && <p>Filled {fmtDateTime(openingBuy.filledAt)}</p>}
+                          {openingBuy.status === 'PENDING' && (
+                            <p className="text-amber-500">Awaiting Alpaca fill — reconciles every 5 min</p>
+                          )}
+                          {openingBuy.alpacaOrderId && (
+                            <p className="font-mono text-[10px] text-muted-foreground/70 break-all">
+                              Alpaca: {openingBuy.alpacaOrderId}
+                            </p>
+                          )}
+                        </div>
+                      ),
+                    }]
+                  : []),
+                ...(closingSell
+                  ? [{
+                      label: 'Sell order',
+                      value: closingSell.filledAt
+                        ? fmtDateTime(closingSell.filledAt)
+                        : 'Pending fill',
+                      pending: closingSell.status === 'PENDING',
+                      tip: (
+                        <div className="space-y-1">
+                          <p className="font-medium">{closingSell.status}</p>
+                          <p>Submitted {fmtDateTime(closingSell.createdAt)}</p>
+                          {closingSell.filledAt && <p>Filled {fmtDateTime(closingSell.filledAt)}</p>}
+                          {closingSell.status === 'PENDING' && (
+                            <p className="text-amber-500">Awaiting Alpaca fill — reconciles every 5 min</p>
+                          )}
+                          {closingSell.alpacaOrderId && (
+                            <p className="font-mono text-[10px] text-muted-foreground/70 break-all">
+                              Alpaca: {closingSell.alpacaOrderId}
+                            </p>
+                          )}
+                        </div>
+                      ),
+                    }]
+                  : []),
+              ] as Array<{ label: string; value: string; tip: React.ReactNode | null; pending?: boolean }>).map(({ label, value, tip, pending }) => (
                 <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
                   <span className="text-muted-foreground">{label}</span>
-                  <span className="font-medium tabular-nums">{value}</span>
+                  {tip ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <span
+                              className={cn(
+                                'font-medium tabular-nums cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
+                                pending && 'text-amber-500',
+                              )}
+                            >
+                              {value}
+                            </span>
+                          }
+                        />
+                        <TooltipContent side="left" className="text-xs max-w-xs">{tip}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <span className="font-medium tabular-nums">{value}</span>
+                  )}
                 </div>
               ))}
 
