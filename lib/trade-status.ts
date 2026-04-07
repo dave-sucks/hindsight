@@ -52,7 +52,7 @@ export const TRADE_STATUS_DISPLAY: Record<TradeStatus, TradeStatusDisplay> = {
   },
   OPEN: {
     label: "Holding",
-    dotClass: "bg-positive",
+    dotClass: "bg-muted-foreground/60",
     timeLabel: (c) => (c.filledAt ? `Filled ${fmt(c.filledAt)}` : `Opened ${fmt(c.placedAt)}`),
   },
   CLOSED_WIN: {

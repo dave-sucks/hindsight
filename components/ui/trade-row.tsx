@@ -89,6 +89,7 @@ export function TradeRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
+            <span className="text-sm font-medium">{ticker}</span>
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -102,7 +103,6 @@ export function TradeRow({
                 </div>
               </TooltipContent>
             </Tooltip>
-            <span className="text-sm font-medium">{ticker}</span>
           </div>
           <Tooltip>
             <TooltipTrigger
