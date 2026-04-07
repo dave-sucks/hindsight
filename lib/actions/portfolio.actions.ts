@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getLatestPrices } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
+import { etTradingDayDate } from "@/lib/market-hours";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -410,8 +411,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   }));
 
   // ── 10. Today's picks ──────────────────────────────────────────────────────
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
+  const todayMidnight = etTradingDayDate();
 
   const dbTodaysPicks = await prisma.thesis.findMany({
     where: {

@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import { etTradingDayDate } from "@/lib/market-hours";
 import { finnhub, calcRSI, calcSMA } from "@/lib/agent/research-helpers";
 import type { MacroEvent } from "@/lib/discovery/types";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
@@ -2156,8 +2157,9 @@ export function createResearchTools(ctx: ToolContext) {
         if (!ctx.analystId) return { summary: "No analyst context — cannot read brief.", _sources: [], data: { available: false } };
         logToolStart("read_morning_brief", ctx.runId, undefined, stats);
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // ET trading-day date — server-local midnight on Vercel is UTC,
+        // which silently misses the brief on any run after 8 PM ET.
+        const today = etTradingDayDate();
 
         const brief = await prisma.morningBrief.findUnique({
           where: {
@@ -2241,10 +2243,16 @@ export function createResearchTools(ctx: ToolContext) {
 
         logToolStart("read_signals", ctx.runId, `tickers=${tickers?.join(",") ?? "all"} limit=${effectiveLimit} minUrgency=${urgencyOrder[effectiveMinIdx]} minQuality=${minSourceQuality}`, stats);
 
+        // NOTE: We intentionally do NOT filter by status: "PENDING" here.
+        // The agent calls read_signals multiple times in a single run with
+        // different filters; if we only returned PENDING, the second call
+        // would see 0 because the first call already marked everything READ.
+        // Cross-run dedup still works because each day's signal-router
+        // creates new routes — and we only routedAt within the trading day.
         const routes = await prisma.analystSignalRoute.findMany({
           where: {
             analystId: ctx.analystId,
-            status: "PENDING",
+            status: { in: ["PENDING", "READ"] },
             signal: {
               ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
               ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
@@ -2295,8 +2303,7 @@ export function createResearchTools(ctx: ToolContext) {
           });
 
           if (config && (config.sectors.length > 0 || config.watchlist.length > 0)) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            const today = etTradingDayDate();
 
             const fallbackSignals = await prisma.signal.findMany({
               where: {

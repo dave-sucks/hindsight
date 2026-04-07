@@ -9,6 +9,7 @@ import type {
   DigestOpenTrade,
 } from "@/lib/emails/weekly-digest";
 import OpenAI from "openai";
+import { etTradingDayDate } from "@/lib/market-hours";
 
 // ─── Clients (lazy — instantiated at runtime, not module load) ────────────────
 
@@ -24,12 +25,13 @@ function getOpenAI() {
 
 function weekRange(): { start: Date; label: string } {
   const now = new Date();
-  const start = new Date(now);
-  start.setDate(now.getDate() - 7);
-  start.setHours(0, 0, 0, 0);
+  // ET trading-day midnight, minus 7 days — see lib/market-hours.ts
+  const todayEt = etTradingDayDate(now);
+  const start = new Date(todayEt);
+  start.setUTCDate(todayEt.getUTCDate() - 7);
 
   const fmt = (d: Date) =>
-    d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" });
   const label = `${fmt(start)} – ${fmt(now)}, ${now.getFullYear()}`;
   return { start, label };
 }
