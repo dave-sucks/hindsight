@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma"
 import { generateObject } from "ai"
 import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
+import { etTradingDayDate } from "@/lib/market-hours"
 
 // ── Brief schema ────────────────────────────────────────────────────────────
 
@@ -191,9 +192,9 @@ INSTRUCTIONS:
 - Max 3 new opportunities. Quality over quantity.`,
           })
 
-          // Upsert today's brief (idempotent if re-run)
-          const today = new Date()
-          today.setHours(0, 0, 0, 0)
+          // Upsert today's brief (idempotent if re-run).
+          // ET trading-day date — see lib/market-hours.ts for rationale.
+          const today = etTradingDayDate()
 
           await prisma.morningBrief.upsert({
             where: {
