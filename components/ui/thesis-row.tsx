@@ -95,7 +95,7 @@ function consensus(dir: string, conf: number): { label: string; isStrong: boolea
 function posBadge(status: string, dir: string): { label: string; variant: "positive" | "negative" | "secondary" | "outline"; tip: string } {
   const short = dir === "SHORT";
   const m: Record<string, { label: string; variant: "positive" | "negative" | "secondary" | "outline"; tip: string }> = {
-    OPEN: { label: short ? "Short" : "Bought", variant: "positive", tip: short ? "Short position open." : "Position open and monitored." },
+    OPEN: { label: short ? "Short" : "Holding", variant: "positive", tip: short ? "Short position held." : "Paper shares held in your Alpaca account." },
     WIN: { label: "Closed · Won", variant: "positive", tip: "Closed at a profit." },
     LOSS: { label: "Closed · Lost", variant: "negative", tip: "Closed at a loss." },
     EVALUATED: { label: "Evaluated", variant: "secondary", tip: "Closed and evaluated." },
@@ -164,7 +164,16 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
               </Tooltip>
               <span className="text-sm">
                 {pos.quantity && <>{pos.quantity} shares @ </>}
-                <span className="tabular-nums font-medium">{$(pos.avgCost)}</span>
+                {pos.avgCost > 0 ? (
+                  <span className="tabular-nums font-medium">{$(pos.avgCost)}</span>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="tabular-nums font-medium text-amber-500 cursor-default">pending fill</span>} />
+                    <TooltipContent side="bottom" className="max-w-xs text-xs">
+                      Order was placed but no fill price has been recorded yet.
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 {t.targetPrice && t.targetPrice > 0 && <>, targeting <span className="tabular-nums font-medium">{$(t.targetPrice)}</span></>}
               </span>
               <div className="flex items-center gap-2 ml-auto">

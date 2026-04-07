@@ -209,10 +209,16 @@ function DashboardTradeRow({
       id={trade.id}
       ticker={trade.ticker}
       currentPrice={trade.currentPrice}
+      entryPrice={trade.entryPrice}
       shares={trade.shares}
       pnl={trade.pnl ?? 0}
       pnlPct={trade.pnlPct ?? 0}
       status={trade.status}
+      placedAt={trade.placedAt}
+      filledAt={trade.filledAt}
+      priceSource={trade.priceSource}
+      priceUpdatedAt={trade.priceUpdatedAt}
+      alpacaOrderId={trade.alpacaOrderId}
       flash={flash}
     />
   );

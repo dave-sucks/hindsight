@@ -25,7 +25,7 @@ export type TradeCardData = {
   direction: "LONG" | "SHORT";
   entryPrice: number;
   shares?: number;
-  status?: "OPEN" | "CLOSED" | "CANCELLED";
+  status?: "OPEN" | "PENDING" | "CLOSED" | "CANCELLED";
   outcome?: "WIN" | "LOSS" | "BREAKEVEN" | null;
   closePrice?: number | null;
   realizedPnl?: number | null;
@@ -33,6 +33,10 @@ export type TradeCardData = {
   stopLoss?: number | null;
   companyName?: string | null;
   exchange?: string | null;
+  // Order lifecycle metadata
+  placedAt?: string | null;
+  filledAt?: string | null;
+  alpacaOrderId?: string | null;
 };
 
 export type TradeCardProps = ComponentProps<typeof Card> & TradeCardData;
@@ -41,20 +45,38 @@ export type TradeCardProps = ComponentProps<typeof Card> & TradeCardData;
 
 const STATUS_CONFIG: Record<
   string,
-  { label: string; dotClass: string; icon: typeof CheckCircle2 }
+  { label: string; dotClass: string; icon: typeof CheckCircle2; tip: string }
 > = {
   OPEN: {
-    label: "Open",
-    dotClass: "bg-blue-400 animate-pulse",
-    icon: Clock,
+    label: "Holding",
+    dotClass: "bg-positive animate-pulse",
+    icon: CheckCircle2,
+    tip: "Order filled — paper shares held in your Alpaca account.",
   },
-  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground", icon: CheckCircle2 },
+  PENDING: {
+    label: "Pending fill",
+    dotClass: "bg-amber-500 animate-pulse",
+    icon: Clock,
+    tip: "Order submitted to Alpaca but not yet filled. Common outside regular market hours.",
+  },
+  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground", icon: CheckCircle2, tip: "Position closed." },
   CANCELLED: {
     label: "Cancelled",
     dotClass: "bg-muted-foreground/40",
     icon: XCircle,
+    tip: "Order cancelled before fill.",
   },
 };
+
+function fmtDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -82,6 +104,9 @@ export function TradeCard({
   stopLoss,
   companyName,
   exchange,
+  placedAt,
+  filledAt,
+  alpacaOrderId,
   className,
   ...cardProps
 }: TradeCardProps) {
@@ -120,10 +145,29 @@ export function TradeCard({
                   {companyName ?? ticker}
                 </p>
                 {/* Status badge inline */}
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground bg-transparent shrink-0">
-                  <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusCfg.dotClass)} />
-                  {statusCfg.label}
-                </span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground bg-transparent shrink-0 cursor-default">
+                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusCfg.dotClass)} />
+                        {statusCfg.label}
+                      </span>
+                    }
+                  />
+                  <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
+                    <p>{statusCfg.tip}</p>
+                    {placedAt && <p className="text-muted-foreground">Order placed {fmtDateTime(placedAt)}</p>}
+                    {filledAt && <p className="text-muted-foreground">Filled {fmtDateTime(filledAt)} @ ${entryPrice.toFixed(2)}</p>}
+                    {!filledAt && status === "PENDING" && (
+                      <p className="text-amber-500">Awaiting Alpaca fill confirmation</p>
+                    )}
+                    {alpacaOrderId && (
+                      <p className="font-mono text-[10px] text-muted-foreground/70">
+                        Alpaca: {alpacaOrderId.slice(0, 8)}…
+                      </p>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
               </div>
               {/* Ticker · Exchange · Confidence */}
               <div className="font-mono text-[11px] text-muted-foreground leading-tight mt-0.5 flex items-center gap-1 flex-wrap">

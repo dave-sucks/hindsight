@@ -32,6 +32,7 @@ import {
 import { StockLogo } from '@/components/StockLogo';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PnlArrow } from '@/components/ui/pnl-arrow';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { closeTrade, cancelTrade } from '@/lib/actions/closeTrade.actions';
 import {
@@ -57,11 +58,24 @@ type FilterTab = 'ALL' | 'OPEN' | 'CLOSED' | 'WON' | 'LOST';
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<TradeStatus, { label: string; dotClass: string }> = {
-  OPEN: { label: 'Open', dotClass: 'bg-positive animate-pulse' },
-  CLOSED_WIN: { label: 'Won', dotClass: 'bg-positive' },
-  CLOSED_LOSS: { label: 'Loss', dotClass: 'bg-negative' },
-  CLOSED_EXPIRED: { label: 'Expired', dotClass: 'bg-muted-foreground/40' },
+const STATUS_CONFIG: Record<TradeStatus, { label: string; dotClass: string; tip: string }> = {
+  OPEN: {
+    label: 'Holding',
+    dotClass: 'bg-positive animate-pulse',
+    tip: 'Order filled — paper shares held in your Alpaca account.',
+  },
+  PENDING: {
+    label: 'Pending fill',
+    dotClass: 'bg-amber-500 animate-pulse',
+    tip: 'Order submitted to Alpaca but not yet filled. Common outside regular market hours.',
+  },
+  CLOSED_WIN: { label: 'Won', dotClass: 'bg-positive', tip: 'Closed at a profit.' },
+  CLOSED_LOSS: { label: 'Loss', dotClass: 'bg-negative', tip: 'Closed at a loss.' },
+  CLOSED_EXPIRED: {
+    label: 'Expired',
+    dotClass: 'bg-muted-foreground/40',
+    tip: 'Closed without a clear outcome (cancelled, time-based exit, etc.).',
+  },
 };
 
 function formatRelativeTime(dateStr: string): string {
@@ -75,6 +89,16 @@ function formatRelativeTime(dateStr: string): string {
   const diffDays = Math.floor(diffHr / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatExactTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 // ─── Target progress bar ─────────────────────────────────────────────────────
@@ -266,8 +290,10 @@ export default function TradesPage({
           </TableHeader>
           <TableBody>
             {filtered.map((trade) => {
-              const cfg = STATUS_CONFIG[trade.status] ?? { label: trade.status, dotClass: 'bg-muted-foreground/40' };
-              const isOpen = trade.status === 'OPEN';
+              const cfg = STATUS_CONFIG[trade.status] ?? { label: trade.status, dotClass: 'bg-muted-foreground/40', tip: '' };
+              const isOpen = trade.status === 'OPEN' || trade.status === 'PENDING';
+              const isPending = trade.status === 'PENDING';
+              const isStalePrice = trade.priceSource === 'missing';
               const shares = trade.shares ?? 1;
               const totalValue = trade.currentPrice * shares;
               const totalGain = trade.pnl;
@@ -297,15 +323,68 @@ export default function TradesPage({
 
                   {/* Status */}
                   <TableCell>
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground">
-                      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${cfg.dotClass}`} />
-                      {cfg.label}
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default">
+                            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${cfg.dotClass}`} />
+                            {cfg.label}
+                          </span>
+                        }
+                      />
+                      <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
+                        <p>{cfg.tip}</p>
+                        {trade.placedAt && (
+                          <p className="text-muted-foreground">
+                            Order placed {formatExactTime(trade.placedAt)}
+                          </p>
+                        )}
+                        {trade.filledAt && (
+                          <p className="text-muted-foreground">
+                            Filled {formatExactTime(trade.filledAt)} @ ${trade.entryPrice.toFixed(2)}
+                          </p>
+                        )}
+                        {!trade.filledAt && isPending && (
+                          <p className="text-amber-500">Awaiting Alpaca fill confirmation</p>
+                        )}
+                        {trade.alpacaOrderId && (
+                          <p className="text-muted-foreground/70 font-mono text-[10px]">
+                            Alpaca: {trade.alpacaOrderId.slice(0, 8)}…
+                          </p>
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
 
                   {/* Current Price */}
                   <TableCell className="text-right tabular-nums text-sm">
-                    ${trade.currentPrice.toFixed(2)}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="inline-flex items-center gap-1 cursor-default">
+                            {isStalePrice && isOpen && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                            )}
+                            ${trade.currentPrice.toFixed(2)}
+                          </span>
+                        }
+                      />
+                      <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
+                        {trade.priceSource === 'alpaca' && (
+                          <p>Live price via Alpaca {trade.priceUpdatedAt && `· ${formatExactTime(trade.priceUpdatedAt)}`}</p>
+                        )}
+                        {trade.priceSource === 'finnhub' && (
+                          <p>Price via Finnhub fallback {trade.priceUpdatedAt && `· ${formatExactTime(trade.priceUpdatedAt)}`}</p>
+                        )}
+                        {(trade.priceSource === 'missing' || trade.priceSource === undefined) && isOpen && (
+                          <>
+                            <p className="text-amber-500">No live price available right now.</p>
+                            <p className="text-muted-foreground">Showing entry price ${trade.entryPrice.toFixed(2)} as a placeholder. Day gain / total gain will read $0 until a quote comes through.</p>
+                          </>
+                        )}
+                        {!isOpen && <p>Closing price.</p>}
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
 
                   {/* Total Value */}
@@ -323,25 +402,33 @@ export default function TradesPage({
                     ${trade.entryPrice.toFixed(2)}
                   </TableCell>
 
-                  {/* Day Gain — icon + foreground text */}
+                  {/* Day Gain — shows em-dash when no live price */}
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
-                      <span className="text-sm tabular-nums">
-                        {isUp ? '+' : ''}${totalGain.toFixed(2)}
-                      </span>
-                    </div>
+                    {isStalePrice && isOpen ? (
+                      <span className="text-sm text-muted-foreground/60">—</span>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1">
+                        <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
+                        <span className="text-sm tabular-nums">
+                          {isUp ? '+' : ''}${totalGain.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                   </TableCell>
 
-                  {/* Total Gain — icon + foreground text + badge */}
+                  {/* Total Gain — shows em-dash when no live price */}
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
-                      <span className="text-sm tabular-nums">
-                        {isUp ? '+' : ''}${totalGain.toFixed(2)}
-                      </span>
-                      <PnlBadge value={totalGainPct} />
-                    </div>
+                    {isStalePrice && isOpen ? (
+                      <span className="text-sm text-muted-foreground/60">—</span>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1">
+                        <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
+                        <span className="text-sm tabular-nums">
+                          {isUp ? '+' : ''}${totalGain.toFixed(2)}
+                        </span>
+                        <PnlBadge value={totalGainPct} />
+                      </div>
+                    )}
                   </TableCell>
 
                   {/* Target dots */}
@@ -360,9 +447,27 @@ export default function TradesPage({
                     <Badge variant="secondary">{trade.direction}</Badge>
                   </TableCell>
 
-                  {/* Time placed — regular text */}
+                  {/* Time placed — tooltip shows full placed/filled timeline */}
                   <TableCell className="text-sm text-muted-foreground">
-                    {formatRelativeTime(trade.openedAt)}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="cursor-default">
+                            {formatRelativeTime(trade.placedAt ?? trade.openedAt)}
+                          </span>
+                        }
+                      />
+                      <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1">
+                        {trade.placedAt && (
+                          <p>Order placed: <span className="tabular-nums">{formatExactTime(trade.placedAt)}</span></p>
+                        )}
+                        {trade.filledAt ? (
+                          <p>Filled: <span className="tabular-nums">{formatExactTime(trade.filledAt)}</span></p>
+                        ) : isPending ? (
+                          <p className="text-amber-500">Awaiting fill</p>
+                        ) : null}
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
 
                   {/* Stop — muted foreground */}

@@ -169,7 +169,10 @@ export const placeTradeRender = ({ result }: { result?: Record<string, unknown> 
         shares={typeof result.shares === "number" ? result.shares : undefined}
         targetPrice={typeof result.targetPrice === "number" ? result.targetPrice : undefined}
         stopLoss={typeof result.stopLoss === "number" ? result.stopLoss : undefined}
-        status="OPEN"
+        status={result.fillStatus === "PENDING" ? "PENDING" : "OPEN"}
+        placedAt={typeof result.placedAt === "string" ? result.placedAt : undefined}
+        filledAt={typeof result.filledAt === "string" ? result.filledAt : undefined}
+        alpacaOrderId={typeof result.alpacaOrderId === "string" ? result.alpacaOrderId : undefined}
       />
     </div>
   );

@@ -1167,11 +1167,16 @@ export function createResearchTools(ctx: ToolContext) {
           // TODO: This should become async/non-blocking in future — fire-and-forget
           // the order and use a webhook or polling job to update fill status.
           let fillPrice = args.entry_price;
+          let didFill = false;
+          let filledAt: Date | null = null;
+          const placedAt = new Date();
           const deadline = Date.now() + 5_000;
           while (Date.now() < deadline) {
             const order = await getOrder(alpacaOrder.id, ctx.alpacaCreds);
             if (order.status === "filled" && order.filled_avg_price) {
               fillPrice = parseFloat(order.filled_avg_price);
+              didFill = true;
+              filledAt = order.filled_at ? new Date(order.filled_at) : new Date();
               break;
             }
             if (["cancelled", "expired", "rejected"].includes(order.status)) {
@@ -1179,8 +1184,10 @@ export function createResearchTools(ctx: ToolContext) {
             }
             await new Promise((r) => setTimeout(r, 1_000));
           }
-          // If still not filled, try latest price
-          if (fillPrice === args.entry_price) {
+          // If still not filled (e.g. submitted after-hours), grab a reference
+          // price for the displayed avgCost but flag the Order as PENDING so
+          // the UI can show "Pending fill" instead of pretending it filled.
+          if (!didFill) {
             try { fillPrice = await getLatestPrice(args.ticker, ctx.alpacaCreds); } catch { /* keep entry_price */ }
           }
 
@@ -1207,7 +1214,9 @@ export function createResearchTools(ctx: ToolContext) {
               },
             });
 
-            // Create the order (what we told Alpaca)
+            // Create the order (what we told Alpaca). If Alpaca didn't confirm
+            // the fill within our 5s window, mark it PENDING so the UI shows
+            // "Pending fill" rather than pretending it filled.
             const ord = await tx.order.create({
               data: {
                 positionId: pos.id,
@@ -1216,11 +1225,12 @@ export function createResearchTools(ctx: ToolContext) {
                 side: args.direction === "LONG" ? "BUY" : "SELL",
                 orderType: "MARKET",
                 quantity: args.shares,
-                status: "FILLED",
-                filledPrice: fillPrice,
-                filledQty: args.shares,
-                filledAt: new Date(),
+                status: didFill ? "FILLED" : "PENDING",
+                filledPrice: didFill ? fillPrice : null,
+                filledQty: didFill ? args.shares : null,
+                filledAt: didFill ? (filledAt ?? new Date()) : null,
                 alpacaOrderId: alpacaOrder.id,
+                createdAt: placedAt,
               },
             });
 
@@ -1318,11 +1328,12 @@ export function createResearchTools(ctx: ToolContext) {
             console.warn("[tool] place_trade portfolio update fetch failed:", portfolioErr);
           }
 
-          logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`, stats);
+          logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)} ${didFill ? "FILLED" : "PENDING"}`, stats);
           return {
             success: true,
             ticker: args.ticker,
-            status: "FILLED" as const,
+            status: didFill ? ("FILLED" as const) : ("PENDING" as const),
+            fillStatus: didFill ? ("FILLED" as const) : ("PENDING" as const),
             direction: args.direction,
             shares: args.shares,
             entryPrice: fillPrice,
@@ -1331,7 +1342,11 @@ export function createResearchTools(ctx: ToolContext) {
             positionId: position.id,
             orderId: order.id,
             alpacaOrderId: alpacaOrder.id,
-            message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+            placedAt: placedAt.toISOString(),
+            filledAt: filledAt ? filledAt.toISOString() : null,
+            message: didFill
+              ? `${args.direction} ${args.shares} shares of ${args.ticker} filled at $${fillPrice.toFixed(2)}`
+              : `${args.direction} ${args.shares} shares of ${args.ticker} submitted to Alpaca — awaiting fill (current price $${fillPrice.toFixed(2)})`,
             _sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }],
             ...(portfolioUpdate ? { portfolioUpdate } : {}),
           };
