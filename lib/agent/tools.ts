@@ -1396,11 +1396,12 @@ export function createResearchTools(ctx: ToolContext) {
           const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
           const result = await closeOpenPosition(position.id, args.reason);
 
-          // Record EXIT decision (V2: was "SELL", now "EXIT")
+          // Record EXIT decision (V2: was "SELL", now "EXIT") — link to the closing order
           const analystId = ctx.analystId || position.analystId;
+          const fillNote = result.fillStatus === "PENDING" ? " (close order pending fill)" : "";
           const reasoningNote = args.notes
-            ? `Closed ${position.direction} position: ${args.reason}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})`
-            : `Closed ${position.direction} position: ${args.reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})`;
+            ? `Closed ${position.direction} position: ${args.reason}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
+            : `Closed ${position.direction} position: ${args.reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`;
           try {
             await prisma.tradeDecision.create({
               data: {
@@ -1411,6 +1412,7 @@ export function createResearchTools(ctx: ToolContext) {
                 decision: "EXIT",
                 reasoning: reasoningNote,
                 positionId: position.id,
+                orderId: result.orderId,
               },
             });
           } catch (decisionErr) {
@@ -1487,20 +1489,27 @@ export function createResearchTools(ctx: ToolContext) {
             console.warn("[tool] close_position portfolio update fetch failed:", portfolioErr);
           }
 
-          logToolEnd("close_position", _t0, ctx.runId, `${ticker} pnl=$${result.realizedPnl.toFixed(2)}`, stats);
+          logToolEnd("close_position", _t0, ctx.runId, `${ticker} pnl=$${result.realizedPnl.toFixed(2)} ${result.fillStatus}`, stats);
           return {
             success: true,
             ticker,
             reason: args.reason,
             shares: position.quantity,
-            status: "CLOSED" as const,
+            status: result.fillStatus === "PENDING" ? ("PENDING" as const) : ("CLOSED" as const),
+            fillStatus: result.fillStatus,
             direction: position.direction,
             entryPrice: position.avgCost,
             closePrice: result.closePrice,
             realizedPnl: result.realizedPnl,
             pnlPct: Math.round(pnlPct * 100) / 100,
             outcome: result.outcome,
-            message: `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${result.realizedPnl >= 0 ? "+" : ""}${result.realizedPnl.toFixed(2)}`,
+            orderId: result.orderId,
+            alpacaOrderId: result.alpacaOrderId,
+            placedAt: result.placedAt.toISOString(),
+            filledAt: result.filledAt?.toISOString() ?? null,
+            message: result.fillStatus === "FILLED"
+              ? `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${result.realizedPnl >= 0 ? "+" : ""}${result.realizedPnl.toFixed(2)}`
+              : `Close order submitted for ${position.direction} ${position.quantity} shares of ${ticker} — awaiting Alpaca fill (estimated price $${result.closePrice.toFixed(2)})`,
             _sources: [{ provider: "Alpaca", title: `Close ${ticker}` }],
             ...(portfolioUpdate ? { portfolioUpdate } : {}),
           };
