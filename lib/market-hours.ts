@@ -40,6 +40,23 @@ function getHolidays(year: number): Set<string> {
  * Returns true if the US stock market is currently open.
  * Checks: weekday, not holiday, 9:30am–4:00pm ET.
  */
+/**
+ * Returns the current trading-day date as a UTC midnight Date.
+ *
+ * The "date" used to key MorningBrief, daily Signal filters, EOD snapshots,
+ * etc. must be the *Eastern Time* calendar date, not the server-local
+ * (UTC on Vercel) date. Otherwise any code that runs after 8 PM ET sees
+ * "tomorrow" while the ET trading day is still in progress.
+ *
+ * Convention: YYYY-MM-DD in ET, materialised as 00:00:00 UTC of that same
+ * calendar date. Sorts correctly, comparable across timezones, and matches
+ * how the morning cron wrote rows when it ran before UTC midnight.
+ */
+export function etTradingDayDate(now: Date = new Date()): Date {
+  const ymd = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  return new Date(`${ymd}T00:00:00.000Z`);
+}
+
 export function isMarketOpen(now: Date = new Date()): boolean {
   // Convert to Eastern Time
   const etFormatter = new Intl.DateTimeFormat("en-US", {

@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 import { placeMarketOrder, getOrder, getLatestPrice, getLatestPrices, getBars, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import { etTradingDayDate } from "@/lib/market-hours";
 import { finnhub, calcRSI, calcSMA } from "@/lib/agent/research-helpers";
 import type { MacroEvent } from "@/lib/discovery/types";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
@@ -1173,11 +1174,16 @@ export function createResearchTools(ctx: ToolContext) {
           // TODO: This should become async/non-blocking in future — fire-and-forget
           // the order and use a webhook or polling job to update fill status.
           let fillPrice = args.entry_price;
+          let didFill = false;
+          let filledAt: Date | null = null;
+          const placedAt = new Date();
           const deadline = Date.now() + 5_000;
           while (Date.now() < deadline) {
             const order = await getOrder(alpacaOrder.id, ctx.alpacaCreds);
             if (order.status === "filled" && order.filled_avg_price) {
               fillPrice = parseFloat(order.filled_avg_price);
+              didFill = true;
+              filledAt = order.filled_at ? new Date(order.filled_at) : new Date();
               break;
             }
             if (["cancelled", "expired", "rejected"].includes(order.status)) {
@@ -1185,8 +1191,10 @@ export function createResearchTools(ctx: ToolContext) {
             }
             await new Promise((r) => setTimeout(r, 1_000));
           }
-          // If still not filled, try latest price
-          if (fillPrice === args.entry_price) {
+          // If still not filled (e.g. submitted after-hours), grab a reference
+          // price for the displayed avgCost but flag the Order as PENDING so
+          // the UI can show "Pending fill" instead of pretending it filled.
+          if (!didFill) {
             try { fillPrice = await getLatestPrice(args.ticker, ctx.alpacaCreds); } catch { /* keep entry_price */ }
           }
 
@@ -1213,7 +1221,9 @@ export function createResearchTools(ctx: ToolContext) {
               },
             });
 
-            // Create the order (what we told Alpaca)
+            // Create the order (what we told Alpaca). If Alpaca didn't confirm
+            // the fill within our 5s window, mark it PENDING so the UI shows
+            // "Pending fill" rather than pretending it filled.
             const ord = await tx.order.create({
               data: {
                 positionId: pos.id,
@@ -1222,11 +1232,12 @@ export function createResearchTools(ctx: ToolContext) {
                 side: args.direction === "LONG" ? "BUY" : "SELL",
                 orderType: "MARKET",
                 quantity: args.shares,
-                status: "FILLED",
-                filledPrice: fillPrice,
-                filledQty: args.shares,
-                filledAt: new Date(),
+                status: didFill ? "FILLED" : "PENDING",
+                filledPrice: didFill ? fillPrice : null,
+                filledQty: didFill ? args.shares : null,
+                filledAt: didFill ? (filledAt ?? new Date()) : null,
                 alpacaOrderId: alpacaOrder.id,
+                createdAt: placedAt,
               },
             });
 
@@ -1324,17 +1335,25 @@ export function createResearchTools(ctx: ToolContext) {
             console.warn("[tool] place_trade portfolio update fetch failed:", portfolioErr);
           }
 
-          logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`, stats);
+          logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)} ${didFill ? "FILLED" : "PENDING"}`, stats);
           const tag = args.direction === "LONG" ? "Buy" : "Sell";
-          const itemSummary = `${args.shares} shares @ $${fillPrice.toFixed(2)} · target $${args.target_price.toFixed(2)} · stop $${args.stop_loss.toFixed(2)}`;
+          const itemSummary = didFill
+            ? `${args.shares} shares @ $${fillPrice.toFixed(2)} · target $${args.target_price.toFixed(2)} · stop $${args.stop_loss.toFixed(2)}`
+            : `${args.shares} shares submitted (pending fill) · ref $${fillPrice.toFixed(2)} · target $${args.target_price.toFixed(2)} · stop $${args.stop_loss.toFixed(2)}`;
+          const message = didFill
+            ? `${args.direction} ${args.shares} shares of ${args.ticker} filled at $${fillPrice.toFixed(2)}`
+            : `${args.direction} ${args.shares} shares of ${args.ticker} submitted to Alpaca — awaiting fill (current price $${fillPrice.toFixed(2)})`;
           return {
-            summary: `Placed order: ${args.direction} ${args.shares} $${args.ticker} @ $${fillPrice.toFixed(2)}`,
+            summary: didFill
+              ? `Placed order: ${args.direction} ${args.shares} $${args.ticker} @ $${fillPrice.toFixed(2)}`
+              : `Order submitted (pending): ${args.direction} ${args.shares} $${args.ticker}`,
             tickers: [{ ticker: args.ticker, tag, summary: itemSummary }] as TickerFinding[],
             _sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }] as ToolSource[],
             data: {
               success: true,
               ticker: args.ticker,
-              status: "FILLED" as const,
+              status: didFill ? ("FILLED" as const) : ("PENDING" as const),
+              fillStatus: didFill ? ("FILLED" as const) : ("PENDING" as const),
               direction: args.direction,
               shares: args.shares,
               entryPrice: fillPrice,
@@ -1343,7 +1362,9 @@ export function createResearchTools(ctx: ToolContext) {
               positionId: position.id,
               orderId: order.id,
               alpacaOrderId: alpacaOrder.id,
-              message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+              placedAt: placedAt.toISOString(),
+              filledAt: filledAt ? filledAt.toISOString() : null,
+              message,
               ...(portfolioUpdate ? { portfolioUpdate } : {}),
             },
           };
@@ -1411,11 +1432,12 @@ export function createResearchTools(ctx: ToolContext) {
           const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
           const result = await closeOpenPosition(position.id, args.reason);
 
-          // Record EXIT decision (V2: was "SELL", now "EXIT")
+          // Record EXIT decision (V2: was "SELL", now "EXIT") — link to the closing order
           const analystId = ctx.analystId || position.analystId;
+          const fillNote = result.fillStatus === "PENDING" ? " (close order pending fill)" : "";
           const reasoningNote = args.notes
-            ? `Closed ${position.direction} position: ${args.reason}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})`
-            : `Closed ${position.direction} position: ${args.reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})`;
+            ? `Closed ${position.direction} position: ${args.reason}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
+            : `Closed ${position.direction} position: ${args.reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`;
           try {
             await prisma.tradeDecision.create({
               data: {
@@ -1426,6 +1448,7 @@ export function createResearchTools(ctx: ToolContext) {
                 decision: "EXIT",
                 reasoning: reasoningNote,
                 positionId: position.id,
+                orderId: result.orderId,
               },
             });
           } catch (decisionErr) {
@@ -1502,26 +1525,39 @@ export function createResearchTools(ctx: ToolContext) {
             console.warn("[tool] close_position portfolio update fetch failed:", portfolioErr);
           }
 
-          logToolEnd("close_position", _t0, ctx.runId, `${ticker} pnl=$${result.realizedPnl.toFixed(2)}`, stats);
+          logToolEnd("close_position", _t0, ctx.runId, `${ticker} pnl=$${result.realizedPnl.toFixed(2)} ${result.fillStatus}`, stats);
           const pnlSign = result.realizedPnl >= 0 ? "+" : "";
-          const itemSummary = `${position.quantity} shares closed @ $${result.closePrice.toFixed(2)} · ${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)}`;
+          const isPending = result.fillStatus === "PENDING";
+          const itemSummary = isPending
+            ? `${position.quantity} shares close submitted (pending) · est $${result.closePrice.toFixed(2)}`
+            : `${position.quantity} shares closed @ $${result.closePrice.toFixed(2)} · ${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)}`;
+          const closeMessage = isPending
+            ? `Close order submitted for ${position.direction} ${position.quantity} shares of ${ticker} — awaiting Alpaca fill (estimated price $${result.closePrice.toFixed(2)})`
+            : `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${pnlSign}${result.realizedPnl.toFixed(2)}`;
           return {
-            summary: `Closed $${ticker}: ${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)}`,
-            tickers: [{ ticker, tag: "Closed", summary: itemSummary }] as TickerFinding[],
+            summary: isPending
+              ? `Close submitted (pending): $${ticker}`
+              : `Closed $${ticker}: ${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)}`,
+            tickers: [{ ticker, tag: isPending ? "Closing" : "Closed", summary: itemSummary }] as TickerFinding[],
             _sources: [{ provider: "Alpaca", title: `Close ${ticker}` }] as ToolSource[],
             data: {
               success: true,
               ticker,
               reason: args.reason,
               shares: position.quantity,
-              status: "CLOSED" as const,
+              status: isPending ? ("PENDING" as const) : ("CLOSED" as const),
+              fillStatus: result.fillStatus,
               direction: position.direction,
               entryPrice: position.avgCost,
               closePrice: result.closePrice,
               realizedPnl: result.realizedPnl,
               pnlPct: Math.round(pnlPct * 100) / 100,
               outcome: result.outcome,
-              message: `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${pnlSign}${result.realizedPnl.toFixed(2)}`,
+              orderId: result.orderId,
+              alpacaOrderId: result.alpacaOrderId,
+              placedAt: result.placedAt.toISOString(),
+              filledAt: result.filledAt?.toISOString() ?? null,
+              message: closeMessage,
               ...(portfolioUpdate ? { portfolioUpdate } : {}),
             },
           };
@@ -2365,8 +2401,9 @@ export function createResearchTools(ctx: ToolContext) {
         if (!ctx.analystId) return { summary: "No analyst context — cannot read brief.", _sources: [], data: { available: false } };
         logToolStart("read_morning_brief", ctx.runId, undefined, stats);
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // ET trading-day date — server-local midnight on Vercel is UTC,
+        // which silently misses the brief on any run after 8 PM ET.
+        const today = etTradingDayDate();
 
         const brief = await prisma.morningBrief.findUnique({
           where: {
@@ -2450,10 +2487,16 @@ export function createResearchTools(ctx: ToolContext) {
 
         logToolStart("read_signals", ctx.runId, `tickers=${tickers?.join(",") ?? "all"} limit=${effectiveLimit} minUrgency=${urgencyOrder[effectiveMinIdx]} minQuality=${minSourceQuality}`, stats);
 
+        // NOTE: We intentionally do NOT filter by status: "PENDING" here.
+        // The agent calls read_signals multiple times in a single run with
+        // different filters; if we only returned PENDING, the second call
+        // would see 0 because the first call already marked everything READ.
+        // Cross-run dedup still works because each day's signal-router
+        // creates new routes — and we only routedAt within the trading day.
         const routes = await prisma.analystSignalRoute.findMany({
           where: {
             analystId: ctx.analystId,
-            status: "PENDING",
+            status: { in: ["PENDING", "READ"] },
             signal: {
               ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
               ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
@@ -2504,8 +2547,7 @@ export function createResearchTools(ctx: ToolContext) {
           });
 
           if (config && (config.sectors.length > 0 || config.watchlist.length > 0)) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            const today = etTradingDayDate();
 
             const fallbackSignals = await prisma.signal.findMany({
               where: {

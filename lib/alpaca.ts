@@ -215,20 +215,157 @@ export async function getLatestPrice(symbol: string, creds?: AlpacaCredentials):
 
 /**
  * Returns latest prices for multiple symbols in one call.
+ *
+ * Resilient design (free Alpaca plans use the IEX feed which has very spotty
+ * coverage outside RTH and for many tickers):
+ *  1. Try Alpaca `getLatestTrades` — handles Map / object / array return
+ *     shapes from SDK v3 and tries multiple price field names.
+ *  2. For any symbol that didn't get a price, fall back to Finnhub `/quote`
+ *     in parallel (free tier covers ~all US equities).
+ *  3. For any symbol *still* missing, fall back to single-symbol Alpaca
+ *     `getLatestTrade` (uses a different SDK code path that we know works).
+ *  4. Anything still missing is left unset — caller must handle.
+ *
+ * Returns a `PriceLookup` containing the price map plus per-symbol source
+ * metadata so the UI can show "live" vs "stale" indicators.
  */
+
+export type PriceSource = "alpaca" | "finnhub" | "missing";
+
+export interface PriceLookup {
+  prices: Record<string, number>;
+  sources: Record<string, PriceSource>;
+  fetchedAt: string; // ISO timestamp
+}
+
+function extractPrice(trade: unknown): number | undefined {
+  if (trade == null || typeof trade !== "object") return undefined;
+  const t = trade as Record<string, unknown>;
+  const candidates = [t.Price, t.price, t.p, t.tp, t.tradePrice, t.ClosePrice, t.c];
+  for (const v of candidates) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+  }
+  return undefined;
+}
+
 export async function getLatestPrices(
   symbols: string[],
   creds?: AlpacaCredentials,
 ): Promise<Record<string, number>> {
-  const trades = await withTimeout(getClient(creds).getLatestTrades(symbols), `getLatestPrices(${symbols.length} symbols)`);
+  // Backwards-compatible wrapper — many callers only need the price map.
+  const lookup = await getLatestPricesWithMeta(symbols, creds);
+  return lookup.prices;
+}
+
+export async function getLatestPricesWithMeta(
+  symbols: string[],
+  creds?: AlpacaCredentials,
+): Promise<PriceLookup> {
   const result: Record<string, number> = {};
-  (trades as Map<string, { Price?: number; p?: number }>).forEach(
-    (trade, symbol) => {
-      const price = trade.Price ?? trade.p;
-      if (price !== undefined) result[symbol] = price;
+  const sources: Record<string, PriceSource> = {};
+  const fetchedAt = new Date().toISOString();
+
+  if (symbols.length === 0) {
+    return { prices: result, sources, fetchedAt };
+  }
+
+  // ── 1. Alpaca batch trades (works on free IEX feed for liquid US equities) ──
+  try {
+    const trades = await withTimeout(
+      getClient(creds).getLatestTrades(symbols),
+      `getLatestPrices(${symbols.length} symbols)`,
+    );
+
+    if (trades instanceof Map) {
+      trades.forEach((trade, symbol) => {
+        const price = extractPrice(trade);
+        if (price !== undefined) {
+          result[symbol] = price;
+          sources[symbol] = "alpaca";
+        }
+      });
+    } else if (Array.isArray(trades)) {
+      for (const entry of trades as Array<{ Symbol?: string; symbol?: string; S?: string } & Record<string, unknown>>) {
+        const sym = entry.Symbol ?? entry.symbol ?? entry.S;
+        if (typeof sym !== "string") continue;
+        const price = extractPrice(entry);
+        if (price !== undefined) {
+          result[sym] = price;
+          sources[sym] = "alpaca";
+        }
+      }
+    } else if (trades && typeof trades === "object") {
+      for (const [sym, trade] of Object.entries(trades as Record<string, unknown>)) {
+        const price = extractPrice(trade);
+        if (price !== undefined) {
+          result[sym] = price;
+          sources[sym] = "alpaca";
+        }
+      }
     }
-  );
-  return result;
+  } catch (err) {
+    console.warn(
+      `[alpaca] getLatestTrades batch failed (${symbols.length} symbols), falling back to Finnhub: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
+  // ── 2. Finnhub fallback for anything Alpaca missed ─────────────────────────
+  const missing = symbols.filter((s) => result[s] === undefined);
+  if (missing.length > 0) {
+    try {
+      const { getStockQuote } = await import("@/lib/actions/finnhub.actions");
+      const quotes = await Promise.allSettled(
+        missing.map(async (sym) => ({ sym, quote: await getStockQuote(sym) })),
+      );
+      for (const r of quotes) {
+        if (r.status !== "fulfilled") continue;
+        const { sym, quote } = r.value;
+        const c = quote?.c;
+        if (typeof c === "number" && Number.isFinite(c) && c > 0) {
+          result[sym] = c;
+          sources[sym] = "finnhub";
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[alpaca] Finnhub fallback failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  // ── 3. Single-symbol Alpaca for anything still missing ────────────────────
+  const stillMissing = symbols.filter((s) => result[s] === undefined);
+  if (stillMissing.length > 0) {
+    const single = await Promise.allSettled(
+      stillMissing.map(async (sym) => ({ sym, price: await getLatestPrice(sym, creds) })),
+    );
+    for (const r of single) {
+      if (r.status !== "fulfilled") continue;
+      const { sym, price } = r.value;
+      if (Number.isFinite(price) && price > 0) {
+        result[sym] = price;
+        sources[sym] = "alpaca";
+      }
+    }
+  }
+
+  // Mark anything still missing
+  for (const sym of symbols) {
+    if (result[sym] === undefined) sources[sym] = "missing";
+  }
+
+  const okCount = Object.values(sources).filter((s) => s !== "missing").length;
+  if (okCount < symbols.length) {
+    console.warn(
+      `[alpaca] getLatestPrices resolved ${okCount}/${symbols.length} symbols. Missing: ${symbols
+        .filter((s) => sources[s] === "missing")
+        .join(", ")}`,
+    );
+  }
+
+  return { prices: result, sources, fetchedAt };
 }
 
 // ─── Historical bars ─────────────────────────────────────────────────────────

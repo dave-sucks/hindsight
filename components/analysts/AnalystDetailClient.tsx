@@ -117,11 +117,13 @@ function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; live
       id={trade.id}
       ticker={trade.symbol}
       currentPrice={price}
+      entryPrice={trade.avgCost}
       shares={trade.quantity}
-      pnl={pnl}
-      pnlPct={pnlPct}
+      pnl={livePrice !== undefined ? pnl : 0}
+      pnlPct={livePrice !== undefined ? pnlPct : 0}
       status={trade.status}
       openedAt={trade.openedAt}
+      priceSource={isOpen ? (livePrice !== undefined ? "alpaca" : "missing") : undefined}
     />
   );
 }

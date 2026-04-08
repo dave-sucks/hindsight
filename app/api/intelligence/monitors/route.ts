@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { etTradingDayDate } from "@/lib/market-hours"
 
 // GET /api/intelligence/monitors — list monitors scoped to the current user
 export async function GET(req: NextRequest) {
@@ -14,8 +15,7 @@ export async function GET(req: NextRequest) {
   const scope = req.nextUrl.searchParams.get("scope") // FIRM | ANALYST
   const analystId = req.nextUrl.searchParams.get("analystId")
 
-  const todayStart = new Date()
-  todayStart.setHours(0, 0, 0, 0)
+  const todayStart = etTradingDayDate()
 
   // Get this user's analyst IDs for filtering
   const userAnalystIds = await prisma.agentConfig.findMany({

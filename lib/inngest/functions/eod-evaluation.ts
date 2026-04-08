@@ -2,6 +2,7 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { etTradingDayDate } from "@/lib/market-hours";
 
 // ─── P&L helper ───────────────────────────────────────────────────────────────
 
@@ -75,8 +76,7 @@ export const eodEvaluation = inngest.createFunction(
 
       await step.run(`eod-check-${position.id}`, async () => {
         // Idempotency: skip if an EOD_CHECK already exists for this position today
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
+        const todayStart = etTradingDayDate();
 
         const existing = await prisma.positionEvent.findFirst({
           where: {
@@ -117,8 +117,7 @@ export const eodEvaluation = inngest.createFunction(
     // Step 4: Find positions closed TODAY and fire trade/closed event for any
     //         that haven't been evaluated yet (no EVALUATED PositionEvent)
     const closedToday = await step.run("load-closed-today", async () => {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      const todayStart = etTradingDayDate();
 
       return prisma.position.findMany({
         where: {

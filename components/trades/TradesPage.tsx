@@ -32,13 +32,14 @@ import {
 import { StockLogo } from '@/components/StockLogo';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PnlArrow } from '@/components/ui/pnl-arrow';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { TRADE_STATUS_DISPLAY, shortAlpacaId } from '@/lib/trade-status';
 import { closeTrade, cancelTrade } from '@/lib/actions/closeTrade.actions';
 import {
   mockOpenTrades,
   mockClosedTrades,
   type MockTrade,
-  type TradeStatus,
 } from '@/lib/mock-data/trades';
 import { Loader2, MoreHorizontal } from 'lucide-react';
 import { ConceptTooltip } from '@/components/domain/education-card';
@@ -57,13 +58,6 @@ type FilterTab = 'ALL' | 'OPEN' | 'CLOSED' | 'WON' | 'LOST';
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<TradeStatus, { label: string; dotClass: string }> = {
-  OPEN: { label: 'Open', dotClass: 'bg-positive animate-pulse' },
-  CLOSED_WIN: { label: 'Won', dotClass: 'bg-positive' },
-  CLOSED_LOSS: { label: 'Loss', dotClass: 'bg-negative' },
-  CLOSED_EXPIRED: { label: 'Expired', dotClass: 'bg-muted-foreground/40' },
-};
-
 function formatRelativeTime(dateStr: string): string {
   const diffMs = Date.now() - new Date(dateStr).getTime();
   const diffSec = Math.floor(diffMs / 1000);
@@ -75,6 +69,16 @@ function formatRelativeTime(dateStr: string): string {
   const diffDays = Math.floor(diffHr / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatExactTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 // ─── Target progress bar ─────────────────────────────────────────────────────
@@ -266,8 +270,16 @@ export default function TradesPage({
           </TableHeader>
           <TableBody>
             {filtered.map((trade) => {
-              const cfg = STATUS_CONFIG[trade.status] ?? { label: trade.status, dotClass: 'bg-muted-foreground/40' };
-              const isOpen = trade.status === 'OPEN';
+              const cfg = TRADE_STATUS_DISPLAY[trade.status] ?? TRADE_STATUS_DISPLAY.OPEN;
+              const timeLabel = cfg.timeLabel({
+                placedAt: trade.placedAt,
+                filledAt: trade.filledAt,
+                closedAt: trade.closedAt,
+              });
+              const shortId = shortAlpacaId(trade.alpacaOrderId);
+              const isOpen = trade.status === 'OPEN' || trade.status === 'PENDING';
+              const isPending = trade.status === 'PENDING';
+              const isStalePrice = trade.priceSource === 'missing';
               const shares = trade.shares ?? 1;
               const totalValue = trade.currentPrice * shares;
               const totalGain = trade.pnl;
@@ -297,15 +309,54 @@ export default function TradesPage({
 
                   {/* Status */}
                   <TableCell>
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground">
-                      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${cfg.dotClass}`} />
-                      {cfg.label}
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default">
+                            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', cfg.dotClass)} />
+                            {cfg.label}
+                          </span>
+                        }
+                      />
+                      <TooltipContent side="bottom">
+                        <div>
+                          <div>{timeLabel}</div>
+                          {shortId && (
+                            <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>
+                          )}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
 
                   {/* Current Price */}
                   <TableCell className="text-right tabular-nums text-sm">
-                    ${trade.currentPrice.toFixed(2)}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="inline-flex items-center gap-1 cursor-default">
+                            {isStalePrice && isOpen && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                            )}
+                            ${trade.currentPrice.toFixed(2)}
+                          </span>
+                        }
+                      />
+                      <TooltipContent side="bottom">
+                        <div>
+                          {trade.priceSource === 'alpaca' && (
+                            <div>Live via Alpaca{trade.priceUpdatedAt && ` · ${formatExactTime(trade.priceUpdatedAt)}`}</div>
+                          )}
+                          {trade.priceSource === 'finnhub' && (
+                            <div>Via Finnhub{trade.priceUpdatedAt && ` · ${formatExactTime(trade.priceUpdatedAt)}`}</div>
+                          )}
+                          {(trade.priceSource === 'missing' || trade.priceSource === undefined) && isOpen && (
+                            <div>No live price — showing entry ${trade.entryPrice.toFixed(2)}</div>
+                          )}
+                          {!isOpen && <div>Closing price</div>}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
 
                   {/* Total Value */}
@@ -323,25 +374,33 @@ export default function TradesPage({
                     ${trade.entryPrice.toFixed(2)}
                   </TableCell>
 
-                  {/* Day Gain — icon + foreground text */}
+                  {/* Day Gain — shows em-dash when no live price */}
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
-                      <span className="text-sm tabular-nums">
-                        {isUp ? '+' : ''}${totalGain.toFixed(2)}
-                      </span>
-                    </div>
+                    {isStalePrice && isOpen ? (
+                      <span className="text-sm text-muted-foreground/60">—</span>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1">
+                        <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
+                        <span className="text-sm tabular-nums">
+                          {isUp ? '+' : ''}${totalGain.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                   </TableCell>
 
-                  {/* Total Gain — icon + foreground text + badge */}
+                  {/* Total Gain — shows em-dash when no live price */}
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
-                      <span className="text-sm tabular-nums">
-                        {isUp ? '+' : ''}${totalGain.toFixed(2)}
-                      </span>
-                      <PnlBadge value={totalGainPct} />
-                    </div>
+                    {isStalePrice && isOpen ? (
+                      <span className="text-sm text-muted-foreground/60">—</span>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1">
+                        <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
+                        <span className="text-sm tabular-nums">
+                          {isUp ? '+' : ''}${totalGain.toFixed(2)}
+                        </span>
+                        <PnlBadge value={totalGainPct} />
+                      </div>
+                    )}
                   </TableCell>
 
                   {/* Target dots */}
@@ -360,9 +419,27 @@ export default function TradesPage({
                     <Badge variant="secondary">{trade.direction}</Badge>
                   </TableCell>
 
-                  {/* Time placed — regular text */}
+                  {/* Time placed — tooltip shows full placed/filled timeline */}
                   <TableCell className="text-sm text-muted-foreground">
-                    {formatRelativeTime(trade.openedAt)}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="cursor-default">
+                            {formatRelativeTime(trade.placedAt ?? trade.openedAt)}
+                          </span>
+                        }
+                      />
+                      <TooltipContent side="bottom">
+                        <div>
+                          {trade.placedAt && <div>Ordered {formatExactTime(trade.placedAt)}</div>}
+                          {trade.filledAt
+                            ? <div>Filled {formatExactTime(trade.filledAt)}</div>
+                            : isPending
+                              ? <div className="text-amber-500">Awaiting fill</div>
+                              : null}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
 
                   {/* Stop — muted foreground */}

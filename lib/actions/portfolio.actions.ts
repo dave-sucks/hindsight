@@ -2,9 +2,10 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getLatestPrices } from "@/lib/alpaca";
+import { getLatestPrices, getLatestPricesWithMeta, type PriceLookup } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
+import { etTradingDayDate } from "@/lib/market-hours";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,7 @@ export interface DashboardData {
 
 function mapStatus(status: string, outcome: string | null): TradeStatus {
   if (status === "OPEN") return "OPEN";
+  if (status === "CANCELLED") return "CANCELLED";
   if (outcome === "WIN") return "CLOSED_WIN";
   if (outcome === "LOSS") return "CLOSED_LOSS";
   return "CLOSED_EXPIRED";
@@ -195,11 +197,25 @@ export async function getDashboardData(): Promise<DashboardData> {
       where: { userId, status: "OPEN" },
       include: {
         analyst: { select: { name: true } },
+        // Most recent BUY/SELL order — used to surface fill state in UI
+        orders: {
+          where: { side: { in: ["BUY", "SELL"] } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            filledAt: true,
+            filledPrice: true,
+            createdAt: true,
+            alpacaOrderId: true,
+          },
+        },
       },
       orderBy: { openedAt: "desc" },
     }),
     prisma.position.findMany({
-      where: { userId, status: "CLOSED" },
+      where: { userId, status: { in: ["CLOSED", "CANCELLED"] } },
       include: {
         analyst: { select: { name: true } },
       },
@@ -232,10 +248,13 @@ export async function getDashboardData(): Promise<DashboardData> {
       researchRun: {
         select: { agentConfig: { select: { id: true, name: true } } },
       },
-      // Fetch ALL decisions (BUY, SELL, PASS, HOLD) to show actual action
+      // Pull the *opening* decision (INITIATE) so the position fields shown
+      // on the thesis card always reflect the original entry, not a later
+      // HOLD/EVALUATE decision that may have a null position link.
       decisions: {
+        where: { decision: "INITIATE" },
         take: 1,
-        orderBy: { createdAt: "desc" as const },
+        orderBy: { createdAt: "asc" as const },
         select: {
           decision: true,
           position: {
@@ -256,14 +275,17 @@ export async function getDashboardData(): Promise<DashboardData> {
   const openTickers = [...new Set(dbOpenPositions.map((p) => p.symbol))];
   const pickTickers = [...new Set(dbRecentPicks.map((p) => p.ticker))];
   const allTickers = [...new Set([...openTickers, ...pickTickers])];
-  let priceMap: Record<string, number> = {};
+  let priceLookup: PriceLookup = { prices: {}, sources: {}, fetchedAt: new Date().toISOString() };
   if (allTickers.length > 0) {
     try {
-      priceMap = await getLatestPrices(allTickers, alpacaCreds);
-    } catch {
-      // Fall back to entry price
+      priceLookup = await getLatestPricesWithMeta(allTickers, alpacaCreds);
+    } catch (err) {
+      console.error(
+        `[portfolio] getLatestPricesWithMeta threw — ${err instanceof Error ? err.message : err}. Falling back to entry prices.`,
+      );
     }
   }
+  const priceMap = priceLookup.prices;
 
   // ── 3b. Batch-fetch company names from Finnhub ──────────────────────────────
   let nameMap: Record<string, string> = {};
@@ -286,8 +308,17 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   // ── 4. Map open positions → MockTrade shape ────────────────────────────────
   const openTrades: MockTrade[] = dbOpenPositions.map((p) => {
-    const currentPrice = priceMap[p.symbol] ?? p.avgCost;
+    const livePrice = priceMap[p.symbol];
+    const priceSource = priceLookup.sources[p.symbol] ?? "missing";
+    const currentPrice = livePrice ?? p.avgCost;
     const { dollars, pct } = calcPnl(p.direction, p.avgCost, currentPrice, p.quantity);
+    const order = p.orders?.[0];
+    // Derive the display status from Position.status + latest Order.status.
+    // Position stays OPEN until its BUY actually fills; the PENDING/REJECTED
+    // view-model statuses are UI-only denormalizations.
+    let displayStatus: TradeStatus = "OPEN";
+    if (order?.status === "REJECTED") displayStatus = "REJECTED";
+    else if (order?.status === "PENDING" || (order && order.filledAt == null)) displayStatus = "PENDING";
     return {
       id: p.id,
       ticker: p.symbol,
@@ -297,14 +328,20 @@ export async function getDashboardData(): Promise<DashboardData> {
       targetPrice: p.targetPrice ?? p.avgCost * 1.1,
       stopPrice: p.stopLoss ?? p.avgCost * 0.9,
       confidenceScore: 0, // TODO: join via TradeDecision → Thesis
-      status: "OPEN" as const,
-      pnl: dollars,
-      pnlPct: pct,
+      status: displayStatus,
+      pnl: livePrice !== undefined ? dollars : 0,
+      pnlPct: livePrice !== undefined ? pct : 0,
       openedAt: p.openedAt.toISOString(),
       closedAt: undefined,
       thesis: "",
       shares: p.quantity,
       analystName: p.analyst?.name ?? undefined,
+      placedAt: order?.createdAt?.toISOString(),
+      filledAt: order?.filledAt?.toISOString(),
+      orderStatus: order?.status,
+      alpacaOrderId: order?.alpacaOrderId ?? undefined,
+      priceSource,
+      priceUpdatedAt: livePrice !== undefined ? priceLookup.fetchedAt : undefined,
     };
   });
 
@@ -410,8 +447,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   }));
 
   // ── 10. Today's picks ──────────────────────────────────────────────────────
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
+  const todayMidnight = etTradingDayDate();
 
   const dbTodaysPicks = await prisma.thesis.findMany({
     where: {

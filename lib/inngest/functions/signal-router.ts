@@ -11,6 +11,7 @@
 
 import { inngest } from "@/lib/inngest/client"
 import { prisma } from "@/lib/prisma"
+import { etTradingDayDate } from "@/lib/market-hours"
 
 // ── Routing helpers ─────────────────────────────────────────────────────────
 
@@ -142,8 +143,7 @@ export const signalRouter = inngest.createFunction(
     // ── Step 2: Get today's unrouted signals ────────────────────────────────
 
     const signals = await step.run("load-unrouted-signals", async () => {
-      const todayStart = new Date()
-      todayStart.setHours(0, 0, 0, 0)
+      const todayStart = etTradingDayDate()
 
       return prisma.signal.findMany({
         where: {

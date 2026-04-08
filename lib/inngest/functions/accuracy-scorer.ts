@@ -12,6 +12,7 @@ import OpenAI from "openai";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getAccuracyStats, type AccuracyStats } from "@/lib/accuracy-stats";
+import { etTradingDayDate } from "@/lib/market-hours";
 
 function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
@@ -95,10 +96,10 @@ export const accuracyScorer = inngest.createFunction(
       return { skipped: true, reason: "no-eligible-users" };
     }
 
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - 7);
-    weekStart.setHours(0, 0, 0, 0);
+    // Week window starts at ET midnight 7 days ago.
+    const todayEt = etTradingDayDate();
+    const weekStart = new Date(todayEt);
+    weekStart.setUTCDate(todayEt.getUTCDate() - 7);
 
     const reports: string[] = [];
 

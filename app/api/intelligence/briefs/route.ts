@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { createClient } from "@/lib/supabase/server"
+import { etTradingDayDate } from "@/lib/market-hours"
 
 // GET /api/intelligence/briefs — list morning briefs scoped to current user
 export async function GET(req: NextRequest) {
@@ -29,11 +30,8 @@ export async function GET(req: NextRequest) {
   }
 
   const dateParam = req.nextUrl.searchParams.get("date")
-  const date = dateParam ? new Date(dateParam + "T00:00:00") : (() => {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return d
-  })()
+  // ET trading-day date — matches how the morning cron writes MorningBrief.date
+  const date = dateParam ? new Date(dateParam + "T00:00:00.000Z") : etTradingDayDate()
 
   const briefs = await prisma.morningBrief.findMany({
     where: {
