@@ -20,15 +20,11 @@ export type DecisionPick = {
 
 export type DecisionSummaryData = {
   rankedPicks: DecisionPick[];
-  marketSummary: string;
   exposureBreakdown?: {
     longExposure?: number;
     shortExposure?: number;
     netExposure?: number;
   };
-  riskNotes?: string[];
-  overallAssessment: string;
-  portfolioReview?: string;
 };
 
 export type DecisionSummaryCardProps = ComponentProps<typeof Card> &
@@ -54,11 +50,7 @@ function confidenceColor(confidence: number): string {
 
 export function DecisionSummaryCard({
   rankedPicks,
-  marketSummary,
   exposureBreakdown,
-  riskNotes = [],
-  overallAssessment,
-  portfolioReview,
   className,
   ...cardProps
 }: DecisionSummaryCardProps) {
@@ -73,7 +65,7 @@ export function DecisionSummaryCard({
       <div className="px-4 py-3 flex items-center justify-between border-b">
         <div className="flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Portfolio Decisions</span>
+          <span className="text-sm font-semibold">Run Summary</span>
         </div>
         <Badge variant="secondary">
           {actionCount} action{actionCount !== 1 ? "s" : ""}
@@ -169,48 +161,6 @@ export function DecisionSummaryCard({
           </div>
         )}
 
-        {/* ── Portfolio review ────────────────────────────────── */}
-        {portfolioReview && (
-          <div className="space-y-1">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Portfolio Review
-            </span>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {portfolioReview}
-            </p>
-          </div>
-        )}
-
-        {/* ── Risk notes ──────────────────────────────────────── */}
-        {riskNotes.length > 0 && (
-          <div className="space-y-1">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Risk Notes
-            </span>
-            <ul className="space-y-0.5">
-              {riskNotes.map((note, i) => (
-                <li
-                  key={i}
-                  className="text-sm text-muted-foreground leading-relaxed"
-                >
-                  {note}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* ── Overall assessment ──────────────────────────────── */}
-        {overallAssessment && (
-          <div className="space-y-1">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Assessment
-            </span>
-            <p className="text-sm text-foreground/80 leading-relaxed">
-              {overallAssessment}
-            </p>
-          </div>
-        )}
       </div>
     </Card>
   );

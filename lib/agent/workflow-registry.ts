@@ -214,22 +214,21 @@ export const TEAMS: Team[] = [
     id: "agent",
     title: "Research Agent",
     summary:
-      "Runs structured 8-phase research sessions. Reads intelligence, reviews holdings, discovers opportunities, and executes paper trades.",
+      "Runs structured research sessions in four stages: orient, research, decide, and act. Reads intelligence, validates with live data, writes theses, and executes paper trades.",
     description:
-      "Each analyst runs as a GPT-4.1 agent with 14 tools and a 30-step budget. Before the first tool call, the system loads full context: strategy rules, portfolio with live P&L, watchlist, prior briefing, trade history, and accuracy stats. The agent follows an 8-phase workflow — reading pre-gathered intelligence first, then reviewing holdings and watchlist, discovering new opportunities, synthesizing a decision table, and executing trades. Runs happen weekdays at 8 AM (automated, 4-min timeout) or on demand (live streaming, 5-min timeout).",
+      "Each analyst runs as a GPT-4.1 agent with 14 tools and a 30-step budget. Before the first tool call, the system loads full context: strategy rules, portfolio with live P&L, watchlist, prior briefing, trade history, and accuracy stats. The agent follows a four-stage flow — Orient (read pre-gathered intelligence), Research (pull live data on triaged tickers), Decide (write a thesis for every ticker, then synthesize), Act (execute trades, update watchlist, recap). Theses are batched in Stage 3 so the agent can weigh them against the portfolio together before any execution. Runs happen weekdays at 8 AM (automated, 4-min timeout) or on demand (live streaming, 5-min timeout).",
     icon: Bot,
     model: "GPT-4.1",
     schedule: "8:00 AM ET weekdays + on demand",
     substeps: [
-      { title: "Portfolio check-in", summary: "Acknowledges open positions, references prior brief's watch-tomorrow items. No tools." },
-      { title: "Read intelligence", summary: "Reads morning brief and routed signals. Skips market context if brief is fresh." },
-      { title: "Orient", summary: "Optionally checks live SPY/VIX/sector data if brief is stale or missing." },
-      { title: "Review holdings", summary: "Triages positions near targets/stops, with earnings, or flagged in brief." },
-      { title: "Review watchlist", summary: "Checks watchlist items by priority — triggers, catalysts, and news." },
-      { title: "Discover", summary: "Researches 2-4 new opportunities from signals. Validates with live data." },
-      { title: "Synthesize", summary: "Portfolio-level reasoning. Outputs decision table — no tools, pure thinking." },
-      { title: "Execute", summary: "Exits before entries. Places trades, closes positions, updates watchlist." },
-      { title: "Wrap up", summary: "Calls complete_run with ranked picks, market summary, and risk notes." },
+      { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references prior brief's watch-tomorrow triggers. Plain text — no tools." },
+      { title: "Stage 1 — Orient", summary: "Reads morning brief, routed signals, and any artifacts that warrant the deep read. Falls back to live market context only if no brief is available." },
+      { title: "Stage 2 — Research", summary: "Pulls live data on triaged tickers — holdings to review, watchlist items, new opportunities. Uses get_stock_data plus earnings / options / SEC filings as relevant. No theses written yet." },
+      { title: "Stage 3 — Theses", summary: "Writes a thesis (LONG / SHORT / PASS) for every researched ticker, back to back. record_thesis only fires here." },
+      { title: "Stage 4 — Decide", summary: "Calls record_decision_plan once with a single synthesis paragraph reviewing all theses against the portfolio plus a planned action for every ticker (INITIATE / ADD / HOLD / REDUCE / EXIT / WATCH / REMOVE_WATCH / PASS). The synthesis is always required, even if no actions follow." },
+      { title: "Stage 5 — Act", summary: "Executes the planned actions in order: close_position first (frees capital), then place_trade for entries, then manage_watchlist for adds/removes. HOLD and PASS take no execution tool." },
+      { title: "Stage 6 — Run Summary", summary: "Calls record_run_summary with ranked picks (every researched ticker with the action that actually happened) and exposure breakdown. Pure data — synthesis already lives in the decision plan." },
+      { title: "Stage 7 — Complete", summary: "Calls complete_run with no arguments. Marks the run complete and triggers the briefing agent which writes tomorrow's standup automatically." },
     ],
     tools: [
       // Discovery
@@ -267,8 +266,12 @@ export const TEAMS: Team[] = [
         ],
       },
       { name: "manage_watchlist", provider: "internal", summary: "Adds/updates/removes watchlist items with priority and catalysts." },
-      // Synthesis
-      { name: "complete_run", provider: "internal", summary: "Wraps up session with ranked picks, market summary, risk notes." },
+      // Decision plan
+      { name: "record_decision_plan", provider: "internal", summary: "Records the agent's synthesis paragraph and planned actions for every researched ticker. Fires once between theses and execution." },
+      // Run summary
+      { name: "record_run_summary", provider: "internal", summary: "Records the structured per-ticker recap (ranked picks + exposure breakdown). Pure data — synthesis lives in the decision plan." },
+      // Complete
+      { name: "complete_run", provider: "internal", summary: "No-args. Marks the run complete in the DB and triggers the briefing agent. Always the agent's final tool call." },
     ],
     getPrompt: () => import("@/lib/agent/system-prompt-template").then((m) => m.SYSTEM_PROMPT_TEMPLATE),
     promptSource: "lib/agent/system-prompt-template.ts",
@@ -281,7 +284,7 @@ export const TEAMS: Team[] = [
     summary:
       "When the research agent calls complete_run, a GPT-4o reviewer generates a standup memo inline — the analyst's memory for the next run.",
     description:
-      "Called directly by the complete_run tool at the end of every research session. When the research agent finishes its work and calls complete_run, that tool marks the run COMPLETE and then immediately calls the briefing agent inline — no events, no queues. A GPT-4o agent reads the full conversation transcript, portfolio state, and trade outcomes. It writes a structured standup: narrative (400-600 words), strategy notes, market posture, watch-tomorrow items, unresolved items, self-corrections, and 0-5 dynamic search monitors. The standup feeds into the next session's system prompt. The analyst MUST reference watch-tomorrow items in Phase 0. Dynamic monitors are picked up by the next morning's intelligence sweep automatically.",
+      "Called directly by the complete_run tool at the end of every research session. When the research agent finishes its work and calls complete_run, that tool marks the run COMPLETE and then immediately calls the briefing agent inline — no events, no queues. A GPT-4o agent reads the full conversation transcript, portfolio state, and trade outcomes. It writes a structured standup: narrative (400-600 words), strategy notes, market posture, watch-tomorrow items, unresolved items, self-corrections, and 0-5 dynamic search monitors. The standup feeds into the next session's system prompt. The analyst references watch-tomorrow items in their portfolio check-in before Stage 1. Dynamic monitors are picked up by the next morning's intelligence sweep automatically.",
     icon: RotateCcw,
     model: "GPT-4o",
     schedule: "After every run",
