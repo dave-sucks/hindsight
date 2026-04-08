@@ -224,16 +224,19 @@ export async function POST(req: Request) {
         // ── 2. Persist messages (atomic — old messages preserved on failure) ──
         try {
           const allMessages = [...messages, ...response.messages];
-          await prisma.$transaction(async (tx) => {
-            await tx.runMessage.deleteMany({ where: { runId } });
-            await tx.runMessage.create({
-              data: {
-                runId,
-                role: "thread",
-                content: JSON.stringify(allMessages),
-              },
+          if (runId) {
+            const safeRunId = runId;
+            await prisma.$transaction(async (tx) => {
+              await tx.runMessage.deleteMany({ where: { runId: safeRunId } });
+              await tx.runMessage.create({
+                data: {
+                  runId: safeRunId,
+                  role: "thread",
+                  content: JSON.stringify(allMessages),
+                },
+              });
             });
-          });
+          }
           console.log(`[agent] Persisted ${allMessages.length} messages for runId=${runId}`);
         } catch (err) {
           console.error("[agent] Failed to persist messages:", err);
@@ -285,7 +288,7 @@ export async function POST(req: Request) {
     // Register the stream's completion promise with waitUntil so Vercel keeps
     // the function alive for onFinish (message persistence + briefing generation)
     // after the streaming response is sent to the client.
-    waitUntil(result.response);
+    waitUntil(Promise.resolve(result.response));
 
     return result.toUIMessageStreamResponse();
   } catch (err) {

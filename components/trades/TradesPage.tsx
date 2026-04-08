@@ -140,9 +140,12 @@ function EmptyState({ filtered }: { filtered: boolean }) {
         <p className="text-sm text-muted-foreground text-center max-w-xs">
           Trades are placed automatically when an analyst has high confidence in a thesis during a research session.
         </p>
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/analysts">Create an Analyst</Link>
-        </Button>
+        <Link
+          href="/analysts"
+          className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted"
+        >
+          Create an Analyst
+        </Link>
       </div>
     </div>
   );

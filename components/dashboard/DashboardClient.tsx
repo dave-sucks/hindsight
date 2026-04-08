@@ -164,9 +164,12 @@ function RecentPicksSection({
               Your analyst will research stocks, generate theses, and place paper trades autonomously.
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/analysts">Create an Analyst</Link>
-              </Button>
+              <Link
+                href="/analysts"
+                className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted"
+              >
+                Create an Analyst
+              </Link>
               <Button variant="ghost" size="sm" onClick={() => setShowTour(true)}>
                 Product Overview
               </Button>

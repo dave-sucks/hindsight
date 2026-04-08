@@ -105,7 +105,6 @@ export function Citation({
     return (
       <HoverCard>
         <HoverCardTrigger
-          openDelay={100}
           render={
             <button
               type="button"

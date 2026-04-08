@@ -69,11 +69,16 @@ export default async function RunsPage() {
           {runs.length === 0 && (
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button asChild>
-                    <Link href="/analysts">Create an Analyst</Link>
-                  </Button>
-                </TooltipTrigger>
+                <TooltipTrigger
+                  render={
+                    <Link
+                      href="/analysts"
+                      className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
+                    >
+                      Create an Analyst
+                    </Link>
+                  }
+                />
                 <TooltipContent side="bottom">
                   <p className="text-xs">Create an analyst to start running research sessions</p>
                 </TooltipContent>

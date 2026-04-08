@@ -821,6 +821,7 @@ export default function AnalystDetailClient({
 // Inline summary from most recent + 3-col grid of recent briefs + click to dialog
 
 import type { MorningBriefItem, AnalystBriefingItem } from "@/lib/actions/analyst.actions";
+import type { MorningBrief } from "@/components/intelligence/types";
 
 // Helper to normalize all briefs into unified shape
 function buildAllBriefs(analystName: string, morningBriefs: MorningBriefItem[], runBriefs: AnalystBriefingItem[]): UnifiedBrief[] {
@@ -828,9 +829,13 @@ function buildAllBriefs(analystName: string, morningBriefs: MorningBriefItem[], 
     ...morningBriefs.map((b) =>
       normalizeIntelBrief({
         ...b,
+        analystId: "",
         date: new Date(b.date).toISOString(),
         generatedAt: new Date(b.generatedAt).toISOString(),
         analyst: { id: "", name: analystName },
+        portfolioAlerts: (b.portfolioAlerts ?? []) as MorningBrief["portfolioAlerts"],
+        watchlistUpdates: (b.watchlistUpdates ?? []) as MorningBrief["watchlistUpdates"],
+        newOpportunities: (b.newOpportunities ?? []) as MorningBrief["newOpportunities"],
       })
     ),
     ...runBriefs.map((b) => normalizeRunBrief(b, analystName)),

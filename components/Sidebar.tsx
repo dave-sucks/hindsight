@@ -116,7 +116,7 @@ export default function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
-        <TooltipProvider delayDuration={400}>
+        <TooltipProvider delay={400}>
           {/* Main nav */}
           <SidebarGroup>
             <SidebarGroupContent>
@@ -124,16 +124,18 @@ export default function AppSidebar({
                 {MAIN_NAV.map(({ href, label, icon: Icon, tooltip }) => (
                   <SidebarMenuItem key={href}>
                     <Tooltip>
-                      <TooltipTrigger asChild>
-                        <SidebarMenuButton
-                          render={<Link href={href} />}
-                          isActive={isActive(href)}
-                          onClick={() => isMobile && setOpenMobile(false)}
-                        >
-                          <Icon />
-                          <span>{label}</span>
-                        </SidebarMenuButton>
-                      </TooltipTrigger>
+                      <TooltipTrigger
+                        render={
+                          <SidebarMenuButton
+                            render={<Link href={href} />}
+                            isActive={isActive(href)}
+                            onClick={() => isMobile && setOpenMobile(false)}
+                          >
+                            <Icon />
+                            <span>{label}</span>
+                          </SidebarMenuButton>
+                        }
+                      />
                       <TooltipContent side="right">
                         <p className="text-xs">{tooltip}</p>
                       </TooltipContent>
@@ -152,16 +154,18 @@ export default function AppSidebar({
                 {PORTFOLIO_NAV.map(({ href, label, icon: Icon, tooltip }) => (
                   <SidebarMenuItem key={href}>
                     <Tooltip>
-                      <TooltipTrigger asChild>
-                        <SidebarMenuButton
-                          render={<Link href={href} />}
-                          isActive={isActive(href)}
-                          onClick={() => isMobile && setOpenMobile(false)}
-                        >
-                          <Icon />
-                          <span>{label}</span>
-                        </SidebarMenuButton>
-                      </TooltipTrigger>
+                      <TooltipTrigger
+                        render={
+                          <SidebarMenuButton
+                            render={<Link href={href} />}
+                            isActive={isActive(href)}
+                            onClick={() => isMobile && setOpenMobile(false)}
+                          >
+                            <Icon />
+                            <span>{label}</span>
+                          </SidebarMenuButton>
+                        }
+                      />
                       <TooltipContent side="right">
                         <p className="text-xs">{tooltip}</p>
                       </TooltipContent>
