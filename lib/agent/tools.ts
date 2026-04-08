@@ -933,7 +933,7 @@ export function createResearchTools(ctx: ToolContext) {
 
     record_thesis: tool({
       description:
-        "MANDATORY for every ticker you researched. Persist your thesis to the database and display as a formatted card. Call this for EVERY ticker — LONG, SHORT, and PASS. PASS theses are just as important: they document why a stock doesn't fit and build institutional memory. Never skip this tool or write a verdict as text instead.",
+        "STAGE 3 ONLY. Write a thesis for every ticker you researched in Stage 2, back to back, in one batch. Direction must be LONG, SHORT, or PASS — PASS theses are mandatory for tickers you researched but won't trade, they document the decision. Never call this in Stage 2 (research) or Stage 4 (execution). Never write a verdict as narration text instead of calling this tool.",
       inputSchema: thesisParams,
       execute: async (args: ThesisInput) => {
         const _t0 = Date.now();
@@ -1146,11 +1146,18 @@ export function createResearchTools(ctx: ToolContext) {
 
           if (existingPosition) {
             console.warn(`[tool] place_trade BLOCKED: open position already exists for ${args.ticker}`);
+            const blockedMsg = `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`;
             return {
-              success: false,
-              ticker: args.ticker,
-              status: "FAILED" as const,
-              message: `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`,
+              summary: `Trade blocked: $${args.ticker} — duplicate position`,
+              tickers: [{ ticker: args.ticker, tag: "Failed", summary: blockedMsg }] as TickerFinding[],
+              _sources: [] as ToolSource[],
+              data: {
+                success: false,
+                ticker: args.ticker,
+                status: "FAILED" as const,
+                direction: args.direction,
+                message: blockedMsg,
+              },
             };
           }
 
@@ -1318,31 +1325,43 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} fill=$${fillPrice.toFixed(2)}`, stats);
+          const tag = args.direction === "LONG" ? "Buy" : "Sell";
+          const itemSummary = `${args.shares} shares @ $${fillPrice.toFixed(2)} · target $${args.target_price.toFixed(2)} · stop $${args.stop_loss.toFixed(2)}`;
           return {
-            success: true,
-            ticker: args.ticker,
-            status: "FILLED" as const,
-            direction: args.direction,
-            shares: args.shares,
-            entryPrice: fillPrice,
-            targetPrice: args.target_price,
-            stopLoss: args.stop_loss,
-            positionId: position.id,
-            orderId: order.id,
-            alpacaOrderId: alpacaOrder.id,
-            message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
-            _sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }],
-            ...(portfolioUpdate ? { portfolioUpdate } : {}),
+            summary: `Placed order: ${args.direction} ${args.shares} $${args.ticker} @ $${fillPrice.toFixed(2)}`,
+            tickers: [{ ticker: args.ticker, tag, summary: itemSummary }] as TickerFinding[],
+            _sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }] as ToolSource[],
+            data: {
+              success: true,
+              ticker: args.ticker,
+              status: "FILLED" as const,
+              direction: args.direction,
+              shares: args.shares,
+              entryPrice: fillPrice,
+              targetPrice: args.target_price,
+              stopLoss: args.stop_loss,
+              positionId: position.id,
+              orderId: order.id,
+              alpacaOrderId: alpacaOrder.id,
+              message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+              ...(portfolioUpdate ? { portfolioUpdate } : {}),
+            },
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Trade placement failed";
           console.error(`[tool] place_trade FAILED for ${args.ticker}: ${msg}`);
           logToolEnd("place_trade", _t0, ctx.runId, `ticker=${args.ticker} FAILED`, stats);
           return {
-            success: false,
-            ticker: args.ticker,
-            status: "FAILED" as const,
-            message: msg,
+            summary: `Trade failed: $${args.ticker}`,
+            tickers: [{ ticker: args.ticker, tag: "Failed", summary: msg }] as TickerFinding[],
+            _sources: [] as ToolSource[],
+            data: {
+              success: false,
+              ticker: args.ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: msg,
+            },
           };
         }
       },
@@ -1373,7 +1392,19 @@ export function createResearchTools(ctx: ToolContext) {
 
           if (!position) {
             logToolEnd("close_position", _t0, ctx.runId, `${ticker} NO_POSITION`, stats);
-            return { success: true, ticker, reason: args.reason, status: "NO_POSITION" as const, message: `No open position in ${ticker}. No action taken.` };
+            const noPosMsg = `No open position in ${ticker}. No action taken.`;
+            return {
+              summary: `No position to close: $${ticker}`,
+              tickers: [{ ticker, tag: "NoOp", summary: noPosMsg }] as TickerFinding[],
+              _sources: [] as ToolSource[],
+              data: {
+                success: true,
+                ticker,
+                reason: args.reason,
+                status: "NO_POSITION" as const,
+                message: noPosMsg,
+              },
+            };
           }
 
           // Lazy import to avoid circular deps (same pattern as trade-exit.ts)
@@ -1472,41 +1503,158 @@ export function createResearchTools(ctx: ToolContext) {
           }
 
           logToolEnd("close_position", _t0, ctx.runId, `${ticker} pnl=$${result.realizedPnl.toFixed(2)}`, stats);
+          const pnlSign = result.realizedPnl >= 0 ? "+" : "";
+          const itemSummary = `${position.quantity} shares closed @ $${result.closePrice.toFixed(2)} · ${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)}`;
           return {
-            success: true,
-            ticker,
-            reason: args.reason,
-            shares: position.quantity,
-            status: "CLOSED" as const,
-            direction: position.direction,
-            entryPrice: position.avgCost,
-            closePrice: result.closePrice,
-            realizedPnl: result.realizedPnl,
-            pnlPct: Math.round(pnlPct * 100) / 100,
-            outcome: result.outcome,
-            message: `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${result.realizedPnl >= 0 ? "+" : ""}${result.realizedPnl.toFixed(2)}`,
-            _sources: [{ provider: "Alpaca", title: `Close ${ticker}` }],
-            ...(portfolioUpdate ? { portfolioUpdate } : {}),
+            summary: `Closed $${ticker}: ${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)}`,
+            tickers: [{ ticker, tag: "Closed", summary: itemSummary }] as TickerFinding[],
+            _sources: [{ provider: "Alpaca", title: `Close ${ticker}` }] as ToolSource[],
+            data: {
+              success: true,
+              ticker,
+              reason: args.reason,
+              shares: position.quantity,
+              status: "CLOSED" as const,
+              direction: position.direction,
+              entryPrice: position.avgCost,
+              closePrice: result.closePrice,
+              realizedPnl: result.realizedPnl,
+              pnlPct: Math.round(pnlPct * 100) / 100,
+              outcome: result.outcome,
+              message: `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${pnlSign}${result.realizedPnl.toFixed(2)}`,
+              ...(portfolioUpdate ? { portfolioUpdate } : {}),
+            },
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Position close failed";
           console.error(`[tool] close_position FAILED for ${ticker}: ${msg}`);
           logToolEnd("close_position", _t0, ctx.runId, `${ticker} FAILED`, stats);
-          return { success: false, ticker, reason: args.reason, status: "FAILED" as const, message: msg };
+          return {
+            summary: `Close failed: $${ticker}`,
+            tickers: [{ ticker, tag: "Failed", summary: msg }] as TickerFinding[],
+            _sources: [] as ToolSource[],
+            data: {
+              success: false,
+              ticker,
+              reason: args.reason,
+              status: "FAILED" as const,
+              message: msg,
+            },
+          };
         }
       },
     }),
 
-    // ── Run Completion ──────────────────────────────────────────────────────
-    complete_run: tool({
+    // ── Stage 4: Decision Plan ──────────────────────────────────────────────
+    // Fires once after all theses are written. The agent passes a single
+    // synthesis paragraph (the "review everything and decide" moment) plus
+    // its list of planned actions for every researched ticker. The plan is
+    // persisted to run.parameters.decisionPlan so record_run_summary can
+    // read it back when it builds the run_summary RunEvent that the briefing
+    // agent depends on. The briefing payload shape is preserved byte-for-byte.
+    record_decision_plan: tool({
       description:
-        "Mark the run complete and present a final portfolio synthesis. Call this LAST, after all theses and trades. Summarize market context, rank all picks, show exposure breakdown, and highlight risks.",
+        "STAGE 4 ONLY. Fires ONCE after all theses are written, before any execution tool. Pass a single synthesis paragraph explaining your overall decision (the 'I reviewed everything and decided X' moment — required even if you decide not to trade) plus your planned actions for every researched ticker. Your IMMEDIATE next step after this is Stage 5 — execute the planned actions in order. Do not stop.",
       inputSchema: z.object({
-        market_summary: z
+        synthesis: z
           .string()
+          .min(1)
           .describe(
-            "Brief market context summary (2-3 sentences about today's conditions)",
+            "ONE paragraph (3-6 sentences) reviewing all your theses against the portfolio. Always required, even if you're not trading. Examples: 'Thesis refresh confirms strong NIO momentum and durable BYD swing posture, but no new trades are warranted. Staying disciplined with concentrated EV positioning while risk-managing any sector-wide selloffs.' Or: 'FIVN and AKAM are the strongest setups today; opening both. AMZN and GSAT both lack near-term catalysts so passing on them.'",
           ),
+        planned_actions: z
+          .array(
+            z.object({
+              ticker: z.string(),
+              action: z.enum([
+                "INITIATE", "ADD", "HOLD", "REDUCE", "EXIT",
+                "WATCH", "REMOVE_WATCH", "PASS",
+              ]),
+              reasoning: z
+                .string()
+                .describe("One-line rationale for this specific action"),
+            }),
+          )
+          .describe(
+            "Every ticker you researched in Stage 2, with the action you intend to take. INITIATE/ADD/REDUCE/EXIT lead to place_trade or close_position calls in Stage 5. WATCH/REMOVE_WATCH lead to manage_watchlist. HOLD/PASS take no action.",
+          ),
+        risk_notes: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Optional portfolio-level risk observations (correlation, concentration, macro headwinds). Used by the briefing agent — not rendered to the user separately from your synthesis.",
+          ),
+      }),
+      execute: async (args) => {
+        const _t0 = Date.now();
+        logToolStart("record_decision_plan", ctx.runId, `actions=${args.planned_actions.length}`, stats);
+        try {
+          // Persist plan to run.parameters JSON so record_run_summary can read
+          // it back. Merge with existing parameters to preserve other fields.
+          if (ctx.runId) {
+            const existing = await prisma.researchRun.findFirst({
+              where: { id: ctx.runId },
+              select: { parameters: true },
+            });
+            const params = (existing?.parameters && typeof existing.parameters === "object")
+              ? (existing.parameters as Record<string, unknown>)
+              : {};
+            await prisma.researchRun.update({
+              where: { id: ctx.runId },
+              data: {
+                parameters: {
+                  ...params,
+                  decisionPlan: {
+                    synthesis: args.synthesis,
+                    planned_actions: args.planned_actions,
+                    risk_notes: args.risk_notes ?? [],
+                    recorded_at: new Date().toISOString(),
+                  },
+                } as object,
+              },
+            });
+          }
+          logToolEnd("record_decision_plan", _t0, ctx.runId, `actions=${args.planned_actions.length}`, stats);
+          return {
+            success: true,
+            synthesis: args.synthesis,
+            planned_actions: args.planned_actions,
+            risk_notes: args.risk_notes ?? [],
+            action_count: args.planned_actions.filter(
+              (p) => p.action !== "HOLD" && p.action !== "PASS",
+            ).length,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Decision plan persistence failed";
+          console.error(`[tool] record_decision_plan FAILED: ${msg}`);
+          logToolEnd("record_decision_plan", _t0, ctx.runId, "FAILED", stats);
+          return {
+            success: false,
+            synthesis: args.synthesis,
+            planned_actions: args.planned_actions,
+            risk_notes: args.risk_notes ?? [],
+            action_count: 0,
+            error: msg,
+          };
+        }
+      },
+    }),
+
+    // ── Stage 6: Run Summary ────────────────────────────────────────────────
+    // Fires after all action tools, before complete_run. Pure data-only
+    // recap: rankedPicks table + exposure breakdown. The synthesis text the
+    // user sees lives in the Decision CoT (record_decision_plan), not here.
+    //
+    // CRITICAL: this tool writes the `run_summary` RunEvent that the briefing
+    // agent reads from `lib/agent/update-analyst-briefing.ts`. Payload shape
+    // is preserved byte-for-byte: { summary, ranked_picks, risk_notes,
+    // overall_assessment }. We pull synthesis + risk_notes from the stored
+    // decision plan so the briefing keeps reading the same fields it always
+    // has. Briefing code is NOT touched.
+    record_run_summary: tool({
+      description:
+        "STAGE 6. Fires after all execution tools (Stage 5), before complete_run. Pass the ranked picks and exposure breakdown — pure data. The synthesis paragraph from your record_decision_plan call is automatically attached for the briefing agent. Your IMMEDIATE next step after this is Stage 7 — call complete_run.",
+      inputSchema: z.object({
         ranked_picks: z
           .array(
             z.object({
@@ -1516,107 +1664,96 @@ export function createResearchTools(ctx: ToolContext) {
               confidence: z.number(),
               reasoning: z
                 .string()
-                .describe("One-line rationale for the ranking"),
-              action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS", "FAILED"]),
+                .describe("One-line rationale (<= 80 chars)"),
+              action: z.enum([
+                "INITIATE", "ADD", "HOLD", "REDUCE", "EXIT",
+                "WATCH", "REMOVE_WATCH", "PASS", "FAILED",
+              ]),
             }),
           )
           .describe(
-            "All tickers researched, ranked by conviction. Use the action you took: INITIATE (new position), ADD (added to existing), HOLD (kept unchanged), REDUCE (trimmed), EXIT (closed), WATCH (added to watchlist), REMOVE_WATCH (removed from watchlist), PASS (intentionally chose not to trade), FAILED (wanted to trade but couldn't due to error/duplicate/insufficient funds).",
+            "Every ticker you researched in Stage 2, ranked by conviction, with the action that ACTUALLY happened in Stage 5. Use FAILED for tickers where place_trade returned success: false (e.g. duplicate position).",
           ),
         exposure_breakdown: z
           .object({
-            long_exposure: z.number().describe("Total $ in long trades"),
-            short_exposure: z.number().describe("Total $ in short trades"),
-            net_exposure: z
-              .number()
-              .describe("Net $ exposure (long - short)"),
-            sector_concentration: z
-              .string()
-              .optional()
-              .describe("Note if concentrated in one sector"),
+            long_exposure: z.number().describe("Total $ in long positions"),
+            short_exposure: z.number().describe("Total $ in short positions"),
+            net_exposure: z.number().describe("Net $ exposure (long - short)"),
           })
           .optional(),
-        risk_notes: z
-          .array(z.string())
-          .optional()
-          .describe(
-            "Portfolio-level risk observations (correlation, concentration, macro headwinds)",
-          ),
-        overall_assessment: z
-          .string()
-          .describe(
-            "Final assessment of the session — what went well, what to watch tomorrow",
-          ),
-        portfolio_review: z
-          .string()
-          .optional()
-          .describe(
-            "Portfolio review assessment from Phase 5.5 — total exposure analysis, sector concentration, correlation risk, and whether combined risk is acceptable",
-          ),
       }),
       execute: async (args) => {
         const _t0 = Date.now();
+        logToolStart("record_run_summary", ctx.runId, `picks=${args.ranked_picks.length}`, stats);
         try {
-          console.log(`[tool] complete_run picks=${args.ranked_picks.length} runId=${ctx.runId}`);
-          const traded = args.ranked_picks.filter((p) => {
-            const a = p.action.toUpperCase();
-            return a === "INITIATE" || a === "ADD" || a === "TRADE";
-          }).length;
-
-          // Atomic: only transition non-COMPLETE → COMPLETE.
-          // If already COMPLETE (e.g., duplicate call), this is a no-op.
-          const completeResult = await prisma.researchRun.updateMany({
-            where: { id: ctx.runId, status: { not: "COMPLETE" } },
-            data: { status: "COMPLETE", completedAt: new Date() },
-          });
-          if (completeResult.count === 0) {
-            console.log(`[tool] complete_run: run ${ctx.runId} already COMPLETE, skipping status update`);
+          // Read the decision plan we stored in Stage 4 so we can attach
+          // synthesis + risk_notes to the run_summary RunEvent payload.
+          // The briefing agent depends on these fields existing in the
+          // payload — see lib/agent/update-analyst-briefing.ts:300-309.
+          let synthesis = "";
+          let riskNotes: string[] = [];
+          if (ctx.runId) {
+            const run = await prisma.researchRun.findFirst({
+              where: { id: ctx.runId },
+              select: { parameters: true },
+            });
+            const params = (run?.parameters && typeof run.parameters === "object")
+              ? (run.parameters as Record<string, unknown>)
+              : {};
+            const plan = params.decisionPlan as
+              | { synthesis?: string; risk_notes?: string[] }
+              | undefined;
+            if (plan?.synthesis) synthesis = plan.synthesis;
+            if (Array.isArray(plan?.risk_notes)) riskNotes = plan.risk_notes;
           }
 
-          // Write run_summary + run_complete events (non-fatal — run is already marked COMPLETE)
-          try {
-            if (ctx.runId) {
+          const traded = args.ranked_picks.filter((p) => {
+            const a = p.action.toUpperCase();
+            return a === "INITIATE" || a === "ADD";
+          }).length;
+
+          // Write the run_summary RunEvent in the EXACT shape the briefing
+          // agent reads. Do not change these field names.
+          if (ctx.runId) {
+            try {
               await prisma.runEvent.create({
                 data: {
                   runId: ctx.runId,
                   type: "run_summary",
                   title: "Run Summary",
-                  message: args.overall_assessment,
+                  message: synthesis,
                   payload: {
-                    summary: args.market_summary,
+                    summary: synthesis,
                     ranked_picks: args.ranked_picks,
-                    risk_notes: args.risk_notes,
-                    portfolio_review: args.portfolio_review,
-                    overall_assessment: args.overall_assessment,
+                    risk_notes: riskNotes,
+                    overall_assessment: synthesis,
+                    portfolio_review: synthesis,
                   } as object,
                 },
               });
-              await prisma.runEvent.create({
-                data: {
-                  runId: ctx.runId,
-                  type: "run_complete",
-                  title: `Run complete — ${args.ranked_picks.length} analyzed, ${traded} traded`,
-                  message: null,
-                  payload: {
-                    analyzed: args.ranked_picks.length,
-                    recommended: args.ranked_picks.filter((p) => p.action !== "PASS").length,
-                    placed: traded,
-                  } as object,
-                },
-              });
+            } catch (evtErr) {
+              console.error(
+                `[tool] record_run_summary RunEvent write failed:`,
+                evtErr instanceof Error ? evtErr.message : evtErr,
+              );
             }
-          } catch (err) {
-            console.error(`[tool] complete_run RunEvent write failed (run already marked COMPLETE):`, err instanceof Error ? err.message : err);
           }
-          // V2: Record HOLD decisions for positions not acted on
+
+          // Record HOLD decisions for positions not acted on. (Moved here
+          // from old complete_run — same logic, same reason: build the
+          // institutional record of what the agent decided.)
           const holdPicks = args.ranked_picks.filter(
-            (p) => p.action.toUpperCase() === "HOLD"
+            (p) => p.action.toUpperCase() === "HOLD",
           );
           if (holdPicks.length > 0 && ctx.analystId && ctx.runId) {
             for (const pick of holdPicks) {
               try {
                 const position = await prisma.position.findFirst({
-                  where: { analystId: ctx.analystId, symbol: pick.ticker.toUpperCase(), status: "OPEN" },
+                  where: {
+                    analystId: ctx.analystId,
+                    symbol: pick.ticker.toUpperCase(),
+                    status: "OPEN",
+                  },
                   select: { id: true },
                 });
                 await prisma.tradeDecision.create({
@@ -1631,14 +1768,94 @@ export function createResearchTools(ctx: ToolContext) {
                   },
                 });
               } catch (holdErr) {
-                console.warn(`[tool] complete_run HOLD decision failed for ${pick.ticker}:`, holdErr instanceof Error ? holdErr.message : holdErr);
+                console.warn(
+                  `[tool] record_run_summary HOLD decision failed for ${pick.ticker}:`,
+                  holdErr instanceof Error ? holdErr.message : holdErr,
+                );
               }
             }
           }
 
-          // Generate post-run briefing directly. updateAnalystBriefing now
-          // throws on failure (used to silently swallow). We ALSO verify the
-          // row was actually written, in case future bugs sneak past again.
+          logToolEnd("record_run_summary", _t0, ctx.runId, `picks=${args.ranked_picks.length} traded=${traded}`, stats);
+          const eb = args.exposure_breakdown;
+          return {
+            success: true,
+            rankedPicks: args.ranked_picks,
+            exposureBreakdown: eb
+              ? {
+                  longExposure: eb.long_exposure,
+                  shortExposure: eb.short_exposure,
+                  netExposure: eb.net_exposure,
+                }
+              : undefined,
+            traded,
+            analyzed: args.ranked_picks.length,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Run summary persistence failed";
+          console.error(`[tool] record_run_summary FAILED: ${msg}`);
+          logToolEnd("record_run_summary", _t0, ctx.runId, "FAILED", stats);
+          return {
+            success: false,
+            rankedPicks: args.ranked_picks,
+            exposureBreakdown: undefined,
+            traded: 0,
+            analyzed: args.ranked_picks.length,
+            error: msg,
+          };
+        }
+      },
+    }),
+
+    // ── Stage 7: Complete Run ───────────────────────────────────────────────
+    // The final tool call. Marks the run COMPLETE in the DB, runs the
+    // existing briefing block (UNTOUCHED — see PR #132 for the long story
+    // on why this lives here inline), writes the briefing_generated
+    // RunEvent. No args. No recap data. No table. Just "we're done."
+    //
+    // The briefing block is preserved byte-for-byte from the previous
+    // implementation. Do not modify it without coordinating with the
+    // briefing path which has been broken multiple times.
+    complete_run: tool({
+      description:
+        "STAGE 7. Mark the run complete. This is your absolute final tool call. No arguments — every recap field already lives in record_decision_plan and record_run_summary. Calling this triggers the post-run briefing agent automatically.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const _t0 = Date.now();
+        logToolStart("complete_run", ctx.runId, undefined, stats);
+        try {
+          // Atomic: only transition non-COMPLETE → COMPLETE.
+          const completeResult = await prisma.researchRun.updateMany({
+            where: { id: ctx.runId, status: { not: "COMPLETE" } },
+            data: { status: "COMPLETE", completedAt: new Date() },
+          });
+          if (completeResult.count === 0) {
+            console.log(`[tool] complete_run: run ${ctx.runId} already COMPLETE, skipping status update`);
+          }
+
+          // Write run_complete event for the runs list / activity feed.
+          if (ctx.runId) {
+            try {
+              await prisma.runEvent.create({
+                data: {
+                  runId: ctx.runId,
+                  type: "run_complete",
+                  title: "Run complete",
+                  message: null,
+                  payload: {} as object,
+                },
+              });
+            } catch (evtErr) {
+              console.error(
+                `[tool] complete_run run_complete event failed:`,
+                evtErr instanceof Error ? evtErr.message : evtErr,
+              );
+            }
+          }
+
+          // ── Briefing block (UNTOUCHED from PR #132) ─────────────────────
+          // Generate post-run briefing directly. updateAnalystBriefing
+          // throws on failure. We verify the row was actually written.
           console.log(`[tool] complete_run: ENTERING briefing block for run=${ctx.runId} analystId=${ctx.analystId ?? "MISSING"}`);
           let briefingStatus: "success" | "failed" | "skipped" = "skipped";
           let briefingError: string | null = null;
@@ -1648,7 +1865,6 @@ export function createResearchTools(ctx: ToolContext) {
               const briefStart = Date.now();
               await updateAnalystBriefing({ analystId: ctx.analystId, runId: ctx.runId, userId: ctx.userId });
               console.log(`[tool] complete_run: updateAnalystBriefing returned for run=${ctx.runId} in ${Date.now() - briefStart}ms`);
-              // VERIFY the briefing row actually exists. Trust nothing.
               const writtenBrief = await prisma.analystBriefing.findFirst({
                 where: { runId: ctx.runId },
                 select: { id: true },
@@ -1673,8 +1889,6 @@ export function createResearchTools(ctx: ToolContext) {
           console.log(`[tool] complete_run: EXITING briefing block for run=${ctx.runId} status=${briefingStatus}`);
 
           // Record briefing event so it's visible in the run UI.
-          // Include the error in the payload AND the message so the chat UI
-          // surfaces the failure to the user without needing Vercel logs.
           try {
             await prisma.runEvent.create({
               data: {
@@ -1698,20 +1912,11 @@ export function createResearchTools(ctx: ToolContext) {
             console.error(`[tool] complete_run: failed to write briefing_generated event:`, evtErr);
           }
 
-          logToolEnd("complete_run", _t0, ctx.runId, `picks=${args.ranked_picks.length} briefing=${briefingStatus}`, stats);
-          const eb = args.exposure_breakdown;
+          logToolEnd("complete_run", _t0, ctx.runId, `briefing=${briefingStatus}`, stats);
           return {
-            status: "complete",
-            analyzed: args.ranked_picks.length,
-            traded,
+            ok: true,
             briefing: briefingStatus,
             briefingError,
-            marketSummary: args.market_summary,
-            rankedPicks: args.ranked_picks,
-            exposureBreakdown: eb ? { longExposure: eb.long_exposure, shortExposure: eb.short_exposure, netExposure: eb.net_exposure } : undefined,
-            riskNotes: args.risk_notes ?? [],
-            overallAssessment: args.overall_assessment,
-            portfolioReview: args.portfolio_review ?? null,
           };
         } catch (err) {
           console.error(`[tool] complete_run FAILED:`, err instanceof Error ? err.message : err);
@@ -1722,51 +1927,13 @@ export function createResearchTools(ctx: ToolContext) {
               data: { status: "COMPLETE", completedAt: new Date() },
             });
           } catch { /* already tried */ }
-          // Try to generate briefing even on partial failure, with verification.
-          let briefingStatus: "success" | "failed" | "skipped" = "skipped";
-          let briefingError: string | null = null;
-          if (ctx.analystId) {
-            try {
-              await updateAnalystBriefing({ analystId: ctx.analystId, runId: ctx.runId, userId: ctx.userId });
-              const writtenBrief = await prisma.analystBriefing.findFirst({
-                where: { runId: ctx.runId },
-                select: { id: true },
-              });
-              if (writtenBrief) {
-                briefingStatus = "success";
-              } else {
-                briefingStatus = "failed";
-                briefingError = "Briefing returned without error but no row was written.";
-              }
-            } catch (briefErr) {
-              briefingStatus = "failed";
-              briefingError = briefErr instanceof Error ? briefErr.message : String(briefErr);
-            }
-          }
-          // Surface the failure in the chat UI even when complete_run threw
-          try {
-            await prisma.runEvent.create({
-              data: {
-                runId: ctx.runId,
-                type: "briefing_generated",
-                title: briefingStatus === "success"
-                  ? "Portfolio briefing written"
-                  : briefingStatus === "failed"
-                    ? "Portfolio briefing FAILED"
-                    : "Portfolio briefing skipped",
-                message: briefingStatus === "success"
-                  ? "Briefing written despite complete_run error."
-                  : briefingError ?? "Briefing did not run.",
-                payload: {
-                  briefingStatus,
-                  ...(briefingError ? { error: briefingError } : {}),
-                  completeRunError: err instanceof Error ? err.message : String(err),
-                } as object,
-              },
-            });
-          } catch { /* nothing more we can do */ }
           logToolEnd("complete_run", _t0, ctx.runId, "FAILED", stats);
-          return { status: "complete", analyzed: args.ranked_picks.length, traded: 0, briefing: briefingStatus, briefingError, error: err instanceof Error ? err.message : "complete_run failed" };
+          return {
+            ok: false,
+            briefing: "skipped" as const,
+            briefingError: err instanceof Error ? err.message : "complete_run failed",
+            error: err instanceof Error ? err.message : "complete_run failed",
+          };
         }
       },
     }),
@@ -1798,17 +1965,24 @@ export function createResearchTools(ctx: ToolContext) {
         const ticker = args.ticker.toUpperCase().trim();
         logToolStart("manage_watchlist", ctx.runId, `action=${args.action} ticker=${ticker}`, stats);
 
+        const wlFail = (msg: string) => ({
+          summary: `Watchlist ${args.action.toLowerCase()} failed: $${ticker}`,
+          tickers: [{ ticker, tag: "Failed", summary: msg }] as TickerFinding[],
+          _sources: [] as ToolSource[],
+          data: { success: false, action: args.action, ticker, changed: false, message: msg },
+        });
+
         if (!ctx.analystId) {
           logToolEnd("manage_watchlist", _t0, ctx.runId, "FAILED: no analystId", stats);
-          return { success: false, action: args.action, ticker, changed: false, message: "Cannot manage watchlist without an analyst ID." };
+          return wlFail("Cannot manage watchlist without an analyst ID.");
         }
 
         // Validate numeric fields
         if (args.target_price !== undefined && args.target_price <= 0) {
-          return { success: false, action: args.action, ticker, changed: false, message: "target_price must be positive." };
+          return wlFail("target_price must be positive.");
         }
         if (args.stop_price !== undefined && args.stop_price <= 0) {
-          return { success: false, action: args.action, ticker, changed: false, message: "stop_price must be positive." };
+          return wlFail("stop_price must be positive.");
         }
 
         // Map MEDIUM → NORMAL for DB compat (schema stores NORMAL, tool exposes MEDIUM for clarity)
@@ -1839,23 +2013,29 @@ export function createResearchTools(ctx: ToolContext) {
                 },
               });
               logToolEnd("manage_watchlist", _t0, ctx.runId, `MERGED existing ${ticker}`, stats);
+              const mergedSummary = args.reason || (updated.catalyst ? `Catalyst: ${updated.catalyst}` : "Updated metadata");
               return {
-                success: true,
-                action: "ADD" as const,
-                ticker,
-                changed: true,
-                watchlist_item: {
+                summary: `Updated $${ticker} on watchlist`,
+                tickers: [{ ticker, tag: "Watch", summary: mergedSummary }] as TickerFinding[],
+                _sources: [] as ToolSource[],
+                data: {
+                  success: true,
+                  action: "ADD" as const,
                   ticker,
-                  priority: updated.priority as "LOW" | "NORMAL" | "HIGH",
-                  notes: updated.notes,
-                  thesis_direction: updated.thesisDirection as "LONG" | "SHORT" | "PASS" | null,
-                  target_price: updated.targetPrice,
-                  stop_price: updated.stopPrice,
-                  conviction: updated.conviction,
-                  catalyst: updated.catalyst,
-                  updated_at: updated.updatedAt.toISOString(),
+                  changed: true,
+                  watchlist_item: {
+                    ticker,
+                    priority: updated.priority as "LOW" | "NORMAL" | "HIGH",
+                    notes: updated.notes,
+                    thesis_direction: updated.thesisDirection as "LONG" | "SHORT" | "PASS" | null,
+                    target_price: updated.targetPrice,
+                    stop_price: updated.stopPrice,
+                    conviction: updated.conviction,
+                    catalyst: updated.catalyst,
+                    updated_at: updated.updatedAt.toISOString(),
+                  },
+                  message: `$${ticker} already on watchlist — merged updated metadata.`,
                 },
-                message: `$${ticker} already on watchlist — merged updated metadata.`,
               };
             }
 
@@ -1926,23 +2106,29 @@ export function createResearchTools(ctx: ToolContext) {
             try { revalidatePath(`/analysts/${ctx.analystId}`); } catch { /* non-fatal */ }
 
             logToolEnd("manage_watchlist", _t0, ctx.runId, `ADDED ${ticker}`, stats);
+            const addSummary = args.reason || (args.catalyst ? `Catalyst: ${args.catalyst}` : "Added to watchlist");
             return {
-              success: true,
-              action: "ADD" as const,
-              ticker,
-              changed: true,
-              watchlist_item: {
+              summary: `Added $${ticker} to watchlist`,
+              tickers: [{ ticker, tag: "Watch", summary: addSummary }] as TickerFinding[],
+              _sources: [] as ToolSource[],
+              data: {
+                success: true,
+                action: "ADD" as const,
                 ticker,
-                priority: created.priority as "LOW" | "NORMAL" | "HIGH",
-                notes: created.notes,
-                thesis_direction: args.thesis_direction ?? null,
-                target_price: args.target_price ?? null,
-                stop_price: args.stop_price ?? null,
-                conviction: args.conviction ?? null,
-                catalyst: args.catalyst ?? null,
-                updated_at: created.updatedAt.toISOString(),
+                changed: true,
+                watchlist_item: {
+                  ticker,
+                  priority: created.priority as "LOW" | "NORMAL" | "HIGH",
+                  notes: created.notes,
+                  thesis_direction: args.thesis_direction ?? null,
+                  target_price: args.target_price ?? null,
+                  stop_price: args.stop_price ?? null,
+                  conviction: args.conviction ?? null,
+                  catalyst: args.catalyst ?? null,
+                  updated_at: created.updatedAt.toISOString(),
+                },
+                message: `Added $${ticker} to watchlist.`,
               },
-              message: `Added $${ticker} to watchlist.`,
             };
           }
 
@@ -1952,7 +2138,13 @@ export function createResearchTools(ctx: ToolContext) {
             });
             if (!item) {
               logToolEnd("manage_watchlist", _t0, ctx.runId, `${ticker} not on watchlist`, stats);
-              return { success: true, action: "REMOVE" as const, ticker, changed: false, message: `$${ticker} is not on the watchlist. No action taken.` };
+              const noopMsg = `$${ticker} is not on the watchlist. No action taken.`;
+              return {
+                summary: `Watchlist remove: $${ticker} (not present)`,
+                tickers: [{ ticker, tag: "NoOp", summary: noopMsg }] as TickerFinding[],
+                _sources: [] as ToolSource[],
+                data: { success: true, action: "REMOVE" as const, ticker, changed: false, message: noopMsg },
+              };
             }
 
             await prisma.analystWatchlistItem.update({
@@ -2007,7 +2199,12 @@ export function createResearchTools(ctx: ToolContext) {
             try { revalidatePath(`/analysts/${ctx.analystId}`); } catch { /* non-fatal */ }
 
             logToolEnd("manage_watchlist", _t0, ctx.runId, `REMOVED ${ticker}`, stats);
-            return { success: true, action: "REMOVE" as const, ticker, changed: true, message: `Removed $${ticker} from watchlist.` };
+            return {
+              summary: `Removed $${ticker} from watchlist`,
+              tickers: [{ ticker, tag: "Unwatch", summary: args.reason || "Removed from watchlist" }] as TickerFinding[],
+              _sources: [] as ToolSource[],
+              data: { success: true, action: "REMOVE" as const, ticker, changed: true, message: `Removed $${ticker} from watchlist.` },
+            };
           }
 
           if (args.action === "UPDATE") {
@@ -2016,7 +2213,13 @@ export function createResearchTools(ctx: ToolContext) {
             });
             if (!item) {
               logToolEnd("manage_watchlist", _t0, ctx.runId, `${ticker} not on watchlist`, stats);
-              return { success: true, action: "UPDATE" as const, ticker, changed: false, message: `$${ticker} is not on the watchlist. No action taken.` };
+              const noopMsg = `$${ticker} is not on the watchlist. No action taken.`;
+              return {
+                summary: `Watchlist update: $${ticker} (not present)`,
+                tickers: [{ ticker, tag: "NoOp", summary: noopMsg }] as TickerFinding[],
+                _sources: [] as ToolSource[],
+                data: { success: true, action: "UPDATE" as const, ticker, changed: false, message: noopMsg },
+              };
             }
 
             const updated = await prisma.analystWatchlistItem.update({
@@ -2039,32 +2242,38 @@ export function createResearchTools(ctx: ToolContext) {
             try { revalidatePath(`/analysts/${ctx.analystId}`); } catch { /* non-fatal */ }
 
             logToolEnd("manage_watchlist", _t0, ctx.runId, `UPDATED ${ticker}`, stats);
+            const updateSummary = args.reason || (updated.catalyst ? `Catalyst: ${updated.catalyst}` : "Updated watchlist entry");
             return {
-              success: true,
-              action: "UPDATE" as const,
-              ticker,
-              changed: true,
-              watchlist_item: {
+              summary: `Updated $${ticker} on watchlist`,
+              tickers: [{ ticker, tag: "Watch", summary: updateSummary }] as TickerFinding[],
+              _sources: [] as ToolSource[],
+              data: {
+                success: true,
+                action: "UPDATE" as const,
                 ticker,
-                priority: updated.priority as "LOW" | "NORMAL" | "HIGH",
-                notes: updated.notes,
-                thesis_direction: updated.thesisDirection as "LONG" | "SHORT" | "PASS" | null,
-                target_price: updated.targetPrice,
-                stop_price: updated.stopPrice,
-                conviction: updated.conviction,
-                catalyst: updated.catalyst,
-                updated_at: updated.updatedAt.toISOString(),
+                changed: true,
+                watchlist_item: {
+                  ticker,
+                  priority: updated.priority as "LOW" | "NORMAL" | "HIGH",
+                  notes: updated.notes,
+                  thesis_direction: updated.thesisDirection as "LONG" | "SHORT" | "PASS" | null,
+                  target_price: updated.targetPrice,
+                  stop_price: updated.stopPrice,
+                  conviction: updated.conviction,
+                  catalyst: updated.catalyst,
+                  updated_at: updated.updatedAt.toISOString(),
+                },
+                message: `Updated $${ticker} watchlist entry.`,
               },
-              message: `Updated $${ticker} watchlist entry.`,
             };
           }
 
-          return { success: false, action: args.action, ticker, changed: false, message: `Unknown action: ${args.action}` };
+          return wlFail(`Unknown action: ${args.action}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Watchlist operation failed";
           console.error(`[tool] manage_watchlist FAILED: ${msg}`);
           logToolEnd("manage_watchlist", _t0, ctx.runId, `FAILED: ${msg}`, stats);
-          return { success: false, action: args.action, ticker, changed: false, message: msg };
+          return wlFail(msg);
         }
       },
     }),

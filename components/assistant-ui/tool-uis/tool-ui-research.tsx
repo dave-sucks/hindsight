@@ -1,16 +1,10 @@
 "use client";
 
-import { useAssistantToolUI } from "@assistant-ui/react";
-import { CheckCircle2, HelpCircle, AlertCircle, AlertTriangle } from "lucide-react";
+import { useAssistantToolUI, useMessage } from "@assistant-ui/react";
+import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
+import { useMemo } from "react";
 
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-
-// ─── Briefing status banner ────────────────────────────────────────────────
-// Surfaces the post-run briefing result directly in the chat. Replaces the
-// invisible "briefing_generated" RunEvent which was previously written but
-// never rendered. The user must always be able to see whether the brief
-// actually generated, and if not, why.
+// ─── Briefing status — compact CoT row ─────────────────────────────────────
 
 function BriefingStatusBanner({
   status,
@@ -21,53 +15,34 @@ function BriefingStatusBanner({
 }) {
   if (status === "success") {
     return (
-      <Card className="p-4">
-        <div className="flex items-start gap-3">
-          <CheckCircle2 className="size-5 text-emerald-500 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="text-sm font-medium">Portfolio briefing written</p>
-            <p className="text-sm text-muted-foreground">
-              GPT-4o reviewed the full session and wrote the standup brief for the next run.
-            </p>
-          </div>
-        </div>
-      </Card>
+      <ToolProgress>
+        <ToolProgressHeader>Portfolio briefing written</ToolProgressHeader>
+        <ToolProgressContent>
+          <ToolProgressItem>GPT-4o wrote the standup brief for the next run.</ToolProgressItem>
+        </ToolProgressContent>
+      </ToolProgress>
     );
   }
 
   if (status === "failed") {
     return (
-      <Card className="p-4">
-        <div className="flex items-start gap-3">
-          <AlertCircle className="size-5 text-red-500 shrink-0 mt-0.5" />
-          <div className="space-y-1 min-w-0 flex-1">
-            <p className="text-sm font-medium text-red-500">Portfolio briefing FAILED</p>
-            <p className="text-sm text-muted-foreground">
-              The post-run briefing did not generate. Your next session will not have updated context.
-            </p>
-            {error && (
-              <p className="text-xs font-mono text-muted-foreground break-words pt-1">
-                {error}
-              </p>
-            )}
-          </div>
-        </div>
-      </Card>
+      <ToolProgress defaultOpen>
+        <ToolProgressHeader>Portfolio briefing failed</ToolProgressHeader>
+        <ToolProgressContent>
+          <ToolProgressItem>Post-run brief did not generate. Next session will not have updated context.</ToolProgressItem>
+          {error && <ToolProgressItem>{error}</ToolProgressItem>}
+        </ToolProgressContent>
+      </ToolProgress>
     );
   }
 
   return (
-    <Card className="p-4">
-      <div className="flex items-start gap-3">
-        <AlertTriangle className="size-5 text-muted-foreground shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <p className="text-sm font-medium">Portfolio briefing skipped</p>
-          <p className="text-sm text-muted-foreground">
-            {error ?? "No analyst linked to this run."}
-          </p>
-        </div>
-      </div>
-    </Card>
+    <ToolProgress>
+      <ToolProgressHeader>Portfolio briefing skipped</ToolProgressHeader>
+      <ToolProgressContent>
+        <ToolProgressItem>{error ?? "No analyst linked to this run."}</ToolProgressItem>
+      </ToolProgressContent>
+    </ToolProgress>
   );
 }
 import {
@@ -85,6 +60,7 @@ import {
   ToolProgressContent,
   ToolProgressItem,
   ToolProgressTickerItem,
+  type TickerActionIcon,
 } from "@/components/ai-elements/tool-progress";
 import { ClampedText } from "@/components/ai-elements/clamped-text";
 
@@ -137,6 +113,16 @@ export const thesisRender = ({ result }: { result?: Record<string, unknown> }) =
   );
 };
 
+// Unwrap the standardized envelope: action tools now return { summary, tickers,
+// _sources, data: { ...camelCase } }. The followup chat still wants to render
+// the rich TradeCard, so we drill into result.data here. Older persisted
+// results without the envelope fall back to the top-level fields.
+function unwrapData(result: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!result) return undefined;
+  if (result.data && typeof result.data === "object") return result.data as Record<string, unknown>;
+  return result;
+}
+
 export const placeTradeRender = ({ result }: { result?: Record<string, unknown> }) => {
   if (!result) {
     return (
@@ -152,23 +138,31 @@ export const placeTradeRender = ({ result }: { result?: Record<string, unknown> 
     );
   }
 
-  if (result.status === "FAILED" || result.success === false) {
+  const d = unwrapData(result) ?? {};
+
+  if (d.status === "FAILED" || d.success === false) {
+    const ticker = (d.ticker as string) ?? "";
     return (
-      <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-        Trade failed: {String(result.message)}
-      </div>
+      <ToolProgress>
+        <ToolProgressHeader>
+          {ticker ? `Trade failed: $${ticker}` : "Trade failed"}
+        </ToolProgressHeader>
+        <ToolProgressContent>
+          <ToolProgressItem>{String(d.message ?? "")}</ToolProgressItem>
+        </ToolProgressContent>
+      </ToolProgress>
     );
   }
 
   return (
     <div className="my-2">
       <TradeCard
-        ticker={result.ticker as string}
-        direction={result.direction as "LONG" | "SHORT"}
-        entryPrice={typeof result.entryPrice === "number" ? result.entryPrice : 0}
-        shares={typeof result.shares === "number" ? result.shares : undefined}
-        targetPrice={typeof result.targetPrice === "number" ? result.targetPrice : undefined}
-        stopLoss={typeof result.stopLoss === "number" ? result.stopLoss : undefined}
+        ticker={d.ticker as string}
+        direction={d.direction as "LONG" | "SHORT"}
+        entryPrice={typeof d.entryPrice === "number" ? d.entryPrice : 0}
+        shares={typeof d.shares === "number" ? d.shares : undefined}
+        targetPrice={typeof d.targetPrice === "number" ? d.targetPrice : undefined}
+        stopLoss={typeof d.stopLoss === "number" ? d.stopLoss : undefined}
         status="OPEN"
       />
     </div>
@@ -178,41 +172,264 @@ export const placeTradeRender = ({ result }: { result?: Record<string, unknown> 
 export const closePositionRender = ({ result }: { result?: Record<string, unknown> }) => {
   if (!result) {
     return (
-      <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
-        Closing position…
-      </div>
+      <ToolProgress defaultOpen>
+        <ToolProgressHeader loading>Closing position</ToolProgressHeader>
+      </ToolProgress>
     );
   }
 
-  if (result.status === "NO_POSITION") {
+  const d = unwrapData(result) ?? {};
+
+  if (d.status === "NO_POSITION") {
     return (
-      <div className="my-1.5 text-xs text-muted-foreground rounded-md border px-3 py-2">
-        {String(result.message)}
-      </div>
+      <ToolProgress>
+        <ToolProgressHeader>No position to close</ToolProgressHeader>
+        <ToolProgressContent>
+          <ToolProgressItem>{String(d.message ?? "")}</ToolProgressItem>
+        </ToolProgressContent>
+      </ToolProgress>
     );
   }
 
-  if (result.status === "FAILED" || result.success === false) {
+  if (d.status === "FAILED" || d.success === false) {
     return (
-      <div className="my-1.5 text-xs text-negative rounded-md border border-negative/20 bg-negative/5 px-3 py-2">
-        Close failed: {String(result.message)}
-      </div>
+      <ToolProgress>
+        <ToolProgressHeader>Close failed</ToolProgressHeader>
+        <ToolProgressContent>
+          <ToolProgressItem>{String(d.message ?? "")}</ToolProgressItem>
+        </ToolProgressContent>
+      </ToolProgress>
     );
   }
 
   return (
     <div className="my-2">
       <TradeCard
-        ticker={result.ticker as string}
-        direction={result.direction as "LONG" | "SHORT"}
-        entryPrice={typeof result.entryPrice === "number" ? result.entryPrice : 0}
-        shares={typeof result.shares === "number" ? result.shares : undefined}
-        closePrice={typeof result.closePrice === "number" ? result.closePrice : undefined}
-        realizedPnl={typeof result.realizedPnl === "number" ? result.realizedPnl : undefined}
-        outcome={(result.outcome as "WIN" | "LOSS" | "BREAKEVEN") ?? null}
+        ticker={d.ticker as string}
+        direction={d.direction as "LONG" | "SHORT"}
+        entryPrice={typeof d.entryPrice === "number" ? d.entryPrice : 0}
+        shares={typeof d.shares === "number" ? d.shares : undefined}
+        closePrice={typeof d.closePrice === "number" ? d.closePrice : undefined}
+        realizedPnl={typeof d.realizedPnl === "number" ? d.realizedPnl : undefined}
+        outcome={(d.outcome as "WIN" | "LOSS" | "BREAKEVEN") ?? null}
         status="CLOSED"
       />
     </div>
+  );
+};
+
+// ─── DecisionPlanRender ─────────────────────────────────────────────────────
+// The single CoT block that owns BOTH the agent's synthesis paragraph AND
+// the per-ticker action rows. Each row reads forward in the message stream
+// looking for a matching action tool call (place_trade, close_position,
+// manage_watchlist) by ticker, and merges in the actual outcome — failed,
+// executed, closed — so the user sees one row per ticker that updates as
+// the run progresses. There is no second "Portfolio actions" group anywhere.
+
+type PlannedAction = {
+  ticker: string;
+  action: string;
+  reasoning?: string;
+};
+
+type ExecutedOutcome = {
+  /** What the action tool's tag was after execution */
+  tag: string;
+  /** Optional outcome text to append (e.g. "Closed @ $192.40 · WIN +$710") */
+  detail?: string;
+};
+
+const ACTION_TOOL_NAMES = new Set([
+  "place_trade",
+  "close_position",
+  "manage_watchlist",
+]);
+
+function unwrapToolResult(part: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!part) return undefined;
+  const result = (part.result as Record<string, unknown> | undefined)
+    ?? (part.output as Record<string, unknown> | undefined);
+  return result;
+}
+
+function normalizeTicker(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.toUpperCase().trim();
+}
+
+function tagToActionIcon(tag: string | undefined): TickerActionIcon | undefined {
+  switch (tag) {
+    case "Buy":     return "buy";
+    case "Sell":    return "sell";
+    case "Watch":   return "watch";
+    case "Unwatch": return "unwatch";
+    case "Closed-Win": return "closed-win";
+    case "Closed-Loss": return "closed-loss";
+    case "Closed":  return "closed-win";
+    case "Failed":
+    case "NoOp":
+      return "failed";
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Map a planned action label (INITIATE / ADD / HOLD / etc.) to the icon we
+ * should display when there's no executed outcome yet. Once an action tool
+ * fires for the same ticker, the executed outcome takes over and replaces
+ * this fallback.
+ */
+function plannedActionIcon(action: string): TickerActionIcon | undefined {
+  const a = action.toUpperCase();
+  if (a === "INITIATE" || a === "ADD") return "buy";
+  if (a === "REDUCE" || a === "EXIT") return "sell";
+  if (a === "WATCH") return "watch";
+  if (a === "REMOVE_WATCH") return "unwatch";
+  // HOLD and PASS get no overlay icon — they're "no-action" states
+  return undefined;
+}
+
+const DecisionPlanRender: ToolCallMessagePartComponent = ({ result, toolCallId }) => {
+  // Read the full message content so we can walk forward looking for
+  // executed action tool calls that match this plan's planned actions.
+  const content = useMessage((m) => m.content) as unknown[];
+
+  // Find ourselves in the message stream so we only look at parts AFTER us.
+  const myIndex = useMemo(() => {
+    if (!toolCallId) return -1;
+    return content.findIndex((p) => {
+      const part = p as Record<string, unknown> | undefined;
+      return part?.type === "tool-call" && part.toolCallId === toolCallId;
+    });
+  }, [content, toolCallId]);
+
+  // Build a map: TICKER → outcome from any matching action tool call
+  // recorded after this decision plan in the message stream.
+  const outcomesByTicker = useMemo(() => {
+    const map = new Map<string, ExecutedOutcome>();
+    if (myIndex < 0) return map;
+    for (let i = myIndex + 1; i < content.length; i++) {
+      const part = content[i] as Record<string, unknown> | undefined;
+      if (!part || part.type !== "tool-call") continue;
+      const toolName = part.toolName as string | undefined;
+      if (!toolName || !ACTION_TOOL_NAMES.has(toolName)) continue;
+
+      const args = (part.args as Record<string, unknown> | undefined)
+        ?? (part.input as Record<string, unknown> | undefined)
+        ?? {};
+      const ticker = normalizeTicker(args.ticker ?? args.symbol);
+      if (!ticker) continue;
+
+      const partResult = unwrapToolResult(part);
+      // Action tools return a standardized envelope with tickers[]
+      const tickerFindings = partResult?.tickers as
+        | { ticker: string; tag?: string; summary?: string }[]
+        | undefined;
+      const finding = tickerFindings?.find(
+        (t) => normalizeTicker(t.ticker) === ticker,
+      );
+
+      const tag = finding?.tag ?? "";
+      const detail = finding?.summary;
+      // Last write wins — later actions override earlier ones for the same ticker
+      map.set(ticker, { tag, detail });
+    }
+    return map;
+  }, [content, myIndex]);
+
+  if (!result) {
+    return (
+      <ToolProgress defaultOpen>
+        <ToolProgressHeader loading>Managing portfolio…</ToolProgressHeader>
+      </ToolProgress>
+    );
+  }
+
+  const r = result as Record<string, unknown>;
+  const plannedActions = (r.planned_actions as PlannedAction[] | undefined) ?? [];
+
+  // Compute header summary from EXECUTED outcomes when available, falling
+  // back to planned counts. The header reflects what actually happened
+  // (or what's planned if execution hasn't started yet).
+  // The synthesis is intentionally NOT shown inside this CoT — the agent
+  // writes it as visible chat text in the message body just above this
+  // CoT, so showing it again here would duplicate.
+  const headerLabel = useMemo(() => {
+    let bought = 0, sold = 0, closedWin = 0, closedLoss = 0;
+    let watching = 0, unwatched = 0, failed = 0, held = 0, passed = 0;
+
+    for (const p of plannedActions) {
+      const ticker = normalizeTicker(p.ticker);
+      const outcome = outcomesByTicker.get(ticker);
+      if (outcome) {
+        // Use the executed outcome's tag
+        switch (outcome.tag) {
+          case "Buy":         bought += 1; break;
+          case "Sell":        sold += 1; break;
+          case "Closed-Win":
+          case "Closed":      closedWin += 1; break;
+          case "Closed-Loss": closedLoss += 1; break;
+          case "Watch":       watching += 1; break;
+          case "Unwatch":     unwatched += 1; break;
+          case "Failed":
+          case "NoOp":        failed += 1; break;
+        }
+      } else {
+        // No execution outcome yet — fall back to the planned label
+        const a = p.action.toUpperCase();
+        if (a === "INITIATE" || a === "ADD") bought += 1;
+        else if (a === "REDUCE" || a === "EXIT") sold += 1;
+        else if (a === "WATCH") watching += 1;
+        else if (a === "REMOVE_WATCH") unwatched += 1;
+        else if (a === "HOLD") held += 1;
+        else if (a === "PASS") passed += 1;
+      }
+    }
+
+    const parts: string[] = [];
+    if (bought > 0)     parts.push(`Bought ${bought}`);
+    if (sold > 0)       parts.push(`Sold ${sold}`);
+    if (closedWin > 0)  parts.push(`Closed ${closedWin}`);
+    if (closedLoss > 0) parts.push(`Closed ${closedLoss} (loss)`);
+    if (watching > 0)   parts.push(`Watching ${watching}`);
+    if (unwatched > 0)  parts.push(`Removed ${unwatched}`);
+    if (held > 0)       parts.push(`Holding ${held}`);
+    if (passed > 0)     parts.push(`${passed} passed`);
+    if (failed > 0)     parts.push(`${failed} failed`);
+
+    return parts.length > 0
+      ? `Managing portfolio · ${parts.join(" · ")}`
+      : "Managing portfolio";
+  }, [plannedActions, outcomesByTicker]);
+
+  return (
+    <ToolProgress defaultOpen>
+      <ToolProgressHeader>{headerLabel}</ToolProgressHeader>
+      <ToolProgressContent>
+        {plannedActions.map((p, i) => {
+          const ticker = normalizeTicker(p.ticker);
+          const outcome = outcomesByTicker.get(ticker);
+          // If executed, use the action tool's tag + detail. Otherwise fall
+          // back to the planned action label.
+          const displayTag = outcome?.tag || p.action;
+          const icon = outcome
+            ? tagToActionIcon(outcome.tag)
+            : plannedActionIcon(p.action);
+          const detail = outcome?.detail || p.reasoning || "";
+          return (
+            <ToolProgressTickerItem
+              key={`${p.ticker}-${i}`}
+              ticker={p.ticker}
+              tag={displayTag}
+              actionIcon={icon}
+            >
+              {detail}
+            </ToolProgressTickerItem>
+          );
+        })}
+      </ToolProgressContent>
+    </ToolProgress>
   );
 };
 
@@ -412,110 +629,118 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     },
   });
 
-  // ── Close position — direct passthrough to TradeCard ───────────────
-  useAssistantToolUI({ toolName: "close_position", render: closePositionRender });
+  // ── Action tools render null in the run thread ────────────────────
+  // place_trade / close_position / manage_watchlist render nothing on
+  // their own — their outcomes are merged into the Decision CoT
+  // (DecisionPlanRender above) by reading forward in the message stream.
+  // placeTradeRender / closePositionRender are still exported above for
+  // RunFollowupChat, which renders them as full TradeCards in a separate
+  // post-run discussion context.
+  useAssistantToolUI({ toolName: "close_position", render: () => null });
+  useAssistantToolUI({ toolName: "place_trade", render: () => null });
 
-  // ── Place trade — direct passthrough to TradeCard ─────────────────
-  useAssistantToolUI({ toolName: "place_trade", render: placeTradeRender });
-
-  // ── Run summary → DecisionSummaryCard — direct passthrough ────────
-  const runSummaryRender = ({ result }: { result?: Record<string, unknown> }) => {
-    if (!result) {
-      return (
-        <ToolProgress defaultOpen>
-          <ToolProgressHeader loading>Synthesizing decisions...</ToolProgressHeader>
-          <ToolProgressContent>
-            <ToolProgressItem active>Ranking picks</ToolProgressItem>
-          </ToolProgressContent>
-        </ToolProgress>
-      );
-    }
-
-    // Briefing status — surfaces success / failure / skipped directly in chat
-    // so the user can see whether the post-run brief was actually written.
-    const briefingStatus = result.briefing as "success" | "failed" | "skipped" | undefined;
-    const briefingError = (result.briefingError ?? result.briefing_error) as string | null | undefined;
-
-    return (
-      <div className="my-2 space-y-2">
-        <DecisionSummaryCard
-          rankedPicks={(result.rankedPicks ?? result.ranked_picks ?? []) as { rank: number; ticker: string; direction: string; confidence: number; reasoning: string; action: string }[]}
-          marketSummary={(result.marketSummary ?? result.market_summary ?? "") as string}
-          exposureBreakdown={
-            result.exposureBreakdown
-              ? result.exposureBreakdown as { longExposure?: number; shortExposure?: number; netExposure?: number }
-              : result.exposure_breakdown
-                ? (() => {
-                    const eb = result.exposure_breakdown as { long_exposure?: number; short_exposure?: number; net_exposure?: number };
-                    return { longExposure: eb.long_exposure, shortExposure: eb.short_exposure, netExposure: eb.net_exposure };
-                  })()
-                : undefined
-          }
-          riskNotes={(result.riskNotes ?? result.risk_notes ?? []) as string[]}
-          overallAssessment={(result.overallAssessment ?? result.overall_assessment ?? "") as string}
-          portfolioReview={(result.portfolioReview ?? result.portfolio_review) as string | undefined}
-        />
-        {briefingStatus && (
-          <BriefingStatusBanner status={briefingStatus} error={briefingError ?? null} />
-        )}
-      </div>
-    );
-  };
-
-  useAssistantToolUI({ toolName: "complete_run", render: runSummaryRender });
-  useAssistantToolUI({ toolName: "summarize_run", render: runSummaryRender });
-
-  // ── Watchlist management ───────────────────────────────────────────
+  // ── Stage 4: Decision Plan ──────────────────────────────────────────
+  // The single CoT for synthesis + actions. Each planned action is rendered
+  // as a ticker row, and the row reads FORWARD in the message stream for a
+  // matching action tool call (place_trade / close_position /
+  // manage_watchlist with the same ticker). When found, the row's tag and
+  // icon are updated from the planned state to the actual outcome
+  // (executed, failed, closed). This collapses what used to be two CoT
+  // blocks (planned + executed) into one.
   useAssistantToolUI({
-    toolName: "manage_watchlist",
-    render: ({ args, result }) => {
-      const action = (args?.action as string) ?? "";
-      const ticker = (args?.ticker as string) ?? "";
-      const reason = (args?.reason as string) ?? "";
+    toolName: "record_decision_plan",
+    render: DecisionPlanRender,
+  });
 
+  // ── Stage 6: Run Summary → RunSummaryCard ────────────────────────────
+  // Pure data recap. No synthesis text — that lives in the decision plan.
+  // Just the ranked picks table and the exposure breakdown.
+  useAssistantToolUI({
+    toolName: "record_run_summary",
+    render: ({ result }) => {
       if (!result) {
         return (
           <ToolProgress defaultOpen>
-            <ToolProgressHeader loading>
-              {action === "ADD" ? `Adding $${ticker} to watchlist` : action === "REMOVE" ? `Removing $${ticker}` : `Updating $${ticker}`}
-            </ToolProgressHeader>
+            <ToolProgressHeader loading>Recording run summary…</ToolProgressHeader>
           </ToolProgress>
         );
       }
-
-      const success = result.success as boolean;
-      const changed = result.changed as boolean;
-      const watchlistItem = result.watchlist_item as Record<string, unknown> | undefined;
-      const priority = watchlistItem?.priority as string | undefined;
-
       return (
-        <Card className="p-4">
-          <div className="flex items-center gap-2">
-            {success && changed ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            ) : (
-              <HelpCircle className="h-4 w-4 text-muted-foreground" />
-            )}
-            <span className="text-sm font-medium">
-              {action === "ADD" ? `Added $${ticker} to watchlist` : action === "REMOVE" ? `Removed $${ticker} from watchlist` : `Updated $${ticker}`}
-            </span>
-            {priority && priority !== "NORMAL" && (
-              <Badge variant="outline" className="text-[10px]">{priority}</Badge>
-            )}
-            {!!watchlistItem?.thesis_direction && (
-              <Badge variant="outline" className="text-[10px]">{String(watchlistItem.thesis_direction)}</Badge>
-            )}
-          </div>
-          {reason && (
-            <p className="text-xs text-muted-foreground mt-1.5 ml-6">{reason}</p>
-          )}
-          {!!watchlistItem?.catalyst && (
-            <p className="text-xs text-muted-foreground mt-1 ml-6">Catalyst: {String(watchlistItem.catalyst)}</p>
-          )}
-        </Card>
+        <div className="my-2">
+          <DecisionSummaryCard
+            rankedPicks={
+              (result.rankedPicks ?? []) as {
+                rank: number;
+                ticker: string;
+                direction: string;
+                confidence: number;
+                reasoning: string;
+                action: string;
+              }[]
+            }
+            exposureBreakdown={
+              result.exposureBreakdown as
+                | { longExposure?: number; shortExposure?: number; netExposure?: number }
+                | undefined
+            }
+          />
+        </div>
       );
     },
   });
+
+  // ── Stage 7: Complete Run ───────────────────────────────────────────
+  // ONE CoT row. Header is "Completing run". Body shows the briefing status
+  // as REAL debug data sourced directly from complete_run's return value
+  // (which comes from the live updateAnalystBriefing call inside the tool's
+  // execute function — see lib/agent/tools.ts complete_run, untouched from
+  // PR #132). The briefing line shows the status verbatim (success / failed
+  // / skipped) and the actual error string if anything went wrong, so this
+  // is genuinely useful for debugging — not flowery hardcoded text.
+  // Default-open only when briefing failed so the failure is visible at a
+  // glance; otherwise the row is collapsed to keep the run thread tidy.
+  const completeRunRender = ({ result }: { result?: Record<string, unknown> }) => {
+    if (!result) {
+      return (
+        <ToolProgress defaultOpen>
+          <ToolProgressHeader loading>Completing run…</ToolProgressHeader>
+        </ToolProgress>
+      );
+    }
+    const briefingStatus = result.briefing as
+      | "success"
+      | "failed"
+      | "skipped"
+      | undefined;
+    const briefingError = result.briefingError as string | null | undefined;
+
+    // Build the debug line. Real data only — status from the verified
+    // briefing block, error from the actual thrown exception if any.
+    let briefingLine: string | null = null;
+    if (briefingStatus === "success") {
+      briefingLine = "Briefing: written and verified";
+    } else if (briefingStatus === "failed") {
+      briefingLine = `Briefing: failed${briefingError ? ` — ${briefingError}` : ""}`;
+    } else if (briefingStatus === "skipped") {
+      briefingLine = `Briefing: skipped${briefingError ? ` — ${briefingError}` : ""}`;
+    }
+
+    return (
+      <ToolProgress defaultOpen={briefingStatus === "failed"}>
+        <ToolProgressHeader>Completing run</ToolProgressHeader>
+        {briefingLine && (
+          <ToolProgressContent>
+            <ToolProgressItem>{briefingLine}</ToolProgressItem>
+          </ToolProgressContent>
+        )}
+      </ToolProgress>
+    );
+  };
+  useAssistantToolUI({ toolName: "complete_run", render: completeRunRender });
+  useAssistantToolUI({ toolName: "summarize_run", render: completeRunRender });
+
+  // ── Watchlist management — outcome merged into the Decision CoT ───
+  useAssistantToolUI({ toolName: "manage_watchlist", render: () => null });
 }
 
 // ─── Builder tools ──────────────────────────────────────────────────────────

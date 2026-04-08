@@ -12,8 +12,43 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { ChevronRightIcon, DotIcon, Loader2Icon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  DotIcon,
+  Loader2Icon,
+  PlusIcon,
+  MinusIcon,
+  EyeIcon,
+  EyeOffIcon,
+  CheckIcon,
+  XIcon,
+  BanIcon,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+
+// ── Action icon overlay (used by ToolProgressTickerItem for action tools) ──
+
+export type TickerActionIcon =
+  | "buy"
+  | "sell"
+  | "watch"
+  | "unwatch"
+  | "closed-win"
+  | "closed-loss"
+  | "failed";
+
+const ACTION_ICON_CONFIG: Record<
+  TickerActionIcon,
+  { Icon: React.ComponentType<{ className?: string }>; className: string }
+> = {
+  buy:           { Icon: PlusIcon,   className: "bg-emerald-500 text-white" },
+  sell:          { Icon: MinusIcon,  className: "bg-red-500 text-white" },
+  watch:         { Icon: EyeIcon,    className: "bg-muted-foreground text-background" },
+  unwatch:       { Icon: EyeOffIcon, className: "bg-muted-foreground text-background" },
+  "closed-win":  { Icon: CheckIcon,  className: "bg-emerald-500 text-white" },
+  "closed-loss": { Icon: XIcon,      className: "bg-red-500 text-white" },
+  failed:        { Icon: BanIcon,    className: "bg-muted text-muted-foreground" },
+};
 
 // ── ToolProgress (root) ────────────────────────────────────────────────────
 
@@ -97,7 +132,7 @@ export const ToolProgressItem = memo(
       <div className="size-4 shrink-0 mt-0.5 flex items-center justify-center">
         <DotIcon className={cn("size-5", active && "animate-pulse")} />
       </div>
-      <span className="flex-1 min-w-0">{children}</span>
+      <span className={cn("flex-1 min-w-0", active && "shimmer-text")}>{children}</span>
     </div>
   )
 );
@@ -108,40 +143,56 @@ ToolProgressItem.displayName = "ToolProgressItem";
 export type ToolProgressTickerItemProps = ComponentProps<"div"> & {
   ticker: string;
   tag?: string;
+  actionIcon?: TickerActionIcon;
+  active?: boolean;
   children: ReactNode;
 };
 
 export const ToolProgressTickerItem = memo(
-  ({ className, ticker, tag, children, ...props }: ToolProgressTickerItemProps) => (
-    <div
-      className={cn("flex items-start gap-2 text-sm text-muted-foreground", className)}
-      {...props}
-    >
-      <div className="size-4 shrink-0 mt-0.5 flex items-center justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={`https://assets.parqet.com/logos/symbol/${ticker}`}
-          alt=""
-          width={16}
-          height={16}
-          className="size-4 rounded-full"
-          loading="lazy"
-          onError={(e) => {
-            // Fall back to dot on logo load failure
-            const el = e.target as HTMLImageElement;
-            el.style.display = "none";
-            el.parentElement?.classList.add("fallback-dot");
-          }}
-        />
+  ({ className, ticker, tag, actionIcon, active, children, ...props }: ToolProgressTickerItemProps) => {
+    const overlay = actionIcon ? ACTION_ICON_CONFIG[actionIcon] : null;
+    return (
+      <div
+        className={cn("flex items-start gap-2 text-sm text-muted-foreground", className)}
+        {...props}
+      >
+        <div className="relative size-4 shrink-0 mt-0.5 flex items-center justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`https://assets.parqet.com/logos/symbol/${ticker}`}
+            alt=""
+            width={16}
+            height={16}
+            className="size-4 rounded-full"
+            loading="lazy"
+            onError={(e) => {
+              // Fall back to dot on logo load failure
+              const el = e.target as HTMLImageElement;
+              el.style.display = "none";
+              el.parentElement?.classList.add("fallback-dot");
+            }}
+          />
+          {overlay && (
+            <span
+              className={cn(
+                "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-1 ring-background flex items-center justify-center",
+                overlay.className,
+              )}
+              aria-hidden
+            >
+              <overlay.Icon className="size-1.5" />
+            </span>
+          )}
+        </div>
+        <span className={cn("flex-1 min-w-0", active && "shimmer-text")}>
+          <span className="font-mono text-xs font-medium">${ticker}</span>
+          {tag && <span> ({tag})</span>}
+          <span> — </span>
+          {children}
+        </span>
       </div>
-      <span className="flex-1 min-w-0">
-        <span className="font-mono text-xs font-medium">${ticker}</span>
-        {tag && <span> ({tag})</span>}
-        <span> — </span>
-        {children}
-      </span>
-    </div>
-  )
+    );
+  }
 );
 ToolProgressTickerItem.displayName = "ToolProgressTickerItem";
 
