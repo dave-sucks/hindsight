@@ -77,9 +77,12 @@ export function EducationEmptyState({
         {(action || learnMoreFlow) && (
           <div className="flex items-center gap-2 mt-4">
             {action && (
-              <Button variant="outline" size="sm" asChild>
-                <Link href={action.href}>{action.label}</Link>
-              </Button>
+              <Link
+                href={action.href}
+                className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted"
+              >
+                {action.label}
+              </Link>
             )}
             {learnMoreFlow && (
               <HowItWorksSheet flow={learnMoreFlow as FlowType}>
@@ -101,9 +104,12 @@ export function EducationEmptyState({
       {(action || learnMoreFlow) && (
         <div className="flex items-center gap-2 mt-5">
           {action && (
-            <Button variant="outline" size="sm" asChild>
-              <Link href={action.href}>{action.label}</Link>
-            </Button>
+            <Link
+              href={action.href}
+              className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted"
+            >
+              {action.label}
+            </Link>
           )}
           {learnMoreFlow && (
             <HowItWorksSheet flow={learnMoreFlow as FlowType}>

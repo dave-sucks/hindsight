@@ -139,7 +139,7 @@ export const accuracyScorer = inngest.createFunction(
             data: {
               userId,
               weekStartDate: weekStart,
-              weekEndDate: now,
+              weekEndDate: todayEt,
               tradesAnalyzed: stats.tradesAnalyzed,
               winRate: stats.overallWinRate,
               calibrationData: stats.calibration as unknown as object[],

@@ -180,7 +180,15 @@ export async function cancelOrder(orderId: string, creds?: AlpacaCredentials): P
 }
 
 export async function getOpenOrders(creds?: AlpacaCredentials): Promise<AlpacaOrder[]> {
-  return (await getClient(creds).getOrders({ status: "open" })) as AlpacaOrder[];
+  return (await getClient(creds).getOrders({
+    status: "open",
+    until: null,
+    after: null,
+    limit: 500,
+    direction: "desc",
+    nested: false,
+    symbols: null,
+  } as Parameters<ReturnType<typeof getClient>["getOrders"]>[0])) as AlpacaOrder[];
 }
 
 // ─── Timeout helper (Alpaca SDK doesn't support AbortSignal) ─────────────────

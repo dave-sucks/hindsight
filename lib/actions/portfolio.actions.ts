@@ -187,12 +187,23 @@ export async function getDashboardData(): Promise<DashboardData> {
   }
 
   const userId = user.id;
+  const todayMidnight = etTradingDayDate();
 
-  // Resolve per-user Alpaca credentials
-  const alpacaCreds = await resolveAlpacaCredentials(userId) ?? undefined;
-
-  // ── 1. Fetch positions from DB ──────────────────────────────────────────────
-  const [dbOpenPositions, dbClosedPositions] = await Promise.all([
+  // ── Phase A: every DB read that doesn't depend on another result ─────────
+  // Previously these were 7 sequential awaits stretched across the function;
+  // collapsing them into one Promise.all turns a ~500ms waterfall into a
+  // single round trip bounded by the slowest query.
+  const [
+    alpacaCreds,
+    dbOpenPositions,
+    dbClosedPositions,
+    dbRecentPicks,
+    dbAgentConfigs,
+    positionsWithAnalyst,
+    dbRecentRuns,
+    dbTodaysPicks,
+  ] = await Promise.all([
+    resolveAlpacaCredentials(userId).then((c) => c ?? undefined),
     prisma.position.findMany({
       where: { userId, status: "OPEN" },
       include: {
@@ -222,89 +233,153 @@ export async function getDashboardData(): Promise<DashboardData> {
       orderBy: { closedAt: "desc" },
       take: 50,
     }),
-  ]);
-
-  // ── 2. Fetch recent picks (all theses including PASS) ────────────────────
-  const dbRecentPicks = await prisma.thesis.findMany({
-    where: {
-      userId,
-      createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-    select: {
-      id: true,
-      ticker: true,
-      researchRunId: true,
-      direction: true,
-      confidenceScore: true,
-      signalTypes: true,
-      reasoningSummary: true,
-      entryPrice: true,
-      targetPrice: true,
-      stopLoss: true,
-      createdAt: true,
-      sourcesUsed: true,
-      researchRun: {
-        select: { agentConfig: { select: { id: true, name: true } } },
+    prisma.thesis.findMany({
+      where: {
+        userId,
+        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
       },
-      // Pull the *opening* decision (INITIATE) so the position fields shown
-      // on the thesis card always reflect the original entry, not a later
-      // HOLD/EVALUATE decision that may have a null position link.
-      decisions: {
-        where: { decision: "INITIATE" },
-        take: 1,
-        orderBy: { createdAt: "asc" as const },
-        select: {
-          decision: true,
-          position: {
-            select: {
-              id: true,
-              status: true,
-              avgCost: true,
-              quantity: true,
-              openedAt: true,
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        ticker: true,
+        researchRunId: true,
+        direction: true,
+        confidenceScore: true,
+        signalTypes: true,
+        reasoningSummary: true,
+        entryPrice: true,
+        targetPrice: true,
+        stopLoss: true,
+        createdAt: true,
+        sourcesUsed: true,
+        researchRun: {
+          select: { agentConfig: { select: { id: true, name: true } } },
+        },
+        // Pull the *opening* decision (INITIATE) so the position fields shown
+        // on the thesis card always reflect the original entry, not a later
+        // HOLD/EVALUATE decision that may have a null position link.
+        decisions: {
+          where: { decision: "INITIATE" },
+          take: 1,
+          orderBy: { createdAt: "asc" as const },
+          select: {
+            decision: true,
+            position: {
+              select: {
+                id: true,
+                status: true,
+                avgCost: true,
+                quantity: true,
+                openedAt: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.agentConfig.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      // select only what AgentConfigSummary needs — skip the big JSON/string
+      // columns (analystPrompt, strategyInstructions, tickerUniverse, etc).
+      select: {
+        id: true,
+        name: true,
+        enabled: true,
+        scheduleTime: true,
+        researchRuns: {
+          orderBy: { startedAt: "desc" },
+          take: 1,
+          select: { startedAt: true },
+        },
+      },
+    }),
+    prisma.position.findMany({
+      where: { userId },
+      select: { id: true, analystId: true },
+    }),
+    prisma.researchRun.findMany({
+      where: { userId },
+      orderBy: { startedAt: "desc" },
+      take: 10,
+      // select only what RecentRunSummary needs — skip the `parameters`
+      // JSON blob (can be huge) and the rest of the run's scalars.
+      select: {
+        id: true,
+        startedAt: true,
+        completedAt: true,
+        status: true,
+        agentConfig: { select: { name: true } },
+        theses: { select: { id: true } },
+        decisions: {
+          where: { decision: "BUY" },
+          select: { id: true },
+        },
+      },
+    }),
+    prisma.thesis.findMany({
+      where: {
+        userId,
+        createdAt: { gte: todayMidnight },
+        direction: { in: ["LONG", "SHORT"] },
+      },
+      orderBy: { confidenceScore: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        ticker: true,
+        direction: true,
+        confidenceScore: true,
+        signalTypes: true,
+      },
+    }),
+  ]);
 
-  // ── 3. Batch-fetch current prices ───────────────────────────────────────────
+  // ── Phase B: price + name lookups, parallel ─────────────────────────────
+  // These depend on tickers from phase A but are independent of each other,
+  // so run them in parallel instead of sequentially.
   const openTickers = [...new Set(dbOpenPositions.map((p) => p.symbol))];
   const pickTickers = [...new Set(dbRecentPicks.map((p) => p.ticker))];
   const allTickers = [...new Set([...openTickers, ...pickTickers])];
-  let priceLookup: PriceLookup = { prices: {}, sources: {}, fetchedAt: new Date().toISOString() };
-  if (allTickers.length > 0) {
-    try {
-      priceLookup = await getLatestPricesWithMeta(allTickers, alpacaCreds);
-    } catch (err) {
-      console.error(
-        `[portfolio] getLatestPricesWithMeta threw — ${err instanceof Error ? err.message : err}. Falling back to entry prices.`,
-      );
-    }
-  }
-  const priceMap = priceLookup.prices;
 
-  // ── 3b. Batch-fetch company names from Finnhub ──────────────────────────────
-  let nameMap: Record<string, string> = {};
-  try {
-    const { getStockProfile } = await import("@/lib/actions/finnhub.actions");
-    const profiles = await Promise.allSettled(
-      pickTickers.map(async (t) => {
-        const p = await getStockProfile(t);
-        return { ticker: t, name: p?.name ?? null };
-      })
-    );
-    for (const r of profiles) {
-      if (r.status === "fulfilled" && r.value.name) {
-        nameMap[r.value.ticker] = r.value.name;
+  const emptyPriceLookup: PriceLookup = {
+    prices: {},
+    sources: {},
+    fetchedAt: new Date().toISOString(),
+  };
+
+  const [priceLookup, nameMap] = await Promise.all([
+    allTickers.length > 0
+      ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
+          console.error(
+            `[portfolio] getLatestPricesWithMeta threw — ${err instanceof Error ? err.message : err}. Falling back to entry prices.`,
+          );
+          return emptyPriceLookup;
+        })
+      : Promise.resolve(emptyPriceLookup),
+    (async () => {
+      const map: Record<string, string> = {};
+      try {
+        const { getStockProfile } = await import("@/lib/actions/finnhub.actions");
+        const profiles = await Promise.allSettled(
+          pickTickers.map(async (t) => {
+            const p = await getStockProfile(t);
+            return { ticker: t, name: p?.name ?? null };
+          }),
+        );
+        for (const r of profiles) {
+          if (r.status === "fulfilled" && r.value.name) {
+            map[r.value.ticker] = r.value.name;
+          }
+        }
+      } catch {
+        // Finnhub down — names will be null
       }
-    }
-  } catch {
-    // Finnhub down — names will be null
-  }
+      return map;
+    })(),
+  ]);
+  const priceMap = priceLookup.prices;
 
   // ── 4. Map open positions → MockTrade shape ────────────────────────────────
   const openTrades: MockTrade[] = dbOpenPositions.map((p) => {
@@ -385,28 +460,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   // ── 7. Equity curve ────────────────────────────────────────────────────────
   const equityCurve = buildEquityCurve(dbClosedPositions, STARTING_CAPITAL, totalValue);
 
-  // ── 8. Agent configs with last-run info ────────────────────────────────────
-  const [dbAgentConfigs, positionsWithAnalyst] = await Promise.all([
-    prisma.agentConfig.findMany({
-      where: { userId },
-      orderBy: { createdAt: "asc" },
-      include: {
-        researchRuns: {
-          orderBy: { startedAt: "desc" },
-          take: 1,
-          select: { startedAt: true },
-        },
-      },
-    }),
-    prisma.position.findMany({
-      where: { userId },
-      select: {
-        id: true,
-        analystId: true,
-      },
-    }),
-  ]);
-
+  // ── 8. Agent configs with last-run info (fetched in phase A) ──────────
   const tradeCountMap = new Map<string, number>();
   for (const pos of positionsWithAnalyst) {
     tradeCountMap.set(pos.analystId, (tradeCountMap.get(pos.analystId) ?? 0) + 1);
@@ -421,21 +475,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     tradesPlaced: tradeCountMap.get(a.id) ?? 0,
   }));
 
-  // ── 9. Recent research runs (last 10) ──────────────────────────────────────
-  const dbRecentRuns = await prisma.researchRun.findMany({
-    where: { userId },
-    orderBy: { startedAt: "desc" },
-    take: 10,
-    include: {
-      agentConfig: { select: { name: true } },
-      theses: { select: { id: true } },
-      decisions: {
-        where: { decision: "BUY" },
-        select: { id: true },
-      },
-    },
-  });
-
+  // ── 9. Recent research runs (fetched in phase A) ─────────────────────
   const recentRuns: RecentRunSummary[] = dbRecentRuns.map((r) => ({
     id: r.id,
     agentName: r.agentConfig?.name ?? null,
@@ -446,26 +486,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     status: r.status,
   }));
 
-  // ── 10. Today's picks ──────────────────────────────────────────────────────
-  const todayMidnight = etTradingDayDate();
-
-  const dbTodaysPicks = await prisma.thesis.findMany({
-    where: {
-      userId,
-      createdAt: { gte: todayMidnight },
-      direction: { in: ["LONG", "SHORT"] },
-    },
-    orderBy: { confidenceScore: "desc" },
-    take: 5,
-    select: {
-      id: true,
-      ticker: true,
-      direction: true,
-      confidenceScore: true,
-      signalTypes: true,
-    },
-  });
-
+  // ── 10. Today's picks (fetched in phase A) ───────────────────────────
   const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => ({
     id: t.id,
     ticker: t.ticker,

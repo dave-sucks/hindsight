@@ -130,7 +130,23 @@ export default async function TradeDetailPage({
         take: 1,
         include: {
           thesis: {
-            include: {
+            // select only the thesis fields the trade detail page actually
+            // uses — skips the giant JSON columns (fullResearch, thoughtTrace,
+            // sourcesUsed).
+            select: {
+              id: true,
+              direction: true,
+              confidenceScore: true,
+              reasoningSummary: true,
+              thesisBullets: true,
+              riskFlags: true,
+              signalTypes: true,
+              entryPrice: true,
+              targetPrice: true,
+              stopLoss: true,
+              holdDuration: true,
+              createdAt: true,
+              researchRunId: true,
               researchRun: { select: { id: true } },
             },
           },
@@ -147,30 +163,37 @@ export default async function TradeDetailPage({
   const openingBuy = orders.find((o) => o.side === 'BUY');
   const closingSell = orders.filter((o) => o.side === 'SELL').slice(-1)[0];
 
-  // Load thesis chain for this stock
-  const thesisChain = await prisma.thesis.findMany({
-    where: {
-      userId: user.id,
-      ticker: position.symbol,
-      researchRun: { agentConfigId: position.analystId },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 20,
-    select: {
-      id: true,
-      direction: true,
-      confidenceScore: true,
-      reasoningSummary: true,
-      signalTypes: true,
-      status: true,
-      parentThesisId: true,
-      entryPrice: true,
-      targetPrice: true,
-      stopLoss: true,
-      createdAt: true,
-      researchRunId: true,
-    },
-  });
+  // thesisChain, stockProfile, stockQuote and candles are all independent
+  // of each other (they only need position.symbol / analystId), so fire
+  // them in parallel instead of sequentially.
+  const [thesisChain, stockProfile, stockQuote, candles] = await Promise.all([
+    prisma.thesis.findMany({
+      where: {
+        userId: user.id,
+        ticker: position.symbol,
+        researchRun: { agentConfigId: position.analystId },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        direction: true,
+        confidenceScore: true,
+        reasoningSummary: true,
+        signalTypes: true,
+        status: true,
+        parentThesisId: true,
+        entryPrice: true,
+        targetPrice: true,
+        stopLoss: true,
+        createdAt: true,
+        researchRunId: true,
+      },
+    }),
+    getStockProfile(position.symbol),
+    getStockQuote(position.symbol),
+    getStockCandles(position.symbol, 365),
+  ]);
 
   const trade = {
     ...position,
@@ -180,13 +203,6 @@ export default async function TradeDetailPage({
     thesis: position.decisions[0]?.thesis ?? null,
     events: position.events,
   };
-
-  // Fetch stock data + candles in parallel
-  const [stockProfile, stockQuote, candles] = await Promise.all([
-    getStockProfile(trade.ticker),
-    getStockQuote(trade.ticker),
-    getStockCandles(trade.ticker, 365),
-  ]);
 
   const companyName = stockProfile?.name ?? null;
   const exchange = stockProfile?.exchange ?? null;

@@ -104,7 +104,9 @@ function ToolFallbackTrigger({
   const isCancelled =
     status?.type === "incomplete" && status.reason === "cancelled";
 
-  const Icon = statusIconMap[statusType];
+  const Icon = statusIconMap[statusType] as React.ComponentType<
+    React.SVGProps<SVGSVGElement> & { "data-slot"?: string }
+  >;
   const label = isCancelled ? "Cancelled tool" : "Used tool";
 
   return (
