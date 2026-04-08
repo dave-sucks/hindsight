@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 
 // Shared renderers from research tools — no duplication
 import {
-  thesisRender,
+  thesisRenderSingle,
   placeTradeRender,
   closePositionRender,
 } from "./tool-ui-research";
@@ -170,8 +170,8 @@ ExplainDecisionRender.displayName = "ExplainDecisionRender";
 // ─── Registration hook for run-followup tools ───────────────────────────────
 
 export function useRegisterFollowupToolUIs() {
-  useAssistantToolUI({ toolName: "research_ticker", render: thesisRender });
-  useAssistantToolUI({ toolName: "get_thesis", render: thesisRender });
+  useAssistantToolUI({ toolName: "research_ticker", render: thesisRenderSingle });
+  useAssistantToolUI({ toolName: "get_thesis", render: thesisRenderSingle });
   useAssistantToolUI({ toolName: "place_trade", render: placeTradeRender });
   useAssistantToolUI({ toolName: "close_position", render: closePositionRender });
   useAssistantToolUI({ toolName: "modify_position", render: closePositionRender });

@@ -5,6 +5,7 @@ import { ScanSearch } from "lucide-react";
 import { AgentThread } from "@/components/research/AgentThread";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
+import { getRunSourcesData } from "@/lib/actions/run-sources.actions";
 import type { UIMessage } from "ai";
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -80,6 +81,16 @@ export default async function RunPage({
   const isLive = run.status === "RUNNING";
   const hasReplay = persistedMessages !== null;
 
+  // Load Sources + Theses tab data from the DB. The Sources tab now shows
+  // real signal sources rolled up from the analyst's intel routes for the
+  // run's trading day, plus a single Hindsight Intelligence card that opens
+  // the morning brief dialog. The Theses tab uses the dashboard ThesisRow.
+  const { brief, sources, theses } = await getRunSourcesData({
+    runId: run.id,
+    analystId: run.agentConfig?.id ?? null,
+    startedAt: run.startedAt,
+  });
+
   return (
     <div className="flex flex-col h-[calc(100dvh-3rem)] overflow-hidden">
       <div className="flex-1 min-h-0">
@@ -91,6 +102,9 @@ export default async function RunPage({
             config={config}
             autoStart={isLive}
             initialMessages={persistedMessages ?? undefined}
+            brief={brief}
+            sources={sources}
+            theses={theses}
             headerAction={
               <HowItWorksSheet flow="agent">
                 <ScanSearch className="h-4 w-4" />
