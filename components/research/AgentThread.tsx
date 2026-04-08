@@ -32,6 +32,9 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import { RunSourcesPanel } from "@/components/research/run-sources-panel";
+import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
+import type { RunSourceItem } from "@/lib/actions/run-sources.actions";
+import type { MorningBrief as IntelMorningBrief } from "@/components/intelligence/types";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -44,6 +47,11 @@ interface AgentThreadProps {
   initialMessages?: UIMessage[];
   /** Optional action element rendered in the tabs bar (right side) */
   headerAction?: ReactNode;
+  /** Server-loaded sources for the Sources tab */
+  brief?: IntelMorningBrief | null;
+  sources?: RunSourceItem[];
+  /** Server-loaded theses for the Theses tab */
+  theses?: ThesisRowData[];
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────
@@ -56,6 +64,9 @@ export function AgentThread({
   autoStart = true,
   initialMessages,
   headerAction,
+  brief = null,
+  sources = [],
+  theses = [],
 }: AgentThreadProps) {
   // Live runs use the agent route; completed runs use followup route
   const isFollowupMode = !autoStart && !!initialMessages;
@@ -72,6 +83,9 @@ export function AgentThread({
         autoStart={autoStart}
         isFollowupMode={isFollowupMode}
         headerAction={headerAction}
+        brief={brief}
+        sources={sources}
+        theses={theses}
       />
     </ChatRuntime>
   );
@@ -115,12 +129,18 @@ function AgentThreadInner({
   autoStart,
   isFollowupMode,
   headerAction,
+  brief,
+  sources,
+  theses,
 }: {
   runId: string;
   analystName: string;
   autoStart: boolean;
   isFollowupMode: boolean;
   headerAction?: ReactNode;
+  brief: IntelMorningBrief | null;
+  sources: RunSourceItem[];
+  theses: ThesisRowData[];
 }) {
   useRegisterResearchToolUIs(runId);
   useRegisterFollowupToolUIs();
@@ -132,6 +152,7 @@ function AgentThreadInner({
         <TabsList>
           <TabsTrigger value={0}>Chat</TabsTrigger>
           <TabsTrigger value={1}>Sources</TabsTrigger>
+          <TabsTrigger value={2}>Theses</TabsTrigger>
         </TabsList>
         {headerAction && (
           <div className="ml-auto">{headerAction}</div>
@@ -163,7 +184,24 @@ function AgentThreadInner({
       </TabsContent>
 
       <TabsContent value={1} className="flex-1 min-h-0 overflow-y-auto">
-        <RunSourcesPanel />
+        <RunSourcesPanel brief={brief} sources={sources} />
+      </TabsContent>
+
+      <TabsContent value={2} className="flex-1 min-h-0 overflow-y-auto">
+        {theses.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+            <p className="text-sm">No theses recorded</p>
+            <p className="text-xs mt-1">
+              Theses appear here once the agent records its picks
+            </p>
+          </div>
+        ) : (
+          <div className="mx-auto w-full max-w-2xl px-4 py-6 space-y-2">
+            {theses.map((t) => (
+              <ThesisRow key={t.id} thesis={t} />
+            ))}
+          </div>
+        )}
       </TabsContent>
     </Tabs>
   );

@@ -52,7 +52,13 @@ export function extractToolSources(result: Record<string, unknown>): ToolSource[
   if (Array.isArray(raw)) {
     return raw.filter(
       (s): s is ToolSource =>
-        typeof s === "object" && s !== null && "provider" in s && "title" in s,
+        typeof s === "object" &&
+        s !== null &&
+        "provider" in s &&
+        "title" in s &&
+        // Filter out the legacy fake "Hindsight Intelligence" placeholder
+        // baked into old persisted morning_brief tool results.
+        String((s as { provider: unknown }).provider).toLowerCase() !== "hindsight intelligence",
     );
   }
   return [];

@@ -2434,10 +2434,42 @@ export function createResearchTools(ctx: ToolContext) {
           ...opps.map((o) => ({ ticker: o.tickers?.[0] ?? "?", tag: "Opportunity", summary: o.thesisSeed || o.headline })),
         ];
 
+        // ── Resolve real signal sources from the underlying signal IDs ──
+        // Avoid the previous fake "hindsightintelligence.com" placeholder.
+        // If no signals can be resolved, return an empty source array so
+        // the UI shows nothing rather than a fabricated chip.
+        const allSignalIds = [
+          ...alerts.flatMap((a) => a.signalIds ?? []),
+          ...watches.flatMap((w) => w.signalIds ?? []),
+          ...opps.flatMap((o) => o.signalIds ?? []),
+        ];
+        const briefSources: ToolSource[] = [];
+        if (allSignalIds.length > 0) {
+          const signals = await prisma.signal.findMany({
+            where: { id: { in: allSignalIds } },
+            select: { headline: true, sourceUrls: true, sourceNames: true },
+          });
+          const seen = new Set<string>();
+          for (const s of signals) {
+            for (let i = 0; i < s.sourceUrls.length; i++) {
+              const url = s.sourceUrls[i];
+              if (!url || seen.has(url)) continue;
+              seen.add(url);
+              briefSources.push({
+                provider: s.sourceNames[i] ?? new URL(url).hostname,
+                title: s.headline,
+                url,
+              });
+              if (briefSources.length >= 12) break;
+            }
+            if (briefSources.length >= 12) break;
+          }
+        }
+
         return {
           summary: `Morning brief: ${alerts.length} portfolio alert${alerts.length !== 1 ? "s" : ""}, ${watches.length} watchlist update${watches.length !== 1 ? "s" : ""}, ${opps.length} opportunit${opps.length !== 1 ? "ies" : "y"}. ${brief.signalCount} signals.`,
           tickers,
-          _sources: [{ provider: "Hindsight Intelligence", title: "Morning Brief" }],
+          _sources: briefSources,
           data: {
             available: true,
             date: brief.date.toISOString().slice(0, 10),

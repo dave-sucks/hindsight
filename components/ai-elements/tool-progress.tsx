@@ -106,7 +106,7 @@ export type ToolProgressContentProps = ComponentProps<typeof CollapsibleContent>
 export const ToolProgressContent = memo(
   ({ className, ...props }: ToolProgressContentProps) => (
     <CollapsibleContent
-      className={cn("space-y-1 pt-1 pb-1", className)}
+      className={cn("space-y-3 pt-2 pb-1", className)}
       {...props}
     />
   )
@@ -185,7 +185,7 @@ export const ToolProgressTickerItem = memo(
           )}
         </div>
         <span className={cn("flex-1 min-w-0", active && "shimmer-text")}>
-          <span className="font-mono text-xs font-medium">${ticker}</span>
+          <span className="font-medium">${ticker}</span>
           {tag && <span> ({tag})</span>}
           <span> — </span>
           {children}

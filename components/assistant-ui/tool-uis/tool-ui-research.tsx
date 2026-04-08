@@ -53,6 +53,7 @@ import {
   type PortfolioReviewData,
   DecisionSummaryCard,
 } from "@/components/domain";
+import { ThesisCarousel } from "@/components/domain/thesis-carousel";
 import { OrderConfirm } from "@/components/manifest-ui/order-confirm";
 import {
   ToolProgress,
@@ -63,26 +64,19 @@ import {
   type TickerActionIcon,
 } from "@/components/ai-elements/tool-progress";
 import { ClampedText } from "@/components/ai-elements/clamped-text";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { MessageSearch01Icon, ChartBreakoutSquareIcon } from "@hugeicons/core-free-icons";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { extractToolSources, SourceChips } from "./tool-ui-shared";
 import { SuggestConfigRender } from "./tool-ui-config";
 
 // ─── Shared render functions (exported for tool-ui-followup.tsx reuse) ──────
 
-export const thesisRender = ({ result }: { result?: Record<string, unknown> }) => {
-  if (!result) {
-    return (
-      <ToolProgress defaultOpen>
-        <ToolProgressHeader loading>Building thesis...</ToolProgressHeader>
-        <ToolProgressContent>
-          <ToolProgressItem active>Generating analysis</ToolProgressItem>
-        </ToolProgressContent>
-      </ToolProgress>
-    );
-  }
-
+/** Build a ThesisCardData from a record_thesis tool result envelope. */
+function resultToThesis(result: Record<string, unknown>): ThesisCardData {
   const sources = extractToolSources(result);
-  const thesis: ThesisCardData = {
+  return {
     ticker: result.ticker as string,
     direction: result.direction as "LONG" | "SHORT" | "PASS",
     confidence_score: result.confidence_score as number,
@@ -105,10 +99,111 @@ export const thesisRender = ({ result }: { result?: Record<string, unknown> }) =
     fundamentals: (result.fundamentals as ThesisCardData["fundamentals"]) ?? null,
     status: (result.status as ThesisCardData["status"]) ?? undefined,
   };
+}
+
+/**
+ * thesisRender — used in the agent run thread.
+ *
+ * Each record_thesis tool call streams in as its own message part. To
+ * group every thesis from a single agent turn into ONE carousel without
+ * changing the agent's tool-call shape, the FIRST record_thesis part in
+ * the message reads forward through the message content and collects
+ * every subsequent record_thesis result. Later record_thesis parts then
+ * render null so we don't get duplicate cards.
+ *
+ * Same forward-read pattern as DecisionPlanRender below.
+ */
+export const thesisRender: ToolCallMessagePartComponent = ({ result, toolCallId }) => {
+  const content = useMessage((m) => m.content) as unknown[];
+
+  // Find all record_thesis / show_thesis parts in this message, in order
+  const thesisParts = useMemo(() => {
+    return content
+      .map((p, i) => ({ p: p as Record<string, unknown> | undefined, i }))
+      .filter(
+        ({ p }) =>
+          p?.type === "tool-call" &&
+          (p.toolName === "record_thesis" || p.toolName === "show_thesis"),
+      );
+  }, [content]);
+
+  // Find our position among thesis parts. Only the FIRST one renders the
+  // carousel — every subsequent thesis tool call returns null.
+  const myPositionInTheses = useMemo(() => {
+    if (!toolCallId) return -1;
+    return thesisParts.findIndex(({ p }) => p?.toolCallId === toolCallId);
+  }, [thesisParts, toolCallId]);
+
+  if (myPositionInTheses > 0) return null;
+
+  // Pull tickers from EVERY thesis part (input or result) so the header
+  // label can list them as soon as the agent starts streaming, even before
+  // the first result lands.
+  const tickers: string[] = [];
+  for (const { p } of thesisParts) {
+    const args = (p?.args ?? p?.input) as Record<string, unknown> | undefined;
+    const r = (p?.result ?? p?.output) as Record<string, unknown> | undefined;
+    const t = (r?.ticker ?? args?.ticker) as string | undefined;
+    if (t && !tickers.includes(t)) tickers.push(t);
+  }
+  const headerLabel =
+    tickers.length > 0
+      ? `Writing thesis for ${tickers.map((t) => `$${t}`).join(", ")}`
+      : "Writing thesis for each stock";
+
+  // Loading state — first thesis hasn't returned yet
+  if (myPositionInTheses < 0 && !result) {
+    return (
+      <div className="my-3 inline-flex items-center gap-1.5 py-1 text-sm text-muted-foreground">
+        <HugeiconsIcon icon={ChartBreakoutSquareIcon} className="size-3.5 shrink-0" />
+        <span>{headerLabel}…</span>
+      </div>
+    );
+  }
+
+  // Collect the result from every thesis tool call in the message
+  const theses: ThesisCardData[] = thesisParts
+    .map(({ p }) => {
+      const r = (p?.result ?? p?.output) as Record<string, unknown> | undefined;
+      return r ? resultToThesis(r) : null;
+    })
+    .filter((t): t is ThesisCardData => t !== null);
+
+  if (theses.length === 0) return null;
+
+  return (
+    <div className="my-3 space-y-1">
+      <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+        <HugeiconsIcon icon={ChartBreakoutSquareIcon} className="size-3.5 shrink-0" />
+        <span>{headerLabel}</span>
+      </div>
+      <ThesisCarousel theses={theses} />
+    </div>
+  );
+};
+
+/**
+ * thesisRenderSingle — used in the followup chat (RunFollowupChat).
+ *
+ * In the followup context, each record_thesis is an isolated tool call —
+ * not part of a streaming agent turn that emits N theses in a row — so we
+ * just render one full ThesisCard per call instead of trying to group.
+ */
+export const thesisRenderSingle = ({ result }: { result?: Record<string, unknown> }) => {
+  if (!result) {
+    return (
+      <ToolProgress defaultOpen>
+        <ToolProgressHeader loading>Building thesis…</ToolProgressHeader>
+        <ToolProgressContent>
+          <ToolProgressItem active>Generating analysis</ToolProgressItem>
+        </ToolProgressContent>
+      </ToolProgress>
+    );
+  }
 
   return (
     <div className="my-2">
-      <ThesisCard {...thesis} />
+      <ThesisCard {...resultToThesis(result)} />
     </div>
   );
 };
@@ -390,20 +485,27 @@ const DecisionPlanRender: ToolCallMessagePartComponent = ({ result, toolCallId }
       }
     }
 
+    const plural = (n: number, s: string) => `${n} ${s}${n === 1 ? "" : "s"}`;
     const parts: string[] = [];
-    if (bought > 0)     parts.push(`Bought ${bought}`);
-    if (sold > 0)       parts.push(`Sold ${sold}`);
-    if (closedWin > 0)  parts.push(`Closed ${closedWin}`);
-    if (closedLoss > 0) parts.push(`Closed ${closedLoss} (loss)`);
-    if (watching > 0)   parts.push(`Watching ${watching}`);
-    if (unwatched > 0)  parts.push(`Removed ${unwatched}`);
-    if (held > 0)       parts.push(`Holding ${held}`);
+    if (held > 0)       parts.push(`holding ${plural(held, "stock")}`);
+    if (bought > 0)     parts.push(`bought ${plural(bought, "position")}`);
+    if (sold > 0)       parts.push(`sold ${plural(sold, "position")}`);
+    if (closedWin > 0)  parts.push(`closed ${plural(closedWin, "winner")}`);
+    if (closedLoss > 0) parts.push(`closed ${plural(closedLoss, "loss")}`);
+    if (watching > 0)   parts.push(`added ${plural(watching, "watchlist item")}`);
+    if (unwatched > 0)  parts.push(`removed ${plural(unwatched, "watchlist item")}`);
     if (passed > 0)     parts.push(`${passed} passed`);
     if (failed > 0)     parts.push(`${failed} failed`);
 
-    return parts.length > 0
-      ? `Managing portfolio · ${parts.join(" · ")}`
-      : "Managing portfolio";
+    if (parts.length === 0) return "Managing portfolio";
+
+    // Join as a sentence: "a, b, and c" — single segment stays bare
+    let sentence: string;
+    if (parts.length === 1) sentence = parts[0];
+    else if (parts.length === 2) sentence = `${parts[0]} and ${parts[1]}`;
+    else sentence = `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+
+    return `Managing portfolio — ${sentence}`;
   }, [plannedActions, outcomesByTicker]);
 
   return (
@@ -663,13 +765,41 @@ export function useRegisterResearchToolUIs(_runId?: string) {
     render: ({ result }) => {
       if (!result) {
         return (
-          <ToolProgress defaultOpen>
-            <ToolProgressHeader loading>Recording run summary…</ToolProgressHeader>
-          </ToolProgress>
+          <div className="my-3 inline-flex items-center gap-1.5 py-1 text-sm text-muted-foreground">
+            <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
+            <span>Summarizing run…</span>
+          </div>
         );
       }
+      const exposure = result.exposureBreakdown as
+        | { longExposure?: number; shortExposure?: number; netExposure?: number }
+        | undefined;
+      const invested =
+        (exposure?.longExposure ?? 0) + (exposure?.shortExposure ?? 0);
       return (
-        <div className="my-2">
+        <div className="my-3 space-y-1">
+          <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
+            <span>Summarizing run</span>
+            {invested > 0 && (
+              <>
+                <span>—</span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span className="tabular-nums cursor-default">
+                        ${invested.toLocaleString()} invested
+                      </span>
+                    }
+                  />
+                  <TooltipContent>
+                    Long ${(exposure?.longExposure ?? 0).toLocaleString()} ·
+                    Short ${(exposure?.shortExposure ?? 0).toLocaleString()}
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            )}
+          </div>
           <DecisionSummaryCard
             rankedPicks={
               (result.rankedPicks ?? []) as {
@@ -680,11 +810,6 @@ export function useRegisterResearchToolUIs(_runId?: string) {
                 reasoning: string;
                 action: string;
               }[]
-            }
-            exposureBreakdown={
-              result.exposureBreakdown as
-                | { longExposure?: number; shortExposure?: number; netExposure?: number }
-                | undefined
             }
           />
         </div>
