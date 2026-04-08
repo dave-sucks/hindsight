@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:db": "node scripts/test-db.mjs",
-    "test": "jest"
+    "test": "jest",
+    "prepare": "husky"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
@@ -95,6 +96,7 @@
     "@types/react-select-country-list": "^2.2.3",
     "eslint": "^9",
     "eslint-config-next": "^15.5.12",
+    "husky": "^9.1.7",
     "jest": "^30.2.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.6",
