@@ -17,7 +17,6 @@ import { useMessage } from "@assistant-ui/react";
 import { useMemo, type ReactNode } from "react";
 import { ToolCallRow } from "./ToolCallRow";
 import { normalizeToolResult } from "@/lib/agent/tool-result";
-import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
 import {
   ToolProgress,
   ToolProgressHeader,
@@ -25,13 +24,8 @@ import {
   ToolProgressTickerItem,
   type TickerActionIcon,
 } from "@/components/ai-elements/tool-progress";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel";
+import { ThesisCarousel } from "@/components/domain/thesis-carousel";
+import type { ThesisCardData } from "@/components/domain/thesis-card";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -314,49 +308,36 @@ function ThesisCarouselBlock({ parts, loading }: ThesisCarouselProps) {
     );
   }
 
-  const readyParts = parts.filter(({ part }) => (part.result ?? part.output) !== undefined);
+  const theses: ThesisCardData[] = [];
 
-  if (readyParts.length === 0) return null;
-
-  // Single thesis: render directly without carousel chrome
-  if (readyParts.length === 1) {
-    const { part } = readyParts[0];
+  for (const { part } of parts) {
     const rawResult = part.result ?? part.output;
+    if (rawResult == null) continue;
     const normalized = normalizeToolResult(part.toolName, rawResult);
-    if (!normalized.ok) return null;
-    return (
-      <ThesisCardRenderer
-        toolName={part.toolName}
-        result={normalized}
-        loading={false}
-      />
-    );
+    if (!normalized.ok) continue;
+    const data = normalized.data as Record<string, unknown> | null;
+    if (!data?.ticker || !data?.direction) continue;
+
+    theses.push({
+      ticker: data.ticker as string,
+      direction: data.direction as "LONG" | "SHORT" | "PASS",
+      confidence_score: (data.confidence_score as number) ?? (data.confidenceScore as number) ?? 0,
+      reasoning_summary: data.reasoning_summary as string | undefined,
+      thesis_bullets: (data.thesis_bullets as string[]) ?? [],
+      risk_flags: (data.risk_flags as string[]) ?? [],
+      entry_price: data.entry_price as number | null | undefined,
+      target_price: data.target_price as number | null | undefined,
+      stop_loss: data.stop_loss as number | null | undefined,
+      hold_duration: data.hold_duration as string | undefined,
+      signal_types: (data.signal_types as string[]) ?? [],
+      company_name: data.company_name as string | null | undefined,
+      exchange: data.exchange as string | null | undefined,
+      fundamentals: data.fundamentals as ThesisCardData["fundamentals"],
+      status: (data.status as ThesisCardData["status"]) ?? "ACTIVE",
+    });
   }
 
-  return (
-    <Carousel opts={{ align: "start" }} className="w-full">
-      <CarouselContent className="-ml-3">
-        {readyParts.map(({ part, index }) => {
-          const rawResult = part.result ?? part.output;
-          const normalized = normalizeToolResult(part.toolName, rawResult);
-          if (!normalized.ok) return null;
-          return (
-            <CarouselItem key={index} className="pl-3 basis-[340px] shrink-0">
-              <ThesisCardRenderer
-                toolName={part.toolName}
-                result={normalized}
-                loading={false}
-              />
-            </CarouselItem>
-          );
-        })}
-      </CarouselContent>
-      {readyParts.length > 1 && (
-        <>
-          <CarouselPrevious />
-          <CarouselNext />
-        </>
-      )}
-    </Carousel>
-  );
+  if (theses.length === 0) return null;
+
+  return <ThesisCarousel theses={theses} />;
 }
