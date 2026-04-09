@@ -11,14 +11,15 @@
 // ── UI discriminator ─────────────────────────────────────────────────────────
 
 export type ToolUI =
-  | "generic"        // fallback: summary + sources
-  | "ticker"         // per-ticker research result
-  | "source"         // intelligence read (brief, signals, artifact)
-  | "stock-card"     // full stock card (quote + company + financials)
-  | "trade-card"     // trade execution result
-  | "thesis-card"    // thesis artifact
-  | "portfolio"      // portfolio state / review
-  | "decision-summary" // decision plan / complete_run
+  | "generic"          // fallback: summary + sources
+  | "ticker"           // per-ticker research result
+  | "source"           // intelligence read (brief, signals, artifact)
+  | "stock-card"       // get_stock_data — CoT row
+  | "trade-card"       // place_trade / close_position — CoT row
+  | "thesis-card"      // record_thesis — carousel card
+  | "portfolio"        // portfolio state / review — CoT row
+  | "decision-summary" // record_decision_plan / complete_run — CoT row
+  | "run-summary"      // record_run_summary — summary card with ranked picks
   | "config-preview";  // suggest_config (builder/editor only)
 
 // ── Source attribution ───────────────────────────────────────────────────────
@@ -94,7 +95,8 @@ function inferLegacyUI(toolName: string): ToolUI {
   if (toolName === "place_trade") return "trade-card";
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
   if (toolName === "get_portfolio_state") return "portfolio";
-  if (toolName === "complete_run" || toolName === "summarize_run" || toolName === "record_decision_plan") return "decision-summary";
+  if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
+  if (toolName === "complete_run" || toolName === "record_decision_plan") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
   if (
     toolName === "get_earnings_data" ||

@@ -20,6 +20,7 @@ import { TradeCardRenderer } from "./renderers/TradeCardRenderer";
 import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
 import { PortfolioRenderer } from "./renderers/PortfolioRenderer";
 import { DecisionSummaryRenderer } from "./renderers/DecisionSummaryRenderer";
+import { RunSummaryRenderer } from "./renderers/RunSummaryRenderer";
 import { ConfigPreviewRenderer } from "./renderers/ConfigPreviewRenderer";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -64,7 +65,9 @@ export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
     case "portfolio":
       return <PortfolioRenderer result={result} loading={loading} />;
     case "decision-summary":
-      return <DecisionSummaryRenderer result={result} loading={loading} />;
+      return <DecisionSummaryRenderer toolName={toolName} result={result} loading={loading} />;
+    case "run-summary":
+      return <RunSummaryRenderer result={result} loading={loading} />;
     case "config-preview":
       return <ConfigPreviewRenderer result={result} loading={loading} />;
     case "generic":
@@ -79,7 +82,8 @@ function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "place_trade" || toolName === "close_position") return "trade-card";
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
   if (toolName === "get_portfolio_state") return "portfolio";
-  if (toolName === "complete_run" || toolName === "record_decision_plan" || toolName === "summarize_run") return "decision-summary";
+  if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
+  if (toolName === "complete_run" || toolName === "record_decision_plan") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
   if (
     toolName === "get_earnings_data" ||

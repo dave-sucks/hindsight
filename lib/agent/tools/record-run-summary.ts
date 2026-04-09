@@ -36,7 +36,7 @@ export const recordRunSummary = defineTool({
       })
       .optional(),
   }),
-  ui: "decision-summary" as const,
+  ui: "run-summary" as const,
 
   execute: async (args, ctx) => {
     try {

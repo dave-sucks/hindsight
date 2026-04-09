@@ -1,16 +1,13 @@
 "use client";
 
-/**
- * TradeCardRenderer — renders the TradeCard domain component for place_trade /
- * close_position results.
- *
- * In Step 2 this shows a summary card. Full domain card wiring happens when
- * the trade tools are migrated in Steps 3-4.
- */
-
 import type { ToolResult } from "@/lib/agent/tool-result";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  ToolProgress,
+  ToolProgressHeader,
+  ToolProgressContent,
+  ToolProgressTickerItem,
+  type TickerActionIcon,
+} from "@/components/ai-elements/tool-progress";
 
 interface Props {
   toolName: string;
@@ -20,36 +17,29 @@ interface Props {
 
 export function TradeCardRenderer({ toolName, result, loading }: Props) {
   const data = result.data as Record<string, unknown> | null;
-  const status = (data?.status as string) ?? (loading ? "pending" : "unknown");
   const ticker = (data?.ticker as string) ?? (data?.symbol as string) ?? "";
-  const direction = (data?.direction as string) ?? "";
+  const status = ((data?.status as string) ?? "").toUpperCase();
+  const isClose = toolName === "close_position";
 
-  const statusVariant =
-    status === "filled" ? "default" :
-    status === "closed" ? "secondary" :
-    status === "failed" ? "destructive" :
-    "outline";
+  const actionIcon: TickerActionIcon =
+    status === "FAILED" ? "failed" : isClose ? "sell" : "buy";
 
-  if (loading) {
-    return (
-      <Card className="border-dashed">
-        <CardContent className="p-4 text-sm text-muted-foreground">
-          {toolName === "place_trade" ? `Placing trade${ticker ? ` — ${direction} ${ticker}` : ""}...` : `Closing position${ticker ? ` — ${ticker}` : ""}...`}
-        </CardContent>
-      </Card>
-    );
-  }
+  const label = isClose ? "Closing position" : "Placing trade";
 
   return (
-    <Card>
-      <CardContent className="p-4 flex items-center gap-3">
-        <Badge variant={statusVariant}>{status}</Badge>
-        <span className="text-sm font-medium">
-          {direction && <span className="mr-1">{direction}</span>}
-          {ticker}
-        </span>
-        <span className="text-sm text-muted-foreground ml-auto">{result.summary}</span>
-      </CardContent>
-    </Card>
+    <ToolProgress defaultOpen={loading}>
+      <ToolProgressHeader loading={loading}>{label}</ToolProgressHeader>
+      <ToolProgressContent>
+        {ticker ? (
+          <ToolProgressTickerItem ticker={ticker} actionIcon={actionIcon}>
+            {result.summary}
+          </ToolProgressTickerItem>
+        ) : (
+          <ToolProgressTickerItem ticker="" actionIcon={actionIcon}>
+            {result.summary}
+          </ToolProgressTickerItem>
+        )}
+      </ToolProgressContent>
+    </ToolProgress>
   );
 }

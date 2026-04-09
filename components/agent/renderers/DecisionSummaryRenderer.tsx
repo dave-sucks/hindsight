@@ -1,37 +1,29 @@
 "use client";
 
-/**
- * DecisionSummaryRenderer — for complete_run and record_decision_plan.
- * Full DecisionSummaryCard wiring happens in Step 5.
- */
-
 import type { ToolResult } from "@/lib/agent/tool-result";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ToolProgress,
+  ToolProgressHeader,
+  ToolProgressContent,
+  ToolProgressItem,
+} from "@/components/ai-elements/tool-progress";
 
 interface Props {
+  toolName: string;
   result: Extract<ToolResult, { ok: true }>;
   loading: boolean;
 }
 
-export function DecisionSummaryRenderer({ result, loading }: Props) {
-  if (loading) {
-    return (
-      <Card className="border-dashed">
-        <CardContent className="p-4 text-sm text-muted-foreground">
-          Wrapping up run...
-        </CardContent>
-      </Card>
-    );
-  }
+export function DecisionSummaryRenderer({ toolName, result, loading }: Props) {
+  const label =
+    toolName === "complete_run" ? "Completing run" : "Managing portfolio";
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Run Complete</CardTitle>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <p className="text-sm text-muted-foreground">{result.summary}</p>
-      </CardContent>
-    </Card>
+    <ToolProgress defaultOpen={loading}>
+      <ToolProgressHeader loading={loading}>{label}</ToolProgressHeader>
+      <ToolProgressContent>
+        <ToolProgressItem>{result.summary}</ToolProgressItem>
+      </ToolProgressContent>
+    </ToolProgress>
   );
 }
