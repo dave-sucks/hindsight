@@ -3,10 +3,7 @@
 import { useMemo, useCallback, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ChatRuntime } from "@/components/chat/chat-runtime";
-import {
-  useRegisterBuilderToolUIs,
-  ToolUICallbacksProvider,
-} from "@/components/assistant-ui/tool-uis";
+import { ToolUICallbacksProvider } from "@/components/assistant-ui/tool-uis";
 import { useAutoSend } from "@/hooks/useAutoSend";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 import { createAnalystFromBuilder, updateAnalystFromBuilder } from "@/lib/actions/analyst.actions";
@@ -38,7 +35,6 @@ function ChatProviderInner({
   const router = useRouter();
   const [isMutating, startMutating] = useTransition();
 
-  useRegisterBuilderToolUIs();
   useAutoSend({ message: initialPrompt });
 
   const handleConfirmConfig = useCallback(

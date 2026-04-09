@@ -29,10 +29,11 @@ import {
   verdictLabel,
   hasFundamentalDetails,
 } from "@/components/agent/sheets/ThesisSheet";
+import type { FundamentalsData, ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 
 // Types are defined in ThesisSheet.tsx (the more primitive file) and re-exported
 // here so existing consumers importing from thesis-card don't need to change.
-export type { FundamentalsData, ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
+export type { FundamentalsData, ThesisCardData };
 
 export type ThesisCardProps = ComponentProps<typeof Card> &
   ThesisCardData & {

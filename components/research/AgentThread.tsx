@@ -18,10 +18,6 @@ import { useAutoSend } from "@/hooks/useAutoSend";
 import { Thread } from "@/components/assistant-ui/thread";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import {
-  useRegisterResearchToolUIs,
-  useRegisterFollowupToolUIs,
-} from "@/components/assistant-ui/tool-uis";
-import {
   QuickReply,
   type QuickReply as QuickReplyType,
 } from "@/components/manifest-ui/quick-reply";
@@ -68,13 +64,12 @@ export function AgentThread({
   sources = [],
   theses = [],
 }: AgentThreadProps) {
-  // Live runs use the agent route; completed runs use followup route
   const isFollowupMode = !autoStart && !!initialMessages;
 
   return (
     <ChatRuntime
-      api={isFollowupMode ? "/api/chat/run-followup" : "/api/agent/research-run"}
-      body={isFollowupMode ? { runId, analystId } : { runId, analystId, config }}
+      api="/api/agent/research-run"
+      body={{ runId, analystId, config }}
       messages={initialMessages}
     >
       <AgentThreadInner
@@ -142,8 +137,6 @@ function AgentThreadInner({
   sources: RunSourceItem[];
   theses: ThesisRowData[];
 }) {
-  useRegisterResearchToolUIs(runId);
-  useRegisterFollowupToolUIs();
   useAutoSend({ message: autoStart ? "Run" : undefined, delay: 500 });
 
   return (

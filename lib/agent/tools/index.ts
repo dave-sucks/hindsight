@@ -1,31 +1,87 @@
 /**
  * Tool registry — single export point for all agent tools.
  *
- * All 16 tools have been migrated to individual defineTool() files.
- * createResearchTools() in ../tools.ts now delegates every tool here.
- * Once tools.ts is deleted, this file is the sole source of truth.
- *
- * Usage in the unified route:
- *   import { buildToolSet } from "@/lib/agent/tools";
- *   const tools = buildToolSet(ctx, modeConfig.toolAllowlist);
+ * All 16 tools live in individual defineTool() files in this directory.
+ * createResearchTools() assembles them for the unified route and crons.
  */
 
-export { createResearchTools } from "../tools";
+import type { AlpacaCredentials } from "@/lib/alpaca";
+import type { IntelligencePolicy } from "@/lib/intelligence/types";
 
-// ── Research tools ─────────────────────────────────────────────────────────────
+import { getMarketContext } from "./get-market-context";
+import { getStockData } from "./get-stock-data";
+import { getEarningsData } from "./get-earnings-data";
+import { getOptionsFlow } from "./get-options-flow";
+import { getSecFilings } from "./get-sec-filings";
+import { readMorningBrief } from "./read-morning-brief";
+import { readSignals } from "./read-signals";
+import { readArtifact } from "./read-artifact";
+import { webSearch } from "./web-search";
+import { recordThesis } from "./record-thesis";
+import { placeTrade } from "./place-trade";
+import { closePosition } from "./close-position";
+import { recordDecisionPlan } from "./record-decision-plan";
+import { recordRunSummary } from "./record-run-summary";
+import { completeRun } from "./complete-run";
+import { manageWatchlist } from "./manage-watchlist";
+
+interface ToolCtx {
+  runId: string;
+  userId: string;
+  analystId?: string;
+  watchlist?: string[];
+  exclusionList?: string[];
+  sectors?: string[];
+  maxPositionSize?: number;
+  maxOpenPositions?: number;
+  alpacaCreds?: AlpacaCredentials;
+  intelligencePolicy?: IntelligencePolicy;
+}
+
+export function createResearchTools(ctx: ToolCtx) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const newCtx: any = { ...ctx, groupId: (phase: string) => phase };
+
+  const toolsBase = {
+    get_market_context: getMarketContext(newCtx),
+    get_stock_data: getStockData(newCtx),
+    get_earnings_data: getEarningsData(newCtx),
+    get_options_flow: getOptionsFlow(newCtx),
+    get_sec_filings: getSecFilings(newCtx),
+    read_morning_brief: readMorningBrief(newCtx),
+    read_signals: readSignals(newCtx),
+    read_artifact: readArtifact(newCtx),
+    web_search: webSearch(newCtx),
+    record_thesis: recordThesis(newCtx),
+    place_trade: placeTrade(newCtx),
+    close_position: closePosition(newCtx),
+    record_decision_plan: recordDecisionPlan(newCtx),
+    record_run_summary: recordRunSummary(newCtx),
+    complete_run: completeRun(newCtx),
+    manage_watchlist: manageWatchlist(newCtx),
+  };
+
+  // Backward-compat aliases for old persisted RunMessages
+  const tools = toolsBase as Record<string, unknown>;
+  tools.show_thesis = toolsBase.record_thesis;
+  tools.summarize_run = toolsBase.complete_run;
+
+  return toolsBase as typeof toolsBase & {
+    show_thesis: typeof toolsBase.record_thesis;
+    summarize_run: typeof toolsBase.complete_run;
+  };
+}
+
+// ── Individual tool exports ────────────────────────────────────────────────────
 export { getMarketContext } from "./get-market-context";
 export { getStockData } from "./get-stock-data";
 export { getEarningsData } from "./get-earnings-data";
 export { getOptionsFlow } from "./get-options-flow";
 export { getSecFilings } from "./get-sec-filings";
-
-// ── Intelligence tools ─────────────────────────────────────────────────────────
 export { readMorningBrief } from "./read-morning-brief";
 export { readSignals } from "./read-signals";
 export { readArtifact } from "./read-artifact";
 export { webSearch } from "./web-search";
-
-// ── Action tools ───────────────────────────────────────────────────────────────
 export { recordThesis } from "./record-thesis";
 export { placeTrade } from "./place-trade";
 export { closePosition } from "./close-position";
