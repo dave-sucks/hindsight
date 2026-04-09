@@ -83,8 +83,27 @@ export function normalizeToolResult(
   const sources = (r._sources as ToolSource[]) ?? [];
   const data = r.data ?? r;
   const ui = inferLegacyUI(toolName);
+  const groupId = inferLegacyGroupId(toolName);
 
-  return { ok: true, ui, summary, data, sources };
+  return { ok: true, ui, summary, data, sources, ...(groupId !== undefined ? { groupId } : {}) };
+}
+
+function inferLegacyGroupId(toolName: string): string | undefined {
+  if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis";
+  if (
+    toolName === "get_stock_data" ||
+    toolName === "get_earnings_data" ||
+    toolName === "get_options_flow" ||
+    toolName === "get_sec_filings" ||
+    toolName === "get_market_context"
+  ) return "research";
+  if (
+    toolName === "place_trade" ||
+    toolName === "close_position" ||
+    toolName === "manage_watchlist" ||
+    toolName === "record_decision_plan"
+  ) return "execution";
+  return undefined;
 }
 
 function inferLegacyUI(toolName: string): ToolUI {
