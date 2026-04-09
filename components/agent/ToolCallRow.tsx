@@ -26,13 +26,16 @@ import { Card, CardContent } from "@/components/ui/card";
 
 interface Props {
   toolName: string;
+  toolCallId?: string;
+  /** Index of this part in the message content array (for forward-read patterns) */
+  partIndex?: number;
   args: Record<string, unknown>;
   rawResult: unknown;
   /** True while the tool is still executing (no result yet) */
   loading: boolean;
 }
 
-export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
+export function ToolCallRow({ toolName, toolCallId, partIndex, args, rawResult, loading }: Props) {
   // Normalize to ToolResult regardless of shape (new or legacy)
   const result: ToolResult = rawResult != null
     ? normalizeToolResult(toolName, rawResult)
@@ -65,7 +68,7 @@ export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
     case "portfolio":
       return <PortfolioRenderer result={result} loading={loading} />;
     case "decision-summary":
-      return <DecisionSummaryRenderer toolName={toolName} result={result} loading={loading} />;
+      return <DecisionSummaryRenderer toolName={toolName} toolCallId={toolCallId} partIndex={partIndex} result={result} loading={loading} />;
     case "run-summary":
       return <RunSummaryRenderer result={result} loading={loading} />;
     case "config-preview":
