@@ -36,7 +36,6 @@ import {
 interface ToolCallPart {
   type: string;
   toolName: string;
-  toolCallId?: string;
   args?: Record<string, unknown>;
   input?: Record<string, unknown>;
   result?: unknown;
@@ -121,8 +120,6 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
             <ToolCallRow
               key={`solo-${block.index}`}
               toolName={part.toolName}
-              toolCallId={part.toolCallId}
-              partIndex={block.index}
               args={args as Record<string, unknown>}
               rawResult={rawResult}
               loading={isLoading}
@@ -179,8 +176,6 @@ function ResearchGroupBlock({ groupId, parts }: GroupBlockProps) {
             <ToolCallRow
               key={`grouped-${index}`}
               toolName={part.toolName}
-              toolCallId={part.toolCallId}
-              partIndex={index}
               args={args}
               rawResult={rawResult}
               loading={isLoading || (loadingAny && rawResult === undefined)}

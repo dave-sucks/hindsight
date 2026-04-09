@@ -21,14 +21,17 @@ interface TickerFinding {
 
 interface Props {
   toolName: string;
+  args?: Record<string, unknown>;
   result: Extract<ToolResult, { ok: true }>;
   loading: boolean;
 }
 
-export function StockCardRenderer({ result, loading }: Props) {
+export function StockCardRenderer({ args, result, loading }: Props) {
   const data = result.data as Record<string, unknown> | null;
-  const tickers = (data?.tickers as TickerFinding[]) ?? [];
-  const ticker = (result.data as Record<string, unknown>)?.ticker as string ?? "";
+  // New runs: data.tickers populated by the tool. Old runs: synthesize from args.ticker.
+  const tickers: TickerFinding[] = (data?.tickers as TickerFinding[] | undefined)
+    ?? (args?.ticker ? [{ ticker: args.ticker as string, summary: result.summary }] : []);
+  const ticker = (args?.ticker as string) ?? (tickers[0]?.ticker ?? "");
 
   return (
     <ToolProgress defaultOpen={loading}>
