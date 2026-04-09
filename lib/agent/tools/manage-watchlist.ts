@@ -29,7 +29,8 @@ export const manageWatchlist = defineTool({
     trigger_condition: z.string().optional().describe("Machine-readable trigger: 'price < 145', 'RSI < 30', 'earnings this week'"),
     review_frequency: z.enum(["DAILY", "WEEKLY", "ON_CATALYST"]).optional().describe("How often to review this item"),
   }),
-  ui: "generic" as const,
+  ui: "ticker" as const,
+  groupId: "execution",
 
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
@@ -211,6 +212,7 @@ export const manageWatchlist = defineTool({
               ticker,
               changed: false,
               message: `$${ticker} is not on the watchlist. No action taken.`,
+              tickers: [{ ticker, tag: "N/A", summary: `Not on watchlist — no action taken` }],
             },
             sources: [],
           };
@@ -289,6 +291,7 @@ export const manageWatchlist = defineTool({
               ticker,
               changed: false,
               message: `$${ticker} is not on the watchlist. No action taken.`,
+              tickers: [{ ticker, tag: "N/A", summary: `Not on watchlist — no action taken` }],
             },
             sources: [],
           };
@@ -341,7 +344,14 @@ export const manageWatchlist = defineTool({
 
       return {
         summary: `Unknown watchlist action: ${args.action}`,
-        data: { success: false, action: args.action as "ADD" | "REMOVE" | "UPDATE", ticker, changed: false, message: `Unknown action: ${args.action}` },
+        data: {
+          success: false,
+          action: args.action as "ADD" | "REMOVE" | "UPDATE",
+          ticker,
+          changed: false,
+          message: `Unknown action: ${args.action}`,
+          tickers: [{ ticker, tag: "Failed", summary: `Unknown action: ${args.action}`, actionIcon: "failed" }],
+        },
         sources: [],
       };
     } catch (err) {
@@ -349,7 +359,14 @@ export const manageWatchlist = defineTool({
       console.error(`[tool] manage_watchlist FAILED: ${msg}`);
       return {
         summary: `Watchlist ${args.action.toLowerCase()} failed: $${ticker}`,
-        data: { success: false, action: args.action as "ADD" | "REMOVE" | "UPDATE", ticker, changed: false, message: msg },
+        data: {
+          success: false,
+          action: args.action as "ADD" | "REMOVE" | "UPDATE",
+          ticker,
+          changed: false,
+          message: msg,
+          tickers: [{ ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
+        },
         sources: [],
       };
     }

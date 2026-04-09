@@ -6,7 +6,6 @@
  */
 
 import type { ToolResult } from "@/lib/agent/tool-result";
-import { Search } from "lucide-react";
 import {
   ToolProgress,
   ToolProgressHeader,
@@ -36,7 +35,6 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 export function SourceRenderer({ toolName, result, loading }: Props) {
-  const isWebSearch = toolName === "web_search";
   const rawResult = { ...result.data as Record<string, unknown>, _sources: result.sources };
   const allSources = loading ? [] : extractToolSources(rawResult);
 
@@ -47,7 +45,7 @@ export function SourceRenderer({ toolName, result, loading }: Props) {
 
   return (
     <ToolProgress defaultOpen={loading}>
-      <ToolProgressHeader loading={loading} icon={isWebSearch ? Search : undefined}>
+      <ToolProgressHeader loading={loading}>
         {headerLabel}
       </ToolProgressHeader>
       <ToolProgressContent>

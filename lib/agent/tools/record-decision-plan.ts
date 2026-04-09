@@ -36,7 +36,8 @@ export const recordDecisionPlan = defineTool({
       .optional()
       .describe("Optional portfolio-level risk observations."),
   }),
-  ui: "decision-summary" as const,
+  ui: "ticker" as const,
+  groupId: "execution",
 
   execute: async (args, ctx) => {
     try {
@@ -64,6 +65,13 @@ export const recordDecisionPlan = defineTool({
         });
       }
 
+      const tickers = args.planned_actions.map((p) => ({
+        ticker: p.ticker,
+        tag: p.action,
+        summary: p.reasoning,
+        actionIcon: planActionIcon(p.action),
+      }));
+
       return {
         summary: `Decision plan recorded: ${args.planned_actions.length} actions`,
         data: {
@@ -72,6 +80,7 @@ export const recordDecisionPlan = defineTool({
           planned_actions: args.planned_actions,
           risk_notes: args.risk_notes ?? [],
           action_count: args.planned_actions.filter((p) => p.action !== "HOLD" && p.action !== "PASS").length,
+          tickers,
         },
         sources: [],
       };
@@ -87,9 +96,19 @@ export const recordDecisionPlan = defineTool({
           risk_notes: args.risk_notes ?? [],
           action_count: 0,
           error: msg,
+          tickers: [],
         },
         sources: [],
       };
     }
   },
 });
+
+function planActionIcon(action: string): string | undefined {
+  const a = action.toUpperCase();
+  if (a === "INITIATE" || a === "ADD") return "buy";
+  if (a === "EXIT" || a === "REDUCE") return "sell";
+  if (a === "WATCH") return "watch";
+  if (a === "REMOVE_WATCH") return "unwatch";
+  return undefined;
+}

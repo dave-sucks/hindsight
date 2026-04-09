@@ -16,7 +16,6 @@ import { GenericRenderer } from "./renderers/GenericRenderer";
 import { TickerRenderer } from "./renderers/TickerRenderer";
 import { SourceRenderer } from "./renderers/SourceRenderer";
 import { StockCardRenderer } from "./renderers/StockCardRenderer";
-import { TradeCardRenderer } from "./renderers/TradeCardRenderer";
 import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
 import { PortfolioRenderer } from "./renderers/PortfolioRenderer";
 import { DecisionSummaryRenderer } from "./renderers/DecisionSummaryRenderer";
@@ -58,8 +57,6 @@ export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
       return <SourceRenderer toolName={toolName} result={result} loading={loading} />;
     case "stock-card":
       return <StockCardRenderer toolName={toolName} args={args} result={result} loading={loading} />;
-    case "trade-card":
-      return <TradeCardRenderer toolName={toolName} result={result} loading={loading} />;
     case "thesis-card":
       return <ThesisCardRenderer toolName={toolName} result={result} loading={loading} />;
     case "portfolio":
@@ -79,13 +76,16 @@ export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
 /** Best-guess UI type while a tool is loading (no result yet). */
 function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "get_stock_data") return "stock-card";
-  if (toolName === "place_trade" || toolName === "close_position") return "trade-card";
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
   if (toolName === "get_portfolio_state") return "portfolio";
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
-  if (toolName === "complete_run" || toolName === "record_decision_plan") return "decision-summary";
+  if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
   if (
+    toolName === "place_trade" ||
+    toolName === "close_position" ||
+    toolName === "manage_watchlist" ||
+    toolName === "record_decision_plan" ||
     toolName === "get_earnings_data" ||
     toolName === "get_options_flow" ||
     toolName === "get_sec_filings"

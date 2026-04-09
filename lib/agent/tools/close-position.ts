@@ -23,7 +23,8 @@ export const closePosition = defineTool({
       .describe("TARGET if hit price target, STOP if risk management, MANUAL for portfolio rebalancing"),
     notes: z.string().optional().describe("Optional notes explaining the close decision"),
   }),
-  ui: "trade-card" as const,
+  ui: "ticker" as const,
+  groupId: "execution",
 
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
@@ -43,6 +44,7 @@ export const closePosition = defineTool({
             reason: args.reason,
             status: "NO_POSITION" as const,
             message: noPosMsg,
+            tickers: [{ ticker, tag: "N/A", summary: noPosMsg, actionIcon: "failed" }],
           },
           sources: [],
         };
@@ -141,6 +143,12 @@ export const closePosition = defineTool({
         ? `Close order submitted for ${position.direction} ${position.quantity} shares of ${ticker} — awaiting Alpaca fill (estimated price $${result.closePrice.toFixed(2)})`
         : `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: $${pnlSign}${result.realizedPnl.toFixed(2)}`;
 
+      const isWin = result.realizedPnl >= 0;
+      const closeActionIcon = isPending ? "sell" : (isWin ? "closed-win" : "closed-loss");
+      const tickerSummary = isPending
+        ? `Close order submitted — ${position.direction} ${position.quantity} shares, awaiting fill`
+        : `Closed ${position.direction} @ $${result.closePrice.toFixed(2)} — ${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)} (${Math.round(pnlPct * 100) / 100}%)`;
+
       return {
         summary: isPending
           ? `Close submitted (pending): $${ticker}`
@@ -164,6 +172,7 @@ export const closePosition = defineTool({
           filledAt: result.filledAt?.toISOString() ?? null,
           message: closeMessage,
           ...(portfolioUpdate ? { portfolioUpdate } : {}),
+          tickers: [{ ticker, tag: "Closed", summary: tickerSummary, actionIcon: closeActionIcon }],
         },
         sources: [{ provider: "Alpaca", title: `Close ${ticker}` }],
       };
@@ -178,6 +187,7 @@ export const closePosition = defineTool({
           reason: args.reason,
           status: "FAILED" as const,
           message: msg,
+          tickers: [{ ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
         },
         sources: [],
       };

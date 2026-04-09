@@ -8,9 +8,9 @@
  * whose result.groupId values match into a single collapsible block.
  * Non-grouped tool calls render individually via ToolCallRow.
  *
- * Unlike the old AgentToolGroup + RESEARCH_STEPS allowlist pattern, grouping
- * here is declared by the tool itself (via ctx.groupId("research") in
- * defineTool). No central allowlist needed.
+ * Groups render as ONE flat ToolProgress block — no nested collapsibles.
+ * Each group extracts data.tickers from every result in the group and
+ * renders them all as flat ToolProgressTickerItem rows.
  */
 
 import { useMessage } from "@assistant-ui/react";
@@ -22,6 +22,8 @@ import {
   ToolProgress,
   ToolProgressHeader,
   ToolProgressContent,
+  ToolProgressTickerItem,
+  type TickerActionIcon,
 } from "@/components/ai-elements/tool-progress";
 import {
   Carousel,
@@ -41,6 +43,13 @@ interface ToolCallPart {
   result?: unknown;
   output?: unknown;
   state?: string;
+}
+
+interface TickerItem {
+  ticker: string;
+  tag?: string;
+  summary: string;
+  actionIcon?: TickerActionIcon;
 }
 
 type Block =
@@ -87,16 +96,13 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
 
       if (partGroupId) {
         if (partGroupId === activeGroupId) {
-          // Extend current group
           groupBuffer!.push({ part, index: i });
         } else {
-          // Flush previous group and start a new one
           flushGroup();
           activeGroupId = partGroupId;
           groupBuffer = [{ part, index: i }];
         }
       } else {
-        // No groupId — render solo
         flushGroup();
         result.push({ kind: "solo", part, index: i });
       }
@@ -127,61 +133,168 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
           );
         }
 
-        return (
-          <ResearchGroupBlock key={`group-${idx}`} groupId={block.groupId} parts={block.parts} />
-        );
+        if (block.groupId === "thesis") {
+          return <ThesisCarouselBlock key={`group-${idx}`} parts={block.parts} loading={block.parts.some(p => (p.part.result ?? p.part.output) === undefined)} />;
+        }
+
+        if (block.groupId === "execution") {
+          return <ExecutionGroupBlock key={`group-${idx}`} parts={block.parts} />;
+        }
+
+        return <ResearchGroupBlock key={`group-${idx}`} parts={block.parts} />;
       })}
     </>
   );
 }
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/** Extract flat TickerItem[] from a normalized result, falling back to args.ticker. */
+function extractTickerItems(
+  toolName: string,
+  rawResult: unknown,
+  args: Record<string, unknown>,
+): TickerItem[] {
+  const normalized = normalizeToolResult(toolName, rawResult);
+  if (!normalized.ok) return [];
+  const data = normalized.data as Record<string, unknown> | null;
+  const tickers = data?.tickers as TickerItem[] | undefined;
+  if (tickers && tickers.length > 0) return tickers;
+  // Fallback for old runs / tools without data.tickers
+  const ticker = args.ticker as string | undefined;
+  if (ticker) return [{ ticker, summary: normalized.summary }];
+  return [];
+}
+
 // ── ResearchGroupBlock ────────────────────────────────────────────────────────
 
 interface GroupBlockProps {
-  groupId: string;
   parts: Array<{ part: ToolCallPart; index: number }>;
 }
 
-function ResearchGroupBlock({ groupId, parts }: GroupBlockProps) {
+function ResearchGroupBlock({ parts }: GroupBlockProps) {
   const loadingAny = parts.some((p) => (p.part.result ?? p.part.output) === undefined);
 
-  // ── Thesis group → horizontal carousel ────────────────────────────────────
-  if (groupId === "thesis") {
-    return <ThesisCarouselBlock parts={parts} loading={loadingAny} />;
+  const loadedItems: TickerItem[] = [];
+  const loadingTickers: string[] = [];
+
+  for (const { part } of parts) {
+    const rawResult = part.result ?? part.output;
+    const args = (part.args ?? part.input ?? {}) as Record<string, unknown>;
+
+    if (rawResult == null) {
+      const t = args.ticker as string | undefined;
+      if (t) loadingTickers.push(t);
+      continue;
+    }
+
+    loadedItems.push(...extractTickerItems(part.toolName, rawResult, args));
   }
 
-  // ── Research group → collapsible "Researching X, Y, Z" header ─────────────
-  const tickers = [...new Set(
+  const headerTickers = [...new Set(
     parts
       .map(({ part }) => {
         const args = (part.args ?? part.input ?? {}) as Record<string, unknown>;
-        return (args.ticker as string) ?? null;
+        return args.ticker as string | undefined;
       })
       .filter(Boolean) as string[]
   )];
 
-  const headerText = tickers.length > 0
-    ? `Researching ${tickers.join(", ")}`
+  const headerText = headerTickers.length > 0
+    ? `Researching ${headerTickers.join(", ")}`
     : "Researching";
 
   return (
     <ToolProgress defaultOpen={true}>
       <ToolProgressHeader loading={loadingAny}>{headerText}</ToolProgressHeader>
       <ToolProgressContent>
-        {parts.map(({ part, index }) => {
-          const rawResult = part.result ?? part.output;
-          const args = (part.args ?? part.input ?? {}) as Record<string, unknown>;
-          const isLoading = rawResult === undefined && part.state !== "output-available";
-          return (
-            <ToolCallRow
-              key={`grouped-${index}`}
-              toolName={part.toolName}
-              args={args}
-              rawResult={rawResult}
-              loading={isLoading || (loadingAny && rawResult === undefined)}
-            />
-          );
-        })}
+        {loadedItems.map((t, i) => (
+          <ToolProgressTickerItem key={i} ticker={t.ticker} tag={t.tag} actionIcon={t.actionIcon}>
+            {t.summary}
+          </ToolProgressTickerItem>
+        ))}
+        {loadingTickers.map((ticker, i) => (
+          <ToolProgressTickerItem key={`loading-${i}`} ticker={ticker} active>
+            Researching…
+          </ToolProgressTickerItem>
+        ))}
+      </ToolProgressContent>
+    </ToolProgress>
+  );
+}
+
+// ── ExecutionGroupBlock ───────────────────────────────────────────────────────
+
+function ExecutionGroupBlock({ parts }: GroupBlockProps) {
+  const loadingAny = parts.some((p) => (p.part.result ?? p.part.output) === undefined);
+
+  const loadedItems: TickerItem[] = [];
+  const loadingItems: Array<{ ticker: string; toolName: string }> = [];
+
+  for (const { part } of parts) {
+    const rawResult = part.result ?? part.output;
+    const args = (part.args ?? part.input ?? {}) as Record<string, unknown>;
+
+    if (rawResult == null) {
+      const t = args.ticker as string | undefined;
+      if (t) loadingItems.push({ ticker: t, toolName: part.toolName });
+      continue;
+    }
+
+    loadedItems.push(...extractTickerItems(part.toolName, rawResult, args));
+  }
+
+  // Build dynamic header from actionIcons in loaded items
+  let buys = 0, sells = 0, watches = 0, unwatches = 0;
+  for (const item of loadedItems) {
+    if (item.actionIcon === "buy") buys++;
+    else if (item.actionIcon === "sell" || item.actionIcon === "closed-win" || item.actionIcon === "closed-loss") sells++;
+    else if (item.actionIcon === "watch") watches++;
+    else if (item.actionIcon === "unwatch") unwatches++;
+  }
+  // Also count loading items by toolName
+  for (const item of loadingItems) {
+    if (item.toolName === "close_position") sells++;
+    else if (item.toolName === "place_trade") buys++;
+    else if (item.toolName === "manage_watchlist") watches++;
+  }
+
+  const summaryParts: string[] = [];
+  if (buys > 0) summaryParts.push(`buying ${buys}`);
+  if (sells > 0) summaryParts.push(`closing ${sells}`);
+  if (watches > 0) summaryParts.push(`watching ${watches}`);
+  if (unwatches > 0) summaryParts.push(`removing ${unwatches}`);
+
+  const headerText = summaryParts.length > 0
+    ? `Managing portfolio — ${summaryParts.join(", ")}`
+    : "Managing portfolio";
+
+  if (loadedItems.length === 0 && loadingItems.length === 0) {
+    return (
+      <ToolProgress defaultOpen={loadingAny}>
+        <ToolProgressHeader loading={loadingAny}>{headerText}</ToolProgressHeader>
+      </ToolProgress>
+    );
+  }
+
+  return (
+    <ToolProgress defaultOpen={true}>
+      <ToolProgressHeader loading={loadingAny}>{headerText}</ToolProgressHeader>
+      <ToolProgressContent>
+        {loadedItems.map((t, i) => (
+          <ToolProgressTickerItem key={i} ticker={t.ticker} tag={t.tag} actionIcon={t.actionIcon}>
+            {t.summary}
+          </ToolProgressTickerItem>
+        ))}
+        {loadingItems.map((item, i) => (
+          <ToolProgressTickerItem key={`loading-${i}`} ticker={item.ticker} active>
+            {item.toolName === "close_position"
+              ? "Closing position…"
+              : item.toolName === "manage_watchlist"
+              ? "Updating watchlist…"
+              : "Placing trade…"}
+          </ToolProgressTickerItem>
+        ))}
       </ToolProgressContent>
     </ToolProgress>
   );

@@ -26,7 +26,8 @@ export const placeTrade = defineTool({
     shares: z.number().describe("Number of shares to buy/sell"),
     thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
   }),
-  ui: "trade-card" as const,
+  ui: "ticker" as const,
+  groupId: "execution",
 
   execute: async (args, ctx) => {
     try {
@@ -46,6 +47,7 @@ export const placeTrade = defineTool({
             status: "FAILED" as const,
             direction: args.direction,
             message: blockedMsg,
+            tickers: [{ ticker: args.ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
           },
           sources: [],
         };
@@ -208,6 +210,11 @@ export const placeTrade = defineTool({
         ? `${args.direction} ${args.shares} shares of ${args.ticker} filled at $${fillPrice.toFixed(2)}`
         : `${args.direction} ${args.shares} shares of ${args.ticker} submitted to Alpaca — awaiting fill (current price $${fillPrice.toFixed(2)})`;
 
+      const tickerTag = args.direction === "LONG" ? "Long" : "Short";
+      const tickerSummary = didFill
+        ? `Placed ${args.direction} ${args.shares} shares @ $${fillPrice.toFixed(2)} — target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)}`
+        : `Order submitted (pending): ${args.direction} ${args.shares} shares @ $${fillPrice.toFixed(2)}`;
+
       return {
         summary: didFill
           ? `Placed order: ${args.direction} ${args.shares} $${args.ticker} @ $${fillPrice.toFixed(2)}`
@@ -229,6 +236,7 @@ export const placeTrade = defineTool({
           filledAt: filledAt ? filledAt.toISOString() : null,
           message,
           ...(portfolioUpdate ? { portfolioUpdate } : {}),
+          tickers: [{ ticker: args.ticker, tag: tickerTag, summary: tickerSummary, actionIcon: "buy" }],
         },
         sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }],
       };
@@ -243,6 +251,7 @@ export const placeTrade = defineTool({
           status: "FAILED" as const,
           direction: args.direction,
           message: msg,
+          tickers: [{ ticker: args.ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
         },
         sources: [],
       };
