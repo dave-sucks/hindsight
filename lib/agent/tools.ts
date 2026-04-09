@@ -24,6 +24,7 @@ import type {
   WebSearchToolData,
 } from "@/lib/agent/tool-types";
 import { toSourceRefs, sourceRefsToToolSources } from "@/lib/agent/tool-types";
+import { getEarningsData } from "@/lib/agent/tools/get-earnings-data";
 
 const FMP_KEY = process.env.FMP_API_KEY!;
 
@@ -238,6 +239,10 @@ export function createResearchTools(ctx: ToolContext) {
   const stats = createApiCallStats();
   let liveSearchCount = 0; // tracks web_search calls against policy budget
   console.log(`[tools] Creating research tools for runId=${ctx.runId} analystId=${ctx.analystId ?? "none"}`);
+
+  // Context adapter for defineTool factories (adds groupId, compatible with new ToolContext)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const newCtx: any = { ...ctx, groupId: (phase: string) => phase };
 
   const toolsBase = {
     get_market_context: tool({
@@ -876,61 +881,8 @@ export function createResearchTools(ctx: ToolContext) {
       },
     }),
 
-    get_earnings_data: tool({
-      description:
-        "Get earnings estimates, historical beat rate, and upcoming earnings date for a stock.",
-      inputSchema: tickerParams,
-      execute: async ({ ticker }: TickerInput) => {
-        const _t0 = Date.now();
-        logToolStart("get_earnings_data", ctx.runId, `ticker=${ticker}`, stats);
-        const [earningsResult, surprisesResult] = await Promise.all([
-          finnhub(`/calendar/earnings?symbol=${ticker}`, 2, stats),
-          finnhub(`/stock/earnings?symbol=${ticker}&limit=8`, 2, stats),
-        ]);
-
-        const earnings = earningsResult.data as { earningsCalendar?: { date: string; epsEstimate: number | null }[] } | null;
-        const surprises = surprisesResult.data;
-
-        const upcoming = earnings?.earningsCalendar?.[0];
-        const history = Array.isArray(surprises) ? surprises : [];
-        const beats = history.filter(
-          (e: { actual: number; estimate: number }) =>
-            e.actual != null && e.estimate != null && e.actual > e.estimate,
-        );
-
-        logToolEnd("get_earnings_data", _t0, ctx.runId, `ticker=${ticker}`, stats);
-
-        const nextEarnings = upcoming
-          ? { date: upcoming.date as string, epsEstimate: upcoming.epsEstimate as number | null }
-          : null;
-        const beatRate = history.length > 0
-          ? (() => {
-              const periods = history.map((e: { period?: string }) => e.period).filter(Boolean) as string[];
-              const range = periods.length >= 2 ? `${periods[periods.length - 1]}–${periods[0]}` : periods[0] || "recent";
-              return `${Math.round((beats.length / history.length) * 100)}% (${beats.length}/${history.length} quarters, ${range})`;
-            })()
-          : "no history";
-        const recentQuarters = history.slice(0, 4).map(
-          (e: { period: string; actual: number; estimate: number; surprise: number; surprisePercent: number }) => ({
-            period: e.period, actualEps: e.actual, estimatedEps: e.estimate, surprise: e.surprise, surprisePct: e.surprisePercent,
-          }),
-        );
-
-        const sParts: string[] = [ticker];
-        if (nextEarnings) sParts.push(`next earnings ${nextEarnings.date}${nextEarnings.epsEstimate != null ? ` (est. $${nextEarnings.epsEstimate})` : ""}`);
-        if (beatRate !== "no history") sParts.push(`Beat rate: ${beatRate}`);
-
-        return {
-          summary: sParts.join(" — ") + ".",
-          tickers: [{ ticker, tag: "Research", summary: `${nextEarnings ? `Next earnings ${nextEarnings.date}` : "No upcoming earnings"}. Beat rate: ${beatRate}` }],
-          _sources: [
-            { provider: "Finnhub", title: `${ticker} Earnings Calendar`, url: "https://finnhub.io/docs/api/earnings-calendar", excerpt: nextEarnings ? `Next earnings: ${nextEarnings.date}${nextEarnings.epsEstimate != null ? ` (est. $${nextEarnings.epsEstimate})` : ""}` : "No upcoming earnings date" },
-            { provider: "Finnhub", title: `${ticker} Earnings History`, url: "https://finnhub.io/docs/api/company-earnings", excerpt: history.length > 0 ? `Beat rate: ${Math.round((beats.length / history.length) * 100)}% over ${history.length} quarters` : "No earnings history available" },
-          ],
-          data: { nextEarnings, beatRate, recentQuarters },
-        };
-      },
-    }),
+    // ── Migrated to defineTool — see lib/agent/tools/get-earnings-data.ts ──────
+    get_earnings_data: getEarningsData(newCtx),
 
     record_thesis: tool({
       description:

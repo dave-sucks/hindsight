@@ -15,7 +15,9 @@
 
 export { createResearchTools } from "../tools";
 
-// Individual migrated tools are exported here as they arrive:
-// export { getEarningsData } from "./get-earnings-data";
+// ── Migrated individual tools (via defineTool) ────────────────────────────────
+export { getEarningsData } from "./get-earnings-data";
+
+// Remaining tools are still in ../tools.ts and will move here in Step 4:
 // export { getMarketContext } from "./get-market-context";
 // ...
