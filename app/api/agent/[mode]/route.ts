@@ -11,6 +11,7 @@
 
 import { streamText, convertToModelMessages, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
@@ -212,8 +213,21 @@ export async function POST(
 
     const modelMessages = await convertToModelMessages(messages);
 
+    const resolvedModel =
+      modeConfig.provider === "anthropic"
+        ? anthropic(modeConfig.model as Parameters<typeof anthropic>[0])
+        : openai(modeConfig.model);
+
     const result = streamText({
-      model: openai(modeConfig.model),
+      model: resolvedModel,
+      ...(modeConfig.provider === "anthropic" &&
+        modeConfig.thinkingBudget != null && {
+          providerOptions: {
+            anthropic: {
+              thinking: { type: "enabled", budgetTokens: modeConfig.thinkingBudget },
+            },
+          },
+        }),
       system: systemPrompt,
       messages: modelMessages,
       tools,

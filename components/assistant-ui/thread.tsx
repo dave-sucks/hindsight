@@ -24,7 +24,9 @@ import {
   SuggestionPrimitive,
   ThreadPrimitive,
   useMessage,
+  useMessagePartReasoning,
 } from "@assistant-ui/react";
+import { Reasoning } from "@/components/agent/Reasoning";
 import {
   ArrowDownIcon,
   CheckIcon,
@@ -195,6 +197,11 @@ const MessageError: FC = () => {
   );
 };
 
+const ReasoningPart: FC = () => {
+  const { text } = useMessagePartReasoning();
+  return <Reasoning>{text}</Reasoning>;
+};
+
 const AssistantMessage: FC = () => {
   // Extract _sources from all tool-call results in this message
   const content = useMessage((m) => m.content);
@@ -218,6 +225,7 @@ const AssistantMessage: FC = () => {
               <MessagePrimitive.Parts
                 components={{
                   Text: CitedMarkdownText,
+                  Reasoning: ReasoningPart,
                   tools: { Fallback: ToolFallback },
                   ToolGroup: ToolCallGroup,
                 }}

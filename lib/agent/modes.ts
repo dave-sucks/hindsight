@@ -13,8 +13,15 @@ export type AgentMode = "research-run" | "builder" | "editor";
 // ── Mode config ──────────────────────────────────────────────────────────────
 
 export interface ModeConfig {
-  /** OpenAI model ID */
+  /** Model ID — interpreted by the provider selected in the route */
   model: string;
+  /** AI SDK provider: "openai" | "anthropic" */
+  provider: "openai" | "anthropic";
+  /**
+   * Extended thinking budget in tokens (Anthropic only).
+   * undefined = extended thinking disabled.
+   */
+  thinkingBudget?: number;
   /** stepCountIs limit */
   maxSteps: number;
   /**
@@ -30,7 +37,9 @@ export interface ModeConfig {
 
 export const MODES: Record<AgentMode, ModeConfig> = {
   "research-run": {
-    model: "gpt-4.1",
+    model: "claude-sonnet-4-6",
+    provider: "anthropic",
+    thinkingBudget: 8000,
     maxSteps: 30,
     toolAllowlist: undefined,
     hasSuggestConfig: false,
@@ -38,6 +47,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   },
   "builder": {
     model: "gpt-4o",
+    provider: "openai",
     maxSteps: 15,
     toolAllowlist: ["get_market_context", "get_stock_data", "get_earnings_data", "get_sec_filings"] as const,
     hasSuggestConfig: true,
@@ -45,6 +55,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   },
   "editor": {
     model: "gpt-4o",
+    provider: "openai",
     maxSteps: 10,
     toolAllowlist: ["get_market_context", "get_stock_data", "get_earnings_data"] as const,
     hasSuggestConfig: true,
