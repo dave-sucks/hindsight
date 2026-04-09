@@ -12,8 +12,15 @@ import {
   ToolProgressHeader,
   ToolProgressContent,
   ToolProgressItem,
+  ToolProgressTickerItem,
 } from "@/components/ai-elements/tool-progress";
 import { extractToolSources, SourceChips } from "@/components/assistant-ui/tool-uis/tool-ui-shared";
+
+interface TickerItem {
+  ticker: string;
+  tag?: string;
+  summary: string;
+}
 
 interface Props {
   toolName: string;
@@ -21,19 +28,37 @@ interface Props {
   loading: boolean;
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  read_morning_brief: "Morning brief",
+  read_signals: "Signals",
+  read_artifact: "Reading article",
+  web_search: "Web search",
+};
+
 export function SourceRenderer({ toolName, result, loading }: Props) {
   const isWebSearch = toolName === "web_search";
-  // extractToolSources expects the raw result shape (with _sources)
   const rawResult = { ...result.data as Record<string, unknown>, _sources: result.sources };
   const allSources = loading ? [] : extractToolSources(rawResult);
+
+  const data = result.data as Record<string, unknown> | null;
+  const tickers = (data?.tickers as TickerItem[] | undefined) ?? [];
+
+  const headerLabel = TOOL_LABELS[toolName] ?? result.summary.slice(0, 60);
 
   return (
     <ToolProgress defaultOpen={loading}>
       <ToolProgressHeader loading={loading} icon={isWebSearch ? Search : undefined}>
-        {toolName === "web_search" ? "Web search" : result.summary.slice(0, 60)}
+        {headerLabel}
       </ToolProgressHeader>
       <ToolProgressContent>
-        <ToolProgressItem>{result.summary}</ToolProgressItem>
+        {tickers.length > 0
+          ? tickers.map((t, i) => (
+              <ToolProgressTickerItem key={i} ticker={t.ticker} tag={t.tag}>
+                {t.summary}
+              </ToolProgressTickerItem>
+            ))
+          : <ToolProgressItem>{result.summary}</ToolProgressItem>
+        }
         <SourceChips sources={allSources} />
       </ToolProgressContent>
     </ToolProgress>

@@ -17,6 +17,19 @@ import { useMessage } from "@assistant-ui/react";
 import { useMemo, type ReactNode } from "react";
 import { ToolCallRow } from "./ToolCallRow";
 import { normalizeToolResult } from "@/lib/agent/tool-result";
+import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
+import {
+  ToolProgress,
+  ToolProgressHeader,
+  ToolProgressContent,
+} from "@/components/ai-elements/tool-progress";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -114,10 +127,6 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
           );
         }
 
-        // Group: render as a grouped block
-        // For now, render each part individually but wrapped.
-        // In Steps 3-4, the ResearchGroupBlock component replaces this
-        // to get the collapsible "Researching X" header.
         return (
           <ResearchGroupBlock key={`group-${idx}`} groupId={block.groupId} parts={block.parts} />
         );
@@ -133,26 +142,108 @@ interface GroupBlockProps {
   parts: Array<{ part: ToolCallPart; index: number }>;
 }
 
-function ResearchGroupBlock({ parts }: GroupBlockProps) {
-  // Collect tickers from all parts in this group for the header label
+function ResearchGroupBlock({ groupId, parts }: GroupBlockProps) {
   const loadingAny = parts.some((p) => (p.part.result ?? p.part.output) === undefined);
 
-  return (
-    <div className="flex flex-col gap-1">
-      {parts.map(({ part, index }) => {
-        const rawResult = part.result ?? part.output;
+  // ── Thesis group → horizontal carousel ────────────────────────────────────
+  if (groupId === "thesis") {
+    return <ThesisCarouselBlock parts={parts} loading={loadingAny} />;
+  }
+
+  // ── Research group → collapsible "Researching X, Y, Z" header ─────────────
+  const tickers = [...new Set(
+    parts
+      .map(({ part }) => {
         const args = (part.args ?? part.input ?? {}) as Record<string, unknown>;
-        const isLoading = rawResult === undefined && part.state !== "output-available";
-        return (
-          <ToolCallRow
-            key={`grouped-${index}`}
-            toolName={part.toolName}
-            args={args}
-            rawResult={rawResult}
-            loading={isLoading || (loadingAny && rawResult === undefined)}
-          />
-        );
-      })}
-    </div>
+        return (args.ticker as string) ?? null;
+      })
+      .filter(Boolean) as string[]
+  )];
+
+  const headerText = tickers.length > 0
+    ? `Researching ${tickers.join(", ")}`
+    : "Researching";
+
+  return (
+    <ToolProgress defaultOpen={true}>
+      <ToolProgressHeader loading={loadingAny}>{headerText}</ToolProgressHeader>
+      <ToolProgressContent>
+        {parts.map(({ part, index }) => {
+          const rawResult = part.result ?? part.output;
+          const args = (part.args ?? part.input ?? {}) as Record<string, unknown>;
+          const isLoading = rawResult === undefined && part.state !== "output-available";
+          return (
+            <ToolCallRow
+              key={`grouped-${index}`}
+              toolName={part.toolName}
+              args={args}
+              rawResult={rawResult}
+              loading={isLoading || (loadingAny && rawResult === undefined)}
+            />
+          );
+        })}
+      </ToolProgressContent>
+    </ToolProgress>
+  );
+}
+
+// ── ThesisCarouselBlock ───────────────────────────────────────────────────────
+
+interface ThesisCarouselProps {
+  parts: Array<{ part: ToolCallPart; index: number }>;
+  loading: boolean;
+}
+
+function ThesisCarouselBlock({ parts, loading }: ThesisCarouselProps) {
+  if (loading && parts.every(({ part }) => (part.result ?? part.output) === undefined)) {
+    return (
+      <div className="my-2 text-sm text-muted-foreground">Recording theses…</div>
+    );
+  }
+
+  const readyParts = parts.filter(({ part }) => (part.result ?? part.output) !== undefined);
+
+  if (readyParts.length === 0) return null;
+
+  // Single thesis: render directly without carousel chrome
+  if (readyParts.length === 1) {
+    const { part } = readyParts[0];
+    const rawResult = part.result ?? part.output;
+    const normalized = normalizeToolResult(part.toolName, rawResult);
+    if (!normalized.ok) return null;
+    return (
+      <ThesisCardRenderer
+        toolName={part.toolName}
+        result={normalized}
+        loading={false}
+      />
+    );
+  }
+
+  return (
+    <Carousel opts={{ align: "start" }} className="w-full">
+      <CarouselContent className="-ml-3">
+        {readyParts.map(({ part, index }) => {
+          const rawResult = part.result ?? part.output;
+          const normalized = normalizeToolResult(part.toolName, rawResult);
+          if (!normalized.ok) return null;
+          return (
+            <CarouselItem key={index} className="pl-3 basis-[340px] shrink-0">
+              <ThesisCardRenderer
+                toolName={part.toolName}
+                result={normalized}
+                loading={false}
+              />
+            </CarouselItem>
+          );
+        })}
+      </CarouselContent>
+      {readyParts.length > 1 && (
+        <>
+          <CarouselPrevious />
+          <CarouselNext />
+        </>
+      )}
+    </Carousel>
   );
 }
