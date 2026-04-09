@@ -73,7 +73,7 @@ export function AgentThread({
 
   return (
     <ChatRuntime
-      api={isFollowupMode ? "/api/chat/run-followup" : "/api/research/agent"}
+      api={isFollowupMode ? "/api/chat/run-followup" : "/api/agent/research-run"}
       body={isFollowupMode ? { runId, analystId } : { runId, analystId, config }}
       messages={initialMessages}
     >

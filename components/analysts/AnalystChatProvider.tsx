@@ -140,7 +140,7 @@ export function AnalystChatProvider({
 }: AnalystChatProviderProps) {
   return (
     <ChatRuntime
-      api={mode === "builder" ? "/api/chat/analyst-builder" : "/api/chat/analyst-editor"}
+      api={mode === "builder" ? "/api/agent/builder" : "/api/agent/editor"}
       body={currentConfig ? { currentConfig } : undefined}
     >
       <ChatProviderInner
