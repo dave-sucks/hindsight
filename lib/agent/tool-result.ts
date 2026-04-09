@@ -11,15 +11,12 @@
 // ── UI discriminator ─────────────────────────────────────────────────────────
 
 export type ToolUI =
-  | "generic"          // fallback: summary + sources
-  | "ticker"           // per-ticker research result
-  | "source"           // intelligence read (brief, signals, artifact)
-  | "stock-card"       // get_stock_data — CoT row
-  | "trade-card"       // place_trade / close_position — CoT row
-  | "thesis-card"      // record_thesis — carousel card
-  | "portfolio"        // portfolio state / review — CoT row
-  | "decision-summary" // record_decision_plan / complete_run — CoT row
-  | "run-summary"      // record_run_summary — summary card with ranked picks
+  | "generic"          // fallback: dot + summary text
+  | "ticker"           // logo + ticker + summary (all research + action tools)
+  | "source"           // favicon + title + site (intelligence reads)
+  | "thesis-card"      // ThesisCard carousel
+  | "decision-summary" // complete_run status row
+  | "run-summary"      // RunSummaryCard — the ONE summary card
   | "config-preview";  // suggest_config (builder/editor only)
 
 // ── Source attribution ───────────────────────────────────────────────────────
@@ -91,26 +88,15 @@ export function normalizeToolResult(
 }
 
 function inferLegacyUI(toolName: string): ToolUI {
-  if (toolName === "get_stock_data") return "stock-card";
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
-  if (toolName === "get_portfolio_state") return "portfolio";
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
   if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
-  if (
-    toolName === "place_trade" ||
-    toolName === "close_position" ||
-    toolName === "manage_watchlist" ||
-    toolName === "record_decision_plan" ||
-    toolName === "get_earnings_data" ||
-    toolName === "get_options_flow" ||
-    toolName === "get_sec_filings"
-  ) return "ticker";
   if (
     toolName === "read_morning_brief" ||
     toolName === "read_signals" ||
     toolName === "read_artifact" ||
     toolName === "web_search"
   ) return "source";
-  return "generic";
+  return "ticker";
 }

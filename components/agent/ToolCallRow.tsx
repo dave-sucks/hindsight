@@ -15,9 +15,7 @@ import type { ToolResult } from "@/lib/agent/tool-result";
 import { GenericRenderer } from "./renderers/GenericRenderer";
 import { TickerRenderer } from "./renderers/TickerRenderer";
 import { SourceRenderer } from "./renderers/SourceRenderer";
-import { StockCardRenderer } from "./renderers/StockCardRenderer";
 import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
-import { PortfolioRenderer } from "./renderers/PortfolioRenderer";
 import { DecisionSummaryRenderer } from "./renderers/DecisionSummaryRenderer";
 import { RunSummaryRenderer } from "./renderers/RunSummaryRenderer";
 import { ConfigPreviewRenderer } from "./renderers/ConfigPreviewRenderer";
@@ -55,12 +53,8 @@ export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
       return <TickerRenderer toolName={toolName} args={args} result={result} loading={loading} />;
     case "source":
       return <SourceRenderer toolName={toolName} result={result} loading={loading} />;
-    case "stock-card":
-      return <StockCardRenderer toolName={toolName} args={args} result={result} loading={loading} />;
     case "thesis-card":
       return <ThesisCardRenderer toolName={toolName} result={result} loading={loading} />;
-    case "portfolio":
-      return <PortfolioRenderer result={result} loading={loading} />;
     case "decision-summary":
       return <DecisionSummaryRenderer toolName={toolName} result={result} loading={loading} />;
     case "run-summary":
@@ -75,13 +69,12 @@ export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
 
 /** Best-guess UI type while a tool is loading (no result yet). */
 function inferLoadingUI(toolName: string): ToolUI {
-  if (toolName === "get_stock_data") return "stock-card";
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
-  if (toolName === "get_portfolio_state") return "portfolio";
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
   if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
   if (
+    toolName === "get_stock_data" ||
     toolName === "place_trade" ||
     toolName === "close_position" ||
     toolName === "manage_watchlist" ||
