@@ -3,16 +3,10 @@ import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import {
-  placeMarketOrder,
-  getOrder,
-  getLatestPrice,
-  getAllPositions,
-  closePosition,
-  type AlpacaCredentials,
-} from "@/lib/alpaca";
+import { getAllPositions } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { finnhub, calcRSI, calcSMA } from "@/lib/agent/research-helpers";
+import { createResearchTools } from "@/lib/agent/tools";
 
 export const maxDuration = 120;
 
@@ -28,7 +22,7 @@ export async function POST(req: Request) {
   // Resolve per-user Alpaca credentials
   const alpacaCreds = await resolveAlpacaCredentials(user.id) ?? undefined;
 
-  const { messages, runId, analystId } = await req.json();
+  const { messages, runId } = await req.json();
   console.log(`[followup] POST runId=${runId} messages=${messages?.length ?? 0}`);
 
   // ── Load run context ──────────────────────────────────────────────────────
@@ -57,6 +51,14 @@ export async function POST(req: Request) {
   });
 
   if (!run) return new Response("Run not found", { status: 404 });
+
+  // Real place_trade / close_position from the shared tool registry
+  const { place_trade, close_position } = createResearchTools({
+    runId,
+    userId: user.id,
+    analystId: run.agentConfig?.id,
+    alpacaCreds,
+  });
 
   // Build context summary for the system prompt
   const thesesSummary = run.theses.map((t) => {
@@ -167,238 +169,9 @@ ${tradeSummary || "No trades placed in this run."}
       },
     }),
 
-    place_trade: tool({
-      description: "Place a paper trade via Alpaca. Confirm details with the user before calling this.",
-      inputSchema: z.object({
-        ticker: z.string(),
-        direction: z.enum(["LONG", "SHORT"]),
-        entry_price: z.number(),
-        target_price: z.number(),
-        stop_loss: z.number(),
-        shares: z.number().describe("Number of shares"),
-        thesis_id: z.string().optional().describe("Link to an existing thesis if available"),
-      }),
-      execute: async (args) => {
-        console.log(`[followup] place_trade ${args.ticker} ${args.direction} ${args.shares}sh`);
-        try {
-          const alpacaOrder = await placeMarketOrder({
-            symbol: args.ticker,
-            qty: args.shares,
-            side: args.direction === "LONG" ? "buy" : "sell",
-          }, alpacaCreds);
+    place_trade,
 
-          // Wait for fill
-          let fillPrice = args.entry_price;
-          const deadline = Date.now() + 10_000;
-          while (Date.now() < deadline) {
-            const order = await getOrder(alpacaOrder.id, alpacaCreds);
-            if (order.status === "filled" && order.filled_avg_price) {
-              fillPrice = parseFloat(order.filled_avg_price);
-              break;
-            }
-            if (["cancelled", "expired", "rejected"].includes(order.status)) {
-              throw new Error(`Order ${order.status}`);
-            }
-            await new Promise((r) => setTimeout(r, 1_000));
-          }
-          if (fillPrice === args.entry_price) {
-            try { fillPrice = await getLatestPrice(args.ticker, alpacaCreds); } catch { /* keep entry */ }
-          }
-
-          // Find or create a thesis to link
-          let thesisId = args.thesis_id;
-          if (!thesisId) {
-            // Create a minimal thesis for the followup trade
-            const thesis = await prisma.thesis.create({
-              data: {
-                researchRunId: runId,
-                userId: user.id,
-                ticker: args.ticker,
-                source: "MANUAL",
-                direction: args.direction,
-                confidenceScore: 70,
-                reasoningSummary: `Follow-up trade placed during post-run discussion`,
-                thesisBullets: ["Placed via followup chat"],
-                riskFlags: [],
-                entryPrice: fillPrice,
-                targetPrice: args.target_price,
-                stopLoss: args.stop_loss,
-                holdDuration: "SWING",
-                signalTypes: ["FOLLOWUP"],
-                sourcesUsed: [],
-                modelUsed: "chat-followup",
-              },
-            });
-            thesisId = thesis.id;
-          }
-
-          // Find analyst for this run
-          const runData = await prisma.researchRun.findUnique({
-            where: { id: runId },
-            select: { agentConfigId: true },
-          });
-          const analystId = runData?.agentConfigId;
-          if (!analystId) {
-            return { ...args, status: "failed" as const, error: "No analyst linked to this run" };
-          }
-
-          // Create Position
-          const position = await prisma.position.create({
-            data: {
-              analystId,
-              userId: user.id,
-              symbol: args.ticker,
-              direction: args.direction,
-              status: "OPEN",
-              quantity: args.shares,
-              avgCost: fillPrice,
-              targetPrice: args.target_price,
-              stopLoss: args.stop_loss,
-              exitStrategy: "PRICE_TARGET",
-            },
-          });
-
-          // Create Order
-          await prisma.order.create({
-            data: {
-              positionId: position.id,
-              userId: user.id,
-              symbol: args.ticker,
-              side: args.direction === "LONG" ? "BUY" : "SELL",
-              orderType: "MARKET",
-              quantity: args.shares,
-              status: "FILLED",
-              filledPrice: fillPrice,
-              filledQty: args.shares,
-              filledAt: new Date(),
-              alpacaOrderId: alpacaOrder.id,
-            },
-          });
-
-          // Write OPENED PositionEvent
-          await prisma.positionEvent.create({
-            data: {
-              positionId: position.id,
-              eventType: "OPENED",
-              description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)} (followup)`,
-              priceAt: fillPrice,
-            },
-          });
-
-          // Write TradeDecision
-          await prisma.tradeDecision.create({
-            data: {
-              runId,
-              analystId,
-              userId: user.id,
-              symbol: args.ticker,
-              decision: "BUY",
-              reasoning: `Follow-up trade from post-run discussion`,
-              thesisId,
-              positionId: position.id,
-            },
-          });
-
-          return {
-            ...args,
-            status: "filled" as const,
-            entryPrice: fillPrice,
-            positionId: position.id,
-            alpacaOrderId: alpacaOrder.id,
-          };
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Trade failed";
-          console.error(`[followup] place_trade FAILED: ${msg}`);
-          return { ...args, status: "failed" as const, error: msg };
-        }
-      },
-    }),
-
-    close_position: tool({
-      description: "Close an open position by selling all shares via Alpaca.",
-      inputSchema: tickerSchema,
-      execute: async ({ ticker }: { ticker: string }) => {
-        console.log(`[followup] close_position ${ticker}`);
-        try {
-          const order = await closePosition(ticker, alpacaCreds);
-
-          // Update DB position record
-          const position = await prisma.position.findFirst({
-            where: { userId: user.id, symbol: ticker, status: "OPEN" },
-            orderBy: { createdAt: "desc" },
-          });
-
-          let closePrice: number | null = null;
-          try { closePrice = await getLatestPrice(ticker, alpacaCreds); } catch { /* ok */ }
-
-          if (position) {
-            const pnl = closePrice
-              ? (closePrice - position.avgCost) * position.quantity * (position.direction === "LONG" ? 1 : -1)
-              : null;
-            const positionCost = position.avgCost * position.quantity;
-            const outcome = pnl != null
-              ? (pnl > 0.01 * positionCost ? "WIN" : pnl < -0.01 * positionCost ? "LOSS" : "BREAKEVEN")
-              : null;
-
-            // Create closing Order
-            await prisma.order.create({
-              data: {
-                positionId: position.id,
-                userId: user.id,
-                symbol: ticker,
-                side: position.direction === "LONG" ? "SELL" : "BUY",
-                orderType: "MARKET",
-                quantity: position.quantity,
-                status: "FILLED",
-                filledPrice: closePrice ?? position.avgCost,
-                filledQty: position.quantity,
-                filledAt: new Date(),
-                alpacaOrderId: order.id,
-              },
-            });
-
-            await prisma.position.update({
-              where: { id: position.id },
-              data: {
-                status: "CLOSED",
-                closedAt: new Date(),
-                closePrice,
-                closeReason: "MANUAL",
-                realizedPnl: pnl,
-                outcome,
-              },
-            });
-
-            await prisma.positionEvent.create({
-              data: {
-                positionId: position.id,
-                eventType: "CLOSED",
-                description: `Position closed manually via followup chat`,
-                priceAt: closePrice ?? position.avgCost,
-                pnlAt: pnl,
-              },
-            });
-
-            return {
-              ticker,
-              status: "closed" as const,
-              closePrice,
-              realizedPnl: pnl,
-              entryPrice: position.avgCost,
-              shares: position.quantity,
-              direction: position.direction,
-              outcome: (pnl ?? 0) > 0 ? "WIN" as const : (pnl ?? 0) < 0 ? "LOSS" as const : "BREAKEVEN" as const,
-              alpacaOrderId: order.id,
-            };
-          }
-
-          return { ticker, status: "closed" as const, alpacaOrderId: order.id, note: "Position closed on Alpaca" };
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Close failed";
-          return { ticker, status: "failed" as const, error: msg };
-        }
-      },
-    }),
+    close_position,
 
     portfolio_status: tool({
       description: "Show all open positions with current prices and unrealized P&L.",
