@@ -1,12 +1,9 @@
 /**
  * Tool registry — single export point for all agent tools.
  *
- * During the migration (Steps 3-4), individual tool files are added here one
- * by one using the defineTool() pattern. Until a tool is migrated, we fall
- * back to createResearchTools() from the legacy tools.ts.
- *
- * Once all 16 tools are migrated, createResearchTools is deleted and this
- * file is the sole source of truth.
+ * All 16 tools have been migrated to individual defineTool() files.
+ * createResearchTools() in ../tools.ts now delegates every tool here.
+ * Once tools.ts is deleted, this file is the sole source of truth.
  *
  * Usage in the unified route:
  *   import { buildToolSet } from "@/lib/agent/tools";
@@ -15,9 +12,24 @@
 
 export { createResearchTools } from "../tools";
 
-// ── Migrated individual tools (via defineTool) ────────────────────────────────
+// ── Research tools ─────────────────────────────────────────────────────────────
+export { getMarketContext } from "./get-market-context";
+export { getStockData } from "./get-stock-data";
 export { getEarningsData } from "./get-earnings-data";
+export { getOptionsFlow } from "./get-options-flow";
+export { getSecFilings } from "./get-sec-filings";
 
-// Remaining tools are still in ../tools.ts and will move here in Step 4:
-// export { getMarketContext } from "./get-market-context";
-// ...
+// ── Intelligence tools ─────────────────────────────────────────────────────────
+export { readMorningBrief } from "./read-morning-brief";
+export { readSignals } from "./read-signals";
+export { readArtifact } from "./read-artifact";
+export { webSearch } from "./web-search";
+
+// ── Action tools ───────────────────────────────────────────────────────────────
+export { recordThesis } from "./record-thesis";
+export { placeTrade } from "./place-trade";
+export { closePosition } from "./close-position";
+export { recordDecisionPlan } from "./record-decision-plan";
+export { recordRunSummary } from "./record-run-summary";
+export { completeRun } from "./complete-run";
+export { manageWatchlist } from "./manage-watchlist";
