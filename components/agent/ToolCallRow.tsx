@@ -1,12 +1,10 @@
 "use client";
 
 /**
- * ToolCallRow — renders a single tool call's result by dispatching on the
- * ToolUI discriminator in the result.
+ * ToolCallRow — generic row. Reads result.ui, dispatches to the correct renderer.
  *
- * Includes a compatibility shim (normalizeToolResult) for legacy
- * ResearchToolResult shapes stored in RunMessage rows, so historical replay
- * works without schema migrations.
+ * When inGroup=true, renderers omit their outer ToolProgress wrapper and render
+ * flat content only — the group's ToolProgress is the container.
  */
 
 import type { ToolUI } from "@/lib/agent/tool-result";
@@ -14,6 +12,7 @@ import { normalizeToolResult } from "@/lib/agent/tool-result";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { GenericRenderer } from "./renderers/GenericRenderer";
 import { TickerRenderer } from "./renderers/TickerRenderer";
+import { TickerListRenderer } from "./renderers/TickerListRenderer";
 import { SourceRenderer } from "./renderers/SourceRenderer";
 import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
 import { DecisionSummaryRenderer } from "./renderers/DecisionSummaryRenderer";
@@ -23,19 +22,20 @@ import { Card, CardContent } from "@/components/ui/card";
 
 interface Props {
   toolName: string;
+  toolCallId?: string;
   args: Record<string, unknown>;
   rawResult: unknown;
   /** True while the tool is still executing (no result yet) */
   loading: boolean;
+  /** True when rendered inside a group's ToolProgressContent */
+  inGroup?: boolean;
 }
 
-export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
-  // Normalize to ToolResult regardless of shape (new or legacy)
+export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, inGroup }: Props) {
   const result: ToolResult = rawResult != null
     ? normalizeToolResult(toolName, rawResult)
     : { ok: true, ui: inferLoadingUI(toolName), summary: "", data: null, sources: [] };
 
-  // Error state
   if (!result.ok) {
     return (
       <Card className="border-destructive/50 bg-destructive/5">
@@ -50,11 +50,13 @@ export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
 
   switch (ui) {
     case "ticker":
-      return <TickerRenderer toolName={toolName} args={args} result={result} loading={loading} />;
+      return <TickerRenderer toolName={toolName} args={args} result={result} loading={loading} inGroup={inGroup} />;
+    case "ticker-list":
+      return <TickerListRenderer toolName={toolName} result={result} loading={loading} />;
     case "source":
       return <SourceRenderer toolName={toolName} result={result} loading={loading} />;
     case "thesis-card":
-      return <ThesisCardRenderer toolName={toolName} result={result} loading={loading} />;
+      return <ThesisCardRenderer toolName={toolName} toolCallId={toolCallId} result={result} loading={loading} />;
     case "decision-summary":
       return <DecisionSummaryRenderer toolName={toolName} result={result} loading={loading} />;
     case "run-summary":
@@ -67,12 +69,13 @@ export function ToolCallRow({ toolName, args, rawResult, loading }: Props) {
   }
 }
 
-/** Best-guess UI type while a tool is loading (no result yet). */
 function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
   if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
+  if (toolName === "read_morning_brief" || toolName === "read_signals") return "ticker-list";
+  if (toolName === "read_artifact" || toolName === "web_search") return "source";
   if (
     toolName === "get_stock_data" ||
     toolName === "place_trade" ||
@@ -81,13 +84,8 @@ function inferLoadingUI(toolName: string): ToolUI {
     toolName === "record_decision_plan" ||
     toolName === "get_earnings_data" ||
     toolName === "get_options_flow" ||
-    toolName === "get_sec_filings"
+    toolName === "get_sec_filings" ||
+    toolName === "get_market_context"
   ) return "ticker";
-  if (
-    toolName === "read_morning_brief" ||
-    toolName === "read_signals" ||
-    toolName === "read_artifact" ||
-    toolName === "web_search"
-  ) return "source";
   return "generic";
 }

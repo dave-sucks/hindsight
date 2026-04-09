@@ -29,7 +29,7 @@ export const readSignals = defineTool({
       .describe("Minimum urgency level"),
     limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy)"),
   }),
-  ui: "source" as const,
+  ui: "ticker-list" as const,
 
   execute: async ({ tickers, themes, type, urgency, limit = 20 }, ctx) => {
     if (!ctx.analystId) {

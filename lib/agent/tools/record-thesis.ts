@@ -53,7 +53,6 @@ export const recordThesis = defineTool({
     "STAGE 3 ONLY. Write a thesis for every ticker you researched in Stage 2, back to back, in one batch. Direction must be LONG, SHORT, or PASS — PASS theses are mandatory for tickers you researched but won't trade, they document the decision. Never call this in Stage 2 (research) or Stage 4 (execution). Never write a verdict as narration text instead of calling this tool.",
   schema: thesisSchema,
   ui: "thesis-card" as const,
-  groupId: "thesis",
 
   execute: async (args, ctx) => {
     try {
