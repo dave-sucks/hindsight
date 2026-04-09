@@ -24,11 +24,10 @@ Built for one user now, marketed later.
 ### The Agent (what the "Run" button and morning cron both use)
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
 - Redirects to /runs/[id] → renders AgentThread component
-- AgentThread uses AI SDK v6 useChat → POST /api/research/agent
-- GPT-4.1 with 14 tools autonomously researches, generates theses,
-  places trades via Alpaca
-- Tools render as domain cards in UI (MarketContextCard, StockCard,
-  ThesisArtifactSheet, TradeCard, etc.)
+- AgentThread uses AI SDK v6 useChat → POST /api/agent/research-run
+- Claude Sonnet 4.6 with extended thinking + 16 tools autonomously
+  researches, generates theses, places trades via Alpaca
+- Tools render via ToolCallGroup → ToolCallRow dispatching on result.ui
 - All research persisted to DB via tool execute functions
 - Morning cron (8 AM ET) runs same agent via generateText
 
@@ -103,11 +102,12 @@ Built for one user now, marketed later.
 - /settings — app settings
 
 ## API Routes
-- /api/research/agent — AI SDK v6 agent (14 tools, streamText)
+- /api/agent/[mode] — unified agent route (research-run, builder, editor)
+  - research-run: Claude Sonnet 4.6 + extended thinking, all 16 tools
+  - builder: GPT-4o, research tools only + suggest_config
+  - editor: GPT-4o, research tools only + suggest_config
 - /api/research/agent-run — creates ResearchRun row, returns runId
 - /api/research/trigger — Inngest manual trigger
-- /api/chat/analyst-builder — AI analyst creation chat
-- /api/chat/analyst-editor — AI analyst editing chat
 - /api/chat/run-followup — post-run discussion with trade tools
 - /api/agent-activity — dashboard activity stream
 - /api/intelligence/* — signals, monitors, briefs, activity CRUD
@@ -115,7 +115,12 @@ Built for one user now, marketed later.
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools (lib/agent/tools.ts) — 14 tools
+## Agent Tools — 16 tools (lib/agent/tools/)
+Each tool is defined in its own file using `defineTool()` from
+`lib/agent/define-tool.ts`. The factory wraps execute() in timing/
+logging/try-catch and returns a `ToolResult<T>` envelope with a `ui`
+discriminator that drives rendering in ToolCallRow.
+
 ### Intelligence Tools (read pre-gathered data)
 1. read_morning_brief — today's pre-generated intelligence brief
 2. read_signals — signals routed by background discovery jobs
@@ -133,8 +138,61 @@ Built for one user now, marketed later.
 10. record_thesis — persist thesis to DB (LONG/SHORT/PASS)
 11. place_trade — Alpaca market order, create Position
 12. close_position — close an existing open position
-13. manage_watchlist — add/remove/update watchlist items
-14. complete_run — mark run COMPLETE with ranked picks
+13. record_decision_plan — persist synthesis + planned actions
+14. record_run_summary — persist HOLD decisions + run summary event
+15. manage_watchlist — add/remove/update watchlist items
+16. complete_run — mark run COMPLETE with ranked picks
+
+## How to Add a New Agent Tool
+
+1. **Create `lib/agent/tools/my-tool.ts`**
+   ```ts
+   import { z } from "zod";
+   import { defineTool } from "@/lib/agent/define-tool";
+
+   export const myTool = defineTool({
+     description: "...",
+     schema: z.object({ ticker: z.string() }),
+     ui: "ticker",         // one of: generic | ticker | source | stock-card |
+                           //   trade-card | thesis-card | portfolio |
+                           //   decision-summary | config-preview
+     groupId: "research",  // optional — groups tool calls visually in chat
+
+     execute: async (args, ctx) => {
+       // ctx: { runId, userId, analystId?, watchlist?, alpacaCreds?, ... }
+       const data = await fetchSomething(args.ticker);
+       return {
+         summary: `Fetched ${args.ticker}`,   // shown in compact row
+         data,                                  // drives the renderer
+         sources: [],                           // optional ToolSource[]
+       };
+     },
+   });
+   ```
+
+2. **Export from `lib/agent/tools/index.ts`**
+   ```ts
+   export { myTool } from "./my-tool";
+   ```
+
+3. **Register in `lib/agent/tools.ts`** (the `createResearchTools()` wrapper)
+   ```ts
+   import { myTool } from "@/lib/agent/tools/my-tool";
+   // inside createResearchTools():
+   my_tool: myTool(newCtx),
+   ```
+
+4. **Add to mode allowlist if needed** in `lib/agent/modes.ts`
+   (builder/editor have restricted allowlists; research-run allows all)
+
+5. **Wire a renderer if `ui` is new** in `components/agent/ToolCallRow.tsx`
+   or pick an existing renderer from `components/agent/renderers/`
+
+**ToolResult shape** (what the route streams, what renderers receive):
+```ts
+{ ok: true, ui, groupId?, summary, data, sources }  // success
+{ ok: false, error, retryable, sources }             // failure
+```
 
 ## Domain Components (components/domain/)
 - ThesisCard / ThesisArtifactSheet — thesis display + detail sheet
@@ -196,14 +254,20 @@ Custom chain-of-thought and source display components:
 ## Agent Run Flow (AgentThread)
 The agent run page (`/runs/[id]`) renders via:
 1. **page.tsx** checks `agentMode` + `RUNNING` → renders `<AgentThread>`
-2. **AgentThread** creates `DefaultChatTransport({ api: "/api/research/agent" })`
-   + `useChatRuntime`, wraps in `AssistantRuntimeProvider`
-3. **useRegisterAgentToolUIs()** registers `useAssistantToolUI` for every tool.
-   All research tools render as ChainOfThought steps via ResearchToolGroup.
-   Action tools render domain cards: ThesisCard, TradeCard, etc.
-4. Every tool UI shows a **ChainOfThought** loading state (pending) and
-   a **SourceChips** footer (complete) with provider-specific citations.
-5. Quick replies appear after run completes via **QuickReplyComponent**.
+2. **AgentThread** connects to `/api/agent/research-run` via ChatRuntime
+3. **ToolCallGroup** (registered as the ToolGroup slot in Thread) reads all
+   tool-call parts from `useMessage`, groups by `result.groupId`, and renders
+   each via **ToolCallRow** dispatching on `result.ui`:
+   - `ticker` → TickerRenderer (earnings, options flow, SEC filings)
+   - `source` → SourceRenderer (morning brief, signals, web search)
+   - `stock-card` → StockCardRenderer
+   - `trade-card` → TradeCardRenderer
+   - `thesis-card` → ThesisCardRenderer → full ThesisCard with sheet
+   - `decision-summary` → DecisionSummaryRenderer
+   - `config-preview` → ConfigPreviewRenderer (builder/editor)
+   - `generic` → GenericRenderer (fallback)
+4. Extended thinking blocks render via **Reasoning** component (collapsible)
+5. Quick replies appear after run completes via **FollowupQuickReplies**.
 6. For COMPLETE runs, **RunUnifiedChat** renders synthesized events.
 
 ## Design Rules — READ BEFORE ANY UI WORK
@@ -226,25 +290,25 @@ The agent run page (`/runs/[id]`) renders via:
 - Tool parts in v6: part.type === "tool-{toolName}", part.input
   for args, part.state === "output-available" when done
 - DefaultChatTransport({ api, body }) is the transport for useChat
-- AgentThread uses @assistant-ui/react with useAssistantToolUI hooks
-  to render domain cards for each tool call
+- ToolCallGroup reads tool parts directly from useMessage — it does NOT
+  use useAssistantToolUI hooks. All rendering is data-driven via result.ui.
 - Prisma Json fields (sourcesUsed, parameters) typed as unknown —
   always cast with type guard
 - async params in Next.js App Router: params: Promise<{ id: string }>
 - FMP /quote/ endpoint DEPRECATED — use Finnhub for all quotes
-- Model strategy: GPT-4.1 for agent + crons (tool calling,
-  instruction following). GPT-4o for builder/editor chats
-  (conversational). GPT-4o-mini for lightweight summaries
-  (briefings). DO NOT change agent model to GPT-4o.
+- Model strategy: Claude Sonnet 4.6 with extended thinking for research-run.
+  GPT-4o for builder/editor chats. GPT-4o-mini for lightweight summaries.
+  DO NOT change research-run to GPT-4o.
+- Agent thinking config lives in lib/agent/modes.ts (thinkingBudget field)
 - gh auth switch --user dave-sucks before pushing
 
 ## Run Flow (Button Click → Completion)
 1. Click "Run" → POST /api/research/agent-run → creates ResearchRun
 2. Redirect to /runs/[id] → AgentThread renders with autoStart
-3. AgentThread → useChat → POST /api/research/agent
-4. Agent route loads config + historical context (portfolio, watchlist,
+3. AgentThread → ChatRuntime → POST /api/agent/research-run
+4. Route loads config + historical context (portfolio, watchlist,
    briefs, trades, accuracy, intelligence policy)
-5. GPT-4.1 follows 8-phase workflow:
+5. Claude Sonnet 4.6 with extended thinking follows 8-phase workflow:
    Phase 0: Portfolio check-in (injected context, no tools)
    Phase 1: Read intelligence (morning brief + signals + web_search)
    Phase 2: Review holdings (get_stock_data per ticker)
@@ -253,10 +317,11 @@ The agent run page (`/runs/[id]`) renders via:
    Phase 5: Synthesize (pure reasoning, decision table)
    Phase 6: Execute (place_trade, close_position, manage_watchlist)
    Phase 7: Wrap up (complete_run with ranked picks)
-6. Each tool renders a domain card in the chat UI
-7. record_thesis persists Thesis to DB + renders ThesisArtifactSheet
-8. place_trade calls Alpaca + creates Position + renders TradeCard
-9. complete_run marks run COMPLETE, triggers briefing agent
+6. Each tool result streams with a ToolResult envelope (ok, ui, data, sources)
+7. ToolCallGroup groups results by groupId; ToolCallRow dispatches on ui
+8. record_thesis persists Thesis to DB + ThesisCardRenderer shows full card
+9. place_trade calls Alpaca + creates Position + renders TradeCard
+10. complete_run marks run COMPLETE, triggers briefing agent
 
 ## Known Issues / Tech Debt
 - FMP historical-price-full may 403 on legacy plan (affects
@@ -270,12 +335,21 @@ The agent run page (`/runs/[id]`) renders via:
 
 ## Key Files
 ### Agent System
-- lib/agent/tools.ts — 14 research + trading tools
+- lib/agent/tools/ — 16 individual tool files, each using defineTool()
+- lib/agent/tools.ts — thin delegation wrapper (createResearchTools)
+- lib/agent/tools/index.ts — single export point for all tools
+- lib/agent/define-tool.ts — defineTool() factory with timing/logging
+- lib/agent/tool-result.ts — ToolResult<T> discriminated union + normalizer
+- lib/agent/tool-context.ts — ToolContext interface + createToolContext()
+- lib/agent/modes.ts — model, provider, thinking budget, tool allowlists
 - lib/agent/system-prompt.ts — agent persona + instructions
-- components/research/AgentThread.tsx — real agent UI with
-  compact tool UIs for all 14 tools
-- app/api/research/agent/route.ts — AI SDK streamText endpoint
-- app/api/research/agent-run/route.ts — creates run row
+- components/research/AgentThread.tsx — live agent UI
+- components/agent/ToolCallGroup.tsx — groups tool calls by groupId
+- components/agent/ToolCallRow.tsx — dispatches on result.ui to renderers
+- components/agent/renderers/ — one renderer per ui discriminator
+- components/agent/sheets/ThesisSheet.tsx — ThesisSheetBody + ThesisSheet
+- app/api/agent/[mode]/route.ts — unified route (research-run/builder/editor)
+- app/api/research/agent-run/route.ts — creates ResearchRun row
 
 ### Run Pages
 - app/(root)/runs/[id]/page.tsx — run detail (AgentThread vs
@@ -286,9 +360,9 @@ The agent run page (`/runs/[id]`) renders via:
 ### Analyst System
 - components/analysts/AnalystBuilderChat.tsx — AI creation chat
 - components/analysts/AnalystEditorChat.tsx — AI editing chat
+- components/analysts/AnalystChatProvider.tsx — routes to /api/agent/builder
+  or /api/agent/editor
 - components/analysts/AnalystDetailClient.tsx — analyst detail 2-col
-- app/api/chat/analyst-builder/route.ts — builder chat API
-- app/api/chat/analyst-editor/route.ts — editor chat API
 
 ### Intelligence Pipeline
 - lib/intelligence/sonar.ts — Perplexity Sonar API client
