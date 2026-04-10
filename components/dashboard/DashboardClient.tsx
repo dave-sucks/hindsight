@@ -595,7 +595,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                   <ResponsiveContainer width="100%" height={260}>
                     <AreaChart
                       data={activePortfolioData}
-                      margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
+                      margin={{ top: 4, right: 0, bottom: 0, left: displayMode === 'percent' ? 4 : 0 }}
                     >
                       <defs>
                         <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
@@ -612,7 +612,18 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         interval={Math.max(1, Math.floor(activePortfolioData.length / 6))}
                         padding={{ left: 0, right: 0 }}
                       />
-                      <YAxis hide domain={['dataMin * 0.999', 'dataMax * 1.001']} />
+                      {displayMode === 'percent' ? (
+                        <YAxis
+                          tick={TICK_STYLE}
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={(v) => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`}
+                          width={44}
+                          domain={['dataMin', 'dataMax']}
+                        />
+                      ) : (
+                        <YAxis hide domain={['dataMin * 0.999', 'dataMax * 1.001']} />
+                      )}
                       <Tooltip
                         contentStyle={TOOLTIP_STYLE}
                         formatter={(v) => [
@@ -623,6 +634,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         ]}
                         labelFormatter={(l: unknown) => formatDateLabel(String(l))}
                         labelStyle={{ color: 'var(--muted-foreground)' }}
+                        itemStyle={{ color: 'var(--foreground)' }}
                       />
                       <Area
                         type="monotone"
@@ -664,17 +676,47 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                       />
                       <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
                       <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
-                        formatter={(v, key) => {
-                          const idx = parseInt(String(key).replace('a', ''), 10);
-                          const name = analysts[idx]?.name ?? String(key);
-                          const pct = Number(v);
-                          return [`${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`, name];
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <div style={TOOLTIP_STYLE} className="grid min-w-36 gap-1 rounded-lg px-2.5 py-1.5">
+                              <p className="text-xs text-muted-foreground">{formatDateLabel(String(label))}</p>
+                              {payload.map((item) => {
+                                const key = item.dataKey as string;
+                                const name = (analystChartConfig[key]?.label as string) ?? key;
+                                const pct = Number(item.value);
+                                return (
+                                  <div key={key} className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                      <span className="text-xs text-muted-foreground">{name}</span>
+                                    </div>
+                                    <span className="text-xs font-mono font-medium tabular-nums text-foreground">
+                                      {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
                         }}
-                        labelFormatter={(l: unknown) => formatDateLabel(String(l))}
-                        labelStyle={{ color: 'var(--muted-foreground)' }}
                       />
-                      <ChartLegend content={<ChartLegendContent />} />
+                      <ChartLegend
+                        content={({ payload }) => {
+                          if (!payload?.length) return null;
+                          return (
+                            <div className="flex items-center justify-center gap-2.5 pt-2">
+                              {payload.filter((item) => item.type !== 'none').map((item) => {
+                                const key = item.dataKey as string;
+                                const label = (analystChartConfig[key]?.label as string) ?? key;
+                                return (
+                                  <div key={key} title={label} className="h-2 w-2 rounded-full cursor-default" style={{ backgroundColor: item.color }} />
+                                );
+                              })}
+                            </div>
+                          );
+                        }}
+                      />
                       {analysts.map((_, i) => (
                         <Line
                           key={`a${i}`}
@@ -717,13 +759,29 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                       />
                       <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
                       <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
-                        formatter={(v, name) => [
-                          `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`,
-                          name === 'portfolio' ? 'Portfolio' : 'S&P 500',
-                        ]}
-                        labelFormatter={(l: unknown) => formatDateLabel(String(l))}
-                        labelStyle={{ color: 'var(--muted-foreground)' }}
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <div style={TOOLTIP_STYLE} className="grid min-w-32 gap-1 rounded-lg px-2.5 py-1.5">
+                              <p className="text-xs text-muted-foreground">{formatDateLabel(String(label))}</p>
+                              {payload.map((item) => {
+                                const pct = Number(item.value);
+                                const name = item.dataKey === 'portfolio' ? 'Portfolio' : 'S&P 500';
+                                return (
+                                  <div key={item.dataKey as string} className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                      <span className="text-xs text-muted-foreground">{name}</span>
+                                    </div>
+                                    <span className="text-xs font-mono font-medium tabular-nums text-foreground">
+                                      {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        }}
                       />
                       <ChartLegend content={<ChartLegendContent />} />
                       <Line
