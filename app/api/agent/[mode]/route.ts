@@ -110,9 +110,10 @@ export async function POST(
     const analystId: string | undefined = body.analystId;
     const config: Record<string, unknown> | undefined = body.config;
     const currentConfig: Record<string, unknown> | undefined = body.currentConfig;
+    const modelOverride: string | undefined = body.modelOverride;
 
     console.log(
-      `[agent/${agentMode}] POST runId=${runId} analystId=${analystId} messages=${messages?.length ?? 0}`,
+      `[agent/${agentMode}] POST runId=${runId} analystId=${analystId} messages=${messages?.length ?? 0}${modelOverride ? ` model=${modelOverride}` : ""}`,
     );
 
     // ── Alpaca credentials ──────────────────────────────────────────────────
@@ -242,14 +243,21 @@ export async function POST(
     const trimmedMessages = trimToolResults(messages) as any;
     const modelMessages = await convertToModelMessages(trimmedMessages);
 
+    // Allow client to override model (validated to known model IDs)
+    const ALLOWED_OVERRIDES = ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-6", "claude-opus-4-6"];
+    const effectiveModel = (modelOverride && ALLOWED_OVERRIDES.includes(modelOverride))
+      ? modelOverride
+      : modeConfig.model;
+    const effectiveProvider = effectiveModel.startsWith("claude") ? "anthropic" : "openai";
+
     const resolvedModel =
-      modeConfig.provider === "anthropic"
-        ? anthropic(modeConfig.model as Parameters<typeof anthropic>[0])
-        : openai(modeConfig.model);
+      effectiveProvider === "anthropic"
+        ? anthropic(effectiveModel as Parameters<typeof anthropic>[0])
+        : openai(effectiveModel);
 
     const result = streamText({
       model: resolvedModel,
-      ...(modeConfig.provider === "anthropic" &&
+      ...(effectiveProvider === "anthropic" &&
         modeConfig.thinkingBudget != null && {
           providerOptions: {
             anthropic: {

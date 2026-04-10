@@ -214,24 +214,24 @@ export const TEAMS: Team[] = [
     id: "agent",
     title: "Research Agent",
     summary:
-      "Runs structured research sessions in four stages: orient, research, decide, and act. Reads intelligence, validates with live data, writes theses, and executes paper trades.",
+      "Runs structured research sessions in seven stages: orient, research, theses, decide, act, recap, complete. Reads intelligence, validates with live data, writes theses, and executes paper trades.",
     description:
-      "Each analyst runs as a GPT-4.1 agent with 14 tools and a 30-step budget. Before the first tool call, the system loads full context: strategy rules, portfolio with live P&L, watchlist, prior briefing, trade history, and accuracy stats. The agent follows a four-stage flow — Orient (read pre-gathered intelligence), Research (pull live data on triaged tickers), Decide (write a thesis for every ticker, then synthesize), Act (execute trades, update watchlist, recap). Theses are batched in Stage 3 so the agent can weigh them against the portfolio together before any execution. Runs happen weekdays at 8 AM (automated, 4-min timeout) or on demand (live streaming, 5-min timeout).",
+      "Each analyst runs as a GPT-4o agent (or Claude Sonnet 4.6 via model override) with 15 tools and a 20-step budget. Before the first tool call, the system loads full context: strategy rules, portfolio with live P&L, watchlist, prior briefing, trade history, and accuracy stats. The agent follows a seven-stage flow — Orient (read pre-gathered intelligence), Research (pull live data on triaged tickers, batching multiple tickers per step), Theses (record a LONG/SHORT/PASS verdict for every researched ticker), Decide (write a synthesis paragraph in plain text, no tool call), Act (execute trades, update watchlist), Recap (record_run_summary), Complete (complete_run). Runs happen weekdays at 8 AM (automated, 4-min timeout) or on demand (live streaming, 5-min timeout).",
     icon: Bot,
-    model: "GPT-4.1",
+    model: "GPT-4o",
     schedule: "8:00 AM ET weekdays + on demand",
     substeps: [
       { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references prior brief's watch-tomorrow triggers. Plain text — no tools." },
       { title: "Stage 1 — Orient", summary: "Reads morning brief, routed signals, and any artifacts that warrant the deep read. Falls back to live market context only if no brief is available." },
-      { title: "Stage 2 — Research", summary: "Pulls live data on triaged tickers — holdings to review, watchlist items, new opportunities. Uses get_stock_data plus earnings / options / SEC filings as relevant. No theses written yet." },
+      { title: "Stage 2 — Research", summary: "Pulls live data on triaged tickers — holdings to review, watchlist items, new opportunities. Batches multiple get_stock_data calls per step. Earnings / options / SEC filings only when specifically warranted." },
       { title: "Stage 3 — Theses", summary: "Writes a thesis (LONG / SHORT / PASS) for every researched ticker, back to back. record_thesis only fires here." },
-      { title: "Stage 4 — Decide", summary: "Calls record_decision_plan once with a single synthesis paragraph reviewing all theses against the portfolio plus a planned action for every ticker (INITIATE / ADD / HOLD / REDUCE / EXIT / WATCH / REMOVE_WATCH / PASS). The synthesis is always required, even if no actions follow." },
-      { title: "Stage 5 — Act", summary: "Executes the planned actions in order: close_position first (frees capital), then place_trade for entries, then manage_watchlist for adds/removes. HOLD and PASS take no execution tool." },
-      { title: "Stage 6 — Run Summary", summary: "Calls record_run_summary with ranked picks (every researched ticker with the action that actually happened) and exposure breakdown. Pure data — synthesis already lives in the decision plan." },
+      { title: "Stage 4 — Decide", summary: "Writes a synthesis paragraph directly in the chat (no tool call) reviewing all theses against the portfolio. States every intended action plainly." },
+      { title: "Stage 5 — Act", summary: "Executes decisions in order: close_position first (frees capital), then place_trade for entries, then manage_watchlist for adds/removes." },
+      { title: "Stage 6 — Run Summary", summary: "Calls record_run_summary with ranked picks (every researched ticker with the action that actually happened) and exposure breakdown." },
       { title: "Stage 7 — Complete", summary: "Calls complete_run with no arguments. Marks the run complete and triggers the briefing agent which writes tomorrow's standup automatically." },
     ],
     tools: [
-      // Discovery
+      // Intelligence (Stage 1)
       { name: "read_morning_brief", provider: "internal", summary: "Pre-generated intelligence brief with market context, alerts, and opportunities." },
       { name: "read_signals", provider: "internal", summary: "Findings routed by background jobs, filtered by tickers/themes/urgency." },
       { name: "read_artifact", provider: "internal", summary: "Full extracted article content behind a signal (up to 4,000 chars)." },
@@ -239,7 +239,7 @@ export const TEAMS: Team[] = [
         resources: [{ source: "perplexity", title: "Sonar web search", description: "Real-time web search with recency filtering.", type: "api", endpointOrPath: "searchSignals(query, { recency })", exampleOutput: "5 results · sentiment: bullish · urgency: MEDIUM", notes: ["Budget: max 5 searches per run (configurable)"] }],
       },
       TOOL_GET_MARKET_CONTEXT,
-      // Research
+      // Research (Stage 2)
       TOOL_GET_STOCK_DATA,
       {
         name: "get_options_flow", provider: "fmp", summary: "Put/call ratio, unusual contracts, institutional positioning.",
@@ -247,9 +247,9 @@ export const TEAMS: Team[] = [
       },
       TOOL_GET_EARNINGS_DATA,
       TOOL_GET_SEC_FILINGS,
-      // Decision
+      // Decision (Stage 3)
       { name: "record_thesis", provider: "internal", summary: "Records LONG/SHORT/PASS verdict with confidence, targets, reasoning." },
-      // Execution
+      // Execution (Stage 5)
       {
         name: "place_trade", provider: "alpaca", summary: "Places a paper market order on Alpaca. Waits for fill.",
         resources: [
@@ -266,11 +266,8 @@ export const TEAMS: Team[] = [
         ],
       },
       { name: "manage_watchlist", provider: "internal", summary: "Adds/updates/removes watchlist items with priority and catalysts." },
-      // Decision plan
-      { name: "record_decision_plan", provider: "internal", summary: "Records the agent's synthesis paragraph and planned actions for every researched ticker. Fires once between theses and execution." },
-      // Run summary
-      { name: "record_run_summary", provider: "internal", summary: "Records the structured per-ticker recap (ranked picks + exposure breakdown). Pure data — synthesis lives in the decision plan." },
-      // Complete
+      // Run lifecycle (Stages 6–7)
+      { name: "record_run_summary", provider: "internal", summary: "Structured per-ticker recap: ranked picks + exposure breakdown. Pure data." },
       { name: "complete_run", provider: "internal", summary: "No-args. Marks the run complete in the DB and triggers the briefing agent. Always the agent's final tool call." },
     ],
     getPrompt: () => import("@/lib/agent/system-prompt-template").then((m) => m.SYSTEM_PROMPT_TEMPLATE),
@@ -393,3 +390,153 @@ export function exportWorkflowAsMarkdown(): string {
 
   return lines.join("\n");
 }
+
+// ── Tools Registry ──────────────────────────────────────────────────────────
+// Single deduplicated list of all agent tools with categorization and
+// per-agent assignments. Powers the /agent-workflow tools registry section.
+
+export type ToolCategory = "intelligence" | "research" | "action" | "system";
+
+export interface RegistryTool {
+  name: string;
+  category: ToolCategory;
+  summary: string;
+  providers: string[];
+  /** Which team IDs have this tool active */
+  agents: TeamId[];
+  resources?: Resource[];
+}
+
+export const TOOL_REGISTRY: RegistryTool[] = [
+  // ── Intelligence (Stage 1 — read pre-gathered data) ──────────────────
+  {
+    name: "read_morning_brief",
+    category: "intelligence",
+    summary: "Pre-generated intelligence brief with market context, portfolio alerts, watchlist updates, and new opportunities.",
+    providers: ["internal"],
+    agents: ["agent"],
+  },
+  {
+    name: "read_signals",
+    category: "intelligence",
+    summary: "Signals routed by background discovery jobs, scored and filtered by ticker, sector, and theme relevance.",
+    providers: ["internal"],
+    agents: ["agent"],
+  },
+  {
+    name: "read_artifact",
+    category: "intelligence",
+    summary: "Full extracted article content behind a signal — up to 4,000 chars of clean markdown from Firecrawl.",
+    providers: ["internal"],
+    agents: ["agent"],
+  },
+  {
+    name: "web_search",
+    category: "intelligence",
+    summary: "Live Perplexity Sonar search for breaking news or niche topics. Budget-limited by intelligence policy.",
+    providers: ["perplexity"],
+    agents: ["agent"],
+    resources: [{ source: "perplexity", title: "Sonar web search", description: "Real-time web search with recency filtering.", type: "api", endpointOrPath: "searchSignals(query, { recency })", exampleOutput: "5 results · sentiment: bullish · urgency: MEDIUM", notes: ["Budget: max 5 searches per run (configurable)"] }],
+  },
+  // ── Research (Stage 2 — live market data) ────────────────────────────
+  {
+    name: "get_market_context",
+    category: "research",
+    summary: "SPY, VIX, 11 sector ETFs, macro events, earnings density, and regime classification.",
+    providers: ["finnhub", "fmp"],
+    agents: ["builder", "agent"],
+    resources: TOOL_GET_MARKET_CONTEXT.resources,
+  },
+  {
+    name: "get_stock_data",
+    category: "research",
+    summary: "Quote, company profile, financials, technicals, analyst consensus, price targets, and news for one ticker.",
+    providers: ["finnhub", "fmp"],
+    agents: ["builder", "agent"],
+    resources: TOOL_GET_STOCK_DATA.resources,
+  },
+  {
+    name: "get_earnings_data",
+    category: "research",
+    summary: "Next report date, EPS estimates, and beat rate track record. Called only when earnings are within 2 weeks.",
+    providers: ["finnhub"],
+    agents: ["builder", "agent"],
+    resources: TOOL_GET_EARNINGS_DATA.resources,
+  },
+  {
+    name: "get_options_flow",
+    category: "research",
+    summary: "Put/call ratio, unusual contracts, and institutional positioning. Called only when unusual activity flagged.",
+    providers: ["fmp"],
+    agents: ["agent"],
+    resources: [{ source: "fmp", title: "Options chain analysis", description: "P/C ratio, unusual volume/OI contracts, premium flags.", type: "api", endpointOrPath: "/options/chain/{ticker}", exampleOutput: "P/C 0.65 (bullish) · 3 unusual contracts", notes: ["Flags vol/OI ≥ 5x or premium ≥ $500K"] }],
+  },
+  {
+    name: "get_sec_filings",
+    category: "research",
+    summary: "Recent SEC filings — 10-K, 10-Q, 8-K, Form 4. Called only when insider filing or material 8-K flagged.",
+    providers: ["sec"],
+    agents: ["builder", "agent"],
+    resources: TOOL_GET_SEC_FILINGS.resources,
+  },
+  // ── Action (write/execute) ────────────────────────────────────────────
+  {
+    name: "record_thesis",
+    category: "action",
+    summary: "Records a LONG/SHORT/PASS verdict with confidence score, entry/target/stop prices, bullets, and reasoning.",
+    providers: ["internal"],
+    agents: ["agent"],
+  },
+  {
+    name: "place_trade",
+    category: "action",
+    summary: "Places a paper market order on Alpaca. Waits for fill and records position + trade decision in DB.",
+    providers: ["alpaca", "internal"],
+    agents: ["agent"],
+    resources: [
+      { source: "alpaca", title: "Submit order", description: "Market buy/sell at current price.", type: "api", endpointOrPath: "placeMarketOrder({ symbol, qty, side })", exampleOutput: "BUY 74 shares NVDA @ $134.23" },
+      { source: "alpaca", title: "Confirm fill", description: "Waits up to 5s for fill confirmation.", type: "api", endpointOrPath: "getOrder(orderId)", exampleOutput: "FILLED · Avg $134.23" },
+      { source: "internal", title: "Record position", description: "Saves position, logs trade decision, graduates watchlist items.", type: "db", endpointOrPath: "prisma.position.create()", notes: ["Blocks duplicate positions in same ticker"] },
+    ],
+  },
+  {
+    name: "close_position",
+    category: "action",
+    summary: "Closes an existing open position via Alpaca. Records outcome with exit reason and realized P&L.",
+    providers: ["alpaca", "internal"],
+    agents: ["agent"],
+    resources: [
+      { source: "alpaca", title: "Sell all shares", description: "Closes the full position.", type: "api", endpointOrPath: "closeOpenPosition(symbol)", exampleOutput: "Closed 50 AAPL @ $192.40 · +$710 (+7.9%)" },
+      { source: "internal", title: "Record outcome", description: "Marks position closed with P&L and reason.", type: "db", endpointOrPath: "prisma.tradeDecision.create({ SELL })", exampleOutput: "EXIT: TARGET · WIN · +$710" },
+    ],
+  },
+  {
+    name: "manage_watchlist",
+    category: "action",
+    summary: "Adds, updates, or removes watchlist items with priority, catalyst notes, and conviction level.",
+    providers: ["internal"],
+    agents: ["agent"],
+  },
+  {
+    name: "suggest_config",
+    category: "action",
+    summary: "Outputs the complete analyst configuration for side-panel review. Used by builder and editor only.",
+    providers: ["internal"],
+    agents: ["builder"],
+  },
+  // ── System (run lifecycle) ────────────────────────────────────────────
+  {
+    name: "record_run_summary",
+    category: "system",
+    summary: "Structured per-ticker recap: ranked picks with actual actions taken, and portfolio exposure breakdown.",
+    providers: ["internal"],
+    agents: ["agent"],
+  },
+  {
+    name: "complete_run",
+    category: "system",
+    summary: "No-args. Marks the run COMPLETE in DB and triggers the briefing agent inline. Always the final tool call.",
+    providers: ["internal"],
+    agents: ["agent"],
+  },
+];

@@ -6,6 +6,19 @@
  * The unified route at app/api/agent/[mode]/route.ts reads these configs.
  */
 
+// ── Model options per mode ────────────────────────────────────────────────────
+
+export interface ModelOption {
+  label: string;
+  value: string;
+  provider: "openai" | "anthropic";
+}
+
+export const RESEARCH_MODEL_OPTIONS: ModelOption[] = [
+  { label: "GPT-4o", value: "gpt-4o", provider: "openai" },
+  { label: "Claude Sonnet 4.6", value: "claude-sonnet-4-6", provider: "anthropic" },
+];
+
 // ── Mode type ────────────────────────────────────────────────────────────────
 
 export type AgentMode = "research-run" | "builder" | "editor";

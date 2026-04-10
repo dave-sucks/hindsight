@@ -11,10 +11,11 @@
  * Uses the unified /api/agent/[mode] route.
  */
 
-import { useMemo, useCallback, useTransition } from "react";
+import { useMemo, useCallback, useTransition, useState } from "react";
 import type { UIMessage } from "ai";
 import type { ReactNode } from "react";
 import type { AgentMode } from "@/lib/agent/modes";
+import { MODES, RESEARCH_MODEL_OPTIONS } from "@/lib/agent/modes";
 import { ChatRuntime } from "@/components/chat/chat-runtime";
 import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
 import type { HindsightComposerFeatures } from "@/components/assistant-ui/hindsight-composer";
@@ -34,6 +35,18 @@ import { RunSourcesPanel } from "@/components/research/run-sources-panel";
 import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
 import type { RunSourceItem } from "@/lib/actions/run-sources.actions";
 import type { MorningBrief as IntelMorningBrief } from "@/components/intelligence/types";
+
+// ── Model preference storage key ──────────────────────────────────────────────
+const MODEL_PREF_KEY = "hindsight_research_model";
+
+function getStoredModel(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(MODEL_PREF_KEY);
+}
+
+function storeModel(value: string) {
+  localStorage.setItem(MODEL_PREF_KEY, value);
+}
 
 // ── Default welcome configs + composer features per mode ──────────────────────
 
@@ -118,10 +131,23 @@ export function AgentChat({
 }: AgentChatProps) {
   const api = `/api/agent/${mode}`;
 
+  // Model override — only meaningful for research-run
+  const defaultModel = MODES[mode].model;
+  const [selectedModel, setSelectedModel] = useState<string>(
+    () => (mode === "research-run" ? (getStoredModel() ?? defaultModel) : defaultModel),
+  );
+
+  const handleModelChange = useCallback((value: string) => {
+    setSelectedModel(value);
+    if (mode === "research-run") storeModel(value);
+  }, [mode]);
+
   const body: Record<string, unknown> = {};
   if (runId) body.runId = runId;
   if (analystId) body.analystId = analystId;
   if (currentConfig) body.currentConfig = currentConfig;
+  // Only send override when it differs from the mode default
+  if (selectedModel !== defaultModel) body.modelOverride = selectedModel;
 
   return (
     <ChatRuntime api={api} body={body} messages={messages}>
@@ -139,6 +165,8 @@ export function AgentChat({
         initialPrompt={initialPrompt}
         onConfigSuggested={onConfigSuggested}
         onMutatingChange={onMutatingChange}
+        selectedModel={selectedModel}
+        onModelChange={handleModelChange}
       />
     </ChatRuntime>
   );
@@ -160,6 +188,8 @@ interface InnerProps {
   initialPrompt?: string;
   onConfigSuggested?: (config: AgentConfigData, onConfirm: () => void) => void;
   onMutatingChange?: (mutating: boolean) => void;
+  selectedModel?: string;
+  onModelChange?: (value: string) => void;
 }
 
 function AgentChatInner({
@@ -176,6 +206,8 @@ function AgentChatInner({
   initialPrompt,
   onConfigSuggested,
   onMutatingChange,
+  selectedModel,
+  onModelChange,
 }: InnerProps) {
   const router = useRouter();
   const [isMutating, startMutating] = useTransition();
@@ -294,7 +326,9 @@ function AgentChatInner({
                       : "Ask a follow-up question…",
                     tickerSearch: true,
                     slashCommands: true,
-                    modelLabel: "Claude Sonnet 4.6",
+                    modelLabel: RESEARCH_MODEL_OPTIONS.find((o) => o.value === selectedModel)?.label ?? selectedModel ?? "GPT-4o",
+                    modelOptions: RESEARCH_MODEL_OPTIONS,
+                    onModelChange,
                   }}
                 />
               )
