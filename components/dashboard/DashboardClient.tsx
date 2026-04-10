@@ -543,40 +543,38 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                 {/* Settings dropdown */}
                 {!loading && (
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        className="h-7 w-7 inline-flex items-center justify-center rounded-md border bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label="Chart settings"
-                      >
-                        <SlidersHorizontal className="h-3.5 w-3.5" />
-                      </button>
+                    <DropdownMenuTrigger render={<Button variant="outline" size="icon-sm" />}>
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>View</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuRadioGroup
-                        value={effectiveView}
-                        onValueChange={(v) => setChartView(v as ChartView)}
-                      >
-                        <DropdownMenuRadioItem value="portfolio">Portfolio</DropdownMenuRadioItem>
-                        {analysts.length > 0 && (
-                          <DropdownMenuRadioItem value="by-analyst">By Analyst</DropdownMenuRadioItem>
-                        )}
-                        {spyCandles.length > 0 && (
-                          <DropdownMenuRadioItem value="vs-spy">vs S&amp;P 500</DropdownMenuRadioItem>
-                        )}
-                      </DropdownMenuRadioGroup>
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>View</DropdownMenuLabel>
+                        <DropdownMenuRadioGroup
+                          value={effectiveView}
+                          onValueChange={(v) => setChartView(v as ChartView)}
+                        >
+                          <DropdownMenuRadioItem value="portfolio">Portfolio</DropdownMenuRadioItem>
+                          {analysts.length > 0 && (
+                            <DropdownMenuRadioItem value="by-analyst">By Analyst</DropdownMenuRadioItem>
+                          )}
+                          {spyCandles.length > 0 && (
+                            <DropdownMenuRadioItem value="vs-spy">vs S&amp;P 500</DropdownMenuRadioItem>
+                          )}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuGroup>
                       {effectiveView === 'portfolio' && (
                         <>
                           <DropdownMenuSeparator />
-                          <DropdownMenuLabel>Display</DropdownMenuLabel>
-                          <DropdownMenuRadioGroup
-                            value={displayMode}
-                            onValueChange={(v) => setDisplayMode(v as DisplayMode)}
-                          >
-                            <DropdownMenuRadioItem value="dollar">$ Value</DropdownMenuRadioItem>
-                            <DropdownMenuRadioItem value="percent">% Return</DropdownMenuRadioItem>
-                          </DropdownMenuRadioGroup>
+                          <DropdownMenuGroup>
+                            <DropdownMenuLabel>Display</DropdownMenuLabel>
+                            <DropdownMenuRadioGroup
+                              value={displayMode}
+                              onValueChange={(v) => setDisplayMode(v as DisplayMode)}
+                            >
+                              <DropdownMenuRadioItem value="dollar">$ Value</DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem value="percent">% Return</DropdownMenuRadioItem>
+                            </DropdownMenuRadioGroup>
+                          </DropdownMenuGroup>
                         </>
                       )}
                     </DropdownMenuContent>
