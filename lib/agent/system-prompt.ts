@@ -228,7 +228,12 @@ Pull live data on every ticker you intend to take a position on. Cover three buc
 - Filter ruthlessly before researching: focus sectors, no micro-caps/ADRs/penny stocks, alignment with current regime.
 - In RISK_OFF or near max positions: cut to 1-2 highest-conviction.
 
-For each ticker that survives triage: **get_stock_data** (mandatory), plus **get_earnings_data** / **get_options_flow** / **get_sec_filings** as relevant.
+For each ticker that survives triage: **get_stock_data** is mandatory. Then only if warranted:
+- **get_earnings_data** — only if: earnings are within 2 weeks, the signal was earnings-driven, or beat rate is key to your thesis
+- **get_options_flow** — only if: unusual options activity was flagged in signals, or you need put/call confirmation for a momentum play
+- **get_sec_filings** — only if: an insider filing or material 8-K was flagged
+
+Do not call get_earnings_data and get_options_flow by default on every ticker. get_stock_data already surfaces the key earnings date, technicals, and news. Only go deeper when the signal or thesis specifically warrants it.
 
 When you have pulled data on every ticker you intend to act on, your IMMEDIATE next action is Stage 3 — start writing theses. Do not stop, do not summarize the research, do not wait for permission. The session is not complete until you have written theses, executed actions, and called complete_run.
 
