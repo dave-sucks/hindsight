@@ -4,6 +4,30 @@ How a research run works end-to-end, what the current bottlenecks are, and where
 
 ---
 
+## Unified agent architecture
+
+All three chat modes — `research-run`, `builder`, and `editor` — share one route (`app/api/agent/[mode]/route.ts`) and one component (`AgentChat`). The mode key controls model, step limit, and which tools are available:
+
+| Mode | Model | Max steps | Tools |
+|------|-------|-----------|-------|
+| `research-run` | GPT-4o (switchable via UI) | 20 | All 15 research tools |
+| `builder` | GPT-4o | 10 | 4 research tools + `suggest_config` |
+| `editor` | GPT-4o | 10 | 4 research tools + `suggest_config` |
+
+Tool definitions live in `lib/agent/tools/` (one file per tool). `createResearchTools()` in `lib/agent/tools/index.ts` assembles them all with shared context (`runId`, `userId`, `analystId`, `alpacaCreds`, etc.). The route then filters by `modeConfig.toolAllowlist` — builder/editor get a restricted subset; research-run gets everything.
+
+`TOOL_REGISTRY` in `lib/agent/workflow-registry.ts` is the canonical metadata list (summary, category, providers, which agents use it). It powers the `/agent-workflow` tools registry view and the per-tool dialog "Active in" badges. Updating a tool's metadata means editing that one place.
+
+**What builder/editor can and can't do:**
+- Builder/editor CAN call `get_market_context`, `get_stock_data`, `get_earnings_data`, `get_sec_filings` — they research live data before proposing a config.
+- Builder/editor CANNOT place trades, record theses, or manage watchlists — those tools are not in their allowlist.
+- They can only output via `suggest_config`, which renders a config preview card in the side panel.
+
+**What the completed-run chat can do:**
+- The `/runs/[id]` page renders `AgentChat` in `mode="research-run"` for both live and replayed runs. After a run completes, a user can still send messages and the agent responds in `research-run` mode with all 15 tools available — including `place_trade` and `close_position`. There is no separate restricted "followup" mode.
+
+---
+
 ## What happens when you click "Run"
 
 1. **POST `/api/research/agent-run`** — creates a `ResearchRun` row in DB (`status: RUNNING`), returns `runId`.

@@ -158,7 +158,7 @@ export const TEAMS: Team[] = [
       { name: "suggest_config", provider: "internal", summary: "Outputs the complete analyst configuration for review." },
     ],
     getPrompt: () => import("@/lib/agent/builder-prompt-template").then((m) => m.BUILDER_PROMPT_TEMPLATE),
-    promptSource: "app/api/chat/analyst-builder/route.ts",
+    promptSource: "lib/agent/modes.ts → BUILDER_SYSTEM_PROMPT",
   },
 
   // ─── 2. Intelligence Pipeline ──────────────────────────────────────────
