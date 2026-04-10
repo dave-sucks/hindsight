@@ -1,20 +1,30 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 
 import {
   Area,
   AreaChart,
+  Line,
+  LineChart,
   ResponsiveContainer,
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   ReferenceLine,
 } from 'recharts';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ThesisRow } from '@/components/ui/thesis-row';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
@@ -34,40 +44,129 @@ import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
 import { formatCurrency, formatDateLabel } from '@/lib/format';
 
-// ─── Time range ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const RANGES = ['1D', '1W', '1M', '1Y', 'Max'] as const;
+const RANGES = ['1W', '1M', '1Y', 'Max'] as const;
 type Range = (typeof RANGES)[number];
 
 const RANGE_DAYS: Record<Range, number> = {
-  '1D': 1,
   '1W': 7,
   '1M': 30,
   '1Y': 365,
   Max: 99999,
 };
 
-function sliceEquity(data: { date: string; value: number }[], range: Range) {
-  if (range === '1D' && data.length > 0) {
-    const last = data[data.length - 1];
-    const prev = data.length > 1 ? data[data.length - 2] : last;
-    const hours = ['9:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00'];
-    const today = last.date;
-    const diff = last.value - prev.value;
-    return hours.map((h, i) => ({
-      date: `${today}T${h}`,
-      value: prev.value + (diff * (i / (hours.length - 1))),
-    }));
-  }
-  const cutoffMs = Date.now() - RANGE_DAYS[range] * 86_400_000;
-  if (data.length > 0 && data[0].date.length === 10 && data[0].date.includes('-')) {
-    const filtered = data.filter((d) => new Date(d.date + 'T12:00:00').getTime() >= cutoffMs);
-    return filtered.length > 1 ? filtered : data.slice(-2);
-  }
-  return data;
+type ChartView = 'portfolio' | 'by-analyst' | 'vs-spy';
+
+const ANALYST_COLORS = [
+  '#6366f1', // indigo
+  '#f59e0b', // amber
+  '#10b981', // emerald
+  '#f43f5e', // rose
+  '#8b5cf6', // violet
+  '#06b6d4', // cyan
+];
+
+// ─── Data helpers ─────────────────────────────────────────────────────────────
+
+function cutoffMs(range: Range) {
+  return Date.now() - RANGE_DAYS[range] * 86_400_000;
 }
 
-// ─── Recent pick → ThesisRowData mapper ──────────────────────────────────────
+function filterByRange<T extends { date: string }>(data: T[], range: Range): T[] {
+  const ms = cutoffMs(range);
+  const filtered = data.filter((d) => new Date(d.date + 'T12:00:00').getTime() >= ms);
+  return filtered.length > 1 ? filtered : data.slice(-2);
+}
+
+/** Normalize a value series to % return from the first data point */
+function normalizeToPercent(
+  data: { date: string; value: number }[],
+): { date: string; pct: number }[] {
+  if (data.length < 2) return [];
+  const base = data[0].value;
+  if (base === 0) return data.map((d) => ({ date: d.date, pct: 0 }));
+  return data.map((d) => ({ date: d.date, pct: ((d.value - base) / Math.abs(base)) * 100 }));
+}
+
+/**
+ * Build wide-format data for multi-analyst line chart.
+ * Each row: { date, [analystId]: pct, ... }
+ */
+function buildAnalystCompareData(
+  analysts: { id: string; name: string }[],
+  curves: Record<string, { date: string; value: number }[]>,
+  range: Range,
+): Record<string, number | string>[] {
+  if (analysts.length === 0) return [];
+
+  // Normalize each analyst curve over the range
+  const normalized = new Map<string, Map<string, number>>();
+  for (const analyst of analysts) {
+    const raw = filterByRange(curves[analyst.id] ?? [], range);
+    const pcts = normalizeToPercent(raw);
+    if (pcts.length > 0) {
+      normalized.set(analyst.id, new Map(pcts.map((p) => [p.date, p.pct])));
+    }
+  }
+  if (normalized.size === 0) return [];
+
+  // Collect all dates
+  const allDates = new Set<string>();
+  for (const m of normalized.values()) for (const d of m.keys()) allDates.add(d);
+  const sortedDates = [...allDates].sort();
+
+  return sortedDates.map((date) => {
+    const row: Record<string, number | string> = { date };
+    for (const analyst of analysts) {
+      const v = normalized.get(analyst.id)?.get(date);
+      if (v !== undefined) row[analyst.id] = v;
+    }
+    return row;
+  });
+}
+
+/**
+ * Build two-line data: portfolio % vs SPY %.
+ * Aligns by date — only includes dates present in both series.
+ */
+function buildSpyCompareData(
+  equityCurve: { date: string; value: number }[],
+  spyCandles: { date: string; close: number }[],
+  range: Range,
+): { date: string; portfolio: number; spy: number }[] {
+  const portSlice = filterByRange(equityCurve, range);
+  const spySlice = filterByRange(spyCandles.map((c) => ({ date: c.date, value: c.close })), range);
+  if (portSlice.length < 2 || spySlice.length < 2) return [];
+
+  const portBase = portSlice[0].value;
+  const spyBase = spySlice[0].value;
+  if (portBase === 0 || spyBase === 0) return [];
+
+  const spyMap = new Map(spySlice.map((d) => [d.date, d.value]));
+
+  return portSlice
+    .filter((d) => spyMap.has(d.date))
+    .map((d) => ({
+      date: d.date,
+      portfolio: ((d.value - portBase) / portBase) * 100,
+      spy: ((spyMap.get(d.date)! - spyBase) / spyBase) * 100,
+    }));
+}
+
+// ─── Common tooltip style ─────────────────────────────────────────────────────
+
+const TOOLTIP_STYLE = {
+  background: 'var(--popover)',
+  border: '1px solid var(--border)',
+  borderRadius: '6px',
+  fontSize: '12px',
+  color: 'var(--popover-foreground)',
+};
+
+const TICK_STYLE = { fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' };
+
+// ─── Recent picks section ─────────────────────────────────────────────────────
 
 type PickFilter = 'all' | 'open' | 'passed';
 
@@ -100,13 +199,7 @@ function pickToThesisRow(pick: RecentPick): ThesisRowData {
   };
 }
 
-// ─── Recent picks section ─────────────────────────────────────────────────────
-
-function RecentPicksSection({
-  picks,
-}: {
-  picks: RecentPick[];
-}) {
+function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
   const [filter, setFilter] = useState<PickFilter>('all');
   const [showTour, setShowTour] = useState(false);
 
@@ -116,27 +209,21 @@ function RecentPicksSection({
     return true;
   });
 
-  const pills: { key: PickFilter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'open', label: 'Open' },
-    { key: 'passed', label: 'Passed' },
-  ];
-
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1.5">
-        {pills.map((pill) => (
+        {(['all', 'open', 'passed'] as PickFilter[]).map((key) => (
           <button
-            key={pill.key}
-            onClick={() => setFilter(pill.key)}
+            key={key}
+            onClick={() => setFilter(key)}
             className={cn(
-              'px-3 py-1 rounded-full text-xs font-medium transition-colors border',
-              filter === pill.key
+              'px-3 py-1 rounded-full text-xs font-medium transition-colors border capitalize',
+              filter === key
                 ? 'bg-secondary text-secondary-foreground border-secondary'
                 : 'text-muted-foreground opacity-60 hover:opacity-100 hover:text-foreground',
             )}
           >
-            {pill.label}
+            {key}
           </button>
         ))}
       </div>
@@ -146,16 +233,20 @@ function RecentPicksSection({
           <div
             className="absolute inset-0"
             style={{
-              maskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
+              maskImage:
+                'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
               maskComposite: 'intersect',
-              WebkitMaskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
+              WebkitMaskImage:
+                'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
               WebkitMaskComposite: 'source-in',
             }}
           >
             <EmptyStateBg />
           </div>
           <div className="relative z-10 flex flex-col items-center gap-3">
-            <p className="text-base font-medium text-center">Theses for your Stocks appear after Agents run</p>
+            <p className="text-base font-medium text-center">
+              Theses for your Stocks appear after Agents run
+            </p>
             <p className="text-sm text-muted-foreground text-center max-w-xs">
               Your analyst will research stocks, generate theses, and place paper trades autonomously.
             </p>
@@ -188,7 +279,7 @@ function RecentPicksSection({
   );
 }
 
-// ─── Trade row (for positions card) ──────────────────────────────────────────
+// ─── Positions trade row ──────────────────────────────────────────────────────
 
 function DashboardTradeRow({ trade, flash }: { trade: MockTrade; flash?: 'win' | 'loss' }) {
   return (
@@ -212,30 +303,24 @@ function DashboardTradeRow({ trade, flash }: { trade: MockTrade; flash?: 'win' |
   );
 }
 
-// ─── Empty ────────────────────────────────────────────────────────────────────
-
 function Empty({ text, subtext }: { text: string; subtext?: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-10 gap-1.5 px-4">
       <p className="text-sm text-muted-foreground text-center">{text}</p>
-      {subtext && <p className="text-xs text-muted-foreground/60 text-center">{subtext}</p>}
+      {subtext && (
+        <p className="text-xs text-muted-foreground/60 text-center">{subtext}</p>
+      )}
     </div>
   );
 }
 
-// ─── SPY comparison chip ──────────────────────────────────────────────────────
+// ─── Chart empty state ────────────────────────────────────────────────────────
 
-function SpyChip({ pct, label }: { pct: number | null; label: string }) {
-  if (pct === null) return null;
-  const pos = pct >= 0;
+function ChartEmpty({ text }: { text: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
-      <span className="opacity-50">SPY</span>
-      <span className={pos ? 'text-positive' : 'text-negative'}>
-        {pos ? '+' : ''}{pct.toFixed(2)}%
-      </span>
-      <span className="opacity-40">{label}</span>
-    </span>
+    <div className="h-52 flex items-center justify-center">
+      <p className="text-xs text-muted-foreground text-center max-w-xs px-4">{text}</p>
+    </div>
   );
 }
 
@@ -248,7 +333,7 @@ interface DashboardClientProps {
 
 export default function DashboardClient({ data, userId }: DashboardClientProps) {
   const [range, setRange] = useState<Range>('1M');
-  const [selectedAnalyst, setSelectedAnalyst] = useState<string>('all');
+  const [chartView, setChartView] = useState<ChartView>('portfolio');
   const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(new Set());
   const [flashIds, setFlashIds] = useState<Map<string, 'win' | 'loss'>>(new Map());
 
@@ -258,10 +343,19 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
       setFlashIds((prev) => new Map(prev).set(position.id, result));
       toast[result === 'win' ? 'success' : 'error'](
         `${position.symbol} closed — ${result === 'win' ? '✅ WIN' : '❌ LOSS'}`,
-        { description: position.realizedPnl != null ? `P&L: $${position.realizedPnl.toFixed(2)}` : undefined },
+        {
+          description:
+            position.realizedPnl != null
+              ? `P&L: $${position.realizedPnl.toFixed(2)}`
+              : undefined,
+        },
       );
       setTimeout(() => {
-        setFlashIds((prev) => { const m = new Map(prev); m.delete(position.id); return m; });
+        setFlashIds((prev) => {
+          const m = new Map(prev);
+          m.delete(position.id);
+          return m;
+        });
         setRealtimeClosedIds((prev) => new Set(prev).add(position.id));
       }, 1200);
     }
@@ -269,24 +363,18 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
 
   useTradeRealtime({ userId: userId ?? '', onPositionUpdate: handlePositionUpdate });
 
-  // ── Derived data ────────────────────────────────────────────────────────────
-  const openTrades = (data?.openTrades ?? mockOpenTrades).filter((t) => !realtimeClosedIds.has(t.id));
+  // ── Raw data ────────────────────────────────────────────────────────────────
+  const openTrades = (data?.openTrades ?? mockOpenTrades).filter(
+    (t) => !realtimeClosedIds.has(t.id),
+  );
   const closedTrades = data?.closedTrades ?? [];
   const analysts = data?.analysts ?? [];
   const analystEquityCurves = data?.analystEquityCurves ?? {};
   const spyBenchmark = data?.spyBenchmark ?? { '1W': null, '1M': null, '1Y': null };
+  const spyCandles = data?.spyCandles ?? [];
+  const recentPicks = data?.recentPicks ?? [];
 
-  const isAnalystView = selectedAnalyst !== 'all';
-
-  const allEquityData = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
-  const rawEquityData = isAnalystView ? (analystEquityCurves[selectedAnalyst] ?? []) : allEquityData;
-  const equityData = sliceEquity(rawEquityData, range);
-
-  // Filter picks by selected analyst
-  const allPicks = data?.recentPicks ?? [];
-  const recentPicks = isAnalystView
-    ? allPicks.filter((p) => p.analystId === selectedAnalyst)
-    : allPicks;
+  const rawEquity = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
 
   const portfolio = data?.portfolio ?? {
     totalValue: mockPortfolio.totalValue,
@@ -296,29 +384,59 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     openCount: mockOpenTrades.length,
   };
 
+  // ── Portfolio header values ─────────────────────────────────────────────────
   const totalValueStr = formatCurrency(portfolio.totalValue);
   const totalPnl = portfolio.unrealizedPnl + portfolio.realizedPnl;
   const pnlPositive = totalPnl >= 0;
   const startingCapital = portfolio.totalValue - totalPnl;
   const totalPnlPct = startingCapital > 0 ? (totalPnl / startingCapital) * 100 : 0;
-  const winRateStr = portfolio.winRate != null ? `${(portfolio.winRate * 100).toFixed(0)}% win rate` : null;
+  const winRateStr =
+    portfolio.winRate != null
+      ? `${(portfolio.winRate * 100).toFixed(0)}% win rate`
+      : null;
 
-  // SPY comparison for the selected range
-  const spyPct: number | null = range === '1W' ? spyBenchmark['1W']
+  // SPY inline comparison for the selected range
+  const spyPct: number | null =
+    range === '1W' ? spyBenchmark['1W']
     : range === '1M' ? spyBenchmark['1M']
     : range === '1Y' ? spyBenchmark['1Y']
     : null;
-  const rangeLabel = range === '1W' ? '1W' : range === '1M' ? '1M' : range === '1Y' ? '1Y' : null;
 
-  const equityPositive = equityData.length > 1
-    ? equityData[equityData.length - 1].value >= equityData[0].value
-    : true;
+  // ── Chart data (memoized) ───────────────────────────────────────────────────
+  const portfolioData = useMemo(
+    () => filterByRange(rawEquity, range),
+    [rawEquity, range],
+  );
+
+  const analystCompareData = useMemo(
+    () => buildAnalystCompareData(analysts, analystEquityCurves, range),
+    [analysts, analystEquityCurves, range],
+  );
+
+  const spyCompareData = useMemo(
+    () => buildSpyCompareData(rawEquity, spyCandles, range),
+    [rawEquity, spyCandles, range],
+  );
+
+  // ── Portfolio chart visuals ─────────────────────────────────────────────────
+  const equityPositive =
+    portfolioData.length > 1
+      ? portfolioData[portfolioData.length - 1].value >= portfolioData[0].value
+      : true;
   const strokeColor = equityPositive ? PNL_HEX.positive : PNL_HEX.negative;
-  const equityDomain = isAnalystView
-    ? (['auto', 'auto'] as const)
-    : (['dataMin * 0.999', 'dataMax * 1.001'] as const);
 
   const loading = !data;
+
+  // Determine if the current view has enough data to show a non-trivial chart
+  const hasPortfolioData = portfolioData.length >= 2;
+  const hasAnalystData = analystCompareData.length >= 2 && analysts.length >= 1;
+  const hasSpyData = spyCompareData.length >= 2;
+
+  // Clamp view to available options
+  const effectiveView: ChartView =
+    chartView === 'by-analyst' && analysts.length === 0 ? 'portfolio'
+    : chartView === 'vs-spy' && spyCandles.length === 0 ? 'portfolio'
+    : chartView;
 
   return (
     <div className="overflow-y-auto h-[calc(100dvh-3rem)]">
@@ -333,7 +451,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
               {loading ? (
                 <>
                   <Skeleton className="h-10 w-48" />
-                  <Skeleton className="h-5 w-56" />
+                  <Skeleton className="h-5 w-64" />
                 </>
               ) : (
                 <>
@@ -353,160 +471,288 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         </>
                       )}
                     </p>
-                    {spyPct !== null && rangeLabel && (
-                      <SpyChip pct={spyPct} label={rangeLabel} />
+                    {/* Inline SPY comparison (only for ranges where we have SPY data) */}
+                    {spyPct !== null && (
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        vs SPY{' '}
+                        <span className={spyPct >= 0 ? 'text-positive' : 'text-negative'}>
+                          {spyPct >= 0 ? '+' : ''}{spyPct.toFixed(2)}%
+                        </span>
+                        {' '}{range}
+                      </span>
                     )}
                   </div>
                 </>
               )}
             </div>
 
-            {/* Analyst filter chips — only shown when there are analysts with trades */}
-            {!loading && analysts.length > 0 && (
-              <div className="flex items-center gap-1 flex-wrap">
-                <button
-                  onClick={() => setSelectedAnalyst('all')}
-                  className={cn(
-                    'px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors',
-                    selectedAnalyst === 'all'
-                      ? 'bg-secondary text-secondary-foreground border-secondary'
-                      : 'text-muted-foreground border-transparent hover:text-foreground',
-                  )}
-                >
-                  All
-                </button>
-                {analysts.map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() => setSelectedAnalyst(selectedAnalyst === a.id ? 'all' : a.id)}
-                    className={cn(
-                      'px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors',
-                      selectedAnalyst === a.id
-                        ? 'bg-secondary text-secondary-foreground border-secondary'
-                        : 'text-muted-foreground border-transparent hover:text-foreground',
-                    )}
-                  >
-                    {a.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Equity chart — dotted bg */}
+            {/* Chart card */}
             <div
               className="relative rounded-lg overflow-hidden border"
               style={{
-                backgroundImage: 'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
+                backgroundImage:
+                  'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
                 backgroundSize: '18px 18px',
                 backgroundColor: 'hsl(var(--muted)/0.3)',
               }}
             >
-              {/* Range tabs — absolute top-left */}
-              <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
-                {RANGES.map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setRange(r)}
-                    className={cn(
-                      'px-2 py-0.5 text-xs rounded transition-colors',
-                      range === r
-                        ? 'bg-muted text-foreground font-medium'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
+              {/* Chart controls: view selector (left) + range tabs (right) */}
+              <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between gap-2">
+                {/* View selector */}
+                {!loading && (
+                  <Select
+                    value={effectiveView}
+                    onValueChange={(v) => setChartView(v as ChartView)}
                   >
-                    {r}
-                  </button>
-                ))}
+                    <SelectTrigger className="h-7 w-auto text-xs gap-1 bg-background/80 backdrop-blur-sm border px-2 py-0 [&>svg]:h-3 [&>svg]:w-3 min-w-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="portfolio">Portfolio</SelectItem>
+                      {analysts.length > 0 && (
+                        <SelectItem value="by-analyst">By Analyst</SelectItem>
+                      )}
+                      {spyCandles.length > 0 && (
+                        <SelectItem value="vs-spy">vs S&P 500</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Range tabs */}
+                <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5 ml-auto">
+                  {RANGES.map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setRange(r)}
+                      className={cn(
+                        'px-2 py-0.5 text-xs rounded transition-colors',
+                        range === r
+                          ? 'bg-muted text-foreground font-medium'
+                          : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
               </div>
 
+              {/* ── Chart render ── */}
               {loading ? (
-                <div className="h-52 flex items-center justify-center">
+                <div className="h-64 flex items-center justify-center">
                   <Skeleton className="h-1 w-3/4 rounded-full" />
                 </div>
-              ) : equityData.length < 2 ? (
-                <div className="h-52 flex items-center justify-center">
-                  <p className="text-xs text-muted-foreground">
-                    {isAnalystView
-                      ? 'No trade history for this analyst yet.'
-                      : 'The equity chart tracks portfolio value over time as trades open and close.'}
-                  </p>
-                </div>
+              ) : effectiveView === 'portfolio' ? (
+                // ── Total portfolio area chart ──────────────────────────────
+                !hasPortfolioData ? (
+                  <ChartEmpty text="The equity chart tracks portfolio value over time as trades open and close." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart
+                      data={portfolioData}
+                      margin={{ top: 48, right: 0, bottom: 0, left: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={strokeColor} stopOpacity={0.2} />
+                          <stop offset="95%" stopColor={strokeColor} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="date"
+                        tick={TICK_STYLE}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
+                        interval={Math.max(1, Math.floor(portfolioData.length / 6))}
+                        padding={{ left: 0, right: 0 }}
+                      />
+                      <YAxis
+                        hide
+                        domain={['dataMin * 0.999', 'dataMax * 1.001']}
+                      />
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        formatter={(v) => [`$${Number(v).toLocaleString()}`, 'Portfolio']}
+                        labelFormatter={(l: unknown) => formatDateLabel(String(l))}
+                        labelStyle={{ color: 'var(--muted-foreground)' }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke={strokeColor}
+                        strokeWidth={1.5}
+                        fill="url(#eqGrad)"
+                        dot={false}
+                        activeDot={{ r: 3, fill: strokeColor }}
+                        // baseline = chart bottom so gradient always fades downward
+                        baseValue="dataMin"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )
+              ) : effectiveView === 'by-analyst' ? (
+                // ── Per-analyst % lines ─────────────────────────────────────
+                !hasAnalystData ? (
+                  <ChartEmpty text="Not enough trade history to compare analysts yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart
+                      data={analystCompareData}
+                      margin={{ top: 48, right: 16, bottom: 0, left: 0 }}
+                    >
+                      <XAxis
+                        dataKey="date"
+                        tick={TICK_STYLE}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(v) => formatDateLabel(String(v)).toUpperCase()}
+                        interval={Math.max(1, Math.floor(analystCompareData.length / 6))}
+                        padding={{ left: 8, right: 8 }}
+                      />
+                      <YAxis
+                        hide={false}
+                        tick={TICK_STYLE}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(v) => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`}
+                        width={48}
+                      />
+                      <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        formatter={(v, name) => {
+                          const analyst = analysts.find((a) => a.id === name);
+                          return [
+                            `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`,
+                            analyst?.name ?? String(name),
+                          ];
+                        }}
+                        labelFormatter={(l: unknown) => formatDateLabel(String(l))}
+                        labelStyle={{ color: 'var(--muted-foreground)' }}
+                      />
+                      <Legend
+                        iconType="plainline"
+                        iconSize={16}
+                        formatter={(value) =>
+                          analysts.find((a) => a.id === value)?.name ?? value
+                        }
+                        wrapperStyle={{ fontSize: 11, paddingBottom: 4 }}
+                      />
+                      {analysts.map((analyst, i) => (
+                        <Line
+                          key={analyst.id}
+                          type="monotone"
+                          dataKey={analyst.id}
+                          stroke={ANALYST_COLORS[i % ANALYST_COLORS.length]}
+                          strokeWidth={1.5}
+                          dot={false}
+                          activeDot={{ r: 3 }}
+                          connectNulls
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                )
               ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={equityData} margin={{ top: 40, right: 0, bottom: 0, left: 0 }}>
-                    <defs>
-                      <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={strokeColor} stopOpacity={0.2} />
-                        <stop offset="95%" stopColor={strokeColor} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
-                      interval={Math.max(1, Math.floor(equityData.length / 6))}
-                      padding={{ left: 0, right: 0 }}
-                    />
-                    <YAxis hide domain={equityDomain} />
-                    <Tooltip
-                      contentStyle={{
-                        background: 'var(--popover)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        color: 'var(--popover-foreground)',
-                      }}
-                      formatter={(v) => [
-                        isAnalystView
-                          ? `${Number(v) >= 0 ? '+' : ''}$${Number(v).toLocaleString()}`
-                          : `$${Number(v).toLocaleString()}`,
-                        isAnalystView ? 'P&L' : 'Portfolio',
-                      ]}
-                      labelFormatter={(l: unknown) => formatDateLabel(String(l))}
-                      labelStyle={{ color: 'var(--muted-foreground)' }}
-                    />
-                    {isAnalystView && <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />}
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke={strokeColor}
-                      strokeWidth={1.5}
-                      fill="url(#eqGrad)"
-                      dot={false}
-                      activeDot={{ r: 3, fill: strokeColor }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                // ── vs S&P 500 ──────────────────────────────────────────────
+                !hasSpyData ? (
+                  <ChartEmpty text="Not enough data to compare against S&P 500 for this range." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart
+                      data={spyCompareData}
+                      margin={{ top: 48, right: 16, bottom: 0, left: 0 }}
+                    >
+                      <XAxis
+                        dataKey="date"
+                        tick={TICK_STYLE}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(v) => formatDateLabel(String(v)).toUpperCase()}
+                        interval={Math.max(1, Math.floor(spyCompareData.length / 6))}
+                        padding={{ left: 8, right: 8 }}
+                      />
+                      <YAxis
+                        hide={false}
+                        tick={TICK_STYLE}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(v) => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`}
+                        width={48}
+                      />
+                      <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        formatter={(v, name) => [
+                          `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`,
+                          name === 'portfolio' ? 'Portfolio' : 'S&P 500',
+                        ]}
+                        labelFormatter={(l: unknown) => formatDateLabel(String(l))}
+                        labelStyle={{ color: 'var(--muted-foreground)' }}
+                      />
+                      <Legend
+                        iconType="plainline"
+                        iconSize={16}
+                        formatter={(value) =>
+                          value === 'portfolio' ? 'Portfolio' : 'S&P 500'
+                        }
+                        wrapperStyle={{ fontSize: 11, paddingBottom: 4 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="portfolio"
+                        stroke={equityPositive ? PNL_HEX.positive : PNL_HEX.negative}
+                        strokeWidth={1.5}
+                        dot={false}
+                        activeDot={{ r: 3 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="spy"
+                        stroke="#71717a"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 2"
+                        dot={false}
+                        activeDot={{ r: 3 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )
               )}
             </div>
 
-            {/* Recent picks — filtered by selected analyst */}
+            {/* Recent picks — all picks, no analyst filter, only All/Open/Passed pills */}
             {loading ? (
               <div className="space-y-3">
-                {[1, 2, 3].map((i) => <Skeleton key={i} className="h-48 w-full rounded-lg" />)}
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-48 w-full rounded-lg" />
+                ))}
               </div>
             ) : (
               <RecentPicksSection picks={recentPicks} />
             )}
-
           </div>
 
-          {/* ══ RIGHT column — positions card ══════════════════════════════ */}
+          {/* ══ RIGHT column — positions ═══════════════════════════════════ */}
           <div className="hidden lg:block w-80 shrink-0">
             <Tabs defaultValue="open" className="gap-0">
               <TabsList variant="line" className="w-auto self-start px-0">
                 <TabsTrigger value="open" className="px-0 mr-4">
                   Open
                   {openTrades.length > 0 && (
-                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">{openTrades.length}</span>
+                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
+                      {openTrades.length}
+                    </span>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="closed" className="px-0">
                   Closed
                   {closedTrades.length > 0 && (
-                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">{closedTrades.length}</span>
+                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
+                      {closedTrades.length}
+                    </span>
                   )}
                 </TabsTrigger>
               </TabsList>
@@ -516,14 +762,23 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                   <TabsContent value="open" className="mt-0">
                     {loading ? (
                       <div className="space-y-1 px-4 pt-1 pb-2">
-                        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
+                        {[1, 2, 3].map((i) => (
+                          <Skeleton key={i} className="h-14 rounded-lg" />
+                        ))}
                       </div>
                     ) : openTrades.length === 0 ? (
-                      <Empty text="No open positions" subtext="Positions appear when an analyst places a paper trade during a run." />
+                      <Empty
+                        text="No open positions"
+                        subtext="Positions appear when an analyst places a paper trade during a run."
+                      />
                     ) : (
                       <div>
                         {openTrades.map((t) => (
-                          <DashboardTradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
+                          <DashboardTradeRow
+                            key={t.id}
+                            trade={t}
+                            flash={flashIds.get(t.id)}
+                          />
                         ))}
                       </div>
                     )}
@@ -531,7 +786,10 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
 
                   <TabsContent value="closed" className="mt-0">
                     {closedTrades.length === 0 ? (
-                      <Empty text="No closed trades yet" subtext="Trades close when they hit a target, stop-loss, or manual exit." />
+                      <Empty
+                        text="No closed trades yet"
+                        subtext="Trades close when they hit a target, stop-loss, or manual exit."
+                      />
                     ) : (
                       <div>
                         {closedTrades.map((t) => (

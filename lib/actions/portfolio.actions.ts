@@ -97,6 +97,7 @@ export interface DashboardData {
   analysts: { id: string; name: string }[];
   analystEquityCurves: Record<string, { date: string; value: number }[]>;
   spyBenchmark: SpyBenchmark;
+  spyCandles: { date: string; close: number }[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -195,6 +196,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       analysts: [],
       analystEquityCurves: {},
       spyBenchmark: { '1W': null, '1M': null, '1Y': null },
+      spyCandles: [],
     };
   }
 
@@ -403,9 +405,10 @@ export async function getDashboardData(): Promise<DashboardData> {
     (async () => {
       try {
         const { getStockCandles } = await import("@/lib/actions/finnhub.actions");
-        return await getStockCandles('SPY', 370);
+        const candles = await getStockCandles('SPY', 400);
+        return candles.map((c) => ({ date: c.date, close: c.close }));
       } catch {
-        return [];
+        return [] as { date: string; close: number }[];
       }
     })(),
   ]);
@@ -613,5 +616,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     analysts,
     analystEquityCurves,
     spyBenchmark,
+    spyCandles,
   };
 }
