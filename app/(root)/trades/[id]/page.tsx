@@ -528,24 +528,24 @@ export default async function TradeDetailPage({
                 </span>
               </div>
 
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground truncate">Bought {trade.shares} × {fmtCur(trade.entryPrice)}</span>
-                  <span className="tabular-nums font-medium shrink-0">{fmtCur(positionCost)}</span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                  <span className="text-muted-foreground">Bought @ {fmtCur(trade.entryPrice)}</span>
+                  <span className="font-medium tabular-nums">{fmtCur(positionCost)}</span>
                 </div>
                 {exitProceeds != null && closePrice != null && (
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground truncate">Sold {trade.shares} × {fmtCur(closePrice)}</span>
-                    <span className="tabular-nums font-medium shrink-0">{fmtCur(exitProceeds)}</span>
+                  <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                    <span className="text-muted-foreground">Sold @ {fmtCur(closePrice)}</span>
+                    <span className="font-medium tabular-nums">{fmtCur(exitProceeds)}</span>
+                  </div>
+                )}
+                {fmtExitReason(position.closeReason) && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Exit</span>
+                    <span className="font-medium">{fmtExitReason(position.closeReason)}</span>
                   </div>
                 )}
               </div>
-
-              {fmtExitReason(position.closeReason) && (
-                <p className="text-xs text-muted-foreground">
-                  Exit: <span className="font-medium text-foreground">{fmtExitReason(position.closeReason)}</span>
-                </p>
-              )}
             </div>
           )}
 
@@ -554,15 +554,11 @@ export default async function TradeDetailPage({
             <CardContent className="p-3 flex flex-col gap-1">
               {/* Static field rows */}
               {([
-                { label: 'Direction', value: position.direction },
                 { label: 'Shares', value: String(trade.shares) },
                 { label: 'Avg Entry', value: fmtCur(trade.entryPrice) },
                 { label: 'Cost Basis', value: fmtCur(positionCost) },
                 ...(trade.thesis?.confidenceScore != null
                   ? [{ label: 'Confidence', value: `${trade.thesis.confidenceScore}%` }]
-                  : []),
-                ...(trade.thesis?.holdDuration
-                  ? [{ label: 'Hold Duration', value: trade.thesis.holdDuration }]
                   : []),
                 { label: 'R:R Ratio', value: `${riskReward.toFixed(2)}:1` },
               ] as Array<{ label: string; value: string }>).map(({ label, value }) => (
@@ -641,6 +637,19 @@ export default async function TradeDetailPage({
                   <span className="font-medium text-muted-foreground/40 tabular-nums">—</span>
                 )}
               </div>
+
+              {/* Direction + Hold Duration — bottom of card */}
+              {([
+                { label: 'Direction', value: position.direction },
+                ...(trade.thesis?.holdDuration
+                  ? [{ label: 'Hold Duration', value: trade.thesis.holdDuration }]
+                  : []),
+              ] as Array<{ label: string; value: string }>).map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
+                  <span className="text-muted-foreground">{label}</span>
+                  <span className="font-medium tabular-nums">{value}</span>
+                </div>
+              ))}
 
               {/* Unrealized P&L — open trades only */}
               {isOpen && (
