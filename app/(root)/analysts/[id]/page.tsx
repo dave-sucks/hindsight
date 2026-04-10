@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAnalystDetail } from "@/lib/actions/analyst.actions";
 import { getWatchlistItems } from "@/lib/actions/watchlist.actions";
 import { getLatestPrices } from "@/lib/alpaca";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import AnalystDetailClient from "@/components/analysts/AnalystDetailClient";
 
 type Params = { id: string };
@@ -38,7 +39,7 @@ export default async function AnalystDetailPage({
     });
   }
 
-  const [detail, runningCount, watchlistItems] = await Promise.all([
+  const [detail, runningCount, watchlistItems, alpacaCreds] = await Promise.all([
     getAnalystDetail(id).catch((err) => {
       console.error("[analyst-page] getAnalystDetail failed:", err);
       return null;
@@ -49,18 +50,19 @@ export default async function AnalystDetailPage({
         }).catch(() => 0)
       : Promise.resolve(0),
     getWatchlistItems(id).catch(() => []),
+    userId ? resolveAlpacaCredentials(userId).catch(() => null) : Promise.resolve(null),
   ]);
 
   if (!detail) notFound();
 
-  // Fetch live prices for open positions
+  // Fetch live prices for open positions using user's Alpaca credentials
   const openSymbols = detail.recentTrades
     .filter((t) => t.status === "OPEN")
     .map((t) => t.symbol);
   const uniqueSymbols = [...new Set(openSymbols)];
   const livePrices: Record<string, number> =
     uniqueSymbols.length > 0
-      ? await getLatestPrices(uniqueSymbols).catch(() => ({}))
+      ? await getLatestPrices(uniqueSymbols, alpacaCreds ?? undefined).catch(() => ({}))
       : {};
 
   return (

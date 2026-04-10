@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getLatestPrices, getLatestPricesWithMeta, type PriceLookup } from "@/lib/alpaca";
+import { getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
@@ -75,11 +75,20 @@ export interface RecentPick {
   sourcesUsed: unknown;
 }
 
+export interface SpyBenchmark {
+  '1W': number | null;
+  '1M': number | null;
+  '1Y': number | null;
+}
+
 export interface DashboardData {
   openTrades: MockTrade[];
   closedTrades: MockTrade[];
   portfolio: PortfolioStats;
+  /** Total equity curve from Alpaca Portfolio History API (realized + unrealized). Falls back to realizedCurve. */
   equityCurve: { date: string; value: number }[];
+  /** Realized-only equity curve (cumulative closed P&L + starting capital). */
+  realizedCurve: { date: string; value: number }[];
   agentConfigs: AgentConfigSummary[];
   recentRuns: RecentRunSummary[];
   todaysPicks: TodaysPick[];
@@ -88,6 +97,10 @@ export interface DashboardData {
   analystCount: number;
   hasCompletedRun: boolean;
   hasBrief: boolean;
+  analysts: { id: string; name: string }[];
+  analystEquityCurves: Record<string, { date: string; value: number }[]>;
+  spyBenchmark: SpyBenchmark;
+  spyCandles: { date: string; close: number }[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -175,6 +188,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       closedTrades: [],
       portfolio: emptyPortfolio,
       equityCurve: [],
+      realizedCurve: [],
       agentConfigs: [],
       recentRuns: [],
       todaysPicks: [],
@@ -183,6 +197,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       analystCount: 0,
       hasCompletedRun: false,
       hasBrief: false,
+      analysts: [],
+      analystEquityCurves: {},
+      spyBenchmark: { '1W': null, '1M': null, '1Y': null },
+      spyCandles: [],
     };
   }
 
@@ -336,7 +354,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     }),
   ]);
 
-  // ── Phase B: price + name lookups, parallel ─────────────────────────────
+  // ── Phase B: price + name lookups + SPY benchmark, parallel ────────────
   // These depend on tickers from phase A but are independent of each other,
   // so run them in parallel instead of sequentially.
   const openTickers = [...new Set(dbOpenPositions.map((p) => p.symbol))];
@@ -349,7 +367,17 @@ export async function getDashboardData(): Promise<DashboardData> {
     fetchedAt: new Date().toISOString(),
   };
 
-  const [priceLookup, nameMap] = await Promise.all([
+  function computeSpyReturn(candles: { date: string; close: number }[], days: number): number | null {
+    if (candles.length < 2) return null;
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const sliced = candles.filter((c) => new Date(c.date + 'T12:00:00') >= cutoff);
+    if (sliced.length < 2) return null;
+    const start = sliced[0].close;
+    const end = sliced[sliced.length - 1].close;
+    return ((end - start) / start) * 100;
+  }
+
+  const [priceLookup, nameMap, spyCandles, portfolioHistory] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -378,8 +406,30 @@ export async function getDashboardData(): Promise<DashboardData> {
       }
       return map;
     })(),
+    (async () => {
+      try {
+        const { getStockCandles } = await import("@/lib/actions/finnhub.actions");
+        const candles = await getStockCandles('SPY', 400);
+        return candles.map((c) => ({ date: c.date, close: c.close }));
+      } catch {
+        return [] as { date: string; close: number }[];
+      }
+    })(),
+    // Alpaca Portfolio History — total equity including unrealized P&L
+    alpacaCreds
+      ? getPortfolioHistory({}, alpacaCreds).catch((err) => {
+          console.warn(`[portfolio] getPortfolioHistory failed: ${err instanceof Error ? err.message : err}`);
+          return [] as import("@/lib/alpaca").PortfolioHistoryPoint[];
+        })
+      : Promise.resolve([] as import("@/lib/alpaca").PortfolioHistoryPoint[]),
   ]);
   const priceMap = priceLookup.prices;
+
+  const spyBenchmark: SpyBenchmark = {
+    '1W': computeSpyReturn(spyCandles, 7),
+    '1M': computeSpyReturn(spyCandles, 30),
+    '1Y': computeSpyReturn(spyCandles, 365),
+  };
 
   // ── 4. Map open positions → MockTrade shape ────────────────────────────────
   const openTrades: MockTrade[] = dbOpenPositions.map((p) => {
@@ -411,6 +461,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       thesis: "",
       shares: p.quantity,
       analystName: p.analyst?.name ?? undefined,
+      analystId: p.analystId ?? undefined,
       placedAt: order?.createdAt?.toISOString(),
       filledAt: order?.filledAt?.toISOString(),
       orderStatus: order?.status,
@@ -442,6 +493,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       thesis: "",
       shares: p.quantity,
       analystName: p.analyst?.name ?? undefined,
+      analystId: p.analystId ?? undefined,
     };
   });
 
@@ -457,8 +509,36 @@ export async function getDashboardData(): Promise<DashboardData> {
         closedWithOutcome.length
       : null;
 
-  // ── 7. Equity curve ────────────────────────────────────────────────────────
-  const equityCurve = buildEquityCurve(dbClosedPositions, STARTING_CAPITAL, totalValue);
+  // ── 7. Equity curves ───────────────────────────────────────────────────────
+  // realizedCurve: cumulative closed P&L starting from STARTING_CAPITAL (old behavior)
+  const realizedCurve = buildEquityCurve(dbClosedPositions, STARTING_CAPITAL, totalValue);
+
+  // equityCurve: total equity from Alpaca Portfolio History API (includes unrealized)
+  // Falls back to realizedCurve if Alpaca creds are missing or call failed.
+  const equityCurve: { date: string; value: number }[] =
+    portfolioHistory.length >= 2
+      ? portfolioHistory.map((p) => ({ date: p.date, value: p.equity }))
+      : realizedCurve;
+
+  // ── 7b. Per-analyst equity curves (cumulative P&L, starting from 0) ────────
+  const analystEquityCurves: Record<string, { date: string; value: number }[]> = {};
+  const analystsWithTrades = new Set<string>([
+    ...dbClosedPositions.map((p) => p.analystId),
+    ...dbOpenPositions.map((p) => p.analystId),
+  ]);
+  for (const analystId of analystsWithTrades) {
+    const closedForAnalyst = dbClosedPositions.filter((p) => p.analystId === analystId);
+    const analystOpenPnl = openTrades
+      .filter((t) => t.analystId === analystId)
+      .reduce((s, t) => s + t.pnl, 0);
+    const analystRealizedPnl = closedForAnalyst.reduce((s, p) => s + (p.realizedPnl ?? 0), 0);
+    analystEquityCurves[analystId] = buildEquityCurve(
+      closedForAnalyst,
+      0,
+      analystRealizedPnl + analystOpenPnl,
+      365,
+    );
+  }
 
   // ── 8. Agent configs with last-run info (fetched in phase A) ──────────
   const tradeCountMap = new Map<string, number>();
@@ -474,6 +554,10 @@ export async function getDashboardData(): Promise<DashboardData> {
     lastRunAt: a.researchRuns[0]?.startedAt.toISOString() ?? null,
     tradesPlaced: tradeCountMap.get(a.id) ?? 0,
   }));
+
+  const analysts = dbAgentConfigs
+    .filter((a) => analystsWithTrades.has(a.id))
+    .map((a) => ({ id: a.id, name: a.name }));
 
   // ── 9. Recent research runs (fetched in phase A) ─────────────────────
   const recentRuns: RecentRunSummary[] = dbRecentRuns.map((r) => ({
@@ -540,6 +624,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       openCount: openTrades.length,
     },
     equityCurve,
+    realizedCurve,
     agentConfigs,
     recentRuns,
     todaysPicks,
@@ -548,5 +633,9 @@ export async function getDashboardData(): Promise<DashboardData> {
     analystCount: dbAgentConfigs.length,
     hasCompletedRun: dbRecentRuns.some((r) => r.status === "COMPLETE"),
     hasBrief: recentPicks.length > 0,
+    analysts,
+    analystEquityCurves,
+    spyBenchmark,
+    spyCandles,
   };
 }
