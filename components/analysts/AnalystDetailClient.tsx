@@ -673,7 +673,7 @@ export default function AnalystDetailClient({
                       domain={
                         chartMode === "pnl"
                           ? ['auto', 'auto']
-                          : ['dataMin * 0.98', 'dataMax * 1.25']
+                          : ['dataMin * 0.999', 'dataMax * 1.001']
                       }
                       padding={{ top: chartMode === "pnl" ? 20 : 0 }}
                     />

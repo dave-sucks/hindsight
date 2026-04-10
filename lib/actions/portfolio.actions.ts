@@ -88,6 +88,8 @@ export interface DashboardData {
   analystCount: number;
   hasCompletedRun: boolean;
   hasBrief: boolean;
+  analysts: { id: string; name: string }[];
+  analystEquityCurves: Record<string, { date: string; value: number }[]>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -183,6 +185,8 @@ export async function getDashboardData(): Promise<DashboardData> {
       analystCount: 0,
       hasCompletedRun: false,
       hasBrief: false,
+      analysts: [],
+      analystEquityCurves: {},
     };
   }
 
@@ -411,6 +415,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       thesis: "",
       shares: p.quantity,
       analystName: p.analyst?.name ?? undefined,
+      analystId: p.analystId ?? undefined,
       placedAt: order?.createdAt?.toISOString(),
       filledAt: order?.filledAt?.toISOString(),
       orderStatus: order?.status,
@@ -442,6 +447,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       thesis: "",
       shares: p.quantity,
       analystName: p.analyst?.name ?? undefined,
+      analystId: p.analystId ?? undefined,
     };
   });
 
@@ -460,6 +466,26 @@ export async function getDashboardData(): Promise<DashboardData> {
   // ── 7. Equity curve ────────────────────────────────────────────────────────
   const equityCurve = buildEquityCurve(dbClosedPositions, STARTING_CAPITAL, totalValue);
 
+  // ── 7b. Per-analyst equity curves (cumulative P&L, starting from 0) ────────
+  const analystEquityCurves: Record<string, { date: string; value: number }[]> = {};
+  const analystsWithTrades = new Set<string>([
+    ...dbClosedPositions.map((p) => p.analystId),
+    ...dbOpenPositions.map((p) => p.analystId),
+  ]);
+  for (const analystId of analystsWithTrades) {
+    const closedForAnalyst = dbClosedPositions.filter((p) => p.analystId === analystId);
+    const analystOpenPnl = openTrades
+      .filter((t) => t.analystId === analystId)
+      .reduce((s, t) => s + t.pnl, 0);
+    const analystRealizedPnl = closedForAnalyst.reduce((s, p) => s + (p.realizedPnl ?? 0), 0);
+    analystEquityCurves[analystId] = buildEquityCurve(
+      closedForAnalyst,
+      0,
+      analystRealizedPnl + analystOpenPnl,
+      365,
+    );
+  }
+
   // ── 8. Agent configs with last-run info (fetched in phase A) ──────────
   const tradeCountMap = new Map<string, number>();
   for (const pos of positionsWithAnalyst) {
@@ -474,6 +500,10 @@ export async function getDashboardData(): Promise<DashboardData> {
     lastRunAt: a.researchRuns[0]?.startedAt.toISOString() ?? null,
     tradesPlaced: tradeCountMap.get(a.id) ?? 0,
   }));
+
+  const analysts = dbAgentConfigs
+    .filter((a) => analystsWithTrades.has(a.id))
+    .map((a) => ({ id: a.id, name: a.name }));
 
   // ── 9. Recent research runs (fetched in phase A) ─────────────────────
   const recentRuns: RecentRunSummary[] = dbRecentRuns.map((r) => ({
@@ -548,5 +578,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     analystCount: dbAgentConfigs.length,
     hasCompletedRun: dbRecentRuns.some((r) => r.status === "COMPLETE"),
     hasBrief: recentPicks.length > 0,
+    analysts,
+    analystEquityCurves,
   };
 }
