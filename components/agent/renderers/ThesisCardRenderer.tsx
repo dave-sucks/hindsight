@@ -46,8 +46,8 @@ export function ThesisCardRenderer({ toolCallId, loading }: Props) {
   }
 
   // Collect all ready thesis results
-  const theses: ThesisCardData[] = thesisParts
-    .map((p) => {
+  const theses = thesisParts
+    .map((p): ThesisCardData | null => {
       const r = (p.result ?? p.output) as Record<string, unknown> | undefined;
       if (!r) return null;
       // Unwrap ToolResult envelope if present
@@ -69,7 +69,7 @@ export function ThesisCardRenderer({ toolCallId, loading }: Props) {
         exchange: data.exchange as string | null | undefined,
         fundamentals: data.fundamentals as ThesisCardData["fundamentals"],
         status: (data.status as ThesisCardData["status"]) ?? "ACTIVE",
-      } satisfies ThesisCardData;
+      };
     })
     .filter((t): t is ThesisCardData => t !== null);
 
