@@ -376,6 +376,73 @@ export async function getLatestPricesWithMeta(
   return { prices: result, sources, fetchedAt };
 }
 
+// ─── Portfolio history ────────────────────────────────────────────────────────
+
+export interface PortfolioHistoryPoint {
+  date: string; // YYYY-MM-DD
+  equity: number; // Total portfolio value including unrealized P&L
+  profitLoss: number; // P&L for this data point
+}
+
+/**
+ * Returns daily portfolio history from Alpaca's Portfolio History API.
+ * equity[] = total account value including both realized and unrealized P&L.
+ * This is the most accurate source for the equity curve — one call, server-side.
+ */
+export async function getPortfolioHistory(
+  options: { period?: string; timeframe?: string } = {},
+  creds?: AlpacaCredentials,
+): Promise<PortfolioHistoryPoint[]> {
+  const baseUrl = (creds?.baseUrl || process.env.ALPACA_BASE_URL || PAPER_BASE_URL).replace(/\/$/, "");
+  const keyId = creds?.keyId || process.env.ALPACA_API_KEY!;
+  const secretKey = creds?.secretKey || process.env.ALPACA_API_SECRET!;
+
+  const params = new URLSearchParams({
+    period: options.period ?? "5A",
+    timeframe: options.timeframe ?? "1D",
+  });
+
+  const url = `${baseUrl}/v2/account/portfolio/history?${params}`;
+
+  const raw = await withTimeout(
+    fetch(url, {
+      headers: {
+        "APCA-API-KEY-ID": keyId,
+        "APCA-API-SECRET-KEY": secretKey,
+      },
+    }).then(async (res) => {
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`Alpaca portfolio history ${res.status}: ${body.slice(0, 200)}`);
+      }
+      return res.json() as Promise<{
+        timestamp: number[];
+        equity: (number | null)[];
+        profit_loss: (number | null)[];
+        base_value: number;
+      }>;
+    }),
+    "getPortfolioHistory",
+  );
+
+  if (!Array.isArray(raw.timestamp) || !Array.isArray(raw.equity)) {
+    throw new Error("Alpaca portfolio history: unexpected response shape");
+  }
+
+  const points: PortfolioHistoryPoint[] = [];
+  for (let i = 0; i < raw.timestamp.length; i++) {
+    const equity = raw.equity[i];
+    if (equity == null || !Number.isFinite(equity) || equity <= 0) continue;
+    points.push({
+      date: new Date(raw.timestamp[i] * 1000).toISOString().slice(0, 10),
+      equity,
+      profitLoss: raw.profit_loss?.[i] ?? 0,
+    });
+  }
+
+  return points;
+}
+
 // ─── Historical bars ─────────────────────────────────────────────────────────
 
 /**

@@ -311,7 +311,7 @@ export default function AnalystDetailClient({
 
     const points: { date: string; pnl: number; value: number }[] = [];
 
-    // Start at earliest trade open date
+    // Start at 0 P&L on the earliest trade open date
     const allTrades = [...recentTrades].sort(
       (a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime(),
     );
@@ -319,43 +319,43 @@ export default function AnalystDetailClient({
       points.push({
         date: new Date(allTrades[0].openedAt).toISOString().slice(0, 10),
         pnl: 0,
-        value: totalCostBasis,
+        value: 0,
       });
     }
 
-    // Add closed trade points (cumulative realized)
+    // Add closed trade points (cumulative realized P&L from 0 baseline)
     let cum = 0;
     for (const t of closed) {
       cum += t.realizedPnl!;
       points.push({
         date: new Date(t.closedAt!).toISOString().slice(0, 10),
         pnl: cum,
-        value: totalCostBasis + cum,
+        value: cum,
       });
     }
 
-    // Add today's point with unrealized P&L
-    if (hasOpenPositions) {
-      const today = new Date().toISOString().slice(0, 10);
-      const lastPoint = points[points.length - 1];
-      const todayPnl = cum + totalUnrealizedPnl;
-      const todayValue = totalCurrentValue + cum;
-      if (!lastPoint || lastPoint.date !== today) {
-        points.push({ date: today, pnl: todayPnl, value: todayValue });
-      } else {
-        lastPoint.pnl = todayPnl;
-        lastPoint.value = todayValue;
-        // If the start point and today point share the same date (all trades opened today),
-        // insert a baseline point for yesterday so we have at least 2 distinct chart points.
-        if (points.length < 2) {
-          const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-          points.unshift({ date: yesterday, pnl: 0, value: totalCostBasis });
-        }
+    // Add today's point including unrealized P&L from open positions
+    const today = new Date().toISOString().slice(0, 10);
+    const todayPnl = cum + totalUnrealizedPnl;
+    const lastPoint = points[points.length - 1];
+    if (!lastPoint || lastPoint.date !== today) {
+      // Always add today if we have open positions or at least one trade
+      if (hasOpenPositions || recentTrades.length > 0) {
+        points.push({ date: today, pnl: todayPnl, value: todayPnl });
       }
+    } else {
+      lastPoint.pnl = todayPnl;
+      lastPoint.value = todayPnl;
+    }
+
+    // Ensure at least 2 distinct points so the chart renders
+    if (points.length === 1) {
+      const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+      points.unshift({ date: yesterday, pnl: 0, value: 0 });
     }
 
     return points.length >= 2 ? points : [];
-  }, [recentTrades, hasOpenPositions, totalUnrealizedPnl, totalCostBasis, totalCurrentValue]);
+  }, [recentTrades, hasOpenPositions, totalUnrealizedPnl]);
 
   const filteredEquity = useMemo(
     () => sliceByRange(equityData, range),

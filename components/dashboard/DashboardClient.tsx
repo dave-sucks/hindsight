@@ -68,6 +68,7 @@ const RANGE_DAYS: Record<Range, number> = {
 
 type ChartView = 'portfolio' | 'by-analyst' | 'vs-spy';
 type DisplayMode = 'dollar' | 'percent';
+type ShowMode = 'both' | 'realized' | 'unrealized';
 
 const ANALYST_COLORS = [
   '#6366f1',
@@ -331,6 +332,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
   const [range, setRange] = useState<Range>('1M');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('dollar');
+  const [showMode, setShowMode] = useState<ShowMode>('both');
   const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(new Set());
   const [flashIds, setFlashIds] = useState<Map<string, 'win' | 'loss'>>(new Map());
 
@@ -372,6 +374,27 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
   const recentPicks = data?.recentPicks ?? [];
 
   const rawEquity = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
+  const rawRealizedCurve = data?.realizedCurve ?? rawEquity;
+
+  // Derive the active equity curve based on showMode
+  const activeCurve = useMemo(() => {
+    if (showMode === 'realized') return rawRealizedCurve;
+    if (showMode === 'unrealized') {
+      // unrealizedPnl at each date = total equity - (startCapital + realizedPnl)
+      // realizedCurve[i].value = startCapital + realizedPnl_at_date
+      // equityCurve[i].value   = startCapital + realizedPnl + unrealizedPnl
+      // → unrealizedPnl = equityCurve - realizedCurve
+      // → unrealizedCurve.value = startCapital + unrealizedPnl
+      const startCapital = rawRealizedCurve.length > 0 ? rawRealizedCurve[0].value : 100_000;
+      const realizedMap = new Map(rawRealizedCurve.map((p) => [p.date, p.value]));
+      return rawEquity.map((p) => {
+        const realized = realizedMap.get(p.date) ?? startCapital;
+        const unrealizedPnl = p.value - realized;
+        return { date: p.date, value: startCapital + unrealizedPnl };
+      });
+    }
+    return rawEquity; // 'both' — total equity from Alpaca
+  }, [showMode, rawEquity, rawRealizedCurve]);
 
   const portfolio = data?.portfolio ?? {
     totalValue: mockPortfolio.totalValue,
@@ -400,8 +423,8 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
 
   // ── Chart data (memoized) ───────────────────────────────────────────────────
   const portfolioData = useMemo(
-    () => filterByRange(rawEquity, range),
-    [rawEquity, range],
+    () => filterByRange(activeCurve, range),
+    [activeCurve, range],
   );
 
   // % return from first data point in the selected range
@@ -565,6 +588,18 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                       </DropdownMenuGroup>
                       {effectiveView === 'portfolio' && (
                         <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuGroup>
+                            <DropdownMenuLabel>Show</DropdownMenuLabel>
+                            <DropdownMenuRadioGroup
+                              value={showMode}
+                              onValueChange={(v) => setShowMode(v as ShowMode)}
+                            >
+                              <DropdownMenuRadioItem value="both">Total (Realized + Unrealized)</DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem value="realized">Realized Only</DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem value="unrealized">Unrealized Only</DropdownMenuRadioItem>
+                            </DropdownMenuRadioGroup>
+                          </DropdownMenuGroup>
                           <DropdownMenuSeparator />
                           <DropdownMenuGroup>
                             <DropdownMenuLabel>Display</DropdownMenuLabel>

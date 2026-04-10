@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getLatestPrices, getLatestPricesWithMeta, type PriceLookup } from "@/lib/alpaca";
+import { getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
@@ -85,7 +85,10 @@ export interface DashboardData {
   openTrades: MockTrade[];
   closedTrades: MockTrade[];
   portfolio: PortfolioStats;
+  /** Total equity curve from Alpaca Portfolio History API (realized + unrealized). Falls back to realizedCurve. */
   equityCurve: { date: string; value: number }[];
+  /** Realized-only equity curve (cumulative closed P&L + starting capital). */
+  realizedCurve: { date: string; value: number }[];
   agentConfigs: AgentConfigSummary[];
   recentRuns: RecentRunSummary[];
   todaysPicks: TodaysPick[];
@@ -185,6 +188,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       closedTrades: [],
       portfolio: emptyPortfolio,
       equityCurve: [],
+      realizedCurve: [],
       agentConfigs: [],
       recentRuns: [],
       todaysPicks: [],
@@ -373,7 +377,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     return ((end - start) / start) * 100;
   }
 
-  const [priceLookup, nameMap, spyCandles] = await Promise.all([
+  const [priceLookup, nameMap, spyCandles, portfolioHistory] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -411,6 +415,13 @@ export async function getDashboardData(): Promise<DashboardData> {
         return [] as { date: string; close: number }[];
       }
     })(),
+    // Alpaca Portfolio History — total equity including unrealized P&L
+    alpacaCreds
+      ? getPortfolioHistory({}, alpacaCreds).catch((err) => {
+          console.warn(`[portfolio] getPortfolioHistory failed: ${err instanceof Error ? err.message : err}`);
+          return [] as import("@/lib/alpaca").PortfolioHistoryPoint[];
+        })
+      : Promise.resolve([] as import("@/lib/alpaca").PortfolioHistoryPoint[]),
   ]);
   const priceMap = priceLookup.prices;
 
@@ -498,8 +509,16 @@ export async function getDashboardData(): Promise<DashboardData> {
         closedWithOutcome.length
       : null;
 
-  // ── 7. Equity curve ────────────────────────────────────────────────────────
-  const equityCurve = buildEquityCurve(dbClosedPositions, STARTING_CAPITAL, totalValue);
+  // ── 7. Equity curves ───────────────────────────────────────────────────────
+  // realizedCurve: cumulative closed P&L starting from STARTING_CAPITAL (old behavior)
+  const realizedCurve = buildEquityCurve(dbClosedPositions, STARTING_CAPITAL, totalValue);
+
+  // equityCurve: total equity from Alpaca Portfolio History API (includes unrealized)
+  // Falls back to realizedCurve if Alpaca creds are missing or call failed.
+  const equityCurve: { date: string; value: number }[] =
+    portfolioHistory.length >= 2
+      ? portfolioHistory.map((p) => ({ date: p.date, value: p.equity }))
+      : realizedCurve;
 
   // ── 7b. Per-analyst equity curves (cumulative P&L, starting from 0) ────────
   const analystEquityCurves: Record<string, { date: string; value: number }[]> = {};
@@ -605,6 +624,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       openCount: openTrades.length,
     },
     equityCurve,
+    realizedCurve,
     agentConfigs,
     recentRuns,
     todaysPicks,
