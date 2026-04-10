@@ -132,14 +132,13 @@ export function AgentChat({
   const api = `/api/agent/${mode}`;
 
   // Model override — only meaningful for research-run.
-  // Auto-start runs always use the mode default (the run fires before the user
-  // can interact with the selector anyway). Stored preference only applies to
-  // follow-up chats where the user has time to choose.
+  // Reads stored preference from localStorage (set via settings page or the
+  // in-chat selector). Falls back to mode default (gpt-4o) if nothing is stored
+  // or the stored value isn't a known option.
   const defaultModel = MODES[mode].model;
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    if (mode !== "research-run" || autoStart) return defaultModel;
+    if (mode !== "research-run") return defaultModel;
     const stored = getStoredModel();
-    // Ignore stored values that aren't in the current options list
     const valid = RESEARCH_MODEL_OPTIONS.some((o) => o.value === stored);
     return valid ? (stored ?? defaultModel) : defaultModel;
   });
