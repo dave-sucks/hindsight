@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import Link from "next/link";
 import { ArrowLeft, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AnalystBuilderChat } from "@/components/analysts/AnalystBuilderChat";
+import { AgentChat } from "@/components/agent/AgentChat";
 import { AnalystConfigPanel } from "@/components/analysts/AnalystConfigPanel";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { AlpacaKeyGate } from "@/components/settings/AlpacaKeyGate";
@@ -61,9 +61,10 @@ export function NewAnalystClient({
           className="min-h-0 transition-all duration-500 ease-out"
           style={{ flex: panelOpen ? "0 0 55%" : "1 1 100%" }}
         >
-          <AnalystBuilderChat
+          <AgentChat
+            mode="builder"
             onConfigSuggested={handleConfigSuggested}
-            onCreatingChange={handleCreatingChange}
+            onMutatingChange={handleCreatingChange}
             initialPrompt={initialPrompt}
           />
         </div>

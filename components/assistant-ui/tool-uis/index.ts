@@ -7,17 +7,3 @@ export {
   type SourceData,
   type ToolUICallbacks,
 } from "./tool-ui-shared";
-
-export {
-  SuggestConfigRender,
-  SuggestConfigEditorRender,
-} from "./tool-ui-config";
-
-export {
-  useRegisterResearchToolUIs,
-  useRegisterBuilderToolUIs,
-} from "./tool-ui-research";
-
-export {
-  useRegisterFollowupToolUIs,
-} from "./tool-ui-followup";

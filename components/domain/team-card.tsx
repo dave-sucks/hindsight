@@ -21,7 +21,18 @@ import {
 import { Zap, Globe, Database, Cpu, Copy, Check } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/chat/SourceChip";
-import type { Team, ToolEntry, SubStep, Resource, ResourceType } from "@/lib/agent/workflow-registry";
+import type { Team, ToolEntry, SubStep, Resource, ResourceType, RegistryTool, ToolCategory, TeamId } from "@/lib/agent/workflow-registry";
+import { TOOL_REGISTRY } from "@/lib/agent/workflow-registry";
+
+// ── Team label map ─────────────────────────────────────────────────────────
+
+const TEAM_LABELS: Partial<Record<TeamId, string>> = {
+  builder:      "Builder",
+  agent:        "Research Agent",
+  intelligence: "Intel Pipeline",
+  briefing:     "Briefing Agent",
+  evaluation:   "Evaluation",
+};
 
 // ── Resource type config ──────────────────────────────────────────────────
 
@@ -76,10 +87,13 @@ function ToolDetailDialog({
   tool,
   open,
   onOpenChange,
+  agents,
 }: {
   tool: ToolEntry | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Always-shown: which workflow agents have this tool active */
+  agents?: TeamId[];
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
 
@@ -144,6 +158,24 @@ function ToolDetailDialog({
             </DialogHeader>
             <ResourceEndpoint resource={single} />
           </>
+        )}
+        {/* Active in — always shown when agents are known */}
+        {agents && agents.length > 0 && (
+          <div>
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">
+              Active in
+            </span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {agents.map((id) => (
+                <span
+                  key={id}
+                  className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground"
+                >
+                  {TEAM_LABELS[id] ?? id}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
       </DialogContent>
     </Dialog>
@@ -226,12 +258,15 @@ function SourcePill({ provider }: { provider: string }) {
 
 // ── Tool card ─────────────────────────────────────────────────────────────
 
-function ToolCard({
+export function ToolCard({
   tool,
   onClick,
+  agents,
 }: {
   tool: ToolEntry;
   onClick?: () => void;
+  /** When provided, agent badges are shown below the provider pills */
+  agents?: TeamId[];
 }) {
   const hasDetail = tool.resources && tool.resources.length > 0;
 
@@ -252,10 +287,24 @@ function ToolCard({
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           {tool.summary}
         </p>
-        <div className="flex items-center gap-1 flex-wrap pt-0.5">
-          {providers.map((p) => (
-            <SourcePill key={p} provider={p} />
-          ))}
+        <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
+          <div className="flex items-center gap-1 flex-wrap">
+            {providers.map((p) => (
+              <SourcePill key={p} provider={p} />
+            ))}
+          </div>
+          {agents && agents.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              {agents.map((id) => (
+                <span
+                  key={id}
+                  className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground"
+                >
+                  {TEAM_LABELS[id] ?? id}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </button>
     </Card>
@@ -395,10 +444,13 @@ function PromptBanner({ team }: { team: Team }) {
 
 export function TeamSheetContent({ team }: { team: Team }) {
   const [selectedTool, setSelectedTool] = useState<ToolEntry | null>(null);
+  const [selectedToolAgents, setSelectedToolAgents] = useState<TeamId[] | undefined>();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const handleToolClick = useCallback((tool: ToolEntry) => {
     setSelectedTool(tool);
+    // Look up agents from registry for the dialog — don't show on the card (implied by team context)
+    setSelectedToolAgents(TOOL_REGISTRY.find((rt) => rt.name === tool.name)?.agents);
     setDialogOpen(true);
   }, []);
 
@@ -460,6 +512,7 @@ export function TeamSheetContent({ team }: { team: Team }) {
         tool={selectedTool}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        agents={selectedToolAgents}
       />
     </div>
   );
@@ -507,6 +560,85 @@ export function WorkflowStepCard({
         </TooltipProvider>
       </div>
     </Card>
+  );
+}
+
+// ── Tools Registry sheet content ──────────────────────────────────────────
+// Renders all tools from TOOL_REGISTRY grouped by category using the
+// existing ToolCard / ToolDetailDialog components.
+
+const CATEGORY_LABELS: Record<ToolCategory, string> = {
+  intelligence: "Intelligence",
+  research:     "Research",
+  action:       "Action",
+  system:       "System",
+};
+
+const CATEGORY_ORDER: ToolCategory[] = ["intelligence", "research", "action", "system"];
+
+function toToolEntry(rt: RegistryTool): ToolEntry {
+  return {
+    name: rt.name,
+    provider: rt.providers[0] ?? "internal",
+    summary: rt.summary,
+    resources: rt.resources,
+  };
+}
+
+export function ToolsRegistrySheetContent() {
+  const [selectedRT, setSelectedRT] = useState<RegistryTool | null>(null);
+
+  const handleToolClick = useCallback((rt: RegistryTool) => {
+    setSelectedRT(rt);
+  }, []);
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-sm font-semibold">Tools Registry</h2>
+          <Badge variant="outline" className="text-[10px]">{TOOL_REGISTRY.length} tools</Badge>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          All tools available to agents. Click any tool with a data source to see endpoint details.
+        </p>
+      </div>
+
+      <Separator />
+
+      {CATEGORY_ORDER.map((cat) => {
+        const tools = TOOL_REGISTRY.filter((t) => t.category === cat);
+        if (tools.length === 0) return null;
+        return (
+          <div key={cat}>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
+              {CATEGORY_LABELS[cat]}
+              <span className="ml-1.5 text-muted-foreground/40">{tools.length}</span>
+            </p>
+            <div className="space-y-1.5">
+              {tools.map((rt) => {
+                const entry = toToolEntry(rt);
+                return (
+                  <ToolCard
+                    key={rt.name}
+                    tool={entry}
+                    agents={rt.agents}
+                    onClick={entry.resources?.length ? () => handleToolClick(rt) : undefined}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      <ToolDetailDialog
+        tool={selectedRT ? toToolEntry(selectedRT) : null}
+        agents={selectedRT?.agents}
+        open={selectedRT !== null}
+        onOpenChange={(open) => { if (!open) setSelectedRT(null); }}
+      />
+    </div>
   );
 }
 

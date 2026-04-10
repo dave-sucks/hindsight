@@ -29,14 +29,24 @@ export interface ChatRuntimeProps {
 }
 
 export function ChatRuntime({ api, body, messages, children }: ChatRuntimeProps) {
-  // Capture at mount — transport is never recreated mid-session
+  // api and initial messages are captured at mount (session-scoped)
   const apiRef = useRef(api);
-  const bodyRef = useRef(body);
   const messagesRef = useRef(messages);
+
+  // Body proxy — same object reference, mutated on every render so the
+  // transport picks up dynamic changes (e.g. model switches) on next send.
+  const bodyProxyRef = useRef<Record<string, unknown>>({});
+  // Sync: add/update keys from current body, remove keys no longer present
+  const currentBody = body ?? {};
+  for (const k of Object.keys(bodyProxyRef.current)) {
+    if (!(k in currentBody)) delete bodyProxyRef.current[k];
+  }
+  Object.assign(bodyProxyRef.current, currentBody);
 
   const runtime = useChatRuntime({
     transport: useMemo(
-      () => new DefaultChatTransport({ api: apiRef.current, body: bodyRef.current }),
+      () => new DefaultChatTransport({ api: apiRef.current, body: bodyProxyRef.current }),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       [],
     ),
     ...(messagesRef.current?.length ? { messages: messagesRef.current } : {}),

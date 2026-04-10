@@ -5,7 +5,7 @@ import {
 } from "@/components/assistant-ui/attachment";
 import { CitedMarkdownText } from "@/components/assistant-ui/cited-markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
-import { AgentToolGroup } from "@/components/assistant-ui/agent-tool-group";
+import { ToolCallGroup } from "@/components/agent/ToolCallGroup";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
   SourcesProvider,
@@ -24,7 +24,9 @@ import {
   SuggestionPrimitive,
   ThreadPrimitive,
   useMessage,
+  useMessagePartReasoning,
 } from "@assistant-ui/react";
+import { Reasoning } from "@/components/agent/Reasoning";
 import {
   ArrowDownIcon,
   CheckIcon,
@@ -195,6 +197,11 @@ const MessageError: FC = () => {
   );
 };
 
+const ReasoningPart: FC = () => {
+  const { text } = useMessagePartReasoning();
+  return <Reasoning>{text}</Reasoning>;
+};
+
 const AssistantMessage: FC = () => {
   // Extract _sources from all tool-call results in this message
   const content = useMessage((m) => m.content);
@@ -218,8 +225,9 @@ const AssistantMessage: FC = () => {
               <MessagePrimitive.Parts
                 components={{
                   Text: CitedMarkdownText,
+                  Reasoning: ReasoningPart,
                   tools: { Fallback: ToolFallback },
-                  ToolGroup: AgentToolGroup,
+                  ToolGroup: ToolCallGroup,
                 }}
               />
             </SourcesProvider>

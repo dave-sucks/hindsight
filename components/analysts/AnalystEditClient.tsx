@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AnalystEditorChatWithInitial } from "@/components/analysts/AnalystEditorChatWithInitial";
+import { AgentChat } from "@/components/agent/AgentChat";
 import { AnalystConfigPanel } from "@/components/analysts/AnalystConfigPanel";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
@@ -54,12 +54,13 @@ export function AnalystEditClient({
           className="min-h-0 transition-all duration-500 ease-out"
           style={{ flex: panelOpen ? "0 0 55%" : "1 1 100%" }}
         >
-          <AnalystEditorChatWithInitial
+          <AgentChat
+            mode="editor"
             analystId={analystId}
             currentConfig={currentConfig}
-            initialMessage={initialMessage}
+            initialPrompt={initialMessage}
             onConfigSuggested={handleConfigSuggested}
-            onApplyingChange={handleApplyingChange}
+            onMutatingChange={handleApplyingChange}
           />
         </div>
 
