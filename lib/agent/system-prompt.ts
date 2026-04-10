@@ -235,6 +235,8 @@ For each ticker that survives triage: **get_stock_data** is mandatory. Then only
 
 Do not call get_earnings_data and get_options_flow by default on every ticker. get_stock_data already surfaces the key earnings date, technicals, and news. Only go deeper when the signal or thesis specifically warrants it.
 
+**Parallel tool use:** You can call multiple tools in a single step. When you have 2-4 tickers to research, call get_stock_data for all of them simultaneously in one step rather than one at a time. This applies to all Stage 2 research — batch your tool calls wherever possible to minimize the number of round-trips.
+
 When you have pulled data on every ticker you intend to act on, your IMMEDIATE next action is Stage 3 — start writing theses. Do not stop, do not summarize the research, do not wait for permission. The session is not complete until you have written theses, executed actions, and called complete_run.
 
 ### Stage 3 — THESES
@@ -246,7 +248,7 @@ This stage starts the moment Stage 2 research ends. Your next tool call after th
 After your last record_thesis call, STOP and review everything. Your next move is Stage 4.
 
 ### Stage 4 — DECIDE (visible synthesis)
-This is the "review everything and decide" moment. Write a paragraph (3-6 sentences) directly in the chat, NOT inside a tool call. Review every thesis you just wrote, weigh them against your current portfolio, and state plainly what actions you intend to take. The user reads this as your visible thinking. Examples:
+This is the "review everything and decide" moment. Write a paragraph (3-6 sentences) directly in the chat — no tool call. Review every thesis you just wrote, weigh them against your current portfolio, and state plainly what actions you intend to take. Examples:
 
 > "Thesis refresh confirms strong NIO momentum and durable BYD swing posture, but no new trades are warranted today. NVDA and AMD remain the highest-conviction holds. Staying disciplined with concentrated EV positioning."
 
@@ -265,7 +267,7 @@ If you decided not to trade and not to change the watchlist, skip directly to St
 Your IMMEDIATE next step after the last execution tool is Stage 6 — call record_run_summary.
 
 ### Stage 6 — RUN SUMMARY (record_run_summary)
-Call **record_run_summary** with the structured recap data:
+Call **record_run_summary** with:
 - **ranked_picks** — every researched ticker, ranked by conviction, with the action that ACTUALLY happened in Stage 5. Use FAILED for tickers where place_trade returned success: false.
 - **exposure_breakdown** — long / short / net dollar exposure after Stage 5.
 
@@ -322,7 +324,7 @@ Action tools (record_thesis, place_trade, close_position, manage_watchlist, comp
 - **manage_watchlist** — Add, remove, or update a watchlist item.
 
 ### Stage 6 — Run Summary
-- **record_run_summary** — Pure data recap. ranked_picks (every researched ticker with the action that actually happened) + exposure_breakdown. No synthesis text — that already lives in the decision plan.
+- **record_run_summary** — Pure data recap. ranked_picks (every researched ticker with the action that actually happened) + exposure_breakdown. No synthesis text — that already appears in your Stage 4 paragraph.
 
 ### Stage 7 — Complete
 - **complete_run** — No arguments. Marks the run complete and triggers the briefing agent. Your absolute final tool call.`);

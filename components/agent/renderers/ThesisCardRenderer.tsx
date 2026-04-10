@@ -13,6 +13,7 @@ import { useMessage } from "@assistant-ui/react";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { ThesisCarousel } from "@/components/domain/thesis-carousel";
 import type { ThesisCardData } from "@/components/domain/thesis-card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Props {
   toolName: string;
@@ -38,10 +39,36 @@ export function ThesisCardRenderer({ toolCallId, loading }: Props) {
   const myIndex = thesisParts.findIndex((p) => p.toolCallId === toolCallId);
   if (myIndex > 0) return null;
 
-  // Still loading — show placeholder if no results yet
-  if (loading && thesisParts.every((p) => (p.result ?? p.output) === undefined)) {
+  const readyCount = thesisParts.filter((p) => (p.result ?? p.output) !== undefined).length;
+  const pendingCount = thesisParts.length - readyCount;
+  const allLoading = readyCount === 0 && loading;
+
+  // Still loading first thesis — show skeleton card(s)
+  if (allLoading) {
+    const skeletonCount = Math.max(thesisParts.length, 1);
     return (
-      <div className="my-2 text-sm text-muted-foreground">Recording theses…</div>
+      <div className="my-2 flex gap-3 overflow-hidden">
+        {Array.from({ length: skeletonCount }).map((_, i) => (
+          <div key={i} className="shrink-0 w-72 rounded-xl border border-border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-5 w-16" />
+              <Skeleton className="h-5 w-12 rounded-full" />
+            </div>
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-4/5" />
+            <div className="space-y-1.5 pt-1">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-5/6" />
+              <Skeleton className="h-3 w-4/6" />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Skeleton className="h-8 flex-1" />
+              <Skeleton className="h-8 flex-1" />
+              <Skeleton className="h-8 flex-1" />
+            </div>
+          </div>
+        ))}
+      </div>
     );
   }
 
@@ -75,5 +102,27 @@ export function ThesisCardRenderer({ toolCallId, loading }: Props) {
 
   if (theses.length === 0) return null;
 
-  return <ThesisCarousel theses={theses} />;
+  return (
+    <>
+      <ThesisCarousel theses={theses} />
+      {pendingCount > 0 && (
+        <div className="mt-1 flex gap-2">
+          {Array.from({ length: pendingCount }).map((_, i) => (
+            <div key={i} className="shrink-0 w-72 rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-5 w-16" />
+                <Skeleton className="h-5 w-12 rounded-full" />
+              </div>
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-4/5" />
+              <div className="space-y-1.5 pt-1">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-5/6" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
