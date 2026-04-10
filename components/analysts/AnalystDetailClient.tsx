@@ -216,7 +216,7 @@ export default function AnalystDetailClient({
   const [configOpen, setConfigOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [range, setRange] = useState<Range>("Max");
-  const [chartMode, setChartMode] = useState<"value" | "pnl">("value");
+  const [tradeFilter, setTradeFilter] = useState<"all" | "open" | "closed">("all");
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
   const [, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -362,17 +362,13 @@ export default function AnalystDetailClient({
     [equityData, range],
   );
 
-  const chartDataKey = chartMode === "pnl" ? "pnl" : "value";
+  const chartDataKey = "pnl";
 
   const equityStroke = useMemo(() => {
     if (equityData.length === 0) return PNL_HEX.positive;
     const last = equityData[equityData.length - 1];
-    const first = equityData[0];
-    // For value mode: green if current > initial, for pnl mode: green if >= 0
-    return chartMode === "pnl"
-      ? (last.pnl >= 0 ? PNL_HEX.positive : PNL_HEX.negative)
-      : (last.value >= first.value ? PNL_HEX.positive : PNL_HEX.negative);
-  }, [equityData, chartMode]);
+    return last.pnl >= 0 ? PNL_HEX.positive : PNL_HEX.negative;
+  }, [equityData]);
 
   // ── Display values ──────────────────────────────────────────────────────
   const totalPnl = stats.totalPnl + totalUnrealizedPnl;
@@ -386,7 +382,7 @@ export default function AnalystDetailClient({
   const overlayValue = hasTrades
     ? (totalPnl >= 0 ? "+" : "") + formatCurrency(totalPnl)
     : "$0.00";
-  const overlayLabel = chartMode === "pnl" ? "P&L" : "Net Gain";
+  const overlayLabel = "P&L";
   const overlayColorClass = pnlColorClass;
 
   return (
@@ -599,7 +595,7 @@ export default function AnalystDetailClient({
                     )}
                   </div>
                 </div>
-                {/* Range tabs + mode toggle */}
+                {/* Range tabs */}
                 <div className="absolute bottom-2 left-2 right-2 z-10 flex items-center justify-between">
                   <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-0.5 py-0.5">
                     {RANGES.map((r) => (
@@ -617,30 +613,11 @@ export default function AnalystDetailClient({
                       </button>
                     ))}
                   </div>
-                  <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-0.5 py-0.5">
-                    {(["value", "pnl"] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setChartMode(m)}
-                        className={cn(
-                          "px-1.5 py-0.5 text-[9px] rounded transition-colors",
-                          chartMode === m
-                            ? "bg-muted text-foreground font-medium"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {m === "value" ? "Value" : "P&L"}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <ChartContainer
                   config={{
-                    [chartDataKey]: {
-                      label: chartMode === "pnl" ? "P&L" : "Value",
-                      color: equityStroke,
-                    },
+                    pnl: { label: "P&L", color: equityStroke },
                   } satisfies ChartConfig}
                   className="h-[200px] w-full"
                 >
@@ -729,7 +706,7 @@ export default function AnalystDetailClient({
                 </TabsList>
               </div>
 
-              <TabsContent value={0} className="flex-1 overflow-y-auto">
+              <TabsContent value={0} className="flex-1 overflow-y-auto flex flex-col">
                 {recentTrades.length === 0 ? (
                   <div className="space-y-0 px-3 py-2">
                     {[1, 2, 3].map((i) => (
@@ -744,9 +721,36 @@ export default function AnalystDetailClient({
                     ))}
                   </div>
                 ) : (
-                  recentTrades.map((trade) => (
-                    <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
-                  ))
+                  <>
+                    {/* Open / Closed filter */}
+                    <div className="flex items-center gap-1 px-3 py-2 shrink-0">
+                      {(["all", "open", "closed"] as const).map((f) => {
+                        const count = f === "all" ? recentTrades.length
+                          : f === "open" ? recentTrades.filter((t) => t.status === "OPEN").length
+                          : recentTrades.filter((t) => t.status !== "OPEN").length;
+                        return (
+                          <button
+                            key={f}
+                            onClick={() => setTradeFilter(f)}
+                            className={cn(
+                              "px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors border capitalize",
+                              tradeFilter === f
+                                ? "bg-secondary text-secondary-foreground border-secondary"
+                                : "text-muted-foreground opacity-60 hover:opacity-100 border-transparent",
+                            )}
+                          >
+                            {f} <span className="tabular-nums opacity-70">{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {recentTrades
+                      .filter((t) => tradeFilter === "all" || (tradeFilter === "open" ? t.status === "OPEN" : t.status !== "OPEN"))
+                      .map((trade) => (
+                        <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
+                      ))
+                    }
+                  </>
                 )}
               </TabsContent>
 

@@ -406,14 +406,20 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
 
   // ── Portfolio header values ─────────────────────────────────────────────────
   const totalValueStr = formatCurrency(portfolio.totalValue);
-  const totalPnl = portfolio.unrealizedPnl + portfolio.realizedPnl;
-  const pnlPositive = totalPnl >= 0;
-  const startingCapital = portfolio.totalValue - totalPnl;
-  const totalPnlPct = startingCapital > 0 ? (totalPnl / startingCapital) * 100 : 0;
   const winRateStr =
     portfolio.winRate != null
       ? `${(portfolio.winRate * 100).toFixed(0)}% win rate`
       : null;
+
+  // Range-aware P&L: delta over the selected range from the active (filtered) curve
+  const rangePnl = portfolioData.length >= 2
+    ? portfolioData[portfolioData.length - 1].value - portfolioData[0].value
+    : portfolio.unrealizedPnl + portfolio.realizedPnl;
+  const rangePnlBase = portfolioData.length >= 2 ? portfolioData[0].value : null;
+  const rangePnlPct = rangePnlBase && rangePnlBase > 0
+    ? (rangePnl / rangePnlBase) * 100
+    : 0;
+  const pnlPositive = rangePnl >= 0;
 
   const spyPct: number | null =
     range === '1W' ? spyBenchmark['1W']
@@ -451,11 +457,8 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
   );
 
   // ── Chart visuals ───────────────────────────────────────────────────────────
-  const equityPositive =
-    portfolioData.length > 1
-      ? portfolioData[portfolioData.length - 1].value >= portfolioData[0].value
-      : true;
-  const strokeColor = equityPositive ? PNL_HEX.positive : PNL_HEX.negative;
+  // strokeColor is derived from pnlPositive (same range delta) so chart and header always agree
+  const strokeColor = pnlPositive ? PNL_HEX.positive : PNL_HEX.negative;
 
   const analystChartConfig = useMemo<ChartConfig>(() => {
     const cfg: ChartConfig = {};
@@ -510,9 +513,10 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                   <div className="flex items-center gap-3 flex-wrap">
                     <p className="text-sm tabular-nums flex items-center gap-1">
                       <span className={pnlPositive ? 'text-positive' : 'text-negative'}>
-                        {pnlPositive ? '+' : '-'}${Math.abs(totalPnl).toFixed(2)}{' '}
-                        ({pnlPositive ? '+' : ''}{totalPnlPct.toFixed(2)}%)
+                        {pnlPositive ? '+' : '-'}${Math.abs(rangePnl).toFixed(2)}{' '}
+                        ({pnlPositive ? '+' : ''}{rangePnlPct.toFixed(2)}%)
                       </span>
+                      <span className="text-muted-foreground/50 text-xs">{range}</span>
                       {winRateStr && (
                         <>
                           <span className="text-muted-foreground mx-0.5">—</span>
@@ -520,13 +524,12 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         </>
                       )}
                     </p>
-                    {spyPct !== null && (
+                    {spyPct !== null && effectiveView !== 'vs-spy' && (
                       <span className="text-xs tabular-nums text-muted-foreground">
                         vs SPY{' '}
                         <span className={spyPct >= 0 ? 'text-positive' : 'text-negative'}>
                           {spyPct >= 0 ? '+' : ''}{spyPct.toFixed(2)}%
                         </span>
-                        {' '}{range}
                       </span>
                     )}
                   </div>
