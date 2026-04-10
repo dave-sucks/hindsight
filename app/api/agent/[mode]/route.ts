@@ -32,6 +32,29 @@ export const maxDuration = 300;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Strips tool result payloads down to their summary string before the
+ * messages are converted and sent to the model. The full data object
+ * stays on the client for UI rendering — the model only needs the
+ * one-line summary to continue reasoning. Prevents accumulated tool
+ * results from blowing up the input token count over a long run.
+ */
+function trimToolResults(messages: unknown[]): unknown[] {
+  if (!Array.isArray(messages)) return messages;
+  return messages.map((msg) => {
+    const m = msg as Record<string, unknown>;
+    if (!Array.isArray(m.parts)) return msg;
+    const parts = (m.parts as unknown[]).map((part) => {
+      const p = part as Record<string, unknown>;
+      if (p.type !== "tool-result") return part;
+      const result = p.result as Record<string, unknown> | undefined;
+      if (!result || typeof result.summary !== "string") return part;
+      return { ...p, result: { summary: result.summary } };
+    });
+    return { ...m, parts };
+  });
+}
+
 async function markRunFailed(runId: string | undefined, reason: string) {
   if (!runId) return;
   try {
@@ -211,7 +234,13 @@ export async function POST(
 
     // ── Stream ──────────────────────────────────────────────────────────────
 
-    const modelMessages = await convertToModelMessages(messages);
+    // Strip tool results down to summary-only before sending to the model.
+    // Full data stays on the client for UI rendering — the model only needs
+    // the one-line summary to continue reasoning. This prevents accumulated
+    // tool result JSON (stock data, signals, etc.) from blowing the context.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const trimmedMessages = trimToolResults(messages) as any;
+    const modelMessages = await convertToModelMessages(trimmedMessages);
 
     const resolvedModel =
       modeConfig.provider === "anthropic"
