@@ -21,7 +21,8 @@ import {
 import { Zap, Globe, Database, Cpu, Copy, Check } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/chat/SourceChip";
-import type { Team, ToolEntry, SubStep, Resource, ResourceType } from "@/lib/agent/workflow-registry";
+import type { Team, ToolEntry, SubStep, Resource, ResourceType, RegistryTool, ToolCategory } from "@/lib/agent/workflow-registry";
+import { TOOL_REGISTRY } from "@/lib/agent/workflow-registry";
 
 // ── Resource type config ──────────────────────────────────────────────────
 
@@ -226,7 +227,7 @@ function SourcePill({ provider }: { provider: string }) {
 
 // ── Tool card ─────────────────────────────────────────────────────────────
 
-function ToolCard({
+export function ToolCard({
   tool,
   onClick,
 }: {
@@ -507,6 +508,85 @@ export function WorkflowStepCard({
         </TooltipProvider>
       </div>
     </Card>
+  );
+}
+
+// ── Tools Registry sheet content ──────────────────────────────────────────
+// Renders all tools from TOOL_REGISTRY grouped by category using the
+// existing ToolCard / ToolDetailDialog components.
+
+const CATEGORY_LABELS: Record<ToolCategory, string> = {
+  intelligence: "Intelligence",
+  research:     "Research",
+  action:       "Action",
+  system:       "System",
+};
+
+const CATEGORY_ORDER: ToolCategory[] = ["intelligence", "research", "action", "system"];
+
+function toToolEntry(rt: RegistryTool): ToolEntry {
+  return {
+    name: rt.name,
+    provider: rt.providers[0] ?? "internal",
+    summary: rt.summary,
+    resources: rt.resources,
+  };
+}
+
+export function ToolsRegistrySheetContent() {
+  const [selectedTool, setSelectedTool] = useState<ToolEntry | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const handleToolClick = useCallback((tool: ToolEntry) => {
+    setSelectedTool(tool);
+    setDialogOpen(true);
+  }, []);
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-sm font-semibold">Tools Registry</h2>
+          <Badge variant="outline" className="text-[10px]">{TOOL_REGISTRY.length} tools</Badge>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          All tools available to agents. Click any tool with a data source to see endpoint details.
+        </p>
+      </div>
+
+      <Separator />
+
+      {CATEGORY_ORDER.map((cat) => {
+        const tools = TOOL_REGISTRY.filter((t) => t.category === cat);
+        if (tools.length === 0) return null;
+        return (
+          <div key={cat}>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
+              {CATEGORY_LABELS[cat]}
+              <span className="ml-1.5 text-muted-foreground/40">{tools.length}</span>
+            </p>
+            <div className="space-y-1.5">
+              {tools.map((rt) => {
+                const entry = toToolEntry(rt);
+                return (
+                  <ToolCard
+                    key={rt.name}
+                    tool={entry}
+                    onClick={entry.resources?.length ? () => handleToolClick(entry) : undefined}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      <ToolDetailDialog
+        tool={selectedTool}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
+    </div>
   );
 }
 
