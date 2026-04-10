@@ -21,8 +21,18 @@ import {
 import { Zap, Globe, Database, Cpu, Copy, Check } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/chat/SourceChip";
-import type { Team, ToolEntry, SubStep, Resource, ResourceType, RegistryTool, ToolCategory } from "@/lib/agent/workflow-registry";
+import type { Team, ToolEntry, SubStep, Resource, ResourceType, RegistryTool, ToolCategory, TeamId } from "@/lib/agent/workflow-registry";
 import { TOOL_REGISTRY } from "@/lib/agent/workflow-registry";
+
+// ── Team label map ─────────────────────────────────────────────────────────
+
+const TEAM_LABELS: Partial<Record<TeamId, string>> = {
+  builder:      "Builder",
+  agent:        "Research Agent",
+  intelligence: "Intel Pipeline",
+  briefing:     "Briefing Agent",
+  evaluation:   "Evaluation",
+};
 
 // ── Resource type config ──────────────────────────────────────────────────
 
@@ -77,10 +87,13 @@ function ToolDetailDialog({
   tool,
   open,
   onOpenChange,
+  agents,
 }: {
   tool: ToolEntry | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Always-shown: which workflow agents have this tool active */
+  agents?: TeamId[];
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
 
@@ -145,6 +158,24 @@ function ToolDetailDialog({
             </DialogHeader>
             <ResourceEndpoint resource={single} />
           </>
+        )}
+        {/* Active in — always shown when agents are known */}
+        {agents && agents.length > 0 && (
+          <div>
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">
+              Active in
+            </span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {agents.map((id) => (
+                <span
+                  key={id}
+                  className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground"
+                >
+                  {TEAM_LABELS[id] ?? id}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
       </DialogContent>
     </Dialog>
@@ -230,9 +261,12 @@ function SourcePill({ provider }: { provider: string }) {
 export function ToolCard({
   tool,
   onClick,
+  agents,
 }: {
   tool: ToolEntry;
   onClick?: () => void;
+  /** When provided, agent badges are shown below the provider pills */
+  agents?: TeamId[];
 }) {
   const hasDetail = tool.resources && tool.resources.length > 0;
 
@@ -253,10 +287,24 @@ export function ToolCard({
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           {tool.summary}
         </p>
-        <div className="flex items-center gap-1 flex-wrap pt-0.5">
-          {providers.map((p) => (
-            <SourcePill key={p} provider={p} />
-          ))}
+        <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
+          <div className="flex items-center gap-1 flex-wrap">
+            {providers.map((p) => (
+              <SourcePill key={p} provider={p} />
+            ))}
+          </div>
+          {agents && agents.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              {agents.map((id) => (
+                <span
+                  key={id}
+                  className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground"
+                >
+                  {TEAM_LABELS[id] ?? id}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </button>
     </Card>
@@ -396,10 +444,13 @@ function PromptBanner({ team }: { team: Team }) {
 
 export function TeamSheetContent({ team }: { team: Team }) {
   const [selectedTool, setSelectedTool] = useState<ToolEntry | null>(null);
+  const [selectedToolAgents, setSelectedToolAgents] = useState<TeamId[] | undefined>();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const handleToolClick = useCallback((tool: ToolEntry) => {
     setSelectedTool(tool);
+    // Look up agents from registry for the dialog — don't show on the card (implied by team context)
+    setSelectedToolAgents(TOOL_REGISTRY.find((rt) => rt.name === tool.name)?.agents);
     setDialogOpen(true);
   }, []);
 
@@ -461,6 +512,7 @@ export function TeamSheetContent({ team }: { team: Team }) {
         tool={selectedTool}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        agents={selectedToolAgents}
       />
     </div>
   );
@@ -534,12 +586,10 @@ function toToolEntry(rt: RegistryTool): ToolEntry {
 }
 
 export function ToolsRegistrySheetContent() {
-  const [selectedTool, setSelectedTool] = useState<ToolEntry | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedRT, setSelectedRT] = useState<RegistryTool | null>(null);
 
-  const handleToolClick = useCallback((tool: ToolEntry) => {
-    setSelectedTool(tool);
-    setDialogOpen(true);
+  const handleToolClick = useCallback((rt: RegistryTool) => {
+    setSelectedRT(rt);
   }, []);
 
   return (
@@ -572,7 +622,8 @@ export function ToolsRegistrySheetContent() {
                   <ToolCard
                     key={rt.name}
                     tool={entry}
-                    onClick={entry.resources?.length ? () => handleToolClick(entry) : undefined}
+                    agents={rt.agents}
+                    onClick={entry.resources?.length ? () => handleToolClick(rt) : undefined}
                   />
                 );
               })}
@@ -582,9 +633,10 @@ export function ToolsRegistrySheetContent() {
       })}
 
       <ToolDetailDialog
-        tool={selectedTool}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        tool={selectedRT ? toToolEntry(selectedRT) : null}
+        agents={selectedRT?.agents}
+        open={selectedRT !== null}
+        onOpenChange={(open) => { if (!open) setSelectedRT(null); }}
       />
     </div>
   );
