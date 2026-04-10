@@ -98,6 +98,8 @@ export interface HindsightComposerFeatures {
   tickerSearch?: boolean;
   plusMenu?: boolean;
   placeholder?: string;
+  /** Display name for the AI model, e.g. "Claude Sonnet 4.6" or "GPT-4o" */
+  modelLabel?: string;
 }
 
 // ── Defaults ───────────────────────────────────────────────────────────────
@@ -223,7 +225,14 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     tickerSearch = false,
     plusMenu = true,
     placeholder = "Ask anything…",
+    modelLabel,
   } = features;
+
+  const modelLogoUrl = modelLabel?.toLowerCase().includes("claude")
+    ? "https://www.google.com/s2/favicons?domain=anthropic.com&sz=32"
+    : modelLabel
+    ? "https://www.google.com/s2/favicons?domain=openai.com&sz=32"
+    : null;
 
   const aui = useAui();
   const isRunning = useAuiState((s) => s.thread.isRunning);
@@ -530,6 +539,19 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                       {/* ── Sources ── */}
                       <DropdownMenuGroup>
                         <DropdownMenuLabel>Sources</DropdownMenuLabel>
+
+                        {modelLabel && modelLogoUrl && (
+                          <DropdownMenuItem>
+                            <img
+                              src={modelLogoUrl}
+                              alt={modelLabel}
+                              width={16}
+                              height={16}
+                              className="size-4 rounded-full ring-1 ring-popover object-contain bg-white shrink-0"
+                            />
+                            <span className="flex-1">{modelLabel}</span>
+                          </DropdownMenuItem>
+                        )}
 
                         {SOURCES.map((source) => (
                           <Tooltip key={source.label}>

@@ -294,6 +294,7 @@ function AgentChatInner({
                       : "Ask a follow-up question…",
                     tickerSearch: true,
                     slashCommands: true,
+                    modelLabel: "Claude Sonnet 4.6",
                   }}
                 />
               )
