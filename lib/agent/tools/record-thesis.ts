@@ -28,9 +28,9 @@ const thesisSchema = z.object({
   hold_duration: z.enum(["DAY", "SWING", "POSITION"]),
   signal_types: z.array(z.string()).describe("Signal types: MOMENTUM, EARNINGS_BEAT, BREAKOUT, etc."),
   sources_used: z
-    .array(z.object({ provider: z.string(), title: z.string(), url: z.string().optional(), excerpt: z.string().optional() }))
+    .array(z.object({ provider: z.string(), title: z.string(), url: z.string().optional() }))
     .optional()
-    .describe("Data sources used in your research — collect the _sources arrays from all tool calls for this ticker"),
+    .describe("Key sources that informed this thesis (optional, for record-keeping)"),
   fundamentals: z
     .object({
       market_cap: z.number().optional(),
@@ -170,24 +170,9 @@ export const recordThesis = defineTool({
         summary: `Thesis recorded: ${args.direction} ${args.ticker} (confidence: ${args.confidence_score})`,
         data: {
           thesis_id: thesis.id,
-          ticker: args.ticker,
-          company_name: args.company_name ?? null,
-          exchange: args.exchange ?? null,
-          direction: args.direction,
-          confidence_score: args.confidence_score,
-          reasoning_summary: args.reasoning_summary,
-          thesis_bullets: args.thesis_bullets,
-          risk_flags: args.risk_flags,
-          entry_price: args.entry_price ?? null,
-          target_price: args.target_price ?? null,
-          stop_loss: args.stop_loss ?? null,
-          hold_duration: args.hold_duration,
-          signal_types: args.signal_types,
-          fundamentals: args.fundamentals ?? null,
-          status: "ACTIVE",
-          parent_thesis_id: args.parent_thesis_id ?? null,
+          status: "ACTIVE" as const,
         },
-        sources: args.sources_used ?? [],
+        sources: [],
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Thesis save failed";
@@ -196,26 +181,10 @@ export const recordThesis = defineTool({
         summary: `Thesis save failed for ${args.ticker}: ${msg}`,
         data: {
           thesis_id: null,
-          ticker: args.ticker,
-          company_name: args.company_name ?? null,
-          exchange: args.exchange ?? null,
-          direction: args.direction,
-          confidence_score: args.confidence_score,
-          reasoning_summary: args.reasoning_summary,
-          thesis_bullets: args.thesis_bullets,
-          risk_flags: args.risk_flags,
-          entry_price: args.entry_price ?? null,
-          target_price: args.target_price ?? null,
-          stop_loss: args.stop_loss ?? null,
-          hold_duration: args.hold_duration,
-          signal_types: args.signal_types,
-          fundamentals: args.fundamentals ?? null,
-          status: "ACTIVE",
-          parent_thesis_id: args.parent_thesis_id ?? null,
-          error: msg,
+          status: "FAILED" as const,
           note: "Thesis could not be saved to DB. place_trade requires a thesis_id — do NOT attempt to trade this ticker.",
         },
-        sources: args.sources_used ?? [],
+        sources: [],
       };
     }
   },

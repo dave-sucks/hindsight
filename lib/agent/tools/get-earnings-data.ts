@@ -95,27 +95,8 @@ export const getEarningsData = defineTool({
         tickers: [{ ticker, tag: "Research", summary: tickerSummary }],
       },
       sources: [
-        {
-          provider: "Finnhub",
-          title: `${ticker} Earnings Calendar`,
-          url: "https://finnhub.io/docs/api/earnings-calendar",
-          excerpt: nextEarnings
-            ? `Next earnings: ${nextEarnings.date}${
-                nextEarnings.epsEstimate != null
-                  ? ` (est. $${nextEarnings.epsEstimate})`
-                  : ""
-              }`
-            : "No upcoming earnings date",
-        },
-        {
-          provider: "Finnhub",
-          title: `${ticker} Earnings History`,
-          url: "https://finnhub.io/docs/api/company-earnings",
-          excerpt:
-            history.length > 0
-              ? `Beat rate: ${Math.round((beats.length / history.length) * 100)}% over ${history.length} quarters`
-              : "No earnings history available",
-        },
+        { provider: "Finnhub", title: `${ticker} Earnings Calendar`, url: "https://finnhub.io/docs/api/earnings-calendar" },
+        { provider: "Finnhub", title: `${ticker} Earnings History`, url: "https://finnhub.io/docs/api/company-earnings" },
       ],
     };
   },

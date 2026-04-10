@@ -3,6 +3,7 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
 import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
 import { AlpacaKeyForm } from "@/components/settings/AlpacaKeyForm";
+import { ModelPreferenceForm } from "@/components/settings/ModelPreferenceForm";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -41,6 +42,14 @@ export default async function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Agent */}
+      <div className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Agent
+        </p>
+        <ModelPreferenceForm />
       </div>
 
       {/* API Keys */}
