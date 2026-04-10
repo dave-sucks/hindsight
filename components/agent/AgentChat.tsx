@@ -2,12 +2,12 @@
 
 /**
  * AgentChat — unified chat component for all three surfaces:
- *   - research-run: live agent run + follow-up conversation
+ *   - research-run: live agent run + follow-up conversation (tabs: Chat, Sources, Theses)
  *   - builder: analyst creation chat
  *   - editor: analyst editing chat
  *
- * Replaces AgentThread (runs), AnalystBuilderChat, AnalystChatProvider,
- * and AnalystEditorChatWithInitial.
+ * The only chat component. Replaces AgentThread, AnalystBuilderChat,
+ * AnalystChatProvider, and AnalystEditorChatWithInitial.
  * Uses the unified /api/agent/[mode] route.
  */
 
@@ -18,6 +18,7 @@ import type { AgentMode } from "@/lib/agent/modes";
 import { ChatRuntime } from "@/components/chat/chat-runtime";
 import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
 import type { HindsightComposerFeatures } from "@/components/assistant-ui/hindsight-composer";
+import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import { ToolUICallbacksProvider } from "@/components/assistant-ui/tool-uis";
 import { useAutoSend } from "@/hooks/useAutoSend";
 import { useRouter } from "next/navigation";
@@ -28,6 +29,11 @@ import {
 } from "@/lib/actions/analyst.actions";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 import { Sparkles } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { RunSourcesPanel } from "@/components/research/run-sources-panel";
+import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
+import type { RunSourceItem } from "@/lib/actions/run-sources.actions";
+import type { MorningBrief as IntelMorningBrief } from "@/components/intelligence/types";
 
 // ── Default welcome configs + composer features per mode ──────────────────────
 
@@ -64,9 +70,15 @@ interface AgentChatProps {
 
   // research-run
   runId?: string;
+  analystId?: string;
+  analystName?: string;
+  autoStart?: boolean;
+  headerAction?: ReactNode;
+  brief?: IntelMorningBrief | null;
+  sources?: RunSourceItem[];
+  theses?: ThesisRowData[];
 
   // builder / editor
-  analystId?: string;
   currentConfig?: Record<string, unknown>;
 
   /** Pre-loaded messages for replay (historical runs) */
@@ -75,7 +87,7 @@ interface AgentChatProps {
   /** Thread composer slot (e.g. QuickReplies) */
   composerSlot?: ReactNode;
 
-  /** Auto-send initial message (e.g. "Start analysis") */
+  /** Auto-send initial message (builder/editor) */
   initialPrompt?: string;
 
   /** Called when the AI suggests a config — opens the preview panel */
@@ -91,6 +103,12 @@ export function AgentChat({
   mode,
   runId,
   analystId,
+  analystName,
+  autoStart,
+  headerAction,
+  brief = null,
+  sources = [],
+  theses = [],
   currentConfig,
   messages,
   composerSlot,
@@ -110,6 +128,12 @@ export function AgentChat({
       <AgentChatInner
         mode={mode}
         analystId={analystId}
+        analystName={analystName}
+        autoStart={autoStart}
+        headerAction={headerAction}
+        brief={brief}
+        sources={sources}
+        theses={theses}
         currentConfig={currentConfig}
         composerSlot={composerSlot}
         initialPrompt={initialPrompt}
@@ -125,6 +149,12 @@ export function AgentChat({
 interface InnerProps {
   mode: AgentMode;
   analystId?: string;
+  analystName?: string;
+  autoStart?: boolean;
+  headerAction?: ReactNode;
+  brief: IntelMorningBrief | null;
+  sources: RunSourceItem[];
+  theses: ThesisRowData[];
   currentConfig?: Record<string, unknown>;
   composerSlot?: ReactNode;
   initialPrompt?: string;
@@ -135,6 +165,12 @@ interface InnerProps {
 function AgentChatInner({
   mode,
   analystId,
+  analystName,
+  autoStart,
+  headerAction,
+  brief,
+  sources,
+  theses,
   currentConfig,
   composerSlot,
   initialPrompt,
@@ -144,7 +180,8 @@ function AgentChatInner({
   const router = useRouter();
   const [isMutating, startMutating] = useTransition();
 
-  useAutoSend({ message: initialPrompt });
+  // research-run: auto-send "Run" to kick off the agent
+  useAutoSend({ message: autoStart ? "Run" : initialPrompt, delay: autoStart ? 500 : 300 });
 
   const handleConfirmConfig = useCallback(
     (config: AgentConfigData) => {
@@ -225,23 +262,76 @@ function AgentChatInner({
     [handleConfirmConfig, handleConfigSuggested, onConfigSuggested, isMutating, mode, currentConfig],
   );
 
-  const isConfigMode = mode === "builder" || mode === "editor";
+  // ── research-run: tabbed layout ───────────────────────────────────────────
 
-  const thread = isConfigMode ? (
-    <Thread
-      welcomeConfig={mode === "builder" ? BUILDER_WELCOME : EDITOR_WELCOME}
-      composerFeatures={mode === "builder" ? BUILDER_COMPOSER : EDITOR_COMPOSER}
-      composerSlot={composerSlot}
-    />
-  ) : (
-    <Thread composerSlot={composerSlot} richComposer />
-  );
+  if (mode === "research-run") {
+    const isFollowupMode = !autoStart;
+    return (
+      <Tabs defaultValue={0} className="flex h-full flex-col">
+        <div className="shrink-0 px-4 pt-2 flex items-center">
+          <TabsList>
+            <TabsTrigger value={0}>Chat</TabsTrigger>
+            <TabsTrigger value={1}>Sources</TabsTrigger>
+            <TabsTrigger value={2}>Theses</TabsTrigger>
+          </TabsList>
+          {headerAction && <div className="ml-auto">{headerAction}</div>}
+        </div>
 
-  if (!isConfigMode) return thread;
+        <TabsContent value={0} className="flex-1 min-h-0 flex flex-col">
+          <Thread
+            welcomeConfig={{
+              title: analystName ?? "Research Agent",
+              subtitle: isFollowupMode
+                ? "Run complete — ask follow-up questions or place trades"
+                : "Autonomous research agent",
+            }}
+            composerSlot={
+              composerSlot ?? (
+                <HindsightComposer
+                  features={{
+                    placeholder: isFollowupMode
+                      ? "Ask about the run, research a ticker, or place a trade…"
+                      : "Ask a follow-up question…",
+                    tickerSearch: true,
+                    slashCommands: true,
+                  }}
+                />
+              )
+            }
+          />
+        </TabsContent>
+
+        <TabsContent value={1} className="flex-1 min-h-0 overflow-y-auto">
+          <RunSourcesPanel brief={brief} sources={sources} />
+        </TabsContent>
+
+        <TabsContent value={2} className="flex-1 min-h-0 overflow-y-auto">
+          {theses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+              <p className="text-sm">No theses recorded</p>
+              <p className="text-xs mt-1">Theses appear here once the agent records its picks</p>
+            </div>
+          ) : (
+            <div className="mx-auto w-full max-w-2xl px-4 py-6 space-y-2">
+              {theses.map((t) => (
+                <ThesisRow key={t.id} thesis={t} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+    );
+  }
+
+  // ── builder / editor: config chat ────────────────────────────────────────
 
   return (
     <ToolUICallbacksProvider value={callbacks}>
-      {thread}
+      <Thread
+        welcomeConfig={mode === "builder" ? BUILDER_WELCOME : EDITOR_WELCOME}
+        composerFeatures={mode === "builder" ? BUILDER_COMPOSER : EDITOR_COMPOSER}
+        composerSlot={composerSlot}
+      />
     </ToolUICallbacksProvider>
   );
 }

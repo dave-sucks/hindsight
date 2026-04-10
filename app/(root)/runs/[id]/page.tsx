@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { ScanSearch } from "lucide-react";
-import { AgentThread } from "@/components/research/AgentThread";
+import { AgentChat } from "@/components/agent/AgentChat";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 import { getRunSourcesData } from "@/lib/actions/run-sources.actions";
@@ -95,13 +95,13 @@ export default async function RunPage({
     <div className="flex flex-col h-[calc(100dvh-3rem)] overflow-hidden">
       <div className="flex-1 min-h-0">
         {isLive || hasReplay ? (
-          <AgentThread
+          <AgentChat
+            mode="research-run"
             runId={id}
-            analystName={analystName}
             analystId={run.agentConfig?.id}
-            config={config}
+            analystName={analystName}
             autoStart={isLive}
-            initialMessages={persistedMessages ?? undefined}
+            messages={persistedMessages ?? undefined}
             brief={brief}
             sources={sources}
             theses={theses}
