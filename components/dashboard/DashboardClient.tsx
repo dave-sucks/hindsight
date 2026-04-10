@@ -297,12 +297,13 @@ export default function DashboardClient({
   };
 
   const totalValueStr = formatCurrency(portfolio.totalValue);
-  const unrealizedPnl = portfolio.unrealizedPnl;
-  const pnlPositive = unrealizedPnl >= 0;
-  const unrealizedPct =
-    portfolio.totalValue > 0
-      ? (unrealizedPnl / (portfolio.totalValue - unrealizedPnl)) * 100
-      : 0;
+  // Total P&L = realized gains/losses from closed trades + unrealized from open positions.
+  // This matches the equity chart which tracks the full portfolio from starting capital.
+  const totalPnl = portfolio.unrealizedPnl + portfolio.realizedPnl;
+  const pnlPositive = totalPnl >= 0;
+  // Starting capital = totalValue − totalPnl (always $100K by definition)
+  const startingCapital = portfolio.totalValue - totalPnl;
+  const totalPnlPct = startingCapital > 0 ? (totalPnl / startingCapital) * 100 : 0;
   const winRateStr =
     portfolio.winRate != null
       ? `${(portfolio.winRate * 100).toFixed(0)}% win rate`
@@ -341,8 +342,8 @@ export default function DashboardClient({
                   </p>
                   <p className="text-sm tabular-nums flex items-center gap-1 flex-wrap">
                     <span className={pnlPositive ? 'text-positive' : 'text-negative'}>
-                      {pnlPositive ? '+' : '-'}${Math.abs(unrealizedPnl).toFixed(2)}{' '}
-                      ({pnlPositive ? '+' : ''}{unrealizedPct.toFixed(2)}%)
+                      {pnlPositive ? '+' : '-'}${Math.abs(totalPnl).toFixed(2)}{' '}
+                      ({pnlPositive ? '+' : ''}{totalPnlPct.toFixed(2)}%)
                     </span>
                     {winRateStr && (
                       <>

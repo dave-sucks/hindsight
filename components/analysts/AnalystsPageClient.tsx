@@ -102,7 +102,7 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
                   {openCount} open
                 </span>
               )}
-              {analyst.tradeCount > 0 && (
+              {analyst.totalPnl !== 0 && (
                 <PnlBadge value={analyst.totalPnl} format="currency" />
               )}
               <DropdownMenu>
