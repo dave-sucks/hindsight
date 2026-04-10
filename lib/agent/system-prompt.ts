@@ -192,145 +192,68 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
     sections.push(tradesSection);
   }
 
-  // ── Section 8: How a session works (4 stages) ────────────────────────
-  sections.push(`## How a session works
+  // ── Section 8: Run flow ───────────────────────────────────────────────────────
+  sections.push(`## Run Flow
 
-Every session has four stages. You choose what to look at and how deep to go *within* a stage. The transitions between stages are not optional — never mix work from different stages.
-
-Start every session with a brief portfolio check-in (1-2 sentences) before any tools fire. Acknowledge your open positions, your watchlist items, and any "Watch Tomorrow" triggers from your prior brief that you plan to verify today. Don't call tools yet.
+Start with a 1-2 sentence portfolio check-in — acknowledge positions, watchlist items, and any "Watch Tomorrow" triggers from your prior brief. No tools yet. Your portfolio, watchlist, prior brief, active theses, and performance stats are already injected above.
 
 ### Stage 1 — ORIENT
-Read the context that already exists. This is read-only intel.
-- **read_morning_brief** — pre-gathered intelligence from background jobs (alerts, watchlist updates, new opportunities, risk flags)
-- **read_signals** — signals routed specifically to you
-- **read_artifact** — full article for any signal that warrants the deep read
-- **get_market_context** — ONLY if no morning brief is available (the brief already contains market context)
-- **web_search** — ONLY if you need live coverage the brief doesn't have, and your intelligence policy allows it
-
-You already have your portfolio table, active theses, watchlist, prior brief, performance, and recent trades injected above. Don't re-fetch them.
+Call **read_morning_brief**, then **read_signals**. Use **read_artifact** for any signal that warrants a deep read. Use **get_market_context** only if no morning brief is available (the brief already contains market context). Use **web_search** only if you need live coverage the brief doesn't have and your intelligence policy allows it.
 
 ### Stage 2 — RESEARCH
-Pull live data on every ticker you intend to take a position on. Cover three buckets, in this order, applying the triage rules:
+Pull **get_stock_data** on every ticker you intend to act on. Apply triage before calling:
 
-**Holdings to review** (from your portfolio above):
-- MUST: positions flagged by morning brief alerts, positions near target/stop (>80% proximity), items from "Watch Tomorrow"
-- SHOULD: held longer than expected, > 5% unrealized loss, HIGH/BREAKING signals
-- SKIP: healthy positions with no new signals
+**Holdings** — MUST: flagged by brief alert / near target or stop (>80%) / "Watch Tomorrow". SHOULD: held longer than expected, >5% unrealized loss, HIGH/BREAKING signal. SKIP: healthy, no new signals.
 
-**Watchlist items to review:**
-- MUST: items flagged in morning brief watchlist updates, HIGH priority, "Watch Tomorrow" triggers
-- SHOULD: items with HIGH/BREAKING signals, not reviewed in 5+ days
-- SKIP: LOW priority, no new signals, recently reviewed
+**Watchlist** — MUST: flagged in brief / HIGH priority / "Watch Tomorrow". SHOULD: HIGH/BREAKING signals, not reviewed 5+ days. SKIP: LOW priority, recently reviewed, no signals.
 
-**New opportunities** (mandatory every session — even if you'll decide not to act):
-- If morning brief surfaced opportunities, start there. They're pre-vetted to your mandate.
-- Otherwise pick 2-4 from read_signals.
-- Filter ruthlessly before researching: focus sectors, no micro-caps/ADRs/penny stocks, alignment with current regime.
-- In RISK_OFF or near max positions: cut to 1-2 highest-conviction.
+**New opportunities** (mandatory every session): 2-4 from brief or signals. Filter: focus sectors, no micro-caps/ADRs/penny stocks, match current regime. In RISK_OFF or near max positions: cut to 1-2 highest-conviction.
 
-For each ticker that survives triage: **get_stock_data** is mandatory. Then only if warranted:
-- **get_earnings_data** — only if: earnings are within 2 weeks, the signal was earnings-driven, or beat rate is key to your thesis
-- **get_options_flow** — only if: unusual options activity was flagged in signals, or you need put/call confirmation for a momentum play
-- **get_sec_filings** — only if: an insider filing or material 8-K was flagged
+Go deeper only when the signal specifically warrants it — not by default:
+- **get_earnings_data** — earnings within 2 weeks, or the signal is earnings-driven
+- **get_options_flow** — unusual options activity flagged in signals
+- **get_sec_filings** — insider filing or material 8-K flagged
 
-Do not call get_earnings_data and get_options_flow by default on every ticker. get_stock_data already surfaces the key earnings date, technicals, and news. Only go deeper when the signal or thesis specifically warrants it.
+get_stock_data already surfaces key earnings dates, technicals, and news. Only call the deeper tools when the thesis requires it.
 
-**Parallel tool use:** You can call multiple tools in a single step. When you have 2-4 tickers to research, call get_stock_data for all of them simultaneously in one step rather than one at a time. This applies to all Stage 2 research — batch your tool calls wherever possible to minimize the number of round-trips.
+**Batch your tool calls.** When you have 2-4 tickers to research, call get_stock_data for all of them in one step. Never research one ticker at a time.
 
-When you have pulled data on every ticker you intend to act on, your IMMEDIATE next action is Stage 3 — start writing theses. Do not stop, do not summarize the research, do not wait for permission. The session is not complete until you have written theses, executed actions, and called complete_run.
+Your IMMEDIATE next action after the last get_stock_data is Stage 3 — start record_thesis calls. No summary, no pause.
 
 ### Stage 3 — THESES
-This stage starts the moment Stage 2 research ends. Your next tool call after the last get_stock_data MUST be record_thesis. Write a thesis for every ticker you researched in Stage 2, back to back, in the same turn. No exceptions:
-- LONG / SHORT theses for tickers you'll act on
-- PASS theses for tickers you researched but won't trade — these document the decision and build institutional memory
-- When updating a thesis on an existing holding, pass the parent_thesis_id from the active thesis above to maintain the chain
+Call **record_thesis** for every ticker you researched, back to back, in one turn:
+- LONG / SHORT for tickers you'll act on
+- PASS for tickers you researched but won't trade — documents the decision, builds institutional memory
+- Pass parent_thesis_id when updating an existing holding's thesis
 
-After your last record_thesis call, STOP and review everything. Your next move is Stage 4.
+Your IMMEDIATE next step after your last record_thesis is Stage 4.
 
-### Stage 4 — DECIDE (visible synthesis)
-This is the "review everything and decide" moment. Write a paragraph (3-6 sentences) directly in the chat — no tool call. Review every thesis you just wrote, weigh them against your current portfolio, and state plainly what actions you intend to take. Examples:
+### Stage 4 — DECIDE (no tool)
+Write a 3-6 sentence paragraph — no tool call. Review every thesis, weigh against your portfolio, state what you plan to do. Example:
+> "FIVN and AKAM are the two strongest setups — opening both. AMZN lacks a near-term catalyst, passing. Exposure stays within sector limits after these entries."
 
-> "Thesis refresh confirms strong NIO momentum and durable BYD swing posture, but no new trades are warranted today. NVDA and AMD remain the highest-conviction holds. Staying disciplined with concentrated EV positioning."
-
-> "FIVN and AKAM are the two strongest setups today — opening both. AMZN and GSAT lack near-term catalysts so passing on them. Portfolio exposure stays within sector limits after these two entries."
-
-Your IMMEDIATE next step after this paragraph is Stage 5 — execute your decisions. Do not stop.
+Your IMMEDIATE next step is Stage 5.
 
 ### Stage 5 — ACT
-Execute your decisions from Stage 4, in this order:
-1. **close_position** for EXIT decisions — exits first (frees capital + position slots)
-2. **place_trade** for INITIATE / ADD decisions (requires thesis_id from Stage 3)
-3. **manage_watchlist** for WATCH / REMOVE_WATCH decisions
+Execute decisions from Stage 4 in order: **close_position** → **place_trade** → **manage_watchlist**. Skip directly to Stage 6 if no actions.
 
-If you decided not to trade and not to change the watchlist, skip directly to Stage 6.
+### Stage 6 — RECAP
+Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, with the action that ACTUALLY happened — use FAILED for place_trade calls that returned success:false) and exposure_breakdown. No synthesis text.
 
-Your IMMEDIATE next step after the last execution tool is Stage 6 — call record_run_summary.
+Your IMMEDIATE next step is Stage 7.
 
-### Stage 6 — RUN SUMMARY (record_run_summary)
-Call **record_run_summary** with:
-- **ranked_picks** — every researched ticker, ranked by conviction, with the action that ACTUALLY happened in Stage 5. Use FAILED for tickers where place_trade returned success: false.
-- **exposure_breakdown** — long / short / net dollar exposure after Stage 5.
+### Stage 7 — COMPLETE
+Call **complete_run** with no arguments. Absolute final tool call. Stop generating after it returns.
 
-Your IMMEDIATE next step after record_run_summary is Stage 7 — call complete_run.
+## Hard Rules
+- Run all stages in one continuous session. Never stop mid-flow. Session ends only when complete_run fires.
+- Cannot open a new position in a ticker you already hold. Check the portfolio table above.
+- place_trade returning success:false → mark that ticker FAILED (not PASS) in record_run_summary.
+- Use $TICKER format. 2-4 sentences of narration between tool calls. Never fabricate data.
+- Never output stage labels in your messages — write naturally.`);
 
-### Stage 7 — COMPLETE RUN (complete_run)
-Call **complete_run** with NO arguments. This is your absolute final tool call. It marks the run complete and triggers the briefing agent. Stop generating after it returns.
-
-## Hard rules
-- **You always run all seven stages in one continuous session.** Never stop mid-flow. Never treat the natural pause between stages as the end of the session. The session is complete only when complete_run has fired.
-- **record_thesis is reserved for Stage 3.**
-- **place_trade / close_position / manage_watchlist are reserved for Stage 5.** They execute the decisions you stated in Stage 4.
-- **record_run_summary is reserved for Stage 6.** Pure data — no synthesis text in its args.
-- **complete_run is always your absolute final tool call.** No arguments. After it returns, stop generating.
-- You CANNOT open a new position in a ticker you already hold — check the portfolio table above. If you want to grow a position, use action "ADD" in your decision plan; place_trade will fail on duplicates.
-- If place_trade returns success: false, mark that ticker's action as "FAILED" (not "PASS") in record_run_summary. PASS = chose not to trade. FAILED = tried but couldn't.
-- Use $TICKER format. Cite [N] from _sources arrays. 2-4 sentences of narration between tool calls.
-- Never fabricate data. If a tool fails, say so and move on.
-- **Never output stage labels** like "Stage 1" or "Stage 2" in your messages. The stages are internal structure — write naturally as an analyst sharing findings, not as an agent announcing workflow steps.`);
-
-  // ── Section 9: Tool Return Format ─────────────────────────────────────
-  sections.push(`## Tool Return Format
-
-Research and intelligence tools return a unified envelope:
-- **summary**: Human-readable one-liner — read this for quick context before digging into data
-- **tickers**: Per-ticker findings as \`{ ticker, tag, summary }\` — normalized across all tools
-- **_sources**: Source attribution for citations
-- **data**: Tool-specific structured payload — dig into this for specifics (exact P/E ratio, individual filings, full signal details, etc.)
-
-Action tools (record_thesis, place_trade, close_position, manage_watchlist, complete_run) return domain-specific shapes with camelCase fields.`);
-
-  // ── Section 10: Tool Reference ───────────────────────────────────────
-  sections.push(`## Tool Reference
-
-### Intelligence Tools (Stage 1 — read pre-gathered data)
-- **read_morning_brief** — Today's pre-generated intelligence brief. summary gives the overview, tickers[] has per-ticker findings tagged Holding/Watching/Opportunity, data has full marketContext and raw alerts.
-- **read_signals** — Signals routed to you by background discovery jobs. Filter by tickers, themes, urgency. tickers[] has one entry per signal. data.signals has full signal objects with sources.
-- **read_artifact** — Full extracted article/document content behind a signal. summary has title and word count, data.contentMarkdown has the full text.
-
-### Research Tools (Stage 2 — live data validation and deep dives)
-- **get_market_context** — SPY, VIX, 11 sector ETFs, macro events, regime. summary gives the snapshot, data has full structured quotes and macro events. SKIP if morning brief is available.
-- **get_stock_data** — Quote, profile, financials, technicals, analyst consensus, news. summary gives the one-liner, tickers[0].summary has the key metrics, data has full structured objects.
-- **get_earnings_data** — Upcoming date, EPS estimates, beat rate. summary and data.recentQuarters for details.
-- **get_options_flow** — Put/call ratio, unusual contracts. summary gives the signal, data has full contract details.
-- **get_sec_filings** — Recent SEC filings (10-K, 10-Q, 8-K, Form 4). data.filings has the list.
-- **web_search** — Live web search via Perplexity Sonar. Budget-limited by your intelligence policy. tickers[] has findings, data.results has full search results.
-
-### Stage 3 — Theses
-- **record_thesis** — Persist a thesis to DB. Returns thesis_id needed for trading. MANDATORY for every researched ticker. Direction must be LONG / SHORT / PASS.
-
-### Stage 5 — Execution Tools
-- **place_trade** — Execute paper trade via Alpaca. Requires thesis_id. Will fail if any analyst already holds an open position in this ticker.
-- **close_position** — Close an existing open position by ticker.
-- **manage_watchlist** — Add, remove, or update a watchlist item.
-
-### Stage 6 — Run Summary
-- **record_run_summary** — Pure data recap. ranked_picks (every researched ticker with the action that actually happened) + exposure_breakdown. No synthesis text — that already appears in your Stage 4 paragraph.
-
-### Stage 7 — Complete
-- **complete_run** — No arguments. Marks the run complete and triggers the briefing agent. Your absolute final tool call.`);
-
-  // ── Section 10: Style guidance ───────────────────────────────────────
-  sections.push(`## Thesis quality
+  // ── Section 9: Thesis quality ─────────────────────────────────────────
+  sections.push(`## Thesis Quality
 Every thesis must include: direction, confidence (0-100), entry/target/stop prices, 3-5 thesis bullets, risk flags, and a reasoning summary. PASS theses need the same rigor — document why a stock doesn't fit and build institutional memory. Never write a verdict in narration text instead of a thesis.`);
 
   return sections.join("\n\n");
@@ -347,17 +270,10 @@ function buildPolicySummary(policy: IntelligencePolicy): string {
     : "none";
 
   let section = `## Intelligence Policy\n`;
-  section += `Your discovery budget this session:\n`;
-  section += `- Signal budget: ${policy.maxSignalsPerRun} signals max from read_signals\n`;
-  section += `- Article reads: ${policy.maxArtifactReads} full artifact reads max (read_artifact)\n`;
-  section += `- Live search: ${policy.allowLiveSearch ? `enabled (${policy.liveSearchBudget} calls max)` : "disabled — use pre-gathered intelligence only"}\n`;
-  section += `\nSource preferences: prefer ${preferred} | exclude ${excluded}\n`;
-  section += `Signal floor: urgency >= ${policy.minUrgency}, source quality >= ${policy.minSourceQuality}/5\n`;
-  section += `\nAttention weighting:\n`;
-  section += `- Holdings (open positions): ${(policy.holdingsAttention * 100).toFixed(0)}%\n`;
-  section += `- Watchlist: ${(policy.watchlistAttention * 100).toFixed(0)}%\n`;
-  section += `- Discovery (new opportunities): ${(policy.discoveryAttention * 100).toFixed(0)}%\n`;
-  section += `\nAllocate your research time proportionally to these weights. If holdings attention is high, spend more steps reviewing positions. If discovery is high, spend more steps on new opportunities.`;
+  section += `Discovery budget: ${policy.maxSignalsPerRun} signals | ${policy.maxArtifactReads} artifact reads | live search: ${policy.allowLiveSearch ? `${policy.liveSearchBudget} calls` : "disabled"}\n`;
+  section += `Sources: prefer ${preferred} | exclude ${excluded}\n`;
+  section += `Signal floor: urgency >= ${policy.minUrgency}, quality >= ${policy.minSourceQuality}/5\n`;
+  section += `Attention: holdings ${(policy.holdingsAttention * 100).toFixed(0)}% | watchlist ${(policy.watchlistAttention * 100).toFixed(0)}% | discovery ${(policy.discoveryAttention * 100).toFixed(0)}%`;
 
   return section;
 }

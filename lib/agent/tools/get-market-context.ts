@@ -179,12 +179,12 @@ export const getMarketContext = defineTool({
           : [],
       },
       sources: [
-        { provider: "Finnhub", title: "SPY Real-Time Quote", url: "https://finnhub.io/docs/api/quote", excerpt: spyData ? `SPY $${spyData.price} (${fPct(spyData.changesPercentage)})` : "SPY quote unavailable" },
-        { provider: "Finnhub", title: "CBOE VIX Index", url: "https://finnhub.io/docs/api/quote", excerpt: vixLevel !== null ? `VIX at ${vixLevel.toFixed(1)}` : "VIX data unavailable" },
-        { provider: "Finnhub", title: "S&P 500 Sector ETF Performance", url: "https://finnhub.io/docs/api/quote", excerpt: sectors.length > 0 ? `Top: ${sectors[0].symbol} ${fPct(sectors[0].changePct)} | Bottom: ${sectors[sectors.length - 1].symbol} ${fPct(sectors[sectors.length - 1].changePct)}` : "Sector data unavailable" },
-        { provider: "Finnhub", title: "SPY 30-Day Candles (SMA-20 + Regime)", url: "https://finnhub.io/docs/api/stock-candles", excerpt: spyTrend ? `SPY ${spyTrend.position} SMA-20 ($${spyTrend.sma_20.toFixed(2)}) by ${fPct(spyTrend.pct_from_sma)}` : "SPY candle data unavailable" },
-        { provider: "FMP", title: "US Economic Calendar", url: "https://site.financialmodelingprep.com/developer/docs#economic-calendar", excerpt: macroEventsToday.length > 0 ? `${macroEventsToday.length} US macro event(s) today` : "No US macro events today" },
-        { provider: "Finnhub", title: "Earnings Calendar (5-Day Density)", url: "https://finnhub.io/docs/api/earnings-calendar", excerpt: `${earningsDensity.count} earnings reports ${earningsDensity.period}` },
+        { provider: "Finnhub", title: "SPY Real-Time Quote", url: "https://finnhub.io/docs/api/quote" },
+        { provider: "Finnhub", title: "CBOE VIX Index", url: "https://finnhub.io/docs/api/quote" },
+        { provider: "Finnhub", title: "S&P 500 Sector ETF Performance", url: "https://finnhub.io/docs/api/quote" },
+        { provider: "Finnhub", title: "SPY 30-Day Candles (SMA-20 + Regime)", url: "https://finnhub.io/docs/api/stock-candles" },
+        { provider: "FMP", title: "US Economic Calendar", url: "https://site.financialmodelingprep.com/developer/docs#economic-calendar" },
+        { provider: "Finnhub", title: "Earnings Calendar (5-Day Density)", url: "https://finnhub.io/docs/api/earnings-calendar" },
       ],
     };
   },

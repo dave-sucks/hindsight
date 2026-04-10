@@ -82,9 +82,9 @@ export const getStockData = defineTool({
     if (financialsResult.error) errors.push(financialsResult.error);
 
     const recentNews: NewsItem[] = Array.isArray(news)
-      ? news.slice(0, 5).map((n: { headline: string; summary: string; source: string; url: string; datetime: number }) => ({
+      ? news.slice(0, 3).map((n: { headline: string; summary: string; source: string; url: string; datetime: number }) => ({
           headline: n.headline,
-          summary: n.summary?.slice(0, 200),
+          summary: n.summary?.slice(0, 80),
           source: n.source,
           url: n.url,
           date: new Date(n.datetime * 1000).toISOString().slice(0, 10),
@@ -241,33 +241,12 @@ export const getStockData = defineTool({
         tickers: [{ ticker, tag: "Research", summary: tickerSummaryParts.join(". ") }],
       },
       sources: [
-        {
-          provider: "Finnhub",
-          title: `${ticker} Real-Time Quote`,
-          excerpt: quoteData ? `$${quoteData.price} ${fPct(quoteData.changePct)} | High $${quoteData.high} Low $${quoteData.low}` : "Quote unavailable",
-        },
-        {
-          provider: "Finnhub",
-          title: `${ticker} Company Profile`,
-          excerpt: companyData ? `${companyData.name} | ${companyData.sector} | ${companyData.exchange}` : "Profile unavailable",
-        },
-        {
-          provider: "Finnhub",
-          title: `${ticker} Key Financials`,
-          excerpt: financialsData
-            ? `P/E ${financialsData.peRatio?.toFixed(1) ?? "—"} | Beta ${financialsData.beta?.toFixed(2) ?? "—"} | 52W $${financialsData.low52w?.toFixed(0) ?? "?"}-$${financialsData.high52w?.toFixed(0) ?? "?"}`
-            : "Financials unavailable",
-        },
-        ...(consensusData
-          ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus`, excerpt: `Buy ${consensusData.buy + consensusData.strongBuy} | Hold ${consensusData.hold} | Sell ${consensusData.sell + consensusData.strongSell}` }]
-          : []),
-        ...recentNews.map((n) => ({ provider: n.source, title: n.headline, url: n.url, excerpt: n.summary })),
-        ...(techData
-          ? [{ provider: techProvider, title: `${ticker} 90-Day Price History`, url: techProvider === "Finnhub" ? "https://finnhub.io/docs/api/stock-candles" : `https://financialmodelingprep.com/financial-statements/${ticker}`, excerpt: `RSI ${techData.rsi14?.toFixed(1) ?? "—"} | SMA20 $${techData.sma20?.toFixed(2) ?? "—"} | SMA50 $${techData.sma50?.toFixed(2) ?? "—"} | 52W position ${techData.positionIn52wRange}` }]
-          : []),
-        ...(targetsData
-          ? [{ provider: "FMP", title: `${ticker} Analyst Price Targets`, url: `https://financialmodelingprep.com/api/v4/price-target-consensus?symbol=${ticker}`, excerpt: `Consensus $${targetsData.consensus ?? "—"} | High $${targetsData.high ?? "—"} | Low $${targetsData.low ?? "—"} | ${targetsData.numAnalysts ?? 0} analysts` }]
-          : []),
+        { provider: "Finnhub", title: `${ticker} Real-Time Quote`, url: "https://finnhub.io/docs/api/quote" },
+        { provider: "Finnhub", title: `${ticker} Company Profile`, url: "https://finnhub.io/docs/api/company-profile2" },
+        { provider: "Finnhub", title: `${ticker} Key Financials`, url: "https://finnhub.io/docs/api/stock-basic-financials" },
+        ...(consensusData ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus`, url: "https://finnhub.io/docs/api/recommendation-trends" }] : []),
+        ...(techData ? [{ provider: techProvider, title: `${ticker} 90-Day Price History`, url: techProvider === "Finnhub" ? "https://finnhub.io/docs/api/stock-candles" : `https://financialmodelingprep.com/financial-statements/${ticker}` }] : []),
+        ...(targetsData ? [{ provider: "FMP", title: `${ticker} Analyst Price Targets`, url: `https://financialmodelingprep.com/api/v4/price-target-consensus?symbol=${ticker}` }] : []),
       ],
     };
   },
