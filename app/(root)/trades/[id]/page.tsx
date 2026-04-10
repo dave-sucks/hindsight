@@ -1,8 +1,6 @@
-import type React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { StockLogo } from '@/components/StockLogo';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -26,8 +24,6 @@ import {
 import { cn } from '@/lib/utils';
 import {
   CheckCircle2,
-  XCircle,
-  Clock,
   ArrowDownUp,
   Brain,
   ExternalLink,
@@ -100,13 +96,9 @@ function fmtDateTime(d: Date | string): string {
 }
 
 
-function StatCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-0.5 min-w-0">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium tabular-nums text-foreground truncate">{value}</span>
-    </div>
-  );
+function fmtExitReason(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  return reason.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -319,49 +311,45 @@ export default async function TradeDetailPage({
 
             {/* ── OVERVIEW ─────────────────────────────────────────── */}
             <TabsContent value="overview" className="mt-4 space-y-4">
-              {/* Closed result banner */}
-              {!isOpen && (
-                <div className={cn(
-                  'rounded-xl border px-4 py-3 text-sm font-medium flex items-center gap-2',
-                  trade.outcome === 'WIN'
-                    ? 'border-positive/30 bg-positive/10 text-positive'
-                    : 'border-negative/30 bg-negative/10 text-negative'
-                )}>
-                  {trade.outcome === 'WIN'  && <CheckCircle2 className="h-4 w-4 shrink-0" />}
-                  {trade.outcome === 'LOSS' && <XCircle className="h-4 w-4 shrink-0" />}
-                  {(!trade.outcome || trade.outcome === 'BREAKEVEN') && <Clock className="h-4 w-4 shrink-0" />}
-                  <span className="tabular-nums">
-                    {status.label} · Realized P&amp;L: {isPos ? '+' : ''}${Math.abs(realizedPnl).toFixed(2)} ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
+              {/* Live market price — always shows current stock price with today's change */}
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl font-semibold tabular-nums">
+                    {fmtCur(livePrice ?? currentPrice)}
                   </span>
+                  {stockQuote && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger render={
+                          <span className={cn(
+                            'text-xl tabular-nums flex items-center gap-2 cursor-default',
+                            isQuoteUp ? 'text-positive' : 'text-negative',
+                          )}>
+                            {isQuoteUp ? '+' : ''}{fmtCur(stockQuote.d)}
+                            <div className="flex items-center">
+                              {isQuoteUp ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-4 w-4" />}
+                              {changePct != null ? `${Math.abs(changePct).toFixed(2)}%` : '—'}
+                            </div>
+                          </span>
+                        } />
+                        <TooltipContent side="bottom" className="text-xs">Today&apos;s market movement</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                 </div>
-              )}
-
-              {/* Price block */}
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-semibold tabular-nums">
-                  {fmtCur(currentPrice)}
-                </span>
-                {stockQuote && (
-                  <span className={cn(
-                    'text-xl tabular-nums flex items-center gap-2',
-                    isQuoteUp ? 'text-positive' : 'text-negative',
-                  )}>
-                    {isQuoteUp ? '+' : ''}{fmtCur(stockQuote.d)}
-                    <div className="flex items-center">
-                      {isQuoteUp ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-4 w-4" />}
-                      {changePct != null ? `${Math.abs(changePct).toFixed(2)}%` : '—'}
-                    </div>
-                  </span>
+                {!isOpen && closePrice != null && (
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    current market price · trade exited at {fmtCur(closePrice)}
+                  </p>
                 )}
               </div>
 
-              {/* Chart with holding summary row inside */}
+              {/* Chart — simple status row above it */}
               <StockPriceChart candles={candles} referenceLines={chartReferenceLines}>
-                {/* Holding summary — renders inside the chart card above the graph */}
                 <TooltipProvider>
-                  <div className="px-4 py-2.5 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-sm">
-                    {/* Left: status dot + summary */}
+                  <div className="px-4 py-2.5 border-b flex items-center justify-between gap-2 text-sm">
                     <div className="flex items-center gap-2">
+                      {/* Status dot */}
                       <Tooltip>
                         <TooltipTrigger render={
                           isOpen ? (
@@ -380,40 +368,19 @@ export default async function TradeDetailPage({
                             <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/40 cursor-default" />
                           )
                         } />
-                        <TooltipContent side="bottom">
-                          <div className="tabular-nums">
-                            <div>Position opened {fmtDateTime(position.openedAt)}</div>
-                            {openingBuy?.filledAt && <div>Buy filled {fmtDateTime(openingBuy.filledAt)}</div>}
-                            {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
-                          </div>
+                        <TooltipContent side="bottom" className="text-xs tabular-nums">
+                          <div>Opened {fmtDateTime(position.openedAt)}</div>
+                          {openingBuy?.filledAt && <div>Buy filled {fmtDateTime(openingBuy.filledAt)}</div>}
+                          {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
                         </TooltipContent>
                       </Tooltip>
-                      <span className="flex items-center gap-1 flex-wrap">
-                        {isOpen ? (
-                          <>
-                            <span>{hasFilledBuy ? 'Holding' : 'Pending'} {trade.shares} shares</span>
-                            <span className="text-muted-foreground">·</span>
-                            <span className="text-muted-foreground text-xs">entry</span>
-                            <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
-                            <span className="text-muted-foreground">({fmtCur(positionCost)} cost)</span>
-                          </>
-                        ) : (
-                          <>
-                            <span>Sold {trade.shares} shares</span>
-                            <span className="text-muted-foreground">·</span>
-                            <span className="text-muted-foreground text-xs">bought</span>
-                            <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
-                            <span className="text-muted-foreground text-xs">→ sold</span>
-                            <span className="tabular-nums font-medium">{fmtCur(closePrice ?? currentPrice)}</span>
-                            {daysHeld && (
-                              <span className="text-muted-foreground text-xs">· {daysHeld}d held</span>
-                            )}
-                          </>
-                        )}
+                      <span className="tabular-nums">
+                        {isOpen ? (hasFilledBuy ? 'Holding' : 'Pending') : 'Sold'}{' '}
+                        {trade.shares} shares · avg entry{' '}
+                        <span className="font-medium">{fmtCur(trade.entryPrice)}</span>
                       </span>
                     </div>
-                    {/* Right: P&L */}
-                    <div className={cn('tabular-nums flex items-center gap-1 sm:ml-auto', isPos ? 'text-positive' : 'text-negative')}>
+                    <div className={cn('tabular-nums flex items-center gap-1 shrink-0', isPos ? 'text-positive' : 'text-negative')}>
                       {isPos ? '+' : ''}{fmtCur(pnl)}
                       {isPos ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
                       {Math.abs(pnlPct).toFixed(2)}%
@@ -421,16 +388,6 @@ export default async function TradeDetailPage({
                   </div>
                 </TooltipProvider>
               </StockPriceChart>
-
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-2 py-3 border-y">
-                <StatCell label="Entry" value={`$${trade.entryPrice.toFixed(2)}`} />
-                <StatCell label="Target" value={`$${targetPrice.toFixed(2)}`} />
-                <StatCell label="Stop" value={`$${stopPrice.toFixed(2)}`} />
-                <StatCell label="R:R Ratio" value={`${riskReward.toFixed(2)}:1`} />
-                <StatCell label="Confidence" value={`${trade.thesis?.confidenceScore ?? '—'}%`} />
-                <StatCell label="Hold" value={(trade.thesis?.holdDuration as string) ?? 'Swing'} />
-              </div>
 
               {/* Trade Thesis */}
               {trade.thesis && (() => {
@@ -541,127 +498,165 @@ export default async function TradeDetailPage({
 
         {/* ════ SIDEBAR ════ */}
         <div className="hidden lg:block space-y-4">
-          {/* Trade Details Card */}
+
+          {/* ── Post-Sale Result (closed trades only) ── */}
+          {!isOpen && (
+            <div className={cn(
+              'rounded-lg border p-4 space-y-3',
+              isPos ? 'border-positive/20 bg-positive/5' : 'border-negative/20 bg-negative/5',
+            )}>
+              <div className="flex items-center justify-between">
+                <span className={cn(
+                  'text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full',
+                  isPos ? 'bg-positive/10 text-positive' : 'bg-negative/10 text-negative',
+                )}>
+                  {position.outcome === 'WIN' ? 'Win' : position.outcome === 'LOSS' ? 'Loss' : 'Closed'}
+                </span>
+                {daysHeld != null && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {daysHeld} day{daysHeld !== 1 ? 's' : ''} held
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-baseline gap-2">
+                <span className={cn('text-2xl font-bold tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
+                  {isPos ? '+' : ''}{fmtCur(realizedPnl)}
+                </span>
+                <span className={cn('text-sm tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
+                  {isPos ? '+' : ''}{Math.abs(pnlPct).toFixed(2)}%
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground truncate">Bought {trade.shares} × {fmtCur(trade.entryPrice)}</span>
+                  <span className="tabular-nums font-medium shrink-0">{fmtCur(positionCost)}</span>
+                </div>
+                {exitProceeds != null && closePrice != null && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground truncate">Sold {trade.shares} × {fmtCur(closePrice)}</span>
+                    <span className="tabular-nums font-medium shrink-0">{fmtCur(exitProceeds)}</span>
+                  </div>
+                )}
+              </div>
+
+              {fmtExitReason(position.closeReason) && (
+                <p className="text-xs text-muted-foreground">
+                  Exit: <span className="font-medium text-foreground">{fmtExitReason(position.closeReason)}</span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Trade Details (always shown) ── */}
           <Card>
             <CardContent className="p-3 flex flex-col gap-1">
+              {/* Static field rows */}
               {([
-                { label: 'Direction', value: trade.direction, tip: null },
-                { label: 'Shares', value: String(trade.shares), tip: null },
-                { label: 'Buy Price', value: `$${trade.entryPrice.toFixed(2)} / share`, tip: null },
-                ...(!isOpen && closePrice != null
-                  ? [{ label: 'Sell Price', value: `$${closePrice.toFixed(2)} / share`, tip: null }]
+                { label: 'Direction', value: position.direction },
+                { label: 'Shares', value: String(trade.shares) },
+                { label: 'Avg Entry', value: fmtCur(trade.entryPrice) },
+                { label: 'Cost Basis', value: fmtCur(positionCost) },
+                ...(trade.thesis?.confidenceScore != null
+                  ? [{ label: 'Confidence', value: `${trade.thesis.confidenceScore}%` }]
                   : []),
-                { label: 'Cost Basis', value: `$${positionCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
-                { label: isOpen ? 'Market Value' : 'Exit Value', value: `$${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
-                ...(!isOpen && daysHeld != null
-                  ? [{ label: 'Days Held', value: `${daysHeld}d`, tip: null }]
+                ...(trade.thesis?.holdDuration
+                  ? [{ label: 'Hold Duration', value: trade.thesis.holdDuration }]
                   : []),
-                ...(analystName ? [{ label: 'Analyst', value: analystName, tip: null as React.ReactNode }] : []),
-                { label: 'Position opened', value: fmtDateTime(position.openedAt), tip: null },
-                ...(openingBuy
-                  ? [{
-                      label: 'Buy order',
-                      value: openingBuy.filledAt
-                        ? fmtDateTime(openingBuy.filledAt)
-                        : 'Pending fill',
-                      pending: openingBuy.status === 'PENDING',
-                      tip: (
-                        <div>
-                          <div>{openingBuy.filledAt ? `Filled ${fmtDateTime(openingBuy.filledAt)}` : `Ordered ${fmtDateTime(openingBuy.createdAt)}`}</div>
-                          {openingBuy.status === 'PENDING' && (
-                            <div className="text-amber-500">Awaiting fill · reconciles every 5 min</div>
-                          )}
-                          {openingBuy.alpacaOrderId && (
-                            <div className="opacity-60 font-mono text-[10px]">Alpaca {openingBuy.alpacaOrderId}</div>
-                          )}
-                        </div>
-                      ),
-                    }]
-                  : []),
-                ...(closingSell
-                  ? [{
-                      label: 'Sell order',
-                      value: closingSell.filledAt
-                        ? fmtDateTime(closingSell.filledAt)
-                        : 'Pending fill',
-                      pending: closingSell.status === 'PENDING',
-                      tip: (
-                        <div>
-                          <div>{closingSell.filledAt ? `Filled ${fmtDateTime(closingSell.filledAt)}` : `Ordered ${fmtDateTime(closingSell.createdAt)}`}</div>
-                          {closingSell.status === 'PENDING' && (
-                            <div className="text-amber-500">Awaiting fill · reconciles every 5 min</div>
-                          )}
-                          {closingSell.alpacaOrderId && (
-                            <div className="opacity-60 font-mono text-[10px]">Alpaca {closingSell.alpacaOrderId}</div>
-                          )}
-                        </div>
-                      ),
-                    }]
-                  : []),
-              ] as Array<{ label: string; value: string; tip: React.ReactNode | null; pending?: boolean }>).map(({ label, value, tip, pending }) => (
+                { label: 'R:R Ratio', value: `${riskReward.toFixed(2)}:1` },
+              ] as Array<{ label: string; value: string }>).map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
                   <span className="text-muted-foreground">{label}</span>
-                  {tip ? (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <span
-                              className={cn(
-                                'font-medium tabular-nums cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
-                                pending && 'text-amber-500',
-                              )}
-                            >
-                              {value}
-                            </span>
-                          }
-                        />
-                        <TooltipContent side="left" className="text-xs max-w-xs">{tip}</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
-                    <span className="font-medium tabular-nums">{value}</span>
-                  )}
+                  <span className="font-medium tabular-nums">{value}</span>
                 </div>
               ))}
 
-              <div className="pt-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">{isOpen ? 'Unrealized P&L' : 'Realized P&L'}</span>
-                  <span className={cn('font-medium tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
-                    {isPos ? '+' : ''}${Math.abs(pnl).toFixed(2)}
-                  </span>
+              {/* Analyst row */}
+              {analystName && (
+                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                  <span className="text-muted-foreground">Analyst</span>
+                  {analystIdVal ? (
+                    <Link href={`/analysts/${analystIdVal}`} className="font-medium text-primary hover:underline truncate max-w-[60%]">
+                      {analystName}
+                    </Link>
+                  ) : (
+                    <span className="font-medium truncate max-w-[60%]">{analystName}</span>
+                  )}
                 </div>
-                <div className="flex items-center justify-between text-sm mt-1">
-                  <span className="text-muted-foreground">Return</span>
-                  <PnlBadge value={pnlPct} />
-                </div>
+              )}
+
+              {/* Opened row */}
+              <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                <span className="text-muted-foreground">Opened</span>
+                <span className="font-medium tabular-nums text-xs">{fmtDateTime(position.openedAt)}</span>
               </div>
 
-              <div className="border-t pt-3 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">R:R Ratio</span>
-                  <span className="font-medium tabular-nums">{riskReward.toFixed(2)}:1</span>
+              {/* Buy filled row */}
+              {openingBuy && (
+                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                  <span className="text-muted-foreground">Buy filled</span>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger render={
+                        <span className={cn(
+                          'font-medium tabular-nums text-xs cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
+                          openingBuy.status === 'PENDING' && 'text-amber-500',
+                        )}>
+                          {openingBuy.filledAt ? fmtDateTime(openingBuy.filledAt) : 'Pending fill'}
+                        </span>
+                      } />
+                      <TooltipContent side="left" className="text-xs max-w-xs">
+                        <div>{openingBuy.filledAt ? `Filled ${fmtDateTime(openingBuy.filledAt)}` : `Ordered ${fmtDateTime(openingBuy.createdAt)}`}</div>
+                        {openingBuy.status === 'PENDING' && <div className="text-amber-500">Awaiting fill · reconciles every 5 min</div>}
+                        {openingBuy.alpacaOrderId && <div className="opacity-60 font-mono text-[10px]">Alpaca {openingBuy.alpacaOrderId}</div>}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Exit Strategy</span>
-                  <span className="font-medium text-xs">{trade.exitStrategy}</span>
-                </div>
-                {trade.closeReason && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Close Reason</span>
-                    <span className="font-medium text-xs">{trade.closeReason}</span>
-                  </div>
-                )}
-                {trade.closedAt && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Closed</span>
-                    <span className="font-medium tabular-nums text-xs">
-                      {new Date(trade.closedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </span>
-                  </div>
+              )}
+
+              {/* Sell filled row — always present, '—' if still open */}
+              <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                <span className="text-muted-foreground">Sell filled</span>
+                {closingSell ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger render={
+                        <span className={cn(
+                          'font-medium tabular-nums text-xs cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
+                          closingSell.status === 'PENDING' && 'text-amber-500',
+                        )}>
+                          {closingSell.filledAt ? fmtDateTime(closingSell.filledAt) : 'Pending fill'}
+                        </span>
+                      } />
+                      <TooltipContent side="left" className="text-xs max-w-xs">
+                        <div>{closingSell.filledAt ? `Filled ${fmtDateTime(closingSell.filledAt)}` : `Ordered ${fmtDateTime(closingSell.createdAt)}`}</div>
+                        {closingSell.status === 'PENDING' && <div className="text-amber-500">Awaiting fill · reconciles every 5 min</div>}
+                        {closingSell.alpacaOrderId && <div className="opacity-60 font-mono text-[10px]">Alpaca {closingSell.alpacaOrderId}</div>}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <span className="font-medium text-muted-foreground/40 tabular-nums">—</span>
                 )}
               </div>
+
+              {/* Unrealized P&L — open trades only */}
+              {isOpen && (
+                <div className="pt-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Unrealized P&L</span>
+                    <span className={cn('font-medium tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
+                      {isPos ? '+' : ''}{fmtCur(pnl)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mt-1">
+                    <span className="text-muted-foreground">Return</span>
+                    <PnlBadge value={pnlPct} />
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
