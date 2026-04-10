@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { SlidersHorizontal } from 'lucide-react';
 
 import {
   Area,
@@ -12,19 +13,26 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   ReferenceLine,
 } from 'recharts';
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ThesisRow } from '@/components/ui/thesis-row';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
@@ -46,10 +54,11 @@ import { formatCurrency, formatDateLabel } from '@/lib/format';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const RANGES = ['1W', '1M', '1Y', 'Max'] as const;
+const RANGES = ['1D', '1W', '1M', '1Y', 'Max'] as const;
 type Range = (typeof RANGES)[number];
 
 const RANGE_DAYS: Record<Range, number> = {
+  '1D': 1,
   '1W': 7,
   '1M': 30,
   '1Y': 365,
@@ -57,15 +66,26 @@ const RANGE_DAYS: Record<Range, number> = {
 };
 
 type ChartView = 'portfolio' | 'by-analyst' | 'vs-spy';
+type DisplayMode = 'dollar' | 'percent';
 
 const ANALYST_COLORS = [
-  '#6366f1', // indigo
-  '#f59e0b', // amber
-  '#10b981', // emerald
-  '#f43f5e', // rose
-  '#8b5cf6', // violet
-  '#06b6d4', // cyan
+  '#6366f1',
+  '#f59e0b',
+  '#10b981',
+  '#f43f5e',
+  '#8b5cf6',
+  '#06b6d4',
 ];
+
+const TICK_STYLE = { fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' };
+
+const TOOLTIP_STYLE = {
+  background: 'var(--popover)',
+  border: '1px solid var(--border)',
+  borderRadius: '6px',
+  fontSize: '12px',
+  color: 'var(--popover-foreground)',
+};
 
 // ─── Data helpers ─────────────────────────────────────────────────────────────
 
@@ -79,19 +99,9 @@ function filterByRange<T extends { date: string }>(data: T[], range: Range): T[]
   return filtered.length > 1 ? filtered : data.slice(-2);
 }
 
-/** Normalize a value series to % return from the first data point */
-function normalizeToPercent(
-  data: { date: string; value: number }[],
-): { date: string; pct: number }[] {
-  if (data.length < 2) return [];
-  const base = data[0].value;
-  if (base === 0) return data.map((d) => ({ date: d.date, pct: 0 }));
-  return data.map((d) => ({ date: d.date, pct: ((d.value - base) / Math.abs(base)) * 100 }));
-}
-
 /**
- * Build wide-format data for multi-analyst line chart.
- * Each row: { date, [analystId]: pct, ... }
+ * Build wide-format multi-analyst chart data with index keys (a0, a1, ...).
+ * Normalizes each curve as % of $100K starting capital to avoid division-by-zero.
  */
 function buildAnalystCompareData(
   analysts: { id: string; name: string }[],
@@ -100,35 +110,34 @@ function buildAnalystCompareData(
 ): Record<string, number | string>[] {
   if (analysts.length === 0) return [];
 
-  // Normalize each analyst curve over the range
-  const normalized = new Map<string, Map<string, number>>();
-  for (const analyst of analysts) {
-    const raw = filterByRange(curves[analyst.id] ?? [], range);
-    const pcts = normalizeToPercent(raw);
-    if (pcts.length > 0) {
-      normalized.set(analyst.id, new Map(pcts.map((p) => [p.date, p.pct])));
+  const maps = new Map<string, Map<string, number>>();
+  for (let i = 0; i < analysts.length; i++) {
+    const raw = filterByRange(curves[analysts[i].id] ?? [], range);
+    if (raw.length === 0) continue;
+    const m = new Map<string, number>();
+    for (const pt of raw) {
+      m.set(pt.date, (pt.value / 100_000) * 100);
     }
+    maps.set(`a${i}`, m);
   }
-  if (normalized.size === 0) return [];
+  if (maps.size === 0) return [];
 
-  // Collect all dates
   const allDates = new Set<string>();
-  for (const m of normalized.values()) for (const d of m.keys()) allDates.add(d);
+  for (const m of maps.values()) for (const d of m.keys()) allDates.add(d);
   const sortedDates = [...allDates].sort();
 
   return sortedDates.map((date) => {
     const row: Record<string, number | string> = { date };
-    for (const analyst of analysts) {
-      const v = normalized.get(analyst.id)?.get(date);
-      if (v !== undefined) row[analyst.id] = v;
+    for (const [key, m] of maps.entries()) {
+      const v = m.get(date);
+      if (v !== undefined) row[key] = v;
     }
     return row;
   });
 }
 
 /**
- * Build two-line data: portfolio % vs SPY %.
- * Aligns by date — only includes dates present in both series.
+ * Build two-line % comparison: portfolio vs SPY.
  */
 function buildSpyCompareData(
   equityCurve: { date: string; value: number }[],
@@ -153,18 +162,6 @@ function buildSpyCompareData(
       spy: ((spyMap.get(d.date)! - spyBase) / spyBase) * 100,
     }));
 }
-
-// ─── Common tooltip style ─────────────────────────────────────────────────────
-
-const TOOLTIP_STYLE = {
-  background: 'var(--popover)',
-  border: '1px solid var(--border)',
-  borderRadius: '6px',
-  fontSize: '12px',
-  color: 'var(--popover-foreground)',
-};
-
-const TICK_STYLE = { fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' };
 
 // ─── Recent picks section ─────────────────────────────────────────────────────
 
@@ -314,8 +311,6 @@ function Empty({ text, subtext }: { text: string; subtext?: string }) {
   );
 }
 
-// ─── Chart empty state ────────────────────────────────────────────────────────
-
 function ChartEmpty({ text }: { text: string }) {
   return (
     <div className="h-52 flex items-center justify-center">
@@ -334,6 +329,7 @@ interface DashboardClientProps {
 export default function DashboardClient({ data, userId }: DashboardClientProps) {
   const [range, setRange] = useState<Range>('1M');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('dollar');
   const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(new Set());
   const [flashIds, setFlashIds] = useState<Map<string, 'win' | 'loss'>>(new Map());
 
@@ -395,7 +391,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
       ? `${(portfolio.winRate * 100).toFixed(0)}% win rate`
       : null;
 
-  // SPY inline comparison for the selected range
   const spyPct: number | null =
     range === '1W' ? spyBenchmark['1W']
     : range === '1M' ? spyBenchmark['1M']
@@ -408,6 +403,19 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     [rawEquity, range],
   );
 
+  // % return from first data point in the selected range
+  const portfolioPercentData = useMemo(() => {
+    if (portfolioData.length < 2) return portfolioData;
+    const base = portfolioData[0].value;
+    if (base === 0) return portfolioData.map((d) => ({ ...d, value: 0 }));
+    return portfolioData.map((d) => ({
+      date: d.date,
+      value: ((d.value - base) / base) * 100,
+    }));
+  }, [portfolioData]);
+
+  const activePortfolioData = displayMode === 'percent' ? portfolioPercentData : portfolioData;
+
   const analystCompareData = useMemo(
     () => buildAnalystCompareData(analysts, analystEquityCurves, range),
     [analysts, analystEquityCurves, range],
@@ -418,21 +426,38 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     [rawEquity, spyCandles, range],
   );
 
-  // ── Portfolio chart visuals ─────────────────────────────────────────────────
+  // ── Chart visuals ───────────────────────────────────────────────────────────
   const equityPositive =
     portfolioData.length > 1
       ? portfolioData[portfolioData.length - 1].value >= portfolioData[0].value
       : true;
   const strokeColor = equityPositive ? PNL_HEX.positive : PNL_HEX.negative;
 
+  const analystChartConfig = useMemo<ChartConfig>(() => {
+    const cfg: ChartConfig = {};
+    analysts.forEach((analyst, i) => {
+      cfg[`a${i}`] = {
+        label: analyst.name,
+        color: ANALYST_COLORS[i % ANALYST_COLORS.length],
+      };
+    });
+    return cfg;
+  }, [analysts]);
+
+  const spyChartConfig = useMemo<ChartConfig>(
+    () => ({
+      portfolio: { label: 'Portfolio', color: strokeColor },
+      spy: { label: 'S&P 500', color: '#71717a' },
+    }),
+    [strokeColor],
+  );
+
   const loading = !data;
 
-  // Determine if the current view has enough data to show a non-trivial chart
-  const hasPortfolioData = portfolioData.length >= 2;
+  const hasPortfolioData = activePortfolioData.length >= 2;
   const hasAnalystData = analystCompareData.length >= 2 && analysts.length >= 1;
   const hasSpyData = spyCompareData.length >= 2;
 
-  // Clamp view to available options
   const effectiveView: ChartView =
     chartView === 'by-analyst' && analysts.length === 0 ? 'portfolio'
     : chartView === 'vs-spy' && spyCandles.length === 0 ? 'portfolio'
@@ -471,7 +496,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         </>
                       )}
                     </p>
-                    {/* Inline SPY comparison (only for ranges where we have SPY data) */}
                     {spyPct !== null && (
                       <span className="text-xs tabular-nums text-muted-foreground">
                         vs SPY{' '}
@@ -488,7 +512,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
 
             {/* Chart card */}
             <div
-              className="relative rounded-lg overflow-hidden border"
+              className="rounded-lg overflow-hidden border"
               style={{
                 backgroundImage:
                   'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
@@ -496,31 +520,10 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                 backgroundColor: 'hsl(var(--muted)/0.3)',
               }}
             >
-              {/* Chart controls: view selector (left) + range tabs (right) */}
-              <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between gap-2">
-                {/* View selector */}
-                {!loading && (
-                  <Select
-                    value={effectiveView}
-                    onValueChange={(v) => setChartView(v as ChartView)}
-                  >
-                    <SelectTrigger className="h-7 w-auto text-xs gap-1 bg-background/80 backdrop-blur-sm border px-2 py-0 [&>svg]:h-3 [&>svg]:w-3 min-w-0">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="portfolio">Portfolio</SelectItem>
-                      {analysts.length > 0 && (
-                        <SelectItem value="by-analyst">By Analyst</SelectItem>
-                      )}
-                      {spyCandles.length > 0 && (
-                        <SelectItem value="vs-spy">vs S&P 500</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
-
+              {/* Controls: range tabs (left) + settings dropdown (right) */}
+              <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
                 {/* Range tabs */}
-                <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5 ml-auto">
+                <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
                   {RANGES.map((r) => (
                     <button
                       key={r}
@@ -536,22 +539,64 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                     </button>
                   ))}
                 </div>
+
+                {/* Settings dropdown */}
+                {!loading && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="h-7 w-7 inline-flex items-center justify-center rounded-md border bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label="Chart settings"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>View</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuRadioGroup
+                        value={effectiveView}
+                        onValueChange={(v) => setChartView(v as ChartView)}
+                      >
+                        <DropdownMenuRadioItem value="portfolio">Portfolio</DropdownMenuRadioItem>
+                        {analysts.length > 0 && (
+                          <DropdownMenuRadioItem value="by-analyst">By Analyst</DropdownMenuRadioItem>
+                        )}
+                        {spyCandles.length > 0 && (
+                          <DropdownMenuRadioItem value="vs-spy">vs S&amp;P 500</DropdownMenuRadioItem>
+                        )}
+                      </DropdownMenuRadioGroup>
+                      {effectiveView === 'portfolio' && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel>Display</DropdownMenuLabel>
+                          <DropdownMenuRadioGroup
+                            value={displayMode}
+                            onValueChange={(v) => setDisplayMode(v as DisplayMode)}
+                          >
+                            <DropdownMenuRadioItem value="dollar">$ Value</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="percent">% Return</DropdownMenuRadioItem>
+                          </DropdownMenuRadioGroup>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
 
-              {/* ── Chart render ── */}
+              {/* Chart render */}
               {loading ? (
-                <div className="h-64 flex items-center justify-center">
+                <div className="h-[260px] flex items-center justify-center">
                   <Skeleton className="h-1 w-3/4 rounded-full" />
                 </div>
               ) : effectiveView === 'portfolio' ? (
-                // ── Total portfolio area chart ──────────────────────────────
                 !hasPortfolioData ? (
                   <ChartEmpty text="The equity chart tracks portfolio value over time as trades open and close." />
                 ) : (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={260}>
                     <AreaChart
-                      data={portfolioData}
-                      margin={{ top: 48, right: 0, bottom: 0, left: 0 }}
+                      data={activePortfolioData}
+                      margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
                     >
                       <defs>
                         <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
@@ -565,16 +610,18 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         tickLine={false}
                         axisLine={false}
                         tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
-                        interval={Math.max(1, Math.floor(portfolioData.length / 6))}
+                        interval={Math.max(1, Math.floor(activePortfolioData.length / 6))}
                         padding={{ left: 0, right: 0 }}
                       />
-                      <YAxis
-                        hide
-                        domain={['dataMin * 0.999', 'dataMax * 1.001']}
-                      />
+                      <YAxis hide domain={['dataMin * 0.999', 'dataMax * 1.001']} />
                       <Tooltip
                         contentStyle={TOOLTIP_STYLE}
-                        formatter={(v) => [`$${Number(v).toLocaleString()}`, 'Portfolio']}
+                        formatter={(v) => [
+                          displayMode === 'dollar'
+                            ? `$${Number(v).toLocaleString()}`
+                            : `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`,
+                          'Portfolio',
+                        ]}
                         labelFormatter={(l: unknown) => formatDateLabel(String(l))}
                         labelStyle={{ color: 'var(--muted-foreground)' }}
                       />
@@ -586,21 +633,19 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         fill="url(#eqGrad)"
                         dot={false}
                         activeDot={{ r: 3, fill: strokeColor }}
-                        // baseline = chart bottom so gradient always fades downward
                         baseValue="dataMin"
                       />
                     </AreaChart>
                   </ResponsiveContainer>
                 )
               ) : effectiveView === 'by-analyst' ? (
-                // ── Per-analyst % lines ─────────────────────────────────────
                 !hasAnalystData ? (
                   <ChartEmpty text="Not enough trade history to compare analysts yet." />
                 ) : (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ChartContainer config={analystChartConfig} className="h-[260px] w-full">
                     <LineChart
                       data={analystCompareData}
-                      margin={{ top: 48, right: 16, bottom: 0, left: 0 }}
+                      margin={{ top: 4, right: 16, bottom: 0, left: 0 }}
                     >
                       <XAxis
                         dataKey="date"
@@ -612,7 +657,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         padding={{ left: 8, right: 8 }}
                       />
                       <YAxis
-                        hide={false}
                         tick={TICK_STYLE}
                         tickLine={false}
                         axisLine={false}
@@ -622,30 +666,22 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                       <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
                       <Tooltip
                         contentStyle={TOOLTIP_STYLE}
-                        formatter={(v, name) => {
-                          const analyst = analysts.find((a) => a.id === name);
-                          return [
-                            `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`,
-                            analyst?.name ?? String(name),
-                          ];
+                        formatter={(v, key) => {
+                          const idx = parseInt(String(key).replace('a', ''), 10);
+                          const name = analysts[idx]?.name ?? String(key);
+                          const pct = Number(v);
+                          return [`${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`, name];
                         }}
                         labelFormatter={(l: unknown) => formatDateLabel(String(l))}
                         labelStyle={{ color: 'var(--muted-foreground)' }}
                       />
-                      <Legend
-                        iconType="plainline"
-                        iconSize={16}
-                        formatter={(value) =>
-                          analysts.find((a) => a.id === value)?.name ?? value
-                        }
-                        wrapperStyle={{ fontSize: 11, paddingBottom: 4 }}
-                      />
-                      {analysts.map((analyst, i) => (
+                      <ChartLegend content={<ChartLegendContent />} />
+                      {analysts.map((_, i) => (
                         <Line
-                          key={analyst.id}
+                          key={`a${i}`}
                           type="monotone"
-                          dataKey={analyst.id}
-                          stroke={ANALYST_COLORS[i % ANALYST_COLORS.length]}
+                          dataKey={`a${i}`}
+                          stroke={`var(--color-a${i})`}
                           strokeWidth={1.5}
                           dot={false}
                           activeDot={{ r: 3 }}
@@ -653,17 +689,16 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         />
                       ))}
                     </LineChart>
-                  </ResponsiveContainer>
+                  </ChartContainer>
                 )
               ) : (
-                // ── vs S&P 500 ──────────────────────────────────────────────
                 !hasSpyData ? (
                   <ChartEmpty text="Not enough data to compare against S&P 500 for this range." />
                 ) : (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ChartContainer config={spyChartConfig} className="h-[260px] w-full">
                     <LineChart
                       data={spyCompareData}
-                      margin={{ top: 48, right: 16, bottom: 0, left: 0 }}
+                      margin={{ top: 4, right: 16, bottom: 0, left: 0 }}
                     >
                       <XAxis
                         dataKey="date"
@@ -675,7 +710,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         padding={{ left: 8, right: 8 }}
                       />
                       <YAxis
-                        hide={false}
                         tick={TICK_STYLE}
                         tickLine={false}
                         axisLine={false}
@@ -692,18 +726,11 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         labelFormatter={(l: unknown) => formatDateLabel(String(l))}
                         labelStyle={{ color: 'var(--muted-foreground)' }}
                       />
-                      <Legend
-                        iconType="plainline"
-                        iconSize={16}
-                        formatter={(value) =>
-                          value === 'portfolio' ? 'Portfolio' : 'S&P 500'
-                        }
-                        wrapperStyle={{ fontSize: 11, paddingBottom: 4 }}
-                      />
+                      <ChartLegend content={<ChartLegendContent />} />
                       <Line
                         type="monotone"
                         dataKey="portfolio"
-                        stroke={equityPositive ? PNL_HEX.positive : PNL_HEX.negative}
+                        stroke="var(--color-portfolio)"
                         strokeWidth={1.5}
                         dot={false}
                         activeDot={{ r: 3 }}
@@ -711,14 +738,14 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                       <Line
                         type="monotone"
                         dataKey="spy"
-                        stroke="#71717a"
+                        stroke="var(--color-spy)"
                         strokeWidth={1.5}
                         strokeDasharray="4 2"
                         dot={false}
                         activeDot={{ r: 3 }}
                       />
                     </LineChart>
-                  </ResponsiveContainer>
+                  </ChartContainer>
                 )
               )}
             </div>
