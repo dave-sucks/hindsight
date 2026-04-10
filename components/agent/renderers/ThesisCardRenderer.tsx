@@ -77,25 +77,32 @@ export function ThesisCardRenderer({ toolCallId, loading }: Props) {
     .map((p): ThesisCardData | null => {
       const r = (p.result ?? p.output) as Record<string, unknown> | undefined;
       if (!r) return null;
-      // Unwrap ToolResult envelope if present
-      const data = (r.ok === true && r.data ? r.data : r) as Record<string, unknown>;
-      if (!data.ticker || !data.direction) return null;
+
+      // Post-change: result.data is minimal {thesis_id, status} — read display
+      // fields from the tool input args (always present on tool-call parts).
+      // Pre-change fallback: result.data has the full echo — use it if args lack fields.
+      const inputArgs = (p.args ?? p.input ?? {}) as Record<string, unknown>;
+      const resultData = (r.ok === true && r.data ? r.data : r) as Record<string, unknown>;
+      const display = (inputArgs.ticker && inputArgs.direction) ? inputArgs : resultData;
+
+      if (!display.ticker || !display.direction) return null;
+
       return {
-        ticker: data.ticker as string,
-        direction: data.direction as "LONG" | "SHORT" | "PASS",
-        confidence_score: (data.confidence_score as number) ?? (data.confidenceScore as number) ?? 0,
-        reasoning_summary: data.reasoning_summary as string | undefined,
-        thesis_bullets: (data.thesis_bullets as string[]) ?? [],
-        risk_flags: (data.risk_flags as string[]) ?? [],
-        entry_price: data.entry_price as number | null | undefined,
-        target_price: data.target_price as number | null | undefined,
-        stop_loss: data.stop_loss as number | null | undefined,
-        hold_duration: data.hold_duration as string | undefined,
-        signal_types: (data.signal_types as string[]) ?? [],
-        company_name: data.company_name as string | null | undefined,
-        exchange: data.exchange as string | null | undefined,
-        fundamentals: data.fundamentals as ThesisCardData["fundamentals"],
-        status: (data.status as ThesisCardData["status"]) ?? "ACTIVE",
+        ticker: display.ticker as string,
+        direction: display.direction as "LONG" | "SHORT" | "PASS",
+        confidence_score: (display.confidence_score as number) ?? (display.confidenceScore as number) ?? 0,
+        reasoning_summary: display.reasoning_summary as string | undefined,
+        thesis_bullets: (display.thesis_bullets as string[]) ?? [],
+        risk_flags: (display.risk_flags as string[]) ?? [],
+        entry_price: display.entry_price as number | null | undefined,
+        target_price: display.target_price as number | null | undefined,
+        stop_loss: display.stop_loss as number | null | undefined,
+        hold_duration: display.hold_duration as string | undefined,
+        signal_types: (display.signal_types as string[]) ?? [],
+        company_name: display.company_name as string | null | undefined,
+        exchange: display.exchange as string | null | undefined,
+        fundamentals: display.fundamentals as ThesisCardData["fundamentals"],
+        status: (resultData.status as ThesisCardData["status"]) ?? "ACTIVE",
       };
     })
     .filter((t): t is ThesisCardData => t !== null);
