@@ -31,7 +31,7 @@ export const readSignals = defineTool({
   }),
   ui: "ticker-list" as const,
 
-  execute: async ({ tickers, themes, type, urgency, limit = 10 }, ctx) => {
+  execute: async ({ tickers, themes, type, urgency, limit = 3 }, ctx) => {
     if (!ctx.analystId) {
       return {
         summary: "No analyst context — cannot read signals.",
@@ -115,7 +115,7 @@ export const readSignals = defineTool({
             signalId: s.id,
             type: s.type,
             headline: s.headline,
-            summary: s.summary?.slice(0, 100) ?? "",
+            summary: s.summary ?? "",
             tickers: s.tickers,
             themes: s.themes,
             sentiment: s.sentiment ?? "NEUTRAL",
@@ -149,7 +149,7 @@ export const readSignals = defineTool({
       signalId: r.signal.id,
       type: r.signal.type,
       headline: r.signal.headline,
-      summary: r.signal.summary?.slice(0, 100) ?? "",
+      summary: r.signal.summary ?? "",
       tickers: r.signal.tickers,
       themes: r.signal.themes,
       sentiment: r.signal.sentiment ?? "NEUTRAL",
