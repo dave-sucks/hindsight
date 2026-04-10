@@ -106,11 +106,19 @@ function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; live
     ? (currentPrice - trade.avgCost) * trade.quantity * (trade.direction === "SHORT" ? -1 : 1)
     : (trade.realizedPnl ?? 0);
   const price = currentPrice;
-  const pnlPct =
-    trade.avgCost > 0
-      ? ((price - trade.avgCost) / trade.avgCost) * 100 *
-        (trade.direction === "SHORT" ? -1 : 1)
-      : 0;
+  // For closed trades use realizedPnl/cost-basis (works even when closePrice is null).
+  // For open trades use price delta (only valid when we have a live price).
+  const pnlPct = isOpen
+    ? (trade.avgCost > 0
+        ? ((price - trade.avgCost) / trade.avgCost) * 100 * (trade.direction === "SHORT" ? -1 : 1)
+        : 0)
+    : (trade.avgCost > 0 && trade.quantity > 0
+        ? ((trade.realizedPnl ?? 0) / (trade.avgCost * trade.quantity)) * 100
+        : 0);
+
+  // Show P&L for closed trades always (realizedPnl from DB); for open trades only
+  // when we have a live price (otherwise we'd show a stale entry-price delta as $0).
+  const hasPnl = !isOpen || livePrice !== undefined;
 
   return (
     <TradeRow
@@ -119,8 +127,8 @@ function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; live
       currentPrice={price}
       entryPrice={trade.avgCost}
       shares={trade.quantity}
-      pnl={livePrice !== undefined ? pnl : 0}
-      pnlPct={livePrice !== undefined ? pnlPct : 0}
+      pnl={hasPnl ? pnl : 0}
+      pnlPct={hasPnl ? pnlPct : 0}
       status={trade.status}
       openedAt={trade.openedAt}
       priceSource={isOpen ? (livePrice !== undefined ? "alpaca" : "missing") : undefined}
@@ -331,11 +339,18 @@ export default function AnalystDetailClient({
       const today = new Date().toISOString().slice(0, 10);
       const lastPoint = points[points.length - 1];
       const todayPnl = cum + totalUnrealizedPnl;
+      const todayValue = totalCurrentValue + cum;
       if (!lastPoint || lastPoint.date !== today) {
-        points.push({ date: today, pnl: todayPnl, value: totalCurrentValue + cum });
+        points.push({ date: today, pnl: todayPnl, value: todayValue });
       } else {
         lastPoint.pnl = todayPnl;
-        lastPoint.value = totalCurrentValue + cum;
+        lastPoint.value = todayValue;
+        // If the start point and today point share the same date (all trades opened today),
+        // insert a baseline point for yesterday so we have at least 2 distinct chart points.
+        if (points.length < 2) {
+          const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+          points.unshift({ date: yesterday, pnl: 0, value: totalCostBasis });
+        }
       }
     }
 
