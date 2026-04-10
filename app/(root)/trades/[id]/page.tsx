@@ -209,7 +209,8 @@ export default async function TradeDetailPage({
 
   const isOpen = position.status === 'OPEN';
   const livePrice = stockQuote?.c ?? null;
-  const currentPrice = isOpen && livePrice ? livePrice : (position.closePrice ?? position.avgCost);
+  const closePrice = position.closePrice; // actual fill price per share at close
+  const currentPrice = isOpen && livePrice ? livePrice : (closePrice ?? position.avgCost);
 
   // P&L
   const realizedPnl = position.realizedPnl ?? 0;
@@ -219,9 +220,14 @@ export default async function TradeDetailPage({
       : (position.avgCost - currentPrice) * position.quantity
     : realizedPnl;
   const positionCost = position.avgCost * position.quantity;
+  const exitProceeds = closePrice != null ? closePrice * position.quantity : null;
   const pnl = isOpen ? unrealizedDollars : realizedPnl;
   const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
   const isPos = pnl >= 0;
+
+  const daysHeld = position.closedAt
+    ? Math.max(1, Math.round((new Date(position.closedAt).getTime() - new Date(position.openedAt).getTime()) / 86_400_000))
+    : null;
 
   const status = getStatusDisplay(position.status, position.outcome ?? null, hasPendingOrder, hasFilledBuy);
   const targetPrice = position.targetPrice ?? position.avgCost * 1.1;
@@ -382,14 +388,28 @@ export default async function TradeDetailPage({
                           </div>
                         </TooltipContent>
                       </Tooltip>
-                      <span>
-                        {isOpen
-                          ? (hasFilledBuy ? 'Holding' : 'Pending')
-                          : 'Sold'}{' '}
-                        {trade.shares} shares at{' '}
-                        <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
-                        {' '}
-                        <span className="text-muted-foreground">({fmtCur(trade.entryPrice * trade.shares)} value)</span>
+                      <span className="flex items-center gap-1 flex-wrap">
+                        {isOpen ? (
+                          <>
+                            <span>{hasFilledBuy ? 'Holding' : 'Pending'} {trade.shares} shares</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-muted-foreground text-xs">entry</span>
+                            <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
+                            <span className="text-muted-foreground">({fmtCur(positionCost)} cost)</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Sold {trade.shares} shares</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-muted-foreground text-xs">bought</span>
+                            <span className="tabular-nums font-medium">{fmtCur(trade.entryPrice)}</span>
+                            <span className="text-muted-foreground text-xs">→ sold</span>
+                            <span className="tabular-nums font-medium">{fmtCur(closePrice ?? currentPrice)}</span>
+                            {daysHeld && (
+                              <span className="text-muted-foreground text-xs">· {daysHeld}d held</span>
+                            )}
+                          </>
+                        )}
                       </span>
                     </div>
                     {/* Right: P&L */}
@@ -527,8 +547,15 @@ export default async function TradeDetailPage({
               {([
                 { label: 'Direction', value: trade.direction, tip: null },
                 { label: 'Shares', value: String(trade.shares), tip: null },
-                { label: 'Position Cost', value: `$${positionCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
-                { label: 'Market Value', value: `$${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
+                { label: 'Buy Price', value: `$${trade.entryPrice.toFixed(2)} / share`, tip: null },
+                ...(!isOpen && closePrice != null
+                  ? [{ label: 'Sell Price', value: `$${closePrice.toFixed(2)} / share`, tip: null }]
+                  : []),
+                { label: 'Cost Basis', value: `$${positionCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
+                { label: isOpen ? 'Market Value' : 'Exit Value', value: `$${(currentPrice * trade.shares).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tip: null },
+                ...(!isOpen && daysHeld != null
+                  ? [{ label: 'Days Held', value: `${daysHeld}d`, tip: null }]
+                  : []),
                 ...(analystName ? [{ label: 'Analyst', value: analystName, tip: null as React.ReactNode }] : []),
                 { label: 'Position opened', value: fmtDateTime(position.openedAt), tip: null },
                 ...(openingBuy

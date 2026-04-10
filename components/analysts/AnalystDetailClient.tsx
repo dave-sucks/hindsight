@@ -380,13 +380,14 @@ export default function AnalystDetailClient({
   const pnlColorClass = hasTrades
     ? totalPnl >= 0 ? "text-positive" : "text-negative"
     : "text-muted-foreground";
-  const overlayValue = chartMode === "pnl"
-    ? (hasTrades ? (totalPnl >= 0 ? "+" : "") + formatCurrency(totalPnl) : "$0.00")
-    : formatCurrency(totalCurrentValue);
-  const overlayLabel = chartMode === "pnl" ? "P&L" : "Value";
-  const overlayColorClass = chartMode === "pnl"
-    ? pnlColorClass
-    : "text-foreground";
+  // Both modes show total P&L (realized + unrealized) since the chart tracks
+  // cumulative P&L from 0. "Value" mode uses the last equity point (same number)
+  // so the overlay always reflects what the chart end-point actually shows.
+  const overlayValue = hasTrades
+    ? (totalPnl >= 0 ? "+" : "") + formatCurrency(totalPnl)
+    : "$0.00";
+  const overlayLabel = chartMode === "pnl" ? "P&L" : "Net Gain";
+  const overlayColorClass = pnlColorClass;
 
   return (
     <>

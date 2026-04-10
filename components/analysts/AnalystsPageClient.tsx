@@ -63,19 +63,35 @@ function WinRateBar({ winRate, tradeCount }: { winRate: number | null; tradeCoun
 
 // ── AnalystCard ───────────────────────────────────────────────────────────────
 
+function directionLabel(bias: string): string {
+  if (bias === 'BOTH') return 'L/S';
+  if (bias === 'LONG') return 'Long';
+  if (bias === 'SHORT') return 'Short';
+  return bias;
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s+/g, '')
+    .replace(/\*\*(.+?)\*\*/gs, '$1')
+    .replace(/\*(.+?)\*/gs, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/\n{2,}/g, ' ')
+    .trim();
+}
+
 function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete: (id: string) => void }) {
   const configSubhead = [
-    analyst.directionBias,
+    directionLabel(analyst.directionBias),
     analyst.holdDurations.length > 0 ? analyst.holdDurations.join("/") : null,
     `${analyst.minConfidence}%+`,
   ]
     .filter(Boolean)
     .join(" — ");
 
-  const promptText =
-    analyst.analystPrompt ||
-    analyst.description ||
-    null;
+  const rawPrompt = analyst.analystPrompt || analyst.description || null;
+  const promptText = rawPrompt ? stripMarkdown(rawPrompt) : null;
 
   const openCount = analyst.openTrades.length;
 
