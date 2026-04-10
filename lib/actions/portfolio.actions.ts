@@ -75,6 +75,12 @@ export interface RecentPick {
   sourcesUsed: unknown;
 }
 
+export interface SpyBenchmark {
+  '1W': number | null;
+  '1M': number | null;
+  '1Y': number | null;
+}
+
 export interface DashboardData {
   openTrades: MockTrade[];
   closedTrades: MockTrade[];
@@ -90,6 +96,7 @@ export interface DashboardData {
   hasBrief: boolean;
   analysts: { id: string; name: string }[];
   analystEquityCurves: Record<string, { date: string; value: number }[]>;
+  spyBenchmark: SpyBenchmark;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -187,6 +194,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       hasBrief: false,
       analysts: [],
       analystEquityCurves: {},
+      spyBenchmark: { '1W': null, '1M': null, '1Y': null },
     };
   }
 
@@ -340,7 +348,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     }),
   ]);
 
-  // ── Phase B: price + name lookups, parallel ─────────────────────────────
+  // ── Phase B: price + name lookups + SPY benchmark, parallel ────────────
   // These depend on tickers from phase A but are independent of each other,
   // so run them in parallel instead of sequentially.
   const openTickers = [...new Set(dbOpenPositions.map((p) => p.symbol))];
@@ -353,7 +361,17 @@ export async function getDashboardData(): Promise<DashboardData> {
     fetchedAt: new Date().toISOString(),
   };
 
-  const [priceLookup, nameMap] = await Promise.all([
+  function computeSpyReturn(candles: { date: string; close: number }[], days: number): number | null {
+    if (candles.length < 2) return null;
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const sliced = candles.filter((c) => new Date(c.date + 'T12:00:00') >= cutoff);
+    if (sliced.length < 2) return null;
+    const start = sliced[0].close;
+    const end = sliced[sliced.length - 1].close;
+    return ((end - start) / start) * 100;
+  }
+
+  const [priceLookup, nameMap, spyCandles] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -382,8 +400,22 @@ export async function getDashboardData(): Promise<DashboardData> {
       }
       return map;
     })(),
+    (async () => {
+      try {
+        const { getStockCandles } = await import("@/lib/actions/finnhub.actions");
+        return await getStockCandles('SPY', 370);
+      } catch {
+        return [];
+      }
+    })(),
   ]);
   const priceMap = priceLookup.prices;
+
+  const spyBenchmark: SpyBenchmark = {
+    '1W': computeSpyReturn(spyCandles, 7),
+    '1M': computeSpyReturn(spyCandles, 30),
+    '1Y': computeSpyReturn(spyCandles, 365),
+  };
 
   // ── 4. Map open positions → MockTrade shape ────────────────────────────────
   const openTrades: MockTrade[] = dbOpenPositions.map((p) => {
@@ -580,5 +612,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     hasBrief: recentPicks.length > 0,
     analysts,
     analystEquityCurves,
+    spyBenchmark,
   };
 }
