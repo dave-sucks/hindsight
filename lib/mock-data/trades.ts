@@ -29,6 +29,7 @@ export interface MockTrade {
   thesis: string;
   shares?: number;
   analystName?: string;
+  analystId?: string;
   alpacaOrderId?: string;
 
   // ── Order lifecycle (derived from latest Order row) ───────────────────────

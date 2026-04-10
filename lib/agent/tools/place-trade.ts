@@ -31,14 +31,14 @@ export const placeTrade = defineTool({
 
   execute: async (args, ctx) => {
     try {
-      // 0. Check for existing open position
+      // 0. Check for existing open position (scoped to this analyst only)
       const existingPosition = await prisma.position.findFirst({
-        where: { userId: ctx.userId, symbol: args.ticker, status: "OPEN" },
+        where: { userId: ctx.userId, analystId: ctx.analystId ?? undefined, symbol: args.ticker, status: "OPEN" },
         select: { id: true, symbol: true },
       });
 
       if (existingPosition) {
-        const blockedMsg = `Already holding an open position in ${args.ticker}. Cannot open duplicate positions across analysts.`;
+        const blockedMsg = `Already holding an open position in ${args.ticker}. Cannot open duplicate positions for this analyst.`;
         return {
           summary: `Trade blocked: $${args.ticker} — duplicate position`,
           data: {

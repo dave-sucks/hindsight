@@ -6,10 +6,14 @@ import Link from 'next/link';
 import {
   Area,
   AreaChart,
+  BarChart,
+  Bar,
+  Cell,
   ResponsiveContainer,
   XAxis,
   YAxis,
   Tooltip,
+  ReferenceLine,
 } from 'recharts';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -251,6 +255,8 @@ export default function DashboardClient({
   userId,
 }: DashboardClientProps) {
   const [range, setRange] = useState<Range>('1M');
+  const [selectedAnalyst, setSelectedAnalyst] = useState<string>('all');
+  const [chartView, setChartView] = useState<'equity' | 'positions'>('equity');
   const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(new Set());
   const [flashIds, setFlashIds] = useState<Map<string, 'win' | 'loss'>>(new Map());
 
@@ -283,9 +289,31 @@ export default function DashboardClient({
     (t) => !realtimeClosedIds.has(t.id),
   );
   const closedTrades = data?.closedTrades ?? [];
+  const analysts = data?.analysts ?? [];
+  const analystEquityCurves = data?.analystEquityCurves ?? {};
+
   const allEquityData =
     data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
-  const equityData = sliceEquity(allEquityData, range);
+  const rawEquityData =
+    selectedAnalyst === 'all'
+      ? allEquityData
+      : (analystEquityCurves[selectedAnalyst] ?? []);
+  const equityData = sliceEquity(rawEquityData, range);
+  const isAnalystView = selectedAnalyst !== 'all';
+
+  // Positions breakdown data
+  const filteredPositions =
+    selectedAnalyst === 'all'
+      ? openTrades
+      : openTrades.filter((t) => t.analystId === selectedAnalyst);
+  const positionsChartData = filteredPositions
+    .filter((t) => t.shares && t.shares > 0)
+    .map((t) => ({
+      ticker: t.ticker,
+      pnl: t.pnl,
+      analystName: t.analystName ?? '',
+    }))
+    .sort((a, b) => b.pnl - a.pnl);
   const recentPicks = data?.recentPicks ?? [];
 
   const portfolio = data?.portfolio ?? {
@@ -314,6 +342,10 @@ export default function DashboardClient({
       ? equityData[equityData.length - 1].value >= equityData[0].value
       : true;
   const strokeColor = equityPositive ? PNL_HEX.positive : PNL_HEX.negative;
+  // Y-axis domain: tight for portfolio value, auto for analyst P&L curves
+  const equityDomain = isAnalystView
+    ? (['auto', 'auto'] as const)
+    : (['dataMin * 0.999', 'dataMax * 1.001'] as const);
 
   const loading = !data;
 
@@ -356,7 +388,67 @@ export default function DashboardClient({
               )}
             </div>
 
-            {/* Equity chart — dotted bg, inline range tabs */}
+            {/* Analyst filter pills + chart mode toggle */}
+            {!loading && (analysts.length > 0 || openTrades.length > 0) && (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                {/* Analyst pills */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  <button
+                    onClick={() => setSelectedAnalyst('all')}
+                    className={cn(
+                      'px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors',
+                      selectedAnalyst === 'all'
+                        ? 'bg-secondary text-secondary-foreground border-secondary'
+                        : 'text-muted-foreground border-transparent hover:text-foreground',
+                    )}
+                  >
+                    All
+                  </button>
+                  {analysts.map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => setSelectedAnalyst(a.id)}
+                      className={cn(
+                        'px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors',
+                        selectedAnalyst === a.id
+                          ? 'bg-secondary text-secondary-foreground border-secondary'
+                          : 'text-muted-foreground border-transparent hover:text-foreground',
+                      )}
+                    >
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Chart view toggle */}
+                <div className="flex items-center gap-0.5 bg-muted/50 rounded-md border px-1 py-0.5 shrink-0">
+                  <button
+                    onClick={() => setChartView('equity')}
+                    className={cn(
+                      'px-2 py-0.5 text-xs rounded transition-colors',
+                      chartView === 'equity'
+                        ? 'bg-background text-foreground font-medium shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    Equity
+                  </button>
+                  <button
+                    onClick={() => setChartView('positions')}
+                    className={cn(
+                      'px-2 py-0.5 text-xs rounded transition-colors',
+                      chartView === 'positions'
+                        ? 'bg-background text-foreground font-medium shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    Positions
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Chart card — dotted bg */}
             <div
               className="relative rounded-lg overflow-hidden border"
               style={{
@@ -366,33 +458,79 @@ export default function DashboardClient({
                 backgroundColor: 'hsl(var(--muted)/0.3)',
               }}
             >
-              {/* Range tabs — absolute top-left */}
-              <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
-                {RANGES.map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setRange(r)}
-                    className={cn(
-                      'px-2 py-0.5 text-xs rounded transition-colors',
-                      range === r
-                        ? 'bg-muted text-foreground font-medium'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
+              {/* Range tabs — absolute top-left (equity view only) */}
+              {chartView === 'equity' && (
+                <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
+                  {RANGES.map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setRange(r)}
+                      className={cn(
+                        'px-2 py-0.5 text-xs rounded transition-colors',
+                        range === r
+                          ? 'bg-muted text-foreground font-medium'
+                          : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {loading ? (
                 <div className="h-52 flex items-center justify-center">
                   <Skeleton className="h-1 w-3/4 rounded-full" />
                 </div>
+              ) : chartView === 'positions' ? (
+                /* ── Positions P&L bar chart ── */
+                positionsChartData.length === 0 ? (
+                  <div className="h-52 flex items-center justify-center">
+                    <p className="text-xs text-muted-foreground">No open positions to display.</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={positionsChartData} margin={{ top: 24, right: 16, bottom: 0, left: 16 }}>
+                      <XAxis
+                        dataKey="ticker"
+                        tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis hide domain={['auto', 'auto']} />
+                      <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
+                      <Tooltip
+                        contentStyle={{
+                          background: 'var(--popover)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          color: 'var(--popover-foreground)',
+                        }}
+                        formatter={(v: unknown, _name: unknown, props: { payload?: { analystName?: string } }) => [
+                          `${Number(v) >= 0 ? '+' : ''}$${Number(v).toFixed(2)}`,
+                          props.payload?.analystName || 'P&L',
+                        ]}
+                        labelStyle={{ color: 'var(--muted-foreground)' }}
+                      />
+                      <Bar dataKey="pnl" radius={[3, 3, 0, 0]}>
+                        {positionsChartData.map((entry, i) => (
+                          <Cell
+                            key={i}
+                            fill={entry.pnl >= 0 ? PNL_HEX.positive : PNL_HEX.negative}
+                            fillOpacity={0.85}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )
               ) : equityData.length < 2 ? (
                 <div className="h-52 flex items-center justify-center">
                   <p className="text-xs text-muted-foreground">The equity chart tracks portfolio value over time as trades open and close.</p>
                 </div>
               ) : (
+                /* ── Equity area chart ── */
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart data={equityData} margin={{ top: 40, right: 0, bottom: 0, left: 0 }}>
                     <defs>
@@ -410,7 +548,7 @@ export default function DashboardClient({
                       interval={Math.max(1, Math.floor(equityData.length / 6))}
                       padding={{ left: 0, right: 0 }}
                     />
-                    <YAxis hide domain={['dataMin * 0.98', 'dataMax * 1.25']} />
+                    <YAxis hide domain={equityDomain} />
                     <Tooltip
                       contentStyle={{
                         background: 'var(--popover)',
@@ -419,10 +557,16 @@ export default function DashboardClient({
                         fontSize: '12px',
                         color: 'var(--popover-foreground)',
                       }}
-                      formatter={(v) => [`$${Number(v).toLocaleString()}`, 'Portfolio']}
+                      formatter={(v) => [
+                        isAnalystView
+                          ? `${Number(v) >= 0 ? '+' : ''}$${Number(v).toLocaleString()}`
+                          : `$${Number(v).toLocaleString()}`,
+                        isAnalystView ? 'P&L' : 'Portfolio',
+                      ]}
                       labelFormatter={(l: unknown) => formatDateLabel(String(l))}
                       labelStyle={{ color: 'var(--muted-foreground)' }}
                     />
+                    {isAnalystView && <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />}
                     <Area
                       type="monotone"
                       dataKey="value"
