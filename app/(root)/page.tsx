@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const EMPTY_DASHBOARD: DashboardData = {
   openTrades: [], closedTrades: [], activityFeed: [],
-  portfolio: { totalValue: 0, unrealizedPnl: 0, realizedPnl: 0, winRate: null, openCount: 0 },
+  portfolio: { totalValue: 100_000, unrealizedPnl: 0, realizedPnl: 0, winRate: null, openCount: 0 },
   equityCurve: [], realizedCurve: [], agentConfigs: [], recentRuns: [],
   todaysPicks: [], recentPicks: [], hasAlpacaKey: false, analystCount: 0,
   hasCompletedRun: false, hasBrief: false, analysts: [], analystEquityCurves: {},

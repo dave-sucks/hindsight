@@ -262,6 +262,9 @@ export async function getDashboardData(): Promise<DashboardData> {
         },
       },
       orderBy: { openedAt: "desc" },
+    }).catch((err) => {
+      console.error("[dashboard] open positions query failed (schema drift?):", err instanceof Error ? err.message : err);
+      return [] as never[];
     }),
     prisma.position.findMany({
       where: { userId, status: { in: ["CLOSED", "CANCELLED"] } },
@@ -270,6 +273,9 @@ export async function getDashboardData(): Promise<DashboardData> {
       },
       orderBy: { closedAt: "desc" },
       take: 50,
+    }).catch((err) => {
+      console.error("[dashboard] closed positions query failed (schema drift?):", err instanceof Error ? err.message : err);
+      return [] as never[];
     }),
     prisma.thesis.findMany({
       where: {
