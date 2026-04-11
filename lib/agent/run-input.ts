@@ -94,6 +94,12 @@ export interface RunInput {
     winRate: number | null;
     totalTrades: number;
     calibrationNote: string | null;
+    // Per-signal win rates (top signals by count)
+    signalAccuracy: Array<{ signal: string; winRate: number | null; count: number }> | null;
+    // Confidence calibration: are high-confidence theses actually winning more?
+    calibrationBuckets: Array<{ label: string; expectedWinRate: number; actualWinRate: number | null; count: number }> | null;
+    // LONG vs SHORT directional performance
+    directionStats: { long: { winRate: number | null; count: number }; short: { winRate: number | null; count: number } } | null;
   } | null;
   recentClosedTrades: Array<{
     symbol: string;
@@ -327,30 +333,78 @@ export async function buildRunInput(
       }
     : null;
 
-  // 7. Performance
+  // 7. Performance — load rich calibration data from the latest AccuracyReport
   let latestAccuracy: {
     winRate: number | null; tradesAnalyzed: number | null;
     narrativeSummary: string | null;
+    signalAccuracy: unknown;
+    calibrationData: unknown;
+    directionStats: unknown;
   } | null = null;
   try {
     latestAccuracy = await prisma.accuracyReport.findFirst({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      select: { winRate: true, tradesAnalyzed: true, narrativeSummary: true },
+      select: {
+        winRate: true, tradesAnalyzed: true, narrativeSummary: true,
+        signalAccuracy: true, calibrationData: true, directionStats: true,
+      },
     });
   } catch (err) {
     console.error("[buildRunInput] FAILED performance:", err);
   }
 
+  // Parse signal accuracy — top 8 by count
+  type RawSignal = { signal: string; winRate: number | null; count: number };
+  type RawBucket = { label: string; expectedWinRate: number; winRate: number | null; count: number };
+  type RawDirStats = Record<string, { winRate: number | null; count: number }>;
+
+  const parsedSignals: Array<{ signal: string; winRate: number | null; count: number }> | null = (() => {
+    try {
+      const raw = latestAccuracy?.signalAccuracy;
+      if (!Array.isArray(raw) || raw.length === 0) return null;
+      return (raw as RawSignal[])
+        .filter((s) => s.count > 0)
+        .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
+        .slice(0, 8)
+        .map((s) => ({ signal: s.signal, winRate: s.winRate, count: s.count }));
+    } catch { return null; }
+  })();
+
+  const parsedBuckets: Array<{ label: string; expectedWinRate: number; actualWinRate: number | null; count: number }> | null = (() => {
+    try {
+      const raw = latestAccuracy?.calibrationData;
+      if (!Array.isArray(raw) || raw.length === 0) return null;
+      return (raw as RawBucket[])
+        .filter((b) => b.count > 0)
+        .map((b) => ({ label: b.label, expectedWinRate: b.expectedWinRate, actualWinRate: b.winRate, count: b.count }));
+    } catch { return null; }
+  })();
+
+  const parsedDirStats: { long: { winRate: number | null; count: number }; short: { winRate: number | null; count: number } } | null = (() => {
+    try {
+      const raw = latestAccuracy?.directionStats as RawDirStats | null;
+      if (!raw) return null;
+      const long = raw["LONG"] ?? raw["long"];
+      const short = raw["SHORT"] ?? raw["short"];
+      if (!long && !short) return null;
+      return {
+        long: { winRate: long?.winRate ?? null, count: long?.count ?? 0 },
+        short: { winRate: short?.winRate ?? null, count: short?.count ?? 0 },
+      };
+    } catch { return null; }
+  })();
+
   const performance = latestAccuracy
     ? {
-        winRate: latestAccuracy.winRate
-          ? Number(latestAccuracy.winRate)
-          : null,
+        winRate: latestAccuracy.winRate ? Number(latestAccuracy.winRate) : null,
         totalTrades: latestAccuracy.tradesAnalyzed ?? 0,
         calibrationNote: latestAccuracy.narrativeSummary
-          ? String(latestAccuracy.narrativeSummary).slice(0, 300)
+          ? String(latestAccuracy.narrativeSummary).slice(0, 400)
           : null,
+        signalAccuracy: parsedSignals,
+        calibrationBuckets: parsedBuckets,
+        directionStats: parsedDirStats,
       }
     : null;
 

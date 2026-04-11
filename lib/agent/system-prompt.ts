@@ -169,15 +169,53 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
     sections.push(briefSection);
   }
 
-  // ── Section 6: Performance Context ───────────────────────────────────
+  // ── Section 6: Performance & Calibration ─────────────────────────────
   if (runInput.performance) {
     const perf = runInput.performance;
-    const winRateStr =
-      perf.winRate != null ? `${(perf.winRate * 100).toFixed(0)}%` : "—";
-    let perfSection = `## Performance Context\nWin Rate: ${winRateStr} | Trades: ${perf.totalTrades}`;
-    if (perf.calibrationNote) {
-      perfSection += ` | Calibration: ${perf.calibrationNote}`;
+    const winRateStr = perf.winRate != null ? `${(perf.winRate * 100).toFixed(0)}%` : "—";
+    let perfSection = `## Performance & Self-Calibration\nOverall win rate: ${winRateStr} across ${perf.totalTrades} closed trades.\n`;
+
+    // Signal accuracy table — which signal types actually work for you?
+    if (perf.signalAccuracy && perf.signalAccuracy.length > 0) {
+      perfSection += `\n**Signal accuracy (use this to size positions and filter entries):**\n`;
+      for (const s of perf.signalAccuracy) {
+        const wr = s.winRate != null ? `${(s.winRate * 100).toFixed(0)}%` : "—";
+        const flag = s.winRate != null && s.winRate < 0.45 ? " ⚠ underperforming" : s.winRate != null && s.winRate > 0.65 ? " ✓ strong" : "";
+        perfSection += `- ${s.signal}: ${wr} win rate (n=${s.count})${flag}\n`;
+      }
     }
+
+    // Confidence calibration
+    if (perf.calibrationBuckets && perf.calibrationBuckets.length > 0) {
+      perfSection += `\n**Confidence calibration (expected vs actual win rate):**\n`;
+      for (const b of perf.calibrationBuckets) {
+        const actual = b.actualWinRate != null ? `${(b.actualWinRate * 100).toFixed(0)}%` : "—";
+        const expected = `${(b.expectedWinRate * 100).toFixed(0)}%`;
+        const gap = b.actualWinRate != null ? b.actualWinRate - b.expectedWinRate : null;
+        const flag = gap != null && gap < -0.15 ? " ⚠ overconfident" : gap != null && gap > 0.1 ? " ✓ underconfident (room to push)" : "";
+        perfSection += `- Conf ${b.label}: expected ${expected}, actual ${actual} (n=${b.count})${flag}\n`;
+      }
+      perfSection += `Rule: If a confidence tier is marked ⚠ overconfident, reduce position size 15-20% for new entries at that confidence level.\n`;
+    }
+
+    // Direction stats
+    if (perf.directionStats) {
+      const d = perf.directionStats;
+      const longWr = d.long.winRate != null ? `${(d.long.winRate * 100).toFixed(0)}%` : "—";
+      const shortWr = d.short.winRate != null ? `${(d.short.winRate * 100).toFixed(0)}%` : "—";
+      if (d.long.count > 0 || d.short.count > 0) {
+        perfSection += `\n**Direction stats:** LONG ${longWr} (n=${d.long.count}) | SHORT ${shortWr} (n=${d.short.count})`;
+        if (d.short.count > 2 && d.short.winRate != null && d.short.winRate < 0.4) {
+          perfSection += `\nNote: SHORT win rate is below 40% — apply extra scrutiny to short theses.`;
+        }
+        perfSection += `\n`;
+      }
+    }
+
+    if (perf.calibrationNote) {
+      perfSection += `\n**Calibration summary:** ${perf.calibrationNote}`;
+    }
+
     sections.push(perfSection);
   }
 
