@@ -404,6 +404,12 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     openCount: mockOpenTrades.length,
   };
 
+  // ── Chart data (memoized) ───────────────────────────────────────────────────
+  const portfolioData = useMemo(
+    () => filterByRange(activeCurve, range),
+    [activeCurve, range],
+  );
+
   // ── Portfolio header values ─────────────────────────────────────────────────
   const totalValueStr = formatCurrency(portfolio.totalValue);
   const winRateStr =
@@ -426,12 +432,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     : range === '1M' ? spyBenchmark['1M']
     : range === '1Y' ? spyBenchmark['1Y']
     : null;
-
-  // ── Chart data (memoized) ───────────────────────────────────────────────────
-  const portfolioData = useMemo(
-    () => filterByRange(activeCurve, range),
-    [activeCurve, range],
-  );
 
   // % return from first data point in the selected range
   const portfolioPercentData = useMemo(() => {
