@@ -110,6 +110,15 @@ export interface RunInput {
     daysHeld: number;
     lesson: string | null;
   }>;
+  // Positions flagged by the price monitor in the last 24h — must be reviewed
+  priorityReviews: Array<{
+    symbol: string;
+    positionId: string;
+    alertType: "NEAR_TARGET" | "NEAR_STOP";
+    triggeredAt: string;
+    targetOrStop: number | null;
+    reason: string;
+  }> | null;
   intelligencePolicy: IntelligencePolicy;
 }
 
@@ -456,14 +465,63 @@ export async function buildRunInput(
     };
   });
 
-  // 9. Intelligence policy
+  // 9. Priority reviews — NEAR_TARGET / NEAR_STOP alerts from price monitor (last 24h)
+  let priorityReviews: RunInput["priorityReviews"] = null;
+  if (openPositions.length > 0) {
+    try {
+      const positionIds = openPositions.map((p) => p.id);
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const alerts = await prisma.positionManagementAction.findMany({
+        where: {
+          positionId: { in: positionIds },
+          actionType: { in: ["NEAR_TARGET", "NEAR_STOP"] },
+          source: "price_monitor",
+          createdAt: { gte: cutoff },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          positionId: true,
+          actionType: true,
+          newTargetPrice: true,
+          newStopLoss: true,
+          reason: true,
+          createdAt: true,
+          position: { select: { symbol: true } },
+        },
+      });
+
+      // Deduplicate: one alert per (positionId, alertType) — keep the most recent
+      const seen = new Set<string>();
+      const deduped = alerts.filter((a) => {
+        const key = `${a.positionId}:${a.actionType}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (deduped.length > 0) {
+        priorityReviews = deduped.map((a) => ({
+          symbol: a.position.symbol,
+          positionId: a.positionId,
+          alertType: a.actionType as "NEAR_TARGET" | "NEAR_STOP",
+          triggeredAt: a.createdAt.toISOString(),
+          targetOrStop: a.actionType === "NEAR_TARGET" ? (a.newTargetPrice ?? null) : (a.newStopLoss ?? null),
+          reason: a.reason,
+        }));
+      }
+    } catch (err) {
+      console.error("[buildRunInput] FAILED priorityReviews:", err);
+    }
+  }
+
+  // 10. Intelligence policy
   const intelligencePolicy = parseIntelligencePolicy(
     (config as Record<string, unknown>).intelligencePolicy
   );
 
   // ── Structured load summary ────────────────────────────────────────
   console.log(
-    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
+    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} priorityReviews=${priorityReviews?.length ?? 0} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
   );
 
   return {
@@ -508,6 +566,7 @@ export async function buildRunInput(
     priorBrief,
     performance,
     recentClosedTrades,
+    priorityReviews,
     intelligencePolicy,
   };
 }

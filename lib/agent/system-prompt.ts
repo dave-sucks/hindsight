@@ -92,7 +92,21 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 
   sections.push(portfolioSection);
 
-  // ── Section 3.5: Active Theses ───────────────────────────────────────
+  // ── Section 3.5: Priority Reviews ────────────────────────────────────
+  if (runInput.priorityReviews && runInput.priorityReviews.length > 0) {
+    let reviewSection = `## ⚠ Priority Reviews — Act Today\nThe price monitor flagged the following positions in the last 24 hours. These are **MUST-research** in Stage 2 regardless of any other triage criteria:\n\n`;
+    for (const r of runInput.priorityReviews) {
+      const hoursAgo = Math.round((Date.now() - new Date(r.triggeredAt).getTime()) / (1000 * 60 * 60));
+      const actionLabel = r.alertType === "NEAR_TARGET" ? "NEAR TARGET" : "NEAR STOP";
+      const levelStr = r.targetOrStop != null ? ` ($${r.targetOrStop.toFixed(2)})` : "";
+      reviewSection += `- **$${r.symbol}** — ${actionLabel}${levelStr} — flagged ${hoursAgo}h ago\n`;
+      reviewSection += `  "${r.reason}"\n`;
+    }
+    reviewSection += `\nFor NEAR TARGET: consider taking partial or full profit. For NEAR STOP: decide whether to tighten the stop, reduce size, or exit before it triggers.`;
+    sections.push(reviewSection);
+  }
+
+  // ── Section 3.75: Active Theses ───────────────────────────────────────
   if (runInput.activeTheses && runInput.activeTheses.length > 0) {
     let thesesSection = `## Active Theses\nThese are your current ACTIVE theses. When you record a new thesis for any of these tickers, the old one is automatically superseded — you do not need to pass parent_thesis_id.\n\n`;
     thesesSection += `| Ticker | Direction | Confidence | Entry | Target | Stop | Created | Thesis ID |\n`;
@@ -243,7 +257,7 @@ If you have any open positions, call **get_portfolio_context** first. It returns
 
 Then pull **get_stock_data** on every ticker you intend to act on. Apply triage before calling:
 
-**Holdings** — MUST: flagged by brief alert / near target or stop (>80%) / "Watch Tomorrow". SHOULD: held longer than expected, >5% unrealized loss, HIGH/BREAKING signal. SKIP: healthy, no new signals.
+**Holdings** — MUST: listed in "⚠ Priority Reviews" above / flagged by brief alert / "Watch Tomorrow". SHOULD: held longer than expected, >5% unrealized loss, HIGH/BREAKING signal. SKIP: healthy, no new signals, no proximity alerts.
 
 **Watchlist** — MUST: flagged in brief / HIGH priority / "Watch Tomorrow". SHOULD: HIGH/BREAKING signals, not reviewed 5+ days. SKIP: LOW priority, recently reviewed, no signals.
 
