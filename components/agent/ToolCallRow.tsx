@@ -87,7 +87,6 @@ function inferLoadingUI(toolName: string): ToolUI {
     toolName === "close_position" ||
     toolName === "manage_position" ||
     toolName === "manage_watchlist" ||
-    toolName === "record_decision_plan" ||
     toolName === "get_earnings_data" ||
     toolName === "get_options_flow" ||
     toolName === "get_sec_filings" ||

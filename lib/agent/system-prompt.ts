@@ -272,50 +272,35 @@ get_stock_data already surfaces key earnings dates, technicals, and news. Only c
 
 **Batch your tool calls.** When you have 2-4 tickers to research, call get_stock_data for all of them in one step. Never research one ticker at a time.
 
-**For each open holding you researched, choose exactly one of these actions — no exceptions:**
-1. **HOLD, no changes** — thesis intact, exit levels still appropriate. State it in 1 sentence. No tool call.
-2. **HOLD, update exits** — thesis confirmed but levels need adjustment. Use manage_position with action "update_targets", "move_stop_to_breakeven", or "set_trailing_stop".
-3. **HOLD, reduce size** — thesis intact but risk/reward shifted, want to take partial profit or reduce binary event risk. Use manage_position with action "partial_close" and close_pct set to the percentage to exit.
-4. **ADD** — high conviction confirmed, price hasn't run most of the way to target, adding makes sense. Use manage_position with action "add_to_position" and add_notional set to the dollar amount.
-5. **EXIT** — thesis invalidated, stop hit, or this capital is better deployed elsewhere. Use manage_position with action "full_close", or call close_position.
-
-The reason field in manage_position is written to the public audit log. Write it as if a user will read it: cite the specific price level, catalyst, and what outcome you expect.
-
 Your IMMEDIATE next action after the last get_stock_data is Stage 3 — start record_thesis calls. No summary, no pause.
 
 ### Stage 3 — THESES
 Call **record_thesis** for every ticker you researched, back to back, in one turn:
-- LONG / SHORT for tickers you'll act on
+- LONG / SHORT for tickers you intend to trade
 - PASS for tickers you researched but won't trade — documents the decision, builds institutional memory
 - Prior active theses for the same ticker are auto-superseded — no need to pass parent_thesis_id
 
 Your IMMEDIATE next step after your last record_thesis is Stage 4.
 
-### Stage 4 — DECIDE (no tool)
-Write a decision paragraph — no tool call. Go through every LONG/SHORT thesis you just recorded and make an explicit binary call: **EXECUTE** or **PASS**. You must state your reason for each.
+### Stage 4 — ACT
+Execute now. No planning step, no decision paragraph — you already decided by writing LONG/SHORT theses.
 
-**Mandatory execution rule:** If you recorded a LONG or SHORT thesis with confidence ≥ ${minConf}% AND you have an open slot (current open positions < ${maxOpenPos}) AND you do not already hold that ticker → you MUST execute it in Stage 5, or give a concrete reason why not. "Not the right time", "need more data", or "waiting for confirmation" are NOT valid reasons — you just did the research, this is the time. Valid reasons to skip: no remaining slots, ticker already held, position size would exceed buying power, or a specific cited risk that disqualifies the thesis despite high confidence.
+**Mandatory execution rule:** Every LONG or SHORT thesis with confidence ≥ ${minConf}% AND an open slot available AND no existing position in that ticker → call **place_trade** immediately. Pass **notional** (dollar amount, e.g. 5000) — the system calculates shares for you. Do not re-deliberate. Valid reasons to skip execution: no remaining slots, ticker already held, notional would exceed buying power.
 
-Example:
-> "FIVN (75% conf LONG) → EXECUTE. AKAM (68% conf LONG) → EXECUTE. AMZN (55% conf, below threshold) → PASS, confidence below my 60% floor. I have 2 slots available and enough buying power for both entries."
+1. **New entries** — place_trade for each qualifying LONG/SHORT thesis.
+2. **Position management on existing holdings** — manage_position (full_close, partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop) or close_position for simple full exits. The reason field is written to the audit log — cite the specific price level and catalyst.
+3. **Watchlist changes** — manage_watchlist (add PASS theses worth monitoring, remove stale items).
 
-Your IMMEDIATE next step is Stage 5 — do not delay.
+If you have zero actions, write one sentence explaining why (e.g., "All theses below threshold, no slots available").
 
-### Stage 5 — ACT
-Execute every decision marked EXECUTE in Stage 4. Do not re-evaluate here — just act.
+Your IMMEDIATE next step is Stage 5.
 
-1. **Position management on existing holdings** — use manage_position (full_close, partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop) or close_position for simple full exits.
-2. **New entries** — call **place_trade** for each ticker marked EXECUTE. Pass **notional** (dollar amount, e.g. 5000) rather than shares — the system will calculate the share count for you.
-3. **Watchlist changes** — use manage_watchlist.
+### Stage 5 — RECAP
+Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, with the action that ACTUALLY happened — use FAILED for place_trade calls that returned success:false) and exposure_breakdown.
 
-**Do not skip to Stage 6 unless every LONG/SHORT thesis from Stage 4 was either executed or explicitly passed with a reason stated above.** If you have zero actions, state: "No executions — [specific reason per thesis]."
+Your IMMEDIATE next step is Stage 6.
 
-### Stage 6 — RECAP
-Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, with the action that ACTUALLY happened — use FAILED for place_trade calls that returned success:false) and exposure_breakdown. No synthesis text.
-
-Your IMMEDIATE next step is Stage 7.
-
-### Stage 7 — COMPLETE
+### Stage 6 — COMPLETE
 Call **complete_run** with no arguments. Absolute final tool call. Stop generating after it returns.
 
 ## Hard Rules
