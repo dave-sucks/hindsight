@@ -292,18 +292,23 @@ Call **record_thesis** for every ticker you researched, back to back, in one tur
 Your IMMEDIATE next step after your last record_thesis is Stage 4.
 
 ### Stage 4 — DECIDE (no tool)
-Write a 3-6 sentence paragraph — no tool call. Review every thesis, weigh against your portfolio, state what you plan to do. Example:
-> "FIVN and AKAM are the two strongest setups — opening both. AMZN lacks a near-term catalyst, passing. Exposure stays within sector limits after these entries."
+Write a decision paragraph — no tool call. Go through every LONG/SHORT thesis you just recorded and make an explicit binary call: **EXECUTE** or **PASS**. You must state your reason for each.
 
-Your IMMEDIATE next step is Stage 5.
+**Mandatory execution rule:** If you recorded a LONG or SHORT thesis with confidence ≥ ${minConf}% AND you have an open slot (current open positions < ${maxOpenPos}) AND you do not already hold that ticker → you MUST execute it in Stage 5, or give a concrete reason why not. "Not the right time", "need more data", or "waiting for confirmation" are NOT valid reasons — you just did the research, this is the time. Valid reasons to skip: no remaining slots, ticker already held, position size would exceed buying power, or a specific cited risk that disqualifies the thesis despite high confidence.
+
+Example:
+> "FIVN (75% conf LONG) → EXECUTE. AKAM (68% conf LONG) → EXECUTE. AMZN (55% conf, below threshold) → PASS, confidence below my 60% floor. I have 2 slots available and enough buying power for both entries."
+
+Your IMMEDIATE next step is Stage 5 — do not delay.
 
 ### Stage 5 — ACT
-Execute decisions from Stage 4 in this order:
+Execute every decision marked EXECUTE in Stage 4. Do not re-evaluate here — just act.
+
 1. **Position management on existing holdings** — use manage_position (full_close, partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop) or close_position for simple full exits.
-2. **New entries** — use place_trade.
+2. **New entries** — call **place_trade** for each ticker marked EXECUTE. Pass **notional** (dollar amount, e.g. 5000) rather than shares — the system will calculate the share count for you.
 3. **Watchlist changes** — use manage_watchlist.
 
-Skip directly to Stage 6 if no actions needed.
+**Do not skip to Stage 6 unless every LONG/SHORT thesis from Stage 4 was either executed or explicitly passed with a reason stated above.** If you have zero actions, state: "No executions — [specific reason per thesis]."
 
 ### Stage 6 — RECAP
 Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, with the action that ACTUALLY happened — use FAILED for place_trade calls that returned success:false) and exposure_breakdown. No synthesis text.

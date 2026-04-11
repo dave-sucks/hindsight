@@ -23,7 +23,8 @@ export const placeTrade = defineTool({
     entry_price: z.number(),
     target_price: z.number(),
     stop_loss: z.number(),
-    shares: z.number().describe("Number of shares to buy/sell"),
+    notional: z.number().optional().describe("Dollar amount to invest (e.g. 5000 for $5,000). Preferred over shares — just pass your position size budget directly."),
+    shares: z.number().optional().describe("Number of shares. Only use if you need a specific share count; prefer notional instead."),
     thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
   }),
   ui: "ticker" as const,
@@ -53,14 +54,33 @@ export const placeTrade = defineTool({
         };
       }
 
-      // 1. Place Alpaca paper order
+      // 1. Resolve qty — prefer notional (dollar amount), fall back to shares
+      // Server-side calculation removes a cognitive step from the model.
+      let resolvedShares: number | undefined;
+      let resolvedNotional: number | undefined;
+      if (args.notional != null && args.notional > 0) {
+        resolvedNotional = args.notional;
+        // Compute shares for DB record (approximate — actual fill may differ)
+        resolvedShares = Math.max(1, Math.floor(args.notional / args.entry_price));
+      } else if (args.shares != null && args.shares > 0) {
+        resolvedShares = args.shares;
+      } else {
+        // Final fallback: use max position size from context
+        const budget = ctx.maxPositionSize ?? 5000;
+        resolvedNotional = budget;
+        resolvedShares = Math.max(1, Math.floor(budget / args.entry_price));
+      }
+
+      // 2. Place Alpaca paper order
       const alpacaOrder = await placeMarketOrder({
         symbol: args.ticker,
-        qty: args.shares,
+        ...(resolvedNotional != null ? { notional: resolvedNotional } : { qty: resolvedShares }),
         side: args.direction === "LONG" ? "buy" : "sell",
       }, ctx.alpacaCreds);
 
-      // 2. Wait for fill (max 5s)
+      // Recalculate resolvedShares from notional fill if Alpaca returns qty
+      // (paper trading fills notional orders with fractional shares sometimes)
+      // 3. Wait for fill (max 5s)
       let fillPrice = args.entry_price;
       let didFill = false;
       let filledAt: Date | null = null;
@@ -81,13 +101,19 @@ export const placeTrade = defineTool({
       }
       if (!didFill) {
         try { fillPrice = await getLatestPrice(args.ticker, ctx.alpacaCreds); } catch { /* keep entry_price */ }
+        // Recompute shares from notional using actual fill price
+        if (resolvedNotional != null) {
+          resolvedShares = Math.max(1, Math.floor(resolvedNotional / fillPrice));
+        }
       }
 
-      // 3. Create Position + Order + PositionEvent + TradeDecision + RunEvent
+      // 4. Create Position + Order + PositionEvent + TradeDecision + RunEvent
       const analystId = ctx.analystId;
       if (!analystId) {
         throw new Error("Cannot place trade without an analyst ID. Ensure the run is linked to an analyst.");
       }
+
+      const finalShares = resolvedShares ?? 1;
 
       const { position, order } = await prisma.$transaction(async (tx: TransactionClient) => {
         const pos = await tx.position.create({
@@ -97,12 +123,12 @@ export const placeTrade = defineTool({
             symbol: args.ticker,
             direction: args.direction,
             status: "OPEN",
-            quantity: args.shares,
+            quantity: finalShares,
             avgCost: fillPrice,
             targetPrice: args.target_price,
             stopLoss: args.stop_loss,
             exitStrategy: "PRICE_TARGET",
-            initialQty: args.shares,
+            initialQty: finalShares,
           },
         });
 
@@ -113,10 +139,10 @@ export const placeTrade = defineTool({
             symbol: args.ticker,
             side: args.direction === "LONG" ? "BUY" : "SELL",
             orderType: "MARKET",
-            quantity: args.shares,
+            quantity: finalShares,
             status: didFill ? "FILLED" : "PENDING",
             filledPrice: didFill ? fillPrice : null,
-            filledQty: didFill ? args.shares : null,
+            filledQty: didFill ? finalShares : null,
             filledAt: didFill ? (filledAt ?? new Date()) : null,
             alpacaOrderId: alpacaOrder.id,
             createdAt: placedAt,
@@ -127,7 +153,7 @@ export const placeTrade = defineTool({
           data: {
             positionId: pos.id,
             eventType: "OPENED",
-            description: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+            description: `${args.direction} ${finalShares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
             priceAt: fillPrice,
           },
         });
@@ -139,7 +165,7 @@ export const placeTrade = defineTool({
             userId: ctx.userId,
             symbol: args.ticker,
             decision: "INITIATE",
-            reasoning: `${args.direction} ${args.shares} shares at $${fillPrice.toFixed(2)} (target: $${args.target_price.toFixed(2)}, stop: $${args.stop_loss.toFixed(2)})`,
+            reasoning: `${args.direction} ${finalShares} shares at $${fillPrice.toFixed(2)} (target: $${args.target_price.toFixed(2)}, stop: $${args.stop_loss.toFixed(2)})`,
             thesisId: args.thesis_id,
             positionId: pos.id,
             orderId: ord.id,
@@ -152,14 +178,14 @@ export const placeTrade = defineTool({
               runId: ctx.runId,
               type: "trade_placed",
               title: `Trade placed: ${args.direction} ${args.ticker}`,
-              message: `${args.direction} ${args.shares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+              message: `${args.direction} ${finalShares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
               payload: {
                 ticker: args.ticker,
                 direction: args.direction,
                 entry: fillPrice,
                 target_price: args.target_price,
                 stop_loss: args.stop_loss,
-                shares: args.shares,
+                shares: finalShares,
                 position_id: pos.id,
                 order_id: ord.id,
               } as object,
@@ -208,25 +234,25 @@ export const placeTrade = defineTool({
       }
 
       const message = didFill
-        ? `${args.direction} ${args.shares} shares of ${args.ticker} filled at $${fillPrice.toFixed(2)}`
-        : `${args.direction} ${args.shares} shares of ${args.ticker} submitted to Alpaca — awaiting fill (current price $${fillPrice.toFixed(2)})`;
+        ? `${args.direction} ${finalShares} shares of ${args.ticker} filled at $${fillPrice.toFixed(2)}`
+        : `${args.direction} ${finalShares} shares of ${args.ticker} submitted to Alpaca — awaiting fill (current price $${fillPrice.toFixed(2)})`;
 
       const tickerTag = args.direction === "LONG" ? "Long" : "Short";
       const tickerSummary = didFill
-        ? `Placed ${args.direction} ${args.shares} shares @ $${fillPrice.toFixed(2)} — target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)}`
-        : `Order submitted (pending): ${args.direction} ${args.shares} shares @ $${fillPrice.toFixed(2)}`;
+        ? `Placed ${args.direction} ${finalShares} shares @ $${fillPrice.toFixed(2)} — target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)}`
+        : `Order submitted (pending): ${args.direction} ${finalShares} shares @ $${fillPrice.toFixed(2)}`;
 
       return {
         summary: didFill
-          ? `Placed order: ${args.direction} ${args.shares} $${args.ticker} @ $${fillPrice.toFixed(2)}`
-          : `Order submitted (pending): ${args.direction} ${args.shares} $${args.ticker}`,
+          ? `Placed order: ${args.direction} ${finalShares} $${args.ticker} @ $${fillPrice.toFixed(2)}`
+          : `Order submitted (pending): ${args.direction} ${finalShares} $${args.ticker}`,
         data: {
           success: true,
           ticker: args.ticker,
           status: didFill ? ("FILLED" as const) : ("PENDING" as const),
           fillStatus: didFill ? ("FILLED" as const) : ("PENDING" as const),
           direction: args.direction,
-          shares: args.shares,
+          shares: finalShares,
           entryPrice: fillPrice,
           targetPrice: args.target_price,
           stopLoss: args.stop_loss,
