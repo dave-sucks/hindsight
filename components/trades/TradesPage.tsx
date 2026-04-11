@@ -262,8 +262,7 @@ export default function TradesPage({
               <TableHead className="text-right">Value</TableHead>
               <TableHead className="text-right">Qty</TableHead>
               <TableHead className="text-right">Entry</TableHead>
-              <TableHead className="text-right">Day Gain</TableHead>
-              <TableHead className="text-right">Total Gain</TableHead>
+              <TableHead className="text-right">P&amp;L</TableHead>
               <TableHead className="w-20">Target</TableHead>
               <TableHead>Direction</TableHead>
               <TableHead>Placed</TableHead>
@@ -377,21 +376,7 @@ export default function TradesPage({
                     ${trade.entryPrice.toFixed(2)}
                   </TableCell>
 
-                  {/* Day Gain — shows em-dash when no live price */}
-                  <TableCell className="text-right">
-                    {isStalePrice && isOpen ? (
-                      <span className="text-sm text-muted-foreground/60">—</span>
-                    ) : (
-                      <div className="flex items-center justify-end gap-1">
-                        <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
-                        <span className="text-sm tabular-nums">
-                          {isUp ? '+' : ''}${totalGain.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                  </TableCell>
-
-                  {/* Total Gain — shows em-dash when no live price */}
+                  {/* P&L — shows em-dash when no live price */}
                   <TableCell className="text-right">
                     {isStalePrice && isOpen ? (
                       <span className="text-sm text-muted-foreground/60">—</span>

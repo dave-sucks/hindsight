@@ -63,19 +63,20 @@ function WinRateBar({ winRate, tradeCount }: { winRate: number | null; tradeCoun
 
 // ── AnalystCard ───────────────────────────────────────────────────────────────
 
-function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete: (id: string) => void }) {
-  const configSubhead = [
-    analyst.directionBias,
-    analyst.holdDurations.length > 0 ? analyst.holdDurations.join("/") : null,
-    `${analyst.minConfidence}%+`,
-  ]
-    .filter(Boolean)
-    .join(" — ");
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+.+$/gm, '')    // Remove entire heading lines
+    .replace(/\*\*(.+?)\*\*/gs, '$1')
+    .replace(/\*(.+?)\*/gs, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/\n{2,}/g, ' ')
+    .trim();
+}
 
-  const promptText =
-    analyst.analystPrompt ||
-    analyst.description ||
-    null;
+function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete: (id: string) => void }) {
+  const rawPrompt = analyst.analystPrompt || analyst.description || null;
+  const promptText = rawPrompt ? stripMarkdown(rawPrompt) : null;
 
   const openCount = analyst.openTrades.length;
 
@@ -102,7 +103,7 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
                   {openCount} open
                 </span>
               )}
-              {analyst.tradeCount > 0 && (
+              {analyst.totalPnl !== 0 && (
                 <PnlBadge value={analyst.totalPnl} format="currency" />
               )}
               <DropdownMenu>
@@ -142,13 +143,6 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-          </div>
-
-          {/* ── Subhead: config metadata with em dashes ── */}
-          <div className="">
-            <p className="text-xs font-mono text-muted-foreground">
-              {configSubhead}
-            </p>
           </div>
 
           {/* ── Prompt ── */}

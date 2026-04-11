@@ -106,11 +106,19 @@ function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; live
     ? (currentPrice - trade.avgCost) * trade.quantity * (trade.direction === "SHORT" ? -1 : 1)
     : (trade.realizedPnl ?? 0);
   const price = currentPrice;
-  const pnlPct =
-    trade.avgCost > 0
-      ? ((price - trade.avgCost) / trade.avgCost) * 100 *
-        (trade.direction === "SHORT" ? -1 : 1)
-      : 0;
+  // For closed trades use realizedPnl/cost-basis (works even when closePrice is null).
+  // For open trades use price delta (only valid when we have a live price).
+  const pnlPct = isOpen
+    ? (trade.avgCost > 0
+        ? ((price - trade.avgCost) / trade.avgCost) * 100 * (trade.direction === "SHORT" ? -1 : 1)
+        : 0)
+    : (trade.avgCost > 0 && trade.quantity > 0
+        ? ((trade.realizedPnl ?? 0) / (trade.avgCost * trade.quantity)) * 100
+        : 0);
+
+  // Show P&L for closed trades always (realizedPnl from DB); for open trades only
+  // when we have a live price (otherwise we'd show a stale entry-price delta as $0).
+  const hasPnl = !isOpen || livePrice !== undefined;
 
   return (
     <TradeRow
@@ -119,8 +127,8 @@ function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; live
       currentPrice={price}
       entryPrice={trade.avgCost}
       shares={trade.quantity}
-      pnl={livePrice !== undefined ? pnl : 0}
-      pnlPct={livePrice !== undefined ? pnlPct : 0}
+      pnl={hasPnl ? pnl : 0}
+      pnlPct={hasPnl ? pnlPct : 0}
       status={trade.status}
       openedAt={trade.openedAt}
       priceSource={isOpen ? (livePrice !== undefined ? "alpaca" : "missing") : undefined}
@@ -208,7 +216,7 @@ export default function AnalystDetailClient({
   const [configOpen, setConfigOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [range, setRange] = useState<Range>("Max");
-  const [chartMode, setChartMode] = useState<"value" | "pnl">("value");
+  const [tradeFilter, setTradeFilter] = useState<"all" | "open" | "closed">("all");
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
   const [, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -303,7 +311,7 @@ export default function AnalystDetailClient({
 
     const points: { date: string; pnl: number; value: number }[] = [];
 
-    // Start at earliest trade open date
+    // Start at 0 P&L on the earliest trade open date
     const allTrades = [...recentTrades].sort(
       (a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime(),
     );
@@ -311,53 +319,56 @@ export default function AnalystDetailClient({
       points.push({
         date: new Date(allTrades[0].openedAt).toISOString().slice(0, 10),
         pnl: 0,
-        value: totalCostBasis,
+        value: 0,
       });
     }
 
-    // Add closed trade points (cumulative realized)
+    // Add closed trade points (cumulative realized P&L from 0 baseline)
     let cum = 0;
     for (const t of closed) {
       cum += t.realizedPnl!;
       points.push({
         date: new Date(t.closedAt!).toISOString().slice(0, 10),
         pnl: cum,
-        value: totalCostBasis + cum,
+        value: cum,
       });
     }
 
-    // Add today's point with unrealized P&L
-    if (hasOpenPositions) {
-      const today = new Date().toISOString().slice(0, 10);
-      const lastPoint = points[points.length - 1];
-      const todayPnl = cum + totalUnrealizedPnl;
-      if (!lastPoint || lastPoint.date !== today) {
-        points.push({ date: today, pnl: todayPnl, value: totalCurrentValue + cum });
-      } else {
-        lastPoint.pnl = todayPnl;
-        lastPoint.value = totalCurrentValue + cum;
+    // Add today's point including unrealized P&L from open positions
+    const today = new Date().toISOString().slice(0, 10);
+    const todayPnl = cum + totalUnrealizedPnl;
+    const lastPoint = points[points.length - 1];
+    if (!lastPoint || lastPoint.date !== today) {
+      // Always add today if we have open positions or at least one trade
+      if (hasOpenPositions || recentTrades.length > 0) {
+        points.push({ date: today, pnl: todayPnl, value: todayPnl });
       }
+    } else {
+      lastPoint.pnl = todayPnl;
+      lastPoint.value = todayPnl;
+    }
+
+    // Ensure at least 2 distinct points so the chart renders
+    if (points.length === 1) {
+      const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+      points.unshift({ date: yesterday, pnl: 0, value: 0 });
     }
 
     return points.length >= 2 ? points : [];
-  }, [recentTrades, hasOpenPositions, totalUnrealizedPnl, totalCostBasis, totalCurrentValue]);
+  }, [recentTrades, hasOpenPositions, totalUnrealizedPnl]);
 
   const filteredEquity = useMemo(
     () => sliceByRange(equityData, range),
     [equityData, range],
   );
 
-  const chartDataKey = chartMode === "pnl" ? "pnl" : "value";
+  const chartDataKey = "pnl";
 
   const equityStroke = useMemo(() => {
     if (equityData.length === 0) return PNL_HEX.positive;
     const last = equityData[equityData.length - 1];
-    const first = equityData[0];
-    // For value mode: green if current > initial, for pnl mode: green if >= 0
-    return chartMode === "pnl"
-      ? (last.pnl >= 0 ? PNL_HEX.positive : PNL_HEX.negative)
-      : (last.value >= first.value ? PNL_HEX.positive : PNL_HEX.negative);
-  }, [equityData, chartMode]);
+    return last.pnl >= 0 ? PNL_HEX.positive : PNL_HEX.negative;
+  }, [equityData]);
 
   // ── Display values ──────────────────────────────────────────────────────
   const totalPnl = stats.totalPnl + totalUnrealizedPnl;
@@ -365,13 +376,14 @@ export default function AnalystDetailClient({
   const pnlColorClass = hasTrades
     ? totalPnl >= 0 ? "text-positive" : "text-negative"
     : "text-muted-foreground";
-  const overlayValue = chartMode === "pnl"
-    ? (hasTrades ? (totalPnl >= 0 ? "+" : "") + formatCurrency(totalPnl) : "$0.00")
-    : formatCurrency(totalCurrentValue);
-  const overlayLabel = chartMode === "pnl" ? "P&L" : "Value";
-  const overlayColorClass = chartMode === "pnl"
-    ? pnlColorClass
-    : "text-foreground";
+  // Both modes show total P&L (realized + unrealized) since the chart tracks
+  // cumulative P&L from 0. "Value" mode uses the last equity point (same number)
+  // so the overlay always reflects what the chart end-point actually shows.
+  const overlayValue = hasTrades
+    ? (totalPnl >= 0 ? "+" : "") + formatCurrency(totalPnl)
+    : "$0.00";
+  const overlayLabel = "P&L";
+  const overlayColorClass = pnlColorClass;
 
   return (
     <>
@@ -583,7 +595,7 @@ export default function AnalystDetailClient({
                     )}
                   </div>
                 </div>
-                {/* Range tabs + mode toggle */}
+                {/* Range tabs */}
                 <div className="absolute bottom-2 left-2 right-2 z-10 flex items-center justify-between">
                   <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-0.5 py-0.5">
                     {RANGES.map((r) => (
@@ -601,30 +613,11 @@ export default function AnalystDetailClient({
                       </button>
                     ))}
                   </div>
-                  <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-0.5 py-0.5">
-                    {(["value", "pnl"] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setChartMode(m)}
-                        className={cn(
-                          "px-1.5 py-0.5 text-[9px] rounded transition-colors",
-                          chartMode === m
-                            ? "bg-muted text-foreground font-medium"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {m === "value" ? "Value" : "P&L"}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <ChartContainer
                   config={{
-                    [chartDataKey]: {
-                      label: chartMode === "pnl" ? "P&L" : "Value",
-                      color: equityStroke,
-                    },
+                    pnl: { label: "P&L", color: equityStroke },
                   } satisfies ChartConfig}
                   className="h-[200px] w-full"
                 >
@@ -658,7 +651,7 @@ export default function AnalystDetailClient({
                       domain={
                         chartMode === "pnl"
                           ? ['auto', 'auto']
-                          : ['dataMin * 0.98', 'dataMax * 1.25']
+                          : ['dataMin * 0.999', 'dataMax * 1.001']
                       }
                       padding={{ top: chartMode === "pnl" ? 20 : 0 }}
                     />
@@ -713,7 +706,7 @@ export default function AnalystDetailClient({
                 </TabsList>
               </div>
 
-              <TabsContent value={0} className="flex-1 overflow-y-auto">
+              <TabsContent value={0} className="flex-1 overflow-y-auto flex flex-col">
                 {recentTrades.length === 0 ? (
                   <div className="space-y-0 px-3 py-2">
                     {[1, 2, 3].map((i) => (
@@ -728,9 +721,36 @@ export default function AnalystDetailClient({
                     ))}
                   </div>
                 ) : (
-                  recentTrades.map((trade) => (
-                    <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
-                  ))
+                  <>
+                    {/* Open / Closed filter */}
+                    <div className="flex items-center gap-1 px-3 py-2 shrink-0">
+                      {(["all", "open", "closed"] as const).map((f) => {
+                        const count = f === "all" ? recentTrades.length
+                          : f === "open" ? recentTrades.filter((t) => t.status === "OPEN").length
+                          : recentTrades.filter((t) => t.status !== "OPEN").length;
+                        return (
+                          <button
+                            key={f}
+                            onClick={() => setTradeFilter(f)}
+                            className={cn(
+                              "px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors border capitalize",
+                              tradeFilter === f
+                                ? "bg-secondary text-secondary-foreground border-secondary"
+                                : "text-muted-foreground opacity-60 hover:opacity-100 border-transparent",
+                            )}
+                          >
+                            {f} <span className="tabular-nums opacity-70">{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {recentTrades
+                      .filter((t) => tradeFilter === "all" || (tradeFilter === "open" ? t.status === "OPEN" : t.status !== "OPEN"))
+                      .map((trade) => (
+                        <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
+                      ))
+                    }
+                  </>
                 )}
               </TabsContent>
 
