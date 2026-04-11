@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
+import { getAccount, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
@@ -425,7 +425,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     return ((end - start) / start) * 100;
   }
 
-  const [priceLookup, nameMap, spyCandles, portfolioHistory] = await Promise.all([
+  const [priceLookup, nameMap, spyCandles, portfolioHistory, alpacaAccount] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -470,6 +470,13 @@ export async function getDashboardData(): Promise<DashboardData> {
           return [] as import("@/lib/alpaca").PortfolioHistoryPoint[];
         })
       : Promise.resolve([] as import("@/lib/alpaca").PortfolioHistoryPoint[]),
+    // Alpaca Account — live equity (source of truth for total portfolio value)
+    alpacaCreds
+      ? getAccount(alpacaCreds).catch((err) => {
+          console.warn(`[portfolio] getAccount failed: ${err instanceof Error ? err.message : err}`);
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
   const priceMap = priceLookup.prices;
 
@@ -548,7 +555,11 @@ export async function getDashboardData(): Promise<DashboardData> {
   // ── 6. Portfolio stats ─────────────────────────────────────────────────────
   const realizedPnl = dbClosedPositions.reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0);
   const unrealizedPnl = openTrades.reduce((sum, t) => sum + t.pnl, 0);
-  const totalValue = STARTING_CAPITAL + realizedPnl + unrealizedPnl;
+  // Use Alpaca's live equity as the source of truth. Falls back to DB math
+  // only if Alpaca creds are missing or the account call failed.
+  const totalValue = alpacaAccount
+    ? parseFloat(alpacaAccount.equity)
+    : STARTING_CAPITAL + realizedPnl + unrealizedPnl;
 
   const closedWithOutcome = dbClosedPositions.filter((p) => p.outcome);
   const winRate =
