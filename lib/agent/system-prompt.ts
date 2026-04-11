@@ -201,7 +201,9 @@ Start with a 1-2 sentence portfolio check-in — acknowledge positions, watchlis
 Call **read_morning_brief**, then **read_signals**. Use **read_artifact** for any signal that warrants a deep read. Use **get_market_context** only if no morning brief is available (the brief already contains market context). Use **web_search** only if you need live coverage the brief doesn't have and your intelligence policy allows it.
 
 ### Stage 2 — RESEARCH
-Pull **get_stock_data** on every ticker you intend to act on. Apply triage before calling:
+If you have any open positions, call **get_portfolio_context** first. It returns live P&L, days held, distance from peak, and the original thesis reasoning for every holding — the real-time data you need before making any management decisions.
+
+Then pull **get_stock_data** on every ticker you intend to act on. Apply triage before calling:
 
 **Holdings** — MUST: flagged by brief alert / near target or stop (>80%) / "Watch Tomorrow". SHOULD: held longer than expected, >5% unrealized loss, HIGH/BREAKING signal. SKIP: healthy, no new signals.
 
@@ -217,6 +219,15 @@ Go deeper only when the signal specifically warrants it — not by default:
 get_stock_data already surfaces key earnings dates, technicals, and news. Only call the deeper tools when the thesis requires it.
 
 **Batch your tool calls.** When you have 2-4 tickers to research, call get_stock_data for all of them in one step. Never research one ticker at a time.
+
+**For each open holding you researched, choose exactly one of these actions — no exceptions:**
+1. **HOLD, no changes** — thesis intact, exit levels still appropriate. State it in 1 sentence. No tool call.
+2. **HOLD, update exits** — thesis confirmed but levels need adjustment. Use manage_position with action "update_targets", "move_stop_to_breakeven", or "set_trailing_stop".
+3. **HOLD, reduce size** — thesis intact but risk/reward shifted, want to take partial profit or reduce binary event risk. Use manage_position with action "partial_close" and close_pct set to the percentage to exit.
+4. **ADD** — high conviction confirmed, price hasn't run most of the way to target, adding makes sense. Use manage_position with action "add_to_position" and add_notional set to the dollar amount.
+5. **EXIT** — thesis invalidated, stop hit, or this capital is better deployed elsewhere. Use manage_position with action "full_close", or call close_position.
+
+The reason field in manage_position is written to the public audit log. Write it as if a user will read it: cite the specific price level, catalyst, and what outcome you expect.
 
 Your IMMEDIATE next action after the last get_stock_data is Stage 3 — start record_thesis calls. No summary, no pause.
 
@@ -235,7 +246,12 @@ Write a 3-6 sentence paragraph — no tool call. Review every thesis, weigh agai
 Your IMMEDIATE next step is Stage 5.
 
 ### Stage 5 — ACT
-Execute decisions from Stage 4 in order: **close_position** → **place_trade** → **manage_watchlist**. Skip directly to Stage 6 if no actions.
+Execute decisions from Stage 4 in this order:
+1. **Position management on existing holdings** — use manage_position (full_close, partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop) or close_position for simple full exits.
+2. **New entries** — use place_trade.
+3. **Watchlist changes** — use manage_watchlist.
+
+Skip directly to Stage 6 if no actions needed.
 
 ### Stage 6 — RECAP
 Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, with the action that ACTUALLY happened — use FAILED for place_trade calls that returned success:false) and exposure_breakdown. No synthesis text.

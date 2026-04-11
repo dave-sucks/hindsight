@@ -20,9 +20,11 @@ import { webSearch } from "./web-search";
 import { recordThesis } from "./record-thesis";
 import { placeTrade } from "./place-trade";
 import { closePosition } from "./close-position";
+import { managePosition } from "./manage-position";
 import { recordRunSummary } from "./record-run-summary";
 import { completeRun } from "./complete-run";
 import { manageWatchlist } from "./manage-watchlist";
+import { getPortfolioContext } from "./get-portfolio-context";
 
 interface ToolCtx {
   runId: string;
@@ -54,6 +56,8 @@ export function createResearchTools(ctx: ToolCtx) {
     record_thesis: recordThesis(newCtx),
     place_trade: placeTrade(newCtx),
     close_position: closePosition(newCtx),
+    manage_position: managePosition(newCtx),
+    get_portfolio_context: getPortfolioContext(newCtx),
     record_run_summary: recordRunSummary(newCtx),
     complete_run: completeRun(newCtx),
     manage_watchlist: manageWatchlist(newCtx),
@@ -83,6 +87,8 @@ export { webSearch } from "./web-search";
 export { recordThesis } from "./record-thesis";
 export { placeTrade } from "./place-trade";
 export { closePosition } from "./close-position";
+export { managePosition } from "./manage-position";
+export { getPortfolioContext } from "./get-portfolio-context";
 export { recordRunSummary } from "./record-run-summary";
 export { completeRun } from "./complete-run";
 export { manageWatchlist } from "./manage-watchlist";

@@ -102,6 +102,7 @@ export const placeTrade = defineTool({
             targetPrice: args.target_price,
             stopLoss: args.stop_loss,
             exitStrategy: "PRICE_TARGET",
+            initialQty: args.shares,
           },
         });
 

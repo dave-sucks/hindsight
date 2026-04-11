@@ -363,6 +363,7 @@ export default function AnalystDetailClient({
   );
 
   const chartDataKey = "pnl";
+  const chartMode = "pnl";
 
   const equityStroke = useMemo(() => {
     if (equityData.length === 0) return PNL_HEX.positive;

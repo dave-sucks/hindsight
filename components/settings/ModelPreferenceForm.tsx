@@ -45,7 +45,7 @@ export function ModelPreferenceForm() {
               Used when starting a new analyst run. Can be changed per-run in the chat composer.
             </p>
           </div>
-          <Select value={selectedModel} onValueChange={handleChange} disabled={!mounted}>
+          <Select value={selectedModel} onValueChange={(v) => v && handleChange(v)} disabled={!mounted}>
             <SelectTrigger className="w-44 shrink-0">
               <SelectValue>{current?.label ?? selectedModel}</SelectValue>
             </SelectTrigger>
