@@ -648,12 +648,8 @@ export default function AnalystDetailClient({
                     <XAxis dataKey="date" hide />
                     <YAxis
                       hide
-                      domain={
-                        chartMode === "pnl"
-                          ? ['auto', 'auto']
-                          : ['dataMin * 0.999', 'dataMax * 1.001']
-                      }
-                      padding={{ top: chartMode === "pnl" ? 20 : 0 }}
+                      domain={['auto', 'auto']}
+                      padding={{ top: 20 }}
                     />
                     <ChartTooltip
                       content={
@@ -673,7 +669,7 @@ export default function AnalystDetailClient({
                       stroke={equityStroke}
                       strokeWidth={1.5}
                       fill="url(#analystEqGrad)"
-                      baseValue={chartMode === "pnl" ? 0 : "dataMin"}
+                      baseValue={0}
                       dot={false}
                       activeDot={{ r: 2, fill: equityStroke }}
                       isAnimationActive={false}
