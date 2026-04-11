@@ -373,6 +373,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       },
     }),
     // Activity feed: recent management actions with position context
+    // .catch(() => []) — silently degrades if table hasn't been migrated yet
     prisma.positionManagementAction.findMany({
       where: { position: { userId } },
       orderBy: { createdAt: "desc" },
@@ -398,7 +399,7 @@ export async function getDashboardData(): Promise<DashboardData> {
           },
         },
       },
-    }),
+    }).catch(() => [] as never[]),
   ]);
 
   // ── Phase B: price + name lookups + SPY benchmark, parallel ────────────
