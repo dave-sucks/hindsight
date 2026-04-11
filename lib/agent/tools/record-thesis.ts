@@ -75,31 +75,53 @@ export const recordThesis = defineTool({
         modelUsed: "gpt-4o",
       };
 
+      // Auto-SUPERSEDE: find any existing ACTIVE thesis for this ticker+analyst.
+      // This fires even when parent_thesis_id wasn't passed — e.g. agent re-researches a holding.
+      let resolvedParentId = args.parent_thesis_id ?? null;
+      if (!resolvedParentId && args.direction !== "PASS" && ctx.analystId) {
+        try {
+          const existingThesis = await prisma.thesis.findFirst({
+            where: {
+              ticker: args.ticker,
+              status: "ACTIVE",
+              direction: { not: "PASS" },
+              researchRun: { agentConfigId: ctx.analystId },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          });
+          if (existingThesis) {
+            resolvedParentId = existingThesis.id;
+          }
+        } catch { /* non-fatal */ }
+      }
+
       let thesis;
       try {
         thesis = await prisma.thesis.create({
-          data: { ...coreData, status: "ACTIVE", parentThesisId: args.parent_thesis_id ?? null },
+          data: { ...coreData, status: "ACTIVE", parentThesisId: resolvedParentId },
         });
       } catch (v2Err: unknown) {
         const errMsg = v2Err instanceof Error ? v2Err.message : String(v2Err);
         if (errMsg.includes("status") || errMsg.includes("parentThesisId") || errMsg.includes("Unknown arg")) {
           console.warn("[tool] record_thesis: V2 columns not available, falling back to core schema");
           thesis = await prisma.thesis.create({ data: coreData });
+          resolvedParentId = null; // can't update parent if schema doesn't support it
         } else {
           throw v2Err;
         }
       }
 
-      // V2: Handle parent thesis lifecycle (non-fatal)
-      if (args.parent_thesis_id) {
+      // Transition parent thesis lifecycle
+      if (resolvedParentId) {
         try {
           if (args.direction === "PASS") {
             await prisma.thesis.update({
-              where: { id: args.parent_thesis_id },
+              where: { id: resolvedParentId },
               data: { status: "INVALIDATED", invalidatedAt: new Date(), invalidReason: args.reasoning_summary?.slice(0, 500) || "Thesis invalidated by follow-up research" },
             });
           } else {
-            await prisma.thesis.update({ where: { id: args.parent_thesis_id }, data: { status: "SUPERSEDED" } });
+            await prisma.thesis.update({ where: { id: resolvedParentId }, data: { status: "SUPERSEDED" } });
           }
         } catch (parentErr) {
           console.warn(`[tool] record_thesis: parent thesis update skipped:`, parentErr);

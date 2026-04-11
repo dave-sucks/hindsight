@@ -126,8 +126,8 @@ export const priceMonitor = inngest.createFunction(
             },
           });
 
-          // Check exit conditions
-          await checkExitConditions(position as unknown as PositionModel, currentPrice);
+          // Check exit conditions — pass stored peakPrice to avoid event-scan query
+          await checkExitConditions(position as unknown as PositionModel, currentPrice, position.peakPrice);
 
           // Near-target alert — send once when ≥80% of the way to price target
           if (

@@ -711,11 +711,13 @@ export async function getDashboardData(): Promise<DashboardData> {
   for (const action of dbManagementActions) {
     if (action.actionType === "FULL_CLOSE") continue; // already shown as CLOSED
     let label = "Position updated";
-    if (action.actionType === "PARTIAL_CLOSE") label = `Partial close (${action.position.symbol})`;
+    if (action.actionType === "PARTIAL_CLOSE") label = "Partial close";
     else if (action.actionType === "ADD_TO_POSITION") label = "Added to position";
     else if (action.actionType === "UPDATE_TARGETS") label = "Targets updated";
     else if (action.actionType === "MOVE_STOP_TO_BREAKEVEN") label = "Stop → breakeven";
     else if (action.actionType === "SET_TRAILING_STOP") label = "Trailing stop set";
+    else if (action.actionType === "NEAR_TARGET") label = "Approaching target";
+    else if (action.actionType === "NEAR_STOP") label = "Approaching stop";
 
     activityFeed.push({
       id: `action-${action.id}`,

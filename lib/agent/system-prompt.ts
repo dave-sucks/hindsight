@@ -94,7 +94,7 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 
   // ── Section 3.5: Active Theses ───────────────────────────────────────
   if (runInput.activeTheses && runInput.activeTheses.length > 0) {
-    let thesesSection = `## Active Theses\nThese are your current ACTIVE theses. Use parent_thesis_id when updating them.\n\n`;
+    let thesesSection = `## Active Theses\nThese are your current ACTIVE theses. When you record a new thesis for any of these tickers, the old one is automatically superseded — you do not need to pass parent_thesis_id.\n\n`;
     thesesSection += `| Ticker | Direction | Confidence | Entry | Target | Stop | Created | Thesis ID |\n`;
     thesesSection += `|--------|-----------|-----------|-------|--------|------|---------|----------|\n`;
     for (const t of runInput.activeTheses) {
@@ -108,7 +108,7 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
     for (const t of runInput.activeTheses) {
       thesesSection += `- $${t.ticker} (${t.id}): "${t.reasoningSummary.slice(0, 150)}"\n`;
     }
-    thesesSection += `\nWhen reviewing a holding, pass the thesis ID as parent_thesis_id to record_thesis to maintain the chain.`;
+    thesesSection += `\nWhen re-researching a holding, record_thesis will automatically supersede the prior thesis. No manual linking needed.`;
     sections.push(thesesSection);
   }
 
@@ -235,7 +235,7 @@ Your IMMEDIATE next action after the last get_stock_data is Stage 3 — start re
 Call **record_thesis** for every ticker you researched, back to back, in one turn:
 - LONG / SHORT for tickers you'll act on
 - PASS for tickers you researched but won't trade — documents the decision, builds institutional memory
-- Pass parent_thesis_id when updating an existing holding's thesis
+- Prior active theses for the same ticker are auto-superseded — no need to pass parent_thesis_id
 
 Your IMMEDIATE next step after your last record_thesis is Stage 4.
 

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { StockLogo } from '@/components/StockLogo';
 import { PnlBadge } from '@/components/ui/pnl-badge';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Tooltip,
@@ -430,19 +431,60 @@ export default async function TradeDetailPage({
             </TabsContent>
 
             {/* ── THESES ── */}
-            <TabsContent value="theses" className="mt-4 max-w-3xl">
-              <StockThesesList theses={thesisChain.map((t: typeof thesisChain[number]) => ({
-                id: t.id,
-                ticker: trade.symbol,
-                direction: t.direction,
-                confidenceScore: t.confidenceScore,
-                reasoningSummary: t.reasoningSummary,
-                entryPrice: Number(t.entryPrice) || null,
-                targetPrice: Number(t.targetPrice) || null,
-                stopLoss: Number(t.stopLoss) || null,
-                createdAt: t.createdAt.toISOString(),
-                runId: t.researchRunId ?? null,
-              }))} />
+            <TabsContent value="theses" className="mt-4 max-w-3xl space-y-6">
+              {(() => {
+                type TT = typeof thesisChain[number];
+                const active = thesisChain.filter((t: TT) => t.status === "ACTIVE");
+                const prior = thesisChain.filter((t: TT) => t.status !== "ACTIVE");
+                const toRow = (t: TT) => ({
+                  id: t.id,
+                  ticker: trade.symbol,
+                  direction: t.direction,
+                  confidenceScore: t.confidenceScore,
+                  reasoningSummary: t.reasoningSummary,
+                  entryPrice: Number(t.entryPrice) || null,
+                  targetPrice: Number(t.targetPrice) || null,
+                  stopLoss: Number(t.stopLoss) || null,
+                  createdAt: t.createdAt.toISOString(),
+                  runId: t.researchRunId ?? null,
+                });
+                const statusBadge = (s: string) => {
+                  if (s === "SUPERSEDED") return <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Superseded</Badge>;
+                  if (s === "INVALIDATED") return <Badge variant="destructive" className="text-[10px] h-4 px-1.5">Invalidated</Badge>;
+                  if (s === "CLOSED") return <Badge variant="outline" className="text-[10px] h-4 px-1.5">Closed</Badge>;
+                  return null;
+                };
+                return (
+                  <>
+                    {active.length > 0 && (
+                      <div className="space-y-3">
+                        <StockThesesList theses={active.map(toRow)} />
+                      </div>
+                    )}
+                    {prior.length > 0 && (
+                      <div className="space-y-3">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Previous research</p>
+                        {prior.map((t: TT) => (
+                          <div key={t.id} className="space-y-1">
+                            <div className="flex items-center gap-1.5 px-1">
+                              {statusBadge(t.status)}
+                              <span className="text-[11px] text-muted-foreground/60">
+                                {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            <StockThesesList theses={[toRow(t)]} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {thesisChain.length === 0 && (
+                      <div className="py-12 text-center">
+                        <p className="text-sm text-muted-foreground">No thesis recorded for this position.</p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </TabsContent>
 
             {/* ── ACTIVITY ─────────────────────────────────────────── */}
@@ -469,6 +511,8 @@ export default async function TradeDetailPage({
                     else if (action.actionType === 'UPDATE_TARGETS') { actionLabel = 'Updated targets'; ActionIcon = Target; }
                     else if (action.actionType === 'MOVE_STOP_TO_BREAKEVEN') { actionLabel = 'Moved stop to breakeven'; ActionIcon = Target; }
                     else if (action.actionType === 'SET_TRAILING_STOP') { actionLabel = 'Set trailing stop'; ActionIcon = TrendingDown; }
+                    else if (action.actionType === 'NEAR_TARGET') { actionLabel = 'Approaching target'; ActionIcon = Target; }
+                    else if (action.actionType === 'NEAR_STOP') { actionLabel = 'Approaching stop'; ActionIcon = TrendingDown; }
 
                     return (
                       <div key={action.id} className="flex gap-3 pb-5 last:pb-0">
