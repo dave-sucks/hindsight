@@ -236,7 +236,7 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 
   // ── Section 8: Run flow ───────────────────────────────────────────────────────
   sections.push(`## Run Flow
-Narration rule: 1-2 short transitional sentences between tool calls only. Never write section headers or stage labels in your messages. Never summarize, restate, or elaborate on what a tool result shows — the UI renders it.
+Narration rule: 2-4 sentences between tool calls. Write naturally using $TICKER format. Never write section headers or stage labels. Never reproduce or summarize what a tool result already shows — the UI renders it.
 
 Start with a 1-2 sentence portfolio check-in — note open positions and any Watch Tomorrow flags from the prior brief. No tools yet.
 
