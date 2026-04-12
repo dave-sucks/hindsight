@@ -29,7 +29,7 @@ export const manageWatchlist = defineTool({
     trigger_condition: z.string().optional().describe("Machine-readable trigger: 'price < 145', 'RSI < 30', 'earnings this week'"),
     review_frequency: z.enum(["DAILY", "WEEKLY", "ON_CATALYST"]).optional().describe("How often to review this item"),
   }),
-  ui: "generic" as const,
+  ui: "ticker" as const,
   groupId: "execution",
 
   execute: async (args, ctx) => {

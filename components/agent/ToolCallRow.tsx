@@ -81,5 +81,16 @@ function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "read_morning_brief") return "morning-brief";
   if (toolName === "read_signals") return "ticker-list";
   if (toolName === "read_artifact" || toolName === "web_search") return "source";
+  if (
+    toolName === "get_stock_data" ||
+    toolName === "place_trade" ||
+    toolName === "close_position" ||
+    toolName === "manage_position" ||
+    toolName === "manage_watchlist" ||
+    toolName === "get_earnings_data" ||
+    toolName === "get_options_flow" ||
+    toolName === "get_sec_filings" ||
+    toolName === "get_market_context"
+  ) return "ticker";
   return "generic";
 }

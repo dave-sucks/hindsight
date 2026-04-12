@@ -31,7 +31,7 @@ export const getSecFilings = defineTool({
   schema: z.object({
     symbol: z.string().describe("Ticker symbol, e.g. AAPL"),
   }),
-  ui: "generic" as const,
+  ui: "ticker" as const,
   groupId: "research",
 
   execute: async ({ symbol }) => {
