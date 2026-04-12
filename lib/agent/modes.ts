@@ -52,7 +52,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   "research-run": {
     model: "claude-sonnet-4-6",
     provider: "anthropic",
-    thinkingBudget: 8000,
+    thinkingBudget: 2000,
     maxSteps: 30,
     toolAllowlist: undefined,
     hasSuggestConfig: false,
