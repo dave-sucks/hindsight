@@ -262,7 +262,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         },
       },
       orderBy: { openedAt: "desc" },
-    }),
+    }).catch(() => [] as never[]),
     prisma.position.findMany({
       where: { userId, status: { in: ["CLOSED", "CANCELLED"] } },
       include: {
@@ -270,7 +270,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       },
       orderBy: { closedAt: "desc" },
       take: 50,
-    }),
+    }).catch(() => [] as never[]),
     prisma.thesis.findMany({
       where: {
         userId,
