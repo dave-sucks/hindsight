@@ -25,6 +25,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -176,31 +183,6 @@ function relTime(iso: string): string {
   if (d === 1) return '1d ago';
   if (d < 7) return `${d}d ago`;
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function FilterPills<T extends string>({ options, value, onChange }: {
-  options: { key: T; label: string }[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      {options.map(({ key, label }) => (
-        <button
-          key={key}
-          onClick={() => onChange(key)}
-          className={cn(
-            'px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors border',
-            value === key
-              ? 'bg-secondary text-secondary-foreground border-secondary'
-              : 'text-muted-foreground border-transparent hover:border-border hover:text-foreground',
-          )}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 function ThesisTableRow({ pick }: { pick: RecentPick }) {
@@ -383,19 +365,6 @@ function HomeBottomSection({ picks, activity, loading }: {
     return true;
   });
 
-  const thesisPills: { key: ThesisTabFilter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'open', label: 'Open' },
-    { key: 'passed', label: 'Passed' },
-  ];
-
-  const activityPills: { key: ActivityTabFilter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'opens', label: 'Opens' },
-    { key: 'closes', label: 'Closes' },
-    { key: 'updates', label: 'Updates' },
-  ];
-
   if (loading) {
     return (
       <div className="space-y-3">
@@ -405,37 +374,45 @@ function HomeBottomSection({ picks, activity, loading }: {
   }
 
   return (
-    <div className="space-y-0">
-      {/* Tab bar + filters */}
+    <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="gap-0">
+      {/* Tab bar + filter dropdown */}
       <div className="flex items-center justify-between pb-3">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="gap-0">
-          <TabsList variant="line" className="w-auto self-start px-0">
-            <TabsTrigger value="theses" className="px-0 mr-4">
-              Theses
-              {picks.length > 0 && (
-                <span className="ml-1.5 text-[10px] tabular-nums opacity-60">{picks.length}</span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="activity" className="px-0">
-              Activity
-              {activity.length > 0 && (
-                <span className="ml-1.5 text-[10px] tabular-nums opacity-60">{activity.length}</span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <TabsList>
+          <TabsTrigger value="theses">Theses</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
+        </TabsList>
 
-        <div className="pb-0.5">
-          {tab === 'theses'
-            ? <FilterPills options={thesisPills} value={thesisFilter} onChange={setThesisFilter} />
-            : <FilterPills options={activityPills} value={activityFilter} onChange={setActivityFilter} />
-          }
+        <div>
+          {tab === 'theses' ? (
+            <Select value={thesisFilter} onValueChange={(v) => setThesisFilter(v as ThesisTabFilter)}>
+              <SelectTrigger className="h-8 w-32 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="passed">Passed</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
+              <SelectTrigger className="h-8 w-32 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="opens">Opens</SelectItem>
+                <SelectItem value="closes">Closes</SelectItem>
+                <SelectItem value="updates">Updates</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
 
       {/* Theses list */}
-      {tab === 'theses' && (
-        picks.length === 0 ? (
+      <TabsContent value="theses">
+        {picks.length === 0 ? (
           <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-24 px-4">
             <div
               className="absolute inset-0"
@@ -474,12 +451,12 @@ function HomeBottomSection({ picks, activity, loading }: {
               {filteredPicks.map((pick) => <ThesisTableRow key={pick.id} pick={pick} />)}
             </CardContent>
           </Card>
-        )
-      )}
+        )}
+      </TabsContent>
 
       {/* Activity list */}
-      {tab === 'activity' && (
-        activity.length === 0 ? (
+      <TabsContent value="activity">
+        {activity.length === 0 ? (
           <Card className="shadow-none">
             <CardContent className="py-8 flex flex-col items-center gap-1">
               <p className="text-sm text-muted-foreground">No activity yet</p>
@@ -498,9 +475,9 @@ function HomeBottomSection({ picks, activity, loading }: {
               {filteredActivity.map((item) => <ActivityRow key={item.id} item={item} />)}
             </CardContent>
           </Card>
-        )
-      )}
-    </div>
+        )}
+      </TabsContent>
+    </Tabs>
   );
 }
 
