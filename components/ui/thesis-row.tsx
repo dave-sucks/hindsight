@@ -152,43 +152,43 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
 
       {/* ── 1. Position row ── */}
       {pos && (() => {
-        const badge = posBadge(pos.status, t.direction);
-        const action = posAction(pos.status, t.direction);
+        const isPendingFill = pos.avgCost === 0;
+        const badge = isPendingFill
+          ? { label: "Ordered", variant: "outline" as const, tip: "Order placed — awaiting fill confirmation." }
+          : posBadge(pos.status, t.direction);
+        const action = isPendingFill
+          ? (t.direction === "SHORT" ? "Shorted" : "Ordered")
+          : posAction(pos.status, t.direction);
+        const bg = isPendingFill ? "bg-muted/30" : posBg(pos.status);
         const time = formatTime(pos.openedAt ?? t.createdAt);
         return (
-          <div className={cn("px-4 py-2.5 border-b", posBg(pos.status))}>
+          <div className={cn("px-4 py-2.5 border-b", bg)}>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <Tooltip>
                 <TooltipTrigger render={<span className="shrink-0"><Badge variant={badge.variant}>{badge.label}</Badge></span>} />
                 <TooltipContent side="bottom">{badge.tip}</TooltipContent>
               </Tooltip>
               <span className="text-sm">
-                {pos.quantity && <>{pos.quantity} shares @ </>}
-                {pos.avgCost > 0 ? (
+                {pos.quantity && <>{pos.quantity} shares{!isPendingFill && <> @ </>}</>}
+                {!isPendingFill && (
                   <span className="tabular-nums font-medium">{$(pos.avgCost)}</span>
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger render={<span className="tabular-nums font-medium text-amber-500 cursor-default">pending fill</span>} />
-                    <TooltipContent side="bottom" className="max-w-xs text-xs">
-                      Order was placed but no fill price has been recorded yet.
-                    </TooltipContent>
-                  </Tooltip>
                 )}
                 {t.targetPrice && t.targetPrice > 0 && <>, targeting <span className="tabular-nums font-medium">{$(t.targetPrice)}</span></>}
               </span>
               <div className="flex items-center gap-2 ml-auto">
-                {mktVal != null && (
+                {!isPendingFill && mktVal != null && (
                   <Tooltip>
                     <TooltipTrigger render={<span className="text-sm tabular-nums font-medium cursor-default">{$k(mktVal)}</span>} />
                     <TooltipContent side="bottom">Current market value of {pos.quantity ?? 0} shares at {$(t.currentPrice ?? 0)}</TooltipContent>
                   </Tooltip>
                 )}
-                {pnlPct != null && <PnlBadge value={pnlPct} />}
+                {!isPendingFill && pnlPct != null && <PnlBadge value={pnlPct} />}
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {action}{time && <> at {time}</>}
-              {t.stopLoss && t.stopLoss > 0 && <>. Stop at <span className="tabular-nums">{$(t.stopLoss)}</span></>}
+              {isPendingFill && <> (not yet filled)</>}
+              {!isPendingFill && t.stopLoss && t.stopLoss > 0 && <>. Stop at <span className="tabular-nums">{$(t.stopLoss)}</span></>}
             </p>
           </div>
         );

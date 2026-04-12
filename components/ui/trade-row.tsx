@@ -136,7 +136,7 @@ export function TradeRow({
             {isStalePrice ? (
               <span className="text-[10px] text-amber-500/80">no live price</span>
             ) : isPending ? (
-              <span className="text-[10px] text-amber-500/80">awaiting fill</span>
+              <span className="text-[10px] text-muted-foreground/50">—</span>
             ) : (
               <>
                 <span className={cn("text-sm tabular-nums", pnlColor(pnl))}>
