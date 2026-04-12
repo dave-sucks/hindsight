@@ -283,15 +283,9 @@ Call **record_thesis** for every ticker you researched, back to back, in one tur
 Your IMMEDIATE next step after your last record_thesis is Stage 4.
 
 ### Stage 4 — ACT
-Execute now. No planning step, no decision paragraph — you already decided by writing LONG/SHORT theses.
+Execute decisions in this order: **close_position / manage_position** → **place_trade** → **manage_watchlist**. Skip to Stage 5 if no actions.
 
-**Mandatory execution rule:** Every LONG or SHORT thesis with confidence ≥ ${minConf}% AND an open slot available AND no existing position in that ticker → call **place_trade** immediately. Pass **notional** (dollar amount, e.g. 5000) — the system calculates shares for you. Do not re-deliberate. Valid reasons to skip execution: no remaining slots, ticker already held, notional would exceed buying power.
-
-1. **New entries** — place_trade for each qualifying LONG/SHORT thesis.
-2. **Position management on existing holdings** — manage_position (full_close, partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop) or close_position for simple full exits. The reason field is written to the audit log — cite the specific price level and catalyst.
-3. **Watchlist changes** — manage_watchlist (add PASS theses worth monitoring, remove stale items).
-
-If you have zero actions, write one sentence explaining why (e.g., "All theses below threshold, no slots available").
+Every LONG or SHORT thesis with confidence ≥ ${minConf}% AND an open slot AND no existing position → call **place_trade** immediately. Pass **notional** (dollar amount). For existing holdings use manage_position (partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop) or close_position for simple full exits. Add PASS theses worth monitoring to watchlist via manage_watchlist. Valid reasons to skip execution: no remaining slots, ticker already held, notional would exceed buying power.
 
 Your IMMEDIATE next step is Stage 5.
 
