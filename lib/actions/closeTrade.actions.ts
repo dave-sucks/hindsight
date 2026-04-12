@@ -21,6 +21,42 @@ export interface ClosedPositionResult {
   filledAt: Date | null;
 }
 
+/** Who triggered the close — determines audit trail source label. */
+export type CloseSource = "agent" | "price_monitor" | "user";
+
+// ─── Audit helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Generates a human-readable reason string for the audit trail when no
+ * explicit reason was provided by the caller.
+ */
+function buildCloseReason(
+  source: CloseSource,
+  reason: "TARGET" | "STOP" | "TIME" | "MANUAL",
+  symbol: string,
+  closePrice: number,
+  stopLoss: number | null,
+  targetPrice: number | null,
+): string {
+  if (source === "price_monitor") {
+    if (reason === "TARGET" && targetPrice) {
+      return `Target price of $${targetPrice.toFixed(2)} was reached. ${symbol} closed at $${closePrice.toFixed(2)} by the automated price monitor.`;
+    }
+    if (reason === "STOP" && stopLoss) {
+      return `Stop loss at $${stopLoss.toFixed(2)} was hit. ${symbol} closed at $${closePrice.toFixed(2)} by the automated price monitor.`;
+    }
+    if (reason === "TIME") {
+      return `Hold duration expired. ${symbol} closed at $${closePrice.toFixed(2)} by the automated price monitor.`;
+    }
+    return `${symbol} closed at $${closePrice.toFixed(2)} by the automated price monitor (${reason}).`;
+  }
+  if (source === "user") {
+    return `${symbol} manually closed at $${closePrice.toFixed(2)} via the UI.`;
+  }
+  // agent — should always pass an explicit auditReason, but fallback just in case
+  return `${symbol} closed at $${closePrice.toFixed(2)} by the agent (${reason}).`;
+}
+
 // ─── Action ───────────────────────────────────────────────────────────────────
 
 /**
@@ -39,6 +75,9 @@ export async function closeOpenPosition(
   reason: "TARGET" | "STOP" | "TIME" | "MANUAL",
   closePriceOverride?: number,
   alpacaCreds?: AlpacaCredentials | null,
+  source: CloseSource = "agent",
+  auditReason?: string,
+  runId?: string,
 ): Promise<ClosedPositionResult> {
   // 1. Load the position
   const position = await prisma.position.findUniqueOrThrow({
@@ -157,6 +196,7 @@ export async function closeOpenPosition(
           status: "CLOSED",
           closePrice,
           closeReason: reason,
+          closeSource: source,
           realizedPnl,
           outcome,
           closedAt: filledAt ?? new Date(),
@@ -170,6 +210,21 @@ export async function closeOpenPosition(
           description: `Position closed (${reason}) at $${closePrice.toFixed(2)}. P&L: ${sign}$${realizedPnl.toFixed(2)} — ${outcome}`,
           priceAt: closePrice,
           pnlAt: realizedPnl,
+        },
+      });
+
+      // Audit record — every close gets a reason string visible to the user
+      const generatedReason = auditReason ?? buildCloseReason(source, reason, position.symbol, closePrice, position.stopLoss, position.targetPrice);
+      await tx.positionManagementAction.create({
+        data: {
+          positionId,
+          runId: runId ?? null,
+          actionType: "FULL_CLOSE",
+          source,
+          reason: generatedReason,
+          fillPrice: closePrice,
+          fillQty: position.quantity,
+          alpacaOrderId: alpacaOrderId,
         },
       });
     } else {
@@ -278,6 +333,7 @@ export async function cancelPosition(positionId: string): Promise<void> {
         status: "CANCELLED",
         closedAt: new Date(),
         closeReason: "MANUAL",
+        closeSource: "user",
         realizedPnl: 0,
       },
     });

@@ -24,7 +24,7 @@ export const closePosition = defineTool({
     notes: z.string().optional().describe("Optional notes explaining the close decision"),
   }),
   ui: "ticker" as const,
-  groupId: "execution",
+  groupId: "Executing",
 
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
@@ -51,7 +51,10 @@ export const closePosition = defineTool({
       }
 
       const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
-      const result = await closeOpenPosition(position.id, args.reason);
+      const agentAuditReason = args.notes
+        ? args.notes
+        : `${position.direction} position in ${ticker} closed by agent — reason: ${args.reason}.`;
+      const result = await closeOpenPosition(position.id, args.reason, undefined, undefined, "agent", agentAuditReason, ctx.runId);
 
       const analystId = ctx.analystId || position.analystId;
       const fillNote = result.fillStatus === "PENDING" ? " (close order pending fill)" : "";

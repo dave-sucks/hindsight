@@ -66,8 +66,8 @@ function WinRateBar({ winRate, tradeCount }: { winRate: number | null; tradeCoun
 function stripMarkdown(text: string): string {
   return text
     .replace(/^#{1,6}\s+.+$/gm, '')    // Remove entire heading lines
-    .replace(/\*\*(.+?)\*\*/gs, '$1')
-    .replace(/\*(.+?)\*/gs, '$1')
+    .replace(/\*\*[\s\S]+?\*\*/g, (m) => m.slice(2, -2))
+    .replace(/\*[\s\S]+?\*/g, (m) => m.slice(1, -1))
     .replace(/`(.+?)`/g, '$1')
     .replace(/^[-*+]\s+/gm, '')
     .replace(/\n{2,}/g, ' ')

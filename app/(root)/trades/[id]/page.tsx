@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { StockLogo } from '@/components/StockLogo';
 import { PnlBadge } from '@/components/ui/pnl-badge';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Tooltip,
@@ -30,6 +31,12 @@ import {
   Target,
   ArrowUpRight,
   ArrowDownRight,
+  Bot,
+  Clock,
+  User,
+  TrendingDown,
+  TrendingUp,
+  Pencil,
 } from 'lucide-react';
 import { TradeActions } from '@/components/trades/TradeActions';
 
@@ -118,6 +125,7 @@ export default async function TradeDetailPage({
       events: { orderBy: { createdAt: 'asc' } },
       analyst: { select: { id: true, name: true } },
       orders: { orderBy: { createdAt: 'asc' } },
+      managementActions: { orderBy: { createdAt: 'asc' } },
       decisions: {
         take: 1,
         include: {
@@ -304,6 +312,14 @@ export default async function TradeDetailPage({
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="theses">Theses</TabsTrigger>
+              <TabsTrigger value="activity">
+                Activity
+                {position.managementActions.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-medium tabular-nums">
+                    {position.managementActions.length}
+                  </span>
+                )}
+              </TabsTrigger>
               {!isOpen && evalEvent && (
                 <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
               )}
@@ -415,19 +431,146 @@ export default async function TradeDetailPage({
             </TabsContent>
 
             {/* ── THESES ── */}
-            <TabsContent value="theses" className="mt-4 max-w-3xl">
-              <StockThesesList theses={thesisChain.map((t: typeof thesisChain[number]) => ({
-                id: t.id,
-                ticker: trade.symbol,
-                direction: t.direction,
-                confidenceScore: t.confidenceScore,
-                reasoningSummary: t.reasoningSummary,
-                entryPrice: Number(t.entryPrice) || null,
-                targetPrice: Number(t.targetPrice) || null,
-                stopLoss: Number(t.stopLoss) || null,
-                createdAt: t.createdAt.toISOString(),
-                runId: t.researchRunId ?? null,
-              }))} />
+            <TabsContent value="theses" className="mt-4 max-w-3xl space-y-6">
+              {(() => {
+                type TT = typeof thesisChain[number];
+                const active = thesisChain.filter((t: TT) => t.status === "ACTIVE");
+                const prior = thesisChain.filter((t: TT) => t.status !== "ACTIVE");
+                const toRow = (t: TT) => ({
+                  id: t.id,
+                  ticker: trade.symbol,
+                  direction: t.direction,
+                  confidenceScore: t.confidenceScore,
+                  reasoningSummary: t.reasoningSummary,
+                  entryPrice: Number(t.entryPrice) || null,
+                  targetPrice: Number(t.targetPrice) || null,
+                  stopLoss: Number(t.stopLoss) || null,
+                  createdAt: t.createdAt.toISOString(),
+                  runId: t.researchRunId ?? null,
+                });
+                const statusBadge = (s: string) => {
+                  if (s === "SUPERSEDED") return <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Superseded</Badge>;
+                  if (s === "INVALIDATED") return <Badge variant="destructive" className="text-[10px] h-4 px-1.5">Invalidated</Badge>;
+                  if (s === "CLOSED") return <Badge variant="outline" className="text-[10px] h-4 px-1.5">Closed</Badge>;
+                  return null;
+                };
+                return (
+                  <>
+                    {active.length > 0 && (
+                      <div className="space-y-3">
+                        <StockThesesList theses={active.map(toRow)} />
+                      </div>
+                    )}
+                    {prior.length > 0 && (
+                      <div className="space-y-3">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Previous research</p>
+                        {prior.map((t: TT) => (
+                          <div key={t.id} className="space-y-1">
+                            <div className="flex items-center gap-1.5 px-1">
+                              {statusBadge(t.status)}
+                              <span className="text-[11px] text-muted-foreground/60">
+                                {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            <StockThesesList theses={[toRow(t)]} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {thesisChain.length === 0 && (
+                      <div className="py-12 text-center">
+                        <p className="text-sm text-muted-foreground">No thesis recorded for this position.</p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </TabsContent>
+
+            {/* ── ACTIVITY ─────────────────────────────────────────── */}
+            <TabsContent value="activity" className="mt-4 max-w-2xl">
+              {position.managementActions.length === 0 ? (
+                <div className="rounded-lg border px-4 py-10 flex flex-col items-center gap-2">
+                  <p className="text-sm text-muted-foreground text-center">No position changes recorded yet.</p>
+                  <p className="text-xs text-muted-foreground/60 text-center max-w-xs">
+                    Target updates, partial closes, stop moves, and closes will appear here with the agent&apos;s reasoning.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {position.managementActions.map((action, i) => {
+                    const isLast = i === position.managementActions.length - 1;
+                    const sourceLabel = action.source === 'price_monitor' ? 'Price monitor' : action.source === 'user' ? 'You' : 'Agent';
+                    const SourceIcon = action.source === 'price_monitor' ? Clock : action.source === 'user' ? User : Bot;
+
+                    let actionLabel = 'Position change';
+                    let ActionIcon = Pencil;
+                    if (action.actionType === 'FULL_CLOSE') { actionLabel = 'Closed'; ActionIcon = CheckCircle2; }
+                    else if (action.actionType === 'PARTIAL_CLOSE') { actionLabel = 'Partial close'; ActionIcon = TrendingDown; }
+                    else if (action.actionType === 'ADD_TO_POSITION') { actionLabel = 'Added to position'; ActionIcon = TrendingUp; }
+                    else if (action.actionType === 'UPDATE_TARGETS') { actionLabel = 'Updated targets'; ActionIcon = Target; }
+                    else if (action.actionType === 'MOVE_STOP_TO_BREAKEVEN') { actionLabel = 'Moved stop to breakeven'; ActionIcon = Target; }
+                    else if (action.actionType === 'SET_TRAILING_STOP') { actionLabel = 'Set trailing stop'; ActionIcon = TrendingDown; }
+                    else if (action.actionType === 'NEAR_TARGET') { actionLabel = 'Approaching target'; ActionIcon = Target; }
+                    else if (action.actionType === 'NEAR_STOP') { actionLabel = 'Approaching stop'; ActionIcon = TrendingDown; }
+
+                    return (
+                      <div key={action.id} className="flex gap-3 pb-5 last:pb-0">
+                        <div className="flex flex-col items-center">
+                          <div className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center shrink-0 text-muted-foreground">
+                            <ActionIcon className="h-3.5 w-3.5" />
+                          </div>
+                          {!isLast && <div className="w-px flex-1 bg-border mt-1 min-h-[20px]" />}
+                        </div>
+                        <div className="pt-0.5 pb-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium">{actionLabel}</span>
+                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                              <SourceIcon className="h-3 w-3" />
+                              {sourceLabel}
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground leading-relaxed mt-0.5">{action.reason}</p>
+
+                          {/* Before/after changes */}
+                          {(action.prevTargetPrice != null || action.newTargetPrice != null || action.prevStopLoss != null || action.newStopLoss != null || action.prevQty != null || action.newQty != null) && (
+                            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5">
+                              {action.prevTargetPrice != null && action.newTargetPrice != null && (
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  Target: ${action.prevTargetPrice.toFixed(2)} → <span className="text-foreground">${action.newTargetPrice.toFixed(2)}</span>
+                                </span>
+                              )}
+                              {action.prevStopLoss != null && action.newStopLoss != null && (
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  Stop: ${action.prevStopLoss.toFixed(2)} → <span className="text-foreground">${action.newStopLoss.toFixed(2)}</span>
+                                </span>
+                              )}
+                              {action.prevQty != null && action.newQty != null && (
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  Qty: {action.prevQty} → <span className="text-foreground">{action.newQty}</span>
+                                  {action.fillPrice != null && ` @ $${action.fillPrice.toFixed(2)}`}
+                                </span>
+                              )}
+                              {action.actionType === 'FULL_CLOSE' && action.fillPrice != null && (
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  Closed at <span className="text-foreground">${action.fillPrice.toFixed(2)}</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          <p className="text-[11px] font-mono text-muted-foreground/60 mt-1 tabular-nums">
+                            {new Date(action.createdAt).toLocaleString('en-US', {
+                              month: 'short', day: 'numeric',
+                              hour: 'numeric', minute: '2-digit', hour12: true,
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </TabsContent>
 
             {/* ── EVALUATION ──────────────────────────────────────── */}

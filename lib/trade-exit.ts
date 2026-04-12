@@ -14,31 +14,6 @@ export interface ExitSignal {
   label: string;
 }
 
-// ─── Peak price helper (for trailing stop) ───────────────────────────────────
-
-/**
- * Returns the highest (LONG) or lowest (SHORT) price seen in PRICE_CHECK events.
- * Falls back to avgCost if no events yet.
- */
-export async function getPeakPrice(position: PositionModel): Promise<number> {
-  const events = await prisma.positionEvent.findMany({
-    where: {
-      positionId: position.id,
-      eventType: "PRICE_CHECK",
-      priceAt: { not: null },
-    },
-    select: { priceAt: true },
-  });
-
-  const prices = events
-    .map((e) => e.priceAt!)
-    .concat(position.avgCost);
-
-  return position.direction === "LONG"
-    ? Math.max(...prices)
-    : Math.min(...prices);
-}
-
 // ─── Core evaluator (pure, synchronous, easily testable) ─────────────────────
 
 export function evaluateExitStrategy(
@@ -111,7 +86,7 @@ export function evaluateExitStrategy(
   }
 }
 
-// ─── NEAR_TARGET detection ────────────────────────────────────────────────────
+// ─── Proximity helpers ────────────────────────────────────────────────────────
 
 /**
  * Returns how close (0–1) the position is to its target.
@@ -131,42 +106,115 @@ export function targetProximity(
   return Math.max(0, Math.min(1, progress / totalRange));
 }
 
+/**
+ * Returns how close (0–1) the position is to its stop loss.
+ * 1.0 = at stop, 0 = far from stop.
+ */
+export function stopProximity(
+  position: Pick<PositionModel, "direction" | "avgCost" | "stopLoss">,
+  currentPrice: number
+): number {
+  if (!position.stopLoss) return 0;
+  const totalRange = Math.abs(position.avgCost - position.stopLoss);
+  if (totalRange === 0) return 0;
+  const distanceToStop =
+    position.direction === "LONG"
+      ? position.avgCost - currentPrice   // positive when price drops toward stop
+      : currentPrice - position.avgCost;  // positive when price rises toward stop
+  return Math.max(0, Math.min(1, distanceToStop / totalRange));
+}
+
 // ─── Main export: called by price-monitor ────────────────────────────────────
 
 /**
  * Evaluates exit conditions for a position.
- * Writes a NEAR_TARGET event if within 10% of target.
- * Calls closeOpenPosition (imported lazily to avoid circular dep).
+ * Uses stored peakPrice from Position row (maintained by price-monitor).
+ * Falls back to avgCost only when peakPrice is null (first tick).
+ *
+ * Side effects:
+ *  - Writes NEAR_TARGET PositionEvent + PositionManagementAction (once per 2h)
+ *  - Writes NEAR_STOP PositionEvent + PositionManagementAction (once per 2h)
+ *  - Calls closeOpenPosition when exit signal fires
  */
 export async function checkExitConditions(
   position: PositionModel,
-  currentPrice: number
+  currentPrice: number,
+  storedPeakPrice?: number | null,
 ): Promise<void> {
-  const peak = await getPeakPrice(position);
+  // Use stored peak if available (avoids full event-scan query)
+  const peak = storedPeakPrice ?? position.peakPrice ?? position.avgCost;
   const signal = evaluateExitStrategy(position, currentPrice, peak);
 
-  // Check near-target (write event if ≥90% of the way there, only once)
+  // ── Near-target alert ─────────────────────────────────────────────────────
   if (!signal && position.targetPrice) {
     const proximity = targetProximity(position, currentPrice);
     if (proximity >= 0.9) {
       const pct = Math.round(proximity * 100);
-      // Only write NEAR_TARGET if we haven't already in the last 2 hours
-      const recentNear = await prisma.positionEvent.findFirst({
+      const recentAlert = await prisma.positionEvent.findFirst({
         where: {
           positionId: position.id,
           eventType: "NEAR_TARGET",
           createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
         },
       });
-      if (!recentNear) {
-        await prisma.positionEvent.create({
-          data: {
-            positionId: position.id,
-            eventType: "NEAR_TARGET",
-            description: `${position.symbol} approaching target: $${currentPrice.toFixed(2)} (${pct}% to target $${position.targetPrice.toFixed(2)})`,
-            priceAt: currentPrice,
-          },
-        });
+      if (!recentAlert) {
+        const description = `${position.symbol} approaching target: $${currentPrice.toFixed(2)} (${pct}% to target $${position.targetPrice.toFixed(2)})`;
+        await prisma.$transaction([
+          prisma.positionEvent.create({
+            data: {
+              positionId: position.id,
+              eventType: "NEAR_TARGET",
+              description,
+              priceAt: currentPrice,
+            },
+          }),
+          prisma.positionManagementAction.create({
+            data: {
+              positionId: position.id,
+              actionType: "NEAR_TARGET",
+              source: "price_monitor",
+              newTargetPrice: position.targetPrice,
+              reason: description,
+            },
+          }),
+        ]);
+      }
+    }
+  }
+
+  // ── Near-stop alert ───────────────────────────────────────────────────────
+  if (!signal && position.stopLoss) {
+    const proximity = stopProximity(position, currentPrice);
+    if (proximity >= 0.8) {
+      const pct = Math.round(proximity * 100);
+      const recentAlert = await prisma.positionEvent.findFirst({
+        where: {
+          positionId: position.id,
+          eventType: "NEAR_STOP",
+          createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+        },
+      });
+      if (!recentAlert) {
+        const description = `${position.symbol} approaching stop loss: $${currentPrice.toFixed(2)} (${pct}% to stop $${position.stopLoss.toFixed(2)})`;
+        await prisma.$transaction([
+          prisma.positionEvent.create({
+            data: {
+              positionId: position.id,
+              eventType: "NEAR_STOP",
+              description,
+              priceAt: currentPrice,
+            },
+          }),
+          prisma.positionManagementAction.create({
+            data: {
+              positionId: position.id,
+              actionType: "NEAR_STOP",
+              source: "price_monitor",
+              newStopLoss: position.stopLoss,
+              reason: description,
+            },
+          }),
+        ]);
       }
     }
   }
@@ -175,5 +223,5 @@ export async function checkExitConditions(
 
   // Lazy import to avoid circular dependency
   const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
-  await closeOpenPosition(position.id, signal.reason, currentPrice);
+  await closeOpenPosition(position.id, signal.reason, currentPrice, undefined, "price_monitor");
 }

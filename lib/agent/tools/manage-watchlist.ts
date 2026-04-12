@@ -30,7 +30,7 @@ export const manageWatchlist = defineTool({
     review_frequency: z.enum(["DAILY", "WEEKLY", "ON_CATALYST"]).optional().describe("How often to review this item"),
   }),
   ui: "ticker" as const,
-  groupId: "execution",
+  groupId: "Executing",
 
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();

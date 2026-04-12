@@ -34,6 +34,29 @@ export interface ConfidencePoint {
   return: number;
 }
 
+export interface SignalAccuracyStat {
+  signal: string;
+  winRate: number | null;
+  count: number;
+}
+
+export interface CalibrationBucket {
+  label: string;
+  expectedWinRate: number;
+  actualWinRate: number | null;
+  count: number;
+}
+
+export interface CalibrationData {
+  signalAccuracy: SignalAccuracyStat[];
+  calibrationBuckets: CalibrationBucket[];
+  directionStats: {
+    long: { winRate: number | null; count: number };
+    short: { winRate: number | null; count: number };
+  } | null;
+  narrativeSummary: string | null;
+}
+
 export interface GraduationData {
   currentWinRate: number;
   winRateTarget: number;
@@ -85,6 +108,7 @@ export interface AnalyticsData {
   stats: AnalyticsStats;
   analystBreakdown: AnalystStat[];
   recentRuns: ResearchRunSummary[];
+  calibration: CalibrationData | null;
 }
 
 // ─── Helper: equity curve ─────────────────────────────────────────────────────
@@ -122,8 +146,8 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 
   const userId = user?.id;
 
-  // ── Fetch positions, open count, agent config, and recent runs ────────────
-  const [closedPositions, openCount, agentConfig, completedRuns] = await Promise.all([
+  // ── Fetch positions, open count, agent config, recent runs, accuracy ─────
+  const [closedPositions, openCount, agentConfig, completedRuns, latestAccuracy] = await Promise.all([
     userId
       ? prisma.position.findMany({
           where: { userId, status: "CLOSED" },
@@ -181,6 +205,20 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
           },
         })
       : Promise.resolve([]),
+    userId
+      ? prisma.accuracyReport.findFirst({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+          select: {
+            winRate: true,
+            tradesAnalyzed: true,
+            narrativeSummary: true,
+            signalAccuracy: true,
+            calibrationData: true,
+            directionStats: true,
+          },
+        })
+      : Promise.resolve(null),
   ]);
 
   // ── Equity curve ──────────────────────────────────────────────────────────
@@ -349,6 +387,67 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     };
   });
 
+  // ── Calibration data from AccuracyReport ─────────────────────────────────
+
+  type RawSignal = { signal: string; winRate: number | null; count: number };
+  type RawBucket = { label: string; expectedWinRate: number; winRate: number | null; count: number };
+  type RawDirStats = Record<string, { winRate: number | null; count: number }>;
+
+  let calibration: CalibrationData | null = null;
+  if (latestAccuracy) {
+    const signalAccuracy: SignalAccuracyStat[] = (() => {
+      try {
+        const raw = latestAccuracy.signalAccuracy;
+        if (!Array.isArray(raw) || raw.length === 0) return [];
+        return (raw as RawSignal[])
+          .filter((s) => s.count > 0)
+          .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
+          .slice(0, 10)
+          .map((s) => ({ signal: s.signal, winRate: s.winRate, count: s.count }));
+      } catch { return []; }
+    })();
+
+    const calibrationBuckets: CalibrationBucket[] = (() => {
+      try {
+        const raw = latestAccuracy.calibrationData;
+        if (!Array.isArray(raw) || raw.length === 0) return [];
+        return (raw as RawBucket[])
+          .filter((b) => b.count > 0)
+          .map((b) => ({
+            label: b.label,
+            expectedWinRate: b.expectedWinRate,
+            actualWinRate: b.winRate,
+            count: b.count,
+          }));
+      } catch { return []; }
+    })();
+
+    const directionStats: CalibrationData["directionStats"] = (() => {
+      try {
+        const raw = latestAccuracy.directionStats as RawDirStats | null;
+        if (!raw) return null;
+        const long = raw["LONG"] ?? raw["long"];
+        const short = raw["SHORT"] ?? raw["short"];
+        if (!long && !short) return null;
+        return {
+          long: { winRate: long?.winRate ?? null, count: long?.count ?? 0 },
+          short: { winRate: short?.winRate ?? null, count: short?.count ?? 0 },
+        };
+      } catch { return null; }
+    })();
+
+    if (signalAccuracy.length > 0 || calibrationBuckets.length > 0) {
+      calibration = {
+        signalAccuracy,
+        calibrationBuckets,
+        directionStats,
+        narrativeSummary: latestAccuracy.narrativeSummary
+          ? String(latestAccuracy.narrativeSummary).slice(0, 500)
+          : null,
+      };
+    }
+  }
+
   return {
     equityCurve,
     directionBreakdown,
@@ -358,5 +457,6 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     stats,
     analystBreakdown,
     recentRuns,
+    calibration,
   };
 }

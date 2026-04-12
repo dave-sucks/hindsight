@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { cn, PNL_HEX } from '@/lib/utils';
-import type { AnalyticsData, AnalystStat, ResearchRunSummary } from '@/lib/actions/analytics.actions';
+import type { AnalyticsData, AnalystStat, ResearchRunSummary, CalibrationData } from '@/lib/actions/analytics.actions';
 import {
   ResponsiveContainer,
   LineChart,
@@ -235,6 +235,147 @@ function ResearchRunsCard({ runs }: { runs: ResearchRunSummary[] }) {
   );
 }
 
+// ─── Calibration Card ─────────────────────────────────────────────────────────
+
+function CalibrationCard({ calibration }: { calibration: CalibrationData }) {
+  const { signalAccuracy, calibrationBuckets, directionStats, narrativeSummary } = calibration;
+
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg font-medium">Agent Calibration</CardTitle>
+        {narrativeSummary && (
+          <p className="text-sm text-muted-foreground mt-1">{narrativeSummary}</p>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-6">
+
+        {/* Signal accuracy */}
+        {signalAccuracy.length > 0 && (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
+              Signal Win Rates
+            </p>
+            <div className="space-y-2">
+              {signalAccuracy.map((s) => {
+                const pct = s.winRate != null ? s.winRate * 100 : null;
+                const isUnder = pct != null && pct < 45;
+                const isStrong = pct != null && pct > 65;
+                return (
+                  <div key={s.signal} className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-foreground w-36 shrink-0 truncate">{s.signal}</span>
+                    <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-all',
+                          isStrong ? 'bg-emerald-500' : isUnder ? 'bg-red-500' : 'bg-blue-500'
+                        )}
+                        style={{ width: `${Math.min(pct ?? 0, 100)}%` }}
+                      />
+                    </div>
+                    <span className={cn(
+                      'text-xs tabular-nums w-10 text-right shrink-0',
+                      isStrong ? 'text-positive' : isUnder ? 'text-negative' : 'text-muted-foreground'
+                    )}>
+                      {pct != null ? `${pct.toFixed(0)}%` : '—'}
+                    </span>
+                    <span className="text-xs text-muted-foreground w-12 shrink-0">n={s.count}</span>
+                    {isStrong && <span className="text-xs text-positive">✓</span>}
+                    {isUnder && <span className="text-xs text-negative">⚠</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Confidence calibration */}
+        {calibrationBuckets.length > 0 && (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
+              Confidence Calibration
+            </p>
+            <div className="rounded-md border border-border overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/30">
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Bucket</th>
+                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">Expected</th>
+                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">Actual</th>
+                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">n</th>
+                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">Flag</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {calibrationBuckets.map((b) => {
+                    const actual = b.actualWinRate != null ? b.actualWinRate * 100 : null;
+                    const gap = b.actualWinRate != null ? b.actualWinRate - b.expectedWinRate : null;
+                    const isOver = gap != null && gap < -0.15;
+                    const isUnder = gap != null && gap > 0.1;
+                    return (
+                      <tr key={b.label} className="hover:bg-secondary/20">
+                        <td className="px-3 py-2 font-mono text-foreground">{b.label}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                          {(b.expectedWinRate * 100).toFixed(0)}%
+                        </td>
+                        <td className={cn(
+                          'px-3 py-2 text-right tabular-nums font-medium',
+                          actual == null ? 'text-muted-foreground' :
+                            isOver ? 'text-negative' : isUnder ? 'text-positive' : 'text-foreground'
+                        )}>
+                          {actual != null ? `${actual.toFixed(0)}%` : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{b.count}</td>
+                        <td className="px-3 py-2 text-right text-xs">
+                          {isOver && <span className="text-negative">⚠ overconfident</span>}
+                          {isUnder && <span className="text-positive">✓ room to push</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Direction stats */}
+        {directionStats && (
+          <div className="flex items-center gap-8">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Long Win Rate</p>
+              <p className={cn(
+                'text-xl font-semibold tabular-nums',
+                directionStats.long.winRate == null ? 'text-muted-foreground' :
+                  directionStats.long.winRate >= 0.5 ? 'text-positive' : 'text-negative'
+              )}>
+                {directionStats.long.winRate != null
+                  ? `${(directionStats.long.winRate * 100).toFixed(0)}%`
+                  : '—'}
+              </p>
+              <p className="text-xs text-muted-foreground">n={directionStats.long.count}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Short Win Rate</p>
+              <p className={cn(
+                'text-xl font-semibold tabular-nums',
+                directionStats.short.winRate == null ? 'text-muted-foreground' :
+                  directionStats.short.winRate >= 0.5 ? 'text-positive' : 'text-negative'
+              )}>
+                {directionStats.short.winRate != null
+                  ? `${(directionStats.short.winRate * 100).toFixed(0)}%`
+                  : '—'}
+              </p>
+              <p className="text-xs text-muted-foreground">n={directionStats.short.count}</p>
+            </div>
+          </div>
+        )}
+
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -244,7 +385,7 @@ interface Props {
 export default function PerformancePage({ data }: Props) {
   const [activeRange, setActiveRange] = useState<TimeRange>('1M');
 
-  const { equityCurve, directionBreakdown, durationBreakdown, sectorBreakdown, confidenceScatter, stats, analystBreakdown, recentRuns } = data;
+  const { equityCurve, directionBreakdown, durationBreakdown, sectorBreakdown, confidenceScatter, stats, analystBreakdown, recentRuns, calibration } = data;
   const { totalReturn, totalReturnPct, winRate, avgReturnPerTrade, openTrades, closedTrades, totalTrades, graduation } = stats;
 
   const winRatePct = Math.min((graduation.currentWinRate / graduation.winRateTarget) * 100, 100);
@@ -520,6 +661,9 @@ export default function PerformancePage({ data }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Agent Calibration (only when AccuracyReport data exists) ── */}
+      {calibration && <CalibrationCard calibration={calibration} />}
 
       {/* ── Analyst Breakdown + Research History ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

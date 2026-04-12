@@ -1,9 +1,8 @@
 /**
  * record_run_summary — migrated to defineTool().
  *
- * Fires after all execution tools (Stage 6), before complete_run.
+ * Fires after all execution tools (Stage 5), before complete_run.
  * Writes the run_summary RunEvent that the briefing agent reads.
- * Reads synthesis + risk_notes from the stored decision plan.
  */
 
 import { z } from "zod";
@@ -12,7 +11,7 @@ import { prisma } from "@/lib/prisma";
 
 export const recordRunSummary = defineTool({
   description:
-    "STAGE 6. Fires after all execution tools (Stage 5), before complete_run. Pass the ranked picks and exposure breakdown — pure data. The synthesis paragraph from your record_decision_plan call is automatically attached for the briefing agent. Your IMMEDIATE next step after this is Stage 7 — call complete_run.",
+    "STAGE 5. Fires after all execution tools, before complete_run. Pass every ticker you researched (ranked by conviction) with the action that ACTUALLY happened. Your IMMEDIATE next step after this is Stage 6 — call complete_run.",
   schema: z.object({
     ranked_picks: z
       .array(
@@ -40,22 +39,6 @@ export const recordRunSummary = defineTool({
 
   execute: async (args, ctx) => {
     try {
-      // Read the decision plan stored in Stage 4
-      let synthesis = "";
-      let riskNotes: string[] = [];
-      if (ctx.runId) {
-        const run = await prisma.researchRun.findFirst({
-          where: { id: ctx.runId },
-          select: { parameters: true },
-        });
-        const params = (run?.parameters && typeof run.parameters === "object")
-          ? (run.parameters as Record<string, unknown>)
-          : {};
-        const plan = params.decisionPlan as { synthesis?: string; risk_notes?: string[] } | undefined;
-        if (plan?.synthesis) synthesis = plan.synthesis;
-        if (Array.isArray(plan?.risk_notes)) riskNotes = plan.risk_notes;
-      }
-
       const traded = args.ranked_picks.filter((p) => {
         const a = p.action.toUpperCase();
         return a === "INITIATE" || a === "ADD";
@@ -69,13 +52,9 @@ export const recordRunSummary = defineTool({
               runId: ctx.runId,
               type: "run_summary",
               title: "Run Summary",
-              message: synthesis,
+              message: `${args.ranked_picks.length} tickers analyzed, ${traded} traded`,
               payload: {
-                summary: synthesis,
                 ranked_picks: args.ranked_picks,
-                risk_notes: riskNotes,
-                overall_assessment: synthesis,
-                portfolio_review: synthesis,
               } as object,
             },
           });

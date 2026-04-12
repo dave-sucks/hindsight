@@ -88,6 +88,33 @@ export const priceMonitor = inngest.createFunction(
 
           const pnl = calculatePnl(position as unknown as PositionModel, currentPrice);
 
+          // Maintain running peak/trough on the Position row itself (avoids recomputing from events)
+          const isLong = position.direction === "LONG";
+          const peakUpdate: Record<string, number | Date> = {};
+          if (isLong) {
+            if (!position.peakPrice || currentPrice > position.peakPrice) {
+              peakUpdate.peakPrice = currentPrice;
+              peakUpdate.peakAt = new Date();
+            }
+            if (!position.troughPrice || currentPrice < position.troughPrice) {
+              peakUpdate.troughPrice = currentPrice;
+              peakUpdate.troughAt = new Date();
+            }
+          } else {
+            // SHORT: peak = lowest price seen, trough = highest
+            if (!position.peakPrice || currentPrice < position.peakPrice) {
+              peakUpdate.peakPrice = currentPrice;
+              peakUpdate.peakAt = new Date();
+            }
+            if (!position.troughPrice || currentPrice > position.troughPrice) {
+              peakUpdate.troughPrice = currentPrice;
+              peakUpdate.troughAt = new Date();
+            }
+          }
+          if (Object.keys(peakUpdate).length > 0) {
+            await prisma.position.update({ where: { id: position.id }, data: peakUpdate });
+          }
+
           // Write PRICE_CHECK event
           await prisma.positionEvent.create({
             data: {
@@ -99,8 +126,8 @@ export const priceMonitor = inngest.createFunction(
             },
           });
 
-          // Check exit conditions
-          await checkExitConditions(position as unknown as PositionModel, currentPrice);
+          // Check exit conditions — pass stored peakPrice to avoid event-scan query
+          await checkExitConditions(position as unknown as PositionModel, currentPrice, position.peakPrice);
 
           // Near-target alert — send once when ≥80% of the way to price target
           if (

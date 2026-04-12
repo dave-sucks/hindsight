@@ -92,9 +92,23 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 
   sections.push(portfolioSection);
 
-  // ── Section 3.5: Active Theses ───────────────────────────────────────
+  // ── Section 3.5: Priority Reviews ────────────────────────────────────
+  if (runInput.priorityReviews && runInput.priorityReviews.length > 0) {
+    let reviewSection = `## ⚠ Priority Reviews — Act Today\nThe price monitor flagged the following positions in the last 24 hours. These are **MUST-research** in Stage 2 regardless of any other triage criteria:\n\n`;
+    for (const r of runInput.priorityReviews) {
+      const hoursAgo = Math.round((Date.now() - new Date(r.triggeredAt).getTime()) / (1000 * 60 * 60));
+      const actionLabel = r.alertType === "NEAR_TARGET" ? "NEAR TARGET" : "NEAR STOP";
+      const levelStr = r.targetOrStop != null ? ` ($${r.targetOrStop.toFixed(2)})` : "";
+      reviewSection += `- **$${r.symbol}** — ${actionLabel}${levelStr} — flagged ${hoursAgo}h ago\n`;
+      reviewSection += `  "${r.reason}"\n`;
+    }
+    reviewSection += `\nFor NEAR TARGET: consider taking partial or full profit. For NEAR STOP: decide whether to tighten the stop, reduce size, or exit before it triggers.`;
+    sections.push(reviewSection);
+  }
+
+  // ── Section 3.75: Active Theses ───────────────────────────────────────
   if (runInput.activeTheses && runInput.activeTheses.length > 0) {
-    let thesesSection = `## Active Theses\nThese are your current ACTIVE theses. Use parent_thesis_id when updating them.\n\n`;
+    let thesesSection = `## Active Theses\nThese are your current ACTIVE theses. When you record a new thesis for any of these tickers, the old one is automatically superseded — you do not need to pass parent_thesis_id.\n\n`;
     thesesSection += `| Ticker | Direction | Confidence | Entry | Target | Stop | Created | Thesis ID |\n`;
     thesesSection += `|--------|-----------|-----------|-------|--------|------|---------|----------|\n`;
     for (const t of runInput.activeTheses) {
@@ -108,7 +122,7 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
     for (const t of runInput.activeTheses) {
       thesesSection += `- $${t.ticker} (${t.id}): "${t.reasoningSummary.slice(0, 150)}"\n`;
     }
-    thesesSection += `\nWhen reviewing a holding, pass the thesis ID as parent_thesis_id to record_thesis to maintain the chain.`;
+    thesesSection += `\nWhen re-researching a holding, record_thesis will automatically supersede the prior thesis. No manual linking needed.`;
     sections.push(thesesSection);
   }
 
@@ -169,15 +183,43 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
     sections.push(briefSection);
   }
 
-  // ── Section 6: Performance Context ───────────────────────────────────
+  // ── Section 6: Performance & Calibration ─────────────────────────────
   if (runInput.performance) {
     const perf = runInput.performance;
-    const winRateStr =
-      perf.winRate != null ? `${(perf.winRate * 100).toFixed(0)}%` : "—";
-    let perfSection = `## Performance Context\nWin Rate: ${winRateStr} | Trades: ${perf.totalTrades}`;
-    if (perf.calibrationNote) {
-      perfSection += ` | Calibration: ${perf.calibrationNote}`;
+    const winRateStr = perf.winRate != null ? `${(perf.winRate * 100).toFixed(0)}%` : "—";
+    let perfSection = `## Performance & Calibration\nWin rate: ${winRateStr} (${perf.totalTrades} trades).`;
+
+    if (perf.signalAccuracy && perf.signalAccuracy.length > 0) {
+      const parts = perf.signalAccuracy.map((s) => {
+        const wr = s.winRate != null ? `${(s.winRate * 100).toFixed(0)}%` : "—";
+        const flag = s.winRate != null && s.winRate < 0.45 ? "⚠" : s.winRate != null && s.winRate > 0.65 ? "✓" : "";
+        return `${s.signal} ${wr}(n=${s.count})${flag}`;
+      });
+      perfSection += ` Signals: ${parts.join(", ")}.`;
     }
+
+    if (perf.calibrationBuckets && perf.calibrationBuckets.length > 0) {
+      const overconfident = perf.calibrationBuckets.filter(
+        (b) => b.actualWinRate != null && b.actualWinRate - b.expectedWinRate < -0.15
+      );
+      if (overconfident.length > 0) {
+        perfSection += ` Overconfident at ${overconfident.map((b) => b.label).join(", ")} confidence — reduce size 15% there.`;
+      }
+    }
+
+    if (perf.directionStats) {
+      const d = perf.directionStats;
+      if (d.long.count > 0 || d.short.count > 0) {
+        const longWr = d.long.winRate != null ? `${(d.long.winRate * 100).toFixed(0)}%` : "—";
+        const shortWr = d.short.winRate != null ? `${(d.short.winRate * 100).toFixed(0)}%` : "—";
+        perfSection += ` LONG ${longWr}(n=${d.long.count}) SHORT ${shortWr}(n=${d.short.count})${d.short.count > 2 && d.short.winRate != null && d.short.winRate < 0.4 ? " — scrutinize shorts" : ""}.`;
+      }
+    }
+
+    if (perf.calibrationNote) {
+      perfSection += `\n${perf.calibrationNote}`;
+    }
+
     sections.push(perfSection);
   }
 
@@ -194,63 +236,42 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 
   // ── Section 8: Run flow ───────────────────────────────────────────────────────
   sections.push(`## Run Flow
+Narration rule: 2-4 sentences between tool calls. Write naturally using $TICKER format. Never write section headers or stage labels. Never reproduce or summarize what a tool result already shows — the UI renders it. Never include markdown links or URLs in your narration text.
 
-Start with a 1-2 sentence portfolio check-in — acknowledge positions, watchlist items, and any "Watch Tomorrow" triggers from your prior brief. No tools yet. Your portfolio, watchlist, prior brief, active theses, and performance stats are already injected above.
+Start with a 1-2 sentence portfolio check-in — note open positions and any Watch Tomorrow flags from the prior brief. No tools yet.
 
 ### Stage 1 — ORIENT
-Call **read_morning_brief**, then **read_signals**. Use **read_artifact** for any signal that warrants a deep read. Use **get_market_context** only if no morning brief is available (the brief already contains market context). Use **web_search** only if you need live coverage the brief doesn't have and your intelligence policy allows it.
+Call **read_morning_brief**, then **read_signals**. Use **read_artifact** for any signal that warrants a deep read. Use **web_search** only if you need live coverage beyond the brief and your intelligence policy allows it.
 
 ### Stage 2 — RESEARCH
-Pull **get_stock_data** on every ticker you intend to act on. Apply triage before calling:
+If you have open positions, call **get_portfolio_context** first — it returns live P&L, days held, and thesis context needed for position management decisions. Then call **get_stock_data** on every ticker you intend to act on.
 
-**Holdings** — MUST: flagged by brief alert / near target or stop (>80%) / "Watch Tomorrow". SHOULD: held longer than expected, >5% unrealized loss, HIGH/BREAKING signal. SKIP: healthy, no new signals.
+Triage before calling get_stock_data:
+- Holdings: MUST if in ⚠ Priority Reviews / brief alert / Watch Tomorrow. SHOULD if held longer than expected or >5% loss. SKIP if healthy with no new signals.
+- Watchlist: MUST if HIGH priority or brief-flagged. SHOULD if not reviewed 5+ days. SKIP if LOW.
+- New opportunities: 2-4 per session from brief or signals. Match focus sectors, no micro-caps/ADRs/penny stocks. In RISK_OFF or near max positions: 1-2 highest-conviction only.
 
-**Watchlist** — MUST: flagged in brief / HIGH priority / "Watch Tomorrow". SHOULD: HIGH/BREAKING signals, not reviewed 5+ days. SKIP: LOW priority, recently reviewed, no signals.
-
-**New opportunities** (mandatory every session): 2-4 from brief or signals. Filter: focus sectors, no micro-caps/ADRs/penny stocks, match current regime. In RISK_OFF or near max positions: cut to 1-2 highest-conviction.
-
-Go deeper only when the signal specifically warrants it — not by default:
-- **get_earnings_data** — earnings within 2 weeks, or the signal is earnings-driven
-- **get_options_flow** — unusual options activity flagged in signals
-- **get_sec_filings** — insider filing or material 8-K flagged
-
-get_stock_data already surfaces key earnings dates, technicals, and news. Only call the deeper tools when the thesis requires it.
-
-**Batch your tool calls.** When you have 2-4 tickers to research, call get_stock_data for all of them in one step. Never research one ticker at a time.
-
-Your IMMEDIATE next action after the last get_stock_data is Stage 3 — start record_thesis calls. No summary, no pause.
+Deeper tools only when the signal specifically warrants it: **get_earnings_data** (earnings within 2 weeks), **get_options_flow** (unusual activity flagged), **get_sec_filings** (insider/8-K flagged). get_stock_data already surfaces earnings dates, technicals, and news. Batch calls — never one ticker at a time. Proceed immediately to Stage 3 after last get_stock_data.
 
 ### Stage 3 — THESES
-Call **record_thesis** for every ticker you researched, back to back, in one turn:
-- LONG / SHORT for tickers you'll act on
-- PASS for tickers you researched but won't trade — documents the decision, builds institutional memory
-- Pass parent_thesis_id when updating an existing holding's thesis
+Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
 
-Your IMMEDIATE next step after your last record_thesis is Stage 4.
+### Stage 4 — ACT
+Execute in order: **close_position / manage_position** → **place_trade** → **manage_watchlist**. Skip to Stage 5 if no actions.
 
-### Stage 4 — DECIDE (no tool)
-Write a 3-6 sentence paragraph — no tool call. Review every thesis, weigh against your portfolio, state what you plan to do. Example:
-> "FIVN and AKAM are the two strongest setups — opening both. AMZN lacks a near-term catalyst, passing. Exposure stays within sector limits after these entries."
+Every LONG/SHORT thesis with confidence ≥ ${minConf}% AND open slot AND no existing position → call **place_trade** with notional amount. For existing holdings use **manage_position** (partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop) or **close_position** for simple full exits. Add watchable PASS theses via **manage_watchlist**. Valid skip reasons: no slots, already held, exceeds buying power.
 
-Your IMMEDIATE next step is Stage 5.
+### Stage 5 — RECAP
+Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, actual action taken — FAILED for rejected orders) and exposure_breakdown.
 
-### Stage 5 — ACT
-Execute decisions from Stage 4 in order: **close_position** → **place_trade** → **manage_watchlist**. Skip directly to Stage 6 if no actions.
-
-### Stage 6 — RECAP
-Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, with the action that ACTUALLY happened — use FAILED for place_trade calls that returned success:false) and exposure_breakdown. No synthesis text.
-
-Your IMMEDIATE next step is Stage 7.
-
-### Stage 7 — COMPLETE
-Call **complete_run** with no arguments. Absolute final tool call. Stop generating after it returns.
+### Stage 6 — COMPLETE
+Call **complete_run**. Final tool call. Stop after it returns.
 
 ## Hard Rules
-- Run all stages in one continuous session. Never stop mid-flow. Session ends only when complete_run fires.
-- Cannot open a new position in a ticker you already hold. Check the portfolio table above.
-- place_trade returning success:false → mark that ticker FAILED (not PASS) in record_run_summary.
-- Use $TICKER format. 2-4 sentences of narration between tool calls. Never fabricate data.
-- Never output stage labels in your messages — write naturally.`);
+- Never stop mid-flow. Session ends only when complete_run fires.
+- Cannot open a position in a ticker you already hold.
+- place_trade returning success:false → mark FAILED in record_run_summary.
+- Use $TICKER format. Never fabricate data.`);
 
   // ── Section 9: Thesis quality ─────────────────────────────────────────
   sections.push(`## Thesis Quality

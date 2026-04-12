@@ -81,15 +81,14 @@ export default async function RunPage({
   const isLive = run.status === "RUNNING";
   const hasReplay = persistedMessages !== null;
 
-  // Load Sources + Theses tab data from the DB. The Sources tab now shows
-  // real signal sources rolled up from the analyst's intel routes for the
-  // run's trading day, plus a single Hindsight Intelligence card that opens
-  // the morning brief dialog. The Theses tab uses the dashboard ThesisRow.
+  // Load Sources + Theses tab data from the DB.
+  // Wrapped in try/catch so a DB error (e.g. pending migration) never
+  // crashes the whole page — tabs just render empty.
   const { brief, sources, theses } = await getRunSourcesData({
     runId: run.id,
     analystId: run.agentConfig?.id ?? null,
     startedAt: run.startedAt,
-  });
+  }).catch(() => ({ brief: null, sources: [], theses: [] }));
 
   return (
     <div className="flex flex-col h-[calc(100dvh-3rem)] overflow-hidden">

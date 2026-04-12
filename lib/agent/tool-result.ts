@@ -13,7 +13,8 @@
 export type ToolUI =
   | "generic"          // fallback: dot + summary text
   | "ticker"           // logo + ticker + summary (research + action tools)
-  | "ticker-list"      // multiple ticker rows from data.tickers[] (morning brief, signals)
+  | "ticker-list"      // multiple ticker rows from data.tickers[] (signals)
+  | "morning-brief"    // morning brief: market context + sections + risk flags
   | "source"           // favicon + title + site (artifact reads, web search)
   | "thesis-card"      // ThesisCarousel — first call collects all theses via forward-read
   | "decision-summary" // complete_run status row
@@ -96,13 +97,13 @@ function inferLegacyGroupId(toolName: string): string | undefined {
     toolName === "get_options_flow" ||
     toolName === "get_sec_filings" ||
     toolName === "get_market_context"
-  ) return "research";
+  ) return "Researching";
   if (
     toolName === "place_trade" ||
     toolName === "close_position" ||
-    toolName === "manage_watchlist" ||
-    toolName === "record_decision_plan"
-  ) return "execution";
+    toolName === "manage_position" ||
+    toolName === "manage_watchlist"
+  ) return "Executing";
   return undefined;
 }
 
@@ -111,7 +112,8 @@ function inferLegacyUI(toolName: string): ToolUI {
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
   if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
-  if (toolName === "read_morning_brief" || toolName === "read_signals") return "ticker-list";
+  if (toolName === "read_morning_brief") return "morning-brief";
+  if (toolName === "read_signals") return "ticker-list";
   if (toolName === "read_artifact" || toolName === "web_search") return "source";
   return "ticker";
 }

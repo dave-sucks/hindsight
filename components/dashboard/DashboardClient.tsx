@@ -25,6 +25,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -34,9 +46,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ThesisRow } from '@/components/ui/thesis-row';
-import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
+import { StockLogo } from '@/components/StockLogo';
+import { Badge } from '@/components/ui/badge';
+import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
@@ -47,7 +60,7 @@ import {
   mockPortfolio,
   type MockTrade,
 } from '@/lib/mock-data/trades';
-import type { DashboardData, RecentPick } from '@/lib/actions/portfolio.actions';
+import type { DashboardData, RecentPick, ActivityFeedItem } from '@/lib/actions/portfolio.actions';
 import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
@@ -165,9 +178,87 @@ function buildSpyCompareData(
     }));
 }
 
-// ─── Recent picks section ─────────────────────────────────────────────────────
+// ─── Home bottom section (Theses + Activity tabs) ────────────────────────────
 
-type PickFilter = 'all' | 'open' | 'passed';
+type ThesisTabFilter = 'all' | 'open' | 'passed';
+type ActivityTabFilter = 'all' | 'opens' | 'closes' | 'updates';
+
+function relTime(iso: string): string {
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (d === 0) return 'Today';
+  if (d === 1) return '1d ago';
+  if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86_400_000).toDateString();
+  if (d.toDateString() === today) return 'Today';
+  if (d.toDateString() === yesterday) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+function groupActivityByDay(items: ActivityFeedItem[]) {
+  const groups: { label: string; items: ActivityFeedItem[] }[] = [];
+  for (const item of items) {
+    const lbl = dayLabel(item.timestamp);
+    const last = groups[groups.length - 1];
+    if (last && last.label === lbl) { last.items.push(item); }
+    else { groups.push({ label: lbl, items: [item] }); }
+  }
+  return groups;
+}
+
+// Mirrors ACTION_STATUS from decision-summary-card.tsx
+const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; tooltip: string }> = {
+  INITIATE: { label: 'Bought',        dotClass: 'bg-positive',                tooltip: 'New position opened' },
+  SHORT:    { label: 'Shorted',       dotClass: 'bg-negative',                tooltip: 'Short position opened' },
+  ADD:      { label: 'Add',           dotClass: 'bg-positive',                tooltip: 'Added to existing position' },
+  REDUCE:   { label: 'Reduce',        dotClass: 'bg-amber-500',               tooltip: 'Trimmed position size' },
+  EXIT:     { label: 'Sold',          dotClass: 'bg-muted-foreground/60',     tooltip: 'Position closed' },
+  HOLD:     { label: 'Hold',          dotClass: 'bg-muted-foreground/40',     tooltip: 'Monitoring — no action taken' },
+  WATCH:    { label: 'Watch',         dotClass: 'bg-blue-500',                tooltip: 'Added to watchlist' },
+  STOP:     { label: 'Stop Moved',    dotClass: 'bg-amber-500',               tooltip: 'Stop loss level adjusted' },
+  NEAR_TGT: { label: 'Near Target',   dotClass: 'bg-positive',                tooltip: 'Price approaching target' },
+  NEAR_STP: { label: 'Near Stop',     dotClass: 'bg-negative',                tooltip: 'Price approaching stop loss' },
+};
+
+function getDecisionAction(item: ActivityFeedItem): string {
+  if (item.type === 'OPENED') return item.direction === 'SHORT' ? 'SHORT' : 'INITIATE';
+  if (item.type === 'CLOSED') return 'EXIT';
+  const lbl = item.label.toLowerCase();
+  if (lbl.includes('partial') || lbl.includes('reduc')) return 'REDUCE';
+  if (lbl.includes('add')) return 'ADD';
+  if (lbl.includes('near target') || lbl.includes('approaching target')) return 'NEAR_TGT';
+  if (lbl.includes('near stop') || lbl.includes('approaching stop')) return 'NEAR_STP';
+  if (lbl.includes('stop')) return 'STOP';
+  if (lbl.includes('watch')) return 'WATCH';
+  return 'HOLD';
+}
+
+function getActivitySentence(item: ActivityFeedItem): string {
+  const src = item.source === 'price_monitor' ? 'price monitor' : item.source === 'user' ? 'you' : 'the agent';
+  if (item.type === 'OPENED') {
+    return item.direction === 'SHORT'
+      ? `Short position opened in ${item.symbol} by ${src}.`
+      : `Long position opened in ${item.symbol} by ${src}.`;
+  }
+  if (item.type === 'CLOSED') {
+    if (item.pnl != null) {
+      const sign = item.pnl >= 0 ? '+' : '';
+      const amt = `${sign}$${Math.abs(item.pnl).toFixed(2)}`;
+      const pct = item.pnlPct != null ? ` (${sign}${item.pnlPct.toFixed(1)}%)` : '';
+      return item.pnl >= 0
+        ? `Closed for a profit of ${amt}${pct} by ${src}.`
+        : `Closed at a loss of ${amt}${pct} by ${src}.`;
+    }
+    return `Position closed by ${src}.`;
+  }
+  if (item.reason) return `${item.reason} (via ${src}).`;
+  return `${item.label} via ${src}.`;
+}
 
 function pickToThesisRow(pick: RecentPick): ThesisRowData {
   return {
@@ -188,97 +279,215 @@ function pickToThesisRow(pick: RecentPick): ThesisRowData {
     sourcesUsed: pick.sourcesUsed,
     decision: pick.decision,
     position: pick.position
-      ? {
-          id: pick.position.id,
-          status: pick.position.status,
-          avgCost: pick.position.avgCost,
-          quantity: pick.position.quantity,
-        }
+      ? { id: pick.position.id, status: pick.position.status, avgCost: pick.position.avgCost, quantity: pick.position.quantity }
       : null,
   };
 }
 
-function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
-  const [filter, setFilter] = useState<PickFilter>('all');
-  const [showTour, setShowTour] = useState(false);
 
-  const filtered = picks.filter((p) => {
-    if (filter === 'open') return p.position?.status === 'OPEN';
-    if (filter === 'passed') return p.direction === 'PASS' || (!p.position && p.decision !== 'BUY');
-    return true;
-  });
+function ActivityRow({ item }: { item: ActivityFeedItem }) {
+  const actionKey = getDecisionAction(item);
+  const status = ACTIVITY_ACTION_STATUS[actionKey] ?? ACTIVITY_ACTION_STATUS.HOLD;
+  const sentence = getActivitySentence(item);
+  const hasPnl = item.type === 'CLOSED' && item.pnl != null;
+  const pnlPos = (item.pnl ?? 0) >= 0;
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-1.5">
-        {(['all', 'open', 'passed'] as PickFilter[]).map((key) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={cn(
-              'px-3 py-1 rounded-full text-xs font-medium transition-colors border capitalize',
-              filter === key
-                ? 'bg-secondary text-secondary-foreground border-secondary'
-                : 'text-muted-foreground opacity-60 hover:opacity-100 hover:text-foreground',
+    <HoverCard>
+      <HoverCardTrigger
+        render={
+          <Link
+            href={`/trades/${item.positionId}`}
+            className="flex items-center gap-1.5 rounded-md p-2 hover:bg-muted/70 transition-colors"
+          />
+        }
+      >
+        <StockLogo ticker={item.symbol} size="sm" />
+        <span className="text-sm font-semibold font-brand shrink-0 mr-1">{item.symbol}</span>
+        <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
+          <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
+          {status.label}
+        </Badge>
+        {/* Right side: P&L for sells, reasoning text for everything else */}
+        <div className="flex-1 min-w-0 flex items-center justify-end gap-2">
+          {hasPnl && (
+            <span className={cn('text-xs tabular-nums font-medium shrink-0', pnlPos ? 'text-positive' : 'text-negative')}>
+              {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
+              {item.pnlPct != null && <span className="opacity-70"> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground truncate hidden sm:block">{sentence}</span>
+        </div>
+      </HoverCardTrigger>
+      <HoverCardContent side="top" align="start" className="w-72">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <StockLogo ticker={item.symbol} size="md" />
+            <span className="text-base font-semibold font-brand">{item.symbol}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="gap-1.5 font-normal">
+              <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
+              {status.label}
+            </Badge>
+            {hasPnl && (
+              <span className={cn('text-xs tabular-nums font-medium', pnlPos ? 'text-positive' : 'text-negative')}>
+                {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
+                {item.pnlPct != null && <> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</>}
+              </span>
             )}
-          >
-            {key}
-          </button>
-        ))}
-      </div>
-
-      {picks.length === 0 ? (
-        <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-24 px-4">
-          <div
-            className="absolute inset-0"
-            style={{
-              maskImage:
-                'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
-              maskComposite: 'intersect',
-              WebkitMaskImage:
-                'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
-              WebkitMaskComposite: 'source-in',
-            }}
-          >
-            <EmptyStateBg />
           </div>
-          <div className="relative z-10 flex flex-col items-center gap-3">
-            <p className="text-base font-medium text-center">
-              Theses for your Stocks appear after Agents run
-            </p>
-            <p className="text-sm text-muted-foreground text-center max-w-xs">
-              Your analyst will research stocks, generate theses, and place paper trades autonomously.
-            </p>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/analysts"
-                className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted"
-              >
-                Create an Analyst
-              </Link>
-              <Button variant="ghost" size="sm" onClick={() => setShowTour(true)}>
-                Product Overview
-              </Button>
-            </div>
-            <ProductTourDialog open={showTour} onOpenChange={setShowTour} />
-          </div>
+          <p className="text-sm text-muted-foreground">{sentence}</p>
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-lg border px-4 py-8 flex flex-col items-center gap-2">
-          <p className="text-sm text-muted-foreground text-center">No picks match this filter.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((pick) => (
-            <ThesisRow key={pick.id} thesis={pickToThesisRow(pick)} showTicker={true} />
-          ))}
-        </div>
-      )}
-    </div>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
-// ─── Positions trade row ──────────────────────────────────────────────────────
+function HomeBottomSection({ picks, activity, loading }: {
+  picks: RecentPick[];
+  activity: ActivityFeedItem[];
+  loading: boolean;
+}) {
+  const [tab, setTab] = useState<'theses' | 'activity'>('theses');
+  const [thesisFilter, setThesisFilter] = useState<ThesisTabFilter>('all');
+  const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
+  const [showTour, setShowTour] = useState(false);
+
+  const filteredPicks = picks.filter((p) => {
+    if (thesisFilter === 'open') return p.position?.status === 'OPEN';
+    if (thesisFilter === 'passed') return p.direction === 'PASS' || (!p.position && p.decision !== 'BUY');
+    return true;
+  });
+
+  const filteredActivity = activity.filter((a) => {
+    if (activityFilter === 'opens') return a.type === 'OPENED';
+    if (activityFilter === 'closes') return a.type === 'CLOSED';
+    if (activityFilter === 'updates') return a.type === 'MODIFIED';
+    return true;
+  });
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
+      </div>
+    );
+  }
+
+  return (
+    <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="gap-0">
+      {/* Tab bar + filter dropdown */}
+      <div className="flex items-center justify-between pb-3">
+        <TabsList>
+          <TabsTrigger value="theses">Theses</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
+        </TabsList>
+
+        <div>
+          {tab === 'theses' ? (
+            <Select value={thesisFilter} onValueChange={(v) => setThesisFilter(v as ThesisTabFilter)}>
+              <SelectTrigger className="h-8 w-32 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="passed">Passed</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
+              <SelectTrigger className="h-8 w-32 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="opens">Opens</SelectItem>
+                <SelectItem value="closes">Closes</SelectItem>
+                <SelectItem value="updates">Updates</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </div>
+
+      {/* Theses list */}
+      <TabsContent value="theses">
+        {picks.length === 0 ? (
+          <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-24 px-4">
+            <div
+              className="absolute inset-0"
+              style={{
+                maskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
+                maskComposite: 'intersect',
+                WebkitMaskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
+                WebkitMaskComposite: 'source-in',
+              }}
+            >
+              <EmptyStateBg />
+            </div>
+            <div className="relative z-10 flex flex-col items-center gap-3">
+              <p className="text-base font-medium text-center">Theses for your Stocks appear after Agents run</p>
+              <p className="text-sm text-muted-foreground text-center max-w-xs">
+                Your analyst will research stocks, generate theses, and place paper trades autonomously.
+              </p>
+              <div className="flex items-center gap-2">
+                <Link href="/analysts" className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted">
+                  Create an Analyst
+                </Link>
+                <Button variant="ghost" size="sm" onClick={() => setShowTour(true)}>Product Overview</Button>
+              </div>
+              <ProductTourDialog open={showTour} onOpenChange={setShowTour} />
+            </div>
+          </div>
+        ) : filteredPicks.length === 0 ? (
+          <Card className="shadow-none">
+            <CardContent className="py-8 flex justify-center">
+              <p className="text-sm text-muted-foreground">No theses match this filter.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {filteredPicks.map((pick) => (
+              <ThesisRow key={pick.id} thesis={pickToThesisRow(pick)} showTicker={true} />
+            ))}
+          </div>
+        )}
+      </TabsContent>
+
+      {/* Activity list */}
+      <TabsContent value="activity">
+        {activity.length === 0 ? (
+          <Card className="shadow-none">
+            <CardContent className="py-8 flex flex-col items-center gap-1">
+              <p className="text-sm text-muted-foreground">No activity yet</p>
+              <p className="text-xs text-muted-foreground/60">Trades and position changes appear here as analysts run.</p>
+            </CardContent>
+          </Card>
+        ) : filteredActivity.length === 0 ? (
+          <Card className="shadow-none">
+            <CardContent className="py-8 flex justify-center">
+              <p className="text-sm text-muted-foreground">No activity matches this filter.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {groupActivityByDay(filteredActivity).map((group) => (
+              <div key={group.label}>
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60 px-1 pb-1.5">{group.label}</p>
+                <Card className="p-1 gap-1">
+                  {group.items.map((item) => <ActivityRow key={item.id} item={item} />)}
+                </Card>
+              </div>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 
 function DashboardTradeRow({ trade, flash }: { trade: MockTrade; flash?: 'win' | 'loss' }) {
   return (
@@ -516,7 +725,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         {pnlPositive ? '+' : '-'}${Math.abs(rangePnl).toFixed(2)}{' '}
                         ({pnlPositive ? '+' : ''}{rangePnlPct.toFixed(2)}%)
                       </span>
-                      <span className="text-muted-foreground/50 text-xs">{range}</span>
                       {winRateStr && (
                         <>
                           <span className="text-muted-foreground mx-0.5">—</span>
@@ -524,14 +732,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         </>
                       )}
                     </p>
-                    {spyPct !== null && effectiveView !== 'vs-spy' && (
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        vs SPY{' '}
-                        <span className={spyPct >= 0 ? 'text-positive' : 'text-negative'}>
-                          {spyPct >= 0 ? '+' : ''}{spyPct.toFixed(2)}%
-                        </span>
-                      </span>
-                    )}
                   </div>
                 </>
               )}
@@ -845,16 +1045,12 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
               )}
             </div>
 
-            {/* Recent picks — all picks, no analyst filter, only All/Open/Passed pills */}
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-48 w-full rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <RecentPicksSection picks={recentPicks} />
-            )}
+            {/* Theses + Activity tabbed section */}
+            <HomeBottomSection
+              picks={recentPicks}
+              activity={data?.activityFeed ?? []}
+              loading={loading}
+            />
           </div>
 
           {/* ══ RIGHT column — positions ═══════════════════════════════════ */}

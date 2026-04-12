@@ -94,6 +94,12 @@ export interface RunInput {
     winRate: number | null;
     totalTrades: number;
     calibrationNote: string | null;
+    // Per-signal win rates (top signals by count)
+    signalAccuracy: Array<{ signal: string; winRate: number | null; count: number }> | null;
+    // Confidence calibration: are high-confidence theses actually winning more?
+    calibrationBuckets: Array<{ label: string; expectedWinRate: number; actualWinRate: number | null; count: number }> | null;
+    // LONG vs SHORT directional performance
+    directionStats: { long: { winRate: number | null; count: number }; short: { winRate: number | null; count: number } } | null;
   } | null;
   recentClosedTrades: Array<{
     symbol: string;
@@ -104,6 +110,15 @@ export interface RunInput {
     daysHeld: number;
     lesson: string | null;
   }>;
+  // Positions flagged by the price monitor in the last 24h — must be reviewed
+  priorityReviews: Array<{
+    symbol: string;
+    positionId: string;
+    alertType: "NEAR_TARGET" | "NEAR_STOP";
+    triggeredAt: string;
+    targetOrStop: number | null;
+    reason: string;
+  }> | null;
   intelligencePolicy: IntelligencePolicy;
 }
 
@@ -327,30 +342,78 @@ export async function buildRunInput(
       }
     : null;
 
-  // 7. Performance
+  // 7. Performance — load rich calibration data from the latest AccuracyReport
   let latestAccuracy: {
     winRate: number | null; tradesAnalyzed: number | null;
     narrativeSummary: string | null;
+    signalAccuracy: unknown;
+    calibrationData: unknown;
+    directionStats: unknown;
   } | null = null;
   try {
     latestAccuracy = await prisma.accuracyReport.findFirst({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      select: { winRate: true, tradesAnalyzed: true, narrativeSummary: true },
+      select: {
+        winRate: true, tradesAnalyzed: true, narrativeSummary: true,
+        signalAccuracy: true, calibrationData: true, directionStats: true,
+      },
     });
   } catch (err) {
     console.error("[buildRunInput] FAILED performance:", err);
   }
 
+  // Parse signal accuracy — top 8 by count
+  type RawSignal = { signal: string; winRate: number | null; count: number };
+  type RawBucket = { label: string; expectedWinRate: number; winRate: number | null; count: number };
+  type RawDirStats = Record<string, { winRate: number | null; count: number }>;
+
+  const parsedSignals: Array<{ signal: string; winRate: number | null; count: number }> | null = (() => {
+    try {
+      const raw = latestAccuracy?.signalAccuracy;
+      if (!Array.isArray(raw) || raw.length === 0) return null;
+      return (raw as RawSignal[])
+        .filter((s) => s.count > 0)
+        .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
+        .slice(0, 8)
+        .map((s) => ({ signal: s.signal, winRate: s.winRate, count: s.count }));
+    } catch { return null; }
+  })();
+
+  const parsedBuckets: Array<{ label: string; expectedWinRate: number; actualWinRate: number | null; count: number }> | null = (() => {
+    try {
+      const raw = latestAccuracy?.calibrationData;
+      if (!Array.isArray(raw) || raw.length === 0) return null;
+      return (raw as RawBucket[])
+        .filter((b) => b.count > 0)
+        .map((b) => ({ label: b.label, expectedWinRate: b.expectedWinRate, actualWinRate: b.winRate, count: b.count }));
+    } catch { return null; }
+  })();
+
+  const parsedDirStats: { long: { winRate: number | null; count: number }; short: { winRate: number | null; count: number } } | null = (() => {
+    try {
+      const raw = latestAccuracy?.directionStats as RawDirStats | null;
+      if (!raw) return null;
+      const long = raw["LONG"] ?? raw["long"];
+      const short = raw["SHORT"] ?? raw["short"];
+      if (!long && !short) return null;
+      return {
+        long: { winRate: long?.winRate ?? null, count: long?.count ?? 0 },
+        short: { winRate: short?.winRate ?? null, count: short?.count ?? 0 },
+      };
+    } catch { return null; }
+  })();
+
   const performance = latestAccuracy
     ? {
-        winRate: latestAccuracy.winRate
-          ? Number(latestAccuracy.winRate)
-          : null,
+        winRate: latestAccuracy.winRate ? Number(latestAccuracy.winRate) : null,
         totalTrades: latestAccuracy.tradesAnalyzed ?? 0,
         calibrationNote: latestAccuracy.narrativeSummary
-          ? String(latestAccuracy.narrativeSummary).slice(0, 300)
+          ? String(latestAccuracy.narrativeSummary).slice(0, 400)
           : null,
+        signalAccuracy: parsedSignals,
+        calibrationBuckets: parsedBuckets,
+        directionStats: parsedDirStats,
       }
     : null;
 
@@ -402,14 +465,63 @@ export async function buildRunInput(
     };
   });
 
-  // 9. Intelligence policy
+  // 9. Priority reviews — NEAR_TARGET / NEAR_STOP alerts from price monitor (last 24h)
+  let priorityReviews: RunInput["priorityReviews"] = null;
+  if (openPositions.length > 0) {
+    try {
+      const positionIds = openPositions.map((p) => p.id);
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const alerts = await prisma.positionManagementAction.findMany({
+        where: {
+          positionId: { in: positionIds },
+          actionType: { in: ["NEAR_TARGET", "NEAR_STOP"] },
+          source: "price_monitor",
+          createdAt: { gte: cutoff },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          positionId: true,
+          actionType: true,
+          newTargetPrice: true,
+          newStopLoss: true,
+          reason: true,
+          createdAt: true,
+          position: { select: { symbol: true } },
+        },
+      });
+
+      // Deduplicate: one alert per (positionId, alertType) — keep the most recent
+      const seen = new Set<string>();
+      const deduped = alerts.filter((a) => {
+        const key = `${a.positionId}:${a.actionType}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (deduped.length > 0) {
+        priorityReviews = deduped.map((a) => ({
+          symbol: a.position.symbol,
+          positionId: a.positionId,
+          alertType: a.actionType as "NEAR_TARGET" | "NEAR_STOP",
+          triggeredAt: a.createdAt.toISOString(),
+          targetOrStop: a.actionType === "NEAR_TARGET" ? (a.newTargetPrice ?? null) : (a.newStopLoss ?? null),
+          reason: a.reason,
+        }));
+      }
+    } catch (err) {
+      console.error("[buildRunInput] FAILED priorityReviews:", err);
+    }
+  }
+
+  // 10. Intelligence policy
   const intelligencePolicy = parseIntelligencePolicy(
     (config as Record<string, unknown>).intelligencePolicy
   );
 
   // ── Structured load summary ────────────────────────────────────────
   console.log(
-    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
+    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} priorityReviews=${priorityReviews?.length ?? 0} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
   );
 
   return {
@@ -454,6 +566,7 @@ export async function buildRunInput(
     priorBrief,
     performance,
     recentClosedTrades,
+    priorityReviews,
     intelligencePolicy,
   };
 }

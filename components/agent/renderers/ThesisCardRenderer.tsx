@@ -12,9 +12,8 @@ import { useMemo } from "react";
 import { useMessage } from "@assistant-ui/react";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { ThesisCarousel } from "@/components/domain/thesis-carousel";
-import type { ThesisCardData } from "@/components/domain/thesis-card";
 import { Skeleton } from "@/components/ui/skeleton";
-
+import type { ThesisCardData } from "@/components/domain/thesis-card";
 interface Props {
   toolName: string;
   toolCallId?: string;
@@ -109,27 +108,5 @@ export function ThesisCardRenderer({ toolCallId, loading }: Props) {
 
   if (theses.length === 0) return null;
 
-  return (
-    <>
-      <ThesisCarousel theses={theses} />
-      {pendingCount > 0 && (
-        <div className="mt-1 flex gap-2">
-          {Array.from({ length: pendingCount }).map((_, i) => (
-            <div key={i} className="shrink-0 w-72 rounded-xl border border-border p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-5 w-16" />
-                <Skeleton className="h-5 w-12 rounded-full" />
-              </div>
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-4/5" />
-              <div className="space-y-1.5 pt-1">
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-5/6" />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  );
+  return <ThesisCarousel theses={theses} />;
 }

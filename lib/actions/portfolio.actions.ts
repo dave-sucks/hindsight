@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
+import { getAccount, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
@@ -81,9 +81,27 @@ export interface SpyBenchmark {
   '1Y': number | null;
 }
 
+/** A single item in the homepage activity timeline. */
+export interface ActivityFeedItem {
+  id: string;
+  type: "OPENED" | "CLOSED" | "MODIFIED";
+  positionId: string;
+  symbol: string;
+  direction: string;
+  timestamp: string;   // ISO — used for sort/display
+  label: string;       // e.g. "Opened LONG", "Closed — WIN", "Stop → breakeven"
+  source: string;      // "agent" | "price_monitor" | "user"
+  reason: string | null;
+  pnl: number | null;
+  pnlPct: number | null;
+  outcome: string | null;
+  analystName: string | null;
+}
+
 export interface DashboardData {
   openTrades: MockTrade[];
   closedTrades: MockTrade[];
+  activityFeed: ActivityFeedItem[];
   portfolio: PortfolioStats;
   /** Total equity curve from Alpaca Portfolio History API (realized + unrealized). Falls back to realizedCurve. */
   equityCurve: { date: string; value: number }[];
@@ -186,6 +204,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     return {
       openTrades: [],
       closedTrades: [],
+      activityFeed: [],
       portfolio: emptyPortfolio,
       equityCurve: [],
       realizedCurve: [],
@@ -220,6 +239,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     positionsWithAnalyst,
     dbRecentRuns,
     dbTodaysPicks,
+    dbManagementActions,
   ] = await Promise.all([
     resolveAlpacaCredentials(userId).then((c) => c ?? undefined),
     prisma.position.findMany({
@@ -242,7 +262,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         },
       },
       orderBy: { openedAt: "desc" },
-    }),
+    }).catch(() => [] as never[]),
     prisma.position.findMany({
       where: { userId, status: { in: ["CLOSED", "CANCELLED"] } },
       include: {
@@ -250,7 +270,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       },
       orderBy: { closedAt: "desc" },
       take: 50,
-    }),
+    }).catch(() => [] as never[]),
     prisma.thesis.findMany({
       where: {
         userId,
@@ -352,6 +372,34 @@ export async function getDashboardData(): Promise<DashboardData> {
         signalTypes: true,
       },
     }),
+    // Activity feed: recent management actions with position context
+    // .catch(() => []) — silently degrades if table hasn't been migrated yet
+    prisma.positionManagementAction.findMany({
+      where: { position: { userId } },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: {
+        id: true,
+        positionId: true,
+        actionType: true,
+        source: true,
+        reason: true,
+        fillPrice: true,
+        fillQty: true,
+        createdAt: true,
+        position: {
+          select: {
+            symbol: true,
+            direction: true,
+            realizedPnl: true,
+            avgCost: true,
+            quantity: true,
+            outcome: true,
+            analyst: { select: { name: true } },
+          },
+        },
+      },
+    }).catch(() => [] as never[]),
   ]);
 
   // ── Phase B: price + name lookups + SPY benchmark, parallel ────────────
@@ -377,7 +425,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     return ((end - start) / start) * 100;
   }
 
-  const [priceLookup, nameMap, spyCandles, portfolioHistory] = await Promise.all([
+  const [priceLookup, nameMap, spyCandles, portfolioHistory, alpacaAccount] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -422,6 +470,13 @@ export async function getDashboardData(): Promise<DashboardData> {
           return [] as import("@/lib/alpaca").PortfolioHistoryPoint[];
         })
       : Promise.resolve([] as import("@/lib/alpaca").PortfolioHistoryPoint[]),
+    // Alpaca Account — live equity (source of truth for total portfolio value)
+    alpacaCreds
+      ? getAccount(alpacaCreds).catch((err) => {
+          console.warn(`[portfolio] getAccount failed: ${err instanceof Error ? err.message : err}`);
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
   const priceMap = priceLookup.prices;
 
@@ -500,7 +555,11 @@ export async function getDashboardData(): Promise<DashboardData> {
   // ── 6. Portfolio stats ─────────────────────────────────────────────────────
   const realizedPnl = dbClosedPositions.reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0);
   const unrealizedPnl = openTrades.reduce((sum, t) => sum + t.pnl, 0);
-  const totalValue = STARTING_CAPITAL + realizedPnl + unrealizedPnl;
+  // Use Alpaca's live equity as the source of truth. Falls back to DB math
+  // only if Alpaca creds are missing or the account call failed.
+  const totalValue = alpacaAccount
+    ? parseFloat(alpacaAccount.equity)
+    : STARTING_CAPITAL + realizedPnl + unrealizedPnl;
 
   const closedWithOutcome = dbClosedPositions.filter((p) => p.outcome);
   const winRate =
@@ -613,9 +672,94 @@ export async function getDashboardData(): Promise<DashboardData> {
     };
   });
 
+  // ── 12. Activity feed — merge trade opens/closes + management actions ──────
+  const activityFeed: ActivityFeedItem[] = [];
+
+  // Recent opens (last 20)
+  for (const p of dbOpenPositions.slice(0, 20)) {
+    activityFeed.push({
+      id: `open-${p.id}`,
+      type: "OPENED",
+      positionId: p.id,
+      symbol: p.symbol,
+      direction: p.direction,
+      timestamp: p.openedAt.toISOString(),
+      label: `Opened ${p.direction}`,
+      source: "agent",
+      reason: null,
+      pnl: null,
+      pnlPct: null,
+      outcome: null,
+      analystName: p.analyst?.name ?? null,
+    });
+  }
+
+  // Recent closes (last 20)
+  for (const p of dbClosedPositions.slice(0, 20)) {
+    const pnl = p.realizedPnl ?? 0;
+    const positionCost = p.avgCost * p.quantity;
+    const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
+    const sign = pnl >= 0 ? "+" : "";
+    activityFeed.push({
+      id: `close-${p.id}`,
+      type: "CLOSED",
+      positionId: p.id,
+      symbol: p.symbol,
+      direction: p.direction,
+      timestamp: (p.closedAt ?? p.updatedAt).toISOString(),
+      label: p.outcome === "WIN" ? `Closed — WIN ${sign}$${Math.abs(pnl).toFixed(0)}`
+           : p.outcome === "LOSS" ? `Closed — LOSS $${Math.abs(pnl).toFixed(0)}`
+           : `Closed`,
+      source: (p as { closeSource?: string | null }).closeSource ?? "agent",
+      reason: null,
+      pnl,
+      pnlPct: Math.round(pnlPct * 10) / 10,
+      outcome: p.outcome ?? null,
+      analystName: p.analyst?.name ?? null,
+    });
+  }
+
+  // Management actions (non-close — the close is already represented above)
+  for (const action of dbManagementActions) {
+    if (action.actionType === "FULL_CLOSE") continue; // already shown as CLOSED
+    let label = "Position updated";
+    if (action.actionType === "PARTIAL_CLOSE") label = "Partial close";
+    else if (action.actionType === "ADD_TO_POSITION") label = "Added to position";
+    else if (action.actionType === "UPDATE_TARGETS") label = "Targets updated";
+    else if (action.actionType === "MOVE_STOP_TO_BREAKEVEN") label = "Stop → breakeven";
+    else if (action.actionType === "SET_TRAILING_STOP") label = "Trailing stop set";
+    else if (action.actionType === "NEAR_TARGET") label = "Approaching target";
+    else if (action.actionType === "NEAR_STOP") label = "Approaching stop";
+
+    activityFeed.push({
+      id: `action-${action.id}`,
+      type: "MODIFIED",
+      positionId: action.positionId,
+      symbol: action.position.symbol,
+      direction: action.position.direction,
+      timestamp: action.createdAt.toISOString(),
+      label,
+      source: action.source,
+      reason: action.reason,
+      pnl: action.actionType === "PARTIAL_CLOSE" && action.fillPrice && action.fillQty
+        ? action.position.direction === "LONG"
+          ? (action.fillPrice - action.position.avgCost) * action.fillQty
+          : (action.position.avgCost - action.fillPrice) * action.fillQty
+        : null,
+      pnlPct: null,
+      outcome: null,
+      analystName: action.position.analyst?.name ?? null,
+    });
+  }
+
+  // Sort descending by timestamp, keep top 40
+  activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const trimmedFeed = activityFeed.slice(0, 40);
+
   return {
     openTrades,
     closedTrades,
+    activityFeed: trimmedFeed,
     portfolio: {
       totalValue,
       unrealizedPnl,

@@ -65,7 +65,7 @@ export interface AlpacaPosition {
 
 export interface OrderParams {
   symbol: string;
-  qty: number;
+  qty?: number;
   side: "buy" | "sell";
   notional?: number; // dollar amount instead of qty
 }
@@ -173,6 +173,25 @@ export async function getAllPositions(creds?: AlpacaCredentials): Promise<Alpaca
 
 export async function closePosition(symbol: string, creds?: AlpacaCredentials): Promise<AlpacaOrder> {
   return (await getClient(creds).closePosition(symbol)) as AlpacaOrder;
+}
+
+/**
+ * Partially close a position by submitting a market sell/buy for a specific qty.
+ * Alpaca paper trading supports this via a market order for the subset quantity.
+ */
+export async function closePositionPartial(
+  symbol: string,
+  qty: number,
+  side: "sell" | "buy",
+  creds?: AlpacaCredentials,
+): Promise<AlpacaOrder> {
+  return (await getClient(creds).createOrder({
+    symbol,
+    qty: qty.toString(),
+    side,
+    type: "market",
+    time_in_force: "day",
+  } as Parameters<ReturnType<typeof getClient>["createOrder"]>[0])) as AlpacaOrder;
 }
 
 export async function cancelOrder(orderId: string, creds?: AlpacaCredentials): Promise<void> {

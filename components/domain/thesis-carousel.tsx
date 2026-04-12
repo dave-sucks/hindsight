@@ -13,8 +13,6 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
 } from "@/components/ui/carousel";
 import { ThesisMiniCard } from "@/components/domain/thesis-mini-card";
 import type { ThesisCardData } from "@/components/domain";
@@ -31,7 +29,7 @@ export function ThesisCarousel({ theses }: { theses: ThesisCardData[] }) {
         {theses.map((thesis, i) => (
           <CarouselItem
             key={`${thesis.ticker}-${i}`}
-            className="basis-1/3 pl-2"
+            className="basis-full sm:basis-1/2 md:basis-1/3 pl-2"
           >
             <div className="p-1">
               <ThesisMiniCard thesis={thesis} />
@@ -39,8 +37,6 @@ export function ThesisCarousel({ theses }: { theses: ThesisCardData[] }) {
           </CarouselItem>
         ))}
       </CarouselContent>
-      <CarouselPrevious className="-left-5" />
-      <CarouselNext className="-right-5" />
     </Carousel>
   );
 }

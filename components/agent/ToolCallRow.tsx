@@ -74,14 +74,14 @@ function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
   if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
-  if (toolName === "read_morning_brief" || toolName === "read_signals") return "ticker-list";
+  if (toolName === "get_portfolio_context" || toolName === "read_morning_brief" || toolName === "read_signals") return "ticker-list";
   if (toolName === "read_artifact" || toolName === "web_search") return "source";
   if (
     toolName === "get_stock_data" ||
     toolName === "place_trade" ||
     toolName === "close_position" ||
+    toolName === "manage_position" ||
     toolName === "manage_watchlist" ||
-    toolName === "record_decision_plan" ||
     toolName === "get_earnings_data" ||
     toolName === "get_options_flow" ||
     toolName === "get_sec_filings" ||

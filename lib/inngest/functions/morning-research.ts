@@ -1,7 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
@@ -122,7 +122,7 @@ export const morningResearch = inngest.createFunction(
         console.log(`[morning-research] Starting generateText for ${config.name} run=${run.id} systemPrompt=${systemPrompt.length}chars`);
         try {
           const { text, steps, response } = await generateText({
-            model: openai("gpt-4.1"),
+            model: anthropic("claude-sonnet-4-6"),
             system: systemPrompt,
             prompt: "Begin your research session. Follow all phases in order.",
             tools,

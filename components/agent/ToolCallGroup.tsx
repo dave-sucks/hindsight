@@ -129,7 +129,7 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
               .filter(Boolean) as string[],
           ),
         ];
-        const header = tickers.length > 0 ? tickers.join(", ") : block.groupId;
+        const header = tickers.length > 0 ? `${block.groupId} ${tickers.join(", ")}` : block.groupId;
 
         return (
           <ToolProgress key={`group-${idx}`} defaultOpen={true}>

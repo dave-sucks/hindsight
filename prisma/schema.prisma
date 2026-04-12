@@ -48,6 +48,7 @@ model ResearchRun {
   decisions     TradeDecision[]
   agentConfig   AgentConfig?      @relation(fields: [agentConfigId], references: [id], onDelete: SetNull)
   briefing      AnalystBriefing?
+  managementActions PositionManagementAction[]
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
@@ -421,11 +422,20 @@ model Position {
   agentEvaluation String?         // post-trade GPT-4o evaluation narrative
   // Monitoring
   nearTargetAlertSent Boolean     @default(false)
+  // Audit trail — who closed / modified and why
+  closeSource     String?         // "agent" | "price_monitor" | "user" — who triggered the close
+  initialQty      Float?          // qty at open, before any partial closes or adds
+  // Running high/low water marks — maintained by price monitor on each tick
+  peakPrice       Float?
+  troughPrice     Float?
+  peakAt          DateTime?
+  troughAt        DateTime?
   // Relations
   analyst         AgentConfig     @relation(fields: [analystId], references: [id])
   orders          Order[]
   events          PositionEvent[]
   decisions       TradeDecision[]
+  managementActions PositionManagementAction[]
 
   openedAt        DateTime        @default(now())
   createdAt       DateTime        @default(now())
@@ -472,7 +482,7 @@ model Order {
 model PositionEvent {
   id          String   @id @default(cuid())
   positionId  String
-  eventType   String   // "OPENED" | "PRICE_CHECK" | "NEAR_TARGET" | "CLOSED" | "EVALUATED" | "EOD_CHECK"
+  eventType   String   // "OPENED" | "PRICE_CHECK" | "NEAR_TARGET" | "CLOSED" | "EVALUATED" | "EOD_CHECK" | "MODIFIED" | "PARTIAL_CLOSE" | "TARGET_UPDATED" | "STOP_MOVED" | "ADDED"
   description String
   priceAt     Float?
   pnlAt       Float?
@@ -481,6 +491,42 @@ model PositionEvent {
 
   @@index([positionId])
   @@index([positionId, createdAt])
+}
+
+/// Audit record for every position change — agent decisions, price monitor closes,
+/// partial exits, target updates. Every row has a human-readable reason string.
+model PositionManagementAction {
+  id              String    @id @default(cuid())
+  positionId      String
+  position        Position  @relation(fields: [positionId], references: [id])
+  runId           String?   // null when triggered by price monitor
+  run             ResearchRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  actionType      String    // "FULL_CLOSE" | "PARTIAL_CLOSE" | "ADD_TO_POSITION" | "UPDATE_TARGETS" | "MOVE_STOP_TO_BREAKEVEN" | "SET_TRAILING_STOP"
+  source          String    // "agent" | "price_monitor" | "user"
+
+  // Before/after for every mutable field (null = unchanged)
+  prevTargetPrice Float?
+  newTargetPrice  Float?
+  prevStopLoss    Float?
+  newStopLoss     Float?
+  prevTrailPct    Float?
+  newTrailPct     Float?
+  prevQty         Float?
+  newQty          Float?
+
+  // Human-readable reason — required, written to the public audit trail
+  reason          String
+
+  // For partial closes / adds — the Alpaca order that executed
+  alpacaOrderId   String?
+  fillPrice       Float?
+  fillQty         Float?
+
+  createdAt       DateTime  @default(now())
+
+  @@index([positionId])
+  @@index([runId])
 }
 
 /// Every decision made during a run about a ticker.

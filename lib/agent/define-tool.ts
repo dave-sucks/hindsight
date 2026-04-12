@@ -43,7 +43,8 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
     ctx: ToolContext,
   ) => Promise<{
     summary: string;
-    data: TData;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: any;
     sources?: ToolSource[];
   }>;
 }

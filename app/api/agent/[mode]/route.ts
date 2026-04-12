@@ -190,6 +190,7 @@ export async function POST(
             priorBrief: null,
             performance: null,
             recentClosedTrades: [],
+            priorityReviews: null,
             intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
           });
 

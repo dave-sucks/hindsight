@@ -1,7 +1,7 @@
 /**
  * complete_run — migrated to defineTool().
  *
- * STAGE 7 — final tool call. Marks the run COMPLETE, fires the
+ * STAGE 6 — final tool call. Marks the run COMPLETE, fires the
  * post-run briefing agent (updateAnalystBriefing), writes the
  * briefing_generated RunEvent. Briefing block preserved byte-for-byte.
  */
@@ -13,7 +13,7 @@ import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 
 export const completeRun = defineTool({
   description:
-    "STAGE 7. Mark the run complete. This is your absolute final tool call. No arguments — every recap field already lives in record_decision_plan and record_run_summary. Calling this triggers the post-run briefing agent automatically.",
+    "STAGE 6. Mark the run complete. This is your absolute final tool call. No arguments needed. Calling this triggers the post-run briefing agent automatically.",
   schema: z.object({}),
   ui: "decision-summary" as const,
 
