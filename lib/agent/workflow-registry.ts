@@ -214,21 +214,20 @@ export const TEAMS: Team[] = [
     id: "agent",
     title: "Research Agent",
     summary:
-      "Runs structured research sessions in seven stages: orient, research, theses, decide, act, recap, complete. Reads intelligence, validates with live data, writes theses, and executes paper trades.",
+      "Runs structured research sessions in six stages: orient, research, theses, act, recap, complete. Reads intelligence, validates with live data, writes theses, manages positions, and executes paper trades.",
     description:
-      "Each analyst runs as a GPT-4o agent (or Claude Sonnet 4.6 via model override) with 15 tools and a 20-step budget. Before the first tool call, the system loads full context: strategy rules, portfolio with live P&L, watchlist, prior briefing, trade history, and accuracy stats. The agent follows a seven-stage flow — Orient (read pre-gathered intelligence), Research (pull live data on triaged tickers, batching multiple tickers per step), Theses (record a LONG/SHORT/PASS verdict for every researched ticker), Decide (write a synthesis paragraph in plain text, no tool call), Act (execute trades, update watchlist), Recap (record_run_summary), Complete (complete_run). Runs happen weekdays at 8 AM (automated, 4-min timeout) or on demand (live streaming, 5-min timeout).",
+      "Each analyst runs as a GPT-4o agent with 17 tools and a 30-step budget. Before the first tool call, the system loads full context: strategy rules, portfolio with live P&L, watchlist, prior briefing, trade history, accuracy stats, and self-calibration data (signal win rates, confidence buckets). The agent follows a six-stage flow — Orient (read pre-gathered intelligence), Research (get_portfolio_context for live P&L + get_stock_data on triaged tickers), Theses (record a LONG/SHORT/PASS verdict for every researched ticker), Act (manage existing positions via manage_position, open new ones via place_trade, update watchlist), Recap (record_run_summary), Complete (complete_run). Runs happen weekdays at 8 AM (automated) or on demand (live streaming).",
     icon: Bot,
     model: "GPT-4o",
     schedule: "8:00 AM ET weekdays + on demand",
     substeps: [
       { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references prior brief's watch-tomorrow triggers. Plain text — no tools." },
-      { title: "Stage 1 — Orient", summary: "Reads morning brief, routed signals, and any artifacts that warrant the deep read. Falls back to live market context only if no brief is available." },
-      { title: "Stage 2 — Research", summary: "Pulls live data on triaged tickers — holdings to review, watchlist items, new opportunities. Batches multiple get_stock_data calls per step. Earnings / options / SEC filings only when specifically warranted." },
-      { title: "Stage 3 — Theses", summary: "Writes a thesis (LONG / SHORT / PASS) for every researched ticker, back to back. record_thesis only fires here." },
-      { title: "Stage 4 — Decide", summary: "Writes a synthesis paragraph directly in the chat (no tool call) reviewing all theses against the portfolio. States every intended action plainly." },
-      { title: "Stage 5 — Act", summary: "Executes decisions in order: close_position first (frees capital), then place_trade for entries, then manage_watchlist for adds/removes." },
-      { title: "Stage 6 — Run Summary", summary: "Calls record_run_summary with ranked picks (every researched ticker with the action that actually happened) and exposure breakdown." },
-      { title: "Stage 7 — Complete", summary: "Calls complete_run with no arguments. Marks the run complete and triggers the briefing agent which writes tomorrow's standup automatically." },
+      { title: "Stage 1 — Orient", summary: "Reads morning brief, routed signals, and any artifacts that warrant a deep read. Falls back to live market context only if no brief is available." },
+      { title: "Stage 2 — Research", summary: "Calls get_portfolio_context first (live P&L, days held, distance from peak, thesis context), then get_stock_data on triaged tickers. Holdings, watchlist items, and 2-4 new opportunities. Batches multiple calls per step." },
+      { title: "Stage 3 — Theses", summary: "Writes a thesis (LONG / SHORT / PASS) for every researched ticker, back to back. Prior theses for the same ticker are auto-superseded." },
+      { title: "Stage 4 — Act", summary: "Executes decisions: close/manage existing positions first (close_position or manage_position), then place_trade for new entries, then manage_watchlist for adds/removes." },
+      { title: "Stage 5 — Recap", summary: "Calls record_run_summary with ranked picks (every researched ticker with the action that actually happened) and exposure breakdown." },
+      { title: "Stage 6 — Complete", summary: "Calls complete_run with no arguments. Marks the run complete and triggers the briefing agent which writes tomorrow's standup automatically." },
     ],
     tools: [
       // Intelligence (Stage 1)
@@ -240,6 +239,7 @@ export const TEAMS: Team[] = [
       },
       TOOL_GET_MARKET_CONTEXT,
       // Research (Stage 2)
+      { name: "get_portfolio_context", provider: "internal", summary: "Live portfolio snapshot: P&L %, days held, distance from peak price, original thesis reasoning. Called at start of every research stage." },
       TOOL_GET_STOCK_DATA,
       {
         name: "get_options_flow", provider: "fmp", summary: "Put/call ratio, unusual contracts, institutional positioning.",
@@ -248,8 +248,8 @@ export const TEAMS: Team[] = [
       TOOL_GET_EARNINGS_DATA,
       TOOL_GET_SEC_FILINGS,
       // Decision (Stage 3)
-      { name: "record_thesis", provider: "internal", summary: "Records LONG/SHORT/PASS verdict with confidence, targets, reasoning." },
-      // Execution (Stage 5)
+      { name: "record_thesis", provider: "internal", summary: "Records LONG/SHORT/PASS verdict with confidence, targets, reasoning. Auto-supersedes any prior active thesis for the same ticker." },
+      // Execution (Stage 4)
       {
         name: "place_trade", provider: "alpaca", summary: "Places a paper market order on Alpaca. Waits for fill.",
         resources: [
@@ -259,14 +259,15 @@ export const TEAMS: Team[] = [
         ],
       },
       {
-        name: "close_position", provider: "alpaca", summary: "Closes an open position with exit reason and realized P&L.",
+        name: "close_position", provider: "alpaca", summary: "Closes a full position with exit reason and realized P&L. Use manage_position for partial exits or target/stop updates.",
         resources: [
           { source: "alpaca", title: "Sell all shares", description: "Closes the full position.", type: "api", endpointOrPath: "closeOpenPosition(symbol)", exampleOutput: "Closed 50 AAPL @ $192.40 · +$710 (+7.9%)" },
-          { source: "internal", title: "Record outcome", description: "Marks position closed with P&L and reason.", type: "db", endpointOrPath: "prisma.tradeDecision.create({ SELL })", exampleOutput: "EXIT: TARGET · WIN · +$710" },
+          { source: "internal", title: "Record outcome", description: "Marks position closed with P&L and reason.", type: "db", endpointOrPath: "prisma.position.update({ CLOSED })", exampleOutput: "EXIT: TARGET · WIN · +$710" },
         ],
       },
+      { name: "manage_position", provider: "alpaca", summary: "Nuanced position management: partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop, add_to_position. Every action is audit-logged with a required reason string." },
       { name: "manage_watchlist", provider: "internal", summary: "Adds/updates/removes watchlist items with priority and catalysts." },
-      // Run lifecycle (Stages 6–7)
+      // Run lifecycle (Stages 5–6)
       { name: "record_run_summary", provider: "internal", summary: "Structured per-ticker recap: ranked picks + exposure breakdown. Pure data." },
       { name: "complete_run", provider: "internal", summary: "No-args. Marks the run complete in the DB and triggers the briefing agent. Always the agent's final tool call." },
     ],
