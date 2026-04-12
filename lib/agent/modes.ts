@@ -50,9 +50,8 @@ export interface ModeConfig {
 
 export const MODES: Record<AgentMode, ModeConfig> = {
   "research-run": {
-    model: "claude-sonnet-4-6",
-    provider: "anthropic",
-    thinkingBudget: 2000,
+    model: "gpt-4o",
+    provider: "openai",
     maxSteps: 30,
     toolAllowlist: undefined,
     hasSuggestConfig: false,

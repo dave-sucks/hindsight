@@ -23,7 +23,7 @@ export const closePosition = defineTool({
       .describe("TARGET if hit price target, STOP if risk management, MANUAL for portfolio rebalancing"),
     notes: z.string().optional().describe("Optional notes explaining the close decision"),
   }),
-  ui: "ticker" as const,
+  ui: "generic" as const,
   groupId: "execution",
 
   execute: async (args, ctx) => {

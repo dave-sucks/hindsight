@@ -32,7 +32,7 @@ export const getOptionsFlow = defineTool({
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
   }),
-  ui: "ticker" as const,
+  ui: "generic" as const,
   groupId: "research",
 
   execute: async ({ ticker }) => {

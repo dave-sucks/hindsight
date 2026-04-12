@@ -1,5 +1,11 @@
 ## NEVER add custom classes to ShadCN components. Use them as-is with only variants and sizes. Do not override styling with className overrides.
 
+## !! CRITICAL: ALL AGENT TOOLS MUST USE `ui: "generic"` — NO EXCEPTIONS !!
+Every tool in `lib/agent/tools/` MUST have `ui: "generic" as const`. This is an absolute rule that was enforced over 2 weeks of work. NEVER set `ui` to `"ticker"`, `"stock-card"`, `"trade-card"`, or any other card/custom renderer for tool results. The only allowed non-generic values are the intentional domain renderers: `"thesis-card"` (record_thesis only), `"run-summary"` (record_run_summary only), `"decision-summary"` (complete_run only), `"config-preview"` (suggest_config only), `"source"` (web_search/read_artifact only), `"morning-brief"` (read_morning_brief only), `"ticker-list"` (read_signals only). If you're adding or editing ANY other tool, it MUST be `ui: "generic"`. GenericRenderer shows `result.summary` as the human-readable output — make sure every tool returns a meaningful `summary` string.
+
+## !! CRITICAL: DEFAULT MODEL IS GPT-4O — NEVER CHANGE TO CLAUDE !!
+The research-run mode in `lib/agent/modes.ts` uses `model: "gpt-4o"` and `provider: "openai"`. NEVER change this to `claude-sonnet-4-6` or `provider: "anthropic"`. Claude hits a 30k input tokens/min rate limit that crashes runs. GPT-4o is the required default.
+
 # CLAUDE.md — Hindsight Trading Platform
 
 ## What This App Is

@@ -119,7 +119,7 @@ export const managePosition = defineTool({
     "target/stop updates, trailing stops, or adding to a winning position. " +
     "Every action is audit-logged with your reason.",
   schema,
-  ui: "ticker" as const,
+  ui: "generic" as const,
   groupId: "execution",
 
   execute: async (args: z.infer<typeof schema>, ctx: ToolContext): Promise<ManagePositionReturn> => {
