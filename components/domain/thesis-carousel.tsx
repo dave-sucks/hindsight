@@ -13,8 +13,6 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
 } from "@/components/ui/carousel";
 import { ThesisMiniCard } from "@/components/domain/thesis-mini-card";
 import type { ThesisCardData } from "@/components/domain";
@@ -39,8 +37,6 @@ export function ThesisCarousel({ theses }: { theses: ThesisCardData[] }) {
           </CarouselItem>
         ))}
       </CarouselContent>
-      <CarouselPrevious className="-left-5" />
-      <CarouselNext className="-right-5" />
     </Carousel>
   );
 }

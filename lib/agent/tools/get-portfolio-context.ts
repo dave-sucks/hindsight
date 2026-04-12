@@ -65,7 +65,6 @@ export const getPortfolioContext = defineTool({
       .describe("Whether to include the original thesis reasoning for each position"),
   }),
   ui: "generic" as const,
-  groupId: "research",
 
   execute: async (args, ctx) => {
     const analystId = ctx.analystId;
