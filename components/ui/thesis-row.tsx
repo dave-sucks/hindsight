@@ -9,6 +9,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Favicon } from "@/components/intelligence/signal-feed";
+import { TRADE_STATUS_DISPLAY } from "@/lib/trade-status";
+import type { TradeStatus } from "@/lib/mock-data/trades";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,13 +38,15 @@ export interface ThesisRowData {
   position?: {
     id: string;
     status: string;
+    tradeStatus?: TradeStatus; // derived from order fill state; undefined = legacy/unknown
     avgCost: number;
     quantity?: number | null;
     closePrice?: number | null;
     realizedPnl?: number | null;
     openedAt?: string | null;
+    filledAt?: string | null;
+    placedAt?: string | null;
   } | null;
-  orderPending?: boolean;
 }
 
 interface ThesisRowProps {
@@ -92,31 +96,17 @@ function consensus(dir: string, conf: number): { label: string; isStrong: boolea
   return { label: isBuy ? "Lean Buy" : "Lean Sell", isStrong: false };
 }
 
-function posBadge(status: string, dir: string): { label: string; variant: "positive" | "negative" | "secondary" | "outline"; tip: string } {
-  const short = dir === "SHORT";
-  const m: Record<string, { label: string; variant: "positive" | "negative" | "secondary" | "outline"; tip: string }> = {
-    OPEN: { label: short ? "Short" : "Holding", variant: "positive", tip: short ? "Short position held." : "Paper shares held in your Alpaca account." },
-    WIN: { label: "Closed · Won", variant: "positive", tip: "Closed at a profit." },
-    LOSS: { label: "Closed · Lost", variant: "negative", tip: "Closed at a loss." },
-    EVALUATED: { label: "Evaluated", variant: "secondary", tip: "Closed and evaluated." },
-    PENDING: { label: "Pending", variant: "outline", tip: "Order submitted, awaiting fill." },
-    PENDING_BUY: { label: "Pending", variant: "outline", tip: "Buy order awaiting fill." },
-    PENDING_SELL: { label: "Sell Pending", variant: "outline", tip: "Sell order awaiting fill." },
-  };
-  return m[status] ?? { label: "Closed", variant: "secondary", tip: "Position closed." };
+// Map TradeStatus → badge variant for the thesis position bar
+function posBadgeVariant(ts: TradeStatus): "positive" | "negative" | "secondary" | "outline" {
+  if (ts === "OPEN" || ts === "CLOSED_WIN") return "positive";
+  if (ts === "CLOSED_LOSS" || ts === "REJECTED") return "negative";
+  if (ts === "PENDING") return "outline";
+  return "secondary";
 }
 
-function posAction(status: string, dir: string): string {
-  const short = dir === "SHORT";
-  if (status === "OPEN") return short ? "Sold short" : "Bought";
-  if (["WIN", "LOSS", "CLOSED", "EVALUATED"].includes(status)) return short ? "Covered" : "Bought";
-  if (status.startsWith("PENDING")) return short ? "Selling" : "Buying";
-  return short ? "Sold short" : "Bought";
-}
-
-function posBg(status: string): string {
-  if (status === "OPEN" || status === "WIN") return "bg-positive/10";
-  if (status === "LOSS") return "bg-negative/10";
+function posBg(ts: TradeStatus): string {
+  if (ts === "OPEN" || ts === "CLOSED_WIN") return "bg-positive/10";
+  if (ts === "CLOSED_LOSS") return "bg-negative/10";
   return "bg-muted/30";
 }
 
@@ -152,43 +142,38 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
 
       {/* ── 1. Position row ── */}
       {pos && (() => {
-        const isPendingFill = pos.avgCost === 0;
-        const badge = isPendingFill
-          ? { label: "Ordered", variant: "outline" as const, tip: "Order placed — awaiting fill confirmation." }
-          : posBadge(pos.status, t.direction);
-        const action = isPendingFill
-          ? (t.direction === "SHORT" ? "Shorted" : "Ordered")
-          : posAction(pos.status, t.direction);
-        const bg = isPendingFill ? "bg-muted/30" : posBg(pos.status);
-        const time = formatTime(pos.openedAt ?? t.createdAt);
+        // Use tradeStatus when available (wired from order fill state).
+        // Fall back to deriving from avgCost for legacy/incomplete data.
+        const ts: TradeStatus = pos.tradeStatus ?? (pos.avgCost === 0 ? "PENDING" : "OPEN");
+        const cfg = TRADE_STATUS_DISPLAY[ts];
+        const isPending = ts === "PENDING";
+        const timeCtx = { placedAt: pos.placedAt ?? pos.openedAt, filledAt: pos.filledAt };
         return (
-          <div className={cn("px-4 py-2.5 border-b", bg)}>
+          <div className={cn("px-4 py-2.5 border-b", posBg(ts))}>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Tooltip>
-                <TooltipTrigger render={<span className="shrink-0"><Badge variant={badge.variant}>{badge.label}</Badge></span>} />
-                <TooltipContent side="bottom">{badge.tip}</TooltipContent>
-              </Tooltip>
+              {/* Dot + badge — same visual language as TradeRow */}
+              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dotClass)} />
+              <Badge variant={posBadgeVariant(ts)}>{cfg.label}</Badge>
               <span className="text-sm">
-                {pos.quantity && <>{pos.quantity} shares{!isPendingFill && <> @ </>}</>}
-                {!isPendingFill && (
+                {pos.quantity && <>{pos.quantity} shares{!isPending && <> @ </>}</>}
+                {!isPending && pos.avgCost > 0 && (
                   <span className="tabular-nums font-medium">{$(pos.avgCost)}</span>
                 )}
                 {t.targetPrice && t.targetPrice > 0 && <>, targeting <span className="tabular-nums font-medium">{$(t.targetPrice)}</span></>}
               </span>
               <div className="flex items-center gap-2 ml-auto">
-                {!isPendingFill && mktVal != null && (
+                {!isPending && mktVal != null && (
                   <Tooltip>
                     <TooltipTrigger render={<span className="text-sm tabular-nums font-medium cursor-default">{$k(mktVal)}</span>} />
                     <TooltipContent side="bottom">Current market value of {pos.quantity ?? 0} shares at {$(t.currentPrice ?? 0)}</TooltipContent>
                   </Tooltip>
                 )}
-                {!isPendingFill && pnlPct != null && <PnlBadge value={pnlPct} />}
+                {!isPending && pnlPct != null && <PnlBadge value={pnlPct} />}
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {action}{time && <> at {time}</>}
-              {isPendingFill && <> (not yet filled)</>}
-              {!isPendingFill && t.stopLoss && t.stopLoss > 0 && <>. Stop at <span className="tabular-nums">{$(t.stopLoss)}</span></>}
+              {cfg.timeLabel(timeCtx)}
+              {!isPending && t.stopLoss && t.stopLoss > 0 && <>. Stop at <span className="tabular-nums">{$(t.stopLoss)}</span></>}
             </p>
           </div>
         );

@@ -63,9 +63,12 @@ export interface RecentPick {
   position: {
     id: string;
     status: string;
+    tradeStatus: TradeStatus; // derived from order fill state
     avgCost: number;
     quantity: number | null;
     openedAt: string; // ISO
+    filledAt: string | null;  // when order filled (null = still pending)
+    placedAt: string | null;  // when order was placed
   } | null;
   currentPrice: number | null;
   companyName: string | null;
@@ -310,6 +313,12 @@ export async function getDashboardData(): Promise<DashboardData> {
                 avgCost: true,
                 quantity: true,
                 openedAt: true,
+                orders: {
+                  where: { side: { in: ["BUY", "SELL"] } },
+                  orderBy: { createdAt: "desc" },
+                  take: 1,
+                  select: { status: true, filledAt: true, createdAt: true },
+                },
               },
             },
           },
@@ -640,19 +649,30 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   // ── 11. Map recentPicks ────────────────────────────────────────────────────
   const recentPicks: RecentPick[] = dbRecentPicks.map((p) => {
-    const dec = p.decisions[0];
-    const decPosition = dec?.position;
+    const dec = p.decisions[0]; // INITIATE decision only (filtered in query)
+    const rawPos = dec?.position ?? null;
 
-    // Fall back to any open position for this ticker when no INITIATE decision
-    // links this thesis to a position. This covers re-analyzed theses (Phase 4
-    // auto-supersede): the agent writes a new thesis for an existing holding,
-    // but no new trade is placed, so no INITIATE TradeDecision exists for the
-    // new thesis. Without this fallback, the position bar never renders.
-    const openPosition = !decPosition
-      ? dbOpenPositions.find((op) => op.symbol === p.ticker)
-      : null;
+    let positionData: RecentPick["position"] = null;
+    if (rawPos) {
+      const order = rawPos.orders?.[0];
+      // Derive tradeStatus from order fill state — same logic as trade sidebar.
+      // Position.status is always "OPEN" until closed; "PENDING" is UI-only.
+      let tradeStatus: TradeStatus = "OPEN";
+      if (order?.status === "REJECTED") tradeStatus = "REJECTED";
+      else if (order?.status === "CANCELLED") tradeStatus = "CANCELLED";
+      else if (order && order.filledAt == null) tradeStatus = "PENDING";
 
-    const position = decPosition ?? openPosition;
+      positionData = {
+        id: rawPos.id,
+        status: rawPos.status,
+        tradeStatus,
+        avgCost: rawPos.avgCost,
+        quantity: rawPos.quantity ?? null,
+        openedAt: rawPos.openedAt.toISOString(),
+        filledAt: order?.filledAt ? new Date(order.filledAt).toISOString() : null,
+        placedAt: order?.createdAt ? new Date(order.createdAt).toISOString() : null,
+      };
+    }
 
     return {
       id: p.id,
@@ -666,15 +686,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       stopLoss: p.stopLoss,
       createdAt: p.createdAt.toISOString(),
       decision: dec?.decision ?? null,
-      position: position
-        ? {
-            id: position.id,
-            status: position.status,
-            avgCost: position.avgCost,
-            quantity: position.quantity ?? null,
-            openedAt: position.openedAt.toISOString(),
-          }
-        : null,
+      position: positionData,
       currentPrice: priceMap[p.ticker] ?? null,
       companyName: nameMap[p.ticker] ?? null,
       analystName: p.researchRun?.agentConfig?.name ?? null,
