@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 import {
   Area,
@@ -34,9 +34,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ThesisRow } from '@/components/ui/thesis-row';
-import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
+import { StockLogo } from '@/components/StockLogo';
+import { Badge } from '@/components/ui/badge';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
@@ -47,7 +47,7 @@ import {
   mockPortfolio,
   type MockTrade,
 } from '@/lib/mock-data/trades';
-import type { DashboardData, RecentPick } from '@/lib/actions/portfolio.actions';
+import type { DashboardData, RecentPick, ActivityFeedItem } from '@/lib/actions/portfolio.actions';
 import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
@@ -165,114 +165,340 @@ function buildSpyCompareData(
     }));
 }
 
-// ─── Recent picks section ─────────────────────────────────────────────────────
+// ─── Home bottom section (Theses + Activity tabs) ────────────────────────────
 
-type PickFilter = 'all' | 'open' | 'passed';
+type ThesisTabFilter = 'all' | 'open' | 'passed';
+type ActivityTabFilter = 'all' | 'opens' | 'closes' | 'updates';
 
-function pickToThesisRow(pick: RecentPick): ThesisRowData {
-  return {
-    id: pick.id,
-    ticker: pick.ticker,
-    direction: pick.direction,
-    confidenceScore: pick.confidenceScore,
-    reasoningSummary: pick.reasoningSummary,
-    entryPrice: pick.entryPrice,
-    targetPrice: pick.targetPrice,
-    stopLoss: pick.stopLoss,
-    createdAt: pick.position?.openedAt ?? pick.createdAt,
-    currentPrice: pick.currentPrice,
-    companyName: pick.companyName,
-    analystName: pick.analystName,
-    analystId: pick.analystId,
-    runId: pick.runId,
-    sourcesUsed: pick.sourcesUsed,
-    decision: pick.decision,
-    position: pick.position
-      ? {
-          id: pick.position.id,
-          status: pick.position.status,
-          avgCost: pick.position.avgCost,
-          quantity: pick.position.quantity,
-        }
-      : null,
-  };
+function relTime(iso: string): string {
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (d === 0) return 'Today';
+  if (d === 1) return '1d ago';
+  if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
-  const [filter, setFilter] = useState<PickFilter>('all');
+function FilterPills<T extends string>({ options, value, onChange }: {
+  options: { key: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {options.map(({ key, label }) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          className={cn(
+            'px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors border',
+            value === key
+              ? 'bg-secondary text-secondary-foreground border-secondary'
+              : 'text-muted-foreground border-transparent hover:border-border hover:text-foreground',
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ThesisTableRow({ pick }: { pick: RecentPick }) {
+  const isLong = pick.direction === 'LONG';
+  const isPass = pick.direction === 'PASS';
+  const hasPos = !!pick.position;
+  const isOpen = pick.position?.status === 'OPEN';
+
+  const conf = pick.confidenceScore;
+  const verdict = isPass ? 'Pass'
+    : isLong
+      ? conf >= 80 ? 'Strong Buy' : conf >= 60 ? 'Buy' : 'Lean Buy'
+      : conf >= 80 ? 'Strong Sell' : conf >= 60 ? 'Sell' : 'Lean Sell';
+
+  const verdictVariant: 'positive' | 'negative' | 'secondary' = isPass
+    ? 'secondary'
+    : isLong ? 'positive' : 'negative';
+
+  const posLabel = !hasPos ? null
+    : isOpen ? (pick.direction === 'SHORT' ? 'Short' : 'Holding')
+    : pick.position?.status === 'CLOSED' ? 'Closed'
+    : pick.position?.status;
+
+  const upsidePct = !isPass && pick.targetPrice && pick.entryPrice && pick.entryPrice > 0
+    ? ((pick.targetPrice - pick.entryPrice) / pick.entryPrice) * 100
+    : null;
+
+  return (
+    <Link href={`/runs/${pick.runId}`} className="block">
+      <div className="flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors border-b last:border-0">
+        {/* Logo + Ticker */}
+        <div className="flex items-center gap-2 w-28 shrink-0">
+          <StockLogo ticker={pick.ticker} size="sm" />
+          <span className="text-sm font-medium tabular-nums truncate">{pick.ticker}</span>
+        </div>
+
+        {/* Direction */}
+        <div className={cn(
+          'flex items-center gap-0.5 text-xs font-medium w-16 shrink-0',
+          isPass ? 'text-muted-foreground' : isLong ? 'text-positive' : 'text-negative',
+        )}>
+          {isPass ? <span className="h-2 w-2 rounded-full bg-muted-foreground/40 mr-1" />
+            : isLong ? <ArrowUpRight className="h-3.5 w-3.5" />
+            : <ArrowDownRight className="h-3.5 w-3.5" />}
+          {isPass ? 'Pass' : isLong ? 'Long' : 'Short'}
+        </div>
+
+        {/* Confidence */}
+        <span className={cn(
+          'text-xs tabular-nums font-medium w-9 shrink-0',
+          conf >= 75 ? 'text-positive' : conf >= 55 ? 'text-amber-500' : 'text-negative',
+        )}>
+          {conf}%
+        </span>
+
+        {/* Verdict badge */}
+        <div className="w-24 shrink-0">
+          <Badge variant={verdictVariant} className="text-[10px]">{verdict}</Badge>
+        </div>
+
+        {/* Position status */}
+        <div className="w-20 shrink-0">
+          {posLabel && (
+            <Badge variant={isOpen ? 'positive' : 'secondary'} className="text-[10px]">
+              {posLabel}
+            </Badge>
+          )}
+        </div>
+
+        {/* Entry → Target */}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums min-w-0 flex-1">
+          {pick.entryPrice && !isPass && (
+            <>
+              <span>${pick.entryPrice.toFixed(2)}</span>
+              {pick.targetPrice && (
+                <>
+                  <span className="opacity-40">→</span>
+                  <span>${pick.targetPrice.toFixed(2)}</span>
+                  {upsidePct != null && (
+                    <span className={cn('ml-0.5', upsidePct >= 0 ? 'text-positive' : 'text-negative')}>
+                      {upsidePct >= 0 ? '+' : ''}{upsidePct.toFixed(1)}%
+                    </span>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Analyst + date */}
+        <div className="flex items-center gap-3 shrink-0 text-[11px] text-muted-foreground">
+          {pick.analystName && <span className="truncate max-w-[100px]">{pick.analystName}</span>}
+          <span className="tabular-nums opacity-70">{relTime(pick.createdAt)}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function ActivityRow({ item }: { item: ActivityFeedItem }) {
+  const isOpen = item.type === 'OPENED';
+  const isClosed = item.type === 'CLOSED';
+  const hasPnl = item.pnl != null;
+  const pnlPos = (item.pnl ?? 0) >= 0;
+
+  return (
+    <Link href={`/trades/${item.positionId}`} className="block">
+      <div className="flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors border-b last:border-0">
+        {/* Logo + Ticker + direction */}
+        <div className="flex items-center gap-2 w-36 shrink-0">
+          <StockLogo ticker={item.symbol} size="sm" />
+          <span className="text-sm font-medium tabular-nums">{item.symbol}</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
+            {item.direction}
+          </Badge>
+        </div>
+
+        {/* Event label */}
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <span className={cn(
+            'h-1.5 w-1.5 rounded-full shrink-0',
+            isOpen ? 'bg-positive' : isClosed ? 'bg-muted-foreground/50' : 'bg-primary/50',
+          )} />
+          <span className="text-xs text-muted-foreground truncate">{item.label}</span>
+          {item.analystName && (
+            <span className="text-[10px] text-muted-foreground/50 truncate hidden sm:block">
+              · {item.analystName}
+            </span>
+          )}
+        </div>
+
+        {/* Source */}
+        <span className="text-[10px] text-muted-foreground/60 shrink-0 w-10 text-right">
+          {item.source === 'price_monitor' ? 'Auto' : item.source === 'user' ? 'You' : 'Agent'}
+        </span>
+
+        {/* P&L */}
+        <div className="w-24 text-right shrink-0">
+          {hasPnl && (
+            <span className={cn('text-xs tabular-nums font-medium', pnlPos ? 'text-positive' : 'text-negative')}>
+              {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
+              {item.pnlPct != null && (
+                <span className="text-[10px] opacity-60 ml-0.5">
+                  ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+
+        {/* Time */}
+        <span className="text-[11px] text-muted-foreground/60 tabular-nums shrink-0 w-14 text-right">
+          {relTime(item.timestamp)}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function HomeBottomSection({ picks, activity, loading }: {
+  picks: RecentPick[];
+  activity: ActivityFeedItem[];
+  loading: boolean;
+}) {
+  const [tab, setTab] = useState<'theses' | 'activity'>('theses');
+  const [thesisFilter, setThesisFilter] = useState<ThesisTabFilter>('all');
+  const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
   const [showTour, setShowTour] = useState(false);
 
-  const filtered = picks.filter((p) => {
-    if (filter === 'open') return p.position?.status === 'OPEN';
-    if (filter === 'passed') return p.direction === 'PASS' || (!p.position && p.decision !== 'BUY');
+  const filteredPicks = picks.filter((p) => {
+    if (thesisFilter === 'open') return p.position?.status === 'OPEN';
+    if (thesisFilter === 'passed') return p.direction === 'PASS' || (!p.position && p.decision !== 'BUY');
     return true;
   });
 
+  const filteredActivity = activity.filter((a) => {
+    if (activityFilter === 'opens') return a.type === 'OPENED';
+    if (activityFilter === 'closes') return a.type === 'CLOSED';
+    if (activityFilter === 'updates') return a.type === 'MODIFIED';
+    return true;
+  });
+
+  const thesisPills: { key: ThesisTabFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'open', label: 'Open' },
+    { key: 'passed', label: 'Passed' },
+  ];
+
+  const activityPills: { key: ActivityTabFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'opens', label: 'Opens' },
+    { key: 'closes', label: 'Closes' },
+    { key: 'updates', label: 'Updates' },
+  ];
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-1.5">
-        {(['all', 'open', 'passed'] as PickFilter[]).map((key) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={cn(
-              'px-3 py-1 rounded-full text-xs font-medium transition-colors border capitalize',
-              filter === key
-                ? 'bg-secondary text-secondary-foreground border-secondary'
-                : 'text-muted-foreground opacity-60 hover:opacity-100 hover:text-foreground',
-            )}
-          >
-            {key}
-          </button>
-        ))}
+    <div className="space-y-0">
+      {/* Tab bar + filters */}
+      <div className="flex items-center justify-between pb-3">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="gap-0">
+          <TabsList variant="line" className="w-auto self-start px-0">
+            <TabsTrigger value="theses" className="px-0 mr-4">
+              Theses
+              {picks.length > 0 && (
+                <span className="ml-1.5 text-[10px] tabular-nums opacity-60">{picks.length}</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="px-0">
+              Activity
+              {activity.length > 0 && (
+                <span className="ml-1.5 text-[10px] tabular-nums opacity-60">{activity.length}</span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <div className="pb-0.5">
+          {tab === 'theses'
+            ? <FilterPills options={thesisPills} value={thesisFilter} onChange={setThesisFilter} />
+            : <FilterPills options={activityPills} value={activityFilter} onChange={setActivityFilter} />
+          }
+        </div>
       </div>
 
-      {picks.length === 0 ? (
-        <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-24 px-4">
-          <div
-            className="absolute inset-0"
-            style={{
-              maskImage:
-                'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
-              maskComposite: 'intersect',
-              WebkitMaskImage:
-                'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
-              WebkitMaskComposite: 'source-in',
-            }}
-          >
-            <EmptyStateBg />
-          </div>
-          <div className="relative z-10 flex flex-col items-center gap-3">
-            <p className="text-base font-medium text-center">
-              Theses for your Stocks appear after Agents run
-            </p>
-            <p className="text-sm text-muted-foreground text-center max-w-xs">
-              Your analyst will research stocks, generate theses, and place paper trades autonomously.
-            </p>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/analysts"
-                className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted"
-              >
-                Create an Analyst
-              </Link>
-              <Button variant="ghost" size="sm" onClick={() => setShowTour(true)}>
-                Product Overview
-              </Button>
+      {/* Theses list */}
+      {tab === 'theses' && (
+        picks.length === 0 ? (
+          <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-24 px-4">
+            <div
+              className="absolute inset-0"
+              style={{
+                maskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
+                maskComposite: 'intersect',
+                WebkitMaskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
+                WebkitMaskComposite: 'source-in',
+              }}
+            >
+              <EmptyStateBg />
             </div>
-            <ProductTourDialog open={showTour} onOpenChange={setShowTour} />
+            <div className="relative z-10 flex flex-col items-center gap-3">
+              <p className="text-base font-medium text-center">Theses for your Stocks appear after Agents run</p>
+              <p className="text-sm text-muted-foreground text-center max-w-xs">
+                Your analyst will research stocks, generate theses, and place paper trades autonomously.
+              </p>
+              <div className="flex items-center gap-2">
+                <Link href="/analysts" className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted">
+                  Create an Analyst
+                </Link>
+                <Button variant="ghost" size="sm" onClick={() => setShowTour(true)}>Product Overview</Button>
+              </div>
+              <ProductTourDialog open={showTour} onOpenChange={setShowTour} />
+            </div>
           </div>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-lg border px-4 py-8 flex flex-col items-center gap-2">
-          <p className="text-sm text-muted-foreground text-center">No picks match this filter.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((pick) => (
-            <ThesisRow key={pick.id} thesis={pickToThesisRow(pick)} showTicker={true} />
-          ))}
-        </div>
+        ) : filteredPicks.length === 0 ? (
+          <Card className="shadow-none">
+            <CardContent className="py-8 flex justify-center">
+              <p className="text-sm text-muted-foreground">No theses match this filter.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="shadow-none p-0 overflow-hidden">
+            <CardContent className="p-0">
+              {filteredPicks.map((pick) => <ThesisTableRow key={pick.id} pick={pick} />)}
+            </CardContent>
+          </Card>
+        )
+      )}
+
+      {/* Activity list */}
+      {tab === 'activity' && (
+        activity.length === 0 ? (
+          <Card className="shadow-none">
+            <CardContent className="py-8 flex flex-col items-center gap-1">
+              <p className="text-sm text-muted-foreground">No activity yet</p>
+              <p className="text-xs text-muted-foreground/60">Trades and position changes appear here as analysts run.</p>
+            </CardContent>
+          </Card>
+        ) : filteredActivity.length === 0 ? (
+          <Card className="shadow-none">
+            <CardContent className="py-8 flex justify-center">
+              <p className="text-sm text-muted-foreground">No activity matches this filter.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="shadow-none p-0 overflow-hidden">
+            <CardContent className="p-0">
+              {filteredActivity.map((item) => <ActivityRow key={item.id} item={item} />)}
+            </CardContent>
+          </Card>
+        )
       )}
     </div>
   );
@@ -844,16 +1070,12 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
               )}
             </div>
 
-            {/* Recent picks — all picks, no analyst filter, only All/Open/Passed pills */}
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-48 w-full rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <RecentPicksSection picks={recentPicks} />
-            )}
+            {/* Theses + Activity tabbed section */}
+            <HomeBottomSection
+              picks={recentPicks}
+              activity={data?.activityFeed ?? []}
+              loading={loading}
+            />
           </div>
 
           {/* ══ RIGHT column — positions ═══════════════════════════════════ */}
