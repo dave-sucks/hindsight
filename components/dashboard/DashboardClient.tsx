@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { SlidersHorizontal, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 
 import {
   Area,
@@ -44,6 +44,8 @@ import {
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
+import { ThesisMiniCard } from '@/components/domain/thesis-mini-card';
+import type { ThesisCardData } from '@/components/domain/thesis-card';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
@@ -185,102 +187,23 @@ function relTime(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function ThesisTableRow({ pick }: { pick: RecentPick }) {
-  const isLong = pick.direction === 'LONG';
-  const isPass = pick.direction === 'PASS';
-  const hasPos = !!pick.position;
-  const isOpen = pick.position?.status === 'OPEN';
-
-  const conf = pick.confidenceScore;
-  const verdict = isPass ? 'Pass'
-    : isLong
-      ? conf >= 80 ? 'Strong Buy' : conf >= 60 ? 'Buy' : 'Lean Buy'
-      : conf >= 80 ? 'Strong Sell' : conf >= 60 ? 'Sell' : 'Lean Sell';
-
-  const verdictVariant: 'positive' | 'negative' | 'secondary' = isPass
-    ? 'secondary'
-    : isLong ? 'positive' : 'negative';
-
-  const posLabel = !hasPos ? null
-    : isOpen ? (pick.direction === 'SHORT' ? 'Short' : 'Holding')
-    : pick.position?.status === 'CLOSED' ? 'Closed'
-    : pick.position?.status;
-
-  const upsidePct = !isPass && pick.targetPrice && pick.entryPrice && pick.entryPrice > 0
-    ? ((pick.targetPrice - pick.entryPrice) / pick.entryPrice) * 100
-    : null;
-
-  return (
-    <Link href={`/runs/${pick.runId}`} className="block">
-      <div className="flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors border-b last:border-0">
-        {/* Logo + Ticker */}
-        <div className="flex items-center gap-2 w-28 shrink-0">
-          <StockLogo ticker={pick.ticker} size="sm" />
-          <span className="text-sm font-medium tabular-nums truncate">{pick.ticker}</span>
-        </div>
-
-        {/* Direction */}
-        <div className={cn(
-          'flex items-center gap-0.5 text-xs font-medium w-16 shrink-0',
-          isPass ? 'text-muted-foreground' : isLong ? 'text-positive' : 'text-negative',
-        )}>
-          {isPass ? <span className="h-2 w-2 rounded-full bg-muted-foreground/40 mr-1" />
-            : isLong ? <ArrowUpRight className="h-3.5 w-3.5" />
-            : <ArrowDownRight className="h-3.5 w-3.5" />}
-          {isPass ? 'Pass' : isLong ? 'Long' : 'Short'}
-        </div>
-
-        {/* Confidence */}
-        <span className={cn(
-          'text-xs tabular-nums font-medium w-9 shrink-0',
-          conf >= 75 ? 'text-positive' : conf >= 55 ? 'text-amber-500' : 'text-negative',
-        )}>
-          {conf}%
-        </span>
-
-        {/* Verdict badge */}
-        <div className="w-24 shrink-0">
-          <Badge variant={verdictVariant} className="text-[10px]">{verdict}</Badge>
-        </div>
-
-        {/* Position status */}
-        <div className="w-20 shrink-0">
-          {posLabel && (
-            <Badge variant={isOpen ? 'positive' : 'secondary'} className="text-[10px]">
-              {posLabel}
-            </Badge>
-          )}
-        </div>
-
-        {/* Entry → Target */}
-        <div className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums min-w-0 flex-1">
-          {pick.entryPrice && !isPass && (
-            <>
-              <span>${pick.entryPrice.toFixed(2)}</span>
-              {pick.targetPrice && (
-                <>
-                  <span className="opacity-40">→</span>
-                  <span>${pick.targetPrice.toFixed(2)}</span>
-                  {upsidePct != null && (
-                    <span className={cn('ml-0.5', upsidePct >= 0 ? 'text-positive' : 'text-negative')}>
-                      {upsidePct >= 0 ? '+' : ''}{upsidePct.toFixed(1)}%
-                    </span>
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Analyst + date */}
-        <div className="flex items-center gap-3 shrink-0 text-[11px] text-muted-foreground">
-          {pick.analystName && <span className="truncate max-w-[100px]">{pick.analystName}</span>}
-          <span className="tabular-nums opacity-70">{relTime(pick.createdAt)}</span>
-        </div>
-      </div>
-    </Link>
-  );
+function pickToThesisCardData(pick: RecentPick): ThesisCardData {
+  return {
+    ticker: pick.ticker,
+    direction: pick.direction as 'LONG' | 'SHORT' | 'PASS',
+    confidence_score: pick.confidenceScore,
+    reasoning_summary: pick.reasoningSummary,
+    thesis_bullets: [],
+    risk_flags: [],
+    entry_price: pick.entryPrice,
+    target_price: pick.targetPrice,
+    stop_loss: pick.stopLoss,
+    signal_types: pick.signalTypes,
+    company_name: pick.companyName,
+    status: pick.position?.status === 'OPEN' ? 'ACTIVE' : pick.position?.status === 'CLOSED' ? 'CLOSED' : 'ACTIVE',
+  };
 }
+
 
 function ActivityRow({ item }: { item: ActivityFeedItem }) {
   const isOpen = item.type === 'OPENED';
@@ -446,11 +369,11 @@ function HomeBottomSection({ picks, activity, loading }: {
             </CardContent>
           </Card>
         ) : (
-          <Card className="shadow-none p-0 overflow-hidden">
-            <CardContent className="p-0">
-              {filteredPicks.map((pick) => <ThesisTableRow key={pick.id} pick={pick} />)}
-            </CardContent>
-          </Card>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredPicks.map((pick) => (
+              <ThesisMiniCard key={pick.id} thesis={pickToThesisCardData(pick)} />
+            ))}
+          </div>
         )}
       </TabsContent>
 
