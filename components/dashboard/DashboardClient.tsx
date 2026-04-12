@@ -213,12 +213,12 @@ function groupActivityByDay(items: ActivityFeedItem[]) {
 
 // Mirrors ACTION_STATUS from decision-summary-card.tsx
 const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; tooltip: string }> = {
-  INITIATE: { label: 'Bought',        dotClass: 'bg-amber-500 animate-pulse', tooltip: 'New position opened' },
-  SHORT:    { label: 'Shorted',       dotClass: 'bg-negative animate-pulse',  tooltip: 'Short position opened' },
-  ADD:      { label: 'Add',           dotClass: 'bg-amber-500',               tooltip: 'Added to existing position' },
+  INITIATE: { label: 'Bought',        dotClass: 'bg-positive',                tooltip: 'New position opened' },
+  SHORT:    { label: 'Shorted',       dotClass: 'bg-negative',                tooltip: 'Short position opened' },
+  ADD:      { label: 'Add',           dotClass: 'bg-positive',                tooltip: 'Added to existing position' },
   REDUCE:   { label: 'Reduce',        dotClass: 'bg-amber-500',               tooltip: 'Trimmed position size' },
   EXIT:     { label: 'Sold',          dotClass: 'bg-muted-foreground/60',     tooltip: 'Position closed' },
-  HOLD:     { label: 'Hold',          dotClass: 'bg-muted-foreground/60',     tooltip: 'Monitoring — no action taken' },
+  HOLD:     { label: 'Hold',          dotClass: 'bg-muted-foreground/40',     tooltip: 'Monitoring — no action taken' },
   WATCH:    { label: 'Watch',         dotClass: 'bg-blue-500',                tooltip: 'Added to watchlist' },
   STOP:     { label: 'Stop Moved',    dotClass: 'bg-amber-500',               tooltip: 'Stop loss level adjusted' },
   NEAR_TGT: { label: 'Near Target',   dotClass: 'bg-positive',                tooltip: 'Price approaching target' },
@@ -725,7 +725,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         {pnlPositive ? '+' : '-'}${Math.abs(rangePnl).toFixed(2)}{' '}
                         ({pnlPositive ? '+' : ''}{rangePnlPct.toFixed(2)}%)
                       </span>
-                      <span className="text-muted-foreground/50 text-xs">{range}</span>
                       {winRateStr && (
                         <>
                           <span className="text-muted-foreground mx-0.5">—</span>
@@ -733,14 +732,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                         </>
                       )}
                     </p>
-                    {spyPct !== null && effectiveView !== 'vs-spy' && (
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        vs SPY{' '}
-                        <span className={spyPct >= 0 ? 'text-positive' : 'text-negative'}>
-                          {spyPct >= 0 ? '+' : ''}{spyPct.toFixed(2)}%
-                        </span>
-                      </span>
-                    )}
                   </div>
                 </>
               )}
