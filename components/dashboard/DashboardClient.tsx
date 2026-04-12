@@ -44,8 +44,7 @@ import {
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
-import { ThesisMiniCard } from '@/components/domain/thesis-mini-card';
-import type { ThesisCardData } from '@/components/domain/thesis-card';
+import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
@@ -187,20 +186,27 @@ function relTime(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function pickToThesisCardData(pick: RecentPick): ThesisCardData {
+function pickToThesisRow(pick: RecentPick): ThesisRowData {
   return {
+    id: pick.id,
     ticker: pick.ticker,
-    direction: pick.direction as 'LONG' | 'SHORT' | 'PASS',
-    confidence_score: pick.confidenceScore,
-    reasoning_summary: pick.reasoningSummary,
-    thesis_bullets: [],
-    risk_flags: [],
-    entry_price: pick.entryPrice,
-    target_price: pick.targetPrice,
-    stop_loss: pick.stopLoss,
-    signal_types: pick.signalTypes,
-    company_name: pick.companyName,
-    status: pick.position?.status === 'OPEN' ? 'ACTIVE' : pick.position?.status === 'CLOSED' ? 'CLOSED' : 'ACTIVE',
+    direction: pick.direction,
+    confidenceScore: pick.confidenceScore,
+    reasoningSummary: pick.reasoningSummary,
+    entryPrice: pick.entryPrice,
+    targetPrice: pick.targetPrice,
+    stopLoss: pick.stopLoss,
+    createdAt: pick.position?.openedAt ?? pick.createdAt,
+    currentPrice: pick.currentPrice,
+    companyName: pick.companyName,
+    analystName: pick.analystName,
+    analystId: pick.analystId,
+    runId: pick.runId,
+    sourcesUsed: pick.sourcesUsed,
+    decision: pick.decision,
+    position: pick.position
+      ? { id: pick.position.id, status: pick.position.status, avgCost: pick.position.avgCost, quantity: pick.position.quantity }
+      : null,
   };
 }
 
@@ -369,9 +375,9 @@ function HomeBottomSection({ picks, activity, loading }: {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="space-y-3">
             {filteredPicks.map((pick) => (
-              <ThesisMiniCard key={pick.id} thesis={pickToThesisCardData(pick)} />
+              <ThesisRow key={pick.id} thesis={pickToThesisRow(pick)} showTicker={true} />
             ))}
           </div>
         )}
