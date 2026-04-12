@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ThesisRow } from '@/components/ui/thesis-row';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
-import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
+import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
@@ -278,6 +278,28 @@ function RecentPicksSection({ picks }: { picks: RecentPick[] }) {
   );
 }
 
+
+function DashboardTradeRow({ trade, flash }: { trade: MockTrade; flash?: 'win' | 'loss' }) {
+  return (
+    <SharedTradeRow
+      id={trade.id}
+      ticker={trade.ticker}
+      currentPrice={trade.currentPrice}
+      entryPrice={trade.entryPrice}
+      shares={trade.shares}
+      pnl={trade.pnl ?? 0}
+      pnlPct={trade.pnlPct ?? 0}
+      status={trade.status}
+      placedAt={trade.placedAt}
+      filledAt={trade.filledAt}
+      closedAt={trade.closedAt}
+      priceSource={trade.priceSource}
+      priceUpdatedAt={trade.priceUpdatedAt}
+      alpacaOrderId={trade.alpacaOrderId}
+      flash={flash}
+    />
+  );
+}
 
 function Empty({ text, subtext }: { text: string; subtext?: string }) {
   return (
@@ -834,26 +856,72 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
             )}
           </div>
 
-          {/* ══ RIGHT column — activity feed ══════════════════════════════ */}
+          {/* ══ RIGHT column — positions ═══════════════════════════════════ */}
           <div className="hidden lg:block w-80 shrink-0">
-            {loading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-20" />
-                <div className="space-y-0 rounded-lg border overflow-hidden">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="flex items-start gap-3 px-4 py-3 border-b last:border-b-0">
-                      <Skeleton className="h-7 w-7 rounded-full shrink-0" />
-                      <div className="flex-1 space-y-1.5">
-                        <Skeleton className="h-3 w-3/4" />
-                        <Skeleton className="h-3 w-1/2" />
+            <Tabs defaultValue="open" className="gap-0">
+              <TabsList variant="line" className="w-auto self-start px-0">
+                <TabsTrigger value="open" className="px-0 mr-4">
+                  Open
+                  {openTrades.length > 0 && (
+                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
+                      {openTrades.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="closed" className="px-0">
+                  Closed
+                  {closedTrades.length > 0 && (
+                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
+                      {closedTrades.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+
+              <Card className="shadow-none p-0">
+                <CardContent className="p-0">
+                  <TabsContent value="open" className="mt-0">
+                    {loading ? (
+                      <div className="space-y-1 px-4 pt-1 pb-2">
+                        {[1, 2, 3].map((i) => (
+                          <Skeleton key={i} className="h-14 rounded-lg" />
+                        ))}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <ActivityFeed items={data?.activityFeed ?? []} />
-            )}
+                    ) : openTrades.length === 0 ? (
+                      <Empty
+                        text="No open positions"
+                        subtext="Positions appear when an analyst places a paper trade during a run."
+                      />
+                    ) : (
+                      <div>
+                        {openTrades.map((t) => (
+                          <DashboardTradeRow
+                            key={t.id}
+                            trade={t}
+                            flash={flashIds.get(t.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="closed" className="mt-0">
+                    {closedTrades.length === 0 ? (
+                      <Empty
+                        text="No closed trades yet"
+                        subtext="Trades close when they hit a target, stop-loss, or manual exit."
+                      />
+                    ) : (
+                      <div>
+                        {closedTrades.map((t) => (
+                          <DashboardTradeRow key={t.id} trade={t} />
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+                </CardContent>
+              </Card>
+            </Tabs>
           </div>
 
         </div>
