@@ -186,6 +186,69 @@ function relTime(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86_400_000).toDateString();
+  if (d.toDateString() === today) return 'Today';
+  if (d.toDateString() === yesterday) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+function groupActivityByDay(items: ActivityFeedItem[]) {
+  const groups: { label: string; items: ActivityFeedItem[] }[] = [];
+  for (const item of items) {
+    const lbl = dayLabel(item.timestamp);
+    const last = groups[groups.length - 1];
+    if (last && last.label === lbl) { last.items.push(item); }
+    else { groups.push({ label: lbl, items: [item] }); }
+  }
+  return groups;
+}
+
+function getActionBadge(item: ActivityFeedItem): { label: string; variant: 'positive' | 'negative' | 'secondary' | 'outline' } {
+  if (item.type === 'OPENED') {
+    return item.direction === 'SHORT'
+      ? { label: 'Shorted', variant: 'negative' }
+      : { label: 'Bought', variant: 'positive' };
+  }
+  if (item.type === 'CLOSED') {
+    if (item.outcome === 'WIN') return { label: 'Sold · Win', variant: 'positive' };
+    if (item.outcome === 'LOSS') return { label: 'Sold · Loss', variant: 'negative' };
+    return { label: 'Sold', variant: 'secondary' };
+  }
+  const lbl = item.label.toLowerCase();
+  if (lbl.includes('partial')) return { label: 'Partial Close', variant: 'secondary' };
+  if (lbl.includes('add')) return { label: 'Added', variant: 'outline' };
+  if (lbl.includes('near target') || lbl.includes('approaching target')) return { label: 'Near Target', variant: 'outline' };
+  if (lbl.includes('near stop') || lbl.includes('approaching stop')) return { label: 'Near Stop', variant: 'outline' };
+  if (lbl.includes('stop')) return { label: 'Stop Moved', variant: 'secondary' };
+  if (lbl.includes('watch')) return { label: 'Watched', variant: 'secondary' };
+  return { label: 'Updated', variant: 'secondary' };
+}
+
+function getActivitySentence(item: ActivityFeedItem): string {
+  const src = item.source === 'price_monitor' ? 'price monitor' : item.source === 'user' ? 'you' : 'the agent';
+  if (item.type === 'OPENED') {
+    return item.direction === 'SHORT'
+      ? `Short position opened in ${item.symbol} by ${src}.`
+      : `Long position opened in ${item.symbol} by ${src}.`;
+  }
+  if (item.type === 'CLOSED') {
+    if (item.pnl != null) {
+      const sign = item.pnl >= 0 ? '+' : '';
+      const amt = `${sign}$${Math.abs(item.pnl).toFixed(2)}`;
+      const pct = item.pnlPct != null ? ` (${sign}${item.pnlPct.toFixed(1)}%)` : '';
+      return item.pnl >= 0
+        ? `Closed for a profit of ${amt}${pct} by ${src}.`
+        : `Closed at a loss of ${amt}${pct} by ${src}.`;
+    }
+    return `Position closed by ${src}.`;
+  }
+  if (item.reason) return `${item.reason} (via ${src}).`;
+  return `${item.label} via ${src}.`;
+}
+
 function pickToThesisRow(pick: RecentPick): ThesisRowData {
   return {
     id: pick.id,
@@ -212,53 +275,41 @@ function pickToThesisRow(pick: RecentPick): ThesisRowData {
 
 
 function ActivityRow({ item }: { item: ActivityFeedItem }) {
-  const isOpen = item.type === 'OPENED';
-  const isClosed = item.type === 'CLOSED';
+  const action = getActionBadge(item);
+  const sentence = getActivitySentence(item);
   const hasPnl = item.pnl != null;
   const pnlPos = (item.pnl ?? 0) >= 0;
-  const sourceLabel = item.source === 'price_monitor' ? 'Auto' : item.source === 'user' ? 'You' : 'Agent';
 
   return (
     <Link href={`/trades/${item.positionId}`} className="block">
-      <div className="flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors border-b last:border-0">
+      <div className="flex items-start gap-3 px-4 py-3 hover:bg-accent/40 transition-colors border-b last:border-0">
         {/* Logo */}
-        <StockLogo ticker={item.symbol} size="sm" className="shrink-0" />
+        <StockLogo ticker={item.symbol} size="sm" className="shrink-0 mt-0.5" />
 
-        {/* Main content: what happened + ticker */}
+        {/* Main content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className={cn(
-              'h-1.5 w-1.5 rounded-full shrink-0',
-              isOpen ? 'bg-positive' : isClosed ? 'bg-muted-foreground/40' : 'bg-primary/60',
-            )} />
-            <span className="text-sm font-medium truncate">{item.label}</span>
-          </div>
-          <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
-            <span className="font-medium">{item.symbol}</span>
-            <span className="opacity-40">·</span>
-            <span>{sourceLabel}</span>
-            {item.analystName && (
-              <>
-                <span className="opacity-40">·</span>
-                <span className="truncate hidden sm:block">{item.analystName}</span>
-              </>
+          {/* Ticker + badge + P&L */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold tabular-nums">{item.symbol}</span>
+            <Badge variant={action.variant} className="text-[10px] h-4 px-1.5 py-0 shrink-0">{action.label}</Badge>
+            {hasPnl && (
+              <span className={cn('text-sm tabular-nums font-medium ml-auto', pnlPos ? 'text-positive' : 'text-negative')}>
+                {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
+                {item.pnlPct != null && (
+                  <span className="text-xs opacity-70 ml-0.5">({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>
+                )}
+              </span>
+            )}
+            {!hasPnl && (
+              <span className="text-[11px] text-muted-foreground/50 tabular-nums ml-auto">{relTime(item.timestamp)}</span>
             )}
           </div>
-        </div>
-
-        {/* P&L + time */}
-        <div className="text-right shrink-0">
+          {/* Sentence — hidden on mobile */}
+          <p className="hidden sm:block text-xs text-muted-foreground mt-0.5 leading-snug">{sentence}</p>
+          {/* Time (only when P&L shown above, we still need time below) */}
           {hasPnl && (
-            <div className={cn('text-sm tabular-nums font-medium', pnlPos ? 'text-positive' : 'text-negative')}>
-              {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
-              {item.pnlPct != null && (
-                <span className="text-xs opacity-60 ml-0.5">({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>
-              )}
-            </div>
+            <p className="text-[11px] text-muted-foreground/50 tabular-nums mt-0.5">{relTime(item.timestamp)}</p>
           )}
-          <div className="text-[11px] text-muted-foreground/60 tabular-nums mt-0.5">
-            {relTime(item.timestamp)}
-          </div>
         </div>
       </div>
     </Link>
@@ -393,11 +444,18 @@ function HomeBottomSection({ picks, activity, loading }: {
             </CardContent>
           </Card>
         ) : (
-          <Card className="shadow-none p-0 overflow-hidden">
-            <CardContent className="p-0">
-              {filteredActivity.map((item) => <ActivityRow key={item.id} item={item} />)}
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            {groupActivityByDay(filteredActivity).map((group) => (
+              <div key={group.label}>
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60 px-1 pb-1.5">{group.label}</p>
+                <Card className="shadow-none p-0 overflow-hidden">
+                  <CardContent className="p-0">
+                    {group.items.map((item) => <ActivityRow key={item.id} item={item} />)}
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
         )}
       </TabsContent>
     </Tabs>

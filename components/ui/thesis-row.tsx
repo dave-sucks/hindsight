@@ -199,7 +199,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         <div className="flex items-center gap-2 px-4 py-2.5 border-b">
           <StockLogo ticker={t.ticker} size="md" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">{t.companyName ?? t.ticker}</p>
+            <p className="text-sm font-medium truncate">{t.companyName ?? t.ticker}</p>
             {t.companyName && <p className="font-mono text-[11px] text-muted-foreground">{t.ticker}</p>}
           </div>
           <div className="flex items-center gap-2">
@@ -262,7 +262,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         )}
         <div className="flex items-center gap-1 ml-auto">
           {t.analystName && t.analystId && (
-            <a href={`/analysts/${t.analystId}`} className="inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+            <a href={`/analysts/${t.analystId}`} className="hidden sm:inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               {t.analystName}
             </a>
           )}
