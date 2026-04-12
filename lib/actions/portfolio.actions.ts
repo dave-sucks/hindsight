@@ -641,7 +641,19 @@ export async function getDashboardData(): Promise<DashboardData> {
   // ── 11. Map recentPicks ────────────────────────────────────────────────────
   const recentPicks: RecentPick[] = dbRecentPicks.map((p) => {
     const dec = p.decisions[0];
-    const position = dec?.position;
+    const decPosition = dec?.position;
+
+    // Fall back to any open position for this ticker when no INITIATE decision
+    // links this thesis to a position. This covers re-analyzed theses (Phase 4
+    // auto-supersede): the agent writes a new thesis for an existing holding,
+    // but no new trade is placed, so no INITIATE TradeDecision exists for the
+    // new thesis. Without this fallback, the position bar never renders.
+    const openPosition = !decPosition
+      ? dbOpenPositions.find((op) => op.symbol === p.ticker)
+      : null;
+
+    const position = decPosition ?? openPosition;
+
     return {
       id: p.id,
       ticker: p.ticker,
