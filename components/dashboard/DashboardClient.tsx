@@ -216,56 +216,50 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   const isClosed = item.type === 'CLOSED';
   const hasPnl = item.pnl != null;
   const pnlPos = (item.pnl ?? 0) >= 0;
+  const sourceLabel = item.source === 'price_monitor' ? 'Auto' : item.source === 'user' ? 'You' : 'Agent';
 
   return (
     <Link href={`/trades/${item.positionId}`} className="block">
       <div className="flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors border-b last:border-0">
-        {/* Logo + Ticker + direction */}
-        <div className="flex items-center gap-2 w-36 shrink-0">
-          <StockLogo ticker={item.symbol} size="sm" />
-          <span className="text-sm font-medium tabular-nums">{item.symbol}</span>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
-            {item.direction}
-          </Badge>
+        {/* Logo */}
+        <StockLogo ticker={item.symbol} size="sm" className="shrink-0" />
+
+        {/* Main content: what happened + ticker */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className={cn(
+              'h-1.5 w-1.5 rounded-full shrink-0',
+              isOpen ? 'bg-positive' : isClosed ? 'bg-muted-foreground/40' : 'bg-primary/60',
+            )} />
+            <span className="text-sm font-medium truncate">{item.label}</span>
+          </div>
+          <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
+            <span className="font-medium">{item.symbol}</span>
+            <span className="opacity-40">·</span>
+            <span>{sourceLabel}</span>
+            {item.analystName && (
+              <>
+                <span className="opacity-40">·</span>
+                <span className="truncate hidden sm:block">{item.analystName}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Event label */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <span className={cn(
-            'h-1.5 w-1.5 rounded-full shrink-0',
-            isOpen ? 'bg-positive' : isClosed ? 'bg-muted-foreground/50' : 'bg-primary/50',
-          )} />
-          <span className="text-xs text-muted-foreground truncate">{item.label}</span>
-          {item.analystName && (
-            <span className="text-[10px] text-muted-foreground/50 truncate hidden sm:block">
-              · {item.analystName}
-            </span>
-          )}
-        </div>
-
-        {/* Source */}
-        <span className="text-[10px] text-muted-foreground/60 shrink-0 w-10 text-right">
-          {item.source === 'price_monitor' ? 'Auto' : item.source === 'user' ? 'You' : 'Agent'}
-        </span>
-
-        {/* P&L */}
-        <div className="w-24 text-right shrink-0">
+        {/* P&L + time */}
+        <div className="text-right shrink-0">
           {hasPnl && (
-            <span className={cn('text-xs tabular-nums font-medium', pnlPos ? 'text-positive' : 'text-negative')}>
+            <div className={cn('text-sm tabular-nums font-medium', pnlPos ? 'text-positive' : 'text-negative')}>
               {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
               {item.pnlPct != null && (
-                <span className="text-[10px] opacity-60 ml-0.5">
-                  ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)
-                </span>
+                <span className="text-xs opacity-60 ml-0.5">({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>
               )}
-            </span>
+            </div>
           )}
+          <div className="text-[11px] text-muted-foreground/60 tabular-nums mt-0.5">
+            {relTime(item.timestamp)}
+          </div>
         </div>
-
-        {/* Time */}
-        <span className="text-[11px] text-muted-foreground/60 tabular-nums shrink-0 w-14 text-right">
-          {relTime(item.timestamp)}
-        </span>
       </div>
     </Link>
   );
