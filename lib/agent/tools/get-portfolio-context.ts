@@ -51,6 +51,7 @@ type PortfolioContextData = {
   positions: PositionDetail[];
   capitalSummary: CapitalSummary | null;
   summaryLines: string[];
+  tickers: { ticker: string; tag: string; summary: string }[];
 };
 
 export const getPortfolioContext = defineTool({
@@ -64,14 +65,14 @@ export const getPortfolioContext = defineTool({
       .default(true)
       .describe("Whether to include the original thesis reasoning for each position"),
   }),
-  ui: "generic" as const,
+  ui: "ticker-list" as const,
 
   execute: async (args, ctx) => {
     const analystId = ctx.analystId;
     if (!analystId) {
       return {
         summary: "No analyst context — portfolio context unavailable",
-        data: { positions: [] as PositionDetail[], capitalSummary: null, summaryLines: [] } satisfies PortfolioContextData,
+        data: { positions: [] as PositionDetail[], capitalSummary: null, summaryLines: [], tickers: [] } satisfies PortfolioContextData,
         sources: [],
       };
     }
@@ -101,7 +102,7 @@ export const getPortfolioContext = defineTool({
 
       return {
         summary: "No open positions",
-        data: { positions: [] as PositionDetail[], capitalSummary, summaryLines: [] } satisfies PortfolioContextData,
+        data: { positions: [] as PositionDetail[], capitalSummary, summaryLines: [], tickers: [] } satisfies PortfolioContextData,
         sources: [],
       };
     }
@@ -214,12 +215,24 @@ export const getPortfolioContext = defineTool({
       return `${p.symbol} ${p.direction} ${p.qty}sh @ $${p.avgCost.toFixed(2)} | now $${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.daysHeld}d held${peakStr}`;
     });
 
+    // Ticker rows for UI rendering — portfolio data, not stock data
+    const tickers = positionDetails.map((p) => {
+      const pnlSign = p.unrealizedPnlPct >= 0 ? "+" : "";
+      const peakStr = p.distanceFromPeak !== null ? ` | ${p.distanceFromPeak >= 0 ? "+" : ""}${p.distanceFromPeak}% from peak` : "";
+      return {
+        ticker: p.symbol,
+        tag: p.direction,
+        summary: `$${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.qty}sh @ $${p.avgCost.toFixed(2)} | ${p.daysHeld}d held${peakStr}`,
+      };
+    });
+
     return {
-      summary: `Portfolio: ${openPositions.length} open position${openPositions.length !== 1 ? "s" : ""}${capitalSummary ? ` | $${capitalSummary.deployedPct}% deployed | $${capitalSummary.buyingPower.toFixed(0)} buying power` : ""}`,
+      summary: `Portfolio: ${openPositions.length} open position${openPositions.length !== 1 ? "s" : ""}${capitalSummary ? ` | ${capitalSummary.deployedPct}% deployed | $${capitalSummary.buyingPower.toFixed(0)} buying power` : ""}`,
       data: {
         positions: positionDetails,
         capitalSummary,
         summaryLines,
+        tickers,
       },
       sources: [],
     };

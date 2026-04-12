@@ -27,6 +27,7 @@ interface TickerItem {
 const TOOL_LABELS: Record<string, string> = {
   read_morning_brief: "Morning brief",
   read_signals: "Signals",
+  get_portfolio_context: "Portfolio",
 };
 
 interface Props {
