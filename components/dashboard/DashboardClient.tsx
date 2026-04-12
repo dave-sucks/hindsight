@@ -32,6 +32,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -206,25 +211,31 @@ function groupActivityByDay(items: ActivityFeedItem[]) {
   return groups;
 }
 
-function getActionBadge(item: ActivityFeedItem): { label: string; variant: 'positive' | 'negative' | 'secondary' | 'outline' } {
-  if (item.type === 'OPENED') {
-    return item.direction === 'SHORT'
-      ? { label: 'Shorted', variant: 'negative' }
-      : { label: 'Bought', variant: 'positive' };
-  }
-  if (item.type === 'CLOSED') {
-    if (item.outcome === 'WIN') return { label: 'Sold · Win', variant: 'positive' };
-    if (item.outcome === 'LOSS') return { label: 'Sold · Loss', variant: 'negative' };
-    return { label: 'Sold', variant: 'secondary' };
-  }
+// Mirrors ACTION_STATUS from decision-summary-card.tsx
+const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; tooltip: string }> = {
+  INITIATE: { label: 'Bought',        dotClass: 'bg-amber-500 animate-pulse', tooltip: 'New position opened' },
+  SHORT:    { label: 'Shorted',       dotClass: 'bg-negative animate-pulse',  tooltip: 'Short position opened' },
+  ADD:      { label: 'Add',           dotClass: 'bg-amber-500',               tooltip: 'Added to existing position' },
+  REDUCE:   { label: 'Reduce',        dotClass: 'bg-amber-500',               tooltip: 'Trimmed position size' },
+  EXIT:     { label: 'Sold',          dotClass: 'bg-muted-foreground/60',     tooltip: 'Position closed' },
+  HOLD:     { label: 'Hold',          dotClass: 'bg-muted-foreground/60',     tooltip: 'Monitoring — no action taken' },
+  WATCH:    { label: 'Watch',         dotClass: 'bg-blue-500',                tooltip: 'Added to watchlist' },
+  STOP:     { label: 'Stop Moved',    dotClass: 'bg-amber-500',               tooltip: 'Stop loss level adjusted' },
+  NEAR_TGT: { label: 'Near Target',   dotClass: 'bg-positive',                tooltip: 'Price approaching target' },
+  NEAR_STP: { label: 'Near Stop',     dotClass: 'bg-negative',                tooltip: 'Price approaching stop loss' },
+};
+
+function getDecisionAction(item: ActivityFeedItem): string {
+  if (item.type === 'OPENED') return item.direction === 'SHORT' ? 'SHORT' : 'INITIATE';
+  if (item.type === 'CLOSED') return 'EXIT';
   const lbl = item.label.toLowerCase();
-  if (lbl.includes('partial')) return { label: 'Partial Close', variant: 'secondary' };
-  if (lbl.includes('add')) return { label: 'Added', variant: 'outline' };
-  if (lbl.includes('near target') || lbl.includes('approaching target')) return { label: 'Near Target', variant: 'outline' };
-  if (lbl.includes('near stop') || lbl.includes('approaching stop')) return { label: 'Near Stop', variant: 'outline' };
-  if (lbl.includes('stop')) return { label: 'Stop Moved', variant: 'secondary' };
-  if (lbl.includes('watch')) return { label: 'Watched', variant: 'secondary' };
-  return { label: 'Updated', variant: 'secondary' };
+  if (lbl.includes('partial') || lbl.includes('reduc')) return 'REDUCE';
+  if (lbl.includes('add')) return 'ADD';
+  if (lbl.includes('near target') || lbl.includes('approaching target')) return 'NEAR_TGT';
+  if (lbl.includes('near stop') || lbl.includes('approaching stop')) return 'NEAR_STP';
+  if (lbl.includes('stop')) return 'STOP';
+  if (lbl.includes('watch')) return 'WATCH';
+  return 'HOLD';
 }
 
 function getActivitySentence(item: ActivityFeedItem): string {
@@ -275,44 +286,61 @@ function pickToThesisRow(pick: RecentPick): ThesisRowData {
 
 
 function ActivityRow({ item }: { item: ActivityFeedItem }) {
-  const action = getActionBadge(item);
+  const actionKey = getDecisionAction(item);
+  const status = ACTIVITY_ACTION_STATUS[actionKey] ?? ACTIVITY_ACTION_STATUS.HOLD;
   const sentence = getActivitySentence(item);
-  const hasPnl = item.pnl != null;
+  const hasPnl = item.type === 'CLOSED' && item.pnl != null;
   const pnlPos = (item.pnl ?? 0) >= 0;
 
   return (
-    <Link href={`/trades/${item.positionId}`} className="block">
-      <div className="flex items-start gap-3 px-4 py-3 hover:bg-accent/40 transition-colors border-b last:border-0">
-        {/* Logo */}
-        <StockLogo ticker={item.symbol} size="sm" className="shrink-0 mt-0.5" />
-
-        {/* Main content */}
-        <div className="flex-1 min-w-0">
-          {/* Ticker + badge + P&L */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold tabular-nums">{item.symbol}</span>
-            <Badge variant={action.variant} className="text-[10px] h-4 px-1.5 py-0 shrink-0">{action.label}</Badge>
+    <HoverCard>
+      <HoverCardTrigger
+        render={
+          <Link
+            href={`/trades/${item.positionId}`}
+            className="flex items-center gap-1.5 rounded-md p-2 hover:bg-muted/70 transition-colors"
+          />
+        }
+      >
+        <StockLogo ticker={item.symbol} size="sm" />
+        <span className="text-sm font-semibold font-brand shrink-0 mr-1">{item.symbol}</span>
+        <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
+          <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
+          {status.label}
+        </Badge>
+        {/* Right side: P&L for sells, reasoning text for everything else */}
+        <div className="flex-1 min-w-0 flex items-center justify-end gap-2">
+          {hasPnl && (
+            <span className={cn('text-xs tabular-nums font-medium shrink-0', pnlPos ? 'text-positive' : 'text-negative')}>
+              {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
+              {item.pnlPct != null && <span className="opacity-70"> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground truncate hidden sm:block">{sentence}</span>
+        </div>
+      </HoverCardTrigger>
+      <HoverCardContent side="top" align="start" className="w-72">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <StockLogo ticker={item.symbol} size="md" />
+            <span className="text-base font-semibold font-brand">{item.symbol}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="gap-1.5 font-normal">
+              <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
+              {status.label}
+            </Badge>
             {hasPnl && (
-              <span className={cn('text-sm tabular-nums font-medium ml-auto', pnlPos ? 'text-positive' : 'text-negative')}>
+              <span className={cn('text-xs tabular-nums font-medium', pnlPos ? 'text-positive' : 'text-negative')}>
                 {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
-                {item.pnlPct != null && (
-                  <span className="text-xs opacity-70 ml-0.5">({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>
-                )}
+                {item.pnlPct != null && <> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</>}
               </span>
             )}
-            {!hasPnl && (
-              <span className="text-[11px] text-muted-foreground/50 tabular-nums ml-auto">{relTime(item.timestamp)}</span>
-            )}
           </div>
-          {/* Sentence — hidden on mobile */}
-          <p className="hidden sm:block text-xs text-muted-foreground mt-0.5 leading-snug">{sentence}</p>
-          {/* Time (only when P&L shown above, we still need time below) */}
-          {hasPnl && (
-            <p className="text-[11px] text-muted-foreground/50 tabular-nums mt-0.5">{relTime(item.timestamp)}</p>
-          )}
+          <p className="text-sm text-muted-foreground">{sentence}</p>
         </div>
-      </div>
-    </Link>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
@@ -448,10 +476,8 @@ function HomeBottomSection({ picks, activity, loading }: {
             {groupActivityByDay(filteredActivity).map((group) => (
               <div key={group.label}>
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60 px-1 pb-1.5">{group.label}</p>
-                <Card className="shadow-none p-0 overflow-hidden">
-                  <CardContent className="p-0">
-                    {group.items.map((item) => <ActivityRow key={item.id} item={item} />)}
-                  </CardContent>
+                <Card className="p-1 gap-1">
+                  {group.items.map((item) => <ActivityRow key={item.id} item={item} />)}
                 </Card>
               </div>
             ))}
