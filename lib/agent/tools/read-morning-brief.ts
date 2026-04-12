@@ -17,7 +17,7 @@ export const readMorningBrief = defineTool({
   description:
     "Read today's pre-generated intelligence brief. Contains market context, portfolio alerts, watchlist updates, new opportunities, and risk flags — all gathered by background jobs before your session started. Call this in Phase 0 to understand what happened overnight.",
   schema: z.object({}),
-  ui: "morning-brief" as const,
+  ui: "ticker-list" as const,
 
   execute: async (_args, ctx) => {
     if (!ctx.analystId) {

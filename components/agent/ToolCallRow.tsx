@@ -18,7 +18,6 @@ import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
 import { DecisionSummaryRenderer } from "./renderers/DecisionSummaryRenderer";
 import { RunSummaryRenderer } from "./renderers/RunSummaryRenderer";
 import { ConfigPreviewRenderer } from "./renderers/ConfigPreviewRenderer";
-import { MorningBriefRenderer } from "./renderers/MorningBriefRenderer";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface Props {
@@ -54,8 +53,6 @@ export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, in
       return <TickerRenderer toolName={toolName} args={args} result={result} loading={loading} inGroup={inGroup} />;
     case "ticker-list":
       return <TickerListRenderer toolName={toolName} result={result} loading={loading} />;
-    case "morning-brief":
-      return <MorningBriefRenderer toolName={toolName} result={result} loading={loading} />;
     case "source":
       return <SourceRenderer toolName={toolName} result={result} loading={loading} />;
     case "thesis-card":
@@ -78,8 +75,7 @@ function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
   if (toolName === "get_portfolio_context") return "generic";
-  if (toolName === "read_morning_brief") return "morning-brief";
-  if (toolName === "read_signals") return "ticker-list";
+  if (toolName === "read_morning_brief" || toolName === "read_signals") return "ticker-list";
   if (toolName === "read_artifact" || toolName === "web_search") return "source";
   if (
     toolName === "get_stock_data" ||
