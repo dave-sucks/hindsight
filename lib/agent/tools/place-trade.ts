@@ -28,7 +28,7 @@ export const placeTrade = defineTool({
     thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
   }),
   ui: "ticker" as const,
-  groupId: "execution",
+  groupId: "Executing",
 
   execute: async (args, ctx) => {
     try {

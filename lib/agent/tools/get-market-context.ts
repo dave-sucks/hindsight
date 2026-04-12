@@ -41,7 +41,7 @@ export const getMarketContext = defineTool({
     "Get current market conditions: S&P 500, VIX, sector ETF performance, macro events, and regime classification. A quick price snapshot for market orientation.",
   schema: z.object({}),
   ui: "generic" as const,
-  groupId: "research",
+  groupId: "Researching",
 
   execute: async () => {
     const errors: string[] = [];

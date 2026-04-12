@@ -97,13 +97,13 @@ function inferLegacyGroupId(toolName: string): string | undefined {
     toolName === "get_options_flow" ||
     toolName === "get_sec_filings" ||
     toolName === "get_market_context"
-  ) return "research";
+  ) return "Researching";
   if (
     toolName === "place_trade" ||
     toolName === "close_position" ||
     toolName === "manage_position" ||
     toolName === "manage_watchlist"
-  ) return "execution";
+  ) return "Executing";
   return undefined;
 }
 

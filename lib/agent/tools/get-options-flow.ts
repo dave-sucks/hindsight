@@ -33,7 +33,7 @@ export const getOptionsFlow = defineTool({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
   }),
   ui: "ticker" as const,
-  groupId: "research",
+  groupId: "Researching",
 
   execute: async ({ ticker }) => {
     // Primary: FMP options chain

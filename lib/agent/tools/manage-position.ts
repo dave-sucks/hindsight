@@ -120,7 +120,7 @@ export const managePosition = defineTool({
     "Every action is audit-logged with your reason.",
   schema,
   ui: "ticker" as const,
-  groupId: "execution",
+  groupId: "Executing",
 
   execute: async (args: z.infer<typeof schema>, ctx: ToolContext): Promise<ManagePositionReturn> => {
     const ticker = args.symbol.toUpperCase().trim();

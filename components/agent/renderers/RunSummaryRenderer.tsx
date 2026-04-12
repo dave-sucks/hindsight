@@ -49,7 +49,7 @@ export function RunSummaryRenderer({ result, loading }: Props) {
               <TooltipTrigger
                 render={
                   <span className="tabular-nums cursor-default">
-                    ${invested.toLocaleString()} invested
+                    ${invested.toLocaleString()} deployed
                   </span>
                 }
               />

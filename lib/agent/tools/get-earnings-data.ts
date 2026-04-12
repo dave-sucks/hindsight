@@ -17,7 +17,7 @@ export const getEarningsData = defineTool({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
   }),
   ui: "ticker" as const,
-  groupId: "research",
+  groupId: "Researching",
 
   execute: async ({ ticker }) => {
     const [earningsResult, surprisesResult] = await Promise.all([

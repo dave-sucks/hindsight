@@ -32,7 +32,7 @@ export const getSecFilings = defineTool({
     symbol: z.string().describe("Ticker symbol, e.g. AAPL"),
   }),
   ui: "ticker" as const,
-  groupId: "research",
+  groupId: "Researching",
 
   execute: async ({ symbol }) => {
     try {

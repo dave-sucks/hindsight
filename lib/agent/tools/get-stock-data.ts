@@ -47,7 +47,7 @@ export const getStockData = defineTool({
       .describe("Include technical analysis (RSI, SMA, volume). Default true."),
   }),
   ui: "ticker" as const,
-  groupId: "research",
+  groupId: "Researching",
 
   execute: async ({ ticker, include_technicals }, ctx) => {
     const doTechnicals = include_technicals !== false;

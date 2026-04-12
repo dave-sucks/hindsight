@@ -55,6 +55,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
+import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -245,6 +246,10 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   const aui = useAui();
   const isRunning = useAuiState((s) => s.thread.isRunning);
 
+  const [isFocused, setIsFocused] = useState(false);
+  const [hasContent, setHasContent] = useState(false);
+  const isCollapsed = !isFocused && !hasContent && !isRunning;
+
   // ── Suggestion popup ──────────────────────────────────────────────────────
   const [suggestionPopup, setSuggestionPopup] = useState<SuggestionPopupState | null>(null);
   const listRef = useRef<SuggestionListHandle | null>(null);
@@ -425,9 +430,12 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
         ].join(" "),
       },
     },
+    onFocus: () => setIsFocused(true),
+    onBlur: () => setIsFocused(false),
     onUpdate({ editor: e }) {
       // Keep assistant-ui composer in sync so canSend works
       const text = e.getText({ blockSeparator: "\n" }).trim();
+      setHasContent(text.length > 0);
       aui.composer().setText(text);
     },
   });
@@ -509,11 +517,19 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   return (
     <>
       <InputGroup className="w-full bg-background/80 backdrop-blur-sm">
-        {/* TipTap rich-text editor (replaces textarea) */}
-        <EditorContent editor={editor} className="w-full" />
+        {/* TipTap rich-text editor — clipped to single line on mobile when inactive */}
+        <div
+          className={cn(
+            "w-full",
+            isCollapsed && "sm:overflow-visible sm:max-h-none overflow-hidden max-h-10 cursor-text"
+          )}
+          onClick={() => isCollapsed && editor?.commands.focus()}
+        >
+          <EditorContent editor={editor} className="w-full" />
+        </div>
 
-        {/* Bottom toolbar */}
-        <InputGroupAddon align="block-end">
+        {/* Bottom toolbar — hidden on mobile when input is inactive */}
+        <InputGroupAddon align="block-end" className={cn(isCollapsed && "hidden sm:flex")}>
           <div className="flex w-full items-center justify-between">
             <div className="flex items-center gap-1">
 

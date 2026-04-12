@@ -24,7 +24,7 @@ export const closePosition = defineTool({
     notes: z.string().optional().describe("Optional notes explaining the close decision"),
   }),
   ui: "ticker" as const,
-  groupId: "execution",
+  groupId: "Executing",
 
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
