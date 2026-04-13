@@ -67,11 +67,6 @@ const PctArrow = ({ value }: { value: number }) => (
   </span>
 );
 
-function formatTime(iso: string | null | undefined): string {
-  if (!iso) return "";
-  try { return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }); }
-  catch { return ""; }
-}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -147,12 +142,9 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         const ts: TradeStatus = pos.tradeStatus ?? (pos.avgCost === 0 ? "PENDING" : "OPEN");
         const cfg = TRADE_STATUS_DISPLAY[ts];
         const isPending = ts === "PENDING";
-        const timeCtx = { placedAt: pos.placedAt ?? pos.openedAt, filledAt: pos.filledAt };
         return (
           <div className={cn("px-4 py-2.5 border-b", posBg(ts))}>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              {/* Dot + badge — same visual language as TradeRow */}
-              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dotClass)} />
               <Badge variant={posBadgeVariant(ts)}>{cfg.label}</Badge>
               <span className="text-sm">
                 {pos.quantity && <>{pos.quantity} shares{!isPending && <> @ </>}</>}
@@ -171,10 +163,9 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
                 {!isPending && pnlPct != null && <PnlBadge value={pnlPct} />}
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {cfg.timeLabel(timeCtx)}
-              {!isPending && t.stopLoss && t.stopLoss > 0 && <>. Stop at <span className="tabular-nums">{$(t.stopLoss)}</span></>}
-            </p>
+            {!isPending && t.stopLoss && t.stopLoss > 0 && (
+              <p className="text-xs text-muted-foreground mt-0.5">Stop at <span className="tabular-nums">{$(t.stopLoss)}</span></p>
+            )}
           </div>
         );
       })()}
