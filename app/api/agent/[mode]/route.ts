@@ -236,6 +236,14 @@ export async function POST(
 
     // ── Stream ──────────────────────────────────────────────────────────────
 
+    // Explicit promise so waitUntil keeps the function alive until onFinish
+    // completes all its async DB work (status updates + message persistence).
+    // result.response alone may resolve before the async onFinish body finishes.
+    let resolveOnFinish: () => void;
+    const onFinishPromise = new Promise<void>((resolve) => {
+      resolveOnFinish = resolve;
+    });
+
     // Strip tool results down to summary-only before sending to the model.
     // Full data stays on the client for UI rendering — the model only needs
     // the one-line summary to continue reasoning. This prevents accumulated
@@ -291,6 +299,7 @@ export async function POST(
         if (agentMode === "research-run") {
           waitUntil(markRunFailed(runId, `Stream error after ${(elapsed / 1000).toFixed(0)}s: ${msg}`));
         }
+        resolveOnFinish!();
       },
 
       async onFinish({ response, finishReason, usage }) {
@@ -300,70 +309,90 @@ export async function POST(
         );
 
         // Only persist messages and handle run lifecycle for research-run
-        if (agentMode !== "research-run" || !runId) return;
-
-        // Ensure stuck RUNNING runs get a terminal status
-        const [thesisCount, tradeCount] = await Promise.all([
-          prisma.thesis.count({ where: { researchRunId: runId } }),
-          prisma.tradeDecision.count({ where: { runId } }),
-        ]);
-        const hasWork = thesisCount > 0 || tradeCount > 0;
-        const finalStatus = hasWork ? "COMPLETE" : "FAILED";
-        const stuckResult = await prisma.researchRun.updateMany({
-          where: { id: runId, status: "RUNNING" },
-          data: { status: finalStatus, completedAt: new Date() },
-        });
-        if (stuckResult.count > 0) {
-          console.warn(
-            `[agent/${agentMode}] ⚠️ Run ${runId} was RUNNING after finish. Marked ${finalStatus}.`,
-          );
+        if (agentMode !== "research-run" || !runId) {
+          resolveOnFinish!();
+          return;
         }
 
-        // Persist messages
         try {
-          const allMessages = [...messages, ...response.messages];
-          await prisma.$transaction(async (tx) => {
-            await tx.runMessage.deleteMany({ where: { runId: runId! } });
-            await tx.runMessage.create({
-              data: {
-                runId: runId!,
-                role: "thread",
-                content: JSON.stringify(allMessages),
-              },
-            });
+          // Ensure stuck RUNNING runs get a terminal status
+          const [thesisCount, tradeCount] = await Promise.all([
+            prisma.thesis.count({ where: { researchRunId: runId } }),
+            prisma.tradeDecision.count({ where: { runId } }),
+          ]);
+          const hasWork = thesisCount > 0 || tradeCount > 0;
+          const finalStatus = hasWork ? "COMPLETE" : "FAILED";
+          const stuckResult = await prisma.researchRun.updateMany({
+            where: { id: runId, status: "RUNNING" },
+            data: { status: finalStatus, completedAt: new Date() },
           });
-          console.log(`[agent/${agentMode}] Persisted ${allMessages.length} messages`);
-        } catch (err) {
-          console.error(`[agent/${agentMode}] Failed to persist messages:`, err);
-        }
-
-        // Generate briefing if complete_run didn't
-        const updatedRun = await prisma.researchRun.findFirst({
-          where: { id: runId },
-          select: { status: true },
-        });
-        if (updatedRun?.status !== "COMPLETE") return;
-
-        const existingBriefing = await prisma.analystBriefing.findFirst({
-          where: { runId },
-          select: { id: true },
-        });
-        if (existingBriefing) return;
-
-        const briefingAnalystId = resolvedAnalystId;
-        if (briefingAnalystId) {
-          try {
-            await updateAnalystBriefing({ analystId: briefingAnalystId, runId, userId: user.id });
-            console.log(`[agent/${agentMode}] ✅ Briefing written for run ${runId}`);
-          } catch (err) {
-            console.error(`[agent/${agentMode}] Briefing failed:`, err);
+          if (stuckResult.count > 0) {
+            console.warn(
+              `[agent/${agentMode}] ⚠️ Run ${runId} was RUNNING after finish. Marked ${finalStatus}.`,
+            );
           }
+
+          // Persist messages — defensive: response.messages may be undefined
+          // if the stream ended abnormally or the SDK version changed.
+          const responseMessages = response?.messages ?? [];
+          const inputMessages = messages ?? [];
+          const allMessages = [...inputMessages, ...responseMessages];
+          if (allMessages.length > 0) {
+            try {
+              await prisma.$transaction(async (tx) => {
+                await tx.runMessage.deleteMany({ where: { runId: runId! } });
+                await tx.runMessage.create({
+                  data: {
+                    runId: runId!,
+                    role: "thread",
+                    content: JSON.stringify(allMessages),
+                  },
+                });
+              });
+              console.log(`[agent/${agentMode}] Persisted ${allMessages.length} messages (input=${inputMessages.length}, response=${responseMessages.length})`);
+            } catch (err) {
+              console.error(`[agent/${agentMode}] Failed to persist messages:`, err);
+            }
+          } else {
+            console.warn(`[agent/${agentMode}] ⚠️ No messages to persist for run ${runId} (input=${inputMessages.length}, response=${responseMessages.length})`);
+          }
+
+          // Generate briefing if complete_run didn't
+          const updatedRun = await prisma.researchRun.findFirst({
+            where: { id: runId },
+            select: { status: true },
+          });
+          if (updatedRun?.status === "COMPLETE") {
+            const existingBriefing = await prisma.analystBriefing.findFirst({
+              where: { runId },
+              select: { id: true },
+            });
+            if (!existingBriefing && resolvedAnalystId) {
+              try {
+                await updateAnalystBriefing({ analystId: resolvedAnalystId, runId, userId: user.id });
+                console.log(`[agent/${agentMode}] ✅ Briefing written for run ${runId}`);
+              } catch (err) {
+                console.error(`[agent/${agentMode}] Briefing failed:`, err);
+              }
+            }
+          }
+        } finally {
+          resolveOnFinish!();
         }
       },
     });
 
     if (agentMode === "research-run") {
-      waitUntil(Promise.resolve(result.response));
+      // Wait for BOTH the response stream AND the onFinish async work (message
+      // persistence, briefing generation). result.response alone may resolve
+      // before onFinish completes its DB writes, causing Vercel to kill the
+      // function and lose the persisted messages.
+      waitUntil(
+        Promise.all([
+          Promise.resolve(result.response),
+          onFinishPromise,
+        ]).then(() => undefined),
+      );
     }
 
     return result.toUIMessageStreamResponse();

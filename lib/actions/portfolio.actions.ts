@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getAccount, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
+import { getAccount, getOrder, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type AlpacaCredentials, type PriceLookup } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
@@ -187,6 +187,116 @@ function buildEquityCurve(
   return points;
 }
 
+// ─── Inline order reconciliation ─────────────────────────────────────────────
+// Belt-and-suspenders: if the Inngest cron hasn't reconciled pending orders
+// (e.g. sync issue, deployment gap), reconcile them inline when the page loads.
+// Only checks orders that have an alpacaOrderId and are still PENDING.
+
+async function reconcilePendingOrdersInline(
+  pendingOrders: Array<{
+    id: string;
+    positionId: string;
+    side: string;
+    quantity: number;
+    alpacaOrderId: string | null;
+    position: { id: string; direction: string; avgCost: number; quantity: number; status: string };
+  }>,
+  creds: AlpacaCredentials | undefined,
+): Promise<number> {
+  if (pendingOrders.length === 0 || !creds) return 0;
+
+  let reconciled = 0;
+  await Promise.allSettled(
+    pendingOrders.map(async (order) => {
+      if (!order.alpacaOrderId) return;
+      try {
+        const alpacaOrder = await getOrder(order.alpacaOrderId, creds);
+        const status = alpacaOrder.status;
+
+        if (status === "filled" && alpacaOrder.filled_avg_price) {
+          const fillPrice = parseFloat(alpacaOrder.filled_avg_price);
+          const filledAt = alpacaOrder.filled_at
+            ? new Date(alpacaOrder.filled_at)
+            : new Date();
+
+          await prisma.$transaction(async (tx) => {
+            const updated = await tx.order.updateMany({
+              where: { id: order.id, status: "PENDING" },
+              data: {
+                status: "FILLED",
+                filledPrice: fillPrice,
+                filledQty: order.quantity,
+                filledAt,
+              },
+            });
+            if (updated.count === 0) return;
+
+            if (order.side === "SELL") {
+              const pos = order.position;
+              if (pos.status === "OPEN") {
+                const realizedPnl =
+                  pos.direction === "LONG"
+                    ? (fillPrice - pos.avgCost) * pos.quantity
+                    : (pos.avgCost - fillPrice) * pos.quantity;
+                const positionCost = pos.avgCost * pos.quantity;
+                const outcome: "WIN" | "LOSS" | "BREAKEVEN" =
+                  realizedPnl > 0.01 * positionCost
+                    ? "WIN"
+                    : realizedPnl < -0.01 * positionCost
+                      ? "LOSS"
+                      : "BREAKEVEN";
+                await tx.position.update({
+                  where: { id: pos.id },
+                  data: { status: "CLOSED", closePrice: fillPrice, realizedPnl, outcome, closedAt: filledAt },
+                });
+              }
+            } else {
+              // BUY filled — update avgCost to real fill price
+              if (Math.abs(order.position.avgCost - fillPrice) > 0.01) {
+                await tx.position.update({
+                  where: { id: order.position.id },
+                  data: { avgCost: fillPrice },
+                });
+              }
+            }
+          });
+
+          reconciled++;
+          console.log(`[portfolio] Inline reconciled order ${order.id}: FILLED at $${fillPrice.toFixed(2)}`);
+        } else if (["canceled", "cancelled", "expired", "rejected"].includes(status)) {
+          await prisma.$transaction(async (tx) => {
+            const updated = await tx.order.updateMany({
+              where: { id: order.id, status: "PENDING" },
+              data: { status: status === "rejected" ? "REJECTED" : "CANCELLED" },
+            });
+            if (updated.count === 0) return;
+
+            if (order.side === "BUY") {
+              const filledBuy = await tx.order.findFirst({
+                where: { positionId: order.positionId, side: "BUY", status: "FILLED" },
+                select: { id: true },
+              });
+              if (!filledBuy) {
+                await tx.position.update({
+                  where: { id: order.positionId },
+                  data: { status: "CANCELLED", closedAt: new Date(), closeReason: "MANUAL", realizedPnl: 0 },
+                });
+              }
+            }
+          });
+
+          reconciled++;
+          console.log(`[portfolio] Inline reconciled order ${order.id}: ${status.toUpperCase()}`);
+        }
+      } catch (err) {
+        console.warn(`[portfolio] Inline reconcile failed for order ${order.id}:`, err instanceof Error ? err.message : err);
+      }
+    }),
+  );
+
+  return reconciled;
+}
+
 // ─── Main data loader ─────────────────────────────────────────────────────────
 
 export async function getDashboardData(): Promise<DashboardData> {
@@ -256,11 +366,13 @@ export async function getDashboardData(): Promise<DashboardData> {
           take: 1,
           select: {
             id: true,
+            side: true,
             status: true,
             filledAt: true,
             filledPrice: true,
             createdAt: true,
             alpacaOrderId: true,
+            quantity: true,
           },
         },
       },
@@ -411,6 +523,23 @@ export async function getDashboardData(): Promise<DashboardData> {
     }).catch(() => [] as never[]),
   ]);
 
+  // ── Phase A½: inline reconcile pending orders ──────────────────────────
+  // If any open position has a PENDING order, check Alpaca directly.
+  // This is a belt-and-suspenders fallback in case the Inngest cron hasn't
+  // run (deployment gap, sync issue, etc.). Runs concurrently with Phase B.
+  const pendingOrders = dbOpenPositions.flatMap((p) => {
+    const order = p.orders?.[0];
+    if (!order || order.status !== "PENDING" || !order.alpacaOrderId) return [];
+    return [{
+      id: order.id,
+      positionId: p.id,
+      side: order.side ?? (p.direction === "LONG" ? "BUY" : "SELL"),
+      quantity: order.quantity ?? p.quantity,
+      alpacaOrderId: order.alpacaOrderId,
+      position: { id: p.id, direction: p.direction, avgCost: p.avgCost, quantity: p.quantity, status: p.status },
+    }];
+  });
+
   // ── Phase B: price + name lookups + SPY benchmark, parallel ────────────
   // These depend on tickers from phase A but are independent of each other,
   // so run them in parallel instead of sequentially.
@@ -434,7 +563,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     return ((end - start) / start) * 100;
   }
 
-  const [priceLookup, nameMap, spyCandles, portfolioHistory, alpacaAccount] = await Promise.all([
+  const [priceLookup, nameMap, spyCandles, portfolioHistory, alpacaAccount, reconciledCount] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -486,8 +615,30 @@ export async function getDashboardData(): Promise<DashboardData> {
           return null;
         })
       : Promise.resolve(null),
+    // Inline reconcile pending orders — runs concurrently with price lookups
+    reconcilePendingOrdersInline(pendingOrders, alpacaCreds),
   ]);
   const priceMap = priceLookup.prices;
+
+  // If we reconciled any orders, re-read positions so the page reflects
+  // the updated status (FILLED instead of PENDING, or CLOSED/CANCELLED).
+  let effectiveOpenPositions = dbOpenPositions;
+  if (reconciledCount > 0) {
+    console.log(`[portfolio] Re-reading positions after reconciling ${reconciledCount} order(s)`);
+    effectiveOpenPositions = await prisma.position.findMany({
+      where: { userId, status: "OPEN" },
+      include: {
+        analyst: { select: { name: true } },
+        orders: {
+          where: { side: { in: ["BUY", "SELL"] } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { id: true, side: true, status: true, filledAt: true, filledPrice: true, createdAt: true, alpacaOrderId: true, quantity: true },
+        },
+      },
+      orderBy: { openedAt: "desc" },
+    }).catch(() => dbOpenPositions);
+  }
 
   const spyBenchmark: SpyBenchmark = {
     '1W': computeSpyReturn(spyCandles, 7),
@@ -496,7 +647,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   };
 
   // ── 4. Map open positions → MockTrade shape ────────────────────────────────
-  const openTrades: MockTrade[] = dbOpenPositions.map((p) => {
+  const openTrades: MockTrade[] = effectiveOpenPositions.map((p) => {
     const livePrice = priceMap[p.symbol];
     const priceSource = priceLookup.sources[p.symbol] ?? "missing";
     const currentPrice = livePrice ?? p.avgCost;
