@@ -279,7 +279,16 @@ function pickToThesisRow(pick: RecentPick): ThesisRowData {
     sourcesUsed: pick.sourcesUsed,
     decision: pick.decision,
     position: pick.position
-      ? { id: pick.position.id, status: pick.position.status, avgCost: pick.position.avgCost, quantity: pick.position.quantity }
+      ? {
+          id: pick.position.id,
+          status: pick.position.status,
+          tradeStatus: pick.position.tradeStatus,
+          avgCost: pick.position.avgCost,
+          quantity: pick.position.quantity,
+          openedAt: pick.position.openedAt,
+          filledAt: pick.position.filledAt,
+          placedAt: pick.position.placedAt,
+        }
       : null,
   };
 }
