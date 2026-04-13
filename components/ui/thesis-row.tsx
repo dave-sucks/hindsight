@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { StockLogo } from "@/components/StockLogo";
-import { Badge } from "@/components/ui/badge";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -91,13 +90,6 @@ function consensus(dir: string, conf: number): { label: string; isStrong: boolea
   return { label: isBuy ? "Lean Buy" : "Lean Sell", isStrong: false };
 }
 
-// Map TradeStatus → badge variant for the thesis position bar
-function posBadgeVariant(ts: TradeStatus): "positive" | "negative" | "secondary" | "outline" {
-  if (ts === "OPEN" || ts === "CLOSED_WIN") return "positive";
-  if (ts === "CLOSED_LOSS" || ts === "REJECTED") return "negative";
-  if (ts === "PENDING") return "outline";
-  return "secondary";
-}
 
 function posBg(ts: TradeStatus): string {
   if (ts === "OPEN" || ts === "CLOSED_WIN") return "bg-positive/10";
@@ -145,12 +137,10 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         return (
           <div className={cn("px-4 py-2.5 border-b", posBg(ts))}>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Badge variant={posBadgeVariant(ts)}>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className={cn("h-1.5 w-1.5 rounded-full", cfg.dotClass)} />
-                  {cfg.label}
-                </span>
-              </Badge>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default shrink-0">
+                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dotClass)} />
+                {cfg.label}
+              </span>
               <span className="text-sm">
                 {pos.quantity && <>{pos.quantity} shares{!isPending && <> @ </>}</>}
                 {!isPending && pos.avgCost > 0 && (
