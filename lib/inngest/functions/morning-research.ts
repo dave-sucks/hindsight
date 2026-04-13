@@ -1,7 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
@@ -122,7 +122,7 @@ export const morningResearch = inngest.createFunction(
         console.log(`[morning-research] Starting generateText for ${config.name} run=${run.id} systemPrompt=${systemPrompt.length}chars`);
         try {
           const { text, steps, response } = await generateText({
-            model: anthropic("claude-sonnet-4-6"),
+            model: openai("gpt-4.1"),
             system: systemPrompt,
             prompt: "Begin your research session. Follow all phases in order.",
             tools,
@@ -214,19 +214,42 @@ export const morningResearch = inngest.createFunction(
               role: "user",
               content: [{ type: "text", text: "Begin your research session. Follow all phases in order." }],
             };
-            const allMessages = [userMessage, ...response.messages];
+            // Defensive: response.messages may be undefined depending on the
+            // AI SDK provider (observed after switching from OpenAI to Anthropic).
+            // Fall back to reconstructing from steps if the top-level is missing.
+            let responseMessages = response?.messages;
+            if (!responseMessages || !Array.isArray(responseMessages) || responseMessages.length === 0) {
+              console.warn(
+                `[morning-research] response.messages is ${responseMessages === undefined ? "undefined" : "empty"} for run ${run.id}. ` +
+                `Reconstructing from ${steps.length} steps.`
+              );
+              // Each step has its own response.messages — flatten them
+              responseMessages = steps.flatMap((s) => {
+                const stepMsgs = (s as unknown as { response?: { messages?: unknown[] } }).response?.messages;
+                return Array.isArray(stepMsgs) ? stepMsgs : [];
+              });
+            }
+            const allMessages = [userMessage, ...responseMessages];
+            const json = JSON.stringify(allMessages);
+            console.log(
+              `[morning-research] Persisting ${allMessages.length} messages (${(json.length / 1024).toFixed(0)}KB) for run ${run.id}`
+            );
             await prisma.$transaction(async (tx) => {
               await tx.runMessage.deleteMany({ where: { runId: run.id } });
               await tx.runMessage.create({
                 data: {
                   runId: run.id,
                   role: "thread",
-                  content: JSON.stringify(allMessages),
+                  content: json,
                 },
               });
             });
+            console.log(`[morning-research] ✅ Messages persisted for run ${run.id}`);
           } catch (msgErr) {
-            console.warn("[morning-research] Failed to persist messages:", msgErr);
+            console.error(
+              `[morning-research] ❌ Failed to persist messages for run ${run.id}:`,
+              msgErr instanceof Error ? msgErr.message : msgErr,
+            );
           }
 
           // Generate briefing directly (runs inside this Inngest step, guaranteed execution)
