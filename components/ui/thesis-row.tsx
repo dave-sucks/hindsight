@@ -145,7 +145,12 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         return (
           <div className={cn("px-4 py-2.5 border-b", posBg(ts))}>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Badge variant={posBadgeVariant(ts)}>{cfg.label}</Badge>
+              <Badge variant={posBadgeVariant(ts)}>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className={cn("h-1.5 w-1.5 rounded-full", cfg.dotClass)} />
+                  {cfg.label}
+                </span>
+              </Badge>
               <span className="text-sm">
                 {pos.quantity && <>{pos.quantity} shares{!isPending && <> @ </>}</>}
                 {!isPending && pos.avgCost > 0 && (
