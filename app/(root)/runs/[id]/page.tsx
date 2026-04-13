@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { ScanSearch } from "lucide-react";
 import { AgentChat } from "@/components/agent/AgentChat";
-import { RunFallback } from "@/components/research/RunFallback";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 import { getRunSourcesData } from "@/lib/actions/run-sources.actions";
@@ -91,17 +90,6 @@ export default async function RunPage({
     startedAt: run.startedAt,
   }).catch(() => ({ brief: null, sources: [], theses: [] }));
 
-  // Load run events as fallback timeline when chat replay is missing.
-  // Events are written by each tool during the run, so they exist even
-  // when onFinish failed to persist messages.
-  const runEvents = !hasReplay && !isLive
-    ? await prisma.runEvent.findMany({
-        where: { runId: run.id },
-        orderBy: { createdAt: "asc" },
-        select: { id: true, type: true, title: true, message: true, payload: true, createdAt: true },
-      }).catch(() => [])
-    : [];
-
   return (
     <div className="flex flex-col h-[calc(100dvh-3rem)] overflow-hidden">
       <div className="flex-1 min-h-0">
@@ -123,15 +111,22 @@ export default async function RunPage({
             }
           />
         ) : (
-          <RunFallback
-            status={run.status}
-            analystName={analystName}
-            error={typeof config.error === "string" ? config.error : undefined}
-            brief={brief}
-            sources={sources}
-            theses={theses}
-            runEvents={runEvents}
-          />
+          <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2 px-6">
+            <div className="h-2.5 w-2.5 rounded-full bg-negative" />
+            <p className="text-sm font-medium text-foreground">
+              {run.status === "FAILED" ? "Run failed" : "No replay data available"}
+            </p>
+            <p className="text-xs max-w-xs">
+              {run.status === "FAILED"
+                ? "This run stopped before completing. It may have timed out or encountered an error."
+                : "This run completed before message persistence was enabled."}
+            </p>
+            {run.status === "FAILED" && typeof config.error === "string" && (
+              <p className="text-xs max-w-md font-mono text-negative mt-2 bg-negative/5 rounded-md px-3 py-2 border border-negative/10">
+                {config.error}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>
