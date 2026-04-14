@@ -44,6 +44,28 @@ export const recordRunSummary = defineTool({
         return a === "INITIATE" || a === "ADD";
       }).length;
 
+      // Compute actual deployed amount from DB — only INITIATE decisions for this run.
+      // The model-provided exposure_breakdown reflects total portfolio exposure (including
+      // pre-existing positions), not what was deployed this session, so we ignore it.
+      let actualDeployedLong = 0;
+      let actualDeployedShort = 0;
+      if (ctx.runId) {
+        try {
+          const initiateDecisions = await prisma.tradeDecision.findMany({
+            where: { runId: ctx.runId, decision: "INITIATE" },
+            include: { position: { select: { quantity: true, avgCost: true, direction: true } } },
+          });
+          for (const d of initiateDecisions) {
+            if (!d.position) continue;
+            const notional = d.position.avgCost * d.position.quantity;
+            if (d.position.direction === "LONG") actualDeployedLong += notional;
+            else actualDeployedShort += notional;
+          }
+        } catch (dbErr) {
+          console.warn("[tool] record_run_summary: deployed capital DB lookup failed:", dbErr instanceof Error ? dbErr.message : dbErr);
+        }
+      }
+
       // Write run_summary RunEvent (shape the briefing agent reads)
       if (ctx.runId) {
         try {
@@ -89,14 +111,16 @@ export const recordRunSummary = defineTool({
         }
       }
 
-      const eb = args.exposure_breakdown;
+      const deployedThisRun = actualDeployedLong + actualDeployedShort;
       return {
-        summary: `Run summary recorded: ${args.ranked_picks.length} picks, ${traded} traded.`,
+        summary: deployedThisRun > 0
+          ? `Run summary recorded: ${args.ranked_picks.length} picks, ${traded} traded — $${deployedThisRun.toFixed(0)} deployed.`
+          : `Run summary recorded: ${args.ranked_picks.length} picks, ${traded} traded — no new capital deployed.`,
         data: {
           success: true,
           rankedPicks: args.ranked_picks,
-          exposureBreakdown: eb
-            ? { longExposure: eb.long_exposure, shortExposure: eb.short_exposure, netExposure: eb.net_exposure }
+          exposureBreakdown: deployedThisRun > 0
+            ? { longExposure: actualDeployedLong, shortExposure: actualDeployedShort, netExposure: actualDeployedLong - actualDeployedShort }
             : undefined,
           traded,
           analyzed: args.ranked_picks.length,

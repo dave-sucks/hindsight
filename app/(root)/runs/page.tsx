@@ -44,6 +44,7 @@ export default async function RunsPage() {
           reasoningSummary: true,
           decisions: {
             take: 1,
+            where: { decision: "INITIATE" },
             select: {
               position: {
                 select: { id: true, quantity: true, avgCost: true },
