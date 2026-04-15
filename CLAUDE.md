@@ -25,11 +25,13 @@ Built for one user now, marketed later.
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
 - Redirects to /runs/[id] → renders AgentThread component
 - AgentThread uses AI SDK v6 useChat → POST /api/agent/research-run
-- Claude Sonnet 4.6 with extended thinking + 16 tools autonomously
+- GPT-4o (maxSteps 50, temperature 0.2) + 17 tools autonomously
   researches, generates theses, places trades via Alpaca
 - Tools render via ToolCallGroup → ToolCallRow dispatching on result.ui
 - All research persisted to DB via tool execute functions
 - Morning cron (8 AM ET) runs same agent via generateText
+
+Note: Universe config on AgentConfig is currently a stub — only `tickerUniverse` (string[]) exists for DIRECTED mode. Session 3 of the Agent Overhaul Plan expands this into a real model (sectors/industries/themes/caps). See `docs/AGENT_OVERHAUL_PLAN.md`.
 
 ### V3 Intelligence Pipeline (background, pre-run)
 - 5 Inngest jobs run 6:30–7:45 AM ET before analysts wake up
@@ -103,7 +105,7 @@ Built for one user now, marketed later.
 
 ## API Routes
 - /api/agent/[mode] — unified agent route (research-run, builder, editor)
-  - research-run: Claude Sonnet 4.6 + extended thinking, all 16 tools
+  - research-run: GPT-4o, temperature 0.2, maxSteps 50, all 17 tools
   - builder: GPT-4o, research tools only + suggest_config
   - editor: GPT-4o, research tools only + suggest_config
 - /api/research/agent-run — creates ResearchRun row, returns runId
@@ -115,7 +117,7 @@ Built for one user now, marketed later.
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools — 16 tools (lib/agent/tools/)
+## Agent Tools — 17 tools (lib/agent/tools/)
 Each tool is defined in its own file using `defineTool()` from
 `lib/agent/define-tool.ts`. The factory wraps execute() in timing/
 logging/try-catch and returns a `ToolResult<T>` envelope with a `ui`
@@ -138,6 +140,7 @@ discriminator that drives rendering in ToolCallRow.
 10. record_thesis — persist thesis to DB (LONG/SHORT/PASS)
 11. place_trade — Alpaca market order, create Position
 12. close_position — close an existing open position
+    12b. manage_position — scale in/out, move stop, trail stop, adjust target (tool #17)
 13. record_decision_plan — persist synthesis + planned actions
 14. record_run_summary — persist HOLD decisions + run summary event
 15. manage_watchlist — add/remove/update watchlist items
@@ -175,7 +178,7 @@ discriminator that drives rendering in ToolCallRow.
    export { myTool } from "./my-tool";
    ```
 
-3. **Register in `lib/agent/tools.ts`** (the `createResearchTools()` wrapper)
+3. **Register in `lib/agent/tools/index.ts`** (the `createResearchTools()` wrapper)
    ```ts
    import { myTool } from "@/lib/agent/tools/my-tool";
    // inside createResearchTools():
@@ -296,9 +299,10 @@ The agent run page (`/runs/[id]`) renders via:
   always cast with type guard
 - async params in Next.js App Router: params: Promise<{ id: string }>
 - FMP /quote/ endpoint DEPRECATED — use Finnhub for all quotes
-- Model strategy: Claude Sonnet 4.6 with extended thinking for research-run.
-  GPT-4o for builder/editor chats. GPT-4o-mini for lightweight summaries.
-  DO NOT change research-run to GPT-4o.
+- Model strategy: GPT-4o EVERYWHERE (research-run, builder, editor).
+  research-run uses temperature 0.2 and maxSteps 50 for stage contract adherence.
+  GPT-4o-mini for lightweight summaries. Do NOT swap to Claude —
+  the 30k context limit crashes the run.
 - Agent thinking config lives in lib/agent/modes.ts (thinkingBudget field)
 - gh auth switch --user dave-sucks before pushing
 
@@ -308,7 +312,7 @@ The agent run page (`/runs/[id]`) renders via:
 3. AgentThread → ChatRuntime → POST /api/agent/research-run
 4. Route loads config + historical context (portfolio, watchlist,
    briefs, trades, accuracy, intelligence policy)
-5. Claude Sonnet 4.6 with extended thinking follows 8-phase workflow:
+5. GPT-4o (temperature 0.2) follows 8-phase workflow:
    Phase 0: Portfolio check-in (injected context, no tools)
    Phase 1: Read intelligence (morning brief + signals + web_search)
    Phase 2: Review holdings (get_stock_data per ticker)
@@ -335,9 +339,8 @@ The agent run page (`/runs/[id]`) renders via:
 
 ## Key Files
 ### Agent System
-- lib/agent/tools/ — 16 individual tool files, each using defineTool()
-- lib/agent/tools.ts — thin delegation wrapper (createResearchTools)
-- lib/agent/tools/index.ts — single export point for all tools
+- lib/agent/tools/ — 17 individual tool files, each using defineTool()
+- lib/agent/tools/index.ts — single export + createResearchTools() wrapper
 - lib/agent/define-tool.ts — defineTool() factory with timing/logging
 - lib/agent/tool-result.ts — ToolResult<T> discriminated union + normalizer
 - lib/agent/tool-context.ts — ToolContext interface + createToolContext()

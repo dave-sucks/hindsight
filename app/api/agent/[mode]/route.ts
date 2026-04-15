@@ -274,6 +274,9 @@ export async function POST(
             },
           },
         }),
+      // Low temperature for research-run consistency — the agent should follow
+      // the stage contract deterministically, not riff on it.
+      ...(agentMode === "research-run" && { temperature: 0.2 }),
       system: systemPrompt,
       messages: modelMessages,
       tools,

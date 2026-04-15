@@ -52,7 +52,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   "research-run": {
     model: "gpt-4o",
     provider: "openai",
-    maxSteps: 30,
+    maxSteps: 50,
     toolAllowlist: undefined,
     hasSuggestConfig: false,
     maxDuration: 300,
