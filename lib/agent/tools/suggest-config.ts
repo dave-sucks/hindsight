@@ -110,6 +110,52 @@ export const configSchema = z.object({
     })
     .optional()
     .describe("Intelligence policy — attention weights should sum to ~1.0."),
+  // Session 3: Universe — the fence for discovery routing. Tickers/signals
+  // matching this Universe surface as new-ticker candidates in the morning
+  // brief even when they're not in watchlist/positions. Distinct from the
+  // DIRECTED-mode tickerUniverse allowlist.
+  universe: z
+    .object({
+      sectors: z
+        .array(z.string())
+        .describe("High-level sector labels, e.g. TECHNOLOGY, HEALTHCARE."),
+      industries: z
+        .array(z.string())
+        .describe("Narrower industry labels, e.g. Semiconductors, Biotech."),
+      themes: z
+        .array(z.string())
+        .describe("Thematic tags, e.g. AI_INFRASTRUCTURE, EV_ADOPTION."),
+      exchanges: z
+        .array(z.string())
+        .optional()
+        .describe("Exchange filter, e.g. NASDAQ, NYSE. Empty = all."),
+      marketCapMin: z
+        .number()
+        .optional()
+        .describe("Minimum market cap in USD. Omit for no floor."),
+      marketCapMax: z
+        .number()
+        .optional()
+        .describe("Maximum market cap in USD. Omit for no ceiling."),
+      priceMin: z
+        .number()
+        .optional()
+        .describe("Minimum share price. Omit for no floor."),
+      priceMax: z
+        .number()
+        .optional()
+        .describe("Maximum share price. Omit for no ceiling."),
+      exclusions: z
+        .array(z.string())
+        .optional()
+        .describe("Tickers explicitly off-limits for discovery."),
+    })
+    .optional()
+    .describe(
+      "The analyst's discovery universe. Populate with sectors/industries/themes " +
+      "relevant to the strategy — this is the fence for new-ticker discovery. " +
+      "Keep it focused (5-10 items total); too broad makes discovery noise."
+    ),
 });
 
 export type ConfigSchema = z.infer<typeof configSchema>;

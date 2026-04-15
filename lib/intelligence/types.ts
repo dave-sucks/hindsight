@@ -76,6 +76,10 @@ export interface SonarSignalOutput {
   tickers: string[];
   themes: string[];
   sectors: string[];
+  // Session 3 / Workstream B — narrower industry tags so Signal.industries gets
+  // populated for the router's INDUSTRY_MATCH code. Optional in responses for
+  // robustness against older prompts that don't request it.
+  industries?: string[];
   sentiment: SignalSentiment;
   urgency: SignalUrgency;
   sourceUrls: string[];
@@ -122,6 +126,12 @@ export const SONAR_SIGNAL_SCHEMA = {
             type: "array" as const,
             items: { type: "string" as const },
             description: "Sectors involved (e.g. Technology, Healthcare)",
+          },
+          industries: {
+            type: "array" as const,
+            items: { type: "string" as const },
+            description:
+              "Narrower industry classifications (e.g. Semiconductors, Biotech, EV_OEM, Cloud_Software). Optional.",
           },
           sentiment: {
             type: "string" as const,
@@ -282,6 +292,10 @@ export interface CreateSignalInput {
   tickers: string[];
   themes: string[];
   sectors: string[];
+  // Session 3 / Workstream B — narrower industry classification so the router's
+  // INDUSTRY_MATCH code can fire. Producers tag at signal creation (omit when
+  // unknown — empty = no filter, not a hard reject).
+  industries?: string[];
   sentiment: SignalSentiment;
   noveltyScore?: number;
   urgency: SignalUrgency;

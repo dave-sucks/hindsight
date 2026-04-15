@@ -63,7 +63,8 @@ For each distinct piece of news/information found, create a signal with:
 - A 2-3 sentence summary with specific facts, numbers, and dates
 - All mentioned stock tickers in $TICKER format (without the $)
 - Thematic tags (e.g. AI_CAPEX, FED_RATE_CUT, EARNINGS_BEAT, SECTOR_ROTATION)
-- Relevant sectors
+- Relevant sectors (broad GICS: Technology, Healthcare, Financials, Energy, …)
+- Narrower industries when identifiable (e.g. Semiconductors, Biotech, EV_OEM, Cloud_Software) — optional; omit if you cannot tell
 - Sentiment assessment based on market impact
 - Urgency based on time-sensitivity and magnitude
 
@@ -201,6 +202,7 @@ function cleanSonarSignal(
       .filter(Boolean),
     themes: (signal.themes ?? []).map((t) => t.toUpperCase().replace(/\s+/g, "_").trim()),
     sectors: (signal.sectors ?? []).map((s) => s.trim()).filter(Boolean),
+    industries: (signal.industries ?? []).map((s) => s.trim()).filter(Boolean),
     sentiment: VALID_SENTIMENTS.has(signal.sentiment) ? signal.sentiment : "NEUTRAL",
     urgency: VALID_URGENCIES.has(signal.urgency) ? signal.urgency : "MEDIUM",
     sourceUrls: (signal.sourceUrls ?? []).filter(Boolean),

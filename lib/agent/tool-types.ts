@@ -50,6 +50,42 @@ export interface SourceRef {
   url: string;
 }
 
+/**
+ * routeReasonCode — canonical routing enum set by signal-router.ts.
+ * Shared contract with the B workstream (UNIVERSE_HANDOFF.md):
+ *   POSITION        — ticker is in the analyst's open positions
+ *   WATCHLIST       — ticker is on the analyst's watchlist
+ *   DIRECT_TICKER   — explicit ticker allowlist hit (DIRECTED mode)
+ *   DISCOVERY       — matched multiple universe dimensions (sector + industry/theme)
+ *   INDUSTRY_MATCH  — matched universe.industries only
+ *   SECTOR_MATCH    — matched universe.sectors only
+ *   THEME_MATCH     — matched universe.themes only
+ *   CROSS_ANALYST   — routed from a peer analyst (penalty applied)
+ */
+export type RouteReasonCode =
+  | "POSITION"
+  | "WATCHLIST"
+  | "DIRECT_TICKER"
+  | "DISCOVERY"
+  | "INDUSTRY_MATCH"
+  | "SECTOR_MATCH"
+  | "THEME_MATCH"
+  | "CROSS_ANALYST";
+
+/**
+ * matchedUniverse — JSON payload persisted on AnalystSignalRoute explaining
+ * which universe dimensions matched. Populated by signal-router.ts.
+ */
+export interface MatchedUniverse {
+  sectors?: string[];
+  industries?: string[];
+  themes?: string[];
+  inWatchlist?: boolean;
+  inPositions?: boolean;
+  fromAnalystId?: string;
+  marketCap?: number | null;
+}
+
 /** Signal item — shared shape for read_signals and web_search results */
 export interface SignalItem {
   headline: string;
@@ -66,6 +102,11 @@ export interface SignalItem {
   relevanceScore?: number;
   routeReason?: string;
   artifactId?: string | null;
+  // Session 3: canonical routing code + universe-match payload (read_signals only).
+  routeReasonCode?: RouteReasonCode;
+  matchedUniverse?: MatchedUniverse | null;
+  // Cross-analyst provenance — populated when routeReasonCode === "CROSS_ANALYST".
+  crossAnalystSource?: string | null;
 }
 
 // ─── Per-Tool Data Types ────────────────────────────────────────────────────
@@ -225,7 +266,19 @@ export interface SignalsToolData {
     minSourceQuality: number;
     excludedCategories: string[];
   };
+  // Flat list — kept for legacy renderers and sorting by urgency.
   signals: SignalItem[];
+  // Session 3: segmented view. Same signals, split by routeReasonCode.
+  //   portfolioSignals  — routeReasonCode === "POSITION"
+  //   watchlistSignals  — routeReasonCode === "WATCHLIST"
+  //   discoverySignals  — DISCOVERY | SECTOR_MATCH | INDUSTRY_MATCH | THEME_MATCH
+  //                       | DIRECT_TICKER | CROSS_ANALYST (anything that is not
+  //                       already in the analyst's book or watchlist)
+  portfolioSignals: SignalItem[];
+  watchlistSignals: SignalItem[];
+  discoverySignals: SignalItem[];
+  // Guidance text to surface directly to the agent when discovery is empty.
+  discoveryNote?: string;
 }
 
 /** read_artifact → data */

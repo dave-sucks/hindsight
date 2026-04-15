@@ -73,6 +73,7 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
       tickers: input.tickers,
       themes: input.themes,
       sectors: input.sectors,
+      industries: input.industries ?? [],
       sentiment: input.sentiment,
       // noveltyScore at creation is a placeholder. The real value is computed
       // per-(analyst, signal) at routing time and stored on AnalystSignalRoute.
@@ -127,6 +128,7 @@ export async function createSignalsFromSonar(
         tickers: item.tickers,
         themes: item.themes,
         sectors: item.sectors,
+        industries: item.industries ?? [],
         sentiment: item.sentiment,
         urgency: item.urgency,
         sourceQuality,

@@ -1,17 +1,34 @@
 // ── Signal Router ────────────────────────────────────────────────────────────
 // Runs at 7:30 AM ET after all intelligence jobs, or triggered after any batch.
-// Takes unrouted signals and matches them to analysts based on:
-//   1. Ticker match (position, watchlist, universe)
-//   2. Sector match
-//   3. Theme match (from analyst strategy keywords)
 //
-// Session 2 update — novelty is computed PER (analyst, signal) at routing time
-// against the analyst's last-7-days route history, then applied as a MULTIPLIER
-// on the raw relevance score. Stale signals drop below threshold instead of
-// crowding the brief at the same score as fresh ones.
+// Session 3 / Workstream B contract — see docs/UNIVERSE_HANDOFF.md on the B
+// branch. The router now does three things the old one didn't:
 //
-// Creates AnalystSignalRoute rows with relevance scores (final novelty-adjusted
-// score, plus rawRelevanceScore + noveltyScore for debugging).
+//   1. Universe fence. Each AgentConfig has industries/themes/marketCapMin/Max
+//      plus the existing sectors/exchanges/watchlist/exclusionList. A signal
+//      is "in-universe" when every NON-EMPTY dimension is matched (AND across
+//      dimensions, OR within a dimension). Empty array / null numeric = no
+//      filter on that dimension. Watchlist + open positions bypass the fence.
+//
+//   2. Tier-aware routing. An analyst-scoped Monitor (T2/T3/T5) fast-paths to
+//      its owning analyst and cross-posts to OTHER analysts whose
+//      position/watchlist overlaps the ticker (as CROSS_ANALYST, with a
+//      relevance penalty). Firm-scoped monitors (T1/T4) score against every
+//      enabled analyst using the fence above.
+//
+//   3. Canonical routeReasonCode + matchedUniverse tagging on every route.
+//      Enum (string, not Postgres enum — easier to evolve):
+//        DISCOVERY | WATCHLIST | POSITION | DIRECT_TICKER |
+//        SECTOR_MATCH | INDUSTRY_MATCH | THEME_MATCH | CROSS_ANALYST
+//      Decision order: exclusion → POSITION → WATCHLIST → DIRECT_TICKER
+//      (owned monitor explicitly named the ticker) → DISCOVERY (fence match) →
+//      {SECTOR,INDUSTRY,THEME}_MATCH (only the named dimension matched) →
+//      CROSS_ANALYST (cross-posted from another analyst's owned signal) →
+//      drop.
+//
+// Novelty (Session 2) stays: per-(analyst,signal) novelty 80/50/20/5 applied
+// as a multiplier on the raw relevance score. Stale non-BREAKING signals
+// drop; owner routes are exempt.
 //
 // NOTE: Inngest step.run() serializes return values to JSON, so we use plain
 // arrays instead of Sets. The profiles get JSON-roundtripped between steps.
@@ -20,14 +37,46 @@ import { inngest } from "@/lib/inngest/client"
 import { prisma } from "@/lib/prisma"
 import { etTradingDayDate } from "@/lib/market-hours"
 
-// ── Routing helpers ─────────────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────────
+
+type RouteReasonCode =
+  | "DISCOVERY"
+  | "WATCHLIST"
+  | "POSITION"
+  | "DIRECT_TICKER"
+  | "SECTOR_MATCH"
+  | "INDUSTRY_MATCH"
+  | "THEME_MATCH"
+  | "CROSS_ANALYST"
+
+interface MatchedUniverse {
+  sectors?: string[]
+  industries?: string[]
+  themes?: string[]
+  inWatchlist?: boolean
+  inPositions?: boolean
+  fromAnalystId?: string
+  marketCap?: string
+}
 
 interface AnalystProfile {
   id: string
-  tickers: string[]    // watchlist + open positions + tickerUniverse (uppercased)
-  sectors: string[]    // uppercased
-  keywords: string[]   // extracted from analystPrompt / strategyInstructions
-  exclusions: string[] // uppercased
+  positionTickers: string[]   // OPEN positions
+  watchlistTickers: string[]  // watchlist + watchlistItems + tickerUniverse (directed)
+  // Universe dimensions (all uppercased for case-insensitive comparison).
+  sectors: string[]
+  industries: string[]
+  themes: string[]
+  exchanges: string[]
+  exclusions: string[]
+  // Keywords extracted from prompt/strategy — used for soft THEME_MATCH.
+  keywords: string[]
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function upper(xs: string[]): string[] {
+  return xs.map((x) => x.toUpperCase())
 }
 
 function extractKeywords(text: string | null): string[] {
@@ -40,7 +89,6 @@ function extractKeywords(text: string | null): string[] {
     "stock", "stocks", "trade", "trades", "trading", "market", "markets",
     "position", "positions", "analyst", "research", "look", "find",
   ])
-
   return text
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
@@ -48,61 +96,140 @@ function extractKeywords(text: string | null): string[] {
     .filter((w) => w.length > 3 && !stopWords.has(w))
 }
 
-function computeRelevance(
-  signal: { tickers: string[]; sectors: string[]; themes: string[]; urgency: string },
+/**
+ * Per-dimension overlap. Returns the intersecting values (uppercased on BOTH
+ * sides before compare). Empty analyst dimension = "no filter" → return null
+ * to signal the dimension is vacuously satisfied.
+ */
+function overlap(
+  analystDim: string[],
+  signalDim: string[]
+): string[] | null {
+  if (analystDim.length === 0) return null
+  const sig = upper(signalDim)
+  return analystDim.filter((a) => sig.includes(a))
+}
+
+/**
+ * Is the signal in-universe for this analyst?
+ * AND across dimensions, OR within a dimension. Empty dims are satisfied.
+ * Returns null if the signal is NOT in-universe, otherwise the matched
+ * dimensions payload (for tagging).
+ */
+function matchUniverse(
+  signal: { sectors: string[]; industries: string[]; themes: string[] },
   profile: AnalystProfile
-): { score: number; reasons: string[] } {
+): MatchedUniverse | null {
+  const matched: MatchedUniverse = {}
+  const sectorHit = overlap(profile.sectors, signal.sectors)
+  const industryHit = overlap(profile.industries, signal.industries)
+  const themeHit = overlap(profile.themes, signal.themes)
+
+  // If ANY configured dimension has NO overlap, the signal is not in-universe.
+  // `null` from overlap() means "dimension empty / no filter" — that's a pass.
+  if (sectorHit !== null) {
+    if (sectorHit.length === 0) return null
+    matched.sectors = sectorHit
+  }
+  if (industryHit !== null) {
+    if (industryHit.length === 0) return null
+    matched.industries = industryHit
+  }
+  if (themeHit !== null) {
+    if (themeHit.length === 0) return null
+    matched.themes = themeHit
+  }
+  return matched
+}
+
+// ── Relevance scoring ───────────────────────────────────────────────────────
+
+function computeRelevance(args: {
+  signal: { tickers: string[]; sectors: string[]; industries: string[]; themes: string[]; urgency: string }
+  profile: AnalystProfile
+  matched: MatchedUniverse | null
+  tickerHit: "POSITION" | "WATCHLIST" | null
+}): { score: number; reasons: string[] } {
+  const { signal, profile, matched, tickerHit } = args
   let score = 0
   const reasons: string[] = []
 
-  // Ticker match (highest signal)
-  for (const ticker of signal.tickers) {
-    if (profile.tickers.includes(ticker.toUpperCase())) {
-      score += 40
-      reasons.push(`ticker_match:${ticker}`)
-    }
+  if (tickerHit === "POSITION") {
+    score += 50
+    reasons.push("position_match")
+  } else if (tickerHit === "WATCHLIST") {
+    score += 45
+    reasons.push("watchlist_match")
   }
 
-  // Sector match
-  for (const sector of signal.sectors) {
-    if (profile.sectors.includes(sector.toUpperCase())) {
-      score += 20
-      reasons.push(`sector_match:${sector}`)
-    }
+  if (matched?.sectors && matched.sectors.length > 0) {
+    score += 20
+    reasons.push(`sector_match:${matched.sectors.join("/")}`)
+  }
+  if (matched?.industries && matched.industries.length > 0) {
+    score += 22
+    reasons.push(`industry_match:${matched.industries.join("/")}`)
+  }
+  if (matched?.themes && matched.themes.length > 0) {
+    score += 18
+    reasons.push(`theme_match:${matched.themes.join("/")}`)
   }
 
-  // Theme/keyword match
+  // Soft keyword match — only useful when producers haven't tagged signals
+  // with clean sectors/industries/themes yet.
   const signalText = [...signal.themes, ...signal.tickers].join(" ").toLowerCase()
   for (const kw of profile.keywords) {
     if (signalText.includes(kw)) {
-      score += 15
-      reasons.push(`theme_match:${kw}`)
+      score += 8
+      reasons.push(`keyword:${kw}`)
     }
   }
 
-  // Urgency bonus
   if (signal.urgency === "BREAKING") score += 15
   else if (signal.urgency === "HIGH") score += 10
 
   return { score: Math.min(100, score), reasons }
 }
 
-// ── Novelty (computed per-(analyst, signal) at routing time) ────────────────
+/**
+ * Decide routeReasonCode for a (signal, analyst) pair.
+ * Decision order matches the B contract:
+ *   POSITION > WATCHLIST > DIRECT_TICKER > DISCOVERY (multi-dim universe) >
+ *   {INDUSTRY,SECTOR,THEME}_MATCH (single dimension) > CROSS_ANALYST.
+ */
+function decideRouteCode(args: {
+  tickerHit: "POSITION" | "WATCHLIST" | null
+  isOwnedMonitorTicker: boolean  // DIRECT_TICKER: owned monitor named this ticker
+  matched: MatchedUniverse | null
+  isCrossAnalyst: boolean
+}): RouteReasonCode | null {
+  const { tickerHit, isOwnedMonitorTicker, matched, isCrossAnalyst } = args
+
+  if (tickerHit === "POSITION") return "POSITION"
+  if (tickerHit === "WATCHLIST") return "WATCHLIST"
+  if (isOwnedMonitorTicker) return "DIRECT_TICKER"
+
+  if (matched) {
+    const dims = [
+      matched.sectors?.length ?? 0,
+      matched.industries?.length ?? 0,
+      matched.themes?.length ?? 0,
+    ].filter((n) => n > 0)
+
+    if (dims.length >= 2) return "DISCOVERY"
+    if ((matched.industries?.length ?? 0) > 0) return "INDUSTRY_MATCH"
+    if ((matched.sectors?.length ?? 0) > 0) return "SECTOR_MATCH"
+    if ((matched.themes?.length ?? 0) > 0) return "THEME_MATCH"
+  }
+
+  if (isCrossAnalyst) return "CROSS_ANALYST"
+  return null
+}
+
+// ── Novelty (per-(analyst, signal)) ─────────────────────────────────────────
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
-/**
- * Score how "fresh" a signal is FOR A GIVEN ANALYST, based on how often the
- * same tickers/themes have already shown up in this analyst's route history
- * over the last 7 days.
- *
- *   never seen → 80   (genuinely new for this analyst)
- *   1-2 hits   → 50   (some repetition, still worth surfacing)
- *   3-5 hits   → 20   (getting stale)
- *   6+ hits    →  5   (this analyst has seen this story all week — drop it)
- *
- * Applied as a MULTIPLIER on raw relevance — see route-signals step.
- */
 function computeNoveltyScore(args: {
   signalTickers: string[]
   signalThemes: string[]
@@ -110,11 +237,7 @@ function computeNoveltyScore(args: {
 }): number {
   const tickers = new Set(args.signalTickers.map((t) => t.toUpperCase()))
   const themes = new Set(args.signalThemes.map((t) => t.toUpperCase()))
-
-  if (tickers.size === 0 && themes.size === 0) {
-    // No identifying tags — treat as moderately novel (no history to compare).
-    return 50
-  }
+  if (tickers.size === 0 && themes.size === 0) return 50
 
   let hits = 0
   for (const r of args.recentRoutes) {
@@ -126,11 +249,50 @@ function computeNoveltyScore(args: {
     const themeOverlap = r.themes.some((t) => themes.has(t.toUpperCase()))
     if (themeOverlap) hits++
   }
-
   if (hits === 0) return 80
   if (hits <= 2) return 50
   if (hits <= 5) return 20
   return 5
+}
+
+// ── Discovery reservation ───────────────────────────────────────────────────
+//
+// Per-analyst cap + reserve ≥20% of slots for DISCOVERY-coded routes so
+// discovery representation survives top-N truncation.
+
+interface RouteCandidate {
+  analystId: string
+  signalId: string
+  relevanceScore: number
+  rawRelevanceScore: number
+  noveltyScore: number
+  routeReason: string
+  routeReasonCode: RouteReasonCode
+  matchedUniverse: MatchedUniverse
+}
+
+const DISCOVERY_RESERVATION = 0.2
+const MAX_ROUTES_PER_ANALYST = 40
+
+function applyDiscoveryReservation(routes: RouteCandidate[]): RouteCandidate[] {
+  if (routes.length === 0) return []
+  const sorted = [...routes].sort((a, b) => b.relevanceScore - a.relevanceScore)
+  const cap = Math.min(MAX_ROUTES_PER_ANALYST, sorted.length)
+  const reserveSlots = Math.ceil(cap * DISCOVERY_RESERVATION)
+
+  const discovery: RouteCandidate[] = []
+  const rest: RouteCandidate[] = []
+  for (const c of sorted) {
+    if (c.routeReasonCode === "DISCOVERY" && discovery.length < reserveSlots) {
+      discovery.push(c)
+    } else {
+      rest.push(c)
+    }
+  }
+  const remaining = cap - discovery.length
+  const kept = [...discovery, ...rest.slice(0, remaining)]
+  kept.sort((a, b) => b.relevanceScore - a.relevanceScore)
+  return kept
 }
 
 // ── Inngest function ────────────────────────────────────────────────────────
@@ -165,14 +327,15 @@ export const signalRouter = inngest.createFunction(
       })
 
       return analysts.map((a): AnalystProfile => {
-        const tickerSet = new Set<string>([
+        const positionSet = new Set<string>(
+          a.positions.map((p) => p.symbol.toUpperCase())
+        )
+        const watchlistSet = new Set<string>([
           ...a.watchlist.map((t) => t.toUpperCase()),
           ...a.tickerUniverse.map((t) => t.toUpperCase()),
-          ...a.positions.map((p) => p.symbol.toUpperCase()),
           ...a.watchlistItems.map((w) => w.symbol.toUpperCase()),
         ])
-
-        const sectorSet = new Set(a.sectors.map((s) => s.toUpperCase()))
+        for (const p of positionSet) watchlistSet.delete(p)
 
         const keywordSet = new Set([
           ...extractKeywords(a.analystPrompt),
@@ -181,10 +344,14 @@ export const signalRouter = inngest.createFunction(
 
         return {
           id: a.id,
-          tickers: [...tickerSet],
-          sectors: [...sectorSet],
+          positionTickers: [...positionSet],
+          watchlistTickers: [...watchlistSet],
+          sectors: upper(a.sectors),
+          industries: upper(a.industries),
+          themes: upper(a.themes),
+          exchanges: upper(a.exchanges),
+          exclusions: upper(a.exclusionList),
           keywords: [...keywordSet],
-          exclusions: a.exclusionList.map((e) => e.toUpperCase()),
         }
       })
     })
@@ -193,11 +360,10 @@ export const signalRouter = inngest.createFunction(
       return { routed: 0, reason: "no-enabled-analysts" }
     }
 
-    // ── Step 2: Get today's unrouted signals ────────────────────────────────
+    // ── Step 2: Get today's unrouted signals (with monitor scope) ───────────
 
     const signals = await step.run("load-unrouted-signals", async () => {
       const todayStart = etTradingDayDate()
-
       return prisma.signal.findMany({
         where: {
           createdAt: { gte: todayStart },
@@ -207,8 +373,13 @@ export const signalRouter = inngest.createFunction(
           id: true,
           tickers: true,
           sectors: true,
+          industries: true,
           themes: true,
           urgency: true,
+          monitorId: true,
+          monitor: {
+            select: { scope: true, analystId: true },
+          },
         },
       })
     })
@@ -217,24 +388,16 @@ export const signalRouter = inngest.createFunction(
       return { routed: 0, reason: "no-unrouted-signals" }
     }
 
-    // ── Step 2.5: Load recent route history per analyst (7d) ────────────────
-    //
-    // Used by computeNoveltyScore to decide how often each analyst has already
-    // seen tickers/themes in the past week. One round-trip per analyst keeps
-    // this O(analysts) instead of O(analysts × signals).
+    // ── Step 2.5: Load recent route history per analyst (7d, for novelty) ───
 
     const recentRoutesByAnalyst = await step.run(
       "load-recent-routes",
       async () => {
         const since = new Date(Date.now() - SEVEN_DAYS_MS)
-        const result: Record<string, { tickers: string[]; themes: string[] }[]> =
-          {}
+        const result: Record<string, { tickers: string[]; themes: string[] }[]> = {}
         for (const profile of profiles) {
           const rows = await prisma.analystSignalRoute.findMany({
-            where: {
-              analystId: profile.id,
-              routedAt: { gte: since },
-            },
+            where: { analystId: profile.id, routedAt: { gte: since } },
             select: { signal: { select: { tickers: true, themes: true } } },
           })
           result[profile.id] = rows.map((r) => ({
@@ -246,31 +409,85 @@ export const signalRouter = inngest.createFunction(
       }
     )
 
-    // ── Step 3: Route signals to analysts (novelty-adjusted) ────────────────
+    // ── Step 3: Build candidates per analyst ────────────────────────────────
 
     const routeResult = await step.run("route-signals", async () => {
-      const routes: {
-        analystId: string
-        signalId: string
-        relevanceScore: number
-        rawRelevanceScore: number
-        noveltyScore: number
-        routeReason: string
-      }[] = []
+      const candidatesByAnalyst: Record<string, RouteCandidate[]> = {}
+      for (const p of profiles) candidatesByAnalyst[p.id] = []
 
       let droppedByNovelty = 0
       let droppedByThreshold = 0
+      let droppedOutOfUniverse = 0
+      let fastPathed = 0
+      let crossPosted = 0
 
       for (const signal of signals) {
-        for (const profile of profiles) {
-          // Skip if any ticker is on exclusion list
-          const excluded = signal.tickers.some((t) =>
-            profile.exclusions.includes(t.toUpperCase())
-          )
-          if (excluded) continue
+        const ownerId =
+          signal.monitor?.scope === "ANALYST"
+            ? signal.monitor.analystId ?? null
+            : null
 
-          const { score: rawScore, reasons } = computeRelevance(signal, profile)
-          if (rawScore < 15) continue
+        for (const profile of profiles) {
+          // Hard exclusion wins.
+          if (
+            signal.tickers.some((t) =>
+              profile.exclusions.includes(t.toUpperCase())
+            )
+          ) {
+            continue
+          }
+
+          // Ticker membership check (bypasses universe fence).
+          const positionSet = new Set(profile.positionTickers)
+          const watchlistSet = new Set(profile.watchlistTickers)
+          let tickerHit: "POSITION" | "WATCHLIST" | null = null
+          for (const t of signal.tickers) {
+            const up = t.toUpperCase()
+            if (positionSet.has(up)) {
+              tickerHit = "POSITION"
+              break
+            }
+            if (watchlistSet.has(up)) {
+              tickerHit = "WATCHLIST"
+              // Don't break — a position hit on another ticker should still win.
+            }
+          }
+
+          const isOwner = ownerId !== null && profile.id === ownerId
+          const isCrossAnalyst = ownerId !== null && profile.id !== ownerId
+
+          // For cross-analyst routes, require a ticker overlap (the cross-post
+          // gate). Otherwise one analyst's owned feed would flood every other
+          // analyst.
+          if (isCrossAnalyst && tickerHit === null) continue
+
+          // Universe match (skipped when ticker is owned — bypass).
+          const matched =
+            tickerHit !== null
+              ? ({} as MatchedUniverse) // ticker bypass; no dim info
+              : matchUniverse(
+                  {
+                    sectors: signal.sectors,
+                    industries: signal.industries,
+                    themes: signal.themes,
+                  },
+                  profile
+                )
+
+          if (matched === null && !isOwner) {
+            droppedOutOfUniverse++
+            continue
+          }
+
+          const { score: rawScore, reasons } = computeRelevance({
+            signal,
+            profile,
+            matched: tickerHit !== null ? null : matched,
+            tickerHit,
+          })
+
+          // Owner fast-path: no floor. Others: 15-point floor.
+          if (!isOwner && rawScore < 15) continue
 
           const novelty = computeNoveltyScore({
             signalTickers: signal.tickers,
@@ -278,24 +495,55 @@ export const signalRouter = inngest.createFunction(
             recentRoutes: recentRoutesByAnalyst[profile.id] ?? [],
           })
 
-          // Stale signals (novelty < 20) drop entirely UNLESS the urgency is
-          // BREAKING — breaking news always gets through even on a story the
-          // analyst has been reading all week.
-          if (novelty < 20 && signal.urgency !== "BREAKING") {
+          if (novelty < 20 && signal.urgency !== "BREAKING" && !isOwner) {
             droppedByNovelty++
             continue
           }
 
-          // MULTIPLIER (not additive) — stale signals collapse to ~5% of raw,
-          // fresh signals retain ~80% of raw.
-          const adjusted = Math.max(0, Math.min(100, Math.round((rawScore * novelty) / 100)))
+          const crossPenalty = isCrossAnalyst ? 0.6 : 1.0
+          const adjusted = Math.max(
+            0,
+            Math.min(
+              100,
+              Math.round((rawScore * novelty * crossPenalty) / 100)
+            )
+          )
 
-          if (adjusted < 15) {
+          if (adjusted < 15 && !isOwner) {
             droppedByThreshold++
             continue
           }
 
-          routes.push({
+          // Decide routeReasonCode.
+          const isOwnedMonitorTicker =
+            isOwner && signal.tickers.length > 0 && tickerHit === null
+          let code = decideRouteCode({
+            tickerHit,
+            isOwnedMonitorTicker,
+            matched: tickerHit !== null ? null : matched,
+            isCrossAnalyst,
+          })
+
+          // Cross-analyst hits override to CROSS_ANALYST when the originating
+          // analyst is NOT this one — so the UI can show provenance even if
+          // the ticker happens to be in watchlist.
+          if (isCrossAnalyst) code = "CROSS_ANALYST"
+
+          if (code === null) continue
+
+          // Build matchedUniverse JSON (only populate contributing keys).
+          const mu: MatchedUniverse = {}
+          if (tickerHit === "POSITION") mu.inPositions = true
+          if (tickerHit === "WATCHLIST") mu.inWatchlist = true
+          if (matched?.sectors?.length) mu.sectors = matched.sectors
+          if (matched?.industries?.length) mu.industries = matched.industries
+          if (matched?.themes?.length) mu.themes = matched.themes
+          if (isCrossAnalyst && ownerId) mu.fromAnalystId = ownerId
+
+          if (isOwner && code === "DIRECT_TICKER") fastPathed++
+          if (isCrossAnalyst) crossPosted++
+
+          candidatesByAnalyst[profile.id].push({
             analystId: profile.id,
             signalId: signal.id,
             relevanceScore: adjusted,
@@ -303,33 +551,69 @@ export const signalRouter = inngest.createFunction(
             noveltyScore: novelty,
             routeReason: [
               ...reasons,
+              `code:${code}`,
+              ...(isOwner ? ["owned_monitor"] : []),
+              ...(isCrossAnalyst ? [`cross_analyst:${ownerId}`] : []),
               `novelty:${novelty}`,
               `raw:${rawScore}`,
             ].join(", "),
+            routeReasonCode: code,
+            matchedUniverse: mu,
           })
         }
       }
 
-      if (routes.length > 0) {
+      const finalRoutes: RouteCandidate[] = []
+      const codeCounts: Record<RouteReasonCode, number> = {
+        DISCOVERY: 0,
+        WATCHLIST: 0,
+        POSITION: 0,
+        DIRECT_TICKER: 0,
+        SECTOR_MATCH: 0,
+        INDUSTRY_MATCH: 0,
+        THEME_MATCH: 0,
+        CROSS_ANALYST: 0,
+      }
+      for (const profileId of Object.keys(candidatesByAnalyst)) {
+        const kept = applyDiscoveryReservation(candidatesByAnalyst[profileId])
+        for (const r of kept) {
+          finalRoutes.push(r)
+          codeCounts[r.routeReasonCode]++
+        }
+      }
+
+      if (finalRoutes.length > 0) {
         await prisma.analystSignalRoute.createMany({
-          data: routes,
+          data: finalRoutes.map((r) => ({
+            analystId: r.analystId,
+            signalId: r.signalId,
+            relevanceScore: r.relevanceScore,
+            rawRelevanceScore: r.rawRelevanceScore,
+            noveltyScore: r.noveltyScore,
+            routeReason: r.routeReason,
+            routeReasonCode: r.routeReasonCode,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            matchedUniverse: r.matchedUniverse as any,
+          })),
           skipDuplicates: true,
         })
       }
 
       return {
-        routesCreated: routes.length,
+        routesCreated: finalRoutes.length,
         droppedByNovelty,
         droppedByThreshold,
+        droppedOutOfUniverse,
+        fastPathed,
+        crossPosted,
+        codeCounts,
       }
     })
 
     return {
       signalsProcessed: signals.length,
       analystsActive: profiles.length,
-      routesCreated: routeResult.routesCreated,
-      droppedByNovelty: routeResult.droppedByNovelty,
-      droppedByThreshold: routeResult.droppedByThreshold,
+      ...routeResult,
     }
   }
 )
