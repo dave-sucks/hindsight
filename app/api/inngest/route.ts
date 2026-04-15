@@ -13,6 +13,7 @@ import { portfolioWatchlistMonitor } from "@/lib/inngest/functions/portfolio-wat
 import { domainMonitor } from "@/lib/inngest/functions/domain-monitor";
 import { signalRouter } from "@/lib/inngest/functions/signal-router";
 import { morningBriefGenerator } from "@/lib/inngest/functions/morning-brief-generator";
+import { backfillSignalFingerprint } from "@/lib/inngest/functions/backfill-signal-fingerprint";
 
 // morning-research runs a full agent (generateText with 30 tool steps)
 // inside a single step.run — needs extended timeout to avoid Vercel killing it
@@ -35,5 +36,7 @@ export const { GET, POST, PUT } = serve({
     domainMonitor,
     signalRouter,
     morningBriefGenerator,
+    // One-shot Session 2 backfill (event-triggered, idempotent)
+    backfillSignalFingerprint,
   ],
 });

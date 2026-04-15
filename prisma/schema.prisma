@@ -283,6 +283,11 @@ model Signal {
   expiresAt      DateTime?
   routes         AnalystSignalRoute[]
 
+  // Stable fingerprint for tiered/cross-batch dedup.
+  // Hash of normalized headline + primary ticker + ISO-week bucket.
+  // See lib/intelligence/signals.ts:computeSignalFingerprint.
+  signalFingerprint String?
+
   createdAt      DateTime @default(now())
 
   @@index([tickers])
@@ -290,6 +295,7 @@ model Signal {
   @@index([createdAt])
   @@index([batchId])
   @@index([monitorId])
+  @@index([signalFingerprint, createdAt])
 }
 
 /// A group of signals from one intelligence job run.
@@ -313,7 +319,9 @@ model AnalystSignalRoute {
   analyst        AgentConfig @relation(fields: [analystId], references: [id], onDelete: Cascade)
   signalId       String
   signal         Signal      @relation(fields: [signalId], references: [id], onDelete: Cascade)
-  relevanceScore Int         // 0-100
+  relevanceScore Int         // 0-100, novelty-adjusted final score (used for ordering / brief inclusion)
+  rawRelevanceScore Int?     // 0-100, pre-novelty raw score (debugging — see signal-router.ts)
+  noveltyScore   Int?        // 0-100, per-(analyst,signal) novelty value applied as multiplier
   routeReason    String      // "ticker_match:AMD", "sector_match:TECH", "theme_match:AI_CAPEX"
   status         String      @default("PENDING") // "PENDING" | "READ" | "ACTED_ON" | "DISMISSED"
 

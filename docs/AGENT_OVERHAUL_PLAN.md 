@@ -913,7 +913,55 @@ Append entries as sessions complete. Format:
 - **Completed:** _(pending)_
 
 ### Session 2 — Signal Pipeline Foundation
-- **Completed:** _(pending)_
+- **Completed:** 2026-04-15
+- **Branch:** `claude/session-2-signal-pipeline-IZu6s`
+- **Scope delivered:**
+  - `domain-monitor.ts` rewritten to run **one Sonar search per monitor** using
+    `config.searchQuery`. Removed the hardcoded generic query at line 95.
+  - Added `defaultQueryFor(monitor)` fallback that pulls analyst sectors +
+    top strategy keywords; logs a warning when used so we can find monitors to
+    populate.
+  - `searchContext` now records whether the configured or fallback query was
+    used (`:configured_query` vs `:fallback_query`).
+  - New `Signal.signalFingerprint` column + `(signalFingerprint, createdAt)`
+    index. Migration `20260415000000_add_signal_fingerprint`.
+  - `computeSignalFingerprint(headline, primary ticker, ISO week bucket)` helper
+    in `lib/intelligence/signals.ts`. Populated on every new signal in
+    `createSignal()`.
+  - One-shot `backfillSignalFingerprint` Inngest function, event
+    `intelligence/backfill-signal-fingerprint`. Idempotent — only touches
+    rows where `signalFingerprint IS NULL`. Registered in `app/api/inngest/route.ts`.
+  - `deduplicateSignals()` rewritten with **tiered windows**:
+    BREAKING urgency → 1 day; NEWS / EARNINGS → 3 days; everything else →
+    7 days. Comparison key is `signalFingerprint`, with on-the-fly recompute
+    for pre-backfill rows that still have `null`.
+  - `signal-router.ts` now computes `noveltyScore` **per (analyst, signal) at
+    routing time** against the analyst's last 7 days of routes.
+    Tiered: never seen → 80, 1–2× → 50, 3–5× → 20, 6+× → 5.
+  - Novelty applied as a **multiplier** on raw relevance, not additive. Stale
+    signals collapse below threshold instead of crowding the top-N.
+  - Signals with `noveltyScore < 20` drop entirely **unless urgency is
+    BREAKING**.
+  - `AnalystSignalRoute` schema gained `rawRelevanceScore` and `noveltyScore`
+    columns so the routing decision is debuggable; `relevanceScore` now stores
+    the novelty-adjusted final value.
+- **Scope deferred:** none — full Session 2 checklist complete.
+- **Notes:**
+  - Migration also adds the two new `AnalystSignalRoute` columns (raw + per-route
+    novelty). Bundled into the same `add_signal_fingerprint` migration to keep
+    the schema/route changes atomic on deploy.
+  - Existing routes have `rawRelevanceScore = NULL` and `noveltyScore = NULL` —
+    historical, can't reconstruct. New routes populate both.
+  - The grouped `analystId+scope` Sonar fan-out in `domain-monitor.ts` is gone:
+    each monitor now does its own search. This costs more API calls but each
+    one is targeted; the per-monitor `lastRunAt` is now accurate too.
+  - `searchDomain` is still called with a single-domain array per monitor, so
+    domain-filtered search semantics are preserved.
+  - Recent route history for novelty math is loaded once per routing run (one
+    query per analyst, not per signal).
+  - To run the backfill in production: trigger event
+    `intelligence/backfill-signal-fingerprint` from the Inngest dashboard. Safe
+    to re-run; it stops when no `null` rows remain.
 
 ### Session 3 — Discovery & Universe Model
 - **Completed:** _(pending)_
