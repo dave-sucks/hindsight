@@ -53,15 +53,46 @@ export async function completeSignalBatch(
   });
 }
 
+// ── Novelty Scoring ──────────────────────────────────────────────────────────
+
+/**
+ * Compute a novelty score (0-100) for a signal based on how saturated its
+ * tickers are in the last 7 days. High coverage = low novelty.
+ *
+ * Score ranges:
+ *   80 — brand new topic (0 prior signals this week)
+ *   65 — light coverage (1-4 prior signals)
+ *   45 — moderate coverage (5-14 prior signals)
+ *   30 — heavy coverage (15-29 prior signals)
+ *   20 — noise / overplayed story (30+ prior signals)
+ */
+export async function computeNoveltyScore(tickers: string[]): Promise<number> {
+  if (tickers.length === 0) return 75;
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentCount = await prisma.signal.count({
+    where: {
+      tickers: { hasSome: tickers },
+      createdAt: { gte: sevenDaysAgo },
+    },
+  });
+  if (recentCount === 0) return 80;
+  if (recentCount < 5) return 65;
+  if (recentCount < 15) return 45;
+  if (recentCount < 30) return 30;
+  return 20;
+}
+
 // ── Signal Creation ──────────────────────────────────────────────────────────
 
 /**
  * Create a single Signal row from structured input.
  * Computes contentHash from headline + summary for dedup.
+ * Auto-computes noveltyScore from recent coverage if not provided.
  * Returns the signal ID.
  */
 export async function createSignal(input: CreateSignalInput): Promise<string> {
   const contentHash = computeContentHash(input.headline, input.summary);
+  const noveltyScore = input.noveltyScore ?? await computeNoveltyScore(input.tickers ?? []);
 
   const signal = await prisma.signal.create({
     data: {
@@ -76,7 +107,7 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
       themes: input.themes,
       sectors: input.sectors,
       sentiment: input.sentiment,
-      noveltyScore: input.noveltyScore ?? 50,
+      noveltyScore,
       urgency: input.urgency,
       sourceQuality: input.sourceQuality ?? 3,
       freshness: input.freshness,

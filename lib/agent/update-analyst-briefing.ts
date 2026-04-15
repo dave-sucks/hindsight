@@ -297,6 +297,36 @@ export async function updateAnalystBriefing({
     ).length;
     const winRate = wins + losses > 0 ? wins / (wins + losses) : null;
 
+    // Compute concentration risk: are open positions all in the same sector?
+    const openSectors = openTrades.map((t: { decisions: Array<{ thesis: { signalTypes: string[] } | null }> }) =>
+      t.decisions[0]?.thesis?.signalTypes ?? []
+    ).flat();
+    const sectorCounts = openSectors.reduce((acc: Record<string, number>, s: string) => {
+      acc[s] = (acc[s] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const dominantSignal = Object.entries(sectorCounts).sort((a, b) => b[1] - a[1])[0];
+    const concentrationWarning = openTrades.length >= 2 && dominantSignal && dominantSignal[1] >= openTrades.length
+      ? `⚠ ALL ${openTrades.length} open positions share signal type "${dominantSignal[0]}" — highly correlated. A single macro reversal hits all simultaneously.`
+      : null;
+
+    // Compute discovery gap: how many completed runs since a brand-new ticker
+    // (not previously held or watched) was actually traded?
+    type TradeRow = { symbol: string; openedAt: Date };
+    const allClosedSymbols = new Set(
+      (recentClosedTrades as TradeRow[]).map((t) => t.symbol)
+    );
+    const openSymbols = new Set(
+      (openTrades as TradeRow[]).map((t) => t.symbol)
+    );
+    const allKnownSymbols = new Set([...allClosedSymbols, ...openSymbols]);
+    // A "new" ticker in this run is one that appears in runTrades but wasn't
+    // already known from prior trades or currently open.
+    const newTickersThisRun = (runTrades as { symbol: string }[])
+      .map((t) => t.symbol)
+      .filter((s) => !allClosedSymbols.has(s) || openSymbols.has(s));
+    const hasDiscoveryThisRun = newTickersThisRun.length > 0;
+
     // ── Build structured data for the briefing row ───────────────────────────
     const runSummaryPayload = runSummaryEvent?.payload as Record<string, unknown> | null;
     const marketContext = runSummaryPayload
@@ -402,6 +432,14 @@ ${previousBriefing.selfCorrections ? `Self-Corrections: ${JSON.stringify(previou
       timeZone: "America/New_York",
     });
 
+    const concentrationNote = concentrationWarning
+      ? `\n### Concentration Risk\n${concentrationWarning}\n`
+      : "";
+
+    const discoveryNote = hasDiscoveryThisRun
+      ? `New tickers traded this session: ${newTickersThisRun.join(", ")} ✓`
+      : `No new tickers discovered or traded this session. All ${allKnownSymbols.size} known symbol(s) already in prior trade history.`;
+
     const briefingPrompt = `You are a portfolio desk editor reviewing the research session of an AI analyst named "${config.name}". Your job is to write the standup brief that this analyst will see at the START of its next session. This brief is the analyst's memory — it's the most important document for run-to-run continuity.
 
 Today's date is ${today}. All dates in your output must be relative to today.
@@ -419,7 +457,7 @@ ${conversationTranscript}
 ### Open Positions (${openTrades.length} active)
 Total invested: $${totalInvested.toFixed(2)}
 ${openPositionsText}
-
+${concentrationNote}
 ### Recent Trade History (${recentClosedTrades.length} closed trades)
 Win Rate: ${winRateStr} (${wins}W / ${losses}L)
 Total P&L from closed trades: ${closedPnl >= 0 ? "+" : ""}$${closedPnl.toFixed(2)}
@@ -429,6 +467,7 @@ ${recentTradesText}
 Theses generated: ${runTheses.length}
 Trades executed: ${runTrades.length}
 Total completed sessions: ${allRunsCount}
+Discovery: ${discoveryNote}
 
 ### Recent Pass Decisions
 ${passDecisionsText}
@@ -443,9 +482,20 @@ Rules:
 - Be data-driven — cite actual prices, P&L numbers, confidence scores from the conversation
 - Be honest about the analyst's mistakes — you're the editor, not the cheerleader
 - watchTomorrow: derive from positions near targets/stops, catalysts mentioned in conversation, unfinished research
-- selfCorrections: look for REAL patterns — did the analyst over-concentrate? Chase momentum? Ignore risk flags? Skip watchlist items? If the previous briefing had selfCorrections, check if the analyst actually followed through
 - Build on the previous briefing — show progression of thinking, don't repeat the same observations
 - The narrative is the analyst's memory. Be specific enough that it can quote this brief next session.
+
+### selfCorrections — MUST be specific, not generic
+For EACH closed LOSS trade in the trade history above, write one selfCorrection that names the trade explicitly:
+- observation: "We shorted $AKAM on [date] expecting [thesis]. It moved against us [direction] for [P&L]. The signals available at the time included [signal type that contradicted the thesis]."
+- adjustment: "[Concrete rule change] — e.g., 'Do not enter SHORT positions when insider buying signals are present for the same ticker within 7 days.'"
+Do NOT write generic corrections like "review position sizing" or "monitor more carefully." If there were no losses, it's OK to leave selfCorrections empty — but don't invent generic advice.
+
+### Concentration risk — check and flag if present
+If all open positions are long the same sector or share the same macro driver, call it out explicitly in the narrative and in strategyNotes. The analyst must read this and acknowledge it next session.
+
+### Discovery gap — call it out
+If "No new tickers discovered" appears above, include this in strategyNotes: "This is run #${allRunsCount}. The analyst has not traded a new ticker this session. The watchlist needs fresh names — in the next session, explicitly research at least 1 discovery signal."
 
 ## Dynamic Monitors
 After writing the brief, identify specific things to MONITOR that the analyst's existing monitors don't already cover. These become temporary search monitors that run daily via Perplexity Sonar automatically.

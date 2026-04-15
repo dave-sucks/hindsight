@@ -159,14 +159,18 @@ export const readSignals = defineTool({
       relevanceScore: r.relevanceScore,
       routeReason: r.routeReason ?? undefined,
       artifactId: r.signal.artifactId,
+      // Discovery signals: routed via sector/theme only — ticker not in analyst's
+      // known universe. These are explicit new-ticker opportunities.
+      isDiscovery: !r.routeReason?.includes("ticker_match:"),
     }));
 
     const urgent = mappedSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
     const bullish = mappedSignals.filter((s) => s.sentiment === "BULLISH").length;
     const bearish = mappedSignals.filter((s) => s.sentiment === "BEARISH").length;
+    const discovery = mappedSignals.filter((s) => s.isDiscovery).length;
 
     return {
-      summary: `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} (${urgent} urgent, ${bullish} bullish, ${bearish} bearish).`,
+      summary: `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} (${discovery} discovery, ${urgent} urgent, ${bullish} bullish, ${bearish} bearish).`,
       data: {
         count: mappedSignals.length,
         policyApplied: { maxSignals: policyMaxSignals, minUrgency: urgencyOrder[effectiveMinIdx], minSourceQuality, excludedCategories },

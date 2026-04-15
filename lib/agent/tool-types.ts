@@ -66,6 +66,10 @@ export interface SignalItem {
   relevanceScore?: number;
   routeReason?: string;
   artifactId?: string | null;
+  /** True when this signal was routed via sector/theme match only — ticker is
+   * NOT in the analyst's current watchlist or open positions. These are new
+   * discovery candidates the agent should explicitly consider researching. */
+  isDiscovery?: boolean;
 }
 
 // ─── Per-Tool Data Types ────────────────────────────────────────────────────

@@ -83,6 +83,17 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
       const pnlSign = p.unrealizedPnl >= 0 ? "+" : "";
       portfolioSection += `| $${p.symbol} | ${p.direction} | ${p.quantity} | $${p.avgCost.toFixed(2)} | $${p.currentPrice.toFixed(2)} | ${pnlSign}$${p.unrealizedPnl.toFixed(2)} | ${pnlSign}${p.unrealizedPnlPct.toFixed(1)}% | ${p.targetPrice ? "$" + p.targetPrice.toFixed(2) : "—"} | ${p.stopLoss ? "$" + p.stopLoss.toFixed(2) : "—"} | ${p.daysHeld}d | ${p.activeThesisSummary ? p.activeThesisSummary.slice(0, 60) + "…" : "—"} |\n`;
     }
+
+    // Per-position hold duration context
+    const holdDays: Record<string, number> = { DAY: 1, SWING: 5, WEEK: 7, MONTH: 30 };
+    const configuredMaxDays = Math.max(...(config.holdDurations ?? ["SWING"]).map((h) => holdDays[h] ?? 5));
+    const overdue = portfolio.positions.filter((p) => p.daysHeld > configuredMaxDays);
+    if (overdue.length > 0) {
+      portfolioSection += `\n⚠ Hold duration warnings (configured max: ${configuredMaxDays}d for ${hold}):\n`;
+      for (const p of overdue) {
+        portfolioSection += `- $${p.symbol}: held ${p.daysHeld}d — exceeds configured hold duration. In Stage 2, explicitly decide: extend with rationale, or close.\n`;
+      }
+    }
   } else {
     portfolioSection += `\nNo open positions.\n`;
   }
@@ -238,23 +249,27 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
   sections.push(`## Run Flow
 Narration rule: 2-4 sentences between tool calls. Write naturally using $TICKER format. Never write section headers or stage labels. Never reproduce or summarize what a tool result already shows — the UI renders it. Never include markdown links or URLs in your narration text.
 
-Start with a 1-2 sentence portfolio check-in — note open positions and any Watch Tomorrow flags from the prior brief. No tools yet.
+Start with a 1-2 sentence portfolio check-in — note open positions, any hold-duration warnings from the portfolio section above, and any Watch Tomorrow flags from the prior brief. No tools yet.
 
 ### Stage 1 — ORIENT
-Call **read_morning_brief**, then **read_signals**. Use **read_artifact** for any signal that warrants a deep read. Use **web_search** only if you need live coverage beyond the brief and your intelligence policy allows it.
+Call **read_morning_brief**, then **read_signals**. When reading signals, note: how many are tagged as discovery (isDiscovery=true)? These are new tickers outside your watchlist/positions — list them explicitly in your narration so you can consider them in Stage 2. Use **read_artifact** for any BREAKING or HIGH urgency signal that warrants a deep read. Use **web_search** only if you need live coverage beyond the brief and your intelligence policy allows it.
 
 ### Stage 2 — RESEARCH
-If you have open positions, call **get_portfolio_context** first — it returns live P&L, days held, and thesis context needed for position management decisions. Then call **get_stock_data** on every ticker you intend to act on.
+If you have open positions, call **get_portfolio_context** first — it returns live P&L, days held, and thesis context needed for position management decisions.
 
-Triage before calling get_stock_data:
-- Holdings: MUST if in ⚠ Priority Reviews / brief alert / Watch Tomorrow. SHOULD if held longer than expected or >5% loss. SKIP if healthy with no new signals.
+**Holdings — MANDATORY:** Call **get_stock_data** on every single open position, no exceptions. Even a healthy position with no new signals must be checked — this is your daily risk review.
+
+After researching all holdings, assess concentration risk: if all your open positions are long the same sector or share the same macro thesis, flag this explicitly. A single adverse macro event could hit all of them simultaneously.
+
+**Triage for watchlist and new opportunities:**
 - Watchlist: MUST if HIGH priority or brief-flagged. SHOULD if not reviewed 5+ days. SKIP if LOW.
-- New opportunities: 2-4 per session from brief or signals. Match focus sectors, no micro-caps/ADRs/penny stocks. In RISK_OFF or near max positions: 1-2 highest-conviction only.
+- New opportunities from discovery signals: research at least 1-2 discovery tickers per session when signals contain them, especially if you're at max positions and need to evaluate what to rotate into. No micro-caps/ADRs/penny stocks.
+- New opportunities from brief: 1-3 per session. In RISK_OFF or at max positions: only highest-conviction.
 
-Deeper tools only when the signal specifically warrants it: **get_earnings_data** (earnings within 2 weeks), **get_options_flow** (unusual activity flagged), **get_sec_filings** (insider/8-K flagged). get_stock_data already surfaces earnings dates, technicals, and news. Batch calls — never one ticker at a time. Proceed immediately to Stage 3 after last get_stock_data.
+Deeper tools only when the signal specifically warrants it: **get_earnings_data** (earnings within 2 weeks), **get_options_flow** (unusual activity flagged), **get_sec_filings** (insider/8-K flagged). get_stock_data already surfaces earnings dates, technicals, and news. Proceed immediately to Stage 3 after last get_stock_data.
 
 ### Stage 3 — THESES
-Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
+Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. For any position exceeding its configured hold duration, record a fresh thesis that explicitly justifies extension or closes it. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
 
 ### Stage 4 — ACT
 Execute in order: **close_position / manage_position** → **place_trade** → **manage_watchlist**. Skip to Stage 5 if no actions.
@@ -269,6 +284,7 @@ Call **complete_run**. Final tool call. Stop after it returns.
 
 ## Hard Rules
 - Never stop mid-flow. Session ends only when complete_run fires.
+- get_stock_data on ALL open positions is mandatory — no exceptions.
 - Cannot open a position in a ticker you already hold.
 - place_trade returning success:false → mark FAILED in record_run_summary.
 - Use $TICKER format. Never fabricate data.`);

@@ -44,15 +44,17 @@ function extractKeywords(text: string | null): string[] {
 function computeRelevance(
   signal: { tickers: string[]; sectors: string[]; themes: string[]; urgency: string },
   profile: AnalystProfile
-): { score: number; reasons: string[] } {
+): { score: number; reasons: string[]; isDiscovery: boolean } {
   let score = 0
   const reasons: string[] = []
+  let hasTickerMatch = false
 
   // Ticker match (highest signal)
   for (const ticker of signal.tickers) {
     if (profile.tickers.includes(ticker.toUpperCase())) {
       score += 40
       reasons.push(`ticker_match:${ticker}`)
+      hasTickerMatch = true
     }
   }
 
@@ -77,7 +79,11 @@ function computeRelevance(
   if (signal.urgency === "BREAKING") score += 15
   else if (signal.urgency === "HIGH") score += 10
 
-  return { score: Math.min(100, score), reasons }
+  // A signal is a "discovery" candidate when it passed relevance purely via
+  // sector/theme — no ticker overlap with the analyst's known universe.
+  const isDiscovery = !hasTickerMatch && score >= 15
+
+  return { score: Math.min(100, score), reasons, isDiscovery }
 }
 
 // ── Inngest function ────────────────────────────────────────────────────────
@@ -149,6 +155,12 @@ export const signalRouter = inngest.createFunction(
         where: {
           createdAt: { gte: todayStart },
           routes: { none: {} },
+          // Skip signals older than a week or with OLDER freshness — stale stories
+          // are noise and erode analyst trust in the signal feed.
+          freshness: { not: "OLDER" },
+          // Skip overplayed stories (noveltyScore < 25 = same story seen 30+ times
+          // in the last 7 days). Default is 50 so this only fires on computed scores.
+          noveltyScore: { gte: 25 },
         },
         select: {
           id: true,
@@ -156,6 +168,8 @@ export const signalRouter = inngest.createFunction(
           sectors: true,
           themes: true,
           urgency: true,
+          noveltyScore: true,
+          freshness: true,
         },
       })
     })
@@ -174,6 +188,10 @@ export const signalRouter = inngest.createFunction(
         routeReason: string
       }[] = []
 
+      // Track per-analyst discovery route count to cap at 5.
+      // Discovery signals are valuable but should not crowd out known-ticker intel.
+      const discoveryCount = new Map<string, number>()
+
       for (const signal of signals) {
         for (const profile of profiles) {
           // Skip if any ticker is on exclusion list
@@ -182,14 +200,26 @@ export const signalRouter = inngest.createFunction(
           )
           if (excluded) continue
 
-          const { score, reasons } = computeRelevance(signal, profile)
+          const { score, reasons, isDiscovery } = computeRelevance(signal, profile)
 
           if (score >= 15) {
+            // Cap discovery routes at 5 per analyst per run so the feed isn't
+            // flooded with sector-match noise at the expense of known-ticker intel.
+            if (isDiscovery) {
+              const dc = discoveryCount.get(profile.id) ?? 0
+              if (dc >= 5) continue
+              discoveryCount.set(profile.id, dc + 1)
+            }
+
             routes.push({
               analystId: profile.id,
               signalId: signal.id,
               relevanceScore: score,
-              routeReason: reasons.join(", "),
+              // Prefix discovery routes so read_signals can separate them from
+              // known-ticker intel and surface them to the agent as new opportunities.
+              routeReason: isDiscovery
+                ? `discovery:${reasons.join(", ")}`
+                : reasons.join(", "),
             })
           }
         }
@@ -202,13 +232,17 @@ export const signalRouter = inngest.createFunction(
         })
       }
 
-      return { routesCreated: routes.length }
+      return {
+        routesCreated: routes.length,
+        discoveryRoutes: [...discoveryCount.values()].reduce((a, b) => a + b, 0),
+      }
     })
 
     return {
       signalsProcessed: signals.length,
       analystsActive: profiles.length,
       routesCreated: routeResult.routesCreated,
+      discoveryRoutes: routeResult.discoveryRoutes,
     }
   }
 )
