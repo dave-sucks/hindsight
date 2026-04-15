@@ -31,7 +31,30 @@ Built for one user now, marketed later.
 - All research persisted to DB via tool execute functions
 - Morning cron (8 AM ET) runs same agent via generateText
 
-Note: Universe config on AgentConfig is currently a stub — only `tickerUniverse` (string[]) exists for DIRECTED mode. Session 3 of the Agent Overhaul Plan expands this into a real model (sectors/industries/themes/caps). See `docs/AGENT_OVERHAUL_PLAN.md`.
+## Universe (the analyst's discovery fence)
+The "Universe" is the set of fields on AgentConfig that define what the
+analyst will look at. Used by signal routing (filter signals into the
+inbox) and by the agent (which discovery candidates are in-scope).
+
+Universe fields on AgentConfig:
+- `markets` — ["US_EQUITIES", "CRYPTO", "ETFS"]
+- `exchanges` — ["NASDAQ", "NYSE"]
+- `sectors` — broad GICS-style ["Technology", "Energy", ...]
+- `industries` — narrower GICS ["Semiconductors", "Auto Manufacturers", ...]
+- `themes` — analyst-defined ["AI infrastructure", "EV transition", "GLP-1", ...]
+- `marketCapMin` / `marketCapMax` — BigInt? in dollars; null = no bound
+- `exclusionList` — tickers/industries always skipped (hard reject)
+- `tickerUniverse` — DIRECTED-mode seed list (separate concept, kept as-is)
+
+Match semantics (signal routing): empty array / null numeric = no filter
+on that dimension. AND across dimensions, OR within. exclusionList wins.
+See docs/AGENT_OVERHAUL_PLAN.md → Workstream B for the full spec.
+
+Routing output on AnalystSignalRoute (populated by Workstream A):
+- `routeReasonCode` — "DISCOVERY" | "WATCHLIST" | "POSITION" | "DIRECT_TICKER"
+  | "SECTOR_MATCH" | "INDUSTRY_MATCH" | "THEME_MATCH" | "CROSS_ANALYST"
+- `matchedUniverse` Json — { sectors, industries, themes, inWatchlist,
+  inPositions, fromAnalystId? }
 
 ### V3 Intelligence Pipeline (background, pre-run)
 - 5 Inngest jobs run 6:30–7:45 AM ET before analysts wake up
