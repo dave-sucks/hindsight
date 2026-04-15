@@ -259,18 +259,28 @@ Record a thesis for every ticker researched, back to back: LONG/SHORT for intend
 ### Stage 4 — ACT
 Execute in order: **close_position / manage_position** → **place_trade** → **manage_watchlist**. Skip to Stage 5 if no actions.
 
-Every LONG/SHORT thesis with confidence ≥ ${minConf}% AND open slot AND no existing position → call **place_trade** with notional amount. For existing holdings use **manage_position** (partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop) or **close_position** for simple full exits. Add watchable PASS theses via **manage_watchlist**. Valid skip reasons: no slots, already held, exceeds buying power.
+**CRITICAL — for every thesis, check whether you already hold this ticker (look at the Current Portfolio table above):**
+
+| Situation | Correct action | NEVER do |
+|-----------|---------------|----------|
+| Ticker IS in portfolio, thesis is LONG/bullish | manage_position (update_targets, move_stop_to_breakeven, set_trailing_stop) or do nothing (HOLD) | ❌ place_trade — you cannot buy more of what you hold |
+| Ticker IS in portfolio, conviction dropped / thesis failed | close_position (full exit) or manage_position (partial_close, tighten stop) | ❌ place_trade |
+| Ticker is NOT in portfolio, thesis is LONG/SHORT, confidence ≥ ${minConf}%, slot available | place_trade with notional amount | — |
+| Ticker is NOT in portfolio, thesis is PASS | manage_watchlist (ADD if worth monitoring) | — |
+| place_trade returns success:false for ANY reason | Mark FAILED in ranked_picks. Do NOT retry. | ❌ call place_trade again for the same ticker |
+
+Watchlist edits: add new PASS tickers, remove stale ideas. Use **manage_watchlist** freely.
 
 ### Stage 5 — RECAP
-Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, actual action taken — FAILED for rejected orders) and exposure_breakdown.
+Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, actual action taken — FAILED for rejected orders). Pass exposure_breakdown as the dollar amounts of ONLY new positions opened this session (0 if no new trades were placed).
 
 ### Stage 6 — COMPLETE
 Call **complete_run**. Final tool call. Stop after it returns.
 
 ## Hard Rules
 - Never stop mid-flow. Session ends only when complete_run fires.
-- Cannot open a position in a ticker you already hold.
-- place_trade returning success:false → mark FAILED in record_run_summary.
+- NEVER call place_trade for a ticker that appears in your Current Portfolio — use manage_position or close_position instead.
+- place_trade returning success:false → mark FAILED in ranked_picks. Never retry the same ticker.
 - Use $TICKER format. Never fabricate data.`);
 
   // ── Section 9: Thesis quality ─────────────────────────────────────────

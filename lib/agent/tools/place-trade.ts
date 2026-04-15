@@ -31,24 +31,27 @@ export const placeTrade = defineTool({
   groupId: "Executing",
 
   execute: async (args, ctx) => {
+    // Normalize ticker to uppercase — model sometimes passes lowercase/mixed case,
+    // which bypasses the duplicate check and hits Alpaca with a 422.
+    const ticker = args.ticker.toUpperCase().trim();
     try {
       // 0. Check for existing open position (scoped to this analyst only)
       const existingPosition = await prisma.position.findFirst({
-        where: { userId: ctx.userId, analystId: ctx.analystId ?? undefined, symbol: args.ticker, status: "OPEN" },
+        where: { userId: ctx.userId, analystId: ctx.analystId ?? undefined, symbol: ticker, status: "OPEN" },
         select: { id: true, symbol: true },
       });
 
       if (existingPosition) {
-        const blockedMsg = `Already holding an open position in ${args.ticker}. Cannot open duplicate positions for this analyst.`;
+        const blockedMsg = `Already holding an open position in ${ticker}. Cannot open duplicate positions for this analyst.`;
         return {
-          summary: `Trade blocked: $${args.ticker} — duplicate position`,
+          summary: `Trade blocked: $${ticker} — duplicate position`,
           data: {
             success: false,
-            ticker: args.ticker,
+            ticker,
             status: "FAILED" as const,
             direction: args.direction,
             message: blockedMsg,
-            tickers: [{ ticker: args.ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+            tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
           },
           sources: [],
         };
@@ -73,7 +76,7 @@ export const placeTrade = defineTool({
 
       // 2. Place Alpaca paper order
       const alpacaOrder = await placeMarketOrder({
-        symbol: args.ticker,
+        symbol: ticker,
         ...(resolvedNotional != null ? { notional: resolvedNotional } : { qty: resolvedShares }),
         side: args.direction === "LONG" ? "buy" : "sell",
       }, ctx.alpacaCreds);
@@ -120,7 +123,7 @@ export const placeTrade = defineTool({
           data: {
             analystId,
             userId: ctx.userId,
-            symbol: args.ticker,
+            symbol: ticker,
             direction: args.direction,
             status: "OPEN",
             quantity: finalShares,
@@ -136,7 +139,7 @@ export const placeTrade = defineTool({
           data: {
             positionId: pos.id,
             userId: ctx.userId,
-            symbol: args.ticker,
+            symbol: ticker,
             side: args.direction === "LONG" ? "BUY" : "SELL",
             orderType: "MARKET",
             quantity: finalShares,
@@ -153,7 +156,7 @@ export const placeTrade = defineTool({
           data: {
             positionId: pos.id,
             eventType: "OPENED",
-            description: `${args.direction} ${finalShares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+            description: `${args.direction} ${finalShares} shares of ${ticker} at $${fillPrice.toFixed(2)}`,
             priceAt: fillPrice,
           },
         });
@@ -163,7 +166,7 @@ export const placeTrade = defineTool({
             runId: ctx.runId,
             analystId,
             userId: ctx.userId,
-            symbol: args.ticker,
+            symbol: ticker,
             decision: "INITIATE",
             reasoning: `${args.direction} ${finalShares} shares at $${fillPrice.toFixed(2)} (target: $${args.target_price.toFixed(2)}, stop: $${args.stop_loss.toFixed(2)})`,
             thesisId: args.thesis_id,
@@ -177,10 +180,10 @@ export const placeTrade = defineTool({
             data: {
               runId: ctx.runId,
               type: "trade_placed",
-              title: `Trade placed: ${args.direction} ${args.ticker}`,
-              message: `${args.direction} ${finalShares} shares of ${args.ticker} at $${fillPrice.toFixed(2)}`,
+              title: `Trade placed: ${args.direction} ${ticker}`,
+              message: `${args.direction} ${finalShares} shares of ${ticker} at $${fillPrice.toFixed(2)}`,
               payload: {
-                ticker: args.ticker,
+                ticker,
                 direction: args.direction,
                 entry: fillPrice,
                 target_price: args.target_price,
@@ -199,7 +202,7 @@ export const placeTrade = defineTool({
       // Graduate watchlist item (non-fatal)
       try {
         const watchlistItem = await prisma.analystWatchlistItem.findFirst({
-          where: { analystId, symbol: args.ticker.toUpperCase(), status: "ACTIVE" },
+          where: { analystId, symbol: ticker, status: "ACTIVE" },
         });
         if (watchlistItem) {
           await prisma.analystWatchlistItem.update({
@@ -234,8 +237,8 @@ export const placeTrade = defineTool({
       }
 
       const message = didFill
-        ? `${args.direction} ${finalShares} shares of ${args.ticker} filled at $${fillPrice.toFixed(2)}`
-        : `${args.direction} ${finalShares} shares of ${args.ticker} submitted to Alpaca — awaiting fill (current price $${fillPrice.toFixed(2)})`;
+        ? `${args.direction} ${finalShares} shares of ${ticker} filled at $${fillPrice.toFixed(2)}`
+        : `${args.direction} ${finalShares} shares of ${ticker} submitted to Alpaca — awaiting fill (current price $${fillPrice.toFixed(2)})`;
 
       const tickerTag = args.direction === "LONG" ? "Long" : "Short";
       const tickerSummary = didFill
@@ -244,11 +247,11 @@ export const placeTrade = defineTool({
 
       return {
         summary: didFill
-          ? `Placed order: ${args.direction} ${finalShares} $${args.ticker} @ $${fillPrice.toFixed(2)}`
-          : `Order submitted (pending): ${args.direction} ${finalShares} $${args.ticker}`,
+          ? `Placed order: ${args.direction} ${finalShares} $${ticker} @ $${fillPrice.toFixed(2)}`
+          : `Order submitted (pending): ${args.direction} ${finalShares} $${ticker}`,
         data: {
           success: true,
-          ticker: args.ticker,
+          ticker,
           status: didFill ? ("FILLED" as const) : ("PENDING" as const),
           fillStatus: didFill ? ("FILLED" as const) : ("PENDING" as const),
           direction: args.direction,
@@ -263,22 +266,22 @@ export const placeTrade = defineTool({
           filledAt: filledAt ? filledAt.toISOString() : null,
           message,
           ...(portfolioUpdate ? { portfolioUpdate } : {}),
-          tickers: [{ ticker: args.ticker, tag: tickerTag, summary: tickerSummary, actionIcon: "buy" }],
+          tickers: [{ ticker, tag: tickerTag, summary: tickerSummary, actionIcon: "buy" }],
         },
-        sources: [{ provider: "Alpaca", title: `Trade ${args.ticker}` }],
+        sources: [{ provider: "Alpaca", title: `Trade ${ticker}` }],
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Trade placement failed";
-      console.error(`[tool] place_trade FAILED for ${args.ticker}: ${msg}`);
+      console.error(`[tool] place_trade FAILED for ${ticker}: ${msg}`);
       return {
-        summary: `Trade failed: $${args.ticker}`,
+        summary: `Trade failed: $${ticker}`,
         data: {
           success: false,
-          ticker: args.ticker,
+          ticker,
           status: "FAILED" as const,
           direction: args.direction,
           message: msg,
-          tickers: [{ ticker: args.ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
+          tickers: [{ ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
         },
         sources: [],
       };
