@@ -28,6 +28,7 @@ import { getPortfolioContext } from "./get-portfolio-context";
 import { readKnowledgeLibrary } from "./read-knowledge-library";
 import { askQuestion } from "./ask-question";
 import { discoverSignalsForFence } from "./discover-signals-for-fence";
+import { readAnalystInboxStats } from "./read-analyst-inbox-stats";
 
 interface ToolCtx {
   runId: string;
@@ -72,6 +73,7 @@ export function createResearchTools(ctx: ToolCtx) {
     read_knowledge_library: readKnowledgeLibrary(newCtx),
     ask_question: askQuestion(newCtx),
     discover_signals_for_fence: discoverSignalsForFence(newCtx),
+    read_analyst_inbox_stats: readAnalystInboxStats(newCtx),
   };
 
   // Backward-compat aliases for old persisted RunMessages
@@ -106,3 +108,4 @@ export { manageWatchlist } from "./manage-watchlist";
 export { readKnowledgeLibrary } from "./read-knowledge-library";
 export { askQuestion } from "./ask-question";
 export { discoverSignalsForFence } from "./discover-signals-for-fence";
+export { readAnalystInboxStats } from "./read-analyst-inbox-stats";
