@@ -36,6 +36,16 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
   ui: ToolUI;
   /** Optional phase key — tools with the same groupId collapse in the UI */
   groupId?: string;
+  /**
+   * Produces a human-readable, present-tense gerund label from the args —
+   * shown in the tool row and used to derive the group header. A good
+   * label reads like a Chain-of-Thought line:
+   *   "Reading the Momentum Breakout playbook"
+   *   "Checking today's market regime"
+   *   "Pulling $NVDA's snapshot"
+   * If omitted, the UI falls back to the tool name.
+   */
+  progressLabel?: (args: z.infer<TSchema>) => string;
   /** If set, this tool is only included when the mode matches */
   modes?: AgentMode[];
   execute: (
@@ -70,6 +80,17 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
 
         console.log(`[tool] START "${label}" runId=${ctx.runId}`);
 
+        // Compute the human progress label from args once. Wrapped in
+        // try/catch so a malformed label builder can never break the tool.
+        let progressLabel: string | undefined;
+        if (options.progressLabel) {
+          try {
+            progressLabel = options.progressLabel(args);
+          } catch {
+            progressLabel = undefined;
+          }
+        }
+
         try {
           const result = await options.execute(args, ctx);
           const elapsed = Date.now() - t0;
@@ -79,6 +100,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
             ok: true as const,
             ui: options.ui,
             ...(resolvedGroupId !== undefined ? { groupId: resolvedGroupId } : {}),
+            ...(progressLabel !== undefined ? { progressLabel } : {}),
             summary: result.summary,
             data: result.data,
             sources: result.sources ?? [],

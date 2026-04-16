@@ -37,6 +37,8 @@ export const recordRunSummary = defineTool({
   }),
   ui: "run-summary" as const,
 
+  progressLabel: () => "Recording the run summary",
+
   execute: async (args, ctx) => {
     try {
       const traded = args.ranked_picks.filter((p) => {

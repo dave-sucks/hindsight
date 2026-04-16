@@ -41,7 +41,7 @@ export function SourceRenderer({ toolName, result, loading }: Props) {
   const data = result.data as Record<string, unknown> | null;
   const tickers = (data?.tickers as TickerItem[] | undefined) ?? [];
 
-  const headerLabel = TOOL_LABELS[toolName] ?? result.summary.slice(0, 60);
+  const headerLabel = result.progressLabel ?? TOOL_LABELS[toolName] ?? result.summary.slice(0, 60);
 
   return (
     <ToolProgress defaultOpen={loading}>

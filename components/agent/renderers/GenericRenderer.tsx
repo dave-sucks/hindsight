@@ -15,9 +15,10 @@ interface Props {
 }
 
 export function GenericRenderer({ toolName, result, loading }: Props) {
+  const header = result.progressLabel ?? toolName;
   return (
     <ToolProgress defaultOpen={loading}>
-      <ToolProgressHeader loading={loading}>{toolName}</ToolProgressHeader>
+      <ToolProgressHeader loading={loading}>{header}</ToolProgressHeader>
       <ToolProgressContent>
         <ToolProgressItem>{result.summary}</ToolProgressItem>
       </ToolProgressContent>

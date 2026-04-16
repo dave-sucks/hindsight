@@ -19,6 +19,8 @@ export const readMorningBrief = defineTool({
   schema: z.object({}),
   ui: "ticker-list" as const,
 
+  progressLabel: () => "Reading today's morning brief",
+
   execute: async (_args, ctx) => {
     if (!ctx.analystId) {
       return {

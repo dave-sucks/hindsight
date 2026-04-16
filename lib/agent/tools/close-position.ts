@@ -26,6 +26,8 @@ export const closePosition = defineTool({
   ui: "ticker" as const,
   groupId: "Executing",
 
+  progressLabel: (args) => `Closing $${args.ticker.toUpperCase()} position`,
+
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
     try {

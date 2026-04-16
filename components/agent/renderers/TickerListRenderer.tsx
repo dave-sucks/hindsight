@@ -39,7 +39,7 @@ interface Props {
 export function TickerListRenderer({ toolName, result, loading }: Props) {
   const data = result.data as Record<string, unknown> | null;
   const tickers = (data?.tickers as TickerItem[] | undefined) ?? [];
-  const label = TOOL_LABELS[toolName] ?? result.summary.slice(0, 60);
+  const label = result.progressLabel ?? TOOL_LABELS[toolName] ?? result.summary.slice(0, 60);
   const rawResult = { ...data, _sources: result.sources };
   const sources = loading ? [] : extractToolSources(rawResult as Record<string, unknown>);
 

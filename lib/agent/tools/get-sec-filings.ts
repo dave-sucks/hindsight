@@ -34,6 +34,8 @@ export const getSecFilings = defineTool({
   ui: "ticker" as const,
   groupId: "Researching",
 
+  progressLabel: (args) => `Pulling $${args.symbol.toUpperCase()} SEC filings`,
+
   execute: async ({ symbol }) => {
     try {
       const cik = await getCIK(symbol);

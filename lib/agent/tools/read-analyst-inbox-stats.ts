@@ -74,6 +74,11 @@ export const readAnalystInboxStats = defineTool({
   ui: "ticker-list" as const,
   groupId: "InboxStats",
 
+  progressLabel: (args) => {
+    const days = args.lookbackDays ?? 30;
+    return `Reviewing what's hit this analyst's inbox (${days}d)`;
+  },
+
   execute: async (args, ctx) => {
     if (!ctx.analystId) {
       throw new Error(

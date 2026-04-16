@@ -41,9 +41,11 @@ export function TickerRenderer({ args, result, loading, inGroup }: Props) {
     return <>{rows}</>;
   }
 
+  const header = result.progressLabel ?? result.summary;
+
   return (
     <ToolProgress defaultOpen={loading}>
-      <ToolProgressHeader loading={loading}>{result.summary}</ToolProgressHeader>
+      <ToolProgressHeader loading={loading}>{header}</ToolProgressHeader>
       <ToolProgressContent>{rows}</ToolProgressContent>
     </ToolProgress>
   );

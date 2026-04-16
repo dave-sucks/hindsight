@@ -40,6 +40,30 @@ export const readKnowledgeLibrary = defineTool({
   ui: "generic" as const,
   groupId: "Knowledge",
 
+  progressLabel: (args) => {
+    const humanize = (id: string) =>
+      id
+        .toLowerCase()
+        .split(/[_\s]+/)
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+    if (args.topic === "archetype") {
+      return args.id
+        ? `Reading the ${humanize(args.id)} playbook`
+        : "Browsing strategy archetypes";
+    }
+    if (args.topic === "signal") {
+      return args.id
+        ? `Reading the ${humanize(args.id)} signal definition`
+        : "Browsing the signal-type catalog";
+    }
+    // topic === "source"
+    return args.id
+      ? `Reading the ${humanize(args.id)} source entry`
+      : "Browsing the research-source catalog";
+  },
+
   execute: async (args) => {
     const { topic, id } = args;
 

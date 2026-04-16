@@ -31,6 +31,17 @@ export const placeTrade = defineTool({
   ui: "ticker" as const,
   groupId: "Executing",
 
+  progressLabel: (args) => {
+    const t = args.ticker.toUpperCase();
+    const verb = args.direction === "LONG" ? "Buying" : "Shorting";
+    const size = args.notional
+      ? ` $${Math.round(args.notional).toLocaleString()}`
+      : args.shares
+        ? ` ${args.shares} shares of`
+        : "";
+    return `${verb}${size} ${t}`;
+  },
+
   execute: async (args, ctx) => {
     // Normalize ticker to uppercase — model sometimes passes lowercase/mixed case,
     // which bypasses the duplicate check and hits Alpaca with a 422.

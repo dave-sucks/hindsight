@@ -17,6 +17,8 @@ export const completeRun = defineTool({
   schema: z.object({}),
   ui: "decision-summary" as const,
 
+  progressLabel: () => "Wrapping up the run",
+
   execute: async (_args, ctx) => {
     try {
       // Atomic: only transition non-COMPLETE → COMPLETE

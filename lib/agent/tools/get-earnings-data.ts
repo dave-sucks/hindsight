@@ -19,6 +19,8 @@ export const getEarningsData = defineTool({
   ui: "ticker" as const,
   groupId: "Researching",
 
+  progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()} earnings`,
+
   execute: async ({ ticker }) => {
     const [earningsResult, surprisesResult] = await Promise.all([
       finnhub(`/calendar/earnings?symbol=${ticker}`, 2),

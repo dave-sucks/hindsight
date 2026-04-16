@@ -119,17 +119,37 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
         const loadingAny = block.parts.some(
           (p) => (p.part.result ?? p.part.output) === undefined,
         );
-        const tickers = [
-          ...new Set(
-            block.parts
-              .map(({ part }) => {
-                const args = (part.args ?? part.input ?? {}) as Record<string, unknown>;
-                return args.ticker as string | undefined;
-              })
-              .filter(Boolean) as string[],
-          ),
-        ];
-        const header = tickers.length > 0 ? `${block.groupId} ${tickers.join(", ")}` : block.groupId;
+
+        // Derive a Chain-of-Thought-style header: use the first part's
+        // progressLabel as the narrative lead, append "(+N more)" when
+        // there are sibling calls in the same phase. Falls back to the
+        // groupId (a short noun) when no part has a label yet.
+        const progressLabels = block.parts
+          .map(({ part }) => {
+            const rawResult = part.result ?? part.output;
+            if (rawResult == null) return null;
+            const normalized = normalizeToolResult(part.toolName, rawResult);
+            return normalized.ok ? normalized.progressLabel ?? null : null;
+          })
+          .filter((l): l is string => typeof l === "string" && l.length > 0);
+
+        let header: string;
+        if (progressLabels.length > 0) {
+          const [first, ...rest] = progressLabels;
+          header = rest.length > 0 ? `${first} (+${rest.length} more)` : first;
+        } else {
+          const tickers = [
+            ...new Set(
+              block.parts
+                .map(({ part }) => {
+                  const args = (part.args ?? part.input ?? {}) as Record<string, unknown>;
+                  return args.ticker as string | undefined;
+                })
+                .filter(Boolean) as string[],
+            ),
+          ];
+          header = tickers.length > 0 ? `${block.groupId} ${tickers.join(", ")}` : block.groupId;
+        }
 
         return (
           <ToolProgress key={`group-${idx}`} defaultOpen={true}>

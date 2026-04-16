@@ -51,6 +51,8 @@ export const getStockData = defineTool({
   ui: "ticker" as const,
   groupId: "Researching",
 
+  progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()}'s snapshot`,
+
   execute: async ({ ticker, include_technicals }, ctx) => {
     const doTechnicals = include_technicals !== false;
     const now = Math.floor(Date.now() / 1000);
