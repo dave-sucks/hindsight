@@ -37,14 +37,6 @@ export interface AnalystConfig {
   scheduleTime: string;
   createdAt: Date;
   updatedAt: Date;
-  // V3 Session 3 / Workstream B — Universe fields. These live directly on
-  // AgentConfig (no `universe*` prefix): the existing `sectors` + `exchanges` +
-  // `exclusionList` are the universe's sector/exchange/exclusion dimensions;
-  // `industries`, `themes`, and `marketCapMin/Max` add the rest.
-  industries: string[];
-  themes: string[];
-  marketCapMin: string | null;   // BigInt serialized as string for client transport
-  marketCapMax: string | null;
   // V3 intelligence fields — populated from Monitor table + AgentConfig.intelligencePolicy
   intelligencePolicy: Record<string, unknown> | null;
   domainMonitors: Array<{
@@ -534,12 +526,6 @@ export async function getAnalystDetail(
     scheduleTime: config.scheduleTime,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
-    // Session 3 / B contract: Universe fields live directly on AgentConfig.
-    // BigInt → string for JSON-safe client transport.
-    industries: config.industries ?? [],
-    themes: config.themes ?? [],
-    marketCapMin: config.marketCapMin?.toString() ?? null,
-    marketCapMax: config.marketCapMax?.toString() ?? null,
     intelligencePolicy: (config.intelligencePolicy as Record<string, unknown>) ?? null,
     domainMonitors,
     searchMonitors,
