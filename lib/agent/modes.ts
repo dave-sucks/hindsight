@@ -72,6 +72,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_stock_data",
       "get_earnings_data",
       "get_sec_filings",
+      // Live web search (budget-limited by intelligence policy)
+      "web_search",
     ] as const,
     hasSuggestConfig: true,
     maxDuration: 180,

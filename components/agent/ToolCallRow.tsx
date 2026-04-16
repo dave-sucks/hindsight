@@ -78,8 +78,9 @@ function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
   if (toolName === "ask_question") return "ask-question";
-  if (toolName === "get_portfolio_context" || toolName === "read_morning_brief" || toolName === "read_signals") return "ticker-list";
+  if (toolName === "get_portfolio_context" || toolName === "read_morning_brief" || toolName === "read_signals" || toolName === "discover_signals_for_fence" || toolName === "read_analyst_inbox_stats") return "ticker-list";
   if (toolName === "read_artifact" || toolName === "web_search") return "source";
+  if (toolName === "read_knowledge_library") return "generic";
   if (
     toolName === "get_stock_data" ||
     toolName === "place_trade" ||
