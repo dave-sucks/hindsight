@@ -25,6 +25,7 @@ import { recordRunSummary } from "./record-run-summary";
 import { completeRun } from "./complete-run";
 import { manageWatchlist } from "./manage-watchlist";
 import { getPortfolioContext } from "./get-portfolio-context";
+import { readKnowledgeLibrary } from "./read-knowledge-library";
 
 interface ToolCtx {
   runId: string;
@@ -66,6 +67,7 @@ export function createResearchTools(ctx: ToolCtx) {
     record_run_summary: recordRunSummary(newCtx),
     complete_run: completeRun(newCtx),
     manage_watchlist: manageWatchlist(newCtx),
+    read_knowledge_library: readKnowledgeLibrary(newCtx),
   };
 
   // Backward-compat aliases for old persisted RunMessages
@@ -97,3 +99,4 @@ export { getPortfolioContext } from "./get-portfolio-context";
 export { recordRunSummary } from "./record-run-summary";
 export { completeRun } from "./complete-run";
 export { manageWatchlist } from "./manage-watchlist";
+export { readKnowledgeLibrary } from "./read-knowledge-library";
