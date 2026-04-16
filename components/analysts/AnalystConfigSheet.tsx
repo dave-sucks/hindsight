@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
@@ -202,16 +204,6 @@ export function AnalystConfigSheet({
                 />
               )}
 
-              {config.sectors.length > 0 && (
-                <InfoRow label="Sectors">
-                  <div className="flex flex-wrap gap-1 justify-end">
-                    {config.sectors.map((s) => (
-                      <Badge key={s} variant="secondary">{titleCase(s)}</Badge>
-                    ))}
-                  </div>
-                </InfoRow>
-              )}
-
               {config.signalTypes.length > 0 && (
                 <InfoRow label="Signals" border={false}>
                   <div className="flex flex-wrap gap-1 justify-end">
@@ -227,72 +219,57 @@ export function AnalystConfigSheet({
             {/* B contract: Universe = sectors ∧ industries ∧ themes ∧       */}
             {/* marketCapMin/Max ∧ exchanges. Empty dim = no filter.         */}
             {/* exclusionList hard-rejects. Watchlist + positions bypass.    */}
-            {(config.sectors.length > 0 ||
-              config.industries.length > 0 ||
-              config.themes.length > 0 ||
-              config.exchanges.length > 0 ||
-              config.exclusionList.length > 0 ||
-              config.marketCapMin !== null ||
-              config.marketCapMax !== null) && (
-              <div className="p-3 border-b">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <p className="text-sm font-medium">Universe</p>
-                  <Tooltip>
-                    <TooltipTrigger render={<span className="cursor-help" />}>
-                      <Info className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      The discovery fence. Signals matching this Universe surface as
-                      new-ticker candidates in your morning brief, even when they are
-                      not in your watchlist or positions. Ask the editor to update it.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <div className="flex flex-col gap-1">
-                  {config.industries.length > 0 && (
-                    <InfoRow label="Industries">
-                      <div className="flex flex-wrap gap-1 justify-end">
-                        {config.industries.map((s) => (
-                          <Badge key={s} variant="outline">{titleCase(s)}</Badge>
-                        ))}
-                      </div>
-                    </InfoRow>
-                  )}
-                  {config.themes.length > 0 && (
-                    <InfoRow label="Themes">
-                      <div className="flex flex-wrap gap-1 justify-end">
-                        {config.themes.map((s) => (
-                          <Badge key={s} variant="outline">{titleCase(s)}</Badge>
-                        ))}
-                      </div>
-                    </InfoRow>
-                  )}
-                  {config.exchanges.length > 0 && (
-                    <InfoRow
-                      label="Exchanges"
-                      value={config.exchanges.join(", ")}
-                      mono
-                    />
-                  )}
-                  {(config.marketCapMin !== null ||
-                    config.marketCapMax !== null) && (
-                    <InfoRow
-                      label="Market Cap"
-                      value={`${config.marketCapMin ?? "—"} – ${config.marketCapMax ?? "—"}`}
-                      mono
-                    />
-                  )}
-                  {config.exclusionList.length > 0 && (
-                    <InfoRow
-                      label="Excluded"
-                      value={config.exclusionList.join(", ")}
-                      mono
-                      border={false}
-                    />
-                  )}
-                </div>
+            <div className="p-3 border-b flex flex-col gap-3">
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium">Universe</p>
+                <Tooltip>
+                  <TooltipTrigger render={<span className="cursor-help" />}>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    The discovery fence. Signals only reach this analyst if they match these dimensions. Empty dimension = no filter. Watchlist + open positions bypass the fence.
+                  </TooltipContent>
+                </Tooltip>
               </div>
-            )}
+
+              <ChipListEditor
+                label="Sectors"
+                values={config.sectors}
+                placeholder="e.g. Technology"
+                onChange={(next) => saveField("sectors", next)}
+              />
+              <ChipListEditor
+                label="Industries"
+                values={config.industries}
+                placeholder="e.g. Semiconductors"
+                onChange={(next) => saveField("industries", next)}
+              />
+              <ChipListEditor
+                label="Themes"
+                values={config.themes}
+                placeholder="e.g. AI infrastructure"
+                onChange={(next) => saveField("themes", next)}
+              />
+
+              <MarketCapInput
+                label="Market cap min"
+                value={config.marketCapMin}
+                onChange={(v) => saveField("marketCapMin", v)}
+              />
+              <MarketCapInput
+                label="Market cap max"
+                value={config.marketCapMax}
+                onChange={(v) => saveField("marketCapMax", v)}
+              />
+
+              <ChipListEditor
+                label="Exclusion list"
+                values={config.exclusionList}
+                placeholder="Ticker to block"
+                uppercase
+                onChange={(next) => saveField("exclusionList", next)}
+              />
+            </div>
 
             {/* ── Sources ───────────────────────────────────────── */}
             {config.domainMonitors.length > 0 && (
@@ -353,5 +330,122 @@ export function AnalystConfigSheet({
         </TooltipProvider>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ── ChipListEditor ──────────────────────────────────────────────────────────
+// Editable array-of-strings field. Type + Enter to add, click × to remove.
+// Keeps ShadCN components pure (variant/size only).
+
+interface ChipListEditorProps {
+  label: string;
+  values: string[];
+  placeholder?: string;
+  /** If true, normalize added values to uppercase (for tickers). */
+  uppercase?: boolean;
+  onChange: (next: string[]) => void;
+}
+
+function ChipListEditor({
+  label,
+  values,
+  placeholder,
+  uppercase,
+  onChange,
+}: ChipListEditorProps) {
+  const [draft, setDraft] = useState("");
+
+  const add = () => {
+    const raw = draft.trim();
+    if (!raw) return;
+    const normalized = uppercase ? raw.toUpperCase() : raw;
+    if (values.includes(normalized)) {
+      setDraft("");
+      return;
+    }
+    onChange([...values, normalized]);
+    setDraft("");
+  };
+
+  const remove = (v: string) => {
+    onChange(values.filter((x) => x !== v));
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {values.map((v) => (
+            <Badge key={v} variant="secondary">
+              <span>{v}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => remove(v)}
+                aria-label={`Remove ${v}`}
+              >
+                <X />
+              </Button>
+            </Badge>
+          ))}
+        </div>
+      )}
+      <Input
+        value={draft}
+        placeholder={placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            add();
+          }
+        }}
+        onBlur={add}
+      />
+    </div>
+  );
+}
+
+// ── MarketCapInput ──────────────────────────────────────────────────────────
+// Number input that stores dollars but displays in millions for readability.
+// Blank = null (no bound).
+
+interface MarketCapInputProps {
+  label: string;
+  value: number | null;
+  onChange: (next: number | null) => void;
+}
+
+function MarketCapInput({ label, value, onChange }: MarketCapInputProps) {
+  const displayMillions =
+    value != null && Number.isFinite(value) ? Math.round(value / 1_000_000) : "";
+
+  return (
+    <InfoRow label={label}>
+      <div className="flex items-center gap-1">
+        <Input
+          type="number"
+          defaultValue={displayMillions}
+          min={0}
+          step={100}
+          placeholder="None"
+          className="w-28 text-right tabular-nums"
+          onBlur={(e) => {
+            const raw = e.target.value.trim();
+            if (raw === "") {
+              if (value !== null) onChange(null);
+              return;
+            }
+            const millions = parseFloat(raw);
+            if (!Number.isFinite(millions)) return;
+            const dollars = Math.round(millions * 1_000_000);
+            if (dollars !== value) onChange(dollars);
+          }}
+        />
+        <span className="text-xs text-muted-foreground">M</span>
+      </div>
+    </InfoRow>
   );
 }

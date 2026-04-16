@@ -18,6 +18,7 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { StockLogo } from "@/components/StockLogo";
+import { Markdown } from "@/components/ui/markdown";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 // ─── Signal type tooltips ─────────────────────────────────────────────────────
@@ -119,9 +120,9 @@ export function AnalystConfigPanel({
               {config.analystPrompt && (
                 <div>
                   <p className="text-sm font-medium mb-1">Strategy</p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
+                  <Markdown variant="compact" className="text-muted-foreground">
                     {config.analystPrompt}
-                  </p>
+                  </Markdown>
                 </div>
               )}
 

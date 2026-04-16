@@ -45,6 +45,11 @@ export default async function AnalystEditPage({
     directionBias: config.directionBias,
     holdDurations: config.holdDurations,
     sectors: config.sectors,
+    // ── Universe (B1) — narrower discovery fence ─────────────────
+    industries: config.industries,
+    themes: config.themes,
+    marketCapMin: config.marketCapMin != null ? Number(config.marketCapMin) : null,
+    marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
     signalTypes: config.signalTypes,
     minConfidence: config.minConfidence,
     maxPositionSize: config.maxPositionSize ? Number(config.maxPositionSize) : undefined,
