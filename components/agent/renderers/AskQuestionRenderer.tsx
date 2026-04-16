@@ -14,6 +14,12 @@
  * When the user has already answered (replay of historical runs), we
  * render the Receipt variant of QuestionFlow showing the finalized
  * choice rather than a live pill group.
+ *
+ * RENDERING NOTE: this component renders QuestionFlow DIRECTLY — no
+ * ToolProgress wrapper, no group header. The question itself is the
+ * UI. A tool row header on top of a standalone question panel is a
+ * double-header bug. If parsing fails we fall back to a bare text
+ * line, not a progress row.
  */
 
 import { useMemo, useState } from "react";
@@ -22,11 +28,6 @@ import type { ToolResult } from "@/lib/agent/tool-result";
 import { QuestionFlow } from "@/components/tool-ui/question-flow";
 import { safeParseSerializableQuestionFlow } from "@/components/tool-ui/question-flow/schema";
 import type { SerializableProgressiveMode } from "@/components/tool-ui/question-flow/schema";
-import {
-  ToolProgress,
-  ToolProgressHeader,
-  ToolProgressContent,
-} from "@/components/ai-elements/tool-progress";
 
 interface Props {
   toolName: string;
@@ -34,7 +35,7 @@ interface Props {
   loading: boolean;
 }
 
-export function AskQuestionRenderer({ toolName, result, loading }: Props) {
+export function AskQuestionRenderer({ result }: Props) {
   const threadRuntime = useThreadRuntime();
   const [answered, setAnswered] = useState(false);
   const [chosenLabels, setChosenLabels] = useState<string[] | null>(null);
@@ -45,16 +46,13 @@ export function AskQuestionRenderer({ toolName, result, loading }: Props) {
     [result.data],
   );
 
-  // If parsing fails, fall back to a plain summary row — never crash
-  // the thread on a malformed tool emission.
+  // If parsing fails, fall back to a single bare text line — never
+  // crash the thread on a malformed tool emission. We intentionally do
+  // not re-wrap in ToolProgress; a silent one-liner is less noisy than
+  // a second header stacked on top of the real question.
   if (!parsed || !("options" in parsed)) {
     return (
-      <ToolProgress defaultOpen={false}>
-        <ToolProgressHeader loading={loading}>{toolName}</ToolProgressHeader>
-        <ToolProgressContent>
-          <p className="text-sm text-muted-foreground">{result.summary}</p>
-        </ToolProgressContent>
-      </ToolProgress>
+      <p className="text-sm text-muted-foreground">{result.summary}</p>
     );
   }
 
@@ -76,35 +74,32 @@ export function AskQuestionRenderer({ toolName, result, loading }: Props) {
     });
   };
 
+  if (answered && chosenLabels) {
+    return (
+      <QuestionFlow
+        id={progressive.id}
+        choice={{
+          title: progressive.title,
+          summary: [
+            {
+              label: "Answer",
+              value: chosenLabels.join(", "),
+            },
+          ],
+        }}
+      />
+    );
+  }
+
   return (
-    <ToolProgress defaultOpen={!answered}>
-      <ToolProgressHeader loading={loading}>{toolName}</ToolProgressHeader>
-      <ToolProgressContent>
-        {answered && chosenLabels ? (
-          <QuestionFlow
-            id={progressive.id}
-            choice={{
-              title: progressive.title,
-              summary: [
-                {
-                  label: "Answer",
-                  value: chosenLabels.join(", "),
-                },
-              ],
-            }}
-          />
-        ) : (
-          <QuestionFlow
-            id={progressive.id}
-            step={progressive.step}
-            title={progressive.title}
-            description={progressive.description}
-            options={progressive.options}
-            selectionMode={progressive.selectionMode ?? "single"}
-            onSelect={handleSelect}
-          />
-        )}
-      </ToolProgressContent>
-    </ToolProgress>
+    <QuestionFlow
+      id={progressive.id}
+      step={progressive.step}
+      title={progressive.title}
+      description={progressive.description}
+      options={progressive.options}
+      selectionMode={progressive.selectionMode ?? "single"}
+      onSelect={handleSelect}
+    />
   );
 }

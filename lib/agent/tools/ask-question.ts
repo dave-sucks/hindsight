@@ -81,7 +81,10 @@ export const askQuestion = defineTool({
       ),
   }),
   ui: "ask-question" as const,
-  groupId: "Interview",
+
+  // NOTE: intentionally no groupId and no progressLabel.
+  // Questions render as a standalone QuestionFlow panel — no progress row,
+  // no ToolProgress wrapper, no group header. The question itself is the UI.
 
   execute: async (args, ctx) => {
     // Shape the payload for the Tool-UI Question Flow library
