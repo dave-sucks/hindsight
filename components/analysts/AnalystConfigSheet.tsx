@@ -223,6 +223,77 @@ export function AnalystConfigSheet({
               )}
             </div>
 
+            {/* ── Universe (discovery fence) ─────────────────────── */}
+            {/* B contract: Universe = sectors ∧ industries ∧ themes ∧       */}
+            {/* marketCapMin/Max ∧ exchanges. Empty dim = no filter.         */}
+            {/* exclusionList hard-rejects. Watchlist + positions bypass.    */}
+            {(config.sectors.length > 0 ||
+              config.industries.length > 0 ||
+              config.themes.length > 0 ||
+              config.exchanges.length > 0 ||
+              config.exclusionList.length > 0 ||
+              config.marketCapMin !== null ||
+              config.marketCapMax !== null) && (
+              <div className="p-3 border-b">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <p className="text-sm font-medium">Universe</p>
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="cursor-help" />}>
+                      <Info className="h-3 w-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      The discovery fence. Signals matching this Universe surface as
+                      new-ticker candidates in your morning brief, even when they are
+                      not in your watchlist or positions. Ask the editor to update it.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {config.industries.length > 0 && (
+                    <InfoRow label="Industries">
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {config.industries.map((s) => (
+                          <Badge key={s} variant="outline">{titleCase(s)}</Badge>
+                        ))}
+                      </div>
+                    </InfoRow>
+                  )}
+                  {config.themes.length > 0 && (
+                    <InfoRow label="Themes">
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {config.themes.map((s) => (
+                          <Badge key={s} variant="outline">{titleCase(s)}</Badge>
+                        ))}
+                      </div>
+                    </InfoRow>
+                  )}
+                  {config.exchanges.length > 0 && (
+                    <InfoRow
+                      label="Exchanges"
+                      value={config.exchanges.join(", ")}
+                      mono
+                    />
+                  )}
+                  {(config.marketCapMin !== null ||
+                    config.marketCapMax !== null) && (
+                    <InfoRow
+                      label="Market Cap"
+                      value={`${config.marketCapMin ?? "—"} – ${config.marketCapMax ?? "—"}`}
+                      mono
+                    />
+                  )}
+                  {config.exclusionList.length > 0 && (
+                    <InfoRow
+                      label="Excluded"
+                      value={config.exclusionList.join(", ")}
+                      mono
+                      border={false}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ── Sources ───────────────────────────────────────── */}
             {config.domainMonitors.length > 0 && (
               <div className="p-3 border-b">

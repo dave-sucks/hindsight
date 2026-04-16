@@ -25,12 +25,21 @@ export interface AnalystConfig {
   maxPositionSize: number;
   maxRiskPct: number | null;
   minMarketCapTier: string | null;
+  exchanges: string[];
   watchlist: string[];
   exclusionList: string[];
   dailyLossLimit: number;
   scheduleTime: string;
   createdAt: Date;
   updatedAt: Date;
+  // V3 Session 3 / Workstream B — Universe fields. These live directly on
+  // AgentConfig (no `universe*` prefix): the existing `sectors` + `exchanges` +
+  // `exclusionList` are the universe's sector/exchange/exclusion dimensions;
+  // `industries`, `themes`, and `marketCapMin/Max` add the rest.
+  industries: string[];
+  themes: string[];
+  marketCapMin: string | null;   // BigInt serialized as string for client transport
+  marketCapMax: string | null;
   // V3 intelligence fields — populated from Monitor table + AgentConfig.intelligencePolicy
   intelligencePolicy: Record<string, unknown> | null;
   domainMonitors: Array<{
@@ -509,12 +518,19 @@ export async function getAnalystDetail(
     maxPositionSize: config.maxPositionSize,
     maxRiskPct: config.maxRiskPct,
     minMarketCapTier: config.minMarketCapTier,
+    exchanges: (config.exchanges as string[]) ?? [],
     watchlist: (config.watchlist as string[]) ?? [],
     exclusionList: (config.exclusionList as string[]) ?? [],
     dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
+    // Session 3 / B contract: Universe fields live directly on AgentConfig.
+    // BigInt → string for JSON-safe client transport.
+    industries: config.industries ?? [],
+    themes: config.themes ?? [],
+    marketCapMin: config.marketCapMin?.toString() ?? null,
+    marketCapMax: config.marketCapMax?.toString() ?? null,
     intelligencePolicy: (config.intelligencePolicy as Record<string, unknown>) ?? null,
     domainMonitors,
     searchMonitors,
@@ -749,6 +765,18 @@ interface BuilderConfig {
     allowLiveSearch?: boolean;
     liveSearchBudget?: number;
   };
+  // Session 3: Universe payload from builder/editor `suggest_config`.
+  universe?: {
+    sectors?: string[];
+    industries?: string[];
+    themes?: string[];
+    exchanges?: string[];
+    marketCapMin?: number;
+    marketCapMax?: number;
+    priceMin?: number;
+    priceMax?: number;
+    exclusions?: string[];
+  };
 }
 
 export async function createAnalystFromBuilder(
@@ -808,6 +836,37 @@ export async function createAnalystFromBuilder(
     } : {}),
   };
 
+  // ── Universe payload — maps to AgentConfig fields per B contract ──
+  // `universe.sectors/exchanges/exclusions` collapse into the existing
+  // `sectors/exchanges/exclusionList` columns. `industries`, `themes`, and
+  // `marketCapMin/Max` have dedicated columns. priceMin/priceMax are NOT
+  // currently persisted — they're treated as hints for future filtering.
+  const universe = data.universe;
+  const universeSectors = Array.isArray(universe?.sectors) && universe!.sectors!.length > 0
+    ? universe!.sectors!
+    : sectors; // fall back to the non-universe sectors field if builder didn't set universe
+  const universeExchanges = Array.isArray(universe?.exchanges) && universe!.exchanges!.length > 0
+    ? universe!.exchanges!
+    : ["NASDAQ", "NYSE"];
+  const universeExclusions = Array.isArray(universe?.exclusions) ? universe!.exclusions! : [];
+  // Combine builder's general exclusionList with universe.exclusions (dedup).
+  const combinedExclusions = Array.from(
+    new Set([
+      ...(Array.isArray(data.exclusionList) ? data.exclusionList : []),
+      ...universeExclusions,
+    ].map((s) => s.toUpperCase())),
+  );
+  const industries = Array.isArray(universe?.industries) ? universe!.industries! : [];
+  const themes = Array.isArray(universe?.themes) ? universe!.themes! : [];
+  const marketCapMin =
+    typeof universe?.marketCapMin === "number" && Number.isFinite(universe.marketCapMin)
+      ? BigInt(Math.round(universe.marketCapMin))
+      : null;
+  const marketCapMax =
+    typeof universe?.marketCapMax === "number" && Number.isFinite(universe.marketCapMax)
+      ? BigInt(Math.round(universe.marketCapMax))
+      : null;
+
   // ── Transactional creation: analyst + watchlist + monitors ──
   // All intelligence setup is atomic — if monitor creation fails midway,
   // the analyst still gets created but without a partial/broken intelligence setup.
@@ -821,10 +880,14 @@ export async function createAnalystFromBuilder(
         enabled: true,
         analystPrompt: prompt,
         markets: ["US_EQUITIES"],
-        exchanges: ["NASDAQ", "NYSE"],
-        sectors,
+        exchanges: universeExchanges,
+        sectors: universeSectors,
+        industries,
+        themes,
+        marketCapMin,
+        marketCapMax,
         watchlist: watchlistSymbols,
-        exclusionList: Array.isArray(data.exclusionList) ? data.exclusionList : [],
+        exclusionList: combinedExclusions,
         maxPositionSize: posSize,
         maxOpenPositions: maxPos,
         minConfidence: minConf,
@@ -1106,6 +1169,33 @@ export async function updateAnalystFromBuilder(
   if (data.maxOpenPositions !== undefined) updateData.maxOpenPositions = data.maxOpenPositions;
   if (data.minMarketCapTier !== undefined) updateData.minMarketCapTier = data.minMarketCapTier;
   if (data.exclusionList !== undefined) updateData.exclusionList = data.exclusionList;
+
+  // Session 3: Universe payload — writes directly to AgentConfig columns per
+  // the Workstream B contract. Any omitted key leaves the existing value
+  // untouched. `universe.exclusions` is merged into `exclusionList` (dedup).
+  if (data.universe !== undefined) {
+    const u = data.universe;
+    if (Array.isArray(u.sectors)) updateData.sectors = u.sectors;
+    if (Array.isArray(u.exchanges)) updateData.exchanges = u.exchanges;
+    if (Array.isArray(u.industries)) updateData.industries = u.industries;
+    if (Array.isArray(u.themes)) updateData.themes = u.themes;
+    if (typeof u.marketCapMin === "number" && Number.isFinite(u.marketCapMin)) {
+      updateData.marketCapMin = BigInt(Math.round(u.marketCapMin));
+    } else if (u.marketCapMin === null) {
+      updateData.marketCapMin = null;
+    }
+    if (typeof u.marketCapMax === "number" && Number.isFinite(u.marketCapMax)) {
+      updateData.marketCapMax = BigInt(Math.round(u.marketCapMax));
+    } else if (u.marketCapMax === null) {
+      updateData.marketCapMax = null;
+    }
+    if (Array.isArray(u.exclusions) && u.exclusions.length > 0) {
+      const base = Array.isArray(data.exclusionList) ? data.exclusionList : [];
+      updateData.exclusionList = Array.from(
+        new Set([...base, ...u.exclusions].map((s) => s.toUpperCase())),
+      );
+    }
+  }
 
   // Handle structured watchlist updates
   if (data.watchlist !== undefined) {

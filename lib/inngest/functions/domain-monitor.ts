@@ -16,6 +16,70 @@ import {
   computeContentHash,
 } from "@/lib/intelligence/signals"
 
+// ── Per-monitor query resolution ─────────────────────────────────────────────
+
+type MonitorWithAnalyst = {
+  id: string
+  name: string
+  analyst: { sectors: string[]; strategyInstructions: string | null } | null
+}
+
+/**
+ * Build a fallback Sonar query when a domain monitor doesn't have its own
+ * `config.searchQuery`. Prefers analyst sectors + strategy keywords; falls
+ * back to a sector-aware generic if no analyst is attached.
+ *
+ * Session 2 note: this is the bridge until per-monitor `searchQuery` is
+ * populated by Session 4 (builder rebuild) and Session 5 (manager edits).
+ */
+export function defaultQueryFor(monitor: MonitorWithAnalyst): string {
+  const analyst = monitor.analyst
+  const sectors = analyst?.sectors ?? []
+  const strategy = analyst?.strategyInstructions ?? ""
+
+  // Pull a few salient words from the strategy prompt — same heuristic as
+  // signal-router's keyword extractor so the query reflects the analyst's
+  // actual focus, not a generic financial-news bag of words.
+  const strategyWords = extractTopKeywords(strategy, 4)
+  const sectorWords = sectors.slice(0, 3).map((s) => s.toLowerCase())
+  const focusWords = [...sectorWords, ...strategyWords].filter(Boolean)
+
+  if (focusWords.length === 0) {
+    // Last-resort default — still better than the old hardcoded line because
+    // it points the warning log at "this monitor has no analyst context yet".
+    return "actionable market-moving news today: earnings, M&A, guidance, supply chain, regulatory"
+  }
+
+  return `actionable news today on ${focusWords.join(
+    ", "
+  )}: catalysts, earnings, guidance, supply chain, regulatory developments`
+}
+
+const STOPWORDS = new Set([
+  "the", "and", "for", "that", "with", "this", "from", "are", "was", "will",
+  "can", "has", "have", "been", "not", "but", "all", "any", "more", "when",
+  "than", "its", "also", "into", "just", "should", "would", "could", "about",
+  "each", "which", "their", "other", "stock", "stocks", "trade", "trades",
+  "trading", "market", "markets", "position", "positions", "analyst",
+  "research", "look", "find", "your",
+])
+
+function extractTopKeywords(text: string, n: number): string[] {
+  if (!text) return []
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !STOPWORDS.has(w))
+  // Frequency rank, take top n.
+  const counts = new Map<string, number>()
+  for (const w of words) counts.set(w, (counts.get(w) ?? 0) + 1)
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([w]) => w)
+}
+
 export const domainMonitor = inngest.createFunction(
   {
     id: "domain-monitor",
@@ -41,6 +105,7 @@ export const domainMonitor = inngest.createFunction(
             { expiresAt: { gt: now } },
           ],
         },
+        include: { analyst: true },
         orderBy: { createdAt: "asc" },
       })
     })
@@ -55,115 +120,99 @@ export const domainMonitor = inngest.createFunction(
       return createSignalBatch("DOMAIN_MONITOR")
     })
 
-    // ── Step 3: Group domain monitors and process ─────────────────────────
+    // ── Step 3: Process each monitor with its OWN searchQuery + domain ─────
+    //
+    // Session 2 change: dropped the "group all monitors and run one generic
+    // search" flow. Each Monitor row now drives its own Sonar call with its
+    // own per-monitor query. Falls back to defaultQueryFor() when the monitor
+    // hasn't been migrated yet (logged so we can find them).
 
     let totalSignals = 0
     let monitorsProcessed = 0
     let artifactsCreated = 0
+    let monitorsUsingFallbackQuery = 0
 
-    // Group monitors by scope+analystId so related domains are searched together
-    const monitorGroups = new Map<string, typeof monitors>()
     for (const monitor of monitors) {
-      const groupKey = monitor.analystId
-        ? `analyst:${monitor.analystId}`
-        : `firm:${monitor.scope}`
-      const group = monitorGroups.get(groupKey) ?? []
-      group.push(monitor)
-      monitorGroups.set(groupKey, group)
-    }
+      const config = monitor.config as Record<string, unknown> | null
+      const domain = (config?.domain as string) ?? ""
+      const qualityScore = (config?.qualityScore as number) ?? 3
+      const priority = (config?.priority as number) ?? 5
+      const configuredQuery =
+        typeof config?.searchQuery === "string"
+          ? (config.searchQuery as string).trim()
+          : ""
 
-    for (const [groupKey, groupMonitors] of monitorGroups) {
-      // Extract domains from monitor configs
-      const monitorDomains: Array<{ monitor: typeof monitors[0]; domain: string; qualityScore: number; priority: number }> = []
-      for (const monitor of groupMonitors) {
-        const config = monitor.config as Record<string, unknown> | null
-        const domain = (config?.domain as string) ?? ""
-        const qualityScore = (config?.qualityScore as number) ?? 3
-        const priority = (config?.priority as number) ?? 5
-        if (domain) {
-          monitorDomains.push({ monitor, domain, qualityScore, priority })
-        }
+      if (!domain) continue
+
+      const isFallback = configuredQuery.length === 0
+      const query = isFallback ? defaultQueryFor(monitor) : configuredQuery
+      if (isFallback) {
+        monitorsUsingFallbackQuery++
+        console.warn(
+          `[domain-monitors] Monitor ${monitor.id} (${monitor.name}, domain=${domain}) ` +
+            `has no config.searchQuery — using fallback query. Populate it via the ` +
+            `analyst editor or wait for Session 4/5 to backfill.`
+        )
       }
 
-      if (monitorDomains.length === 0) continue
+      const stepKey = `search-${monitor.id}`
 
-      const domains = monitorDomains.map((md) => md.domain)
-
-      const result = await step.run(`search-group-${groupKey}`, async () => {
+      const result = await step.run(stepKey, async () => {
         try {
-          // Search across all domains in the group
-          const query = `latest news analysis developments today from financial markets investing`
-          const sonarResponse = await searchDomain(query, domains, "day")
-
-          // Average quality score from monitors in this group
-          const avgQuality = Math.round(
-            monitorDomains.reduce((sum, md) => sum + md.qualityScore, 0) /
-              monitorDomains.length
-          )
-
-          // Use the first monitor's ID as the primary monitorId for these signals
-          // (signals are grouped by domain search, individual monitor attribution
-          // is tracked via searchContext)
-          const primaryMonitorId = groupMonitors[0].id
+          const sonarResponse = await searchDomain(query, [domain], "day")
 
           const signalIds = await createSignalsFromSonar(
             batchId,
             sonarResponse,
             "NEWS",
-            avgQuality,
+            qualityScore,
             {
               searchTool: "PERPLEXITY_SONAR",
               searchQuery: query,
-              searchContext: `domain_group:${groupKey}:${domains.join(",")}`,
-              monitorId: primaryMonitorId,
+              searchContext:
+                `domain_monitor:${monitor.id}:${domain}` +
+                (isFallback ? ":fallback_query" : ":configured_query"),
+              monitorId: monitor.id,
             }
           )
 
-          // Update lastRunAt for all monitors in this group
-          const monitorIds = groupMonitors.map((m) => m.id)
-          await prisma.monitor.updateMany({
-            where: { id: { in: monitorIds } },
+          await prisma.monitor.update({
+            where: { id: monitor.id },
             data: { lastRunAt: new Date() },
           })
 
           return {
             success: true,
             signalCount: signalIds.length,
-            monitorsProcessed: groupMonitors.length,
           }
         } catch (error) {
           console.error(
-            `[domain-monitors] Domain group "${groupKey}" search failed:`,
+            `[domain-monitors] Monitor ${monitor.id} (${monitor.name}, domain=${domain}) search failed:`,
             error instanceof Error ? error.message : error
           )
-          return { success: false, signalCount: 0, monitorsProcessed: 0 }
+          return { success: false, signalCount: 0 }
         }
       })
 
       totalSignals += result.signalCount
-      monitorsProcessed += result.monitorsProcessed
+      if (result.success) monitorsProcessed++
 
       // For high-priority monitors (priority 1), try to extract full pages
-      const criticalMonitors = monitorDomains.filter((md) => md.priority === 1)
-      if (criticalMonitors.length > 0) {
-        const extractResult = await step.run(`extract-group-${groupKey}`, async () => {
+      if (priority === 1) {
+        const extractResult = await step.run(`extract-${monitor.id}`, async () => {
           try {
-            const criticalDomains = new Set(
-              criticalMonitors.map((md) => md.domain)
-            )
-
             const recentSignals = await prisma.signal.findMany({
-              where: { batchId },
+              where: { batchId, monitorId: monitor.id },
               select: { sourceUrls: true },
             })
 
-            // Collect URLs from critical domains
+            // Collect URLs from this monitor's domain
             const urlsToExtract: string[] = []
             for (const signal of recentSignals) {
               for (const url of signal.sourceUrls) {
                 try {
-                  const domain = new URL(url).hostname.replace(/^www\./, "")
-                  if (criticalDomains.has(domain) && urlsToExtract.length < 5) {
+                  const urlDomain = new URL(url).hostname.replace(/^www\./, "")
+                  if (urlDomain === domain && urlsToExtract.length < 5) {
                     urlsToExtract.push(url)
                   }
                 } catch {
@@ -172,14 +221,12 @@ export const domainMonitor = inngest.createFunction(
               }
             }
 
-            // Extract and create artifacts
             let created = 0
             for (const url of urlsToExtract) {
               try {
                 const page = await extractPage(url)
                 const contentHash = computeContentHash(page.title, page.markdown.slice(0, 500))
 
-                // Check if artifact already exists
                 const existing = await prisma.artifact.findFirst({
                   where: { contentHash },
                 })
@@ -230,6 +277,7 @@ export const domainMonitor = inngest.createFunction(
       batchId,
       monitorsTotal: monitors.length,
       monitorsProcessed,
+      monitorsUsingFallbackQuery,
       signalsCreated: totalSignals,
       artifactsCreated,
       duplicatesRemoved: dupsRemoved,

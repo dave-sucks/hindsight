@@ -144,6 +144,19 @@ model AgentConfig {
   strategyType          String        @default("DISCOVERY") // "DISCOVERY" | "WATCHLIST" | "DIRECTED"
   strategyInstructions  String?       // freeform prompt injection into Concept-CoT
   tickerUniverse        String[]      @default([]) // for DIRECTED mode: always analyze these tickers
+  // V3 Session 3 / Workstream B — Universe fields.
+  // Universe = fence for discovery routing. Dimensions: existing `sectors`
+  // (broad GICS) + `industries` (narrower) + `themes` (analyst-defined) +
+  // `marketCapMin/Max` + existing `exchanges` + existing `exclusionList`.
+  // Match semantics (enforced in lib/inngest/functions/signal-router.ts):
+  //   - empty array or null numeric = no filter on that dimension
+  //   - AND across dimensions, OR within a dimension
+  //   - exclusionList hard-rejects
+  //   - watchlist + open positions bypass the fence entirely
+  industries            String[]      @default([])
+  themes                String[]      @default([])
+  marketCapMin          BigInt?
+  marketCapMax          BigInt?
   tradePolicyAutoTrade  Boolean       @default(true) // true = auto-place paper trades
   // Prompt customization
   conceptPromptExtra    String?       // extra instructions for concept system prompt
@@ -261,6 +274,10 @@ model Signal {
   tickers        String[] // mentioned tickers
   themes         String[] // "AI_CAPEX", "FED_RATE_CUT", "EARNINGS_BEAT"
   sectors        String[]
+  // Session 3 / Workstream B contract — narrower classification so the router's
+  // INDUSTRY_MATCH code can fire. Producers (firm-market-sweep,
+  // portfolio-watchlist-monitor, domain-monitor) tag this at signal creation.
+  industries     String[] @default([])
 
   sentiment      String   // "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED"
   noveltyScore   Int      @default(50)  // 0-100
@@ -283,6 +300,11 @@ model Signal {
   expiresAt      DateTime?
   routes         AnalystSignalRoute[]
 
+  // Stable fingerprint for tiered/cross-batch dedup.
+  // Hash of normalized headline + primary ticker + ISO-week bucket.
+  // See lib/intelligence/signals.ts:computeSignalFingerprint.
+  signalFingerprint String?
+
   createdAt      DateTime @default(now())
 
   @@index([tickers])
@@ -290,6 +312,7 @@ model Signal {
   @@index([createdAt])
   @@index([batchId])
   @@index([monitorId])
+  @@index([signalFingerprint, createdAt])
 }
 
 /// A group of signals from one intelligence job run.
@@ -313,14 +336,28 @@ model AnalystSignalRoute {
   analyst        AgentConfig @relation(fields: [analystId], references: [id], onDelete: Cascade)
   signalId       String
   signal         Signal      @relation(fields: [signalId], references: [id], onDelete: Cascade)
-  relevanceScore Int         // 0-100
-  routeReason    String      // "ticker_match:AMD", "sector_match:TECH", "theme_match:AI_CAPEX"
+  relevanceScore Int         // 0-100, novelty-adjusted final score (used for ordering / brief inclusion)
+  rawRelevanceScore Int?     // 0-100, pre-novelty raw score (debugging — see signal-router.ts)
+  noveltyScore   Int?        // 0-100, per-(analyst,signal) novelty value applied as multiplier
+  routeReason    String      // legacy free-form: "ticker_match:AMD", "sector_match:TECH", …
+  // Session 3: canonical routing code used by agent/brief/read_signals to
+  // segment inbox. Enum (string, not Postgres enum — easier to evolve):
+  //   DISCOVERY | WATCHLIST | POSITION | DIRECT_TICKER |
+  //   SECTOR_MATCH | INDUSTRY_MATCH | THEME_MATCH | CROSS_ANALYST
+  // Nullable for legacy rows; all new routes populate it.
+  routeReasonCode String?
+  // Session 3: JSON explaining *why* this route matched — which sectors/
+  // industries/themes overlapped, in-watchlist/in-positions flags, and
+  // fromAnalystId for CROSS_ANALYST. Only populated keys contribute.
+  matchedUniverse Json?
   status         String      @default("PENDING") // "PENDING" | "READ" | "ACTED_ON" | "DISMISSED"
 
   routedAt       DateTime    @default(now())
 
   @@index([analystId, status])
   @@index([analystId, routedAt])
+  // Session 3: optimized for "give me DISCOVERY routes for this analyst, newest first".
+  @@index([analystId, routeReasonCode, routedAt(sort: Desc)])
   @@index([signalId])
 }
 

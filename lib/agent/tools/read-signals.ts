@@ -1,9 +1,19 @@
 /**
- * read_signals — migrated to defineTool().
+ * read_signals — aligned with Session 3 / Workstream B Universe contract.
  *
  * Reads intelligence signals routed to this analyst by background jobs.
- * Applies intelligence policy constraints (urgency floor, source quality,
- * budget). Falls back to sector/watchlist match if no routed signals.
+ * Applies intelligence-policy constraints (urgency floor, source quality,
+ * budget). Falls back to sector/industry/theme/watchlist match if no
+ * routed signals.
+ *
+ * Returns three buckets, segmented by `routeReasonCode` (set by
+ * signal-router.ts):
+ *   portfolioSignals  — routeReasonCode === "POSITION"
+ *   watchlistSignals  — routeReasonCode === "WATCHLIST"
+ *   discoverySignals  — DISCOVERY | SECTOR_MATCH | INDUSTRY_MATCH |
+ *                       THEME_MATCH | DIRECT_TICKER | CROSS_ANALYST
+ *
+ * The flat `signals` array is kept for legacy renderers and urgency sorts.
  */
 
 import { z } from "zod";
@@ -11,11 +21,82 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { toSourceRefs, sourceRefsToToolSources } from "@/lib/agent/tool-types";
-import type { SignalItem, SignalsToolData } from "@/lib/agent/tool-types";
+import type {
+  SignalItem,
+  SignalsToolData,
+  RouteReasonCode,
+  MatchedUniverse,
+} from "@/lib/agent/tool-types";
+
+const DISCOVERY_CODES: RouteReasonCode[] = [
+  "DISCOVERY",
+  "SECTOR_MATCH",
+  "INDUSTRY_MATCH",
+  "THEME_MATCH",
+  "DIRECT_TICKER",
+  "CROSS_ANALYST",
+];
+
+function mapSignal(
+  r: {
+    relevanceScore: number;
+    routeReason: string | null;
+    routeReasonCode: string | null;
+    matchedUniverse: unknown;
+    signal: {
+      id: string;
+      type: string;
+      headline: string;
+      summary: string | null;
+      tickers: string[];
+      themes: string[];
+      sentiment: string | null;
+      urgency: string | null;
+      freshness: string | null;
+      sourceNames: string[];
+      sourceUrls: string[];
+      artifactId: string | null;
+    };
+  },
+): SignalItem {
+  const code = (r.routeReasonCode as RouteReasonCode | null) ?? undefined;
+  const mu = (r.matchedUniverse as MatchedUniverse | null) ?? null;
+  return {
+    signalId: r.signal.id,
+    type: r.signal.type,
+    headline: r.signal.headline,
+    summary: r.signal.summary ?? "",
+    tickers: r.signal.tickers,
+    themes: r.signal.themes,
+    sentiment: r.signal.sentiment ?? "NEUTRAL",
+    urgency: r.signal.urgency ?? "MEDIUM",
+    freshness: r.signal.freshness ?? undefined,
+    sources: toSourceRefs(r.signal.sourceNames, r.signal.sourceUrls),
+    relevanceScore: r.relevanceScore,
+    routeReason: r.routeReason ?? undefined,
+    artifactId: r.signal.artifactId,
+    routeReasonCode: code,
+    matchedUniverse: mu,
+    crossAnalystSource:
+      code === "CROSS_ANALYST" ? mu?.fromAnalystId ?? null : null,
+  };
+}
+
+/** Bucket a SignalItem by its routeReasonCode for the 3-bucket view. */
+function bucketOf(
+  s: SignalItem,
+): "portfolio" | "watchlist" | "discovery" {
+  const c = s.routeReasonCode;
+  if (c === "POSITION") return "portfolio";
+  if (c === "WATCHLIST") return "watchlist";
+  // Everything else — DISCOVERY, SECTOR_MATCH, INDUSTRY_MATCH, THEME_MATCH,
+  // DIRECT_TICKER, CROSS_ANALYST, or undefined — reads as discovery.
+  return "discovery";
+}
 
 export const readSignals = defineTool({
   description:
-    "Read intelligence signals routed to you by background discovery jobs. Returns pre-gathered news, filings, earnings, social, and macro signals matched to your mandate. Filter by tickers, themes, or urgency. Signals are marked as READ after retrieval. Use this to understand what the intelligence pipeline found for you today.",
+    "Read intelligence signals routed to you by background discovery jobs. Returns pre-gathered news, filings, earnings, social, and macro signals matched to your mandate, split into three buckets: portfolioSignals (your open positions), watchlistSignals (your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence — sectors, industries, themes). Filter by tickers, themes, or urgency. Signals are marked as READ after retrieval. Use discoverySignals to find new names to research — do NOT ignore them.",
   schema: z.object({
     tickers: z.array(z.string()).optional().describe("Filter to signals mentioning these tickers"),
     themes: z.array(z.string()).optional().describe("Filter to signals with these themes (e.g. AI_CAPEX, FED_RATE_CUT)"),
@@ -27,15 +108,25 @@ export const readSignals = defineTool({
       .enum(["LOW", "MEDIUM", "HIGH", "BREAKING"])
       .optional()
       .describe("Minimum urgency level"),
+    bucket: z
+      .enum(["POSITION", "WATCHLIST", "DISCOVERY"])
+      .optional()
+      .describe("Filter to a specific routing bucket. Omit to get all buckets split into three groups."),
     limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy)"),
   }),
   ui: "ticker-list" as const,
 
-  execute: async ({ tickers, themes, type, urgency, limit = 3 }, ctx) => {
+  execute: async ({ tickers, themes, type, urgency, bucket, limit = 20 }, ctx) => {
     if (!ctx.analystId) {
       return {
         summary: "No analyst context — cannot read signals.",
-        data: { count: 0, signals: [] } as SignalsToolData,
+        data: {
+          count: 0,
+          signals: [],
+          portfolioSignals: [],
+          watchlistSignals: [],
+          discoverySignals: [],
+        } as SignalsToolData,
         sources: [],
       };
     }
@@ -53,10 +144,21 @@ export const readSignals = defineTool({
     const minSourceQuality = policy?.minSourceQuality ?? 2;
     const excludedCategories = policy?.excludedSourceCategories ?? [];
 
+    // Bucket filter → map to the set of routeReasonCodes to include.
+    let codeFilter: RouteReasonCode[] | null = null;
+    if (bucket === "POSITION") codeFilter = ["POSITION"];
+    else if (bucket === "WATCHLIST") codeFilter = ["WATCHLIST"];
+    else if (bucket === "DISCOVERY") codeFilter = DISCOVERY_CODES;
+
+    // Pull a wider slice than `effectiveLimit` so we can split into three
+    // buckets and still have enough in each.
+    const loadCap = Math.max(effectiveLimit * 3, 30);
+
     const routes = await prisma.analystSignalRoute.findMany({
       where: {
         analystId: ctx.analystId,
         status: { in: ["PENDING", "READ"] },
+        ...(codeFilter ? { routeReasonCode: { in: codeFilter } } : {}),
         signal: {
           ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
           ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
@@ -67,7 +169,7 @@ export const readSignals = defineTool({
       },
       include: { signal: { include: { artifact: true } } },
       orderBy: { relevanceScore: "desc" },
-      take: effectiveLimit + excludedCategories.length * 5,
+      take: loadCap + excludedCategories.length * 5,
     });
 
     let filtered = routes;
@@ -78,7 +180,38 @@ export const readSignals = defineTool({
       });
     }
 
-    const finalRoutes = filtered.slice(0, effectiveLimit);
+    // Per-bucket cap so discovery isn't crowded out by a hot-ticker hour.
+    const perBucketCap = Math.max(3, Math.floor(effectiveLimit / 3));
+
+    const groupedByBucket: {
+      portfolio: typeof filtered;
+      watchlist: typeof filtered;
+      discovery: typeof filtered;
+    } = { portfolio: [], watchlist: [], discovery: [] };
+    for (const r of filtered) {
+      const code = r.routeReasonCode as RouteReasonCode | null;
+      if (code === "POSITION") groupedByBucket.portfolio.push(r);
+      else if (code === "WATCHLIST") groupedByBucket.watchlist.push(r);
+      else groupedByBucket.discovery.push(r);
+    }
+
+    const picked: typeof filtered = [];
+    const pickedIds = new Set<string>();
+    for (const b of ["portfolio", "watchlist", "discovery"] as const) {
+      for (const r of groupedByBucket[b].slice(0, perBucketCap)) {
+        picked.push(r);
+        pickedIds.add(r.id);
+      }
+    }
+    // Backfill to effectiveLimit with whatever's left, highest score first.
+    for (const r of filtered) {
+      if (picked.length >= effectiveLimit) break;
+      if (pickedIds.has(r.id)) continue;
+      picked.push(r);
+      pickedIds.add(r.id);
+    }
+
+    const finalRoutes = picked.slice(0, effectiveLimit);
 
     if (finalRoutes.length > 0) {
       await prisma.analystSignalRoute.updateMany({
@@ -87,14 +220,34 @@ export const readSignals = defineTool({
       });
     }
 
-    // Fallback: query by sectors/watchlist if no routed signals
+    // Fallback: no routed signals at all for this analyst today.
     if (finalRoutes.length === 0) {
       const config = await prisma.agentConfig.findUnique({
         where: { id: ctx.analystId },
-        select: { sectors: true, watchlist: true },
+        select: {
+          sectors: true,
+          industries: true,
+          themes: true,
+          watchlist: true,
+          exclusionList: true,
+        },
       });
 
-      if (config && (config.sectors.length > 0 || config.watchlist.length > 0)) {
+      const cfgSectors = config?.sectors ?? [];
+      const cfgIndustries = config?.industries ?? [];
+      const cfgThemes = config?.themes ?? [];
+      const cfgWatchlist = config?.watchlist ?? [];
+      const exclSet = new Set(
+        (config?.exclusionList ?? []).map((e) => e.toUpperCase()),
+      );
+
+      const hasAnyFilter =
+        cfgWatchlist.length > 0 ||
+        cfgSectors.length > 0 ||
+        cfgIndustries.length > 0 ||
+        cfgThemes.length > 0;
+
+      if (hasAnyFilter) {
         const today = etTradingDayDate();
         const fallbackSignals = await prisma.signal.findMany({
           where: {
@@ -102,8 +255,10 @@ export const readSignals = defineTool({
             urgency: { in: validUrgencies },
             sourceQuality: { gte: minSourceQuality },
             OR: [
-              ...(config.watchlist.length > 0 ? [{ tickers: { hasSome: config.watchlist } }] : []),
-              ...(config.sectors.length > 0 ? [{ sectors: { hasSome: config.sectors } }] : []),
+              ...(cfgWatchlist.length > 0 ? [{ tickers: { hasSome: cfgWatchlist } }] : []),
+              ...(cfgSectors.length > 0 ? [{ sectors: { hasSome: cfgSectors } }] : []),
+              ...(cfgIndustries.length > 0 ? [{ industries: { hasSome: cfgIndustries } }] : []),
+              ...(cfgThemes.length > 0 ? [{ themes: { hasSome: cfgThemes } }] : []),
             ],
           },
           orderBy: { createdAt: "desc" },
@@ -111,67 +266,127 @@ export const readSignals = defineTool({
         });
 
         if (fallbackSignals.length > 0) {
-          const fbSignals: SignalItem[] = fallbackSignals.map((s) => ({
-            signalId: s.id,
-            type: s.type,
-            headline: s.headline,
-            summary: s.summary ?? "",
-            tickers: s.tickers,
-            themes: s.themes,
-            sentiment: s.sentiment ?? "NEUTRAL",
-            urgency: s.urgency ?? "MEDIUM",
-            freshness: s.freshness ?? undefined,
-            sources: toSourceRefs(s.sourceNames, s.sourceUrls),
-            relevanceScore: 0,
-            routeReason: "fallback_sector_watchlist_match",
-            artifactId: s.artifactId,
-          }));
+          const watchSet = new Set(cfgWatchlist.map((w) => w.toUpperCase()));
+          const fbSignals: SignalItem[] = fallbackSignals
+            .filter((s) => !s.tickers.some((t) => exclSet.has(t.toUpperCase())))
+            .map((s): SignalItem => {
+              const hasWatchlist = s.tickers.some((t) => watchSet.has(t.toUpperCase()));
+              // Fallback never has position data (positions require routing),
+              // so classify as WATCHLIST or DISCOVERY only.
+              const code: RouteReasonCode = hasWatchlist ? "WATCHLIST" : "DISCOVERY";
+              return {
+                signalId: s.id,
+                type: s.type,
+                headline: s.headline,
+                summary: s.summary ?? "",
+                tickers: s.tickers,
+                themes: s.themes,
+                sentiment: s.sentiment ?? "NEUTRAL",
+                urgency: s.urgency ?? "MEDIUM",
+                freshness: s.freshness ?? undefined,
+                sources: toSourceRefs(s.sourceNames, s.sourceUrls),
+                relevanceScore: 0,
+                routeReason: "fallback_sector_watchlist_match",
+                artifactId: s.artifactId,
+                routeReasonCode: code,
+                matchedUniverse: {
+                  inWatchlist: hasWatchlist,
+                  inPositions: false,
+                },
+                crossAnalystSource: null,
+              };
+            });
+
+          const portfolioSignals: SignalItem[] = [];
+          const watchlistSignals = fbSignals.filter((s) => bucketOf(s) === "watchlist");
+          const discoverySignals = fbSignals.filter((s) => bucketOf(s) === "discovery");
+
           const urgent = fbSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
           const bullish = fbSignals.filter((s) => s.sentiment === "BULLISH").length;
           const bearish = fbSignals.filter((s) => s.sentiment === "BEARISH").length;
           return {
-            summary: `${fbSignals.length} signal${fbSignals.length !== 1 ? "s" : ""} (${urgent} urgent, ${bullish} bullish, ${bearish} bearish). Fallback: sector/watchlist match.`,
+            summary: `${fbSignals.length} signal${fbSignals.length !== 1 ? "s" : ""} (${urgent} urgent, ${bullish} bullish, ${bearish} bearish). Fallback: sector/industry/theme/watchlist match.`,
             data: {
               count: fbSignals.length,
               fallback: true,
-              fallbackReason: "No routed signals found — falling back to sector/watchlist match",
-              policyApplied: { maxSignals: policyMaxSignals, minUrgency: urgencyOrder[effectiveMinIdx], minSourceQuality, excludedCategories },
+              fallbackReason:
+                "No routed signals found — falling back to sector/industry/theme/watchlist match",
+              policyApplied: {
+                maxSignals: policyMaxSignals,
+                minUrgency: urgencyOrder[effectiveMinIdx],
+                minSourceQuality,
+                excludedCategories,
+              },
               signals: fbSignals,
-              tickers: fbSignals.map((s) => ({ ticker: s.tickers[0] ?? "MACRO", tag: s.urgency, summary: s.headline })),
+              portfolioSignals,
+              watchlistSignals,
+              discoverySignals,
+              discoveryNote:
+                discoverySignals.length === 0
+                  ? "No discovery candidates this session — your Universe may need expansion."
+                  : undefined,
+              tickers: fbSignals.map((s) => ({
+                ticker: s.tickers[0] ?? "MACRO",
+                tag: s.urgency,
+                summary: s.headline,
+              })),
             } as SignalsToolData & { tickers: { ticker: string; tag: string; summary: string }[] },
             sources: sourceRefsToToolSources(fbSignals.flatMap((s) => s.sources)),
           };
         }
       }
+
+      // Nothing — return empty but still shape-stable.
+      return {
+        summary: "No signals routed or available for fallback.",
+        data: {
+          count: 0,
+          signals: [],
+          portfolioSignals: [],
+          watchlistSignals: [],
+          discoverySignals: [],
+          discoveryNote: "No discovery candidates this session.",
+        } as SignalsToolData,
+        sources: [],
+      };
     }
 
-    const mappedSignals: SignalItem[] = finalRoutes.map((r) => ({
-      signalId: r.signal.id,
-      type: r.signal.type,
-      headline: r.signal.headline,
-      summary: r.signal.summary ?? "",
-      tickers: r.signal.tickers,
-      themes: r.signal.themes,
-      sentiment: r.signal.sentiment ?? "NEUTRAL",
-      urgency: r.signal.urgency ?? "MEDIUM",
-      freshness: r.signal.freshness ?? undefined,
-      sources: toSourceRefs(r.signal.sourceNames, r.signal.sourceUrls),
-      relevanceScore: r.relevanceScore,
-      routeReason: r.routeReason ?? undefined,
-      artifactId: r.signal.artifactId,
-    }));
+    const mappedSignals = finalRoutes.map(mapSignal);
+
+    const portfolioSignals = mappedSignals.filter((s) => bucketOf(s) === "portfolio");
+    const watchlistSignals = mappedSignals.filter((s) => bucketOf(s) === "watchlist");
+    const discoverySignals = mappedSignals.filter((s) => bucketOf(s) === "discovery");
 
     const urgent = mappedSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
     const bullish = mappedSignals.filter((s) => s.sentiment === "BULLISH").length;
     const bearish = mappedSignals.filter((s) => s.sentiment === "BEARISH").length;
 
     return {
-      summary: `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} (${urgent} urgent, ${bullish} bullish, ${bearish} bearish).`,
+      summary:
+        `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} ` +
+        `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
+        `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist / ${discoverySignals.length} discovery.`,
       data: {
         count: mappedSignals.length,
-        policyApplied: { maxSignals: policyMaxSignals, minUrgency: urgencyOrder[effectiveMinIdx], minSourceQuality, excludedCategories },
+        policyApplied: {
+          maxSignals: policyMaxSignals,
+          minUrgency: urgencyOrder[effectiveMinIdx],
+          minSourceQuality,
+          excludedCategories,
+        },
         signals: mappedSignals,
-        tickers: mappedSignals.map((s) => ({ ticker: s.tickers[0] ?? "MACRO", tag: s.urgency, summary: s.headline })),
+        portfolioSignals,
+        watchlistSignals,
+        discoverySignals,
+        discoveryNote:
+          discoverySignals.length === 0
+            ? "No discovery candidates this session — your Universe may need expansion."
+            : undefined,
+        tickers: mappedSignals.map((s) => ({
+          ticker: s.tickers[0] ?? "MACRO",
+          tag: s.urgency,
+          summary: s.headline,
+        })),
       } as SignalsToolData & { tickers: { ticker: string; tag: string; summary: string }[] },
       sources: sourceRefsToToolSources(mappedSignals.flatMap((s) => s.sources)),
     };

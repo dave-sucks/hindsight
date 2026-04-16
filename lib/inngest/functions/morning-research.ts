@@ -227,7 +227,7 @@ export const morningResearch = inngest.createFunction(
               responseMessages = steps.flatMap((s) => {
                 const stepMsgs = (s as unknown as { response?: { messages?: unknown[] } }).response?.messages;
                 return Array.isArray(stepMsgs) ? stepMsgs : [];
-              });
+              }) as typeof responseMessages;
             }
             const allMessages = [userMessage, ...responseMessages];
             const json = JSON.stringify(allMessages);

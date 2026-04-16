@@ -57,12 +57,10 @@ export async function completeSignalBatch(
 
 /**
  * Create a single Signal row from structured input.
- * Computes contentHash from headline + summary for dedup.
- * Returns the signal ID.
+ * Computes signalFingerprint (normalized headline + primary ticker + ISO-week
+ * bucket) for cross-batch dedup. Returns the signal ID.
  */
 export async function createSignal(input: CreateSignalInput): Promise<string> {
-  const contentHash = computeContentHash(input.headline, input.summary);
-
   const signal = await prisma.signal.create({
     data: {
       batchId: input.batchId,
@@ -75,7 +73,11 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
       tickers: input.tickers,
       themes: input.themes,
       sectors: input.sectors,
+      industries: input.industries ?? [],
       sentiment: input.sentiment,
+      // noveltyScore at creation is a placeholder. The real value is computed
+      // per-(analyst, signal) at routing time and stored on AnalystSignalRoute.
+      // See lib/inngest/functions/signal-router.ts:computeNoveltyScore.
       noveltyScore: input.noveltyScore ?? 50,
       urgency: input.urgency,
       sourceQuality: input.sourceQuality ?? 3,
@@ -90,6 +92,11 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
       dataPayload: (input.dataPayload ?? undefined) as any,
       itemCount: input.itemCount,
       expiresAt: input.expiresAt,
+      signalFingerprint: computeSignalFingerprint({
+        headline: input.headline,
+        tickers: input.tickers,
+        createdAt: new Date(),
+      }),
     },
   });
 
@@ -121,6 +128,7 @@ export async function createSignalsFromSonar(
         tickers: item.tickers,
         themes: item.themes,
         sectors: item.sectors,
+        industries: item.industries ?? [],
         sentiment: item.sentiment,
         urgency: item.urgency,
         sourceQuality,
@@ -145,43 +153,106 @@ export async function createSignalsFromSonar(
 
 // ── Deduplication ────────────────────────────────────────────────────────────
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Pick a dedup lookback window based on signal type + urgency.
+ *  - BREAKING urgency  → 1 day (only collapse same-day repeats; new dev wins)
+ *  - NEWS / EARNINGS   → 3 days (same headline within a few days = dup)
+ *  - everything else   → 7 days (themes, macro, evergreen — long memory)
+ */
+function dedupWindowMs(input: { type: string; urgency: string }): number {
+  if (input.urgency === "BREAKING") return 1 * ONE_DAY_MS;
+  if (input.type === "NEWS" || input.type === "EARNINGS") return 3 * ONE_DAY_MS;
+  return 7 * ONE_DAY_MS;
+}
+
 /**
  * Remove duplicate signals from a batch.
- * A signal is a duplicate if another signal with the same contentHash
- * (headline + summary) exists from the last 24 hours in a different batch.
+ *
+ * Comparison key: `signalFingerprint` (normalized headline + primary ticker +
+ * ISO-week bucket). Window length depends on urgency/type — see `dedupWindowMs`.
+ * Falls back to (headline + primary ticker) hash when an older signal has no
+ * fingerprint stored yet (pre-backfill rows).
+ *
  * Returns the number of deleted duplicates.
  */
 export async function deduplicateSignals(batchId: string): Promise<number> {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-  // Get all signals in this batch
+  // Get all signals in this batch we might want to drop. Pull the fields needed
+  // to recompute a fingerprint if it's missing.
   const batchSignals = await prisma.signal.findMany({
     where: { batchId },
-    select: { id: true, headline: true, summary: true },
+    select: {
+      id: true,
+      type: true,
+      urgency: true,
+      headline: true,
+      tickers: true,
+      createdAt: true,
+      signalFingerprint: true,
+    },
   });
 
-  // Get all signals from other batches in the last 24 hours
+  if (batchSignals.length === 0) return 0;
+
+  // Widest window we need to load — load once, filter per-signal.
+  const widestWindowMs = batchSignals.reduce(
+    (max, s) => Math.max(max, dedupWindowMs(s)),
+    0
+  );
+  const cutoff = new Date(Date.now() - widestWindowMs);
+
+  // Pull recent signals from OTHER batches with their fingerprints + createdAt.
   const recentSignals = await prisma.signal.findMany({
     where: {
       batchId: { not: batchId },
       createdAt: { gte: cutoff },
     },
-    select: { headline: true, summary: true },
+    select: {
+      headline: true,
+      tickers: true,
+      createdAt: true,
+      signalFingerprint: true,
+    },
   });
 
-  // Build a set of existing content hashes
-  const existingHashes = new Set(
-    recentSignals.map((s) => computeContentHash(s.headline, s.summary))
-  );
+  // Map fingerprint → most-recent createdAt (so we can window-filter per signal).
+  const fingerprintLatest = new Map<string, number>();
+  for (const s of recentSignals) {
+    const fp =
+      s.signalFingerprint ??
+      computeSignalFingerprint({
+        headline: s.headline,
+        tickers: s.tickers,
+        createdAt: s.createdAt,
+      });
+    if (!fp) continue;
+    const ts = s.createdAt.getTime();
+    const prev = fingerprintLatest.get(fp);
+    if (prev === undefined || ts > prev) fingerprintLatest.set(fp, ts);
+  }
 
-  // Find duplicates in this batch
-  const duplicateIds = batchSignals
-    .filter((s) => existingHashes.has(computeContentHash(s.headline, s.summary)))
-    .map((s) => s.id);
+  const now = Date.now();
+  const duplicateIds: string[] = [];
+  for (const s of batchSignals) {
+    const fp =
+      s.signalFingerprint ??
+      computeSignalFingerprint({
+        headline: s.headline,
+        tickers: s.tickers,
+        createdAt: s.createdAt,
+      });
+    if (!fp) continue;
+    const matchTs = fingerprintLatest.get(fp);
+    if (matchTs === undefined) continue;
+    const windowMs = dedupWindowMs(s);
+    if (now - matchTs <= windowMs) {
+      duplicateIds.push(s.id);
+    }
+  }
 
   if (duplicateIds.length === 0) return 0;
 
-  // Delete duplicates
   await prisma.signal.deleteMany({
     where: { id: { in: duplicateIds } },
   });
@@ -198,6 +269,62 @@ export async function deduplicateSignals(batchId: string): Promise<number> {
 export function computeContentHash(headline: string, summary: string): string {
   const normalized = `${headline.toLowerCase().trim()}|${summary.toLowerCase().trim()}`;
   return createHash("sha256").update(normalized).digest("hex");
+}
+
+/**
+ * Compute a stable fingerprint for cross-batch dedup.
+ *
+ * Combines:
+ *  - normalized headline (lowercased, alphanumerics + spaces only, collapsed)
+ *  - primary ticker (first ticker in the array, uppercased — or "_NO_TICKER_")
+ *  - ISO-week bucket of the createdAt timestamp (so the same NVDA-deal headline
+ *    in week 14 dedups within week 14 but doesn't kill a week-26 reissue)
+ *
+ * Returns null only for the degenerate empty-headline case.
+ */
+export function computeSignalFingerprint(input: {
+  headline: string;
+  tickers: string[];
+  createdAt: Date;
+}): string | null {
+  const normalizedHeadline = input.headline
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalizedHeadline) return null;
+
+  const primaryTicker =
+    input.tickers && input.tickers.length > 0
+      ? input.tickers[0].toUpperCase().trim()
+      : "_NO_TICKER_";
+
+  const weekBucket = isoWeekBucket(input.createdAt);
+
+  const key = `${normalizedHeadline}|${primaryTicker}|${weekBucket}`;
+  return createHash("sha256").update(key).digest("hex");
+}
+
+/**
+ * ISO-week bucket as `YYYY-Www`. Used by computeSignalFingerprint so that
+ * duplicate detection has a natural rollover point each week.
+ */
+function isoWeekBucket(d: Date): string {
+  // Copy so we don't mutate input.
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  // Thursday in current week decides the year.
+  const dayNum = (date.getUTCDay() + 6) % 7; // Mon=0 .. Sun=6
+  date.setUTCDate(date.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const week =
+    1 +
+    Math.round(
+      ((date.getTime() - firstThursday.getTime()) / 86400000 -
+        3 +
+        ((firstThursday.getUTCDay() + 6) % 7)) /
+        7
+    );
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
 /**
