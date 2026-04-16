@@ -25,6 +25,11 @@ export interface RunInput {
     directionBias: string;
     holdDurations: string[];
     sectors: string[];
+    // ── Universe (B1) ────────────────────────────────────────────────────
+    industries: string[];
+    themes: string[];
+    marketCapMin: number | null; // dollars; null = no lower bound
+    marketCapMax: number | null; // dollars; null = no upper bound
     exclusionList: string[];
     minConfidence: number;
     maxPositionSize: number;
@@ -532,6 +537,10 @@ export async function buildRunInput(
       directionBias: config.directionBias,
       holdDurations: config.holdDurations,
       sectors: config.sectors,
+      industries: config.industries,
+      themes: config.themes,
+      marketCapMin: config.marketCapMin != null ? Number(config.marketCapMin) : null,
+      marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
       exclusionList: config.exclusionList,
       minConfidence: config.minConfidence,
       maxPositionSize: Number(config.maxPositionSize),

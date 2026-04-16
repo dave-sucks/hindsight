@@ -14,6 +14,11 @@ export interface AgentConfigInput {
   directionBias?: string;
   holdDurations?: string[];
   sectors?: string[];
+  // ── Universe (B1) — narrower discovery fence ──────────────────────────────
+  industries?: string[];
+  themes?: string[];
+  marketCapMin?: number | bigint | null;
+  marketCapMax?: number | bigint | null;
   signalTypes?: string[];
   minConfidence?: number;
   maxPositionSize?: number;
@@ -66,6 +71,38 @@ ${config.analystPrompt}`);
 - Exclusion list (never trade): ${exclusions}
 - Max position size: $${maxPosSize}
 - Max open positions: ${maxOpenPos}`);
+
+  // ── Section 2.25: Universe (the discovery fence) ─────────────────────
+  // Tells the agent exactly what is in-scope. Empty / null = no filter on
+  // that dimension. The agent should use this to reject out-of-scope
+  // discovery candidates BEFORE spending tool calls on them, and to
+  // narrate "outside Universe" when passing on a ticker for that reason.
+  const industries = config.industries?.length ? config.industries.join(", ") : "(no filter)";
+  const themes = config.themes?.length ? config.themes.join(", ") : "(no filter)";
+  const capMin = config.marketCapMin != null ? formatCap(Number(config.marketCapMin)) : "no minimum";
+  const capMax = config.marketCapMax != null ? formatCap(Number(config.marketCapMax)) : "no maximum";
+  const hasFence =
+    (config.sectors?.length ?? 0) > 0 ||
+    (config.industries?.length ?? 0) > 0 ||
+    (config.themes?.length ?? 0) > 0 ||
+    config.marketCapMin != null ||
+    config.marketCapMax != null;
+
+  let universeSection = `## Universe — Your Discovery Fence
+This defines which stocks you may research and trade. Use it to filter discovery candidates BEFORE wasting tool calls. When you pass on a ticker for being outside the fence, narrate "outside Universe" with the dimension that failed.
+
+- Sectors: ${sectors}
+- Industries: ${industries}
+- Themes: ${themes}
+- Market cap range: ${capMin} – ${capMax}
+- Hard exclusions (never trade or watchlist): ${exclusions}`;
+
+  if (!hasFence) {
+    universeSection += `\n\n**No fence configured.** You may research broadly, but prefer to narrate why each candidate is worth your attention.`;
+  } else {
+    universeSection += `\n\n**Watchlist + open positions ALWAYS bypass the fence.** They are in-scope by virtue of being there. The fence applies only to NEW discovery candidates.`;
+  }
+  sections.push(universeSection);
 
   // ── Section 2.5: Intelligence Policy ─────────────────────────────────
   const policy = runInput.intelligencePolicy;
@@ -322,6 +359,20 @@ Call **complete_run**. Final tool call. Stop after it returns.
 Every thesis must include: direction, confidence (0-100), entry/target/stop prices, 3-5 thesis bullets, risk flags, and a reasoning summary. PASS theses need the same rigor — document why a stock doesn't fit and build institutional memory. Never write a verdict in narration text instead of a thesis.`);
 
   return sections.join("\n\n");
+}
+
+// ─── Formatters ───────────────────────────────────────────────────────────────
+
+/**
+ * Formats a market-cap dollar amount into a short human label.
+ * e.g. 500_000_000 → "$500M", 2_500_000_000 → "$2.5B", 1_000_000_000_000 → "$1T"
+ */
+function formatCap(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return "—";
+  if (amount >= 1_000_000_000_000) return `$${(amount / 1_000_000_000_000).toFixed(1)}T`;
+  if (amount >= 1_000_000_000) return `$${(amount / 1_000_000_000).toFixed(1)}B`;
+  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(0)}M`;
+  return `$${amount.toFixed(0)}`;
 }
 
 // ─── Intelligence Policy Summary ──────────────────────────────────────────────

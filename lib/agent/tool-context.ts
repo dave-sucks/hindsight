@@ -17,6 +17,11 @@ export interface ToolContext {
   watchlist?: string[];
   exclusionList?: string[];
   sectors?: string[];
+  // ── Universe (B1) ──────────────────────────────────────────────────────
+  industries?: string[];
+  themes?: string[];
+  marketCapMin?: number | null;
+  marketCapMax?: number | null;
   maxPositionSize?: number;
   maxOpenPositions?: number;
   intelligencePolicy?: IntelligencePolicy;

@@ -33,6 +33,38 @@ export const configSchema = z.object({
   sectors: z
     .array(z.string())
     .describe("Sector filters. Common: TECHNOLOGY, HEALTHCARE, FINANCE, ENERGY, CONSUMER, INDUSTRIAL, REAL_ESTATE, UTILITIES, MATERIALS, COMMUNICATION. Empty = all sectors"),
+  // ── Universe (B1) — narrower discovery fence ─────────────────────────────
+  industries: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "GICS-style industries narrower than sector. E.g. 'Semiconductors', 'Auto Manufacturers', 'Biotechnology'. " +
+      "Empty = no filter on industry. Use when the analyst's strategy is industry-specific within a broader sector.",
+    ),
+  themes: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Analyst-defined themes the strategy hunts. E.g. 'AI infrastructure', 'EV transition', 'GLP-1', 'datacenter capex'. " +
+      "These route theme-tagged signals into the inbox. 3-6 themes is typical. Empty = no theme filter.",
+    ),
+  marketCapMin: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe(
+      "Minimum market cap in dollars (integer). E.g. 500000000 for $500M. Leave undefined for no lower bound. " +
+      "Use with marketCapMax to define a cap band (e.g. small-caps only, large-caps only).",
+    ),
+  marketCapMax: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe(
+      "Maximum market cap in dollars (integer). E.g. 10000000000 for $10B. Leave undefined for no upper bound.",
+    ),
   signalTypes: z
     .array(z.string())
     .describe("Preferred signals. Options: MOMENTUM, EARNINGS_BEAT, SECTOR_ROTATION, MEAN_REVERSION, BREAKOUT, NEWS_CATALYST, TECHNICAL, INSIDER, UNUSUAL_OPTIONS_FLOW, EARNINGS_WHISPERS"),
