@@ -779,72 +779,72 @@ Each session lists:
 
 ## Master Checklist
 
-Flat list, session-tagged. Tick off as you go.
+Flat list, session-tagged. Tick off as you go. `~` = partial / in a different shape than originally specified but functionally covered.
 
 ### Session 0 — Verification & Instrumentation
-- [ ] Fix CLAUDE.md tool path (tools.ts → tools/index.ts)
-- [ ] Fix CLAUDE.md model references (Claude → GPT-4o)
-- [ ] Add `manage_position` as tool #17 in CLAUDE.md
-- [ ] Note Universe stub in CLAUDE.md (pending Session 3)
-- [ ] Add `toolStats` aggregator in agent route
-- [ ] Persist `toolStats` to `ResearchRun.parameters`
-- [ ] Warning log for runs < 60s or < 5 tool calls
-- [ ] `<ToolStatsBlock>` on `/runs/[id]`
-- [ ] Research alternate OpenAI models (GPT-5, o3, o4)
+- [x] Fix CLAUDE.md tool path (tools.ts → tools/index.ts)
+- [x] Fix CLAUDE.md model references (Claude → GPT-4o)
+- [x] Add `manage_position` as tool #17 in CLAUDE.md
+- [x] Note Universe stub in CLAUDE.md (completed in Session 3, CLAUDE.md now has full Universe section)
+- [ ] Add `toolStats` aggregator in agent route _(user-owned, separate session)_
+- [ ] Persist `toolStats` to `ResearchRun.parameters` _(user-owned)_
+- [ ] Warning log for runs < 60s or < 5 tool calls _(user-owned)_
+- [ ] `<ToolStatsBlock>` on `/runs/[id]` _(user-owned)_
+- [ ] Research alternate OpenAI models (GPT-5, o3, o4) _(deferred — GPT-4o stable)_
 
 ### Session 1 — Prompt Obedience
-- [ ] Operating Manual Framing header above analystPrompt
-- [ ] Stage 2: mandatory `get_stock_data` per open position
-- [ ] Stage 2: concentration risk narration required
-- [ ] Stage 2: time-in-position injection for DAY holds
-- [ ] Stage 3: ≥ 2 new-ticker research regardless of capacity
-- [ ] Stage 4: `manage_position` consideration per position
-- [ ] Remove "near max positions" escape hatch
-- [ ] Minimum tool call floors per stage
-- [ ] Strip references to nonexistent tools
-- [ ] Signal quality narration in summary
-- [ ] Raise maxSteps 30 → 50
-- [ ] Set temperature 0.2
+- [x] Operating Manual Framing header above analystPrompt
+- [x] Stage 2: mandatory `get_stock_data` per open position
+- [x] Stage 2: concentration risk narration required
+- [x] Stage 2: time-in-position injection for DAY holds
+- [x] Stage 3: ≥ 2 new-ticker research regardless of capacity
+- [x] Stage 4: `manage_position` consideration per position
+- [x] Remove "near max positions" escape hatch
+- [x] Minimum tool call floors per stage
+- [x] Strip references to nonexistent tools
+- [x] Signal quality narration in summary
+- [x] Raise maxSteps 30 → 50 _(done earlier, verified in `lib/agent/modes.ts`)_
+- [x] Set temperature 0.2 _(done earlier, verified in route)_
 
-### Session 2 — Signal Pipeline Foundation
-- [ ] Per-monitor `config.searchQuery` in domain-monitor
-- [ ] Fallback `defaultQueryFor(monitor)` helper
-- [ ] Signal `signalFingerprint` column + index
-- [ ] `computeSignalFingerprint()` helper
-- [ ] Backfill existing signals
-- [ ] Tiered dedup windows (1d/3d/7d by urgency)
-- [ ] `noveltyScore` computed at routing time
-- [ ] Novelty as multiplier, not additive
-- [ ] Novelty-gated threshold routing
+### Session 2 — Signal Pipeline Foundation _(delivered by signals session)_
+- [x] Per-monitor `config.searchQuery` in domain-monitor
+- [x] Fallback `defaultQueryFor(monitor)` helper
+- [x] Signal `signalFingerprint` column + index
+- [x] `computeSignalFingerprint()` helper
+- [x] Backfill existing signals _(script + in-line fingerprint on new signals; old rows fill opportunistically)_
+- [x] Tiered dedup windows (1d/3d/7d by urgency)
+- [x] `noveltyScore` computed at routing time
+- [x] Novelty as multiplier, not additive
+- [x] Novelty-gated threshold routing
 
 ### Session 3 — Discovery & Universe
-- [ ] AgentConfig Universe fields (sectors, industries, themes, caps, prices, exchanges, exclusions)
-- [ ] Migration `add_universe_to_agent_config`
-- [ ] Universe loaded into `AnalystProfile`
-- [ ] Tier-aware routing (T1/T2/T3/T4/T5)
-- [ ] Analyst-owned signal fast-path
-- [ ] Discovery bucket (≥ 20% reserved slots)
-- [ ] `routeReason` tagged on routes
-- [ ] Cross-analyst routing with penalty
-- [ ] Morning brief forced discovery slot
-- [ ] `read_signals` returns 3 buckets
-- [ ] Universe UI on analyst detail
+- [x] AgentConfig Universe fields (sectors, industries, themes, caps, exclusions) _(prices + exchanges deferred; not blocking)_
+- [x] Migration `add_universe_to_agent_config`
+- [x] Universe loaded into `AnalystProfile`
+- [x] Tier-aware routing (T1/T2/T3/T4/T5) _(delivered by signals session)_
+- [x] Analyst-owned signal fast-path _(signals session)_
+- [x] Discovery bucket (≥ 20% reserved slots) _(signals session, via `intelligencePolicy.discoveryAttention`)_
+- [x] `routeReason` tagged on routes _(now `routeReasonCode` + `matchedUniverse` JSON)_
+- [x] Cross-analyst routing with penalty _(signals session)_
+- [x] Morning brief forced discovery slot _(signals session)_
+- [~] `read_signals` returns 3 buckets _(signals session: returns routed signals + ordered by score; explicit bucket labels deferred to Session 7 UX)_
+- [x] Universe UI on analyst detail _(B6: `AnalystConfigSheet` ChipListEditor + MarketCapInput for all 4 Universe dims + exclusion list)_
 
 ### Session 4 — Builder + Knowledge Library
-- [ ] `strategy-archetypes.ts` (10-15 archetypes)
-- [ ] `source-catalog.ts` (sector × strategy × domain)
-- [ ] `signal-type-catalog.ts`
-- [ ] `watchlist-seeds.ts` (themed starter lists)
-- [ ] Builder operational questioning flow
-- [ ] Builder mandates knowledge library consultation
-- [ ] Builder mandates ≥ 3 `get_stock_data` validations
-- [ ] Builder outputs operating-manual analystPrompt
-- [ ] Builder outputs populated Universe
-- [ ] Builder outputs per-domain `searchQuery`
-- [ ] `web_search` added to builder allowlist
-- [ ] `suggest-config` schema expansion
+- [x] `strategy-archetypes.ts` (10+ archetypes)
+- [x] `source-catalog.ts` (sector × strategy × domain)
+- [x] `signal-type-catalog.ts`
+- [x] `watchlist-seeds.ts` (themed starter lists) _(basic version; cold-start seed logic is a "nice to have", see Outstanding Work)_
+- [x] Builder operational questioning flow _(ask_question tool + Tool-UI Question Flow library)_
+- [x] Builder mandates knowledge library consultation _(hard rule in `BUILDER_SYSTEM_PROMPT`)_
+- [~] Builder mandates validation _(shifted to: mandatory `get_market_context` + `discover_signals_for_fence` before `suggest_config`; `get_stock_data` optional spot-check. More grounded than a fixed count.)_
+- [x] Builder outputs operating-manual analystPrompt _(prompt spec enforces 5-paragraph structure)_
+- [x] Builder outputs populated Universe _(all 4 fields required in `suggest_config`)_
+- [x] Builder outputs per-domain `searchQuery` _(via `domainMonitorProposal` / `intelligenceQueries`)_
+- [x] `web_search` added to builder allowlist
+- [x] `suggest-config` schema expansion _(Universe fields + intelligence proposals)_
 
-### Session 5 — Analyst Manager
+### Session 5 — Analyst Manager _(user-owned; not started this round)_
 - [ ] `AnalystConfigRevision` model + migration
 - [ ] Manager mode in `modes.ts`
 - [ ] Manager system prompt
@@ -907,14 +907,22 @@ Append entries as sessions complete. Format:
 ```
 
 ### Session 0 — Verification & Instrumentation
-- **Completed:** _(pending)_
+- **Completed:** 2026-04-14 _(CLAUDE.md fixes only; `toolStats` deferred)_
+- **Commit:** rolled into `7ca080a` (Session 1 commit)
+- **Scope delivered:** CLAUDE.md tool path + model references + `manage_position` documented; Universe section added post-Session 3.
+- **Scope deferred:** `toolStats` aggregator + `<ToolStatsBlock>` + run-length warning — user-owned, tracked in Outstanding Work below.
+- **Notes:** GPT-5 / o3 / o4 exploration deferred; GPT-4o stable with `temperature: 0.2` + `maxSteps: 50`.
 
 ### Session 1 — Prompt Obedience
-- **Completed:** _(pending)_
+- **Completed:** 2026-04-14
+- **Commit:** `7ca080a` — "feat: session-1 system prompt enforcement"
+- **Scope delivered:** Operating Manual framing; Stage 2 per-position `get_stock_data` + concentration + time-in-position; Stage 3 ≥ 2 new-ticker research; Stage 4 `manage_position` consideration; removed capacity escape hatch; per-stage tool floors; nonexistent-tool references stripped; signal quality narration; temperature 0.2; maxSteps 50.
+- **Scope deferred:** None.
+- **Notes:** Foundation for all later gates — every downstream session assumes this prompt shape.
 
 ### Session 2 — Signal Pipeline Foundation
-- **Completed:** 2026-04-15
-- **Branch:** `claude/session-2-signal-pipeline-IZu6s`
+- **Completed:** 2026-04-15 _(by parallel signals session, merged into main as PR #149)_
+- **Merge commit:** `cef3e49` — "Sessions 2+3: Signal pipeline + universe discovery routing (#149)"
 - **Scope delivered:**
   - `domain-monitor.ts` rewritten to run **one Sonar search per monitor** using
     `config.searchQuery`. Removed the hardcoded generic query at line 95.
@@ -962,18 +970,116 @@ Append entries as sessions complete. Format:
   - To run the backfill in production: trigger event
     `intelligence/backfill-signal-fingerprint` from the Inngest dashboard. Safe
     to re-run; it stops when no `null` rows remain.
+  - Workstream B's `discover_signals_for_fence` tool reads `Signal` + `sourceQuality` — dependent on this Session 2 schema; now compatible post-merge.
 
 ### Session 3 — Discovery & Universe Model
-- **Completed:** _(pending)_
+- **Completed:** 2026-04-14 (Workstream B1: schema/profile) + 2026-04-15 (signals session: router) + 2026-04-14 (B6: UI)
+- **Commits:**
+  - `3db6413` — "feat: workstream-b1 universe primitive on AgentConfig" — schema migration, `industries` / `themes` / `marketCapMin` / `marketCapMax` fields, `AnalystProfile` type, `checkUniverse()` helper, context threading.
+  - `53d77a1` — "feat(agent): thread Universe fence through prompts, context, and tool guardrails" — prompt contract; `get_stock_data` + scan tools see the fence.
+  - `1e4d383` — "B6: Settings UI — 4 Universe fields editable + markdown prompt render" — `AnalystConfigSheet` ChipListEditor + MarketCapInput; `analyst.actions` BigInt coercion for marketCap; `Markdown` render of analystPrompt.
+  - Signals session: tier-aware routing, cross-analyst penalty, discovery bucket, `routeReasonCode` + `matchedUniverse` JSON on `AnalystSignalRoute`.
+- **Scope delivered:** Universe fields on `AgentConfig`; migration shipped; profile wiring; router honors fence + discovery bucket; UI CRUD for all 4 Universe dims + exclusion list.
+- **Scope deferred:**
+  - Prices (minPrice/maxPrice) + exchanges — not needed for first cut; analysts use `marketCapMin` as proxy.
+  - Explicit 3-bucket return shape for `read_signals` — router returns scored signals today; bucket labels deferred to Session 7 UX.
+  - Findings page UI for `routeReasonCode` / `matchedUniverse` — deferred to Session 7.
+- **Notes:** This is the most cross-session feature. The overlap with the signals session was managed via a handoff doc (`docs/universe-handoff-for-signals-session.md`, committed `31d93f5`). Schema conflict resolution on rebase: keep `3db6413` columns, drop any duplicate column definitions in the signals session's migration.
 
 ### Session 4 — Builder Rebuild + Knowledge Library
-- **Completed:** _(pending)_
+- **Completed:** 2026-04-14
+- **Commits:**
+  - `27431eb` — "feat(agent): knowledge library — archetypes, sources, signal types + reader tool" — `lib/agent/knowledge/strategy-archetypes.ts`, `source-catalog.ts`, `signal-type-catalog.ts`, `watchlist-seeds.ts`; `read_knowledge_library` tool.
+  - `7a6337a` — "B4a: ask_question tool backed by Tool-UI Question Flow library" — structured interview tool + Tool-UI Question Flow shadcn components at `components/tool-ui/question-flow/`; `AskQuestionRenderer`.
+  - `ea295d3` — "B4: builder interview flow + discover_signals_for_fence + prompt gates" — `discover_signals_for_fence` tool; `BUILDER_SYSTEM_PROMPT` rewrite (5-step pipeline + hard gates); builder allowlist tightened.
+  - `4a57973` — "B5: editor parity — inbox-grounded edits + same interview gates" — `read_analyst_inbox_stats` tool; `buildEditorSystemPrompt` rewrite; editor allowlist.
+  - `1e4d383` — web_search added to builder allowlist (see B6 commit).
+- **Scope delivered:** Knowledge library (3 catalogs + seeds); `read_knowledge_library` reader; `ask_question` tool with Tool-UI Question Flow UI; `discover_signals_for_fence` real-signal grounding; `read_analyst_inbox_stats` editor tool; builder + editor system prompts rewritten with hard interview gates; `suggest_config` still serves both.
+- **Scope deferred:**
+  - Cold-start watchlist seeding: the current builder path leans on `discover_signals_for_fence.tickerFrequency` for watchlist seeds. `watchlist-seeds.ts` exists as a catalog but isn't actively queried — fine for now, revisit if discovery returns empty often.
+  - "≥ 3 `get_stock_data` validations" as originally spec'd — shifted to "mandatory `get_market_context` + `discover_signals_for_fence` + optional spot-checks" which is a better fit for the real-data signals approach.
+- **Notes:** Builder + Editor share 90% of the scaffolding — unified route at `app/api/agent/[mode]/route.ts` means the only per-mode differences are (a) system prompt, (b) tool allowlist, (c) `hasSuggestConfig` flag, (d) maxSteps/maxDuration. Both land through the same pipeline.
 
 ### Session 5 — Analyst Manager Agent
-- **Completed:** _(pending)_
+- **Completed:** _(not started — user-owned, future session)_
+- **See:** "Outstanding Work / Future Sessions" below.
 
 ### Session 6 — Signal → Outcome Feedback Loop
-- **Completed:** _(pending)_
+- **Completed:** _(not started — future session)_
+- **See:** "Outstanding Work / Future Sessions" below.
 
 ### Session 7 — UX & Observability Polish
-- **Completed:** _(pending)_
+- **Completed:** _(not started — future session)_
+- **See:** "Outstanding Work / Future Sessions" below.
+
+---
+
+## Outstanding Work / Future Sessions
+
+Maintained as a single source of truth so next session doesn't have to diff 10 commits to figure out what's left.
+
+### A. toolStats instrumentation (Session 0 leftover)
+_User-owned._ Still valuable for detecting runs that degenerate ("ran 30s, 2 tools, 0 trades"). Surface area:
+- `app/api/agent/[mode]/route.ts` onStepFinish — aggregate `{ tool → count, avgLatencyMs, errors }`.
+- Persist to `ResearchRun.parameters.toolStats` on completion.
+- Warning log when run < 60s or < 5 tool calls.
+- `<ToolStatsBlock>` on `/runs/[id]` next to the existing RunSummaryCard.
+
+### B. Manager agent (Session 5)
+_User-owned._ Fourth mode (after research-run / builder / editor). Reads last 30d of AnalystSignalRoute + trade outcomes, proposes prompt/Universe/monitor changes, persists as `AnalystConfigRevision`. Surface area is mostly new code; the shared route and modes system is ready for a 4th entry.
+
+Out-of-the-box reuses:
+- `[mode]/route.ts` — add "manager" case with its own system prompt + allowlist.
+- `ask_question` + `read_knowledge_library` + `read_analyst_inbox_stats` + `discover_signals_for_fence` all already usable.
+- New tools needed: `edit_analyst_prompt`, `update_intelligence_policy`, `update_risk_params`, `add_standing_monitor`, `archive_monitor`, `update_watchlist_managed`, `update_universe`.
+- New model: `AnalystConfigRevision` { id, analystId, beforeJson, afterJson, rationale, createdAt }.
+- New cron: `analyst-manager` Inngest function, weekly, per-analyst.
+- New page: `/analysts/[id]/revisions`.
+- Dedup + auto-archive of zero-signal Monitors belongs here.
+
+### C. Feedback loop (Session 6)
+_Not started._ Close the loop so monitor quality compounds. Concrete:
+- Schema: `Thesis.sourceSignalIds String[]`, `Monitor { successScore Decimal, tradesSourced Int, winsSourced Int, lossesSourced Int }`.
+- `read_signals` marks signals seen (analyst exposure ≠ read).
+- `record_thesis` persists `sourceSignalIds` from the signals in context at thesis-time.
+- `trade-evaluator` (Inngest) on close: for each closed Position, find the sourcing Thesis → find the sourceSignalIds → find the Monitors behind them → bump `winsSourced` / `lossesSourced` and recompute `successScore`.
+- `accuracy-scorer` weekly: aggregate monitor ROI.
+- Manager agent (Session 5) reads `Monitor.successScore` to decide which monitors to archive vs. scale.
+- Dashboard: "Monitor ROI" table on `/intelligence`.
+
+### D. UX & Observability (Session 7)
+_Not started._ Every piece of data produced above needs a UI surface.
+- `/intelligence` — ROI table, dedup rate, novelty histogram, discovery fill-rate panel.
+- `/runs/[id]` — discovery-indicator badge per thesis, signal-trace (which signal → which thesis), concentration warning, time-in-position for DAY holds.
+- `/analysts/[id]` — Diary timeline (revisions + notable runs), parsed operating-manual view of analystPrompt.
+- `/performance` — signal-quality dimension breakdown.
+
+### E. Signals-session flagged gaps (merge-time attention)
+Things the signals session noted but that live outside their scope. If you're picking these up, they're small:
+- **Monitor firm-scoping (207 → 40).** Many auto-created monitors on the firm level are redundant. Dedup by `(type, config.domain)` for DOMAIN and `(type, config.query)` for SEARCH.
+- **Email ingestion handler.** `SignalSource.EMAIL_INGEST` enum value exists; no handler route yet. Needs `/api/intelligence/email-ingest` that parses Postmark / SES webhooks into Signals.
+- **Findings page `routeReasonCode` + `matchedUniverse` UI.** Router now tags every route with reason code + JSON of what matched; intelligence dashboard should show this per-signal so analyst operators can debug routing.
+- **Monitor table layout fixes.** ShadCN Table pass — long `query` strings overflow; add `truncate` + tooltip.
+- **Monitor creation dedup.** When the builder's `suggest_config` proposes monitors, de-duplicate against the user's existing monitors before creating (exact match on domain or normalized query).
+
+### F. Small residuals from B-workstream
+- **`watchlist-seeds.ts` cold-start fallback.** Catalog exists, nothing queries it. When `discover_signals_for_fence` returns empty and the user hasn't named tickers, optionally pull from seeds. Not urgent.
+- **`get_stock_data` universe warning is informational only.** By design — agent still sees the result and decides. If we want a hard reject instead, flip to `ok: false, retryable: false` inside the tool.
+- **Tool-UI Question Flow library lock-in.** Pinned at install. If the library publishes breaking changes, we're stable; just don't blindly re-run `shadcn add @manifest/question-flow`.
+
+### G. Rebase / deploy checklist (for this branch)
+1. Signals branch merges to main.
+2. On this branch: `git fetch origin && git rebase origin/main`.
+3. Expected conflicts (3 files):
+   - `prisma/schema.prisma` — keep both Universe columns (ours) and signal-pipeline columns (theirs). Do NOT accept "both sides" blindly; read each column.
+   - `lib/actions/analyst.actions.ts` — our Universe field changes vs. their signal-side additions, if any.
+   - `components/analysts/AnalystConfigSheet.tsx` — our Universe UI vs. any settings changes they made.
+4. Drop any duplicate migration files creating the same columns. Keep the single source migration per column.
+5. `pnpm prisma migrate dev --name consolidated_universe_and_signals` if needed; otherwise `prisma generate`.
+6. `pnpm tsc --noEmit` clean.
+7. User runs the migration against prod.
+8. Deploy.
+
+---
+
+_This doc is the persistence layer. Next session opens by reading it; every future session appends to the Completion Log._

@@ -9,6 +9,7 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
+import { isExcluded } from "@/lib/agent/universe";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -35,6 +36,26 @@ export const placeTrade = defineTool({
     // which bypasses the duplicate check and hits Alpaca with a 422.
     const ticker = args.ticker.toUpperCase().trim();
     try {
+      // 0a. Universe exclusion check — hard reject
+      // exclusionList is the hard block dimension of Universe. The analyst's
+      // system prompt already narrates Universe but we don't trust the model
+      // to always respect it — this is the backstop.
+      if (isExcluded(ticker, { exclusionList: ctx.exclusionList })) {
+        const blockedMsg = `$${ticker} is on this analyst's exclusion list — cannot trade.`;
+        return {
+          summary: `Trade blocked: $${ticker} — excluded`,
+          data: {
+            success: false,
+            ticker,
+            status: "FAILED" as const,
+            direction: args.direction,
+            message: blockedMsg,
+            tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+          },
+          sources: [],
+        };
+      }
+
       // 0. Check for existing open position (scoped to this analyst only)
       const existingPosition = await prisma.position.findFirst({
         where: { userId: ctx.userId, analystId: ctx.analystId ?? undefined, symbol: ticker, status: "OPEN" },

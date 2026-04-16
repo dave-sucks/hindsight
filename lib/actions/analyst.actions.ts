@@ -28,18 +28,15 @@ export interface AnalystConfig {
   exchanges: string[];
   watchlist: string[];
   exclusionList: string[];
+  // ── Universe (B1) — narrower discovery fence ─────────────────────
+  industries: string[];
+  themes: string[];
+  marketCapMin: number | null;
+  marketCapMax: number | null;
   dailyLossLimit: number;
   scheduleTime: string;
   createdAt: Date;
   updatedAt: Date;
-  // V3 Session 3 / Workstream B — Universe fields. These live directly on
-  // AgentConfig (no `universe*` prefix): the existing `sectors` + `exchanges` +
-  // `exclusionList` are the universe's sector/exchange/exclusion dimensions;
-  // `industries`, `themes`, and `marketCapMin/Max` add the rest.
-  industries: string[];
-  themes: string[];
-  marketCapMin: string | null;   // BigInt serialized as string for client transport
-  marketCapMax: string | null;
   // V3 intelligence fields — populated from Monitor table + AgentConfig.intelligencePolicy
   intelligencePolicy: Record<string, unknown> | null;
   domainMonitors: Array<{
@@ -521,16 +518,14 @@ export async function getAnalystDetail(
     exchanges: (config.exchanges as string[]) ?? [],
     watchlist: (config.watchlist as string[]) ?? [],
     exclusionList: (config.exclusionList as string[]) ?? [],
+    industries: (config.industries as string[]) ?? [],
+    themes: (config.themes as string[]) ?? [],
+    marketCapMin: config.marketCapMin != null ? Number(config.marketCapMin) : null,
+    marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
     dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
-    // Session 3 / B contract: Universe fields live directly on AgentConfig.
-    // BigInt → string for JSON-safe client transport.
-    industries: config.industries ?? [],
-    themes: config.themes ?? [],
-    marketCapMin: config.marketCapMin?.toString() ?? null,
-    marketCapMax: config.marketCapMax?.toString() ?? null,
     intelligencePolicy: (config.intelligencePolicy as Record<string, unknown>) ?? null,
     domainMonitors,
     searchMonitors,
@@ -1011,7 +1006,20 @@ type UpdatableField =
   | "scheduleTime"
   | "holdDurations"
   | "watchlist"
-  | "exclusionList";
+  | "exclusionList"
+  | "analystPrompt"
+  // ── Universe (B1) ─────────────────────────────────────────
+  | "sectors"
+  | "industries"
+  | "themes"
+  | "marketCapMin"
+  | "marketCapMax";
+
+/** Fields whose server payload must be coerced to BigInt for the BigInt? columns. */
+const BIGINT_FIELDS: ReadonlySet<UpdatableField> = new Set<UpdatableField>([
+  "marketCapMin",
+  "marketCapMax",
+]);
 
 export async function updateAnalystField(
   id: string,
@@ -1021,9 +1029,25 @@ export async function updateAnalystField(
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
 
+  // Normalize BigInt-backed Universe fields. UI sends number | null; Prisma
+  // wants BigInt | null.
+  let storedValue: unknown = value;
+  if (BIGINT_FIELDS.has(field)) {
+    if (value === null || value === undefined || value === "") {
+      storedValue = null;
+    } else if (typeof value === "number" && Number.isFinite(value)) {
+      storedValue = BigInt(Math.trunc(value));
+    } else if (typeof value === "string" && value.trim() !== "") {
+      const n = Number(value);
+      storedValue = Number.isFinite(n) ? BigInt(Math.trunc(n)) : null;
+    } else {
+      storedValue = null;
+    }
+  }
+
   await prisma.agentConfig.update({
     where: { id, userId },
-    data: { [field]: value },
+    data: { [field]: storedValue },
   });
 
   revalidatePath(`/analysts/${id}`);

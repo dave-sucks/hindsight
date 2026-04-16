@@ -18,6 +18,7 @@ import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
 import { DecisionSummaryRenderer } from "./renderers/DecisionSummaryRenderer";
 import { RunSummaryRenderer } from "./renderers/RunSummaryRenderer";
 import { ConfigPreviewRenderer } from "./renderers/ConfigPreviewRenderer";
+import { AskQuestionRenderer } from "./renderers/AskQuestionRenderer";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface Props {
@@ -63,6 +64,8 @@ export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, in
       return <RunSummaryRenderer result={result} loading={loading} />;
     case "config-preview":
       return <ConfigPreviewRenderer result={result} loading={loading} />;
+    case "ask-question":
+      return <AskQuestionRenderer toolName={toolName} result={result} loading={loading} />;
     case "generic":
     default:
       return <GenericRenderer toolName={toolName} result={result} loading={loading} />;
@@ -74,8 +77,10 @@ function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
   if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
-  if (toolName === "get_portfolio_context" || toolName === "read_morning_brief" || toolName === "read_signals") return "ticker-list";
+  if (toolName === "ask_question") return "ask-question";
+  if (toolName === "get_portfolio_context" || toolName === "read_morning_brief" || toolName === "read_signals" || toolName === "discover_signals_for_fence" || toolName === "read_analyst_inbox_stats") return "ticker-list";
   if (toolName === "read_artifact" || toolName === "web_search") return "source";
+  if (toolName === "read_knowledge_library") return "generic";
   if (
     toolName === "get_stock_data" ||
     toolName === "place_trade" ||

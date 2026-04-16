@@ -12,6 +12,8 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub, calcRSI, calcSMA } from "@/lib/agent/research-helpers";
 import { getBars } from "@/lib/alpaca";
 import type { NewsItem } from "@/lib/agent/tool-types";
+import { checkUniverse } from "@/lib/agent/universe";
+import type { UniverseCheck } from "@/lib/agent/universe";
 
 const FMP_KEY = process.env.FMP_API_KEY!;
 
@@ -227,6 +229,41 @@ export const getStockData = defineTool({
     if (metaParts.length > 0) tickerSummaryParts.push(metaParts.join(" · "));
     if (techData?.rsi14 != null) tickerSummaryParts.push(`RSI ${techData.rsi14.toFixed(1)} ${techData.trend?.split(" ")[0] ?? ""}`);
 
+    // ── Universe check (informational) ──────────────────────────────────
+    // If the analyst has a Universe fence, check whether this ticker falls
+    // inside it. The result is included in the data payload so the agent
+    // sees "outside Universe — sector mismatch" in the tool result and can
+    // decide whether to proceed. This is belt-and-suspenders alongside the
+    // prompt-level enforcement.
+    let universeCheck: UniverseCheck | undefined;
+    const hasFence =
+      (ctx.sectors?.length ?? 0) > 0 ||
+      (ctx.industries?.length ?? 0) > 0 ||
+      (ctx.exclusionList?.length ?? 0) > 0 ||
+      ctx.marketCapMin != null ||
+      ctx.marketCapMax != null;
+
+    if (hasFence) {
+      universeCheck = checkUniverse(
+        {
+          ticker,
+          sector: companyData?.sector ?? null,
+          industry: null, // Finnhub doesn't return GICS industry
+          marketCap: companyData?.marketCap ?? null,
+        },
+        {
+          sectors: ctx.sectors,
+          industries: ctx.industries,
+          marketCapMin: ctx.marketCapMin ?? null,
+          marketCapMax: ctx.marketCapMax ?? null,
+          exclusionList: ctx.exclusionList,
+        },
+      );
+      if (!universeCheck.inUniverse) {
+        sParts.push(`⚠ Outside Universe: ${universeCheck.failedReasons.join("; ")}`);
+      }
+    }
+
     return {
       summary: sParts.join(". ") + ".",
       data: {
@@ -237,6 +274,7 @@ export const getStockData = defineTool({
         analystConsensus: consensusData,
         priceTargets: targetsData,
         news: recentNews,
+        ...(universeCheck ? { universeCheck } : {}),
         ...(errors.length > 0 ? { apiErrors: errors } : {}),
         tickers: [{ ticker, tag: "Research", summary: tickerSummaryParts.join(". ") }],
       },

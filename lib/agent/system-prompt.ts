@@ -14,6 +14,11 @@ export interface AgentConfigInput {
   directionBias?: string;
   holdDurations?: string[];
   sectors?: string[];
+  // ── Universe (B1) — narrower discovery fence ──────────────────────────────
+  industries?: string[];
+  themes?: string[];
+  marketCapMin?: number | bigint | null;
+  marketCapMax?: number | bigint | null;
   signalTypes?: string[];
   minConfidence?: number;
   maxPositionSize?: number;
@@ -51,7 +56,10 @@ You independently manage a portfolio — reviewing holdings, monitoring your wat
 Your tool calls render as rich data cards in the UI. Your text narration connects these visual elements into a coherent research story.`);
 
   if (config.analystPrompt) {
-    sections.push(`\n### Your Strategy\n${config.analystPrompt}`);
+    sections.push(`## Your Operating Manual
+The strategy below is your operating manual, not background reading. Before every tool call and every thesis, check it. If a tool result contradicts the manual, narrate the conflict — the manual wins unless you have explicit new data that invalidates it.
+
+${config.analystPrompt}`);
   }
 
   // ── Section 2: Your Rules ────────────────────────────────────────────
@@ -63,6 +71,38 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 - Exclusion list (never trade): ${exclusions}
 - Max position size: $${maxPosSize}
 - Max open positions: ${maxOpenPos}`);
+
+  // ── Section 2.25: Universe (the discovery fence) ─────────────────────
+  // Tells the agent exactly what is in-scope. Empty / null = no filter on
+  // that dimension. The agent should use this to reject out-of-scope
+  // discovery candidates BEFORE spending tool calls on them, and to
+  // narrate "outside Universe" when passing on a ticker for that reason.
+  const industries = config.industries?.length ? config.industries.join(", ") : "(no filter)";
+  const themes = config.themes?.length ? config.themes.join(", ") : "(no filter)";
+  const capMin = config.marketCapMin != null ? formatCap(Number(config.marketCapMin)) : "no minimum";
+  const capMax = config.marketCapMax != null ? formatCap(Number(config.marketCapMax)) : "no maximum";
+  const hasFence =
+    (config.sectors?.length ?? 0) > 0 ||
+    (config.industries?.length ?? 0) > 0 ||
+    (config.themes?.length ?? 0) > 0 ||
+    config.marketCapMin != null ||
+    config.marketCapMax != null;
+
+  let universeSection = `## Universe — Your Discovery Fence
+This defines which stocks you may research and trade. Use it to filter discovery candidates BEFORE wasting tool calls. When you pass on a ticker for being outside the fence, narrate "outside Universe" with the dimension that failed.
+
+- Sectors: ${sectors}
+- Industries: ${industries}
+- Themes: ${themes}
+- Market cap range: ${capMin} – ${capMax}
+- Hard exclusions (never trade or watchlist): ${exclusions}`;
+
+  if (!hasFence) {
+    universeSection += `\n\n**No fence configured.** You may research broadly, but prefer to narrate why each candidate is worth your attention.`;
+  } else {
+    universeSection += `\n\n**Watchlist + open positions ALWAYS bypass the fence.** They are in-scope by virtue of being there. The fence applies only to NEW discovery candidates.`;
+  }
+  sections.push(universeSection);
 
   // ── Section 2.5: Intelligence Policy ─────────────────────────────────
   const policy = runInput.intelligencePolicy;
@@ -89,6 +129,19 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
 
   portfolioSection += `\nExposure: Long $${portfolio.exposure.long.toFixed(0)} | Short $${portfolio.exposure.short.toFixed(0)} | Net $${portfolio.exposure.net.toFixed(0)} | Utilization ${portfolio.exposure.utilizationPct.toFixed(0)}%`;
   portfolioSection += `\nCash: $${portfolio.cash.toFixed(0)} | Buying Power: $${portfolio.buyingPower.toFixed(0)} | Slots: ${slotsUsed}/${slotsAvailable} used`;
+
+  // DAY-hold enforcement: if analyst is configured DAY-only, flag any position held > 1 day.
+  const holdDurationsUpper = (config.holdDurations ?? []).map((h) => h.toUpperCase());
+  const dayOnly = holdDurationsUpper.length > 0 && holdDurationsUpper.every((h) => h === "DAY");
+  if (dayOnly && posCount > 0) {
+    const overdue = portfolio.positions.filter((p) => p.daysHeld >= 1);
+    if (overdue.length > 0) {
+      portfolioSection += `\n\n**DAY-hold violations — MUST resolve in Stage 2/4:**\n`;
+      for (const p of overdue) {
+        portfolioSection += `- $${p.symbol}: held ${p.daysHeld}d — configured hold duration is DAY. You MUST either (a) close this position with explicit reasoning, or (b) narrate a written justification for the extension before proceeding past Stage 2.\n`;
+      }
+    }
+  }
 
   sections.push(portfolioSection);
 
@@ -238,18 +291,30 @@ Your tool calls render as rich data cards in the UI. Your text narration connect
   sections.push(`## Run Flow
 Narration rule: 2-4 sentences between tool calls. Write naturally using $TICKER format. Never write section headers or stage labels. Never reproduce or summarize what a tool result already shows — the UI renders it. Never include markdown links or URLs in your narration text.
 
+**Minimum tool-call floors (non-negotiable):**
+- Stage 1: ≥ 1 call to read_morning_brief AND ≥ 1 call to read_signals
+- Stage 2 (holdings portion): 1 get_stock_data for EVERY open position (no exceptions)
+- Stage 2 (discovery portion): ≥ 2 new-ticker researches regardless of slot capacity
+- Stage 3: one record_thesis per ticker researched (LONG / SHORT / PASS)
+- Stage 4: for EACH open position, either a manage_position call OR an explicit narrated "hold unchanged" with reasoning
+- Stage 5: record_run_summary
+- Stage 6: complete_run
+
 Start with a 1-2 sentence portfolio check-in — note open positions and any Watch Tomorrow flags from the prior brief. No tools yet.
 
 ### Stage 1 — ORIENT
 Call **read_morning_brief**, then **read_signals**. Use **read_artifact** for any signal that warrants a deep read. Use **web_search** only if you need live coverage beyond the brief and your intelligence policy allows it.
 
 ### Stage 2 — RESEARCH
-If you have open positions, call **get_portfolio_context** first — it returns live P&L, days held, and thesis context needed for position management decisions. Then call **get_stock_data** on every ticker you intend to act on.
+**Holdings (mandatory):** If you have open positions, call **get_portfolio_context** once, then call **get_stock_data** on EVERY open position. This is non-negotiable — no "healthy, skip" shortcut. Priority Reviews get deepest scrutiny, but all holdings get a live data check.
 
-Triage before calling get_stock_data:
-- Holdings: MUST if in ⚠ Priority Reviews / brief alert / Watch Tomorrow. SHOULD if held longer than expected or >5% loss. SKIP if healthy with no new signals.
-- Watchlist: MUST if HIGH priority or brief-flagged. SHOULD if not reviewed 5+ days. SKIP if LOW.
-- New opportunities: 2-4 per session from brief or signals. Match focus sectors, no micro-caps/ADRs/penny stocks. In RISK_OFF or near max positions: 1-2 highest-conviction only.
+**Concentration risk (mandatory before discovery):** Before moving to new opportunities, narrate a one-sentence concentration read — are your open positions clustered in correlated sectors/themes (e.g., all AI semis, all EV, all regional banks)? If yes, flag it explicitly. This narration is required even when the answer is "diversified."
+
+**Time-in-position (mandatory when DAY-hold violations are listed above):** For each flagged DAY-hold position, state your choice in narration before Stage 3 — close, roll to SWING with justification, or extend with explicit reasoning.
+
+**Watchlist:** MUST call get_stock_data if HIGH priority or brief-flagged. SHOULD if not reviewed 5+ days. SKIP only if LOW and quiet.
+
+**Discovery (mandatory):** Research ≥ 2 new tickers every run regardless of slot capacity. Being at max positions does NOT skip discovery — research still happens, and worthy names go to the watchlist via **manage_watchlist** even when you can't trade them. Pull candidates from the brief's new-opportunities, from signals, or from live web_search. Match focus sectors, no micro-caps/ADRs/penny stocks.
 
 Deeper tools only when the signal specifically warrants it: **get_earnings_data** (earnings within 2 weeks), **get_options_flow** (unusual activity flagged), **get_sec_filings** (insider/8-K flagged). get_stock_data already surfaces earnings dates, technicals, and news. Batch calls — never one ticker at a time. Proceed immediately to Stage 3 after last get_stock_data.
 
@@ -259,13 +324,16 @@ Record a thesis for every ticker researched, back to back: LONG/SHORT for intend
 ### Stage 4 — ACT
 Execute in order: **close_position / manage_position** → **place_trade** → **manage_watchlist**. Skip to Stage 5 if no actions.
 
-**CRITICAL — for every thesis, check whether you already hold this ticker (look at the Current Portfolio table above):**
+**Per-position discipline (mandatory):** For EACH open position you reviewed in Stage 2, you must either (a) call **manage_position** (scale in/out, move stop, trail stop, adjust target, partial close), (b) call **close_position**, or (c) narrate "hold $TICKER unchanged" with an explicit one-sentence reason. Silent holds are not allowed.
+
+**For every thesis, check whether you already hold this ticker (look at the Current Portfolio table above):**
 
 | Situation | Correct action | NEVER do |
 |-----------|---------------|----------|
-| Ticker IS in portfolio, thesis is LONG/bullish | manage_position (update_targets, move_stop_to_breakeven, set_trailing_stop) or do nothing (HOLD) | ❌ place_trade — you cannot buy more of what you hold |
+| Ticker IS in portfolio, thesis is LONG/bullish | manage_position (update_targets, move_stop_to_breakeven, set_trailing_stop, scale_in) or narrated HOLD | ❌ place_trade — you cannot buy more of what you hold |
 | Ticker IS in portfolio, conviction dropped / thesis failed | close_position (full exit) or manage_position (partial_close, tighten stop) | ❌ place_trade |
 | Ticker is NOT in portfolio, thesis is LONG/SHORT, confidence ≥ ${minConf}%, slot available | place_trade with notional amount | — |
+| Ticker is NOT in portfolio, thesis is LONG/SHORT, no slot available | manage_watchlist (ADD with catalyst + conviction) — do NOT skip | ❌ silent drop |
 | Ticker is NOT in portfolio, thesis is PASS | manage_watchlist (ADD if worth monitoring) | — |
 | place_trade returns success:false for ANY reason | Mark FAILED in ranked_picks. Do NOT retry. | ❌ call place_trade again for the same ticker |
 
@@ -274,6 +342,8 @@ Watchlist edits: add new PASS tickers, remove stale ideas. Use **manage_watchlis
 ### Stage 5 — RECAP
 Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, actual action taken — FAILED for rejected orders). Pass exposure_breakdown as the dollar amounts of ONLY new positions opened this session (0 if no new trades were placed).
 
+**Signal quality narration (mandatory):** In the summary narration, flag any signal you consumed this run that was duplicative (same story already covered), stale (>48h and not fresh catalyst), or low-quality (weak source, no actionable content). This feedback tunes future routing. If all signals were useful, state that explicitly.
+
 ### Stage 6 — COMPLETE
 Call **complete_run**. Final tool call. Stop after it returns.
 
@@ -281,6 +351,7 @@ Call **complete_run**. Final tool call. Stop after it returns.
 - Never stop mid-flow. Session ends only when complete_run fires.
 - NEVER call place_trade for a ticker that appears in your Current Portfolio — use manage_position or close_position instead.
 - place_trade returning success:false → mark FAILED in ranked_picks. Never retry the same ticker.
+- Being at max positions is NEVER a reason to skip discovery — worthy finds go to the watchlist.
 - Use $TICKER format. Never fabricate data.`);
 
   // ── Section 9: Thesis quality ─────────────────────────────────────────
@@ -288,6 +359,20 @@ Call **complete_run**. Final tool call. Stop after it returns.
 Every thesis must include: direction, confidence (0-100), entry/target/stop prices, 3-5 thesis bullets, risk flags, and a reasoning summary. PASS theses need the same rigor — document why a stock doesn't fit and build institutional memory. Never write a verdict in narration text instead of a thesis.`);
 
   return sections.join("\n\n");
+}
+
+// ─── Formatters ───────────────────────────────────────────────────────────────
+
+/**
+ * Formats a market-cap dollar amount into a short human label.
+ * e.g. 500_000_000 → "$500M", 2_500_000_000 → "$2.5B", 1_000_000_000_000 → "$1T"
+ */
+function formatCap(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return "—";
+  if (amount >= 1_000_000_000_000) return `$${(amount / 1_000_000_000_000).toFixed(1)}T`;
+  if (amount >= 1_000_000_000) return `$${(amount / 1_000_000_000).toFixed(1)}B`;
+  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(0)}M`;
+  return `$${amount.toFixed(0)}`;
 }
 
 // ─── Intelligence Policy Summary ──────────────────────────────────────────────

@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
+import { isExcluded } from "@/lib/agent/universe";
 import { revalidatePath } from "next/cache";
 
 export const manageWatchlist = defineTool({
@@ -63,6 +64,24 @@ export const manageWatchlist = defineTool({
 
     try {
       if (args.action === "ADD") {
+        // Universe hard-reject: don't let the agent add an excluded ticker,
+        // even if it bypassed the narrative fence. Exclusion wins everywhere.
+        if (isExcluded(ticker, { exclusionList: ctx.exclusionList })) {
+          const blockedMsg = `$${ticker} is on this analyst's exclusion list — cannot add to watchlist.`;
+          return {
+            summary: `Watchlist add blocked: $${ticker} — excluded`,
+            data: {
+              success: false,
+              action: "ADD" as const,
+              ticker,
+              changed: false,
+              message: blockedMsg,
+              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+
         const existing = await prisma.analystWatchlistItem.findFirst({
           where: { analystId: ctx.analystId, symbol: ticker, status: "ACTIVE" },
         });

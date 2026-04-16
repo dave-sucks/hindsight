@@ -19,7 +19,8 @@ export type ToolUI =
   | "thesis-card"      // ThesisCarousel — first call collects all theses via forward-read
   | "decision-summary" // complete_run status row
   | "run-summary"      // RunSummaryCard — the ONE summary card
-  | "config-preview";  // suggest_config (builder/editor only)
+  | "config-preview"   // suggest_config (builder/editor only)
+  | "ask-question";    // ask_question: renders the question + QuickReply pills inline
 
 // ── Source attribution ───────────────────────────────────────────────────────
 

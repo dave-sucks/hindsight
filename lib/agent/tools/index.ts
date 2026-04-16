@@ -25,6 +25,10 @@ import { recordRunSummary } from "./record-run-summary";
 import { completeRun } from "./complete-run";
 import { manageWatchlist } from "./manage-watchlist";
 import { getPortfolioContext } from "./get-portfolio-context";
+import { readKnowledgeLibrary } from "./read-knowledge-library";
+import { askQuestion } from "./ask-question";
+import { discoverSignalsForFence } from "./discover-signals-for-fence";
+import { readAnalystInboxStats } from "./read-analyst-inbox-stats";
 
 interface ToolCtx {
   runId: string;
@@ -33,6 +37,11 @@ interface ToolCtx {
   watchlist?: string[];
   exclusionList?: string[];
   sectors?: string[];
+  // ── Universe (B1) ──────────────────────────────────────────────────
+  industries?: string[];
+  themes?: string[];
+  marketCapMin?: number | null;
+  marketCapMax?: number | null;
   maxPositionSize?: number;
   maxOpenPositions?: number;
   alpacaCreds?: AlpacaCredentials;
@@ -61,6 +70,10 @@ export function createResearchTools(ctx: ToolCtx) {
     record_run_summary: recordRunSummary(newCtx),
     complete_run: completeRun(newCtx),
     manage_watchlist: manageWatchlist(newCtx),
+    read_knowledge_library: readKnowledgeLibrary(newCtx),
+    ask_question: askQuestion(newCtx),
+    discover_signals_for_fence: discoverSignalsForFence(newCtx),
+    read_analyst_inbox_stats: readAnalystInboxStats(newCtx),
   };
 
   // Backward-compat aliases for old persisted RunMessages
@@ -92,3 +105,7 @@ export { getPortfolioContext } from "./get-portfolio-context";
 export { recordRunSummary } from "./record-run-summary";
 export { completeRun } from "./complete-run";
 export { manageWatchlist } from "./manage-watchlist";
+export { readKnowledgeLibrary } from "./read-knowledge-library";
+export { askQuestion } from "./ask-question";
+export { discoverSignalsForFence } from "./discover-signals-for-fence";
+export { readAnalystInboxStats } from "./read-analyst-inbox-stats";
