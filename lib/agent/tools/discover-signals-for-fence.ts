@@ -320,16 +320,6 @@ export const discoverSignalsForFence = defineTool({
     const bearish = top.filter((s) => s.sentiment === "BEARISH").length;
     const urgent = top.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
 
-    // Build a short fence description for the citation label.
-    const fenceDesc = [
-      themes.length > 0 ? `themes: ${themes.join(", ")}` : null,
-      industries.length > 0 ? `industries: ${industries.join(", ")}` : null,
-      sectors.length > 0 ? `sectors: ${sectors.join(", ")}` : null,
-      tickers.length > 0 ? `tickers: ${tickers.join(", ")}` : null,
-    ]
-      .filter(Boolean)
-      .join(" · ") || "broad discovery";
-
     return {
       summary:
         `${top.length} signal${top.length !== 1 ? "s" : ""} over ${lookbackDays}d — ` +
@@ -343,14 +333,10 @@ export const discoverSignalsForFence = defineTool({
         tickerFrequency,
         tickers: tickerRows,
       } satisfies DiscoverResult,
-      // One citable source describing the fence + window so the prose's
-      // "[N] signals in the pipeline" has an InlineCitationCard to resolve to.
-      sources: [
-        {
-          provider: "Signal Discovery",
-          title: `Signals matching ${fenceDesc} (${lookbackDays}d lookback)`,
-        },
-      ],
+      // No sources — this tool reads internal signal-router state, not
+      // external references. The signals themselves may carry URLs but
+      // those belong to the individual signal rows, not this tool call.
+      sources: [],
     };
   },
 });

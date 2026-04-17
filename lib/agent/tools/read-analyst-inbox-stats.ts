@@ -226,15 +226,11 @@ export const readAnalystInboxStats = defineTool({
         unwatchedHotTickers,
         tickers: rowTickers,
       } satisfies InboxStatsData,
-      // Emit a citable source so the Editor prose's [N] markers resolve
-      // to a real InlineCitationCard chip. Without this, the model's
-      // "$NVDA is hitting your inbox [1]" claim has nothing to cite.
-      sources: [
-        {
-          provider: "Analyst Inbox",
-          title: `Signal activity for this analyst (${lookbackDays}d, ${totalRoutes} routes)`,
-        },
-      ],
+      // No sources — this tool reads internal DB state, not external
+      // references. Don't pollute the citation chips with fake
+      // "Analyst Inbox" sources. The user sees the tool row directly;
+      // they don't need a citation chip for internal data.
+      sources: [],
     };
   },
 });

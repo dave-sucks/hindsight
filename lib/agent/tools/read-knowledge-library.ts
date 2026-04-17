@@ -87,12 +87,10 @@ export const readKnowledgeLibrary = defineTool({
             count: index.length,
             index,
           },
-          sources: [
-            {
-              provider: "Knowledge Library",
-              title: `Strategy playbook index (${index.length} entries)`,
-            },
-          ],
+          // No sources on index views — browsing the catalog isn't a
+          // citable claim. Entry loads still emit a source for the
+          // specific playbook the agent actually read.
+          sources: [],
         };
       }
       const entry = getArchetype(id);
@@ -121,12 +119,10 @@ export const readKnowledgeLibrary = defineTool({
           // tool row — same pattern Claude/Notion use. No custom card.
           content: formatArchetypeMarkdown(entry),
         },
-        sources: [
-          {
-            provider: "Strategy Playbook",
-            title: entry.name,
-          },
-        ],
+        // No source emission — the playbook IS the tool row itself,
+        // expandable to show the full content. A citation chip would
+        // imply an external reference, which this isn't.
+        sources: [],
       };
     }
 
@@ -141,12 +137,7 @@ export const readKnowledgeLibrary = defineTool({
             count: index.length,
             index,
           },
-          sources: [
-            {
-              provider: "Knowledge Library",
-              title: `Research source index (${index.length} entries)`,
-            },
-          ],
+          sources: [],
         };
       }
       const entry = getSource(id);
@@ -172,13 +163,7 @@ export const readKnowledgeLibrary = defineTool({
           entry,
           content: formatSourceMarkdown(entry),
         },
-        sources: [
-          {
-            provider: "Research Source",
-            title: entry.name,
-            url: entry.domain ? `https://${entry.domain}` : undefined,
-          },
-        ],
+        sources: [],
       };
     }
 
@@ -193,12 +178,7 @@ export const readKnowledgeLibrary = defineTool({
           count: index.length,
           index,
         },
-        sources: [
-          {
-            provider: "Knowledge Library",
-            title: `Signal type index (${index.length} entries)`,
-          },
-        ],
+        sources: [],
       };
     }
     const entry = getSignalType(id);
@@ -224,12 +204,7 @@ export const readKnowledgeLibrary = defineTool({
         entry,
         content: formatSignalMarkdown(entry),
       },
-      sources: [
-        {
-          provider: "Signal Type",
-          title: entry.name,
-        },
-      ],
+      sources: [],
     };
   },
 });
