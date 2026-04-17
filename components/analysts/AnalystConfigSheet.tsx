@@ -1,8 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { X } from "lucide-react";
+import { X, ChevronsUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { GICS_SECTORS, GICS_INDUSTRIES } from "@/lib/universe/gics";
 import {
   Sheet,
   SheetContent,
@@ -253,22 +263,26 @@ export function AnalystConfigSheet({
                 </Tooltip>
               </div>
 
-              <ChipListEditor
+              <ChipListComboEditor
                 label="Sectors"
                 values={config.sectors}
-                placeholder="e.g. Technology"
+                options={GICS_SECTORS}
+                placeholder="Add a sector…"
+                groupLabel="GICS Sectors"
                 onChange={(next) => saveField("sectors", next)}
               />
-              <ChipListEditor
+              <ChipListComboEditor
                 label="Industries"
                 values={config.industries}
-                placeholder="e.g. Semiconductors"
+                options={GICS_INDUSTRIES}
+                placeholder="Add an industry…"
+                groupLabel="GICS Industries"
                 onChange={(next) => saveField("industries", next)}
               />
               <ChipListEditor
                 label="Themes"
                 values={config.themes}
-                placeholder="e.g. AI infrastructure"
+                placeholder="Free text — e.g. AI infrastructure, GLP-1, EV transition"
                 onChange={(next) => saveField("themes", next)}
               />
 
@@ -427,6 +441,112 @@ function ChipListEditor({
         }}
         onBlur={add}
       />
+    </div>
+  );
+}
+
+// ── ChipListComboEditor ─────────────────────────────────────────────────────
+// Chip editor backed by a PREDEFINED options list. Unlike ChipListEditor
+// (free text), this enforces that every chip comes from `options`. Used
+// for Sectors + Industries where the signal router string-matches against
+// a canonical taxonomy — free text like "tech" vs "Technology" silently
+// fails to route, so we don't let the user type anything.
+//
+// UX: Popover + Command combobox. Search filters the list. Already-picked
+// options are hidden from the dropdown. Group header shows count.
+
+interface ChipListComboEditorProps {
+  label: string;
+  values: string[];
+  options: readonly string[];
+  placeholder?: string;
+  /** Header text in the popover dropdown (e.g. "Sectors", "Industries"). */
+  groupLabel?: string;
+  onChange: (next: string[]) => void;
+}
+
+function ChipListComboEditor({
+  label,
+  values,
+  options,
+  placeholder = "Select…",
+  groupLabel,
+  onChange,
+}: ChipListComboEditorProps) {
+  const [open, setOpen] = useState(false);
+
+  const add = (v: string) => {
+    if (values.includes(v)) return;
+    onChange([...values, v]);
+  };
+
+  const remove = (v: string) => {
+    onChange(values.filter((x) => x !== v));
+  };
+
+  const available = options.filter((o) => !values.includes(o));
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {values.map((v) => (
+            <Badge key={v} variant="secondary">
+              <span>{v}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => remove(v)}
+                aria-label={`Remove ${v}`}
+              >
+                <X />
+              </Button>
+            </Badge>
+          ))}
+        </div>
+      )}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="justify-between font-normal"
+              disabled={available.length === 0}
+            >
+              <span className="text-muted-foreground">
+                {available.length === 0 ? "All selected" : placeholder}
+              </span>
+              <ChevronsUpDown />
+            </Button>
+          }
+        />
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Search…" />
+            <CommandList>
+              <CommandEmpty>No match.</CommandEmpty>
+              <CommandGroup heading={groupLabel}>
+                {available.map((opt) => (
+                  <CommandItem
+                    key={opt}
+                    value={opt}
+                    onSelect={() => {
+                      add(opt);
+                      setOpen(false);
+                    }}
+                  >
+                    {opt}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
