@@ -16,7 +16,6 @@ import { generateObject, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import type { DynamicQueryOutput } from "@/lib/intelligence/types";
 
 // ── Schema for the briefing agent's output ──────────────────────────────────
 // IMPORTANT: All fields are REQUIRED (no .optional() or .catch()) because
@@ -67,18 +66,16 @@ const briefingSchema = z.object({
       })
     )
     .describe("Behavioral patterns to correct. Empty array if none."),
-  dynamicQueries: z
-    .array(
-      z.object({
-        query: z.string().describe("A specific, searchable query"),
-        category: z
-          .enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"])
-          .describe("Query category"),
-        reason: z.string().describe("Why this query matters"),
-        expires_days: z.number().describe("Days to keep active, 1-30"),
-      })
-    )
-    .describe("Temporary search monitors to add. 0-5 queries. Empty array if none needed."),
+  // NOTE: dynamicQueries was removed. It was an uncontrolled side-effect
+  // that quietly wrote 0-5 ticker-specific SEARCH monitors per run and
+  // never deleted them, so analysts accumulated 30+ stale queries the
+  // user had no visibility into. Per-ticker monitoring is already
+  // handled by portfolio-watchlist-monitor.ts; broader thematic queries
+  // belong on AgentConfig's initial intelligenceQueries (capped at 3-5
+  // by suggest_config schema).
+  //
+  // The feature will return as a proposal-based self-improvement loop
+  // in a later workstream — see docs/SELF_IMPROVEMENT_HANDOFF.md.
 });
 
 interface BriefingContext {
@@ -445,23 +442,7 @@ Rules:
 - watchTomorrow: derive from positions near targets/stops, catalysts mentioned in conversation, unfinished research
 - selfCorrections: look for REAL patterns — did the analyst over-concentrate? Chase momentum? Ignore risk flags? Skip watchlist items? If the previous briefing had selfCorrections, check if the analyst actually followed through
 - Build on the previous briefing — show progression of thinking, don't repeat the same observations
-- The narrative is the analyst's memory. Be specific enough that it can quote this brief next session.
-
-## Dynamic Monitors
-After writing the brief, identify specific things to MONITOR that the analyst's existing monitors don't already cover. These become temporary search monitors that run daily via Perplexity Sonar automatically.
-
-Good dynamic monitors:
-- "NVIDIA earnings guidance revision Q2 2026" — analyst flagged this but couldn't confirm during session
-- "FDA approval timeline for Eli Lilly GLP-1 competitor" — catalyst on a watchlist stock
-- "Semiconductor tariff impact China export controls" — macro risk affecting multiple holdings
-- "AMD Instinct MI400 benchmark comparisons" — competitive intel on a position
-
-Bad dynamic monitors (don't create these):
-- "AAPL stock price" — too generic, already covered by ticker monitoring
-- "tech sector news" — too broad, already covered by existing search monitors
-- "market conditions" — already in firm-level morning sweep
-
-Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term catalysts, 7-14 for medium-term monitoring, up to 30 for longer tracking.`;
+- The narrative is the analyst's memory. Be specific enough that it can quote this brief next session.`;
 
     // ── Generate briefing with fallback chain ──────────────────────────────
     // Layer 1: generateObject with strict schema (best output)
@@ -493,7 +474,7 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
       try {
         const textResult = await generateText({
           model: openai("gpt-4o"),
-          prompt: `${briefingPrompt}\n\n## Output Format\nRespond with ONLY a valid JSON object matching this exact shape (no markdown, no prose, no code fences):\n{\n  "narrative": "<400-600 word markdown briefing>",\n  "strategyNotes": "<100-200 word strategy assessment>",\n  "marketPosture": "<2-3 word stance>",\n  "watchTomorrow": [{"symbol":"TICKER","trigger":"...","suggestedAction":"...","priority":"NORMAL"}],\n  "unresolvedItems": [{"item":"...","impact":"...","affectedPositions":[]}],\n  "selfCorrections": [{"observation":"...","adjustment":"..."}],\n  "dynamicQueries": [{"query":"...","category":"THEMATIC","reason":"...","expires_days":7}]\n}\n\nUse empty arrays [] for any sections that don't apply. All fields are required.`,
+          prompt: `${briefingPrompt}\n\n## Output Format\nRespond with ONLY a valid JSON object matching this exact shape (no markdown, no prose, no code fences):\n{\n  "narrative": "<400-600 word markdown briefing>",\n  "strategyNotes": "<100-200 word strategy assessment>",\n  "marketPosture": "<2-3 word stance>",\n  "watchTomorrow": [{"symbol":"TICKER","trigger":"...","suggestedAction":"...","priority":"NORMAL"}],\n  "unresolvedItems": [{"item":"...","impact":"...","affectedPositions":[]}],\n  "selfCorrections": [{"observation":"...","adjustment":"..."}]\n}\n\nUse empty arrays [] for any sections that don't apply. All fields are required.`,
         });
         // Strip code fences if present
         const cleanText = textResult.text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "");
@@ -506,7 +487,6 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
           watchTomorrow: Array.isArray(parsed.watchTomorrow) ? parsed.watchTomorrow : [],
           unresolvedItems: Array.isArray(parsed.unresolvedItems) ? parsed.unresolvedItems : [],
           selfCorrections: Array.isArray(parsed.selfCorrections) ? parsed.selfCorrections : [],
-          dynamicQueries: Array.isArray(parsed.dynamicQueries) ? parsed.dynamicQueries : [],
         };
         generationMethod = "generateText+parse";
         console.log(`[briefing] Layer 2 (generateText) succeeded for run=${runId}`);
@@ -536,7 +516,6 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
           },
         ],
         selfCorrections: [],
-        dynamicQueries: [],
       };
       generationMethod = "minimal-stub";
     }
@@ -568,40 +547,16 @@ Only create 0-5 queries. Set expires_days based on urgency: 3-5 for near-term ca
     });
     console.log(`[briefing] Persisted briefing row for run=${runId} (method=${generationMethod})`);
 
-    // ── Persist dynamic queries as Monitor rows ─────────────────────────────
-    const dynamicQueries: DynamicQueryOutput[] = object.dynamicQueries ?? [];
-    if (dynamicQueries.length > 0) {
-      const now = new Date();
-      try {
-        for (const dq of dynamicQueries) {
-          await prisma.monitor.create({
-            data: {
-              name: dq.query,
-              type: "SEARCH",
-              method: "perplexity_sonar",
-              config: { query: dq.query, reason: dq.reason },
-              scope: "ANALYST",
-              analystId,
-              enabled: true,
-              builtIn: false,
-              origin: "BRIEFING_AGENT",
-              category: dq.category ?? "THEMATIC",
-              expiresAt: new Date(now.getTime() + Math.min(Math.max(dq.expires_days ?? 7, 1), 30) * 24 * 60 * 60 * 1000),
-              sourceRunId: runId,
-            },
-          });
-        }
-        console.log(
-          `[briefing] Created ${dynamicQueries.length} dynamic monitors for analyst ${config.name}: ${dynamicQueries.map((q) => q.query.slice(0, 50)).join("; ")}`
-        );
-      } catch (queryErr) {
-        console.warn("[briefing] Failed to create dynamic monitors (non-fatal):", queryErr);
-      }
-    }
+    // NOTE: The dynamic-monitor write loop that used to live here was
+    // removed. It silently created 0-5 BRIEFING_AGENT SEARCH monitors
+    // per run with no delete logic, so analysts accumulated 20-50+ stale
+    // ticker-specific queries the user had zero visibility into. The
+    // self-improvement workstream will re-introduce this as a proposal-
+    // based flow with user approval. See docs/SELF_IMPROVEMENT_HANDOFF.md.
 
     const elapsed = Date.now() - t0;
     console.log(
-      `[briefing] Created briefing for ${config.name} (${analystId}) runId=${runId} in ${elapsed}ms (briefing agent via GPT-4o, ${dynamicQueries.length} dynamic queries)`
+      `[briefing] Created briefing for ${config.name} (${analystId}) runId=${runId} in ${elapsed}ms (briefing agent via GPT-4o)`
     );
   } catch (err) {
     // RETHROW: callers MUST be able to detect failures.
