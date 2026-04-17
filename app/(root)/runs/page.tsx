@@ -7,19 +7,10 @@ import { ConceptTooltip } from "@/components/domain/education-card";
 import { RunShowcaseTrigger, RunShowcaseButton } from "@/components/domain/run-showcase-trigger";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import {
-  PlusIcon,
-  MinusIcon,
-  EyeIcon,
-  EyeOffIcon,
-  CheckIcon,
-  XIcon,
-  BanIcon,
-} from "lucide-react";
-import {
   buildRunSummary,
-  formatActionLine,
+  buildActionSegments,
   formatStatsRow,
-  type RunActionIcon,
+  type ActionColor,
 } from "@/lib/run-summary";
 import { cn } from "@/lib/utils";
 
@@ -39,43 +30,60 @@ function formatRelativeTime(date: Date): string {
   });
 }
 
-// ── Action overlay config (matches ToolProgressTickerItem styling) ──────────
+// ── Color tokens ────────────────────────────────────────────────────────────
+//
+// One palette, used by both the logo rings AND the inline dots in the
+// action line. `partial` switches solid → dashed (for ADD / PARTIAL_EXIT /
+// REMOVE_WATCH — any half-capital move). `muted` gets no visible indicator
+// on logos (plain circle) and no dot in the text (just label).
 
-const ACTION_OVERLAY: Record<
-  RunActionIcon,
-  { Icon: React.ComponentType<{ className?: string }>; className: string }
-> = {
-  buy:           { Icon: PlusIcon,   className: "bg-emerald-500 text-white" },
-  sell:          { Icon: MinusIcon,  className: "bg-red-500 text-white" },
-  watch:         { Icon: EyeIcon,    className: "bg-muted-foreground text-background" },
-  unwatch:       { Icon: EyeOffIcon, className: "bg-muted-foreground text-background" },
-  "closed-win":  { Icon: CheckIcon,  className: "bg-emerald-500 text-white" },
-  "closed-loss": { Icon: XIcon,      className: "bg-red-500 text-white" },
-  failed:        { Icon: BanIcon,    className: "bg-muted text-muted-foreground" },
-};
+function ringClasses(color: ActionColor, partial: boolean): string {
+  if (color === "muted") return "";
+  const stroke =
+    color === "green"
+      ? "outline-emerald-500"
+      : color === "red"
+        ? "outline-red-500"
+        : "outline-sky-500";
+  const style = partial ? "outline-dashed" : "outline-solid";
+  return cn("outline-2", style, stroke, "outline-offset-1");
+}
 
-function LogoWithOverlay({
+function dotClasses(color: ActionColor, partial: boolean): string {
+  if (color === "muted") return "";
+  const base = "inline-block size-2 rounded-full mr-1.5 align-middle shrink-0";
+  if (partial) {
+    // Open/dashed variant: colored border, transparent center.
+    const border =
+      color === "green"
+        ? "border-emerald-500"
+        : color === "red"
+          ? "border-red-500"
+          : "border-sky-500";
+    return cn(base, "border-[1.5px] border-dashed bg-transparent", border);
+  }
+  const fill =
+    color === "green"
+      ? "bg-emerald-500"
+      : color === "red"
+        ? "bg-red-500"
+        : "bg-sky-500";
+  return cn(base, fill);
+}
+
+// ── Logo with optional colored ring ─────────────────────────────────────────
+
+function LogoWithRing({
   ticker,
-  overlay,
+  badge,
 }: {
   ticker: string;
-  overlay?: RunActionIcon;
+  badge?: { color: ActionColor; partial: boolean };
 }) {
-  const cfg = overlay ? ACTION_OVERLAY[overlay] : null;
+  const rounded = "rounded-full";
   return (
-    <div className="relative">
-      <StockLogo ticker={ticker} size="sm" />
-      {cfg && (
-        <span
-          className={cn(
-            "absolute -bottom-0.5 -right-0.5 size-3 rounded-full ring-1 ring-background flex items-center justify-center",
-            cfg.className,
-          )}
-          aria-hidden
-        >
-          <cfg.Icon className="size-2" />
-        </span>
-      )}
+    <div className={cn("rounded-full", badge && ringClasses(badge.color, badge.partial))}>
+      <StockLogo ticker={ticker} size="sm" className={rounded} />
     </div>
   );
 }
@@ -180,12 +188,11 @@ export default async function RunsPage() {
             (run.source === "MANUAL" ? "Manual Research" : "Agent");
 
           const summary = buildRunSummary(run);
-          const actionLine = formatActionLine(summary);
+          const segments = buildActionSegments(summary);
           const statsLine = formatStatsRow(summary);
 
-          // Logo stack tickers — prioritize tickers that had an action,
-          // then fill with researched tickers.
-          const actionTickers = [...summary.tickerOverlays.keys()];
+          // Logo stack tickers — action tickers first, then researched fill.
+          const actionTickers = [...summary.tickerBadges.keys()];
           const thesisTickers = run.theses.map((t) => t.ticker.toUpperCase());
           const orderedTickers = [
             ...new Set([...actionTickers, ...thesisTickers]),
@@ -206,10 +213,11 @@ export default async function RunsPage() {
                 ? "bg-amber-500 animate-pulse"
                 : "bg-negative";
 
+          const pnl = summary.realizedPnl;
           const pnlLabel =
-            summary.realizedPnl != null
-              ? `${summary.realizedPnl >= 0 ? "+" : "-"}$${Math.abs(
-                  Math.round(summary.realizedPnl),
+            pnl != null
+              ? `${pnl >= 0 ? "+" : "-"}$${Math.abs(
+                  Math.round(pnl),
                 ).toLocaleString("en-US")} realized`
               : null;
 
@@ -219,7 +227,7 @@ export default async function RunsPage() {
               href={`/runs/${run.id}`}
               className="block border rounded-xl p-4 hover:bg-muted/20 transition-colors"
             >
-              {/* Header: analyst name · time · duration | pnl | logo stack */}
+              {/* Header: analyst name · time · duration | logo stack */}
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
@@ -230,56 +238,59 @@ export default async function RunsPage() {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
+                {orderedTickers.length > 0 && (
+                  <div className="flex items-center shrink-0">
+                    {orderedTickers.slice(0, 5).map((ticker, i) => (
+                      <div
+                        key={ticker}
+                        className={i > 0 ? "-ml-1" : ""}
+                        style={{ zIndex: orderedTickers.length - i }}
+                      >
+                        <LogoWithRing
+                          ticker={ticker}
+                          badge={summary.tickerBadges.get(ticker)}
+                        />
+                      </div>
+                    ))}
+                    {orderedTickers.length > 5 && (
+                      <div className="-ml-1 h-6 w-6 rounded-full bg-muted border border-background flex items-center justify-center text-xs font-medium text-muted-foreground">
+                        +{orderedTickers.length - 5}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Primary action line with colored dots */}
+              <p className="text-sm text-muted-foreground line-clamp-2">
+                {segments.map((seg, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
+                    {seg.color !== "muted" && (
+                      <span className={dotClasses(seg.color, seg.partial)} aria-hidden />
+                    )}
+                    <span>{seg.text}</span>
+                  </span>
+                ))}
+              </p>
+
+              {/* Stats row — counts left, realized P&L right */}
+              {summary.counts.researched > 0 && (
+                <div className="flex items-center justify-between border-t pt-2 mt-2 text-xs tabular-nums">
+                  <span className="text-muted-foreground">
+                    {statsLine}
+                    {summary.counts.watchlist > 0 && (
+                      <span> · +{summary.counts.watchlist} watchlist</span>
+                    )}
+                  </span>
                   {pnlLabel && (
                     <span
                       className={cn(
-                        "text-xs font-medium tabular-nums",
-                        summary.realizedPnl! >= 0
-                          ? "text-emerald-500"
-                          : "text-red-500",
+                        "font-medium",
+                        pnl! >= 0 ? "text-emerald-500" : "text-red-500",
                       )}
                     >
                       {pnlLabel}
-                    </span>
-                  )}
-                  {/* Logo stack with action overlays */}
-                  {orderedTickers.length > 0 && (
-                    <div className="flex items-center">
-                      {orderedTickers.slice(0, 5).map((ticker, i) => (
-                        <div
-                          key={ticker}
-                          className={i > 0 ? "-ml-1.5" : ""}
-                          style={{ zIndex: orderedTickers.length - i }}
-                        >
-                          <LogoWithOverlay
-                            ticker={ticker}
-                            overlay={summary.tickerOverlays.get(ticker)}
-                          />
-                        </div>
-                      ))}
-                      {orderedTickers.length > 5 && (
-                        <div className="-ml-1.5 h-6 w-6 rounded-full bg-muted border border-background flex items-center justify-center text-[9px] font-medium text-muted-foreground">
-                          +{orderedTickers.length - 5}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Primary action line */}
-              <p className="text-sm text-muted-foreground line-clamp-2">
-                {actionLine}
-              </p>
-
-              {/* Stats row */}
-              {summary.counts.researched > 0 && (
-                <div className="flex items-center justify-between border-t pt-2 mt-2 text-xs text-muted-foreground tabular-nums">
-                  <span>{statsLine}</span>
-                  {summary.counts.watchlist > 0 && (
-                    <span>
-                      +{summary.counts.watchlist} watchlist
                     </span>
                   )}
                 </div>

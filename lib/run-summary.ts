@@ -67,7 +67,20 @@ export interface RunSummaryInput {
 
 // ── Output shape ────────────────────────────────────────────────────────────
 
-/** Action overlay keys — match ToolProgressTickerItem's TickerActionIcon. */
+/**
+ * Color tokens for action badges on logos and inline dots.
+ * The UI maps these to concrete Tailwind colors:
+ *   green → bought / added
+ *   red   → sold / trimmed
+ *   blue  → watched / unwatched
+ *   muted → held / passed / managed
+ * The `partial` flag switches the rendered indicator from solid to
+ * dashed/outlined — signals a partial capital change (ADD,
+ * PARTIAL_EXIT, REMOVE_WATCH) rather than a full one.
+ */
+export type ActionColor = "green" | "red" | "blue" | "muted";
+
+/** Legacy overlay keys kept only for consumers still using icons. Prefer ActionColor. */
 export type RunActionIcon =
   | "buy"
   | "sell"
@@ -76,6 +89,17 @@ export type RunActionIcon =
   | "closed-win"
   | "closed-loss"
   | "failed";
+
+/**
+ * One rendered chunk of the action line. The page maps these into spans
+ * with a leading colored dot + text label. Segments are concatenated with
+ * " · " separators.
+ */
+export interface ActionSegment {
+  color: ActionColor;
+  partial: boolean;
+  text: string;
+}
 
 export interface TickerResult {
   ticker: string;
@@ -111,8 +135,12 @@ export interface RunSummary {
   isFailed: boolean;
   /** Fell back to thesis-derived summary because no TradeDecisions exist. */
   isLegacy: boolean;
-  /** Per-ticker action overlay for the logo stack. */
-  tickerOverlays: Map<string, RunActionIcon>;
+  /**
+   * Per-ticker colored-ring badge for the logo stack. The UI renders a
+   * ring around each logo using these tokens. `partial` → dashed ring.
+   * Tickers with no entry here render with no ring (plain logo).
+   */
+  tickerBadges: Map<string, { color: ActionColor; partial: boolean }>;
 }
 
 // ── Builder ─────────────────────────────────────────────────────────────────
@@ -134,21 +162,37 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
     passed: [],
   };
 
-  const overlays = new Map<string, RunActionIcon>();
+  const badges = new Map<string, { color: ActionColor; partial: boolean }>();
+  const badgePriority = new Map<string, number>();
   let realized = 0;
   let hasAnyClose = false;
 
   // ── Pass 1: TradeDecisions (authoritative per-ticker action) ──────────
+  // Precedence when multiple events hit one ticker: capital-moving events
+  // (INITIATE/ADD/EXIT/PARTIAL_EXIT) dominate soft actions (WATCH/HOLD),
+  // and full actions dominate partials from the same color family.
+  const setBadge = (
+    t: string,
+    color: ActionColor,
+    partial: boolean,
+    priority: number,
+  ) => {
+    const current = badgePriority.get(t) ?? 0;
+    if (current >= priority) return;
+    badges.set(t, { color, partial });
+    badgePriority.set(t, priority);
+  };
+
   for (const d of run.decisions) {
     const t = d.symbol.toUpperCase();
     switch (d.decision) {
       case "INITIATE":
         actions.bought.push(t);
-        overlays.set(t, "buy");
+        setBadge(t, "green", false, 100);
         break;
       case "ADD":
         actions.added.push(t);
-        overlays.set(t, "buy");
+        setBadge(t, "green", true, 90);
         break;
       case "EXIT": {
         const pnl = d.position?.realizedPnl ?? null;
@@ -157,34 +201,31 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
           realized += pnl;
           hasAnyClose = true;
         }
-        const outcome = d.position?.outcome;
-        overlays.set(t, outcome === "LOSS" ? "closed-loss" : "closed-win");
+        setBadge(t, "red", false, 100);
         break;
       }
       case "PARTIAL_EXIT": {
         const pnl = d.position?.realizedPnl ?? null;
         actions.trimmed.push({ ticker: t, pnl });
-        // PARTIAL_EXIT often reports cumulative pnl — don't double-count realized here.
-        overlays.set(t, "sell");
+        setBadge(t, "red", true, 90);
         break;
       }
       case "HOLD":
         actions.held.push(t);
-        // No overlay for hold — logo alone reads as "still there"
+        // No badge for HOLD — logo alone reads as "still there."
         break;
       case "WATCH":
         actions.watched.push(t);
-        if (!overlays.has(t)) overlays.set(t, "watch");
+        setBadge(t, "blue", false, 50);
         break;
       case "REMOVE_WATCH":
         actions.unwatched.push(t);
-        if (!overlays.has(t)) overlays.set(t, "unwatch");
+        setBadge(t, "blue", true, 50);
         break;
       case "PASS":
         actions.passed.push(t);
         break;
       default:
-        // Unknown decision — silently skip; don't crash the feed.
         break;
     }
   }
@@ -265,8 +306,111 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
     realizedPnl: hasAnyClose ? realized : null,
     isFailed,
     isLegacy,
-    tickerOverlays: overlays,
+    tickerBadges: badges,
   };
+}
+
+// ── Structured action segments (JSX-friendly) ───────────────────────────────
+
+/**
+ * Build the ordered list of action segments for rendering. The page
+ * renders each segment as a leading colored dot + text, separated by
+ * " · ". Passes are intentionally omitted — they dominate volume
+ * without adding information; counts still surface in the stats row.
+ *
+ * When the run has zero capital actions and zero managed actions, we
+ * fall back to a single neutral segment describing holds or watch-only
+ * activity — so a quiet run reads as "No trades — 4 holds reaffirmed"
+ * instead of an empty card.
+ */
+export function buildActionSegments(summary: RunSummary): ActionSegment[] {
+  if (summary.isFailed) {
+    return [{ color: "muted", partial: false, text: "Failed — no analysis" }];
+  }
+
+  const segments: ActionSegment[] = [];
+
+  if (summary.actions.bought.length > 0) {
+    segments.push({
+      color: "green",
+      partial: false,
+      text: `Bought ${summary.actions.bought.join(", ")}`,
+    });
+  }
+  if (summary.actions.added.length > 0) {
+    segments.push({
+      color: "green",
+      partial: true,
+      text: `Added to ${summary.actions.added.join(", ")}`,
+    });
+  }
+  for (const sold of summary.actions.sold) {
+    segments.push({
+      color: "red",
+      partial: false,
+      text: `Sold ${sold.ticker}${formatPnlSuffix(sold.pnl)}`,
+    });
+  }
+  for (const trim of summary.actions.trimmed) {
+    segments.push({
+      color: "red",
+      partial: true,
+      text: `Trimmed ${trim.ticker}`,
+    });
+  }
+  for (const mgmt of summary.actions.managed) {
+    segments.push({
+      color: "muted",
+      partial: false,
+      text: `${mgmt.ticker} (${mgmt.what})`,
+    });
+  }
+
+  // Zero-action fallbacks — make stasis read honestly.
+  if (segments.length === 0) {
+    if (summary.actions.held.length > 0) {
+      const n = summary.actions.held.length;
+      return [
+        {
+          color: "muted",
+          partial: false,
+          text: `No trades — ${n} hold${n !== 1 ? "s" : ""} reaffirmed`,
+        },
+      ];
+    }
+    if (summary.counts.watchlist > 0) {
+      if (summary.actions.watched.length > 0) {
+        segments.push({
+          color: "blue",
+          partial: false,
+          text: `Added ${summary.actions.watched.join(", ")} to watchlist`,
+        });
+      }
+      if (summary.actions.unwatched.length > 0) {
+        segments.push({
+          color: "blue",
+          partial: true,
+          text: `Removed ${summary.actions.unwatched.join(", ")} from watchlist`,
+        });
+      }
+      return segments;
+    }
+    return [{ color: "muted", partial: false, text: "No actions taken" }];
+  }
+
+  // Holds as a soft trailing segment when the run also had real actions.
+  if (summary.actions.held.length > 0) {
+    const head = summary.actions.held.slice(0, 3).join(", ");
+    const extra =
+      summary.actions.held.length > 3 ? ` +${summary.actions.held.length - 3}` : "";
+    segments.push({
+      color: "muted",
+      partial: false,
+      text: `Held ${head}${extra}`,
+    });
+  }
+
+  return segments;
 }
 
 function dedupe<T>(arr: T[]): T[] {
@@ -276,72 +420,14 @@ function dedupe<T>(arr: T[]): T[] {
 // ── String formatters for the card ──────────────────────────────────────────
 
 /**
- * The primary action line. Activity-feed vocabulary, grouped and truncated
- * for the feed card (detail pages get the full list). Passes are OMITTED
- * from this line per product decision — they dominate volume without
- * carrying information; counts still surface in the stats row.
+ * Plain-string action line — thin wrapper over buildActionSegments.
+ * Useful for SSR fallbacks, screen-reader aria-labels, and anywhere a
+ * single string (vs rendered JSX with colored dots) is needed.
  */
 export function formatActionLine(summary: RunSummary): string {
-  if (summary.isFailed) return "Failed — no analysis";
-
-  const parts: string[] = [];
-
-  if (summary.actions.bought.length > 0) {
-    parts.push(`Bought ${summary.actions.bought.join(", ")}`);
-  }
-  if (summary.actions.added.length > 0) {
-    parts.push(`Added to ${summary.actions.added.join(", ")}`);
-  }
-  if (summary.actions.sold.length > 0) {
-    parts.push(
-      summary.actions.sold
-        .map((s) => `Sold ${s.ticker}${formatPnlSuffix(s.pnl)}`)
-        .join(" · "),
-    );
-  }
-  if (summary.actions.trimmed.length > 0) {
-    parts.push(
-      summary.actions.trimmed.map((s) => `Trimmed ${s.ticker}`).join(" · "),
-    );
-  }
-  if (summary.actions.managed.length > 0) {
-    parts.push(
-      summary.actions.managed.map((m) => `${m.ticker} (${m.what})`).join(" · "),
-    );
-  }
-
-  // If ZERO capital / management actions, surface the holds/watchlist as the
-  // primary line instead of returning an empty string.
-  if (parts.length === 0) {
-    if (summary.actions.held.length > 0) {
-      const n = summary.actions.held.length;
-      return `No trades — ${n} hold${n !== 1 ? "s" : ""} reaffirmed`;
-    }
-    if (summary.counts.watchlist > 0) {
-      // Watchlist-only run
-      const bits: string[] = [];
-      if (summary.actions.watched.length > 0) {
-        bits.push(`Added ${summary.actions.watched.join(", ")} to watchlist`);
-      }
-      if (summary.actions.unwatched.length > 0) {
-        bits.push(`Removed ${summary.actions.unwatched.join(", ")} from watchlist`);
-      }
-      return bits.join(" · ");
-    }
-    return "No actions taken";
-  }
-
-  // Holds as a soft suffix when present alongside actions.
-  if (summary.actions.held.length > 0) {
-    const head = summary.actions.held.slice(0, 3).join(", ");
-    const extra =
-      summary.actions.held.length > 3
-        ? ` +${summary.actions.held.length - 3}`
-        : "";
-    parts.push(`Held ${head}${extra}`);
-  }
-
-  return parts.join(" · ");
+  return buildActionSegments(summary)
+    .map((s) => s.text)
+    .join(" · ");
 }
 
 function formatPnlSuffix(pnl: number | null | undefined): string {
