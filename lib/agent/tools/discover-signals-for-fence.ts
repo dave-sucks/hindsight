@@ -152,17 +152,19 @@ export const discoverSignalsForFence = defineTool({
     const sectors = (args.sectors ?? []).filter(Boolean);
     const industries = (args.industries ?? []).filter(Boolean);
     const tickers = (args.tickers ?? []).filter(Boolean);
-    // Pick the most specific dimension that was set — themes read
-    // best in a header, then industries, then sectors, then tickers.
+    // Pick the most specific dimension that was set — themes read best,
+    // then industries, then sectors, then tickers. Prefer "signals on X"
+    // over the internal "fence" metaphor for UI text.
     const lead =
       themes[0] ??
       industries[0] ??
       sectors[0] ??
       (tickers[0] ? `$${tickers[0].toUpperCase()}` : null);
-    const extras = themes.length + industries.length + sectors.length + tickers.length - (lead ? 1 : 0);
-    if (!lead) return "Checking the discovery fence for live signals";
+    const extras =
+      themes.length + industries.length + sectors.length + tickers.length - (lead ? 1 : 0);
+    if (!lead) return "Looking for recent signals";
     const suffix = extras > 0 ? ` (+${extras} more)` : "";
-    return `Checking the ${lead}${suffix} fence for live signals`;
+    return `Looking for recent signals on ${lead}${suffix}`;
   },
 
   execute: async (args) => {

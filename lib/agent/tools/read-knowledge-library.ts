@@ -51,27 +51,36 @@ export const readKnowledgeLibrary = defineTool({
     if (args.topic === "archetype") {
       return args.id
         ? `Reading the ${humanize(args.id)} playbook`
-        : "Browsing strategy archetypes";
+        : "Looking at the strategy playbook library";
     }
     if (args.topic === "signal") {
       return args.id
-        ? `Reading the ${humanize(args.id)} signal definition`
-        : "Browsing the signal-type catalog";
+        ? `Reading the ${humanize(args.id)} signal type`
+        : "Looking at the signal types we track";
     }
     // topic === "source"
     return args.id
-      ? `Reading the ${humanize(args.id)} source entry`
-      : "Browsing the research-source catalog";
+      ? `Reading ${humanize(args.id)}'s source profile`
+      : "Looking at trusted research sources";
   },
 
   execute: async (args) => {
     const { topic, id } = args;
 
+    // Preview N names inline in the summary so the reader can see what's
+    // actually in each catalog without expanding the row. Caps at 5 names
+    // + "… and N more" so the line stays on-card.
+    const previewNames = (names: string[]): string => {
+      if (names.length === 0) return "(empty)";
+      if (names.length <= 5) return names.join(", ");
+      return `${names.slice(0, 5).join(", ")}, and ${names.length - 5} more`;
+    };
+
     if (topic === "archetype") {
       if (!id) {
         const index = archetypeIndex();
         return {
-          summary: `Archetype index — ${index.length} entries`,
+          summary: `${index.length} playbooks: ${previewNames(index.map((a) => a.name))}`,
           data: {
             topic: "archetype" as const,
             mode: "index" as const,
@@ -84,26 +93,34 @@ export const readKnowledgeLibrary = defineTool({
       const entry = getArchetype(id);
       if (!entry) {
         return {
-          summary: `Unknown archetype: ${id}`,
+          summary: `Unknown playbook: ${id}`,
           data: {
             topic: "archetype" as const,
             mode: "entry" as const,
             found: false,
             id,
-            hint: `Known IDs: ${archetypeIndex().map((a) => a.id).join(", ")}`,
+            hint: `Available playbooks: ${archetypeIndex().map((a) => a.name).join(", ")}`,
           },
           sources: [],
         };
       }
       return {
-        summary: `Archetype: ${entry.name}`,
+        summary: `Loaded the ${entry.name} playbook`,
         data: {
           topic: "archetype" as const,
           mode: "entry" as const,
           found: true,
           entry,
         },
-        sources: [],
+        // Emit the playbook as a citable source — the Editor/Builder prose
+        // references these with [N] markers and the chat turns them into
+        // InlineCitationCard chips via extractSourcesFromParts.
+        sources: [
+          {
+            provider: "Strategy Playbook",
+            title: entry.name,
+          },
+        ],
       };
     }
 
@@ -111,7 +128,7 @@ export const readKnowledgeLibrary = defineTool({
       if (!id) {
         const index = sourceIndex();
         return {
-          summary: `Source index — ${index.length} entries`,
+          summary: `${index.length} research sources: ${previewNames(index.map((s) => s.name))}`,
           data: {
             topic: "source" as const,
             mode: "index" as const,
@@ -130,20 +147,26 @@ export const readKnowledgeLibrary = defineTool({
             mode: "entry" as const,
             found: false,
             id,
-            hint: `Known IDs: ${sourceIndex().slice(0, 15).map((s) => s.id).join(", ")}…`,
+            hint: `Known sources: ${sourceIndex().slice(0, 15).map((s) => s.name).join(", ")}…`,
           },
           sources: [],
         };
       }
       return {
-        summary: `Source: ${entry.name}`,
+        summary: `Loaded source profile: ${entry.name}`,
         data: {
           topic: "source" as const,
           mode: "entry" as const,
           found: true,
           entry,
         },
-        sources: [],
+        sources: [
+          {
+            provider: "Research Source",
+            title: entry.name,
+            url: entry.domain ? `https://${entry.domain}` : undefined,
+          },
+        ],
       };
     }
 
@@ -151,7 +174,7 @@ export const readKnowledgeLibrary = defineTool({
     if (!id) {
       const index = signalIndex();
       return {
-        summary: `Signal-type index — ${index.length} entries`,
+        summary: `${index.length} signal types: ${previewNames(index.map((s) => s.name))}`,
         data: {
           topic: "signal" as const,
           mode: "index" as const,
@@ -170,20 +193,25 @@ export const readKnowledgeLibrary = defineTool({
           mode: "entry" as const,
           found: false,
           id,
-          hint: `Known IDs: ${signalIndex().map((s) => s.id).join(", ")}`,
+          hint: `Known signal types: ${signalIndex().map((s) => s.name).join(", ")}`,
         },
         sources: [],
       };
     }
     return {
-      summary: `Signal type: ${entry.name}`,
+      summary: `Loaded signal type: ${entry.name}`,
       data: {
         topic: "signal" as const,
         mode: "entry" as const,
         found: true,
         entry,
       },
-      sources: [],
+      sources: [
+        {
+          provider: "Signal Type",
+          title: entry.name,
+        },
+      ],
     };
   },
 });
