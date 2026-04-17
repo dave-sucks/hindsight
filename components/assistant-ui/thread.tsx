@@ -6,6 +6,7 @@ import {
 import { CitedMarkdownText } from "@/components/assistant-ui/cited-markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { ToolCallGroup } from "@/components/agent/ToolCallGroup";
+import { ToolDedupeProvider } from "@/components/agent/tool-dedupe-context";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
   SourcesProvider,
@@ -83,6 +84,7 @@ export const Thread: FC<ThreadProps> = ({
   );
 
   return (
+    <ToolDedupeProvider>
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
       style={{
@@ -113,6 +115,7 @@ export const Thread: FC<ThreadProps> = ({
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
+    </ToolDedupeProvider>
   );
 };
 

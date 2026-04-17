@@ -14,6 +14,7 @@ import { useMessage } from "@assistant-ui/react";
 import { useMemo, type ReactNode } from "react";
 import { ToolCallRow } from "./ToolCallRow";
 import { normalizeToolResult } from "@/lib/agent/tool-result";
+import { useToolDedupeCursor } from "./tool-dedupe-context";
 import {
   ToolProgress,
   ToolProgressHeader,
@@ -47,6 +48,13 @@ interface ToolGroupProps {
 
 export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
   const content = useMessage((m) => m.content);
+  // Cross-message dedup cursor. Each ToolCallGroup renders for ONE
+  // message only, so within-message dedup can't catch the same tool
+  // call repeated across adjacent messages. The cursor here is a
+  // shared ref updated as each ToolCallGroup renders — React renders
+  // messages top-down, so by the time this instance runs, the cursor
+  // holds the previous message's last key.
+  const dedupeCursor = useToolDedupeCursor();
 
   const blocks = useMemo<Block[]>(() => {
     const result: Block[] = [];
@@ -61,10 +69,6 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
       }
     };
 
-    // When the model calls the same tool with identical args twice in a
-    // row (e.g. read_knowledge_library({archetype, id:"X"}) twice after
-    // a selection), we render only the first — otherwise the user sees
-    // two identical collapsed rows, which is just noise.
     const stableArgKey = (part: ToolCallPart): string => {
       const args = part.args ?? part.input ?? {};
       try {
@@ -73,7 +77,12 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
         return part.toolName;
       }
     };
-    let prevArgKey: string | null = null;
+
+    // Seed local cursor from the cross-message cursor. This way dedup
+    // catches BOTH (a) duplicates inside this message's parts and (b)
+    // a duplicate at the top of this message that matches the last
+    // call of the PREVIOUS message.
+    let prevArgKey: string | null = dedupeCursor.current.lastKey;
 
     for (let i = startIndex; i <= endIndex; i++) {
       const part = (content as unknown[])[i] as ToolCallPart | undefined;
@@ -112,8 +121,15 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
     }
 
     flushGroup();
+
+    // Publish this message's last key back to the cross-message cursor
+    // so the NEXT message's ToolCallGroup sees it. Done in the render
+    // pass, not a useEffect, so the next message renders with correct
+    // state on this same pass.
+    dedupeCursor.current.lastKey = prevArgKey;
+
     return result;
-  }, [content, startIndex, endIndex]);
+  }, [content, startIndex, endIndex, dedupeCursor]);
 
   if (blocks.length === 0) return null;
 
