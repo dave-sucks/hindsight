@@ -292,13 +292,21 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
   actions.unwatched = dedupe(actions.unwatched);
   actions.passed = dedupe(actions.passed);
 
+  // Held count = union of held + managed (managed positions are "still held,
+  // with an adjustment"). Dedupe so a ticker that's both HOLD and
+  // UPDATE_TARGETS counts once.
+  const heldUnion = new Set<string>([
+    ...actions.held,
+    ...actions.managed.map((m) => m.ticker),
+  ]);
+
   return {
     actions,
     counts: {
       researched,
       new: actions.bought.length + actions.added.length,
       closed: actions.sold.length,
-      held: actions.held.length,
+      held: heldUnion.size,
       passed: actions.passed.length,
       watchlist: actions.watched.length + actions.unwatched.length,
       managed: actions.managed.length + actions.trimmed.length,
@@ -358,26 +366,18 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
       text: `Trimmed ${trim.ticker}`,
     });
   }
-  for (const mgmt of summary.actions.managed) {
-    segments.push({
-      color: "muted",
-      partial: false,
-      text: `${mgmt.ticker} (${mgmt.what})`,
-    });
+
+  // Unified Held line — a "managed" ticker (stop/target adjusted without
+  // capital change) IS a held ticker with an annotation. Merge the two
+  // buckets so the user sees one coherent "these positions are still
+  // there, some got tweaked" statement rather than two confusing rows.
+  const heldLabel = buildUnifiedHeldLabel(summary);
+  if (heldLabel) {
+    segments.push({ color: "muted", partial: false, text: heldLabel });
   }
 
   // Zero-action fallbacks — make stasis read honestly.
   if (segments.length === 0) {
-    if (summary.actions.held.length > 0) {
-      const n = summary.actions.held.length;
-      return [
-        {
-          color: "muted",
-          partial: false,
-          text: `No trades — ${n} hold${n !== 1 ? "s" : ""} reaffirmed`,
-        },
-      ];
-    }
     if (summary.counts.watchlist > 0) {
       if (summary.actions.watched.length > 0) {
         segments.push({
@@ -398,19 +398,45 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
     return [{ color: "muted", partial: false, text: "No actions taken" }];
   }
 
-  // Holds as a soft trailing segment when the run also had real actions.
-  if (summary.actions.held.length > 0) {
-    const head = summary.actions.held.slice(0, 3).join(", ");
-    const extra =
-      summary.actions.held.length > 3 ? ` +${summary.actions.held.length - 3}` : "";
-    segments.push({
-      color: "muted",
-      partial: false,
-      text: `Held ${head}${extra}`,
-    });
-  }
-
   return segments;
+}
+
+/**
+ * Merge held + managed tickers into one "Held T1 (target …, stop …), T2, T3"
+ * line. Managed tickers carry their adjustment annotation; plain holds get
+ * just the symbol. Returns null when nothing is held / managed.
+ *
+ * When the run had zero capital actions, the line is prefixed with
+ * "No trades — " to make stasis read honestly instead of looking like
+ * neutral activity.
+ */
+function buildUnifiedHeldLabel(summary: RunSummary): string | null {
+  const byTicker = new Map<string, string[]>(); // ticker → annotations
+  for (const t of summary.actions.held) {
+    if (!byTicker.has(t)) byTicker.set(t, []);
+  }
+  for (const m of summary.actions.managed) {
+    const t = m.ticker;
+    if (!byTicker.has(t)) byTicker.set(t, []);
+    if (m.what) byTicker.get(t)!.push(m.what);
+  }
+  if (byTicker.size === 0) return null;
+
+  const items = [...byTicker.entries()].map(([t, notes]) => {
+    if (notes.length === 0) return t;
+    return `${t} (${notes.join(", ")})`;
+  });
+
+  const hadCapitalAction =
+    summary.actions.bought.length > 0 ||
+    summary.actions.added.length > 0 ||
+    summary.actions.sold.length > 0 ||
+    summary.actions.trimmed.length > 0;
+
+  if (!hadCapitalAction && items.length > 0) {
+    return `No trades — held ${items.join(", ")}`;
+  }
+  return `Held ${items.join(", ")}`;
 }
 
 function dedupe<T>(arr: T[]): T[] {

@@ -9,7 +9,6 @@ import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import {
   buildRunSummary,
   buildActionSegments,
-  formatStatsRow,
   type ActionColor,
 } from "@/lib/run-summary";
 import { cn } from "@/lib/utils";
@@ -30,60 +29,37 @@ function formatRelativeTime(date: Date): string {
   });
 }
 
-// ── Color tokens ────────────────────────────────────────────────────────────
+// ── Corner-dot overlay for logos ────────────────────────────────────────────
 //
-// One palette, used by both the logo rings AND the inline dots in the
-// action line. `partial` switches solid → dashed (for ADD / PARTIAL_EXIT /
-// REMOVE_WATCH — any half-capital move). `muted` gets no visible indicator
-// on logos (plain circle) and no dot in the text (just label).
+// Small solid dot in the bottom-right of the logo — green = bought/added,
+// red = sold/trimmed, blue = watched. `muted` → no dot (plain logo).
 
-function ringClasses(color: ActionColor, partial: boolean): string {
-  if (color === "muted") return "";
-  const stroke =
-    color === "green"
-      ? "outline-emerald-500"
-      : color === "red"
-        ? "outline-red-500"
-        : "outline-sky-500";
-  const style = partial ? "outline-dashed" : "outline-solid";
-  return cn("outline-2", style, stroke, "outline-offset-1");
+function dotColorBg(color: ActionColor): string {
+  if (color === "green") return "bg-emerald-500";
+  if (color === "red") return "bg-red-500";
+  if (color === "blue") return "bg-sky-500";
+  return "";
 }
 
-function dotClasses(color: ActionColor, partial: boolean): string {
-  if (color === "muted") return "";
-  const base = "inline-block size-2 rounded-full mr-1.5 align-middle shrink-0";
-  if (partial) {
-    // Open/dashed variant: colored border, transparent center.
-    const border =
-      color === "green"
-        ? "border-emerald-500"
-        : color === "red"
-          ? "border-red-500"
-          : "border-sky-500";
-    return cn(base, "border-[1.5px] border-dashed bg-transparent", border);
-  }
-  const fill =
-    color === "green"
-      ? "bg-emerald-500"
-      : color === "red"
-        ? "bg-red-500"
-        : "bg-sky-500";
-  return cn(base, fill);
-}
-
-// ── Logo with optional colored ring ─────────────────────────────────────────
-
-function LogoWithRing({
+function LogoWithDot({
   ticker,
   badge,
 }: {
   ticker: string;
   badge?: { color: ActionColor; partial: boolean };
 }) {
-  const rounded = "rounded-full";
   return (
-    <div className={cn("rounded-full", badge && ringClasses(badge.color, badge.partial))}>
-      <StockLogo ticker={ticker} size="sm" className={rounded} />
+    <div className="relative">
+      <StockLogo ticker={ticker} size="sm" className="rounded-full" />
+      {badge && badge.color !== "muted" && (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-background",
+            dotColorBg(badge.color),
+          )}
+        />
+      )}
     </div>
   );
 }
@@ -189,7 +165,6 @@ export default async function RunsPage() {
 
           const summary = buildRunSummary(run);
           const segments = buildActionSegments(summary);
-          const statsLine = formatStatsRow(summary);
 
           // Logo stack tickers — action tickers first, then researched fill.
           const actionTickers = [...summary.tickerBadges.keys()];
@@ -206,12 +181,14 @@ export default async function RunsPage() {
               )
             : null;
 
-          const statusDot =
-            run.status === "COMPLETE"
-              ? "bg-positive"
-              : run.status === "RUNNING"
-                ? "bg-amber-500 animate-pulse"
-                : "bg-negative";
+          // Only render a status dot for non-COMPLETE runs — green dot
+          // on every successful run was visual noise.
+          const statusDotClass =
+            run.status === "RUNNING"
+              ? "bg-amber-500 animate-pulse"
+              : run.status === "FAILED"
+                ? "bg-negative"
+                : null;
 
           const pnl = summary.realizedPnl;
           const pnlLabel =
@@ -227,10 +204,12 @@ export default async function RunsPage() {
               href={`/runs/${run.id}`}
               className="block border rounded-xl p-4 hover:bg-muted/20 transition-colors"
             >
-              {/* Header: analyst name · time · duration | logo stack */}
+              {/* Header: status dot (conditional) · analyst name · time · duration | logo stack */}
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
+                  {statusDotClass && (
+                    <div className={`h-2 w-2 rounded-full shrink-0 ${statusDotClass}`} />
+                  )}
                   <span className="text-sm font-medium truncate">{analystName}</span>
                   <span className="text-xs text-muted-foreground tabular-nums shrink-0">
                     {formatRelativeTime(run.startedAt)}
@@ -246,7 +225,7 @@ export default async function RunsPage() {
                         className={i > 0 ? "-ml-1" : ""}
                         style={{ zIndex: orderedTickers.length - i }}
                       >
-                        <LogoWithRing
+                        <LogoWithDot
                           ticker={ticker}
                           badge={summary.tickerBadges.get(ticker)}
                         />
@@ -261,27 +240,31 @@ export default async function RunsPage() {
                 )}
               </div>
 
-              {/* Primary action line with colored dots */}
+              {/* Primary action line — plain text, no dots */}
               <p className="text-sm text-muted-foreground line-clamp-2">
                 {segments.map((seg, i) => (
                   <span key={i}>
                     {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
-                    {seg.color !== "muted" && (
-                      <span className={dotClasses(seg.color, seg.partial)} aria-hidden />
-                    )}
                     <span>{seg.text}</span>
                   </span>
                 ))}
               </p>
 
-              {/* Stats row — counts left, realized P&L right */}
+              {/* Stats row — "N researched" is the headline, rest is breakdown */}
               {summary.counts.researched > 0 && (
                 <div className="flex items-center justify-between border-t pt-2 mt-2 text-xs tabular-nums">
-                  <span className="text-muted-foreground">
-                    {statsLine}
-                    {summary.counts.watchlist > 0 && (
-                      <span> · +{summary.counts.watchlist} watchlist</span>
-                    )}
+                  <span>
+                    <span className="font-medium text-foreground">
+                      {summary.counts.researched} researched
+                    </span>
+                    <span className="text-muted-foreground">
+                      {summary.counts.new > 0 && ` · ${summary.counts.new} new`}
+                      {summary.counts.closed > 0 && ` · ${summary.counts.closed} closed`}
+                      {summary.counts.held > 0 && ` · ${summary.counts.held} held`}
+                      {summary.counts.passed > 0 && ` · ${summary.counts.passed} passed`}
+                      {summary.counts.watchlist > 0 &&
+                        ` · ${summary.counts.watchlist} watchlist`}
+                    </span>
                   </span>
                   {pnlLabel && (
                     <span
