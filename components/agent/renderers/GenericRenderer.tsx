@@ -7,6 +7,7 @@ import {
   ToolProgressContent,
   ToolProgressItem,
 } from "@/components/ai-elements/tool-progress";
+import { Markdown } from "@/components/ui/markdown";
 
 interface Props {
   toolName: string;
@@ -16,12 +17,24 @@ interface Props {
   inGroup?: boolean;
 }
 
+/**
+ * GenericRenderer — the default tool row.
+ *
+ * Collapsed: shows a single-line header (progressLabel) with a chevron.
+ * Expanded: shows the human-readable content the tool returned. If the
+ * tool put a markdown string on `data.content`, we render it via the
+ * Markdown component — same pattern Claude and Notion use for tool
+ * output. Falls back to the one-line summary when there's no content.
+ */
 export function GenericRenderer({ toolName, result, loading, inGroup }: Props) {
   const header = result.progressLabel ?? toolName;
+  const data = result.data as Record<string, unknown> | null;
+  const content = data && typeof data.content === "string" ? (data.content as string) : null;
 
   if (inGroup) {
     // Flat row inside a group block — no nested ToolProgress wrapper.
-    // Group header already says WHAT we're doing; this row is the result.
+    // Keep the bullet line tight; detail can be reached by opening the
+    // solo expanded view on /runs/[id] or the editor chat.
     return <ToolProgressItem>{result.summary}</ToolProgressItem>;
   }
 
@@ -29,7 +42,11 @@ export function GenericRenderer({ toolName, result, loading, inGroup }: Props) {
     <ToolProgress defaultOpen={loading}>
       <ToolProgressHeader loading={loading}>{header}</ToolProgressHeader>
       <ToolProgressContent>
-        <ToolProgressItem>{result.summary}</ToolProgressItem>
+        {content ? (
+          <Markdown variant="compact">{content}</Markdown>
+        ) : (
+          <ToolProgressItem>{result.summary}</ToolProgressItem>
+        )}
       </ToolProgressContent>
     </ToolProgress>
   );

@@ -18,7 +18,6 @@ import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
 import { DecisionSummaryRenderer } from "./renderers/DecisionSummaryRenderer";
 import { RunSummaryRenderer } from "./renderers/RunSummaryRenderer";
 import { ConfigPreviewRenderer } from "./renderers/ConfigPreviewRenderer";
-import { PlaybookRenderer } from "./renderers/PlaybookRenderer";
 import { AskQuestionRenderer } from "./renderers/AskQuestionRenderer";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -65,8 +64,6 @@ export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, in
       return <RunSummaryRenderer result={result} loading={loading} />;
     case "config-preview":
       return <ConfigPreviewRenderer result={result} loading={loading} />;
-    case "playbook":
-      return <PlaybookRenderer result={result} loading={loading} />;
     case "ask-question":
       return <AskQuestionRenderer toolName={toolName} result={result} loading={loading} />;
     case "generic":

@@ -111,20 +111,16 @@ export const readKnowledgeLibrary = defineTool({
       }
       return {
         summary: `Loaded the ${entry.name} playbook`,
-        // Render the full playbook card (tagline, edge, direction, hold
-        // durations, signals, sources, risk profile, prompt skeleton).
-        // The default `generic` UI collapsed this into a one-liner —
-        // users couldn't see what the agent actually pulled in.
-        ui: "playbook" as const,
         data: {
           topic: "archetype" as const,
           mode: "entry" as const,
           found: true,
           entry,
+          // `content` is the full human-readable text the agent actually
+          // read. GenericRenderer renders it as expandable markdown in the
+          // tool row — same pattern Claude/Notion use. No custom card.
+          content: formatArchetypeMarkdown(entry),
         },
-        // Emit the playbook as a citable source — the Editor/Builder prose
-        // references these with [N] markers and the chat turns them into
-        // InlineCitationCard chips via extractSourcesFromParts.
         sources: [
           {
             provider: "Strategy Playbook",
@@ -174,6 +170,7 @@ export const readKnowledgeLibrary = defineTool({
           mode: "entry" as const,
           found: true,
           entry,
+          content: formatSourceMarkdown(entry),
         },
         sources: [
           {
@@ -225,6 +222,7 @@ export const readKnowledgeLibrary = defineTool({
         mode: "entry" as const,
         found: true,
         entry,
+        content: formatSignalMarkdown(entry),
       },
       sources: [
         {
@@ -235,3 +233,132 @@ export const readKnowledgeLibrary = defineTool({
     };
   },
 });
+
+// ── Markdown formatters (content shown in the expanded GenericRenderer row) ──
+
+type ArchetypeEntry = ReturnType<typeof getArchetype>;
+type SourceEntryType = ReturnType<typeof getSource>;
+type SignalEntry = ReturnType<typeof getSignalType>;
+
+function humanizeToken(s: string): string {
+  return s
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
+  const lines: string[] = [];
+  lines.push(`# ${entry.name}`);
+  if (entry.tagline) lines.push(`_${entry.tagline}_`);
+  lines.push("");
+  lines.push(`**Direction:** ${humanizeToken(entry.directionBias)}`);
+  if (entry.holdDurations?.length) {
+    lines.push(`**Hold durations:** ${entry.holdDurations.map(humanizeToken).join(", ")}`);
+  }
+  lines.push("");
+  if (entry.edge) {
+    lines.push(`## Why the edge exists`);
+    lines.push(entry.edge);
+    lines.push("");
+  }
+  if (entry.primarySignals?.length) {
+    lines.push(`## Signals that fire this`);
+    lines.push(entry.primarySignals.map(humanizeToken).join(", "));
+    lines.push("");
+  }
+  if (entry.keySources?.length) {
+    lines.push(`## Research sources it leans on`);
+    lines.push(entry.keySources.map(humanizeToken).join(", "));
+    lines.push("");
+  }
+  if (entry.risk) {
+    lines.push(`## Suggested risk profile`);
+    if (entry.risk.minConfidence) {
+      lines.push(`- **Confidence:** ${entry.risk.minConfidence[0]}–${entry.risk.minConfidence[1]}%`);
+    }
+    if (entry.risk.positionSizeBand) {
+      lines.push(
+        `- **Position size:** $${entry.risk.positionSizeBand[0].toLocaleString()}–$${entry.risk.positionSizeBand[1].toLocaleString()}`,
+      );
+    }
+    if (entry.risk.maxOpenPositions != null) {
+      lines.push(`- **Max concurrent positions:** ${entry.risk.maxOpenPositions}`);
+    }
+    lines.push("");
+  }
+  if (entry.universeHints) {
+    const bits: string[] = [];
+    if (entry.universeHints.sectors?.length) bits.push(`sectors: ${entry.universeHints.sectors.join(", ")}`);
+    if (entry.universeHints.industries?.length) bits.push(`industries: ${entry.universeHints.industries.join(", ")}`);
+    if (entry.universeHints.themes?.length) bits.push(`themes: ${entry.universeHints.themes.join(", ")}`);
+    if (entry.universeHints.marketCapMinUSD != null || entry.universeHints.marketCapMaxUSD != null) {
+      const lo = entry.universeHints.marketCapMinUSD;
+      const hi = entry.universeHints.marketCapMaxUSD;
+      bits.push(`market cap: ${lo != null ? "$" + lo.toLocaleString() : "any"}–${hi != null ? "$" + hi.toLocaleString() : "any"}`);
+    }
+    if (bits.length) {
+      lines.push(`## Universe hints`);
+      lines.push(bits.map((b) => `- ${b}`).join("\n"));
+      lines.push("");
+    }
+  }
+  if (entry.promptSkeleton) {
+    lines.push(`## Prompt skeleton`);
+    lines.push(entry.promptSkeleton);
+    lines.push("");
+  }
+  if (entry.watchOutFor?.length) {
+    lines.push(`## Watch out for`);
+    lines.push(entry.watchOutFor.map((w) => `- ${w}`).join("\n"));
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
+
+function formatSourceMarkdown(entry: NonNullable<SourceEntryType>): string {
+  const lines: string[] = [];
+  lines.push(`# ${entry.name}`);
+  if ("domain" in entry && entry.domain) lines.push(`_https://${entry.domain}_`);
+  lines.push("");
+  const fields: Array<[string, unknown]> = Object.entries(entry).filter(
+    ([k]) => !["id", "name", "domain"].includes(k),
+  );
+  for (const [k, v] of fields) {
+    if (v == null) continue;
+    const label = humanizeToken(k);
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;
+      lines.push(`**${label}:** ${v.map((x) => String(x)).join(", ")}`);
+    } else if (typeof v === "object") {
+      lines.push(`**${label}:** ${JSON.stringify(v)}`);
+    } else {
+      lines.push(`**${label}:** ${String(v)}`);
+    }
+  }
+  return lines.join("\n").trim();
+}
+
+function formatSignalMarkdown(entry: NonNullable<SignalEntry>): string {
+  const lines: string[] = [];
+  lines.push(`# ${entry.name}`);
+  lines.push("");
+  const fields: Array<[string, unknown]> = Object.entries(entry).filter(
+    ([k]) => !["id", "name"].includes(k),
+  );
+  for (const [k, v] of fields) {
+    if (v == null) continue;
+    const label = humanizeToken(k);
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;
+      lines.push(`**${label}:** ${v.map((x) => String(x)).join(", ")}`);
+    } else if (typeof v === "object") {
+      lines.push(`**${label}:** ${JSON.stringify(v)}`);
+    } else {
+      lines.push(`**${label}:** ${String(v)}`);
+    }
+  }
+  return lines.join("\n").trim();
+}

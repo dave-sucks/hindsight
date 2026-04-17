@@ -10,6 +10,8 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Markdown } from "@/components/ui/markdown";
 import {
   Select,
   SelectTrigger,
@@ -70,6 +72,25 @@ export function AnalystConfigSheet({
           </SheetDescription>
         </SheetHeader>
 
+        <Tabs defaultValue="strategy">
+          <TabsList className="mx-3">
+            <TabsTrigger value="strategy">Strategy</TabsTrigger>
+            <TabsTrigger value="config">Config</TabsTrigger>
+          </TabsList>
+
+          {/* ── Strategy (analystPrompt) ────────────────────────── */}
+          <TabsContent value="strategy" className="p-3">
+            {config.analystPrompt ? (
+              <Markdown variant="compact">{config.analystPrompt}</Markdown>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No strategy prompt set yet. Use the AI chat to write one.
+              </p>
+            )}
+          </TabsContent>
+
+          {/* ── Config fields ───────────────────────────────────── */}
+          <TabsContent value="config">
         <TooltipProvider>
           <div>
             {/* ── Trading config ────────────────────────────────── */}
@@ -328,6 +349,8 @@ export function AnalystConfigSheet({
             )}
           </div>
         </TooltipProvider>
+          </TabsContent>
+        </Tabs>
       </SheetContent>
     </Sheet>
   );
