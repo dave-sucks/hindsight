@@ -114,8 +114,13 @@ export interface RunSummary {
     added: string[];                  // ADD
     sold: TickerResult[];             // EXIT (with $ pnl if closed)
     trimmed: TickerResult[];          // PARTIAL_EXIT
-    managed: TickerResult[];          // stop/target moves with no capital change
-    held: string[];                   // HOLD
+    // Management sub-actions — each is its own verb so the card can
+    // render "Adjusted targets for X, Y" rather than a vague "X (target
+    // $N, stop $N)" that makes it unclear what actually happened.
+    targetsAdjusted: string[];        // UPDATE_TARGETS
+    stopsToBreakeven: string[];       // MOVE_STOP_TO_BREAKEVEN
+    trailingStops: string[];          // SET_TRAILING_STOP
+    held: string[];                   // HOLD (unchanged — no management)
     watched: string[];                // WATCH
     unwatched: string[];              // REMOVE_WATCH
     passed: string[];                 // PASS — kept for counts, never shown
@@ -155,7 +160,9 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
     added: [],
     sold: [],
     trimmed: [],
-    managed: [],
+    targetsAdjusted: [],
+    stopsToBreakeven: [],
+    trailingStops: [],
     held: [],
     watched: [],
     unwatched: [],
@@ -230,36 +237,29 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
     }
   }
 
-  // ── Pass 2: PositionManagementActions for pure stop/target moves ──────
-  // A capital-moving action (FULL_CLOSE / PARTIAL_CLOSE / ADD_TO_POSITION)
-  // already surfaced via TradeDecision — skip those here to avoid double
-  // counting. Only surface UPDATE_TARGETS / MOVE_STOP_TO_BREAKEVEN /
-  // SET_TRAILING_STOP since those don't have a TradeDecision companion.
+  // ── Pass 2: PositionManagementActions — categorize by verb ────────────
+  // Capital-moving actions (FULL_CLOSE / PARTIAL_CLOSE / ADD_TO_POSITION)
+  // already surface via TradeDecision — skip here to avoid double-counting.
+  // Each remaining action gets put in a specific verb bucket so the card
+  // reads as "Adjusted targets for X, Y" not "X (target $N, stop $N)".
+  //
+  // Priority when a single ticker has multiple management actions in one
+  // run: targets > stop-to-breakeven > trailing-stop. Only one bucket per
+  // ticker so the feed card doesn't list the same symbol twice.
   const capitalActionTypes = new Set([
     "FULL_CLOSE",
     "PARTIAL_CLOSE",
     "ADD_TO_POSITION",
   ]);
+  const managedBucket = new Map<string, "targets" | "breakeven" | "trailing">();
+  const bucketPriority = { targets: 3, breakeven: 2, trailing: 1 };
+
   for (const a of run.managementActions) {
     if (capitalActionTypes.has(a.actionType)) continue;
     const ticker = a.position?.symbol?.toUpperCase();
     if (!ticker) continue;
 
-    let what = "";
-    if (a.actionType === "MOVE_STOP_TO_BREAKEVEN") {
-      what = "stop → breakeven";
-    } else if (a.actionType === "SET_TRAILING_STOP") {
-      what = a.newTrailPct != null ? `trailing ${a.newTrailPct}%` : "trailing stop";
-    } else if (a.actionType === "UPDATE_TARGETS") {
-      const bits: string[] = [];
-      if (a.newTargetPrice != null) bits.push(`target $${a.newTargetPrice}`);
-      if (a.newStopLoss != null) bits.push(`stop $${a.newStopLoss}`);
-      what = bits.length > 0 ? bits.join(", ") : "targets updated";
-    } else {
-      what = a.actionType.toLowerCase().replace(/_/g, " ");
-    }
-
-    // De-dup: if this ticker already has a capital action, skip — that's the headline.
+    // Skip tickers that already have a capital action — that's the headline.
     if (
       actions.bought.includes(ticker) ||
       actions.added.includes(ticker) ||
@@ -268,9 +268,28 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
     ) {
       continue;
     }
-    actions.managed.push({ ticker, what });
-    // Don't overwrite existing overlays — a stop move on a HOLD shouldn't clobber the logo.
+
+    let bucket: "targets" | "breakeven" | "trailing" | null = null;
+    if (a.actionType === "UPDATE_TARGETS") bucket = "targets";
+    else if (a.actionType === "MOVE_STOP_TO_BREAKEVEN") bucket = "breakeven";
+    else if (a.actionType === "SET_TRAILING_STOP") bucket = "trailing";
+    if (!bucket) continue;
+
+    const existing = managedBucket.get(ticker);
+    if (existing && bucketPriority[existing] >= bucketPriority[bucket]) continue;
+    managedBucket.set(ticker, bucket);
   }
+
+  for (const [ticker, bucket] of managedBucket) {
+    if (bucket === "targets") actions.targetsAdjusted.push(ticker);
+    else if (bucket === "breakeven") actions.stopsToBreakeven.push(ticker);
+    else actions.trailingStops.push(ticker);
+  }
+
+  // A ticker with a management action should NOT also appear in `held` —
+  // the management verb IS the "what happened" for that ticker.
+  const managedSet = new Set(managedBucket.keys());
+  actions.held = actions.held.filter((t) => !managedSet.has(t));
 
   // ── Fallback: legacy runs with no TradeDecisions ──────────────────────
   const isLegacy = run.decisions.length === 0 && researched > 0;
@@ -292,13 +311,14 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
   actions.unwatched = dedupe(actions.unwatched);
   actions.passed = dedupe(actions.passed);
 
-  // Held count = union of held + managed (managed positions are "still held,
-  // with an adjustment"). Dedupe so a ticker that's both HOLD and
-  // UPDATE_TARGETS counts once.
-  const heldUnion = new Set<string>([
-    ...actions.held,
-    ...actions.managed.map((m) => m.ticker),
-  ]);
+  // Held count = plain holds + tickers still held but managed. The stats
+  // row uses this so "N held" matches the visible Held-group sum in the
+  // action line (plain-held + all three management buckets).
+  const heldTotal =
+    actions.held.length +
+    actions.targetsAdjusted.length +
+    actions.stopsToBreakeven.length +
+    actions.trailingStops.length;
 
   return {
     actions,
@@ -306,10 +326,14 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
       researched,
       new: actions.bought.length + actions.added.length,
       closed: actions.sold.length,
-      held: heldUnion.size,
+      held: heldTotal,
       passed: actions.passed.length,
       watchlist: actions.watched.length + actions.unwatched.length,
-      managed: actions.managed.length + actions.trimmed.length,
+      managed:
+        actions.targetsAdjusted.length +
+        actions.stopsToBreakeven.length +
+        actions.trailingStops.length +
+        actions.trimmed.length,
     },
     realizedPnl: hasAnyClose ? realized : null,
     isFailed,
@@ -367,13 +391,41 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
     });
   }
 
-  // Unified Held line — a "managed" ticker (stop/target adjusted without
-  // capital change) IS a held ticker with an annotation. Merge the two
-  // buckets so the user sees one coherent "these positions are still
-  // there, some got tweaked" statement rather than two confusing rows.
-  const heldLabel = buildUnifiedHeldLabel(summary);
-  if (heldLabel) {
-    segments.push({ color: "muted", partial: false, text: heldLabel });
+  // Management verbs — explicit about what happened. Each action type
+  // gets its own segment so a user reading "Adjusted targets for NVDA,
+  // AMZN" immediately knows the agent changed those levels, vs a vague
+  // "X (target $N, stop $N)" that leaves them guessing.
+  if (summary.actions.targetsAdjusted.length > 0) {
+    segments.push({
+      color: "muted",
+      partial: false,
+      text: `Adjusted targets for ${summary.actions.targetsAdjusted.join(", ")}`,
+    });
+  }
+  if (summary.actions.stopsToBreakeven.length > 0) {
+    segments.push({
+      color: "muted",
+      partial: false,
+      text: `Moved stops to breakeven on ${summary.actions.stopsToBreakeven.join(", ")}`,
+    });
+  }
+  if (summary.actions.trailingStops.length > 0) {
+    segments.push({
+      color: "muted",
+      partial: false,
+      text: `Set trailing stops on ${summary.actions.trailingStops.join(", ")}`,
+    });
+  }
+
+  // Plain Held — tickers with a HOLD decision AND no management action.
+  if (summary.actions.held.length > 0) {
+    const hadAnythingElse = segments.length > 0;
+    const tickers = summary.actions.held.join(", ");
+    segments.push({
+      color: "muted",
+      partial: false,
+      text: hadAnythingElse ? `Held ${tickers}` : `No trades — held ${tickers}`,
+    });
   }
 
   // Zero-action fallbacks — make stasis read honestly.
@@ -399,44 +451,6 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
   }
 
   return segments;
-}
-
-/**
- * Merge held + managed tickers into one "Held T1 (target …, stop …), T2, T3"
- * line. Managed tickers carry their adjustment annotation; plain holds get
- * just the symbol. Returns null when nothing is held / managed.
- *
- * When the run had zero capital actions, the line is prefixed with
- * "No trades — " to make stasis read honestly instead of looking like
- * neutral activity.
- */
-function buildUnifiedHeldLabel(summary: RunSummary): string | null {
-  const byTicker = new Map<string, string[]>(); // ticker → annotations
-  for (const t of summary.actions.held) {
-    if (!byTicker.has(t)) byTicker.set(t, []);
-  }
-  for (const m of summary.actions.managed) {
-    const t = m.ticker;
-    if (!byTicker.has(t)) byTicker.set(t, []);
-    if (m.what) byTicker.get(t)!.push(m.what);
-  }
-  if (byTicker.size === 0) return null;
-
-  const items = [...byTicker.entries()].map(([t, notes]) => {
-    if (notes.length === 0) return t;
-    return `${t} (${notes.join(", ")})`;
-  });
-
-  const hadCapitalAction =
-    summary.actions.bought.length > 0 ||
-    summary.actions.added.length > 0 ||
-    summary.actions.sold.length > 0 ||
-    summary.actions.trimmed.length > 0;
-
-  if (!hadCapitalAction && items.length > 0) {
-    return `No trades — held ${items.join(", ")}`;
-  }
-  return `Held ${items.join(", ")}`;
 }
 
 function dedupe<T>(arr: T[]): T[] {
