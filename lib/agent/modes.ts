@@ -128,10 +128,13 @@ Use ask_question (single- or multi-select) to pin down the discriminators:
 Do NOT ask about things you can reasonably default (position sizing, maxOpenPositions). Use ask_question only when the answer materially changes the config.
 
 ### Step 3 — Ground yourself in the knowledge library (MANDATORY)
-Before writing a single line of the prompt, call **read_knowledge_library** at least twice:
-- Once with topic:"archetype" (no id) to see the full archetype list, then again with topic:"archetype", id:"<matching_id>" to read the full skeleton for the archetype closest to the user's vision.
-- Once with topic:"signal" (no id) to see the signal catalog, so you pick signalTypes that actually exist in our router.
-- Optionally topic:"source" to anchor the domainMonitorProposal in real domains from the catalog.
+Before writing a single line of the prompt, do the **three-beat playbook selection**:
+1. **Browse.** Call \`read_knowledge_library\` with topic:"archetype" (no id). Identify the 2–4 playbooks that plausibly fit what the user described.
+2. **Present via ask_question.** Call \`ask_question\` with each candidate as an option — \`label\` = playbook name, \`description\` = the tagline from the index. Wait for the user's selection. NEVER present candidate playbooks as a prose bullet list.
+3. **Deep-read the chosen one.** Call \`read_knowledge_library\` with topic:"archetype", id:<chosen id>. The user will see the rendered playbook card automatically — do NOT quote the skeleton back at them. Briefly note how you'll adapt it for this user, then move on.
+
+Also call once with topic:"signal" (no id) to see the signal catalog, so you pick signalTypes that actually exist in our router. Optionally topic:"source" to anchor the domainMonitorProposal in real domains from the catalog.
+
 The archetype's \`promptSkeleton\` is a STARTING POINT for your analystPrompt — adapt it, don't copy it verbatim.
 
 ### Step 4 — Validate with real data (MANDATORY)
@@ -293,7 +296,12 @@ New watchlist tickers MUST come from \`read_analyst_inbox_stats.topTickers\` OR 
 
 ### Step 4 — Consult the knowledge library
 - Lane (c): call **read_knowledge_library** with topic:"archetype" and the CURRENT archetype's id — reread the skeleton so the fence change stays consistent with the edge.
-- Lane (d): call **read_knowledge_library** with topic:"archetype" (no id) to browse, then topic:"archetype" with the id of the NEW archetype. The \`promptSkeleton\` is your STARTING POINT — adapt it into the analystPrompt, do not copy verbatim, and preserve the risk/exit paragraphs that were working.
+- Lane (d) — **three-beat playbook selection**. Do not short-circuit this by picking from memory.
+  1. **Browse.** Call \`read_knowledge_library\` with topic:"archetype" (no id). Review the index. Identify the 2–4 playbooks that plausibly fit the user's direction.
+  2. **Present via ask_question.** Call \`ask_question\` with each candidate as an option: \`label\` = playbook name, \`description\` = that playbook's tagline from the index. Wait for the user's selection. NEVER present candidate playbooks as a prose bullet list — the structured question gives the user one-click selection and consistent UI.
+  3. **Deep-read the chosen one.** Call \`read_knowledge_library\` with topic:"archetype", id:<chosen id> to pull the full spec. The user will see the rendered playbook card automatically; you do NOT need to quote the whole skeleton back. Briefly summarize how you'll adapt it for this analyst and proceed to Step 5.
+
+The \`promptSkeleton\` is your STARTING POINT — adapt it into the analystPrompt, do not copy verbatim, and preserve the risk/exit paragraphs that were working.
 
 ### Step 5 — suggest_config with the COMPLETE updated config
 Call **suggest_config** with EVERY required field filled, including all four Universe fields (sectors, industries, themes, marketCapMin/Max).
@@ -327,6 +335,10 @@ For optional fields (domainMonitorProposal, intelligenceQueries, intelligencePol
 8. **ONE ask_question per turn.** Never stack.
 
 9. **Preserve what's working.** Lanes (c) and (d) must keep paragraphs of the analystPrompt that aren't directly affected by the change — especially risk management, position sizing, and exit discipline.
+
+10. **Playbook choice is never prose.** When offering the user ≥2 strategy playbooks to pick from in Lane (d), you MUST use \`ask_question\` with playbook names as labels and their taglines as descriptions. A prose bullet list ("We could go Momentum Breakout, or PEAD, or…") bypasses the structured-choice UI and is a violation.
+
+11. **Do not quote the full playbook.** After a user selects a playbook and you deep-read it, the UI already renders the playbook card with tagline, edge, signals, sources, risk, and the prompt skeleton. Do NOT paste those sections back into prose — state what you'll adapt for THIS user (1–2 sentences) and proceed to suggest_config.
 
 ═══════════════════════════════════════════════════════════════════════
 ## PROACTIVE FLAGS

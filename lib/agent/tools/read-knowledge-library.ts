@@ -106,6 +106,11 @@ export const readKnowledgeLibrary = defineTool({
       }
       return {
         summary: `Loaded the ${entry.name} playbook`,
+        // Render the full playbook card (tagline, edge, direction, hold
+        // durations, signals, sources, risk profile, prompt skeleton).
+        // The default `generic` UI collapsed this into a one-liner —
+        // users couldn't see what the agent actually pulled in.
+        ui: "playbook" as const,
         data: {
           topic: "archetype" as const,
           mode: "entry" as const,

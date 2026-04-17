@@ -56,6 +56,14 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     data: any;
     sources?: ToolSource[];
+    /**
+     * Optional per-call UI override. Defaults to options.ui set on the
+     * factory. Use when a single tool returns differently-shaped results
+     * that need distinct renderers — e.g. read_knowledge_library emits
+     * `generic` for an index listing but `playbook` for a specific
+     * archetype entry so the user sees the full spec.
+     */
+    ui?: ToolUI;
   }>;
 }
 
@@ -98,7 +106,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
 
           return {
             ok: true as const,
-            ui: options.ui,
+            ui: result.ui ?? options.ui,
             ...(resolvedGroupId !== undefined ? { groupId: resolvedGroupId } : {}),
             ...(progressLabel !== undefined ? { progressLabel } : {}),
             summary: result.summary,

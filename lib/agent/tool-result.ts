@@ -20,6 +20,7 @@ export type ToolUI =
   | "decision-summary" // complete_run status row
   | "run-summary"      // RunSummaryCard — the ONE summary card
   | "config-preview"   // suggest_config (builder/editor only)
+  | "playbook"         // strategy archetype detail card (read_knowledge_library entry)
   | "ask-question";    // ask_question: renders the question + QuickReply pills inline
 
 // ── Source attribution ───────────────────────────────────────────────────────
