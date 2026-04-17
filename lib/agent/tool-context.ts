@@ -24,6 +24,12 @@ export interface ToolContext {
   marketCapMax?: number | null;
   maxPositionSize?: number;
   maxOpenPositions?: number;
+  /**
+   * Minimum thesis confidence (0-100) required for place_trade to proceed.
+   * Enforced inside place_trade, not just advised to the model. Defaults
+   * to 60 when undefined.
+   */
+  minConfidence?: number;
   intelligencePolicy?: IntelligencePolicy;
 
   /**

@@ -89,6 +89,88 @@ export const placeTrade = defineTool({
         };
       }
 
+      // 0b. Analyst config guardrails — minConfidence, maxOpenPositions,
+      // maxPositionSize. Previously these were advisory (passed to the
+      // prompt) and the model could ignore them. Now they're hard gates:
+      // a violation returns a FAILED trade result. This protects the
+      // paper book from the model overriding its own stated rules.
+
+      // ── Guardrail 1: thesis confidence ≥ minConfidence ─────────────
+      if (ctx.minConfidence != null) {
+        const thesis = await prisma.thesis.findUnique({
+          where: { id: args.thesis_id },
+          select: { confidenceScore: true, direction: true },
+        });
+        if (thesis && thesis.confidenceScore < ctx.minConfidence) {
+          const blockedMsg = `Trade blocked: thesis confidence ${thesis.confidenceScore}% is below this analyst's minimum (${ctx.minConfidence}%). Raise confidence or skip the trade.`;
+          return {
+            summary: `Trade blocked: $${ticker} — below min confidence`,
+            data: {
+              success: false,
+              ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: blockedMsg,
+              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+      }
+
+      // ── Guardrail 2: open position count < maxOpenPositions ────────
+      if (ctx.maxOpenPositions != null && ctx.analystId) {
+        const openCount = await prisma.position.count({
+          where: {
+            analystId: ctx.analystId,
+            status: "OPEN",
+          },
+        });
+        if (openCount >= ctx.maxOpenPositions) {
+          const blockedMsg = `Trade blocked: this analyst already has ${openCount} open position${openCount !== 1 ? "s" : ""}, at its ${ctx.maxOpenPositions}-slot cap. Close something first.`;
+          return {
+            summary: `Trade blocked: $${ticker} — at max open positions`,
+            data: {
+              success: false,
+              ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: blockedMsg,
+              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+      }
+
+      // ── Guardrail 3: requested notional ≤ maxPositionSize ──────────
+      // Only checks when the model explicitly sized the trade (notional
+      // or shares). If neither is set, the fallback path below uses
+      // maxPositionSize as the budget so no violation is possible.
+      if (ctx.maxPositionSize != null) {
+        const requestedNotional =
+          args.notional != null && args.notional > 0
+            ? args.notional
+            : args.shares != null && args.shares > 0
+              ? args.shares * args.entry_price
+              : null;
+        if (requestedNotional != null && requestedNotional > ctx.maxPositionSize) {
+          const blockedMsg = `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} exceeds this analyst's max position size ($${ctx.maxPositionSize.toLocaleString()}). Scale it down.`;
+          return {
+            summary: `Trade blocked: $${ticker} — exceeds max position size`,
+            data: {
+              success: false,
+              ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: blockedMsg,
+              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+      }
+
       // 1. Resolve qty — prefer notional (dollar amount), fall back to shares
       // Server-side calculation removes a cognitive step from the model.
       let resolvedShares: number | undefined;

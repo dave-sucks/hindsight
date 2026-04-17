@@ -113,6 +113,7 @@ export const morningResearch = inngest.createFunction(
           sectors: config.sectors ?? [],
           maxPositionSize: Number(config.maxPositionSize),
           maxOpenPositions: config.maxOpenPositions,
+          minConfidence: config.minConfidence,
           alpacaCreds,
         });
 

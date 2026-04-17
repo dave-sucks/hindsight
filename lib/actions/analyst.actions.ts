@@ -1002,8 +1002,9 @@ type UpdatableField =
   | "minConfidence"
   | "maxPositionSize"
   | "maxOpenPositions"
-  | "maxRiskPct"
-  | "scheduleTime"
+  // NOTE: maxRiskPct and scheduleTime removed from the editable surface —
+  // both are orphan fields at runtime (no code path reads them). If
+  // scheduling becomes per-analyst in the future, add scheduleTime back.
   | "holdDurations"
   | "watchlist"
   | "exclusionList"

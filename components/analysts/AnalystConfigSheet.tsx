@@ -103,9 +103,18 @@ export function AnalystConfigSheet({
           <TabsContent value="config">
         <TooltipProvider>
           <div>
-            {/* ── Trading config ────────────────────────────────── */}
+            {/* ── Trading rules ─────────────────────────────────── */}
+            {/* Hard gates enforced inside place_trade.ts — not advisory. */}
             <div className="p-3 border-b flex flex-col gap-1">
-              <InfoRow label="Direction">
+              <SectionHeader
+                label="Trading rules"
+                tooltip="How this analyst places paper trades. Min Confidence, Max Positions, and Max Position Size are enforced inside place_trade — the agent cannot override them."
+              />
+
+              <InfoRow
+                label="Direction"
+                tooltip="Bias the agent can take: Long only, Short only, or Both."
+              >
                 <Select
                   defaultValue={config.directionBias}
                   onValueChange={(val) => saveField("directionBias", val)}
@@ -121,7 +130,10 @@ export function AnalystConfigSheet({
                 </Select>
               </InfoRow>
 
-              <InfoRow label="Hold Duration">
+              <InfoRow
+                label="Hold Duration"
+                tooltip="Typical holding period the agent plans for: Day (intraday), Swing (days to weeks), Position (weeks to months)."
+              >
                 <Select
                   defaultValue={config.holdDurations[0] ?? "SWING"}
                   onValueChange={(val) => saveField("holdDurations", [val])}
@@ -137,7 +149,10 @@ export function AnalystConfigSheet({
                 </Select>
               </InfoRow>
 
-              <InfoRow label="Min Confidence">
+              <InfoRow
+                label="Min Confidence"
+                tooltip="Lowest thesis confidence (0-100) that can place a trade. Enforced — a thesis below this threshold gets rejected."
+              >
                 <Input
                   type="number"
                   defaultValue={config.minConfidence}
@@ -153,20 +168,10 @@ export function AnalystConfigSheet({
                 />
               </InfoRow>
 
-              <InfoRow label="Schedule">
-                <Input
-                  type="time"
-                  defaultValue={config.scheduleTime}
-                  className="w-24 text-right tabular-nums"
-                  onBlur={(e) => {
-                    if (e.target.value && e.target.value !== config.scheduleTime) {
-                      saveField("scheduleTime", e.target.value);
-                    }
-                  }}
-                />
-              </InfoRow>
-
-              <InfoRow label="Max Positions">
+              <InfoRow
+                label="Max Positions"
+                tooltip="Most concurrent open positions this analyst can hold. Enforced — attempts to open beyond this are rejected."
+              >
                 <Input
                   type="number"
                   defaultValue={config.maxOpenPositions}
@@ -182,7 +187,10 @@ export function AnalystConfigSheet({
                 />
               </InfoRow>
 
-              <InfoRow label="Max Position Size">
+              <InfoRow
+                label="Max Position Size"
+                tooltip="Biggest single trade (in paper dollars) this analyst can open. Enforced — a larger request is rejected."
+              >
                 <Input
                   type="number"
                   defaultValue={config.maxPositionSize ?? 0}
@@ -197,52 +205,55 @@ export function AnalystConfigSheet({
                   }}
                 />
               </InfoRow>
+            </div>
 
-              <InfoRow label="Max Risk %">
-                <Input
-                  type="number"
-                  defaultValue={config.maxRiskPct ?? 2}
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  className="w-24 text-right tabular-nums"
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val) && val !== (config.maxRiskPct ?? 2)) {
-                      saveField("maxRiskPct", Math.min(100, Math.max(0, val)));
-                    }
-                  }}
-                />
-              </InfoRow>
-
-              {/* Attention policy rows — inline with config, not a separate section */}
+            {/* ── Signal attention ──────────────────────────────── */}
+            {/* Weights + budgets the signal router uses when deciding which */}
+            {/* intelligence reaches this analyst each morning. Set by the   */}
+            {/* Builder — exposed here read-only for visibility.             */}
+            <div className="p-3 border-b flex flex-col gap-1">
+              <SectionHeader
+                label="Signal attention"
+                tooltip="How the signal router weighs intelligence for this analyst — and how much of it the agent reads per run."
+              />
               {policy && typeof policy.holdingsAttention === "number" && (
-                <InfoRow label="Holdings attention" value={`${Math.round((policy.holdingsAttention as number) * 100)}%`} mono />
+                <InfoRow
+                  label="Holdings attention"
+                  value={`${Math.round((policy.holdingsAttention as number) * 100)}%`}
+                  mono
+                  tooltip="Share of signal budget biased toward tickers this analyst already holds."
+                />
               )}
               {policy && typeof policy.watchlistAttention === "number" && (
-                <InfoRow label="Watchlist attention" value={`${Math.round((policy.watchlistAttention as number) * 100)}%`} mono />
+                <InfoRow
+                  label="Watchlist attention"
+                  value={`${Math.round((policy.watchlistAttention as number) * 100)}%`}
+                  mono
+                  tooltip="Share of signal budget biased toward watchlist tickers (not yet held)."
+                />
               )}
               {policy && typeof policy.discoveryAttention === "number" && (
-                <InfoRow label="Discovery attention" value={`${Math.round((policy.discoveryAttention as number) * 100)}%`} mono />
+                <InfoRow
+                  label="Discovery attention"
+                  value={`${Math.round((policy.discoveryAttention as number) * 100)}%`}
+                  mono
+                  tooltip="Share of signal budget reserved for new opportunities that match the Universe fence but aren't on the watchlist."
+                />
               )}
               {policy && typeof policy.maxSignalsPerRun === "number" && (
-                <InfoRow label="Signal budget" value={String(policy.maxSignalsPerRun as number)} mono />
+                <InfoRow
+                  label="Signal budget"
+                  value={String(policy.maxSignalsPerRun as number)}
+                  mono
+                  tooltip="Hard cap on how many signals the agent reads per run. Enforced."
+                />
               )}
               {policy && typeof policy.allowLiveSearch === "boolean" && (
                 <InfoRow
                   label="Live search"
                   value={(policy.allowLiveSearch as boolean) ? "On" : "Off"}
+                  tooltip="When on, the agent can call live Perplexity Sonar during a run. Off = only pre-gathered signals."
                 />
-              )}
-
-              {config.signalTypes.length > 0 && (
-                <InfoRow label="Signals" border={false}>
-                  <div className="flex flex-wrap gap-1 justify-end">
-                    {config.signalTypes.map((s) => (
-                      <Badge key={s} variant="secondary">{titleCase(s)}</Badge>
-                    ))}
-                  </div>
-                </InfoRow>
               )}
             </div>
 
@@ -269,6 +280,7 @@ export function AnalystConfigSheet({
                 options={GICS_SECTORS}
                 placeholder="Add a sector…"
                 groupLabel="GICS Sectors"
+                tooltip="GICS top-level sectors. Only signals whose ticker belongs to one of these sectors enter the fence."
                 onChange={(next) => saveField("sectors", next)}
               />
               <ChipListComboEditor
@@ -277,12 +289,14 @@ export function AnalystConfigSheet({
                 options={GICS_INDUSTRIES}
                 placeholder="Add an industry…"
                 groupLabel="GICS Industries"
+                tooltip="Narrower than Sectors — a signal's ticker industry must match one of these (AND-joined with Sectors)."
                 onChange={(next) => saveField("industries", next)}
               />
               <ChipListEditor
                 label="Themes"
                 values={config.themes}
                 placeholder="Free text — e.g. AI infrastructure, GLP-1, EV transition"
+                tooltip="Analyst-defined narratives (not a fixed list). Signals tagged with any of these themes route into the fence. Example: 'AI infrastructure', 'GLP-1', 'EV transition'."
                 onChange={(next) => saveField("themes", next)}
               />
 
@@ -290,11 +304,13 @@ export function AnalystConfigSheet({
                 label="Market cap min"
                 value={config.marketCapMin}
                 onChange={(v) => saveField("marketCapMin", v)}
+                tooltip="Floor (in $M) for ticker market cap. Smaller caps get rejected from the fence. Leave blank for no lower bound."
               />
               <MarketCapInput
                 label="Market cap max"
                 value={config.marketCapMax}
                 onChange={(v) => saveField("marketCapMax", v)}
+                tooltip="Ceiling (in $M) for ticker market cap. Larger caps get rejected. Leave blank for no upper bound."
               />
 
               <ChipListEditor
@@ -302,6 +318,7 @@ export function AnalystConfigSheet({
                 values={config.exclusionList}
                 placeholder="Ticker to block"
                 uppercase
+                tooltip="Tickers that are hard-blocked for this analyst. Any signal or discovery naming one of these is rejected outright — even when held or on the watchlist."
                 onChange={(next) => saveField("exclusionList", next)}
               />
             </div>
@@ -370,6 +387,60 @@ export function AnalystConfigSheet({
   );
 }
 
+// ── SectionHeader ───────────────────────────────────────────────────────────
+// Small heading used to group related InfoRows inside the Config tab. An
+// info icon + tooltip explains what the whole section controls — so the
+// user can glance at a section and know which fields are editable by them
+// vs. set by the Builder/Editor agent.
+
+function SectionHeader({
+  label,
+  tooltip,
+}: {
+  label: string;
+  tooltip: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 mb-1">
+      <p className="text-sm font-medium">{label}</p>
+      <Tooltip>
+        <TooltipTrigger render={<span className="cursor-help" />}>
+          <Info className="h-3 w-3 text-muted-foreground" />
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs text-xs">{tooltip}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+// ── FieldLabel ──────────────────────────────────────────────────────────────
+// The per-field label used inside the chip editors (Sectors, Industries,
+// Themes, Exclusion). Matches the InfoRow tooltip pattern — optional info
+// icon next to the label — so every editable field in the sheet has the
+// same affordance for "what is this."
+
+function FieldLabel({
+  label,
+  tooltip,
+}: {
+  label: string;
+  tooltip?: React.ReactNode;
+}) {
+  return (
+    <span className="text-xs text-muted-foreground flex items-center gap-1">
+      {label}
+      {tooltip && (
+        <Tooltip>
+          <TooltipTrigger render={<span className="cursor-help inline-flex items-center" />}>
+            <Info className="h-3 w-3 text-muted-foreground/70" />
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs text-xs">{tooltip}</TooltipContent>
+        </Tooltip>
+      )}
+    </span>
+  );
+}
+
 // ── ChipListEditor ──────────────────────────────────────────────────────────
 // Editable array-of-strings field. Type + Enter to add, click × to remove.
 // Keeps ShadCN components pure (variant/size only).
@@ -380,6 +451,8 @@ interface ChipListEditorProps {
   placeholder?: string;
   /** If true, normalize added values to uppercase (for tickers). */
   uppercase?: boolean;
+  /** Optional tooltip — shown as an info icon next to the label. */
+  tooltip?: React.ReactNode;
   onChange: (next: string[]) => void;
 }
 
@@ -388,6 +461,7 @@ function ChipListEditor({
   values,
   placeholder,
   uppercase,
+  tooltip,
   onChange,
 }: ChipListEditorProps) {
   const [draft, setDraft] = useState("");
@@ -410,7 +484,7 @@ function ChipListEditor({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <FieldLabel label={label} tooltip={tooltip} />
       {values.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {values.map((v) => (
@@ -462,6 +536,8 @@ interface ChipListComboEditorProps {
   placeholder?: string;
   /** Header text in the popover dropdown (e.g. "Sectors", "Industries"). */
   groupLabel?: string;
+  /** Optional tooltip — shown as an info icon next to the label. */
+  tooltip?: React.ReactNode;
   onChange: (next: string[]) => void;
 }
 
@@ -471,6 +547,7 @@ function ChipListComboEditor({
   options,
   placeholder = "Select…",
   groupLabel,
+  tooltip,
   onChange,
 }: ChipListComboEditorProps) {
   const [open, setOpen] = useState(false);
@@ -488,7 +565,7 @@ function ChipListComboEditor({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <FieldLabel label={label} tooltip={tooltip} />
       {values.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {values.map((v) => (
@@ -559,14 +636,15 @@ interface MarketCapInputProps {
   label: string;
   value: number | null;
   onChange: (next: number | null) => void;
+  tooltip?: React.ReactNode;
 }
 
-function MarketCapInput({ label, value, onChange }: MarketCapInputProps) {
+function MarketCapInput({ label, value, onChange, tooltip }: MarketCapInputProps) {
   const displayMillions =
     value != null && Number.isFinite(value) ? Math.round(value / 1_000_000) : "";
 
   return (
-    <InfoRow label={label}>
+    <InfoRow label={label} tooltip={tooltip}>
       <div className="flex items-center gap-1">
         <Input
           type="number"
