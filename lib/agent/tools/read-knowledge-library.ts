@@ -87,7 +87,12 @@ export const readKnowledgeLibrary = defineTool({
             count: index.length,
             index,
           },
-          sources: [],
+          sources: [
+            {
+              provider: "Knowledge Library",
+              title: `Strategy playbook index (${index.length} entries)`,
+            },
+          ],
         };
       }
       const entry = getArchetype(id);
@@ -140,7 +145,12 @@ export const readKnowledgeLibrary = defineTool({
             count: index.length,
             index,
           },
-          sources: [],
+          sources: [
+            {
+              provider: "Knowledge Library",
+              title: `Research source index (${index.length} entries)`,
+            },
+          ],
         };
       }
       const entry = getSource(id);
@@ -186,7 +196,12 @@ export const readKnowledgeLibrary = defineTool({
           count: index.length,
           index,
         },
-        sources: [],
+        sources: [
+          {
+            provider: "Knowledge Library",
+            title: `Signal type index (${index.length} entries)`,
+          },
+        ],
       };
     }
     const entry = getSignalType(id);

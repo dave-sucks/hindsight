@@ -226,7 +226,15 @@ export const readAnalystInboxStats = defineTool({
         unwatchedHotTickers,
         tickers: rowTickers,
       } satisfies InboxStatsData,
-      sources: [],
+      // Emit a citable source so the Editor prose's [N] markers resolve
+      // to a real InlineCitationCard chip. Without this, the model's
+      // "$NVDA is hitting your inbox [1]" claim has nothing to cite.
+      sources: [
+        {
+          provider: "Analyst Inbox",
+          title: `Signal activity for this analyst (${lookbackDays}d, ${totalRoutes} routes)`,
+        },
+      ],
     };
   },
 });
