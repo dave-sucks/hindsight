@@ -2,11 +2,26 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { StockLogo } from "@/components/StockLogo";
-import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConceptTooltip } from "@/components/domain/education-card";
 import { RunShowcaseTrigger, RunShowcaseButton } from "@/components/domain/run-showcase-trigger";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
+import {
+  PlusIcon,
+  MinusIcon,
+  EyeIcon,
+  EyeOffIcon,
+  CheckIcon,
+  XIcon,
+  BanIcon,
+} from "lucide-react";
+import {
+  buildRunSummary,
+  formatActionLine,
+  formatStatsRow,
+  type RunActionIcon,
+} from "@/lib/run-summary";
+import { cn } from "@/lib/utils";
 
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - new Date(date).getTime();
@@ -22,6 +37,47 @@ function formatRelativeTime(date: Date): string {
     month: "short",
     day: "numeric",
   });
+}
+
+// ── Action overlay config (matches ToolProgressTickerItem styling) ──────────
+
+const ACTION_OVERLAY: Record<
+  RunActionIcon,
+  { Icon: React.ComponentType<{ className?: string }>; className: string }
+> = {
+  buy:           { Icon: PlusIcon,   className: "bg-emerald-500 text-white" },
+  sell:          { Icon: MinusIcon,  className: "bg-red-500 text-white" },
+  watch:         { Icon: EyeIcon,    className: "bg-muted-foreground text-background" },
+  unwatch:       { Icon: EyeOffIcon, className: "bg-muted-foreground text-background" },
+  "closed-win":  { Icon: CheckIcon,  className: "bg-emerald-500 text-white" },
+  "closed-loss": { Icon: XIcon,      className: "bg-red-500 text-white" },
+  failed:        { Icon: BanIcon,    className: "bg-muted text-muted-foreground" },
+};
+
+function LogoWithOverlay({
+  ticker,
+  overlay,
+}: {
+  ticker: string;
+  overlay?: RunActionIcon;
+}) {
+  const cfg = overlay ? ACTION_OVERLAY[overlay] : null;
+  return (
+    <div className="relative">
+      <StockLogo ticker={ticker} size="sm" />
+      {cfg && (
+        <span
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 size-3 rounded-full ring-1 ring-background flex items-center justify-center",
+            cfg.className,
+          )}
+          aria-hidden
+        >
+          <cfg.Icon className="size-2" />
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default async function RunsPage() {
@@ -40,19 +96,35 @@ export default async function RunsPage() {
           ticker: true,
           direction: true,
           confidenceScore: true,
-          entryPrice: true,
-          reasoningSummary: true,
-          decisions: {
-            take: 1,
-            where: { decision: "INITIATE" },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      decisions: {
+        select: {
+          symbol: true,
+          decision: true,
+          position: {
             select: {
-              position: {
-                select: { id: true, quantity: true, avgCost: true },
-              },
+              realizedPnl: true,
+              outcome: true,
+              status: true,
             },
           },
         },
-        orderBy: { createdAt: "asc" },
+      },
+      managementActions: {
+        select: {
+          actionType: true,
+          prevStopLoss: true,
+          newStopLoss: true,
+          prevTargetPrice: true,
+          newTargetPrice: true,
+          prevTrailPct: true,
+          newTrailPct: true,
+          position: {
+            select: { symbol: true },
+          },
+        },
       },
     },
     orderBy: { startedAt: "desc" },
@@ -107,48 +179,17 @@ export default async function RunsPage() {
             run.agentConfig?.name ??
             (run.source === "MANUAL" ? "Manual Research" : "Agent");
 
-          const recommended = run.theses.filter(
-            (t) => t.direction !== "PASS"
-          );
-          const tradesPlaced = run.theses.filter((t) => t.decisions[0]?.position != null);
+          const summary = buildRunSummary(run);
+          const actionLine = formatActionLine(summary);
+          const statsLine = formatStatsRow(summary);
 
-          // Unique tickers for logo stack
-          const tickers = [
-            ...new Set(run.theses.map((t) => t.ticker)),
+          // Logo stack tickers — prioritize tickers that had an action,
+          // then fill with researched tickers.
+          const actionTickers = [...summary.tickerOverlays.keys()];
+          const thesisTickers = run.theses.map((t) => t.ticker.toUpperCase());
+          const orderedTickers = [
+            ...new Set([...actionTickers, ...thesisTickers]),
           ];
-
-          // Avg confidence
-          const avgConf =
-            run.theses.length > 0
-              ? Math.round(
-                  run.theses.reduce((sum, t) => sum + t.confidenceScore, 0) /
-                    run.theses.length
-                )
-              : null;
-
-          // Total capital deployed (from trades)
-          const capitalDeployed = tradesPlaced.reduce((sum, t) => {
-            const pos = t.decisions[0]?.position;
-            if (!pos) return sum;
-            return sum + pos.avgCost * pos.quantity;
-          }, 0);
-
-          // Build summary from top theses
-          const summaryParts = recommended
-            .slice(0, 3)
-            .map(
-              (t) =>
-                `${t.direction === "LONG" ? "Long" : "Short"} ${t.ticker} (${t.confidenceScore}%)`
-            );
-          const summaryText =
-            summaryParts.length > 0
-              ? summaryParts.join(", ") +
-                (recommended.length > 3
-                  ? ` and ${recommended.length - 3} more`
-                  : "")
-              : run.theses.length > 0
-                ? `Analyzed ${run.theses.length} stocks, none recommended`
-                : "No analysis completed";
 
           const duration = run.completedAt
             ? Math.round(
@@ -165,48 +206,61 @@ export default async function RunsPage() {
                 ? "bg-amber-500 animate-pulse"
                 : "bg-negative";
 
+          const pnlLabel =
+            summary.realizedPnl != null
+              ? `${summary.realizedPnl >= 0 ? "+" : "-"}$${Math.abs(
+                  Math.round(summary.realizedPnl),
+                ).toLocaleString("en-US")} realized`
+              : null;
+
           return (
             <Link
               key={run.id}
               href={`/runs/${run.id}`}
               className="block border rounded-xl p-4 hover:bg-muted/20 transition-colors"
             >
-              {/* Header: analyst name | status + trades + logo stack */}
+              {/* Header: analyst name · time · duration | pnl | logo stack */}
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div
-                    className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`}
-                  />
-                  <span className="text-sm font-medium truncate">
-                    {analystName}
-                  </span>
+                  <div className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`} />
+                  <span className="text-sm font-medium truncate">{analystName}</span>
                   <span className="text-xs text-muted-foreground tabular-nums shrink-0">
                     {formatRelativeTime(run.startedAt)}
                     {duration != null && ` · ${duration}s`}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  {tradesPlaced.length > 0 && (
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {tradesPlaced.length} trade{tradesPlaced.length !== 1 ? "s" : ""}
+                <div className="flex items-center gap-3 shrink-0">
+                  {pnlLabel && (
+                    <span
+                      className={cn(
+                        "text-xs font-medium tabular-nums",
+                        summary.realizedPnl! >= 0
+                          ? "text-emerald-500"
+                          : "text-red-500",
+                      )}
+                    >
+                      {pnlLabel}
                     </span>
                   )}
-                  {/* Logo stack */}
-                  {tickers.length > 0 && (
+                  {/* Logo stack with action overlays */}
+                  {orderedTickers.length > 0 && (
                     <div className="flex items-center">
-                      {tickers.slice(0, 5).map((ticker, i) => (
+                      {orderedTickers.slice(0, 5).map((ticker, i) => (
                         <div
                           key={ticker}
                           className={i > 0 ? "-ml-1.5" : ""}
-                          style={{ zIndex: tickers.length - i }}
+                          style={{ zIndex: orderedTickers.length - i }}
                         >
-                          <StockLogo ticker={ticker} size="sm" />
+                          <LogoWithOverlay
+                            ticker={ticker}
+                            overlay={summary.tickerOverlays.get(ticker)}
+                          />
                         </div>
                       ))}
-                      {tickers.length > 5 && (
+                      {orderedTickers.length > 5 && (
                         <div className="-ml-1.5 h-6 w-6 rounded-full bg-muted border border-background flex items-center justify-center text-[9px] font-medium text-muted-foreground">
-                          +{tickers.length - 5}
+                          +{orderedTickers.length - 5}
                         </div>
                       )}
                     </div>
@@ -214,24 +268,20 @@ export default async function RunsPage() {
                 </div>
               </div>
 
-              {/* Summary */}
+              {/* Primary action line */}
               <p className="text-sm text-muted-foreground line-clamp-2">
-                {summaryText}
+                {actionLine}
               </p>
 
               {/* Stats row */}
-              {(capitalDeployed > 0 || avgConf != null) && (
+              {summary.counts.researched > 0 && (
                 <div className="flex items-center justify-between border-t pt-2 mt-2 text-xs text-muted-foreground tabular-nums">
-                  {capitalDeployed > 0 ? (
+                  <span>{statsLine}</span>
+                  {summary.counts.watchlist > 0 && (
                     <span>
-                      ${capitalDeployed.toLocaleString("en-US", { maximumFractionDigits: 0 })} deployed
-                    </span>
-                  ) : (
-                    <span>
-                      {run.theses.length} analyzed · {recommended.length} recommended
+                      +{summary.counts.watchlist} watchlist
                     </span>
                   )}
-                  {avgConf != null && <span>{avgConf}% avg confidence</span>}
                 </div>
               )}
             </Link>
