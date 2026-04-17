@@ -7,7 +7,6 @@ import {
   ToolProgressContent,
   ToolProgressItem,
 } from "@/components/ai-elements/tool-progress";
-import { Markdown } from "@/components/ui/markdown";
 
 interface Props {
   toolName: string;
@@ -20,38 +19,34 @@ interface Props {
 /**
  * GenericRenderer — the default tool row.
  *
- * Collapsed: shows a single-line header (progressLabel) with a chevron.
- * Expanded: if the tool put a markdown string on `data.content`, we render
- * it via the Markdown component — exactly the Claude/Notion pattern of
- * "click to see what the tool actually read." Falls back to a one-line
- * summary bullet when there's no content.
- *
- * Even inside a group block, if the tool returns `data.content` we still
- * render it as its own expandable ToolProgress (without the outer bullet
- * styling). This preserves the group's narrative-header while giving the
- * user a click target to see the full tool output.
+ * Collapsed: single-line header (progressLabel) with a chevron.
+ * Expanded: if the tool put a text body on `data.content`, render it as
+ * plain pre-wrapped text styled the same as every other tool row body
+ * (text-sm, muted-foreground). No markdown headers, no custom card —
+ * matches the look of "Reading Morning Briefing" / "Reading Signals".
+ * Falls back to a summary bullet when there's no content.
  */
 export function GenericRenderer({ toolName, result, loading, inGroup }: Props) {
   const header = result.progressLabel ?? toolName;
   const data = result.data as Record<string, unknown> | null;
   const content = data && typeof data.content === "string" ? (data.content as string) : null;
 
-  // Rich content path — always an expandable row with the header +
-  // content, regardless of group membership. Users clicked "expand" for
-  // exactly this reason.
+  // Rich content → always expandable (even inside a group) so the user
+  // can click to see exactly what the tool read.
   if (content) {
     return (
       <ToolProgress defaultOpen={false}>
         <ToolProgressHeader loading={loading}>{header}</ToolProgressHeader>
         <ToolProgressContent>
-          <Markdown variant="compact">{content}</Markdown>
+          <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+            {content}
+          </div>
         </ToolProgressContent>
       </ToolProgress>
     );
   }
 
-  // No-content path inside a group — just a flat summary bullet under
-  // the group's header. No nested ToolProgress wrapper.
+  // No-content path inside a group — flat summary bullet.
   if (inGroup) {
     return <ToolProgressItem>{result.summary}</ToolProgressItem>;
   }

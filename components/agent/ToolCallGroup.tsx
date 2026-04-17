@@ -61,12 +61,34 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
       }
     };
 
+    // When the model calls the same tool with identical args twice in a
+    // row (e.g. read_knowledge_library({archetype, id:"X"}) twice after
+    // a selection), we render only the first — otherwise the user sees
+    // two identical collapsed rows, which is just noise.
+    const stableArgKey = (part: ToolCallPart): string => {
+      const args = part.args ?? part.input ?? {};
+      try {
+        return `${part.toolName}::${JSON.stringify(args)}`;
+      } catch {
+        return part.toolName;
+      }
+    };
+    let prevArgKey: string | null = null;
+
     for (let i = startIndex; i <= endIndex; i++) {
       const part = (content as unknown[])[i] as ToolCallPart | undefined;
       if (!part || part.type !== "tool-call") {
         flushGroup();
+        prevArgKey = null;
         continue;
       }
+
+      const argKey = stableArgKey(part);
+      if (argKey === prevArgKey) {
+        // Skip duplicate consecutive tool call with identical args.
+        continue;
+      }
+      prevArgKey = argKey;
 
       const rawResult = part.result ?? part.output;
       const normalized = rawResult != null

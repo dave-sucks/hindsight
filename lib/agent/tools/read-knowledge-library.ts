@@ -224,43 +224,48 @@ function humanizeToken(s: string): string {
     .join(" ");
 }
 
+// Plain text formatters — no markdown headings, no ** bold, no list
+// markers. Output is a flat text block the GenericRenderer shows with
+// whitespace-pre-wrap so it visually matches the other tool-call content
+// bodies (Reading Signals, Reading Morning Briefing, etc).
+
 function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
   const lines: string[] = [];
-  lines.push(`# ${entry.name}`);
-  if (entry.tagline) lines.push(`_${entry.tagline}_`);
+  lines.push(entry.name);
+  if (entry.tagline) lines.push(entry.tagline);
   lines.push("");
-  lines.push(`**Direction:** ${humanizeToken(entry.directionBias)}`);
+  lines.push(`Direction: ${humanizeToken(entry.directionBias)}`);
   if (entry.holdDurations?.length) {
-    lines.push(`**Hold durations:** ${entry.holdDurations.map(humanizeToken).join(", ")}`);
+    lines.push(`Hold durations: ${entry.holdDurations.map(humanizeToken).join(", ")}`);
   }
   lines.push("");
   if (entry.edge) {
-    lines.push(`## Why the edge exists`);
+    lines.push("Why the edge exists:");
     lines.push(entry.edge);
     lines.push("");
   }
   if (entry.primarySignals?.length) {
-    lines.push(`## Signals that fire this`);
+    lines.push("Signals that fire this:");
     lines.push(entry.primarySignals.map(humanizeToken).join(", "));
     lines.push("");
   }
   if (entry.keySources?.length) {
-    lines.push(`## Research sources it leans on`);
+    lines.push("Research sources it leans on:");
     lines.push(entry.keySources.map(humanizeToken).join(", "));
     lines.push("");
   }
   if (entry.risk) {
-    lines.push(`## Suggested risk profile`);
+    lines.push("Suggested risk profile:");
     if (entry.risk.minConfidence) {
-      lines.push(`- **Confidence:** ${entry.risk.minConfidence[0]}–${entry.risk.minConfidence[1]}%`);
+      lines.push(`  Confidence: ${entry.risk.minConfidence[0]}–${entry.risk.minConfidence[1]}%`);
     }
     if (entry.risk.positionSizeBand) {
       lines.push(
-        `- **Position size:** $${entry.risk.positionSizeBand[0].toLocaleString()}–$${entry.risk.positionSizeBand[1].toLocaleString()}`,
+        `  Position size: $${entry.risk.positionSizeBand[0].toLocaleString()}–$${entry.risk.positionSizeBand[1].toLocaleString()}`,
       );
     }
     if (entry.risk.maxOpenPositions != null) {
-      lines.push(`- **Max concurrent positions:** ${entry.risk.maxOpenPositions}`);
+      lines.push(`  Max concurrent positions: ${entry.risk.maxOpenPositions}`);
     }
     lines.push("");
   }
@@ -275,19 +280,19 @@ function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
       bits.push(`market cap: ${lo != null ? "$" + lo.toLocaleString() : "any"}–${hi != null ? "$" + hi.toLocaleString() : "any"}`);
     }
     if (bits.length) {
-      lines.push(`## Universe hints`);
-      lines.push(bits.map((b) => `- ${b}`).join("\n"));
+      lines.push("Universe hints:");
+      bits.forEach((b) => lines.push(`  ${b}`));
       lines.push("");
     }
   }
   if (entry.promptSkeleton) {
-    lines.push(`## Prompt skeleton`);
+    lines.push("Prompt skeleton:");
     lines.push(entry.promptSkeleton);
     lines.push("");
   }
   if (entry.watchOutFor?.length) {
-    lines.push(`## Watch out for`);
-    lines.push(entry.watchOutFor.map((w) => `- ${w}`).join("\n"));
+    lines.push("Watch out for:");
+    entry.watchOutFor.forEach((w) => lines.push(`  • ${w}`));
     lines.push("");
   }
   return lines.join("\n").trim();
@@ -295,8 +300,8 @@ function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
 
 function formatSourceMarkdown(entry: NonNullable<SourceEntryType>): string {
   const lines: string[] = [];
-  lines.push(`# ${entry.name}`);
-  if ("domain" in entry && entry.domain) lines.push(`_https://${entry.domain}_`);
+  lines.push(entry.name);
+  if ("domain" in entry && entry.domain) lines.push(`https://${entry.domain}`);
   lines.push("");
   const fields: Array<[string, unknown]> = Object.entries(entry).filter(
     ([k]) => !["id", "name", "domain"].includes(k),
@@ -306,11 +311,11 @@ function formatSourceMarkdown(entry: NonNullable<SourceEntryType>): string {
     const label = humanizeToken(k);
     if (Array.isArray(v)) {
       if (v.length === 0) continue;
-      lines.push(`**${label}:** ${v.map((x) => String(x)).join(", ")}`);
+      lines.push(`${label}: ${v.map((x) => String(x)).join(", ")}`);
     } else if (typeof v === "object") {
-      lines.push(`**${label}:** ${JSON.stringify(v)}`);
+      lines.push(`${label}: ${JSON.stringify(v)}`);
     } else {
-      lines.push(`**${label}:** ${String(v)}`);
+      lines.push(`${label}: ${String(v)}`);
     }
   }
   return lines.join("\n").trim();
@@ -318,7 +323,7 @@ function formatSourceMarkdown(entry: NonNullable<SourceEntryType>): string {
 
 function formatSignalMarkdown(entry: NonNullable<SignalEntry>): string {
   const lines: string[] = [];
-  lines.push(`# ${entry.name}`);
+  lines.push(entry.name);
   lines.push("");
   const fields: Array<[string, unknown]> = Object.entries(entry).filter(
     ([k]) => !["id", "name"].includes(k),
@@ -328,11 +333,11 @@ function formatSignalMarkdown(entry: NonNullable<SignalEntry>): string {
     const label = humanizeToken(k);
     if (Array.isArray(v)) {
       if (v.length === 0) continue;
-      lines.push(`**${label}:** ${v.map((x) => String(x)).join(", ")}`);
+      lines.push(`${label}: ${v.map((x) => String(x)).join(", ")}`);
     } else if (typeof v === "object") {
-      lines.push(`**${label}:** ${JSON.stringify(v)}`);
+      lines.push(`${label}: ${JSON.stringify(v)}`);
     } else {
-      lines.push(`**${label}:** ${String(v)}`);
+      lines.push(`${label}: ${String(v)}`);
     }
   }
   return lines.join("\n").trim();

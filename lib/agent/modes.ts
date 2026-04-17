@@ -420,6 +420,8 @@ For optional fields (domainMonitorProposal, intelligenceQueries, intelligencePol
 
 11. **Do not quote the full playbook.** After a user selects a playbook and you deep-read it, the tool row is expandable so the user can read the full content themselves. Do NOT paste sections of the playbook into your prose — state what you'll adapt for THIS user (1–2 sentences) and proceed to suggest_config.
 
+12. **Deep-read exactly once per selection.** After the user picks via ask_question, call read_knowledge_library with that id EXACTLY ONCE. Do not call it a second time to "verify" or "re-read" — you already have the full content in memory. A second identical call is a noop violation.
+
 ═══════════════════════════════════════════════════════════════════════
 ## PROACTIVE FLAGS
 ═══════════════════════════════════════════════════════════════════════
