@@ -140,14 +140,23 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
   return (
     <>
       {blocks.map((block, idx) => {
-        if (block.kind === "solo") {
-          const { part } = block;
+        // Single-element group? Render as solo — otherwise the group
+        // wrapper's header and the child's own header are identical,
+        // and the user sees the same label stacked twice (e.g.
+        // "Reading the Catalyst Event playbook" nested inside
+        // "Reading the Catalyst Event playbook"). The group wrapper
+        // only earns its keep when it's collapsing ≥2 sibling calls
+        // with "(+N more)" semantics.
+        if (block.kind === "solo" || (block.kind === "group" && block.parts.length === 1)) {
+          const { part, index } = block.kind === "solo"
+            ? block
+            : { part: block.parts[0].part, index: block.parts[0].index };
           const rawResult = part.result ?? part.output;
           const args = part.args ?? part.input ?? {};
           const isLoading = rawResult === undefined && part.state !== "output-available";
           return (
             <ToolCallRow
-              key={`solo-${block.index}`}
+              key={`solo-${index}`}
               toolName={part.toolName}
               toolCallId={part.toolCallId}
               args={args as Record<string, unknown>}
