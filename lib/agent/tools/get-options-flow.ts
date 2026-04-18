@@ -35,6 +35,8 @@ export const getOptionsFlow = defineTool({
   ui: "ticker" as const,
   groupId: "Researching",
 
+  progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()} options flow`,
+
   execute: async ({ ticker }) => {
     // Primary: FMP options chain
     const fmpResult = await fmp(`/options/chain/${ticker.toUpperCase()}`);

@@ -131,7 +131,13 @@ function OptionItem({
       tabIndex={tabIndex}
       disabled={isDisabled}
       className={cn(
-        "peer group relative h-auto min-h-[50px] w-full justify-start text-left text-sm font-medium",
+        // NOTE: group MUST be scoped with a name (`group/qf-option`) —
+        // our ShadCN Button already exposes `group/button`, and
+        // ancestor chat containers use their own unnamed `group`
+        // utilities. A bare `group` here would cause every option to
+        // light up when any descendant triggered `group-hover:` in an
+        // ancestor, making all radios look active on a single hover.
+        "peer group/qf-option relative h-auto min-h-[50px] w-full justify-start text-left text-sm font-medium",
         "rounded-none border-0 bg-transparent px-0 py-2 text-base shadow-none transition-none hover:bg-transparent! @md/question-flow:text-sm",
         isFirst && "pb-2.5",
         hasAdjacentOptions && "py-2.5",
@@ -139,7 +145,7 @@ function OptionItem({
     >
       <span
         className={cn(
-          "bg-primary/5 absolute inset-0 -mx-3 -my-0.5 rounded-xl opacity-0 transition-opacity group-hover:opacity-100",
+          "bg-primary/5 absolute inset-0 -mx-3 -my-0.5 rounded-xl opacity-0 transition-opacity group-hover/qf-option:opacity-100",
         )}
       />
       <div className="relative flex items-start gap-3">

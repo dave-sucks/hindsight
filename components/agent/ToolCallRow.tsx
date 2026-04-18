@@ -53,9 +53,9 @@ export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, in
     case "ticker":
       return <TickerRenderer toolName={toolName} args={args} result={result} loading={loading} inGroup={inGroup} />;
     case "ticker-list":
-      return <TickerListRenderer toolName={toolName} result={result} loading={loading} />;
+      return <TickerListRenderer toolName={toolName} result={result} loading={loading} inGroup={inGroup} />;
     case "source":
-      return <SourceRenderer toolName={toolName} result={result} loading={loading} />;
+      return <SourceRenderer toolName={toolName} result={result} loading={loading} inGroup={inGroup} />;
     case "thesis-card":
       return <ThesisCardRenderer toolName={toolName} toolCallId={toolCallId} result={result} loading={loading} />;
     case "decision-summary":
@@ -68,7 +68,7 @@ export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, in
       return <AskQuestionRenderer toolName={toolName} result={result} loading={loading} />;
     case "generic":
     default:
-      return <GenericRenderer toolName={toolName} result={result} loading={loading} />;
+      return <GenericRenderer toolName={toolName} result={result} loading={loading} inGroup={inGroup} />;
   }
 }
 

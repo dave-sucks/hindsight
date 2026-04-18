@@ -44,6 +44,8 @@ interface ToolCtx {
   marketCapMax?: number | null;
   maxPositionSize?: number;
   maxOpenPositions?: number;
+  /** Min thesis confidence (0-100) required for place_trade — enforced. */
+  minConfidence?: number;
   alpacaCreds?: AlpacaCredentials;
   intelligencePolicy?: IntelligencePolicy;
 }

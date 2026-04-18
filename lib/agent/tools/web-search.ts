@@ -27,6 +27,12 @@ export const webSearch = defineTool({
   }),
   ui: "source" as const,
 
+  progressLabel: (args) => {
+    const q = args.query.trim();
+    const truncated = q.length > 50 ? `${q.slice(0, 50)}…` : q;
+    return `Searching the web for "${truncated}"`;
+  },
+
   execute: async ({ query, recency = "day" }, ctx) => {
     const policy = ctx.intelligencePolicy;
 

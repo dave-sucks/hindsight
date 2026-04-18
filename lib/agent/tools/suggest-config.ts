@@ -65,9 +65,11 @@ export const configSchema = z.object({
     .describe(
       "Maximum market cap in dollars (integer). E.g. 10000000000 for $10B. Leave undefined for no upper bound.",
     ),
-  signalTypes: z
-    .array(z.string())
-    .describe("Preferred signals. Options: MOMENTUM, EARNINGS_BEAT, SECTOR_ROTATION, MEAN_REVERSION, BREAKOUT, NEWS_CATALYST, TECHNICAL, INSIDER, UNUSUAL_OPTIONS_FLOW, EARNINGS_WHISPERS"),
+  // NOTE: signalTypes was removed here because it doesn't filter anything
+  // at runtime — it was a cosmetic badge field. Builder/Editor should NOT
+  // propose it. The signal router cares about sectors / industries /
+  // themes instead. If we ever want event-type preferences, we'll add a
+  // dedicated router feature, not this orphaned field.
   minConfidence: z
     .number()
     .min(40)

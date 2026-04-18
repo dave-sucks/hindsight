@@ -74,6 +74,11 @@ export const readAnalystInboxStats = defineTool({
   ui: "ticker-list" as const,
   groupId: "InboxStats",
 
+  progressLabel: (args) => {
+    const days = args.lookbackDays ?? 30;
+    return `Reviewing what's hit this analyst's inbox (${days}d)`;
+  },
+
   execute: async (args, ctx) => {
     if (!ctx.analystId) {
       throw new Error(
@@ -221,6 +226,10 @@ export const readAnalystInboxStats = defineTool({
         unwatchedHotTickers,
         tickers: rowTickers,
       } satisfies InboxStatsData,
+      // No sources — this tool reads internal DB state, not external
+      // references. Don't pollute the citation chips with fake
+      // "Analyst Inbox" sources. The user sees the tool row directly;
+      // they don't need a citation chip for internal data.
       sources: [],
     };
   },

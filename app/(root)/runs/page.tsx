@@ -2,11 +2,16 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { StockLogo } from "@/components/StockLogo";
-import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConceptTooltip } from "@/components/domain/education-card";
 import { RunShowcaseTrigger, RunShowcaseButton } from "@/components/domain/run-showcase-trigger";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
+import {
+  buildRunSummary,
+  buildActionSegments,
+  type ActionColor,
+} from "@/lib/run-summary";
+import { cn } from "@/lib/utils";
 
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - new Date(date).getTime();
@@ -22,6 +27,41 @@ function formatRelativeTime(date: Date): string {
     month: "short",
     day: "numeric",
   });
+}
+
+// ── Corner-dot overlay for logos ────────────────────────────────────────────
+//
+// Small solid dot in the bottom-right of the logo — green = bought/added,
+// red = sold/trimmed, blue = watched. `muted` → no dot (plain logo).
+
+function dotColorBg(color: ActionColor): string {
+  if (color === "green") return "bg-emerald-500";
+  if (color === "red") return "bg-red-500";
+  if (color === "blue") return "bg-sky-500";
+  return "";
+}
+
+function LogoWithDot({
+  ticker,
+  badge,
+}: {
+  ticker: string;
+  badge?: { color: ActionColor; partial: boolean };
+}) {
+  return (
+    <div className="relative">
+      <StockLogo ticker={ticker} size="sm" className="rounded-full" />
+      {badge && badge.color !== "muted" && (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-background",
+            dotColorBg(badge.color),
+          )}
+        />
+      )}
+    </div>
+  );
 }
 
 export default async function RunsPage() {
@@ -40,19 +80,35 @@ export default async function RunsPage() {
           ticker: true,
           direction: true,
           confidenceScore: true,
-          entryPrice: true,
-          reasoningSummary: true,
-          decisions: {
-            take: 1,
-            where: { decision: "INITIATE" },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      decisions: {
+        select: {
+          symbol: true,
+          decision: true,
+          position: {
             select: {
-              position: {
-                select: { id: true, quantity: true, avgCost: true },
-              },
+              realizedPnl: true,
+              outcome: true,
+              status: true,
             },
           },
         },
-        orderBy: { createdAt: "asc" },
+      },
+      managementActions: {
+        select: {
+          actionType: true,
+          prevStopLoss: true,
+          newStopLoss: true,
+          prevTargetPrice: true,
+          newTargetPrice: true,
+          prevTrailPct: true,
+          newTrailPct: true,
+          position: {
+            select: { symbol: true },
+          },
+        },
       },
     },
     orderBy: { startedAt: "desc" },
@@ -107,48 +163,15 @@ export default async function RunsPage() {
             run.agentConfig?.name ??
             (run.source === "MANUAL" ? "Manual Research" : "Agent");
 
-          const recommended = run.theses.filter(
-            (t) => t.direction !== "PASS"
-          );
-          const tradesPlaced = run.theses.filter((t) => t.decisions[0]?.position != null);
+          const summary = buildRunSummary(run);
+          const segments = buildActionSegments(summary);
 
-          // Unique tickers for logo stack
-          const tickers = [
-            ...new Set(run.theses.map((t) => t.ticker)),
+          // Logo stack tickers — action tickers first, then researched fill.
+          const actionTickers = [...summary.tickerBadges.keys()];
+          const thesisTickers = run.theses.map((t) => t.ticker.toUpperCase());
+          const orderedTickers = [
+            ...new Set([...actionTickers, ...thesisTickers]),
           ];
-
-          // Avg confidence
-          const avgConf =
-            run.theses.length > 0
-              ? Math.round(
-                  run.theses.reduce((sum, t) => sum + t.confidenceScore, 0) /
-                    run.theses.length
-                )
-              : null;
-
-          // Total capital deployed (from trades)
-          const capitalDeployed = tradesPlaced.reduce((sum, t) => {
-            const pos = t.decisions[0]?.position;
-            if (!pos) return sum;
-            return sum + pos.avgCost * pos.quantity;
-          }, 0);
-
-          // Build summary from top theses
-          const summaryParts = recommended
-            .slice(0, 3)
-            .map(
-              (t) =>
-                `${t.direction === "LONG" ? "Long" : "Short"} ${t.ticker} (${t.confidenceScore}%)`
-            );
-          const summaryText =
-            summaryParts.length > 0
-              ? summaryParts.join(", ") +
-                (recommended.length > 3
-                  ? ` and ${recommended.length - 3} more`
-                  : "")
-              : run.theses.length > 0
-                ? `Analyzed ${run.theses.length} stocks, none recommended`
-                : "No analysis completed";
 
           const duration = run.completedAt
             ? Math.round(
@@ -158,12 +181,22 @@ export default async function RunsPage() {
               )
             : null;
 
-          const statusDot =
-            run.status === "COMPLETE"
-              ? "bg-positive"
-              : run.status === "RUNNING"
-                ? "bg-amber-500 animate-pulse"
-                : "bg-negative";
+          // Only render a status dot for non-COMPLETE runs — green dot
+          // on every successful run was visual noise.
+          const statusDotClass =
+            run.status === "RUNNING"
+              ? "bg-amber-500 animate-pulse"
+              : run.status === "FAILED"
+                ? "bg-negative"
+                : null;
+
+          const pnl = summary.realizedPnl;
+          const pnlLabel =
+            pnl != null
+              ? `${pnl >= 0 ? "+" : "-"}$${Math.abs(
+                  Math.round(pnl),
+                ).toLocaleString("en-US")} realized`
+              : null;
 
           return (
             <Link
@@ -171,67 +204,78 @@ export default async function RunsPage() {
               href={`/runs/${run.id}`}
               className="block border rounded-xl p-4 hover:bg-muted/20 transition-colors"
             >
-              {/* Header: analyst name | status + trades + logo stack */}
+              {/* Header: status dot (conditional) · analyst name · time · duration | logo stack */}
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div
-                    className={`h-2 w-2 rounded-full shrink-0 ${statusDot}`}
-                  />
-                  <span className="text-sm font-medium truncate">
-                    {analystName}
-                  </span>
+                  {statusDotClass && (
+                    <div className={`h-2 w-2 rounded-full shrink-0 ${statusDotClass}`} />
+                  )}
+                  <span className="text-sm font-medium truncate">{analystName}</span>
                   <span className="text-xs text-muted-foreground tabular-nums shrink-0">
                     {formatRelativeTime(run.startedAt)}
                     {duration != null && ` · ${duration}s`}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  {tradesPlaced.length > 0 && (
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {tradesPlaced.length} trade{tradesPlaced.length !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {/* Logo stack */}
-                  {tickers.length > 0 && (
-                    <div className="flex items-center">
-                      {tickers.slice(0, 5).map((ticker, i) => (
-                        <div
-                          key={ticker}
-                          className={i > 0 ? "-ml-1.5" : ""}
-                          style={{ zIndex: tickers.length - i }}
-                        >
-                          <StockLogo ticker={ticker} size="sm" />
-                        </div>
-                      ))}
-                      {tickers.length > 5 && (
-                        <div className="-ml-1.5 h-6 w-6 rounded-full bg-muted border border-background flex items-center justify-center text-[9px] font-medium text-muted-foreground">
-                          +{tickers.length - 5}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                {orderedTickers.length > 0 && (
+                  <div className="flex items-center shrink-0">
+                    {orderedTickers.slice(0, 5).map((ticker, i) => (
+                      <div
+                        key={ticker}
+                        className={i > 0 ? "-ml-1" : ""}
+                        style={{ zIndex: orderedTickers.length - i }}
+                      >
+                        <LogoWithDot
+                          ticker={ticker}
+                          badge={summary.tickerBadges.get(ticker)}
+                        />
+                      </div>
+                    ))}
+                    {orderedTickers.length > 5 && (
+                      <div className="-ml-1 h-6 w-6 rounded-full bg-muted border border-background flex items-center justify-center text-xs font-medium text-muted-foreground">
+                        +{orderedTickers.length - 5}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Summary */}
+              {/* Primary action line — plain text, no dots */}
               <p className="text-sm text-muted-foreground line-clamp-2">
-                {summaryText}
+                {segments.map((seg, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
+                    <span>{seg.text}</span>
+                  </span>
+                ))}
               </p>
 
-              {/* Stats row */}
-              {(capitalDeployed > 0 || avgConf != null) && (
-                <div className="flex items-center justify-between border-t pt-2 mt-2 text-xs text-muted-foreground tabular-nums">
-                  {capitalDeployed > 0 ? (
-                    <span>
-                      ${capitalDeployed.toLocaleString("en-US", { maximumFractionDigits: 0 })} deployed
+              {/* Stats row — "N researched" is the headline, rest is breakdown */}
+              {summary.counts.researched > 0 && (
+                <div className="flex items-center justify-between border-t pt-2 mt-2 text-xs tabular-nums">
+                  <span>
+                    <span className="font-medium text-foreground">
+                      {summary.counts.researched} researched
                     </span>
-                  ) : (
-                    <span>
-                      {run.theses.length} analyzed · {recommended.length} recommended
+                    <span className="text-muted-foreground">
+                      {summary.counts.new > 0 && ` · ${summary.counts.new} new`}
+                      {summary.counts.closed > 0 && ` · ${summary.counts.closed} closed`}
+                      {summary.counts.held > 0 && ` · ${summary.counts.held} held`}
+                      {summary.counts.passed > 0 && ` · ${summary.counts.passed} passed`}
+                      {summary.counts.watchlist > 0 &&
+                        ` · ${summary.counts.watchlist} watchlist`}
+                    </span>
+                  </span>
+                  {pnlLabel && (
+                    <span
+                      className={cn(
+                        "font-medium",
+                        pnl! >= 0 ? "text-emerald-500" : "text-red-500",
+                      )}
+                    >
+                      {pnlLabel}
                     </span>
                   )}
-                  {avgConf != null && <span>{avgConf}% avg confidence</span>}
                 </div>
               )}
             </Link>

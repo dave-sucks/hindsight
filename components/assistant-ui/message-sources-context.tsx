@@ -24,20 +24,36 @@ export function useSources(): SourceChipData[] {
 }
 
 /**
- * Extract _sources from all tool-call results in a message's content parts.
+ * Extract sources from all tool-call results in a message's content parts.
  * Sources are flattened in order of appearance and numbered sequentially.
+ *
+ * Checks both envelope shapes:
+ *   - New `defineTool()` tools return `{ ok, ui, summary, data, sources }`.
+ *   - Legacy tools wrote a top-level `_sources` key.
+ * We prefer `sources` (new) and fall back to `_sources` (legacy) so old
+ * runs still render citations when replayed.
  */
 export function extractSourcesFromParts(
-  parts: Array<{ type: string; result?: unknown }>,
+  parts: Array<{ type: string; result?: unknown; output?: unknown }>,
 ): SourceChipData[] {
   const allSources: SourceChipData[] = [];
 
   for (const part of parts) {
-    if (part.type !== "tool-call" || !part.result) continue;
+    if (part.type !== "tool-call") continue;
 
-    const result = part.result as Record<string, unknown>;
-    const sources = result._sources;
-    if (!Array.isArray(sources)) continue;
+    // AI SDK v6 streams tool outputs under `output`; older callers used `result`.
+    const raw = part.result ?? part.output;
+    if (!raw || typeof raw !== "object") continue;
+    const result = raw as Record<string, unknown>;
+
+    const newSources = result.sources;
+    const legacySources = result._sources;
+    const sources = Array.isArray(newSources)
+      ? newSources
+      : Array.isArray(legacySources)
+        ? legacySources
+        : null;
+    if (!sources) continue;
 
     for (const s of sources) {
       if (typeof s === "object" && s !== null && "provider" in s && "title" in s) {

@@ -116,6 +116,26 @@ export const readSignals = defineTool({
   }),
   ui: "ticker-list" as const,
 
+  progressLabel: (args) => {
+    if (args.bucket === "POSITION") return "Reading portfolio signals";
+    if (args.bucket === "WATCHLIST") return "Reading watchlist signals";
+    if (args.bucket === "DISCOVERY") return "Reading discovery signals";
+    if (args.tickers && args.tickers.length > 0) {
+      const sample = args.tickers.slice(0, 2).map((t) => `$${t.toUpperCase()}`).join(", ");
+      const extra = args.tickers.length > 2 ? ` (+${args.tickers.length - 2} more)` : "";
+      return `Reading signals on ${sample}${extra}`;
+    }
+    if (args.themes && args.themes.length > 0) {
+      const sample = args.themes[0];
+      const extra = args.themes.length > 1 ? ` (+${args.themes.length - 1} more)` : "";
+      return `Reading signals on ${sample}${extra}`;
+    }
+    if (args.urgency === "HIGH" || args.urgency === "BREAKING") {
+      return "Reading urgent signals";
+    }
+    return "Reading signals routed to this analyst";
+  },
+
   execute: async ({ tickers, themes, type, urgency, bucket, limit = 20 }, ctx) => {
     if (!ctx.analystId) {
       return {

@@ -39,6 +39,15 @@ export type ToolResult<T = unknown> =
       ui: ToolUI;
       /** Phase groupId — consecutive tools with same groupId collapse in UI */
       groupId?: string;
+      /**
+       * Human-readable, present-tense gerund label describing what this
+       * tool call is DOING — shown in the row + used to derive the group
+       * header. Falls back to the tool name when absent. Examples:
+       *   "Reading the Momentum Breakout playbook"
+       *   "Checking today's market regime"
+       *   "Pulling $NVDA's snapshot"
+       */
+      progressLabel?: string;
       summary: string;
       data: T;
       sources: ToolSource[];

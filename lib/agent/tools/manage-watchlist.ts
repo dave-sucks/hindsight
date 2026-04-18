@@ -33,6 +33,13 @@ export const manageWatchlist = defineTool({
   ui: "ticker" as const,
   groupId: "Executing",
 
+  progressLabel: (args) => {
+    const t = args.ticker.toUpperCase();
+    if (args.action === "ADD") return `Adding ${t} to the watchlist`;
+    if (args.action === "REMOVE") return `Removing ${t} from the watchlist`;
+    return `Updating ${t} on the watchlist`;
+  },
+
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
 

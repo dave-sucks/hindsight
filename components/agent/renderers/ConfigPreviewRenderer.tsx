@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { ArrowRight, Check } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -73,7 +73,6 @@ export function ConfigPreviewRenderer({ result, loading }: Props) {
     confirmingLabel,
     currentConfig,
   } = useToolUICallbacks();
-  const [showFull, setShowFull] = useState(false);
 
   const configSuggestedRef = useRef(onConfigSuggested);
   configSuggestedRef.current = onConfigSuggested;
@@ -121,18 +120,7 @@ export function ConfigPreviewRenderer({ result, loading }: Props) {
               </div>
             ))}
           </div>
-          <div className="p-3 border-t">
-            <button
-              onClick={() => setShowFull(!showFull)}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
-            >
-              {showFull ? "Hide full config" : "Show full config"}
-            </button>
-          </div>
         </Card>
-        {showFull && (
-          <AgentConfigCard {...config} showConfirmButton={false} className="border-dashed" />
-        )}
         {onConfirmConfig && (
           <Button
             onClick={() => onConfirmConfig(config)}

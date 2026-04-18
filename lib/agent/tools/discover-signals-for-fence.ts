@@ -24,7 +24,6 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
-import type { SignalWhereInput } from "@/lib/generated/prisma/models/Signal";
 
 // ── Data shape returned to the renderer ──────────────────────────────────────
 
@@ -147,6 +146,26 @@ export const discoverSignalsForFence = defineTool({
   ui: "ticker-list" as const,
   groupId: "Discovery",
 
+  progressLabel: (args) => {
+    const themes = (args.themes ?? []).filter(Boolean);
+    const sectors = (args.sectors ?? []).filter(Boolean);
+    const industries = (args.industries ?? []).filter(Boolean);
+    const tickers = (args.tickers ?? []).filter(Boolean);
+    // Pick the most specific dimension that was set — themes read best,
+    // then industries, then sectors, then tickers. Prefer "signals on X"
+    // over the internal "fence" metaphor for UI text.
+    const lead =
+      themes[0] ??
+      industries[0] ??
+      sectors[0] ??
+      (tickers[0] ? `$${tickers[0].toUpperCase()}` : null);
+    const extras =
+      themes.length + industries.length + sectors.length + tickers.length - (lead ? 1 : 0);
+    if (!lead) return "Looking for recent signals";
+    const suffix = extras > 0 ? ` (+${extras} more)` : "";
+    return `Looking for recent signals on ${lead}${suffix}`;
+  },
+
   execute: async (args) => {
     const sectors = (args.sectors ?? []).filter(Boolean);
     const industries = (args.industries ?? []).filter(Boolean);
@@ -155,24 +174,35 @@ export const discoverSignalsForFence = defineTool({
     const lookbackDays = args.lookbackDays ?? 7;
     const limit = args.limit ?? 15;
 
-    // Build an OR-of-dimensions filter. A signal matches if it overlaps any
-    // of the fence's set dimensions. AND-across-dimensions is enforced by
-    // scoring downstream (signals matching more dimensions rank higher).
+    // Signal sector/industry/theme values in the DB are NOT normalized —
+    // Perplexity Sonar stores whatever it returned (mix of "Technology",
+    // "technology", "Information Technology", "TECHNOLOGY"…). Prisma's
+    // `hasSome` is exact-string match, which would miss nearly every
+    // hit. Mirror the signal-router's approach: fetch recent signals by
+    // date only, then filter in-memory with case-insensitive matching
+    // (upper() both sides). This is the same vocabulary skew the
+    // router papers over; discover_signals_for_fence was the outlier.
     const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
-    const sectorNeedles = [...sectors, ...industries]; // Signal has no industry column
-    const orClauses: SignalWhereInput[] = [];
-    if (sectorNeedles.length) orClauses.push({ sectors: { hasSome: sectorNeedles } });
-    if (themes.length) orClauses.push({ themes: { hasSome: themes } });
-    if (tickers.length) orClauses.push({ tickers: { hasSome: tickers } });
-
-    const signals = await prisma.signal.findMany({
-      where: {
-        createdAt: { gte: since },
-        OR: orClauses,
-      },
+    const allRecent = await prisma.signal.findMany({
+      where: { createdAt: { gte: since } },
       orderBy: { createdAt: "desc" },
-      take: Math.max(limit * 4, 40), // over-fetch for scoring, then trim
+      take: 500, // hard cap — 7-30 day window is typically well under this
     });
+
+    const upper = (xs: string[]) => xs.map((x) => x.toUpperCase());
+    const sectorNeedlesU = upper([...sectors, ...industries]);
+    const themeNeedlesU = upper(themes);
+    const tickerNeedlesU = upper(tickers);
+
+    const signals = allRecent.filter((sig) => {
+      const sigSectorsU = upper(sig.sectors ?? []);
+      const sigThemesU = upper(sig.themes ?? []);
+      const sigTickersU = upper(sig.tickers ?? []);
+      if (sectorNeedlesU.some((n) => sigSectorsU.includes(n))) return true;
+      if (themeNeedlesU.some((n) => sigThemesU.includes(n))) return true;
+      if (tickerNeedlesU.some((n) => sigTickersU.includes(n))) return true;
+      return false;
+    }).slice(0, Math.max(limit * 4, 40));
 
     const baseFence: DiscoverResult["fence"] = {
       sectors,
@@ -213,9 +243,10 @@ export const discoverSignalsForFence = defineTool({
       OLDER: 1,
     };
 
+    const sectorNeedlesCI = [...sectors, ...industries];
     const scored: DiscoveredSignal[] = signals.map((s) => {
       const matchedSectors = s.sectors.filter((v) =>
-        sectorNeedles.some((n) => n.toLowerCase() === v.toLowerCase()),
+        sectorNeedlesCI.some((n) => n.toLowerCase() === v.toLowerCase()),
       );
       const matchedThemes = s.themes.filter((v) =>
         themes.some((n) => n.toLowerCase() === v.toLowerCase()),
@@ -313,6 +344,9 @@ export const discoverSignalsForFence = defineTool({
         tickerFrequency,
         tickers: tickerRows,
       } satisfies DiscoverResult,
+      // No sources — this tool reads internal signal-router state, not
+      // external references. The signals themselves may carry URLs but
+      // those belong to the individual signal rows, not this tool call.
       sources: [],
     };
   },

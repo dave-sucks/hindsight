@@ -122,6 +122,26 @@ export const managePosition = defineTool({
   ui: "ticker" as const,
   groupId: "Executing",
 
+  progressLabel: (args) => {
+    const t = args.symbol.toUpperCase();
+    switch (args.action) {
+      case "full_close":
+        return `Closing the ${t} position`;
+      case "partial_close":
+        return `Trimming ${t}${args.close_pct ? ` by ${args.close_pct}%` : ""}`;
+      case "add_to_position":
+        return `Adding to the ${t} position`;
+      case "update_targets":
+        return `Updating ${t} target and stop`;
+      case "move_stop_to_breakeven":
+        return `Moving ${t} stop to breakeven`;
+      case "set_trailing_stop":
+        return `Setting a ${args.trail_pct ?? 5}% trailing stop on ${t}`;
+      default:
+        return `Managing the ${t} position`;
+    }
+  },
+
   execute: async (args: z.infer<typeof schema>, ctx: ToolContext): Promise<ManagePositionReturn> => {
     const ticker = args.symbol.toUpperCase().trim();
 

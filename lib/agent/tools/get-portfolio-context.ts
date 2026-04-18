@@ -67,6 +67,8 @@ export const getPortfolioContext = defineTool({
   }),
   ui: "ticker-list" as const,
 
+  progressLabel: () => "Checking live portfolio P&L and exit levels",
+
   execute: async (args, ctx) => {
     const analystId = ctx.analystId;
     if (!analystId) {

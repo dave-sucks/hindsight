@@ -17,6 +17,8 @@ export const readArtifact = defineTool({
   }),
   ui: "source" as const,
 
+  progressLabel: () => "Reading the full article behind this signal",
+
   execute: async ({ artifactId }) => {
     const artifact = await prisma.artifact.findUnique({ where: { id: artifactId } });
 

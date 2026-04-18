@@ -25,6 +25,11 @@ export type AgentConfigData = {
   directionBias?: "LONG" | "SHORT" | "BOTH";
   holdDurations?: string[];
   sectors?: string[];
+  // ── Universe (B1) — mirror of AgentConfig shape ───────────────────
+  industries?: string[];
+  themes?: string[];
+  marketCapMin?: number | null;
+  marketCapMax?: number | null;
   signalTypes?: string[];
   minConfidence?: number;
   maxPositionSize?: number;

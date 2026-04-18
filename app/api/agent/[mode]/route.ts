@@ -232,6 +232,7 @@ export async function POST(
       marketCapMax: (agentConfig.marketCapMax as number | null) ?? null,
       maxPositionSize: (agentConfig.maxPositionSize as number) ?? undefined,
       maxOpenPositions: (agentConfig.maxOpenPositions as number) ?? undefined,
+      minConfidence: (agentConfig.minConfidence as number) ?? undefined,
       alpacaCreds,
     });
 

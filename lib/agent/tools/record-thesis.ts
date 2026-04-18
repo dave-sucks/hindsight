@@ -54,6 +54,13 @@ export const recordThesis = defineTool({
   schema: thesisSchema,
   ui: "thesis-card" as const,
 
+  progressLabel: (args) => {
+    const t = args.ticker.toUpperCase();
+    if (args.direction === "PASS") return `Passing on ${t}`;
+    if (args.direction === "LONG") return `Writing a LONG thesis on ${t}`;
+    return `Writing a SHORT thesis on ${t}`;
+  },
+
   execute: async (args, ctx) => {
     try {
       const coreData = {

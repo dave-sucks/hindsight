@@ -1002,8 +1002,9 @@ type UpdatableField =
   | "minConfidence"
   | "maxPositionSize"
   | "maxOpenPositions"
-  | "maxRiskPct"
-  | "scheduleTime"
+  // NOTE: maxRiskPct and scheduleTime removed from the editable surface —
+  // both are orphan fields at runtime (no code path reads them). If
+  // scheduling becomes per-analyst in the future, add scheduleTime back.
   | "holdDurations"
   | "watchlist"
   | "exclusionList"
@@ -1329,11 +1330,20 @@ export async function updateAnalystFromBuilder(
     console.log(`[analyst] Replaced domain monitors for analyst ${id}: ${data.domainMonitorProposal.sources.length} created`);
   }
 
-  // Create search monitors from intelligenceQueries (replace existing BUILDER-origin monitors)
+  // Create search monitors from intelligenceQueries — full reset.
+  // A rebuild through the Editor is the user intentionally redefining the
+  // analyst's search queries from scratch, so we remove BOTH the previous
+  // BUILDER-origin monitors AND any BRIEFING_AGENT-origin rows that
+  // accumulated from the now-killed post-run auto-generator. Without this
+  // second delete, rebuilt analysts still show dozens of stale
+  // ticker-specific queries next to their clean new set of 5.
   if (data.intelligenceQueries && data.intelligenceQueries.length > 0) {
-    // Remove old builder-created search monitors for this analyst
     await prisma.monitor.deleteMany({
-      where: { analystId: id, type: "SEARCH", origin: "BUILDER" },
+      where: {
+        analystId: id,
+        type: "SEARCH",
+        origin: { in: ["BUILDER", "BRIEFING_AGENT"] },
+      },
     });
 
     for (const q of data.intelligenceQueries) {
@@ -1354,7 +1364,7 @@ export async function updateAnalystFromBuilder(
         },
       });
     }
-    console.log(`[analyst] Replaced search monitors for analyst ${id}: ${data.intelligenceQueries.length} created`);
+    console.log(`[analyst] Replaced search monitors for analyst ${id}: ${data.intelligenceQueries.length} created (any BRIEFING_AGENT legacy rows also purged)`);
   }
 
   revalidatePath(`/analysts/${id}`);

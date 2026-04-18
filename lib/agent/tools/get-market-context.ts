@@ -43,6 +43,8 @@ export const getMarketContext = defineTool({
   ui: "generic" as const,
   groupId: "Researching",
 
+  progressLabel: () => "Checking today's market regime",
+
   execute: async () => {
     const errors: string[] = [];
     const today = new Date().toISOString().slice(0, 10);
