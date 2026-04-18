@@ -82,13 +82,17 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
     // catches BOTH (a) duplicates inside this message's parts and (b)
     // a duplicate at the top of this message that matches the last
     // call of the PREVIOUS message.
+    //
+    // IMPORTANT: prevArgKey persists across non-tool-call parts. If the
+    // model emits `tool-call X → reasoning/text → tool-call X`, we
+    // still want to skip the second. Only the *grouping* breaks on
+    // non-tool-call boundaries (via flushGroup), NOT the dedup key.
     let prevArgKey: string | null = dedupeCursor.current.lastKey;
 
     for (let i = startIndex; i <= endIndex; i++) {
       const part = (content as unknown[])[i] as ToolCallPart | undefined;
       if (!part || part.type !== "tool-call") {
         flushGroup();
-        prevArgKey = null;
         continue;
       }
 
