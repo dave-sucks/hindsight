@@ -6,6 +6,11 @@ import { revalidatePath } from "next/cache";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import type { SourceCategory, QueryCategory, IntelligencePolicy } from "@/lib/intelligence/types";
+import {
+  normalizeSectors,
+  normalizeIndustries,
+  normalizeThemes,
+} from "@/lib/universe/canonical";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -837,9 +842,15 @@ export async function createAnalystFromBuilder(
   // `marketCapMin/Max` have dedicated columns. priceMin/priceMax are NOT
   // currently persisted — they're treated as hints for future filtering.
   const universe = data.universe;
-  const universeSectors = Array.isArray(universe?.sectors) && universe!.sectors!.length > 0
-    ? universe!.sectors!
-    : sectors; // fall back to the non-universe sectors field if builder didn't set universe
+  const rawUniverseSectors =
+    Array.isArray(universe?.sectors) && universe!.sectors!.length > 0
+      ? universe!.sectors!
+      : sectors; // fall back to the non-universe sectors field if builder didn't set universe
+  // Session A: normalize universe fields at the write boundary so the
+  // AgentConfig table only ever stores canonical GICS Title Case sectors /
+  // industries and uppercase snake_case themes. Anything the normalizer can't
+  // map is dropped silently — same policy as Signal ingestion.
+  const universeSectors = normalizeSectors(rawUniverseSectors);
   const universeExchanges = Array.isArray(universe?.exchanges) && universe!.exchanges!.length > 0
     ? universe!.exchanges!
     : ["NASDAQ", "NYSE"];
@@ -851,8 +862,12 @@ export async function createAnalystFromBuilder(
       ...universeExclusions,
     ].map((s) => s.toUpperCase())),
   );
-  const industries = Array.isArray(universe?.industries) ? universe!.industries! : [];
-  const themes = Array.isArray(universe?.themes) ? universe!.themes! : [];
+  const industries = normalizeIndustries(
+    Array.isArray(universe?.industries) ? universe!.industries! : [],
+  );
+  const themes = normalizeThemes(
+    Array.isArray(universe?.themes) ? universe!.themes! : [],
+  );
   const marketCapMin =
     typeof universe?.marketCapMin === "number" && Number.isFinite(universe.marketCapMin)
       ? BigInt(Math.round(universe.marketCapMin))
@@ -1046,6 +1061,18 @@ export async function updateAnalystField(
     }
   }
 
+  // Session A: route universe arrays through the canonical normalizers so
+  // inline chip edits can't re-seed the table with non-canonical values.
+  // The combobox already emits canonical Title Case, but defensive
+  // normalization protects against programmatic callers.
+  if (field === "sectors" && Array.isArray(value)) {
+    storedValue = normalizeSectors(value as string[]);
+  } else if (field === "industries" && Array.isArray(value)) {
+    storedValue = normalizeIndustries(value as string[]);
+  } else if (field === "themes" && Array.isArray(value)) {
+    storedValue = normalizeThemes(value as string[]);
+  }
+
   await prisma.agentConfig.update({
     where: { id, userId },
     data: { [field]: storedValue },
@@ -1187,7 +1214,7 @@ export async function updateAnalystFromBuilder(
   if (data.analystPrompt !== undefined) updateData.analystPrompt = data.analystPrompt;
   if (data.directionBias !== undefined) updateData.directionBias = data.directionBias;
   if (data.holdDurations !== undefined) updateData.holdDurations = data.holdDurations;
-  if (data.sectors !== undefined) updateData.sectors = data.sectors;
+  if (data.sectors !== undefined) updateData.sectors = normalizeSectors(data.sectors);
   if (data.signalTypes !== undefined) updateData.signalTypes = data.signalTypes;
   if (data.minConfidence !== undefined) updateData.minConfidence = data.minConfidence;
   if (data.maxPositionSize !== undefined) updateData.maxPositionSize = data.maxPositionSize;
@@ -1198,12 +1225,15 @@ export async function updateAnalystFromBuilder(
   // Session 3: Universe payload — writes directly to AgentConfig columns per
   // the Workstream B contract. Any omitted key leaves the existing value
   // untouched. `universe.exclusions` is merged into `exclusionList` (dedup).
+  // Session A: sector/industry/theme arrays are run through the canonical
+  // normalizers so AgentConfig never stores legacy SCREAMING_SNAKE or Sonar
+  // title casing next to a GICS Title Case value.
   if (data.universe !== undefined) {
     const u = data.universe;
-    if (Array.isArray(u.sectors)) updateData.sectors = u.sectors;
+    if (Array.isArray(u.sectors)) updateData.sectors = normalizeSectors(u.sectors);
     if (Array.isArray(u.exchanges)) updateData.exchanges = u.exchanges;
-    if (Array.isArray(u.industries)) updateData.industries = u.industries;
-    if (Array.isArray(u.themes)) updateData.themes = u.themes;
+    if (Array.isArray(u.industries)) updateData.industries = normalizeIndustries(u.industries);
+    if (Array.isArray(u.themes)) updateData.themes = normalizeThemes(u.themes);
     if (typeof u.marketCapMin === "number" && Number.isFinite(u.marketCapMin)) {
       updateData.marketCapMin = BigInt(Math.round(u.marketCapMin));
     } else if (u.marketCapMin === null) {

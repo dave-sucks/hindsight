@@ -13,6 +13,11 @@ import type {
   SignalUrgency,
 } from "./types"
 import { SONAR_SIGNAL_SCHEMA } from "./types"
+import {
+  normalizeSectors,
+  normalizeIndustries,
+  normalizeThemes,
+} from "@/lib/universe/canonical"
 
 // ── Client ──────────────────────────────────────────────────────────────────
 
@@ -200,9 +205,12 @@ function cleanSonarSignal(
     tickers: (signal.tickers ?? [])
       .map((t) => t.replace(/^\$/, "").toUpperCase().trim())
       .filter(Boolean),
-    themes: (signal.themes ?? []).map((t) => t.toUpperCase().replace(/\s+/g, "_").trim()),
-    sectors: (signal.sectors ?? []).map((s) => s.trim()).filter(Boolean),
-    industries: (signal.industries ?? []).map((s) => s.trim()).filter(Boolean),
+    // Canonicalize at the ingestion boundary (Session A). Anything the
+    // normalizer can't map is dropped rather than stored as raw string — we
+    // don't want a second vocabulary creeping into the Signal table.
+    themes: normalizeThemes(signal.themes ?? []),
+    sectors: normalizeSectors(signal.sectors ?? []),
+    industries: normalizeIndustries(signal.industries ?? []),
     sentiment: VALID_SENTIMENTS.has(signal.sentiment) ? signal.sentiment : "NEUTRAL",
     urgency: VALID_URGENCIES.has(signal.urgency) ? signal.urgency : "MEDIUM",
     sourceUrls: (signal.sourceUrls ?? []).filter(Boolean),

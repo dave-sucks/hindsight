@@ -7,6 +7,11 @@
 
 import { tool } from "ai";
 import { z } from "zod";
+import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
+
+// z.enum needs a non-empty tuple literal; derive one from the canonical lists.
+const SECTOR_VALUES = [...SECTORS] as [string, ...string[]];
+const INDUSTRY_VALUES = [...INDUSTRIES] as [string, ...string[]];
 
 export const configSchema = z.object({
   name: z.string().describe("Short analyst name (2-4 words). E.g. 'EV Momentum Trader'"),
@@ -30,16 +35,24 @@ export const configSchema = z.object({
     .array(z.enum(["DAY", "SWING", "POSITION"]))
     .min(1)
     .describe("DAY = close same day, SWING = hold 2-10 days, POSITION = hold weeks+"),
+  // Session A: sectors are enumerated against the canonical GICS Title Case
+  // list. The agent literally cannot propose an unknown value — no more
+  // SCREAMING_SNAKE or "Tech" strings sneaking back into AgentConfig.
   sectors: z
-    .array(z.string())
-    .describe("Sector filters. Common: TECHNOLOGY, HEALTHCARE, FINANCE, ENERGY, CONSUMER, INDUSTRIAL, REAL_ESTATE, UTILITIES, MATERIALS, COMMUNICATION. Empty = all sectors"),
+    .array(z.enum(SECTOR_VALUES))
+    .describe(
+      "Canonical GICS sectors (Title Case). One of: " +
+        SECTORS.join(", ") +
+        ". Empty = all sectors.",
+    ),
   // ── Universe (B1) — narrower discovery fence ─────────────────────────────
   industries: z
-    .array(z.string())
+    .array(z.enum(INDUSTRY_VALUES))
     .optional()
     .describe(
-      "GICS-style industries narrower than sector. E.g. 'Semiconductors', 'Auto Manufacturers', 'Biotechnology'. " +
-      "Empty = no filter on industry. Use when the analyst's strategy is industry-specific within a broader sector.",
+      "Canonical GICS industries (Title Case) — narrower than sector. " +
+        "Pick from the canonical list; the tool call will be rejected if you " +
+        "propose a value not in the list. Empty = no filter on industry.",
     ),
   themes: z
     .array(z.string())
@@ -151,11 +164,16 @@ export const configSchema = z.object({
   universe: z
     .object({
       sectors: z
-        .array(z.string())
-        .describe("High-level sector labels, e.g. TECHNOLOGY, HEALTHCARE."),
+        .array(z.enum(SECTOR_VALUES))
+        .describe(
+          "Canonical GICS sectors (Title Case). Pick from: " +
+            SECTORS.join(", "),
+        ),
       industries: z
-        .array(z.string())
-        .describe("Narrower industry labels, e.g. Semiconductors, Biotech."),
+        .array(z.enum(INDUSTRY_VALUES))
+        .describe(
+          "Canonical GICS industries (Title Case). Pick from the canonical list.",
+        ),
       themes: z
         .array(z.string())
         .describe("Thematic tags, e.g. AI_INFRASTRUCTURE, EV_ADOPTION."),

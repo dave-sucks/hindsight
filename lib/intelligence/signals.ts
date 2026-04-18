@@ -11,6 +11,11 @@ import type {
   SignalType,
   SonarSignalResponse,
 } from "@/lib/intelligence/types";
+import {
+  normalizeSectors,
+  normalizeIndustries,
+  normalizeThemes,
+} from "@/lib/universe/canonical";
 
 // ── Batch Management ─────────────────────────────────────────────────────────
 
@@ -61,6 +66,13 @@ export async function completeSignalBatch(
  * bucket) for cross-batch dedup. Returns the signal ID.
  */
 export async function createSignal(input: CreateSignalInput): Promise<string> {
+  // Canonicalize universe fields at the write boundary (Session A).
+  // Sonar's cleanSonarSignal already normalizes, but producers like
+  // firm-market-sweep call createSignal directly — so we normalize here too
+  // as a backstop to keep the Signal table free of vocabulary skew.
+  const canonSectors = normalizeSectors(input.sectors);
+  const canonIndustries = normalizeIndustries(input.industries ?? []);
+  const canonThemes = normalizeThemes(input.themes);
   const signal = await prisma.signal.create({
     data: {
       batchId: input.batchId,
@@ -71,9 +83,9 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
       summary: input.summary,
       evidence: input.evidence,
       tickers: input.tickers,
-      themes: input.themes,
-      sectors: input.sectors,
-      industries: input.industries ?? [],
+      themes: canonThemes,
+      sectors: canonSectors,
+      industries: canonIndustries,
       sentiment: input.sentiment,
       // noveltyScore at creation is a placeholder. The real value is computed
       // per-(analyst, signal) at routing time and stored on AnalystSignalRoute.

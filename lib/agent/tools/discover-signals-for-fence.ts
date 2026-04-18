@@ -24,6 +24,11 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
+import {
+  normalizeSectors,
+  normalizeIndustries,
+  normalizeThemes,
+} from "@/lib/universe/canonical";
 
 // ── Data shape returned to the renderer ──────────────────────────────────────
 
@@ -167,42 +172,45 @@ export const discoverSignalsForFence = defineTool({
   },
 
   execute: async (args) => {
-    const sectors = (args.sectors ?? []).filter(Boolean);
-    const industries = (args.industries ?? []).filter(Boolean);
-    const themes = (args.themes ?? []).filter(Boolean);
+    // Session A: inputs from builder/editor may still arrive non-canonical
+    // (the editor can pass freeform strings before the schema enum kicks in
+    // for new proposals). Normalize at the read boundary so fence probes find
+    // the same canonical rows that writes persist.
+    const sectors = normalizeSectors(args.sectors ?? []);
+    const industries = normalizeIndustries(args.industries ?? []);
+    const themes = normalizeThemes(args.themes ?? []);
     const tickers = (args.tickers ?? []).map((t) => t.toUpperCase()).filter(Boolean);
     const lookbackDays = args.lookbackDays ?? 7;
     const limit = args.limit ?? 15;
 
-    // Signal sector/industry/theme values in the DB are NOT normalized —
-    // Perplexity Sonar stores whatever it returned (mix of "Technology",
-    // "technology", "Information Technology", "TECHNOLOGY"…). Prisma's
-    // `hasSome` is exact-string match, which would miss nearly every
-    // hit. Mirror the signal-router's approach: fetch recent signals by
-    // date only, then filter in-memory with case-insensitive matching
-    // (upper() both sides). This is the same vocabulary skew the
-    // router papers over; discover_signals_for_fence was the outlier.
+    // Session A: Signal + AgentConfig universe fields are canonical at write
+    // time, so Prisma's `hasSome` exact-match filter is correct again. No
+    // more in-memory upper() fan-out — we push the predicate down to
+    // Postgres and let the GIN-backed array index do the work.
     const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
-    const allRecent = await prisma.signal.findMany({
-      where: { createdAt: { gte: since } },
-      orderBy: { createdAt: "desc" },
-      take: 500, // hard cap — 7-30 day window is typically well under this
-    });
+    const sectorNeedles = [...sectors, ...industries];
+    const orClauses: Array<Record<string, unknown>> = [];
+    if (sectorNeedles.length > 0) {
+      orClauses.push({ sectors: { hasSome: sectorNeedles } });
+      // Industries share semantics with the sectors dimension for the Builder
+      // preview — a fence that lists "Semiconductors" (industry) should match
+      // signals tagged with sector "Information Technology" OR with industry
+      // "Semiconductors". We query both columns explicitly.
+      if (industries.length > 0) {
+        orClauses.push({ industries: { hasSome: industries } });
+      }
+    }
+    if (themes.length > 0) orClauses.push({ themes: { hasSome: themes } });
+    if (tickers.length > 0) orClauses.push({ tickers: { hasSome: tickers } });
 
-    const upper = (xs: string[]) => xs.map((x) => x.toUpperCase());
-    const sectorNeedlesU = upper([...sectors, ...industries]);
-    const themeNeedlesU = upper(themes);
-    const tickerNeedlesU = upper(tickers);
-
-    const signals = allRecent.filter((sig) => {
-      const sigSectorsU = upper(sig.sectors ?? []);
-      const sigThemesU = upper(sig.themes ?? []);
-      const sigTickersU = upper(sig.tickers ?? []);
-      if (sectorNeedlesU.some((n) => sigSectorsU.includes(n))) return true;
-      if (themeNeedlesU.some((n) => sigThemesU.includes(n))) return true;
-      if (tickerNeedlesU.some((n) => sigTickersU.includes(n))) return true;
-      return false;
-    }).slice(0, Math.max(limit * 4, 40));
+    const signals =
+      orClauses.length === 0
+        ? []
+        : await prisma.signal.findMany({
+            where: { createdAt: { gte: since }, OR: orClauses },
+            orderBy: { createdAt: "desc" },
+            take: Math.max(limit * 4, 40),
+          });
 
     const baseFence: DiscoverResult["fence"] = {
       sectors,
@@ -243,17 +251,19 @@ export const discoverSignalsForFence = defineTool({
       OLDER: 1,
     };
 
-    const sectorNeedlesCI = [...sectors, ...industries];
+    // Session A: needles + signal fields are both canonical, so the scoring
+    // step is a plain Set membership compare — no case-folding.
+    const sectorNeedleSet = new Set<string>([...sectors, ...industries]);
+    const industryNeedleSet = new Set<string>(industries);
+    const themeNeedleSet = new Set<string>(themes);
+    const tickerNeedleSet = new Set<string>(tickers);
     const scored: DiscoveredSignal[] = signals.map((s) => {
-      const matchedSectors = s.sectors.filter((v) =>
-        sectorNeedlesCI.some((n) => n.toLowerCase() === v.toLowerCase()),
-      );
-      const matchedThemes = s.themes.filter((v) =>
-        themes.some((n) => n.toLowerCase() === v.toLowerCase()),
-      );
-      const matchedTickers = s.tickers.filter((v) =>
-        tickers.includes(v.toUpperCase()),
-      );
+      const matchedSectors = [
+        ...s.sectors.filter((v) => sectorNeedleSet.has(v)),
+        ...s.industries.filter((v) => industryNeedleSet.has(v)),
+      ];
+      const matchedThemes = s.themes.filter((v) => themeNeedleSet.has(v));
+      const matchedTickers = s.tickers.filter((v) => tickerNeedleSet.has(v));
 
       const dimensions: string[] = [];
       if (matchedSectors.length) dimensions.push("sectors");
