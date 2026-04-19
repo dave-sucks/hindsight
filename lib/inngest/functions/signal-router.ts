@@ -59,11 +59,13 @@ interface MatchedUniverse {
   marketCap?: string
 }
 
-interface AnalystProfile {
+export interface AnalystProfile {
   id: string
   positionTickers: string[]   // OPEN positions
   watchlistTickers: string[]  // watchlist + watchlistItems + tickerUniverse (directed)
-  // Universe dimensions (all uppercased for case-insensitive comparison).
+  // Universe dimensions — canonical GICS Title Case sectors/industries and
+  // uppercase snake_case themes. Session A normalizers enforce this at every
+  // write path, so the router compares values directly without upper()-ing.
   sectors: string[]
   industries: string[]
   themes: string[]
@@ -74,10 +76,6 @@ interface AnalystProfile {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-function upper(xs: string[]): string[] {
-  return xs.map((x) => x.toUpperCase())
-}
 
 function extractKeywords(text: string | null): string[] {
   if (!text) return []
@@ -97,8 +95,8 @@ function extractKeywords(text: string | null): string[] {
 }
 
 /**
- * Per-dimension overlap. Returns the intersecting values (uppercased on BOTH
- * sides before compare). Empty analyst dimension = "no filter" → return null
+ * Per-dimension overlap. Both sides are canonical (Session A), so this is a
+ * plain equality compare. Empty analyst dimension = "no filter" → return null
  * to signal the dimension is vacuously satisfied.
  */
 function overlap(
@@ -106,8 +104,7 @@ function overlap(
   signalDim: string[]
 ): string[] | null {
   if (analystDim.length === 0) return null
-  const sig = upper(signalDim)
-  return analystDim.filter((a) => sig.includes(a))
+  return analystDim.filter((a) => signalDim.includes(a))
 }
 
 /**
@@ -115,8 +112,10 @@ function overlap(
  * AND across dimensions, OR within a dimension. Empty dims are satisfied.
  * Returns null if the signal is NOT in-universe, otherwise the matched
  * dimensions payload (for tagging).
+ *
+ * Exported so integration tests can exercise the fence contract directly.
  */
-function matchUniverse(
+export function matchUniverse(
   signal: { sectors: string[]; industries: string[]; themes: string[] },
   profile: AnalystProfile
 ): MatchedUniverse | null {
@@ -346,11 +345,14 @@ export const signalRouter = inngest.createFunction(
           id: a.id,
           positionTickers: [...positionSet],
           watchlistTickers: [...watchlistSet],
-          sectors: upper(a.sectors),
-          industries: upper(a.industries),
-          themes: upper(a.themes),
-          exchanges: upper(a.exchanges),
-          exclusions: upper(a.exclusionList),
+          // Session A: sectors/industries/themes arrive canonical; no upper().
+          sectors: a.sectors,
+          industries: a.industries,
+          themes: a.themes,
+          // Exchanges + exclusions are still uppercase-by-convention (tickers
+          // + exchange codes), so keep the defensive toUpperCase() here.
+          exchanges: a.exchanges.map((x) => x.toUpperCase()),
+          exclusions: a.exclusionList.map((x) => x.toUpperCase()),
           keywords: [...keywordSet],
         }
       })
