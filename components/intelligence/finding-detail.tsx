@@ -89,11 +89,7 @@ export function FindingDetailDialog({
     !signal.searchTool || signal.searchTool === "PERPLEXITY_SONAR";
   const usedFirecrawl = !!signal.artifactId;
 
-  const primaryUrl = signal.sourceUrls[0] ?? null;
-  const primaryName =
-    signal.sourceNames[0] ??
-    (primaryUrl ? extractDomain(primaryUrl) : "Unknown source");
-  const primaryDomain = primaryUrl ? extractDomain(primaryUrl) : null;
+  const hasSources = signal.sourceUrls.length > 0;
 
   const hasUniverseTags =
     signal.sectors.length > 0 ||
@@ -126,27 +122,32 @@ export function FindingDetailDialog({
             )}
           </div>
 
-          {/* Source + timestamp — flush-left with negative margin so the
-              favicon lines up with the title below */}
-          {primaryUrl ? (
-            <a
-              href={primaryUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="-ml-1.5 inline-flex w-fit items-center gap-2 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            >
-              {primaryDomain && <Favicon domain={primaryDomain} size={14} />}
-              <span>{primaryName}</span>
-              <span>·</span>
-              <span className="tabular-nums">
-                {relativeTime(signal.createdAt)}
-              </span>
-            </a>
-          ) : (
-            <p className="text-xs text-muted-foreground tabular-nums">
+          {/* Sources + timestamp — Sonar cites 1..N articles per signal; all
+              are shown flush-left so the first favicon lines up with the
+              title below. Timestamp sits at the right end. */}
+          <div className="-ml-1.5 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-muted-foreground">
+            {hasSources ? (
+              signal.sourceUrls.map((url, i) => {
+                const domain = extractDomain(url);
+                const name = signal.sourceNames[i] ?? domain;
+                return (
+                  <a
+                    key={`${url}-${i}`}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    <Favicon domain={domain} size={14} />
+                    <span>{name}</span>
+                  </a>
+                );
+              })
+            ) : null}
+            <span className="ml-auto tabular-nums px-1.5">
               {relativeTime(signal.createdAt)}
-            </p>
-          )}
+            </span>
+          </div>
 
           <DialogHeader>
             <DialogTitle>{signal.headline}</DialogTitle>
