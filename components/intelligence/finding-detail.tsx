@@ -7,15 +7,12 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Globe, Scan, Search, Shuffle, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { TickerBadge } from "@/components/ui/ticker-badge";
-import { AnalystBadge } from "@/components/ui/analyst-badge";
+import { StockLogo } from "@/components/StockLogo";
+import {
+  ButtonGroup,
+  ButtonGroupSeparator,
+} from "@/components/ui/button-group";
 import {
   Tooltip,
   TooltipContent,
@@ -23,27 +20,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Favicon } from "@/components/intelligence/signal-feed";
-import { PerplexityLogo, FirecrawlLogo } from "@/components/intelligence/icons";
+import { Factory, Layers, Sparkles } from "lucide-react";
 import type { MatchedUniverse, RouteReasonCode, Signal } from "./types";
 import {
   ROUTE_REASON_LABELS,
   ROUTE_REASON_TOOLTIPS,
+  THEME_LABELS,
   relativeTime,
 } from "./types";
-
-// ── Monitor type → icon ─────────────────────────────────────────────────────
-
-const MONITOR_ICON = {
-  SEARCH: Search,
-  DOMAIN: Globe,
-  API: Zap,
-} as const;
-
-function getMonitorType(signal: Signal): keyof typeof MONITOR_ICON {
-  if (signal.monitor?.type === "DOMAIN" || signal.searchContext?.startsWith("domain_group:")) return "DOMAIN";
-  if (signal.monitor?.type === "API" || signal.searchContext?.startsWith("market_movers:") || signal.searchContext === "earnings_calendar") return "API";
-  return "SEARCH";
-}
 
 // ── Finding Detail Dialog ───────────────────────────────────────────────────
 
@@ -53,18 +37,19 @@ interface FindingDetailDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function FindingDetailDialog({ signal, open, onOpenChange }: FindingDetailDialogProps) {
+export function FindingDetailDialog({
+  signal,
+  open,
+  onOpenChange,
+}: FindingDetailDialogProps) {
   if (!signal) return null;
 
-  const monitorType = getMonitorType(signal);
-  const MonitorIcon = MONITOR_ICON[monitorType];
-  const query = signal.searchQuery ?? signal.headline;
-  const sentimentDir = signal.sentiment === "BULLISH" ? "up" as const
-    : signal.sentiment === "BEARISH" ? "down" as const
-    : null;
-
-  const usedPerplexity = !signal.searchTool || signal.searchTool === "PERPLEXITY_SONAR";
-  const usedFirecrawl = !!signal.artifactId;
+  const primaryUrl = signal.sourceUrls[0] ?? null;
+  const primaryName =
+    signal.sourceNames[0] ??
+    (primaryUrl ? extractDomain(primaryUrl) : "Unknown source");
+  const primaryDomain = primaryUrl ? extractDomain(primaryUrl) : null;
+  const additionalSources = signal.sourceUrls.slice(1);
 
   const hasUniverseTags =
     signal.sectors.length > 0 ||
@@ -75,91 +60,98 @@ export function FindingDetailDialog({ signal, open, onOpenChange }: FindingDetai
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-background sm:max-w-3xl">
         <TooltipProvider>
-        {/* Search bar */}
-        <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 min-w-0">
-          <MonitorIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-sm text-foreground/80 truncate flex-1 min-w-0">{query}</span>
-          {usedPerplexity && (
-            <ToolPopover
-              icon={PerplexityLogo}
-              name="Perplexity Sonar"
-              description="Real-time web search via Perplexity's Sonar API. Returns structured results with headlines, summaries, source URLs, and extracted tickers."
-            />
+          {/* Source + timestamp — flush-left with negative margin so the
+              favicon lines up with the title below */}
+          {primaryUrl ? (
+            <a
+              href={primaryUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="-ml-1.5 inline-flex w-fit items-center gap-2 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              {primaryDomain && <Favicon domain={primaryDomain} size={14} />}
+              <span>{primaryName}</span>
+              <span>·</span>
+              <span className="tabular-nums">
+                {relativeTime(signal.createdAt)}
+              </span>
+            </a>
+          ) : (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {relativeTime(signal.createdAt)}
+            </p>
           )}
-          {usedFirecrawl && (
-            <ToolPopover
-              icon={FirecrawlLogo}
-              name="Firecrawl"
-              description="Full-page HTML extraction. The article was scraped and stored as a readable artifact so the AI agent can read the complete text during runs."
-            />
+
+          <DialogHeader>
+            <DialogTitle>{signal.headline}</DialogTitle>
+            <DialogDescription>{signal.summary}</DialogDescription>
+          </DialogHeader>
+
+          {/* Tickers — below title, smaller logos */}
+          {signal.tickers.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3">
+              {signal.tickers.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-1.5"
+                >
+                  <StockLogo ticker={t} size="sm" className="h-5 w-5" />
+                  <span className="text-sm font-brand font-bold">{t}</span>
+                </span>
+              ))}
+            </div>
           )}
-        </div>
 
-        {/* Tickers */}
-        {signal.tickers.length > 0 && (
-          <div className="flex flex-wrap items-center gap-3">
-            {signal.tickers.map((t) => (
-              <TickerBadge key={t} ticker={t} direction={sentimentDir} />
-            ))}
-          </div>
-        )}
-
-        <DialogHeader>
-          <DialogTitle>{signal.headline}</DialogTitle>
-          <DialogDescription>{signal.summary}</DialogDescription>
-        </DialogHeader>
-
-        {/* Universe tags — canonical sectors / industries / themes */}
-        {hasUniverseTags && (
-          <div className="space-y-1.5">
-            {signal.sectors.length > 0 && (
-              <UniverseTagRow label="Sectors" values={signal.sectors} />
-            )}
-            {signal.industries.length > 0 && (
-              <UniverseTagRow label="Industries" values={signal.industries} />
-            )}
-            {signal.themes.length > 0 && (
-              <UniverseTagRow label="Themes" values={signal.themes} />
-            )}
-          </div>
-        )}
-
-        {/* Scrollable content */}
-        <div className="-mx-4 no-scrollbar max-h-[50vh] overflow-y-auto px-4">
-          {/* Sources */}
-          {signal.sourceUrls.length > 0 && (
+          {/* Universe tags — icon + value, no row labels, muted */}
+          {hasUniverseTags && (
             <div className="flex flex-wrap gap-1">
-              {signal.sourceUrls.map((url, i) => {
-                let domain = url;
-                try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* */ }
+              {signal.sectors.map((v) => (
+                <UniverseBadge key={`sec-${v}`} icon={Layers} label={v} />
+              ))}
+              {signal.industries.map((v) => (
+                <UniverseBadge key={`ind-${v}`} icon={Factory} label={v} />
+              ))}
+              {signal.themes.map((v) => (
+                <UniverseBadge
+                  key={`thm-${v}`}
+                  icon={Sparkles}
+                  label={humanizeTheme(v)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Additional sources — if more than one */}
+          {additionalSources.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-1">
+              {additionalSources.map((url, i) => {
+                const domain = extractDomain(url);
+                const name = signal.sourceNames[i + 1] ?? domain;
                 return (
                   <a
-                    key={i}
+                    key={url}
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   >
-                    <Favicon domain={domain} size={14} />
-                    {signal.sourceNames[i] ?? domain}
+                    {domain && <Favicon domain={domain} size={14} />}
+                    <span>{name}</span>
                   </a>
                 );
               })}
             </div>
           )}
-        </div>
 
-        {/* Footer: routing provenance + timestamp */}
-        <div className="border-t pt-3 space-y-2">
-          {signal.routes && signal.routes.length > 0 ? (
-            <>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Shuffle className="h-3 w-3" />
-                <span>Routed to</span>
-              </div>
-              <div className="space-y-1.5">
+          {/* Routing — ButtonGroup per analyst */}
+          {signal.routes && signal.routes.length > 0 && (
+            <div className="border-t pt-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                Routed to
+              </p>
+              <div className="flex flex-wrap gap-2">
                 {signal.routes.map((r) => (
-                  <RouteRow
+                  <RouteGroup
                     key={r.id}
                     analystName={r.analyst.name}
                     code={r.routeReasonCode}
@@ -168,42 +160,36 @@ export function FindingDetailDialog({ signal, open, onOpenChange }: FindingDetai
                   />
                 ))}
               </div>
-            </>
-          ) : null}
-          <div className="flex items-center justify-end">
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {relativeTime(signal.createdAt)}
-            </span>
-          </div>
-        </div>
+            </div>
+          )}
         </TooltipProvider>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ── Universe tag row — label + canonical value chips ────────────────────────
+// ── Universe badge ──────────────────────────────────────────────────────────
+// Icon on the left, label on the right. Secondary variant with foreground
+// opacity dimmed so the tags read as metadata, not primary content.
 
-function UniverseTagRow({ label, values }: { label: string; values: string[] }) {
+function UniverseBadge({
+  icon: Icon,
+  label,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+}) {
   return (
-    <div className="flex items-start gap-3">
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground w-20 shrink-0 pt-0.5">
-        {label}
-      </span>
-      <div className="flex flex-wrap gap-1">
-        {values.map((v) => (
-          <Badge key={v} variant="secondary">
-            {v}
-          </Badge>
-        ))}
-      </div>
-    </div>
+    <Badge variant="secondary" className="text-muted-foreground font-normal">
+      <Icon className="h-3 w-3" />
+      <span>{label}</span>
+    </Badge>
   );
 }
 
-// ── Route row — analyst + reason code + matched dimension values ────────────
+// ── Route group — analyst | category with tooltip ───────────────────────────
 
-function RouteRow({
+function RouteGroup({
   analystName,
   code,
   matched,
@@ -214,30 +200,54 @@ function RouteRow({
   matched: MatchedUniverse | null;
   relevanceScore: number;
 }) {
+  const categoryLabel = code ? ROUTE_REASON_LABELS[code] : "Legacy";
   const matchedValues = extractMatchedValues(matched);
+
   return (
-    <div className="flex items-start gap-2 text-xs">
-      <AnalystBadge name={analystName} icon={<Scan className="h-3 w-3" />} />
-      {code && (
-        <Tooltip>
-          <TooltipTrigger render={<span className="cursor-help" />}>
-            <Badge variant="secondary">{ROUTE_REASON_LABELS[code]}</Badge>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-xs">
-            {ROUTE_REASON_TOOLTIPS[code]}
-          </TooltipContent>
-        </Tooltip>
-      )}
-      {matchedValues.length > 0 && (
-        <span className="text-muted-foreground truncate">
-          {matchedValues.join(", ")}
-        </span>
-      )}
-      <span className="ml-auto tabular-nums text-muted-foreground">
-        {relevanceScore}
-      </span>
-    </div>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <ButtonGroup className="cursor-default">
+            <Badge variant="outline" className="rounded-r-none font-normal">
+              {analystName}
+            </Badge>
+            <ButtonGroupSeparator />
+            <Badge
+              variant="secondary"
+              className="rounded-l-none text-muted-foreground font-normal"
+            >
+              {categoryLabel}
+            </Badge>
+          </ButtonGroup>
+        }
+      />
+      <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1.5">
+        <p className="leading-relaxed">
+          {code
+            ? ROUTE_REASON_TOOLTIPS[code]
+            : "Routed before reason codes were tracked."}
+        </p>
+        {matchedValues.length > 0 && (
+          <p className="text-muted-foreground">
+            Matched: {matchedValues.join(", ")}
+          </p>
+        )}
+        <p className="text-muted-foreground tabular-nums">
+          Relevance {relevanceScore}
+        </p>
+      </TooltipContent>
+    </Tooltip>
   );
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 function extractMatchedValues(m: MatchedUniverse | null): string[] {
@@ -245,35 +255,18 @@ function extractMatchedValues(m: MatchedUniverse | null): string[] {
   const out: string[] = [];
   if (m.sectors?.length) out.push(...m.sectors);
   if (m.industries?.length) out.push(...m.industries);
-  if (m.themes?.length) out.push(...m.themes);
+  if (m.themes?.length) out.push(...m.themes.map(humanizeTheme));
   if (m.inWatchlist) out.push("watchlist hit");
   if (m.inPositions) out.push("open position");
   return out;
 }
 
-// ── Tool Popover ────────────────────────────────────────────────────────────
-
-function ToolPopover({
-  icon: Icon,
-  name,
-  description,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  name: string;
-  description: string;
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger className="rounded-md p-1 hover:bg-background/60 transition-colors">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </PopoverTrigger>
-      <PopoverContent side="bottom" align="end" className="w-72 p-3">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Icon className="h-4 w-4 shrink-0" />
-          <span className="text-sm font-medium">{name}</span>
-        </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
-      </PopoverContent>
-    </Popover>
-  );
+/**
+ * Themes are stored canonically as UPPERCASE_SNAKE_CASE. Map known themes to
+ * their display labels, otherwise sentence-case the tokens.
+ */
+function humanizeTheme(raw: string): string {
+  if (THEME_LABELS[raw]) return THEME_LABELS[raw];
+  const words = raw.toLowerCase().replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
