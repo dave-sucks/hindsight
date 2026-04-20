@@ -76,9 +76,14 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
   options: DefineToolOptions<TSchema, TData>,
 ): ToolFactory<TSchema, TData> {
   return function makeToolInstance(ctx: ToolContext) {
+    // AI SDK v6 `tool()` narrows the schema generic through Zod v4's
+    // `$ZodType` internals, which TS can't unify with our generic
+    // `z.ZodTypeAny` parameter at the factory boundary. Runtime behavior
+    // is fine; cast is scoped to the tool() call-site only.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return tool<TSchema, ToolResult<TData>>({
       description: options.description,
-      inputSchema: options.schema,
+      inputSchema: options.schema as any,
       execute: async (args): Promise<ToolResult<TData>> => {
         const t0 = Date.now();
         const resolvedGroupId = options.groupId
@@ -93,14 +98,16 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
         let progressLabel: string | undefined;
         if (options.progressLabel) {
           try {
-            progressLabel = options.progressLabel(args);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            progressLabel = options.progressLabel(args as any);
           } catch {
             progressLabel = undefined;
           }
         }
 
         try {
-          const result = await options.execute(args, ctx);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = await options.execute(args as any, ctx);
           const elapsed = Date.now() - t0;
           console.log(`[tool] END "${label}" ${elapsed}ms runId=${ctx.runId}`);
 

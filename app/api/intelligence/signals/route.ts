@@ -20,7 +20,19 @@ export async function GET(req: NextRequest) {
   const urgency = req.nextUrl.searchParams.get("urgency")
   const batchId = req.nextUrl.searchParams.get("batchId")
   const analystId = req.nextUrl.searchParams.get("analystId")
+  const sector = req.nextUrl.searchParams.get("sector")
+  const industry = req.nextUrl.searchParams.get("industry")
+  const theme = req.nextUrl.searchParams.get("theme")
+  const routeReasonCode = req.nextUrl.searchParams.get("routeReasonCode")
+  const orphans = req.nextUrl.searchParams.get("orphans") === "1"
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50")
+
+  // Build the analyst-route constraint once. When analystId is set, scope
+  // to just that analyst (and optionally that route reason); otherwise scope
+  // to any of this user's analysts.
+  const analystRouteWhere: Record<string, unknown> = analystId
+    ? { analystId, ...(routeReasonCode ? { routeReasonCode } : {}) }
+    : { analystId: { in: analystIds }, ...(routeReasonCode ? { routeReasonCode } : {}) };
 
   const signals = await prisma.signal.findMany({
     where: {
@@ -28,9 +40,14 @@ export async function GET(req: NextRequest) {
       ...(type ? { type } : {}),
       ...(urgency ? { urgency } : {}),
       ...(batchId ? { batchId } : {}),
-      ...(analystId ? { routes: { some: { analystId } } } : {}),
-      // Scope to user: only signals routed to their analysts
-      routes: { some: { analystId: { in: analystIds } } },
+      ...(sector ? { sectors: { has: sector } } : {}),
+      ...(industry ? { industries: { has: industry } } : {}),
+      ...(theme ? { themes: { has: theme } } : {}),
+      // Orphans: no sector tag AND no theme tag. Industry alone doesn't count
+      // as "routable" — the router scores industry as a single-dim SECTOR
+      // sibling, and an industry-only tag usually means Sonar drifted.
+      ...(orphans ? { sectors: { isEmpty: true }, themes: { isEmpty: true } } : {}),
+      routes: { some: analystRouteWhere },
     },
     orderBy: { createdAt: "desc" },
     take: Math.min(limit, 200),
@@ -46,6 +63,7 @@ export async function GET(req: NextRequest) {
       tickers: true,
       themes: true,
       sectors: true,
+      industries: true,
       sentiment: true,
       noveltyScore: true,
       urgency: true,
@@ -74,6 +92,8 @@ export async function GET(req: NextRequest) {
           analyst: { select: { id: true, name: true } },
           relevanceScore: true,
           routeReason: true,
+          routeReasonCode: true,
+          matchedUniverse: true,
           status: true,
         },
       },

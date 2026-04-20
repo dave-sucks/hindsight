@@ -13,12 +13,23 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Globe, Scan, Search, Shuffle, Zap } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { TickerBadge } from "@/components/ui/ticker-badge";
 import { AnalystBadge } from "@/components/ui/analyst-badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Favicon } from "@/components/intelligence/signal-feed";
 import { PerplexityLogo, FirecrawlLogo } from "@/components/intelligence/icons";
-import type { Signal } from "./types";
-import { relativeTime } from "./types";
+import type { MatchedUniverse, RouteReasonCode, Signal } from "./types";
+import {
+  ROUTE_REASON_LABELS,
+  ROUTE_REASON_TOOLTIPS,
+  relativeTime,
+} from "./types";
 
 // ── Monitor type → icon ─────────────────────────────────────────────────────
 
@@ -55,9 +66,15 @@ export function FindingDetailDialog({ signal, open, onOpenChange }: FindingDetai
   const usedPerplexity = !signal.searchTool || signal.searchTool === "PERPLEXITY_SONAR";
   const usedFirecrawl = !!signal.artifactId;
 
+  const hasUniverseTags =
+    signal.sectors.length > 0 ||
+    signal.industries.length > 0 ||
+    signal.themes.length > 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-background sm:max-w-3xl">
+        <TooltipProvider>
         {/* Search bar */}
         <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 min-w-0">
           <MonitorIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -92,6 +109,21 @@ export function FindingDetailDialog({ signal, open, onOpenChange }: FindingDetai
           <DialogDescription>{signal.summary}</DialogDescription>
         </DialogHeader>
 
+        {/* Universe tags — canonical sectors / industries / themes */}
+        {hasUniverseTags && (
+          <div className="space-y-1.5">
+            {signal.sectors.length > 0 && (
+              <UniverseTagRow label="Sectors" values={signal.sectors} />
+            )}
+            {signal.industries.length > 0 && (
+              <UniverseTagRow label="Industries" values={signal.industries} />
+            )}
+            {signal.themes.length > 0 && (
+              <UniverseTagRow label="Themes" values={signal.themes} />
+            )}
+          </div>
+        )}
+
         {/* Scrollable content */}
         <div className="-mx-4 no-scrollbar max-h-[50vh] overflow-y-auto px-4">
           {/* Sources */}
@@ -117,33 +149,106 @@ export function FindingDetailDialog({ signal, open, onOpenChange }: FindingDetai
           )}
         </div>
 
-        {/* Footer: analysts + timestamp */}
+        {/* Footer: routing provenance + timestamp */}
         <div className="border-t pt-3 space-y-2">
-          {signal.routes && signal.routes.length > 0 && (
+          {signal.routes && signal.routes.length > 0 ? (
             <>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span>Shared with</span>
                 <Shuffle className="h-3 w-3" />
+                <span>Routed to</span>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="space-y-1.5">
                 {signal.routes.map((r) => (
-                  <AnalystBadge key={r.id} name={r.analyst.name} icon={<Scan className="h-3 w-3" />} />
+                  <RouteRow
+                    key={r.id}
+                    analystName={r.analyst.name}
+                    code={r.routeReasonCode}
+                    matched={r.matchedUniverse}
+                    relevanceScore={r.relevanceScore}
+                  />
                 ))}
-                <span className="text-xs text-muted-foreground tabular-nums ml-auto">
-                  {relativeTime(signal.createdAt)}
-                </span>
               </div>
             </>
-          )}
-          {(!signal.routes || signal.routes.length === 0) && (
+          ) : null}
+          <div className="flex items-center justify-end">
             <span className="text-xs text-muted-foreground tabular-nums">
               {relativeTime(signal.createdAt)}
             </span>
-          )}
+          </div>
         </div>
+        </TooltipProvider>
       </DialogContent>
     </Dialog>
   );
+}
+
+// ── Universe tag row — label + canonical value chips ────────────────────────
+
+function UniverseTagRow({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground w-20 shrink-0 pt-0.5">
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1">
+        {values.map((v) => (
+          <Badge key={v} variant="secondary">
+            {v}
+          </Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Route row — analyst + reason code + matched dimension values ────────────
+
+function RouteRow({
+  analystName,
+  code,
+  matched,
+  relevanceScore,
+}: {
+  analystName: string;
+  code: RouteReasonCode | null;
+  matched: MatchedUniverse | null;
+  relevanceScore: number;
+}) {
+  const matchedValues = extractMatchedValues(matched);
+  return (
+    <div className="flex items-start gap-2 text-xs">
+      <AnalystBadge name={analystName} icon={<Scan className="h-3 w-3" />} />
+      {code && (
+        <Tooltip>
+          <TooltipTrigger render={<span className="cursor-help" />}>
+            <Badge variant="secondary">{ROUTE_REASON_LABELS[code]}</Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            {ROUTE_REASON_TOOLTIPS[code]}
+          </TooltipContent>
+        </Tooltip>
+      )}
+      {matchedValues.length > 0 && (
+        <span className="text-muted-foreground truncate">
+          {matchedValues.join(", ")}
+        </span>
+      )}
+      <span className="ml-auto tabular-nums text-muted-foreground">
+        {relevanceScore}
+      </span>
+    </div>
+  );
+}
+
+function extractMatchedValues(m: MatchedUniverse | null): string[] {
+  if (!m) return [];
+  const out: string[] = [];
+  if (m.sectors?.length) out.push(...m.sectors);
+  if (m.industries?.length) out.push(...m.industries);
+  if (m.themes?.length) out.push(...m.themes);
+  if (m.inWatchlist) out.push("watchlist hit");
+  if (m.inPositions) out.push("open position");
+  return out;
 }
 
 // ── Tool Popover ────────────────────────────────────────────────────────────

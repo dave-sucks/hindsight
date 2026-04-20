@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -31,6 +31,7 @@ import {
 import { toast } from "sonner";
 
 import { SignalFeed } from "@/components/intelligence/signal-feed";
+import type { CoverageData } from "@/components/intelligence/coverage-strip";
 import { MonitorList } from "@/components/intelligence/config-panel";
 import { BriefCards } from "@/components/intelligence/brief-cards";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
@@ -55,7 +56,12 @@ export default function IntelligencePage() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [briefs, setBriefs] = useState<MorningBrief[]>([]);
+  const [coverage, setCoverage] = useState<CoverageData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Coverage lookback is fixed at 7d — matches the "last 7 days" language used
+  // in the spec and the natural morning cadence of the pipeline.
+  const COVERAGE_DAYS = 7;
 
   // Brief date selection
   const [briefDate, setBriefDate] = useState<"today" | "yesterday" | "week">(
@@ -87,16 +93,20 @@ export default function IntelligencePage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [sig, mon, br] = await Promise.all([
+      const [sig, mon, br, cov] = await Promise.all([
         fetchJSON<Signal[]>("/api/intelligence/signals?limit=200").catch(
           () => []
         ),
         fetchJSON<Monitor[]>("/api/intelligence/monitors").catch(() => []),
         fetchJSON<MorningBrief[]>("/api/intelligence/briefs").catch(() => []),
+        fetchJSON<CoverageData>(
+          `/api/intelligence/coverage?days=${COVERAGE_DAYS}`,
+        ).catch(() => null),
       ]);
       setSignals(sig);
       setMonitors(mon);
       setBriefs(br);
+      setCoverage(cov);
     } catch (err) {
       console.error("[intelligence] Failed to load:", err);
     } finally {
@@ -199,7 +209,12 @@ export default function IntelligencePage() {
 
           {/* Findings tab */}
           <TabsContent value="findings" className="space-y-6 pt-4" keepMounted>
-            <SignalFeed signals={signals} />
+            <SignalFeed
+              signals={signals}
+              coverage={coverage}
+              coverageLoading={loading}
+              coverageDays={COVERAGE_DAYS}
+            />
           </TabsContent>
 
           {/* Monitors tab */}

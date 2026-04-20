@@ -13,12 +13,16 @@ import {
 } from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
+import {
+  CoverageStrip,
+  type CoverageData,
+} from "@/components/intelligence/coverage-strip";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { Search } from "lucide-react";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
-import type { Signal } from "./types";
-import { relativeTime } from "./types";
+import type { Signal, RouteReasonCode } from "./types";
+import { relativeTime, ROUTE_REASON_LABELS } from "./types";
 import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo } from "./icons";
 
 type Icon = React.ComponentType<{ className?: string }>;
@@ -27,18 +31,47 @@ type Icon = React.ComponentType<{ className?: string }>;
 
 interface SignalFeedProps {
   signals: Signal[];
+  coverage?: CoverageData | null;
+  coverageLoading?: boolean;
+  coverageDays?: number;
 }
 
-export function SignalFeed({ signals }: SignalFeedProps) {
+const ROUTE_REASON_CODES: RouteReasonCode[] = [
+  "DISCOVERY",
+  "SECTOR_MATCH",
+  "INDUSTRY_MATCH",
+  "THEME_MATCH",
+  "WATCHLIST",
+  "POSITION",
+  "DIRECT_TICKER",
+  "CROSS_ANALYST",
+];
+
+export function SignalFeed({
+  signals,
+  coverage = null,
+  coverageLoading = false,
+  coverageDays = 7,
+}: SignalFeedProps) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [urgencyFilter, setUrgencyFilter] = useState("");
+  const [sector, setSector] = useState<string | null>(null);
+  const [industry, setIndustry] = useState<string | null>(null);
+  const [theme, setTheme] = useState<string | null>(null);
+  const [routeReason, setRouteReason] = useState<RouteReasonCode | "">("");
+  const [orphanOnly, setOrphanOnly] = useState(false);
   const [selected, setSelected] = useState<Signal | null>(null);
 
   const filtered = useMemo(() => {
     return signals.filter((s) => {
       if (typeFilter && s.type !== typeFilter) return false;
       if (urgencyFilter && s.urgency !== urgencyFilter) return false;
+      if (sector && !s.sectors.includes(sector)) return false;
+      if (industry && !s.industries.includes(industry)) return false;
+      if (theme && !s.themes.includes(theme)) return false;
+      if (orphanOnly && (s.sectors.length > 0 || s.themes.length > 0)) return false;
+      if (routeReason && !s.routes.some((r) => r.routeReasonCode === routeReason)) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -49,7 +82,7 @@ export function SignalFeed({ signals }: SignalFeedProps) {
       }
       return true;
     });
-  }, [signals, search, typeFilter, urgencyFilter]);
+  }, [signals, search, typeFilter, urgencyFilter, sector, industry, theme, routeReason, orphanOnly]);
 
   const handleSelect = useCallback((signal: Signal) => {
     setSelected(signal);
@@ -60,9 +93,41 @@ export function SignalFeed({ signals }: SignalFeedProps) {
     [signals]
   );
 
+  const hasStructuralFilter =
+    !!sector || !!industry || !!theme || !!routeReason || orphanOnly;
+
   return (
     <TooltipProvider>
       <div className="space-y-4">
+        {/* Coverage strip — wires bars → filters */}
+        <CoverageStrip
+          data={coverage}
+          loading={coverageLoading}
+          days={coverageDays}
+          activeSector={sector}
+          activeIndustry={industry}
+          activeTheme={theme}
+          orphanOnly={orphanOnly}
+          onSectorClick={(v) => {
+            setSector(v);
+            setOrphanOnly(false);
+          }}
+          onIndustryClick={(v) => {
+            setIndustry(v);
+            setOrphanOnly(false);
+          }}
+          onThemeClick={(v) => {
+            setTheme(v);
+            setOrphanOnly(false);
+          }}
+          onOrphanToggle={() => {
+            setOrphanOnly((v) => !v);
+            setSector(null);
+            setIndustry(null);
+            setTheme(null);
+          }}
+        />
+
         {/* Filters */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative flex-1 sm:max-w-sm">
@@ -74,7 +139,7 @@ export function SignalFeed({ signals }: SignalFeedProps) {
               className="pl-9"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Select value={typeFilter || undefined} onValueChange={(val) => setTypeFilter(val === "_all" ? "" : (val ?? ""))}>
               <SelectTrigger className="flex-1 sm:flex-none sm:w-auto text-xs">
                 <SelectValue placeholder="Type" />
@@ -100,8 +165,51 @@ export function SignalFeed({ signals }: SignalFeedProps) {
                 <SelectItem value="LOW">Low</SelectItem>
               </SelectContent>
             </Select>
+            <Select
+              value={routeReason || undefined}
+              onValueChange={(val) => {
+                const s = val as string | null | undefined;
+                setRouteReason(!s || s === "_all" ? "" : (s as RouteReasonCode));
+              }}
+            >
+              <SelectTrigger className="flex-1 sm:flex-none sm:w-auto text-xs">
+                <SelectValue placeholder="Route" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All routes</SelectItem>
+                {ROUTE_REASON_CODES.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {ROUTE_REASON_LABELS[code]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
+
+        {/* Active filter chips — visible only when a structural filter is set */}
+        {hasStructuralFilter && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {sector && (
+              <ActiveFilterChip label={`Sector: ${sector}`} onClear={() => setSector(null)} />
+            )}
+            {industry && (
+              <ActiveFilterChip label={`Industry: ${industry}`} onClear={() => setIndustry(null)} />
+            )}
+            {theme && (
+              <ActiveFilterChip label={`Theme: ${theme}`} onClear={() => setTheme(null)} />
+            )}
+            {routeReason && (
+              <ActiveFilterChip
+                label={`Route: ${ROUTE_REASON_LABELS[routeReason]}`}
+                onClear={() => setRouteReason("")}
+              />
+            )}
+            {orphanOnly && (
+              <ActiveFilterChip label="Orphans only" onClear={() => setOrphanOnly(false)} />
+            )}
+          </div>
+        )}
 
         {/* Signal list */}
         <div className="space-y-2">
@@ -227,6 +335,17 @@ function extractDomainFromUrls(urls: string[]): string | null {
     try { return new URL(url).hostname.replace(/^www\./, ""); } catch { /* skip */ }
   }
   return null;
+}
+
+// ── Active filter chip ───────────────────────────────────────────────────────
+
+function ActiveFilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <Badge variant="secondary" className="cursor-pointer gap-1" onClick={onClear}>
+      <span>{label}</span>
+      <span aria-hidden className="text-muted-foreground">×</span>
+    </Badge>
+  );
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
