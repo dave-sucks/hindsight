@@ -12,7 +12,11 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { GICS_SECTORS, GICS_INDUSTRIES } from "@/lib/universe/gics";
+// Session A established lib/universe/canonical as the single source of truth
+// for sector/industry vocabulary. Importing SECTORS/INDUSTRIES here keeps the
+// combobox options aligned with the alias table + normalization helpers — so
+// the values the user picks here are exactly what the router will compare.
+import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import {
   Sheet,
   SheetContent,
@@ -277,7 +281,7 @@ export function AnalystConfigSheet({
               <ChipListComboEditor
                 label="Sectors"
                 values={config.sectors}
-                options={GICS_SECTORS}
+                options={SECTORS}
                 placeholder="Add a sector…"
                 groupLabel="GICS Sectors"
                 tooltip="GICS top-level sectors. Only signals whose ticker belongs to one of these sectors enter the fence."
@@ -286,7 +290,7 @@ export function AnalystConfigSheet({
               <ChipListComboEditor
                 label="Industries"
                 values={config.industries}
-                options={GICS_INDUSTRIES}
+                options={INDUSTRIES}
                 placeholder="Add an industry…"
                 groupLabel="GICS Industries"
                 tooltip="Narrower than Sectors — a signal's ticker industry must match one of these (AND-joined with Sectors)."

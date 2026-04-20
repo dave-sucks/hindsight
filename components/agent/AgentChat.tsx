@@ -227,6 +227,11 @@ function AgentChatInner({
       startMutating(async () => {
         try {
           if (mode === "builder") {
+            // Session B audit follow-up: builder branch mirrors the editor —
+            // industries / themes / marketCap ride through the `universe`
+            // payload so createAnalystFromBuilder persists them to the
+            // AgentConfig columns. Without this, new analysts start with
+            // empty industries/themes even though the Builder proposed them.
             const result = await createAnalystFromBuilder({
               name: config.name ?? "Untitled Analyst",
               analystPrompt: config.analystPrompt ?? "General market research analyst",
@@ -244,6 +249,13 @@ function AgentChatInner({
               domainMonitorProposal: config.domainMonitorProposal,
               intelligenceQueries: config.intelligenceQueries,
               intelligencePolicy: config.intelligencePolicy,
+              universe: {
+                sectors: config.sectors,
+                industries: config.industries,
+                themes: config.themes,
+                marketCapMin: config.marketCapMin ?? undefined,
+                marketCapMax: config.marketCapMax ?? undefined,
+              },
             });
             toast.success(`Analyst "${config.name}" created`);
             router.push(`/analysts/${result.id}`);
