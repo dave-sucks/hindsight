@@ -13,6 +13,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
 import { StockLogo } from "@/components/StockLogo";
 import { TickerChip } from "@/components/chat/TickerChip";
 import {
@@ -25,22 +30,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Favicon } from "@/components/intelligence/signal-feed";
 import { PerplexityLogo, FirecrawlLogo } from "@/components/intelligence/icons";
-import {
-  Factory,
-  Globe,
-  Layers,
-  Search,
-  Shuffle,
-  Sparkles,
-  Zap,
-} from "lucide-react";
+import { Globe, Search, Shuffle, Zap } from "lucide-react";
 import type { MatchedUniverse, RouteReasonCode, Signal } from "./types";
 import {
   ROUTE_REASON_LABELS,
   ROUTE_REASON_TOOLTIPS,
-  THEME_LABELS,
   relativeTime,
 } from "./types";
 
@@ -91,10 +86,11 @@ export function FindingDetailDialog({
 
   const hasSources = signal.sourceUrls.length > 0;
 
-  const hasUniverseTags =
-    signal.sectors.length > 0 ||
-    signal.industries.length > 0 ||
-    signal.themes.length > 0;
+  const tagLine = [
+    ...signal.sectors,
+    ...signal.industries,
+    ...signal.themes.map((t) => t.replace(/_/g, " ")),
+  ].join(", ");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -122,32 +118,46 @@ export function FindingDetailDialog({
             )}
           </div>
 
-          {/* Sources + timestamp — Sonar cites 1..N articles per signal; all
-              are shown flush-left so the first favicon lines up with the
-              title below. Timestamp sits at the right end. */}
-          <div className="-ml-1.5 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-muted-foreground">
-            {hasSources ? (
-              signal.sourceUrls.map((url, i) => {
-                const domain = extractDomain(url);
-                const name = signal.sourceNames[i] ?? domain;
-                return (
-                  <a
-                    key={`${url}-${i}`}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-muted hover:text-foreground transition-colors"
-                  >
-                    <Favicon domain={domain} size={14} />
-                    <span>{name}</span>
-                  </a>
-                );
-              })
-            ) : null}
-            <span className="ml-auto tabular-nums px-1.5">
-              {relativeTime(signal.createdAt)}
-            </span>
-          </div>
+          {/* Sources + timestamp — Sonar cites 1..N articles per signal.
+              Favicons render as stacked avatars with tooltip per source. */}
+          {hasSources && (
+            <div className="flex items-center gap-2">
+              <div className="flex -space-x-2">
+                {signal.sourceUrls.map((url, i) => {
+                  const domain = extractDomain(url);
+                  const name = signal.sourceNames[i] ?? domain;
+                  return (
+                    <Tooltip key={`${url}-${i}`}>
+                      <TooltipTrigger
+                        render={
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={name}
+                          />
+                        }
+                      >
+                        <Avatar size="sm" className="ring-2 ring-background">
+                          <AvatarImage
+                            src={`https://www.google.com/s2/favicons?sz=32&domain=${domain}`}
+                            alt={name}
+                          />
+                          <AvatarFallback>
+                            {name.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">{name}</TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+              <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                {relativeTime(signal.createdAt)}
+              </span>
+            </div>
+          )}
 
           <DialogHeader>
             <DialogTitle>{signal.headline}</DialogTitle>
@@ -169,25 +179,6 @@ export function FindingDetailDialog({
             </div>
           )}
 
-          {/* Universe tags — outline badges, icon + value, no row labels */}
-          {hasUniverseTags && (
-            <div className="flex flex-wrap gap-1">
-              {signal.sectors.map((v) => (
-                <UniverseBadge key={`sec-${v}`} icon={Layers} label={v} />
-              ))}
-              {signal.industries.map((v) => (
-                <UniverseBadge key={`ind-${v}`} icon={Factory} label={v} />
-              ))}
-              {signal.themes.map((v) => (
-                <UniverseBadge
-                  key={`thm-${v}`}
-                  icon={Sparkles}
-                  label={humanizeTheme(v)}
-                />
-              ))}
-            </div>
-          )}
-
           {/* Routing — ButtonGroup per analyst */}
           {signal.routes && signal.routes.length > 0 && (
             <div className="border-t pt-3">
@@ -204,33 +195,21 @@ export function FindingDetailDialog({
                     analystName={r.analyst.name}
                     code={r.routeReasonCode}
                     matched={r.matchedUniverse}
-                    relevanceScore={r.relevanceScore}
                   />
                 ))}
               </div>
             </div>
           )}
+
+          {/* Tags — very bottom, comma-separated, uppercase mono xs muted */}
+          {tagLine && (
+            <p className="text-xs font-mono uppercase text-muted-foreground pt-1">
+              {tagLine}
+            </p>
+          )}
         </TooltipProvider>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ── Universe badge ──────────────────────────────────────────────────────────
-// Outline variant, muted icon + label. Reads as metadata.
-
-function UniverseBadge({
-  icon: Icon,
-  label,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-}) {
-  return (
-    <Badge variant="outline" className="text-muted-foreground font-normal">
-      <Icon className="h-3 w-3" />
-      <span>{label}</span>
-    </Badge>
   );
 }
 
@@ -240,12 +219,10 @@ function RouteGroup({
   analystName,
   code,
   matched,
-  relevanceScore,
 }: {
   analystName: string;
   code: RouteReasonCode | null;
   matched: MatchedUniverse | null;
-  relevanceScore: number;
 }) {
   const categoryLabel = code ? ROUTE_REASON_LABELS[code] : "Legacy";
   const matchedValues = extractMatchedValues(matched);
@@ -259,29 +236,23 @@ function RouteGroup({
               {analystName}
             </Badge>
             <ButtonGroupSeparator />
-            <Badge
-              variant="secondary"
-              className="rounded-l-none text-muted-foreground font-normal"
-            >
+            <Badge variant="secondary" className="rounded-l-none font-normal">
               {categoryLabel}
             </Badge>
           </ButtonGroup>
         }
       />
-      <TooltipContent side="bottom" className="max-w-xs text-xs space-y-1.5">
-        <p className="leading-relaxed">
-          {code
-            ? ROUTE_REASON_TOOLTIPS[code]
-            : "Routed before reason codes were tracked."}
-        </p>
-        {matchedValues.length > 0 && (
-          <p className="text-muted-foreground">
-            Matched: {matchedValues.join(", ")}
+      <TooltipContent side="bottom" className="max-w-xs">
+        <div className="flex flex-col gap-1.5 text-xs">
+          <p className="leading-relaxed">
+            {code
+              ? ROUTE_REASON_TOOLTIPS[code]
+              : "Routed before reason codes were tracked."}
           </p>
-        )}
-        <p className="text-muted-foreground tabular-nums">
-          Relevance {relevanceScore}
-        </p>
+          {matchedValues.length > 0 && (
+            <p className="opacity-70">Matched: {matchedValues.join(", ")}</p>
+          )}
+        </div>
       </TooltipContent>
     </Tooltip>
   );
@@ -331,18 +302,8 @@ function extractMatchedValues(m: MatchedUniverse | null): string[] {
   const out: string[] = [];
   if (m.sectors?.length) out.push(...m.sectors);
   if (m.industries?.length) out.push(...m.industries);
-  if (m.themes?.length) out.push(...m.themes.map(humanizeTheme));
+  if (m.themes?.length) out.push(...m.themes.map((t) => t.replace(/_/g, " ")));
   if (m.inWatchlist) out.push("watchlist hit");
   if (m.inPositions) out.push("open position");
   return out;
-}
-
-/**
- * Themes are stored canonically as UPPERCASE_SNAKE_CASE. Map known themes to
- * their display labels, otherwise sentence-case the tokens.
- */
-function humanizeTheme(raw: string): string {
-  if (THEME_LABELS[raw]) return THEME_LABELS[raw];
-  const words = raw.toLowerCase().replace(/_/g, " ").trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
 }
