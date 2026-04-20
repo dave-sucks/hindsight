@@ -113,6 +113,41 @@ describe("normalizeIndustry", () => {
     expect(normalizeIndustry("EV OEMs")).toBe("Automobiles");
   });
 
+  it("maps Sonar aliases seeded from prod backfill", () => {
+    // Sonar-style SCREAMING_SNAKE labels pulled from the prod unmapped report.
+    expect(normalizeIndustry("Aerospace_Defense")).toBe("Aerospace & Defense");
+    expect(normalizeIndustry("Defense_Contractors")).toBe("Aerospace & Defense");
+    expect(normalizeIndustry("AI_Hardware")).toBe("Semiconductors");
+    expect(normalizeIndustry("AI_Accelerators")).toBe("Semiconductors");
+    expect(normalizeIndustry("Memory_Chips")).toBe("Semiconductors");
+    expect(normalizeIndustry("Foundry")).toBe("Semiconductors");
+    expect(normalizeIndustry("AI_Software")).toBe("Software");
+    expect(normalizeIndustry("Cybersecurity")).toBe("Software");
+    expect(normalizeIndustry("Ecommerce")).toBe("Internet & Direct Marketing Retail");
+    expect(normalizeIndustry("Gold Mining")).toBe("Gold");
+    expect(normalizeIndustry("Precious Metals")).toBe("Metals & Mining");
+    expect(normalizeIndustry("Rare_Earths")).toBe("Metals & Mining");
+    expect(normalizeIndustry("Solar")).toBe("Independent Power Producers & Energy Traders");
+    expect(normalizeIndustry("Nuclear_Energy")).toBe("Independent Power Producers & Energy Traders");
+    expect(normalizeIndustry("EV_Batteries")).toBe("Electrical Equipment");
+    expect(normalizeIndustry("Robotics")).toBe("Machinery");
+    expect(normalizeIndustry("Satellite")).toBe("Communications Equipment");
+    expect(normalizeIndustry("Networking")).toBe("Communications Equipment");
+    expect(normalizeIndustry("Autonomous_Vehicles")).toBe("Automobiles");
+    expect(normalizeIndustry("Medical_Devices")).toBe("Health Care Equipment & Supplies");
+    expect(normalizeIndustry("Genomics")).toBe("Biotechnology");
+    expect(normalizeIndustry("Mortgage REITs")).toBe("Mortgage Real Estate Investment Trusts");
+  });
+
+  it("keeps theme-shaped strings unmapped (they belong in themes, not industries)", () => {
+    // Tightened Sonar prompt tells the model to avoid these, but defensively
+    // we also return null so they don't poison the industries column.
+    expect(normalizeIndustry("AI_Infrastructure")).toBeNull();
+    expect(normalizeIndustry("Quantum_Computing")).toBeNull();
+    expect(normalizeIndustry("Data_Centers")).toBeNull();
+    expect(normalizeIndustry("AI_LLM")).toBeNull();
+  });
+
   it("is case-insensitive", () => {
     expect(normalizeIndustry("SEMICONDUCTORS")).toBe("Semiconductors");
     expect(normalizeIndustry("semiconductors")).toBe("Semiconductors");

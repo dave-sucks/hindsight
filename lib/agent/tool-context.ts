@@ -15,6 +15,13 @@ export interface ToolContext {
   analystId?: string;
   alpacaCreds?: AlpacaCredentials;
   watchlist?: string[];
+  /**
+   * Tickers currently held by this analyst (status=OPEN). Propagated so tools
+   * like get_stock_data can short-circuit the fence check — held positions
+   * should always be in-scope for analysis, no matter what the sector fence
+   * says about them.
+   */
+  positionTickers?: string[];
   exclusionList?: string[];
   sectors?: string[];
   // ── Universe (B1) ──────────────────────────────────────────────────────

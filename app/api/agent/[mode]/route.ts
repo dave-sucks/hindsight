@@ -218,11 +218,31 @@ export async function POST(
 
     // ── Build tools ─────────────────────────────────────────────────────────
 
+    // Open positions attributed to this analyst — fed to get_stock_data so
+    // the universe check short-circuits to in-scope for held tickers. Without
+    // this, a ticker held by an analyst whose sector fence doesn't exactly
+    // match Finnhub's reported sector gets flagged "outside universe" and
+    // quietly dropped from analysis.
+    const positionTickers = resolvedAnalystId
+      ? (
+          await prisma.position.findMany({
+            where: {
+              userId: user.id,
+              analystId: resolvedAnalystId,
+              status: "OPEN",
+            },
+            select: { symbol: true },
+            distinct: ["symbol"],
+          })
+        ).map((p) => p.symbol)
+      : [];
+
     const allTools = createResearchTools({
       runId: runId || agentMode,
       userId: user.id,
       analystId: resolvedAnalystId,
       watchlist: (agentConfig.watchlist as string[]) ?? [],
+      positionTickers,
       exclusionList: (agentConfig.exclusionList as string[]) ?? [],
       sectors: (agentConfig.sectors as string[]) ?? [],
       // ── Universe (B1) ─────────────────────────────────────────────
