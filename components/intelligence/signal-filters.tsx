@@ -133,11 +133,16 @@ export function SignalFilters({
 }
 
 // ── Filter trigger ──────────────────────────────────────────────────────────
+// Returns a <Button> element (NOT a component) so base-ui's PopoverTrigger
+// `render` prop merges click handlers, aria-expanded, and ref directly onto
+// the Button. Wrapping in a component swallows those props — the trigger
+// stops being clickable.
+//
 // Inactive: default outline, muted foreground. Active (count > 0):
 // foreground-color border + foreground text, count in a small primary badge
 // instead of the chevron.
 
-function FilterTrigger({ label, count }: { label: string; count: number }) {
+function renderFilterTrigger(label: string, count: number) {
   const isActive = count > 0;
   return (
     <Button
@@ -187,7 +192,7 @@ function StaticMultiFilter({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<FilterTrigger label={label} count={values.length} />}
+        render={renderFilterTrigger(label, values.length)}
       />
       <PopoverContent align="start" className="p-0">
         <Command>
@@ -235,7 +240,7 @@ function AnalystFilter({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<FilterTrigger label="Analyst" count={values.length} />}
+        render={renderFilterTrigger("Analyst", values.length)}
       />
       <PopoverContent align="start" className="p-0">
         <Command>
@@ -285,7 +290,7 @@ function RouteFilter({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<FilterTrigger label="Route" count={value ? 1 : 0} />}
+        render={renderFilterTrigger("Route", value ? 1 : 0)}
       />
       <PopoverContent align="start" className="p-0">
         <Command>
@@ -376,7 +381,7 @@ function TickerFilter({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<FilterTrigger label="Ticker" count={values.length} />}
+        render={renderFilterTrigger("Ticker", values.length)}
       />
       <PopoverContent align="start" className="p-0">
         <Command shouldFilter={false}>
