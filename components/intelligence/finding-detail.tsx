@@ -18,6 +18,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
+import { Favicon } from "@/components/intelligence/signal-feed";
 import { StockLogo } from "@/components/StockLogo";
 import { TickerChip } from "@/components/chat/TickerChip";
 import {
@@ -119,40 +120,60 @@ export function FindingDetailDialog({
           </div>
 
           {/* Sources + timestamp — Sonar cites 1..N articles per signal.
-              Favicons render as stacked avatars with tooltip per source. */}
+              Single source renders as a favicon + name link; multiple
+              sources render as stacked avatars with a tooltip per one. */}
           {hasSources && (
             <div className="flex items-center gap-2">
-              <div className="flex -space-x-2">
-                {signal.sourceUrls.map((url, i) => {
+              {signal.sourceUrls.length > 1 ? (
+                <div className="flex -space-x-2">
+                  {signal.sourceUrls.map((url, i) => {
+                    const domain = extractDomain(url);
+                    const name = signal.sourceNames[i] ?? domain;
+                    return (
+                      <Tooltip key={`${url}-${i}`}>
+                        <TooltipTrigger
+                          render={
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={name}
+                            />
+                          }
+                        >
+                          <Avatar size="sm" className="ring-2 ring-background">
+                            <AvatarImage
+                              src={`https://www.google.com/s2/favicons?sz=32&domain=${domain}`}
+                              alt={name}
+                            />
+                            <AvatarFallback>
+                              {name.slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">{name}</TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              ) : (
+                (() => {
+                  const url = signal.sourceUrls[0];
                   const domain = extractDomain(url);
-                  const name = signal.sourceNames[i] ?? domain;
+                  const name = signal.sourceNames[0] ?? domain;
                   return (
-                    <Tooltip key={`${url}-${i}`}>
-                      <TooltipTrigger
-                        render={
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label={name}
-                          />
-                        }
-                      >
-                        <Avatar size="sm" className="ring-2 ring-background">
-                          <AvatarImage
-                            src={`https://www.google.com/s2/favicons?sz=32&domain=${domain}`}
-                            alt={name}
-                          />
-                          <AvatarFallback>
-                            {name.slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">{name}</TooltipContent>
-                    </Tooltip>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="-ml-1.5 inline-flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    >
+                      <Favicon domain={domain} size={14} />
+                      <span>{name}</span>
+                    </a>
                   );
-                })}
-              </div>
+                })()
+              )}
               <span className="ml-auto text-xs text-muted-foreground tabular-nums">
                 {relativeTime(signal.createdAt)}
               </span>
@@ -236,7 +257,10 @@ function RouteGroup({
               {analystName}
             </Badge>
             <ButtonGroupSeparator />
-            <Badge variant="secondary" className="rounded-l-none font-normal">
+            <Badge
+              variant="secondary"
+              className="rounded-l-none text-muted-foreground font-normal"
+            >
               {categoryLabel}
             </Badge>
           </ButtonGroup>

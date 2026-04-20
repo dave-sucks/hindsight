@@ -14,7 +14,6 @@ import {
 } from "@/components/intelligence/signal-filters";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { Search } from "lucide-react";
-import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
 import type { Signal } from "./types";
 import { relativeTime } from "./types";
@@ -150,9 +149,9 @@ export const SignalRow = memo(function SignalRow({
   signal: Signal;
   onSelect: (signal: Signal) => void;
 }) {
+  const sourceCount = signal.sourceUrls.length;
   const primarySource = signal.sourceNames[0];
   const primaryDomain = extractDomainFromUrls(signal.sourceUrls);
-  const sentimentDir = signal.sentiment === "BULLISH" ? "up" : signal.sentiment === "BEARISH" ? "down" : null;
 
   return (
     <Card
@@ -160,43 +159,42 @@ export const SignalRow = memo(function SignalRow({
       onClick={() => onSelect(signal)}
     >
       <div className="space-y-2">
-        {/* Row 1: headline left, ticker + arrow right */}
-        <div className="flex items-start gap-3">
-          <p className="text-sm font-medium leading-tight flex-1 min-w-0">
-            {signal.headline}
-          </p>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {signal.tickers.length > 0 && (
-              <span className="text-xs font-mono font-medium text-muted-foreground">
-                {signal.tickers.length === 1
-                  ? signal.tickers[0]
-                  : signal.tickers.slice(0, 2).join(", ")
-                }
-                {signal.tickers.length > 2 && ` +${signal.tickers.length - 2}`}
-              </span>
-            )}
-            {sentimentDir && (
-              <PnlArrow direction={sentimentDir} className="h-4 w-4" />
-            )}
-          </div>
-        </div>
+        {/* Row 1: headline */}
+        <p className="text-sm font-medium leading-tight">
+          {signal.headline}
+        </p>
 
         {/* Row 2: summary — text-sm for readability */}
         <p className="text-sm text-muted-foreground line-clamp-2">
           {signal.summary}
         </p>
 
-        {/* Row 3: source logo + name, then timestamp */}
-        <div className="flex items-center gap-1.5">
-          {primaryDomain && (
-            <Favicon domain={primaryDomain} />
+        {/* Row 3: sources + timestamp inline. Single source renders favicon +
+            name; multi renders stacked favicon avatars. Timestamp sits right
+            next to them. */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {sourceCount > 1 ? (
+            <div className="flex -space-x-2">
+              {signal.sourceUrls.map((url, i) => {
+                const domain = extractDomainFromUrls([url]);
+                return (
+                  <span
+                    key={`${url}-${i}`}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-background ring-2 ring-background"
+                  >
+                    {domain && <Favicon domain={domain} size={16} />}
+                  </span>
+                );
+              })}
+            </div>
+          ) : (
+            <>
+              {primaryDomain && <Favicon domain={primaryDomain} />}
+              {primarySource && <span>{primarySource}</span>}
+            </>
           )}
-          {primarySource && (
-            <span className="text-xs text-muted-foreground">{primarySource}</span>
-          )}
-          <span className="text-xs text-muted-foreground tabular-nums ml-auto shrink-0">
-            {relativeTime(signal.createdAt)}
-          </span>
+          <span>·</span>
+          <span className="tabular-nums">{relativeTime(signal.createdAt)}</span>
         </div>
       </div>
     </Card>
