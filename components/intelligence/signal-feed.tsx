@@ -156,17 +156,8 @@ export function SignalFeed({
           }}
         />
 
-        {/* Search + shared filter row */}
-        <div className="flex flex-col gap-3">
-          <div className="relative sm:max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search signals..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
+        {/* Search + shared filter row — single line on desktop, wraps on mobile */}
+        <div className="flex flex-wrap items-center gap-2">
           <SignalFilters
             value={filters}
             onChange={setFilters}
@@ -175,6 +166,15 @@ export function SignalFeed({
             showRoute={showRouteFilter}
             tickerSuggestions={tickerSuggestions}
           />
+          <div className="relative w-full sm:ml-auto sm:w-56">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search signals..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
         </div>
 
         {/* Theme / orphan chips — driven by coverage strip only */}

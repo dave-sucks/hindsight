@@ -11,11 +11,6 @@ import {
   hasActiveFilters,
   type SignalFiltersValue,
 } from "@/components/intelligence/signal-filters";
-import {
-  RoutingStatsStrip,
-  ROUTE_GROUP_CODES,
-  type RouteGroup,
-} from "@/components/analysts/RoutingStatsStrip";
 import type { Signal } from "@/components/intelligence/types";
 
 interface AnalystFindingsTabProps {
@@ -26,10 +21,9 @@ interface AnalystFindingsTabProps {
 
 // ── AnalystFindingsTab ──────────────────────────────────────────────────────
 // Same signal card + shared filter row as /intelligence — analyst scoping
-// happens at the API level (analystId=). The routing strip (and its
-// group-chip quick filter) stays on top; SignalFilters sits below. Analyst
-// + Route dimensions are hidden here since we're already scoped to one
-// analyst and the strip handles route-group selection.
+// happens at the API level (analystId=). Analyst + Route dimensions are
+// hidden here since we're already scoped to one analyst. Filtering is
+// entirely client-side over the loaded window.
 
 export function AnalystFindingsTab({
   analystId,
@@ -38,21 +32,16 @@ export function AnalystFindingsTab({
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Signal | null>(null);
-  const [activeGroup, setActiveGroup] = useState<RouteGroup | null>(null);
   const [filters, setFilters] = useState<SignalFiltersValue>(emptySignalFilters());
 
   useEffect(() => {
     setLoading(true);
     const qs = new URLSearchParams({ analystId, limit: "100" });
-    if (activeGroup) {
-      const codes = ROUTE_GROUP_CODES[activeGroup];
-      if (codes.length > 0) qs.set("routeReasonCode", codes.join(","));
-    }
     fetch(`/api/intelligence/signals?${qs.toString()}`)
       .then((r) => (r.ok ? r.json() : []))
       .then(setSignals)
       .finally(() => setLoading(false));
-  }, [analystId, activeGroup]);
+  }, [analystId]);
 
   const handleSelect = useCallback((signal: Signal) => {
     setSelected(signal);
@@ -72,18 +61,13 @@ export function AnalystFindingsTab({
   return (
     <>
       <div className="space-y-4">
-        <RoutingStatsStrip
-          analystId={analystId}
-          days={30}
-          activeGroup={activeGroup}
-          onGroupChange={setActiveGroup}
-        />
-
-        <SignalFilters
-          value={filters}
-          onChange={setFilters}
-          tickerSuggestions={tickerSuggestions}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <SignalFilters
+            value={filters}
+            onChange={setFilters}
+            tickerSuggestions={tickerSuggestions}
+          />
+        </div>
 
         {loading ? (
           <div className="space-y-2">
@@ -92,7 +76,7 @@ export function AnalystFindingsTab({
             ))}
           </div>
         ) : noResults ? (
-          activeGroup || hasActiveFilters(filters) ? (
+          hasActiveFilters(filters) ? (
             <p className="text-sm text-muted-foreground py-8 text-center">
               No findings match your filters.
             </p>

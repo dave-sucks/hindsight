@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ChevronsUpDown, Loader2, X } from "lucide-react";
+import { ChevronsUpDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,6 +21,7 @@ import { StockLogo } from "@/components/StockLogo";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { useDebounce } from "@/hooks/useDebounce";
 import { GICS_SECTORS, GICS_INDUSTRIES } from "@/lib/universe/gics";
+import { cn } from "@/lib/utils";
 import { ROUTE_REASON_LABELS, type RouteReasonCode } from "./types";
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -58,17 +59,6 @@ export function hasActiveFilters(v: SignalFiltersValue): boolean {
   );
 }
 
-/** Serialize to URLSearchParams-ready object for /api/intelligence/signals. */
-export function toSignalQuery(v: SignalFiltersValue): Record<string, string> {
-  const q: Record<string, string> = {};
-  if (v.tickers.length) q.ticker = v.tickers.join(",");
-  if (v.sectors.length) q.sector = v.sectors.join(",");
-  if (v.industries.length) q.industry = v.industries.join(",");
-  if (v.analystIds.length) q.analystId = v.analystIds.join(",");
-  if (v.routeReasonCode) q.routeReasonCode = v.routeReasonCode;
-  return q;
-}
-
 interface SignalFiltersProps {
   value: SignalFiltersValue;
   onChange: (next: SignalFiltersValue) => void;
@@ -78,6 +68,10 @@ interface SignalFiltersProps {
   tickerSuggestions?: string[];
 }
 
+/**
+ * Renders the filter triggers as inline elements — no outer wrapper. The
+ * parent places them in a flex row together with the search input.
+ */
 export function SignalFilters({
   value,
   onChange,
@@ -94,142 +88,81 @@ export function SignalFilters({
   const active = hasActiveFilters(value);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <TickerFilter
-          values={value.tickers}
-          suggestions={tickerSuggestions}
-          onChange={(v) => patch("tickers", v)}
+    <>
+      <TickerFilter
+        values={value.tickers}
+        suggestions={tickerSuggestions}
+        onChange={(v) => patch("tickers", v)}
+      />
+      <StaticMultiFilter
+        label="Sector"
+        values={value.sectors}
+        options={GICS_SECTORS as unknown as string[]}
+        onChange={(v) => patch("sectors", v)}
+      />
+      <StaticMultiFilter
+        label="Industry"
+        values={value.industries}
+        options={GICS_INDUSTRIES as unknown as string[]}
+        onChange={(v) => patch("industries", v)}
+      />
+      {showAnalyst && (
+        <AnalystFilter
+          values={value.analystIds}
+          options={analystOptions}
+          onChange={(v) => patch("analystIds", v)}
         />
-        <StaticMultiFilter
-          label="Sector"
-          values={value.sectors}
-          options={GICS_SECTORS as unknown as string[]}
-          onChange={(v) => patch("sectors", v)}
-        />
-        <StaticMultiFilter
-          label="Industry"
-          values={value.industries}
-          options={GICS_INDUSTRIES as unknown as string[]}
-          onChange={(v) => patch("industries", v)}
-        />
-        {showAnalyst && (
-          <AnalystFilter
-            values={value.analystIds}
-            options={analystOptions}
-            onChange={(v) => patch("analystIds", v)}
-          />
-        )}
-        {showRoute && (
-          <RouteFilter
-            value={value.routeReasonCode}
-            onChange={(v) => patch("routeReasonCode", v)}
-          />
-        )}
-        {active && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onChange(emptySignalFilters())}
-          >
-            Clear
-          </Button>
-        )}
-      </div>
-
-      {active && (
-        <div className="flex flex-wrap gap-1.5">
-          {value.tickers.map((t) => (
-            <ChipBadge
-              key={`t-${t}`}
-              label={t}
-              onClear={() =>
-                patch(
-                  "tickers",
-                  value.tickers.filter((x) => x !== t),
-                )
-              }
-            />
-          ))}
-          {value.sectors.map((s) => (
-            <ChipBadge
-              key={`s-${s}`}
-              label={s}
-              onClear={() =>
-                patch(
-                  "sectors",
-                  value.sectors.filter((x) => x !== s),
-                )
-              }
-            />
-          ))}
-          {value.industries.map((i) => (
-            <ChipBadge
-              key={`i-${i}`}
-              label={i}
-              onClear={() =>
-                patch(
-                  "industries",
-                  value.industries.filter((x) => x !== i),
-                )
-              }
-            />
-          ))}
-          {value.analystIds.map((id) => {
-            const a = analystOptions.find((o) => o.id === id);
-            if (!a) return null;
-            return (
-              <ChipBadge
-                key={`a-${id}`}
-                label={a.name}
-                onClear={() =>
-                  patch(
-                    "analystIds",
-                    value.analystIds.filter((x) => x !== id),
-                  )
-                }
-              />
-            );
-          })}
-          {value.routeReasonCode && (
-            <ChipBadge
-              label={ROUTE_REASON_LABELS[value.routeReasonCode]}
-              onClear={() => patch("routeReasonCode", null)}
-            />
-          )}
-        </div>
       )}
-    </div>
+      {showRoute && (
+        <RouteFilter
+          value={value.routeReasonCode}
+          onChange={(v) => patch("routeReasonCode", v)}
+        />
+      )}
+      {active && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onChange(emptySignalFilters())}
+        >
+          Clear
+        </Button>
+      )}
+    </>
   );
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Filter trigger ──────────────────────────────────────────────────────────
+// Inactive: default outline, muted foreground. Active (count > 0):
+// foreground-color border + foreground text, count in a small primary badge
+// instead of the chevron.
 
-function ChipBadge({
-  label,
-  onClear,
-}: {
-  label: string;
-  onClear: () => void;
-}) {
+function FilterTrigger({ label, count }: { label: string; count: number }) {
+  const isActive = count > 0;
   return (
-    <Badge variant="secondary">
-      <span>{label}</span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={onClear}
-        aria-label={`Remove ${label}`}
-      >
-        <X />
-      </Button>
-    </Badge>
+    <Button
+      variant="outline"
+      size="sm"
+      className={cn(
+        "font-normal",
+        isActive
+          ? "border-foreground text-foreground"
+          : "text-muted-foreground",
+      )}
+    >
+      {label}
+      {isActive ? (
+        <Badge
+          variant="default"
+          className="h-4 min-w-4 px-1 tabular-nums"
+        >
+          {count}
+        </Badge>
+      ) : (
+        <ChevronsUpDown />
+      )}
+    </Button>
   );
-}
-
-function triggerLabel(label: string, count: number): string {
-  return count > 0 ? `${label} · ${count}` : label;
 }
 
 // ── Static multi combobox (Sector, Industry) ────────────────────────────────
@@ -254,12 +187,7 @@ function StaticMultiFilter({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={
-          <Button variant="outline" size="sm">
-            {triggerLabel(label, values.length)}
-            <ChevronsUpDown />
-          </Button>
-        }
+        render={<FilterTrigger label={label} count={values.length} />}
       />
       <PopoverContent align="start" className="p-0">
         <Command>
@@ -271,13 +199,9 @@ function StaticMultiFilter({
                 <CommandItem
                   key={opt}
                   value={opt}
+                  data-checked={values.includes(opt) ? "true" : undefined}
                   onSelect={() => toggle(opt)}
                 >
-                  <Check
-                    className={
-                      values.includes(opt) ? "opacity-100" : "opacity-0"
-                    }
-                  />
                   {opt}
                 </CommandItem>
               ))}
@@ -311,12 +235,7 @@ function AnalystFilter({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={
-          <Button variant="outline" size="sm">
-            {triggerLabel("Analyst", values.length)}
-            <ChevronsUpDown />
-          </Button>
-        }
+        render={<FilterTrigger label="Analyst" count={values.length} />}
       />
       <PopoverContent align="start" className="p-0">
         <Command>
@@ -328,13 +247,9 @@ function AnalystFilter({
                 <CommandItem
                   key={o.id}
                   value={o.name}
+                  data-checked={values.includes(o.id) ? "true" : undefined}
                   onSelect={() => toggle(o.id)}
                 >
-                  <Check
-                    className={
-                      values.includes(o.id) ? "opacity-100" : "opacity-0"
-                    }
-                  />
                   {o.name}
                 </CommandItem>
               ))}
@@ -370,12 +285,7 @@ function RouteFilter({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={
-          <Button variant="outline" size="sm">
-            {value ? `Route · ${ROUTE_REASON_LABELS[value]}` : "Route"}
-            <ChevronsUpDown />
-          </Button>
-        }
+        render={<FilterTrigger label="Route" count={value ? 1 : 0} />}
       />
       <PopoverContent align="start" className="p-0">
         <Command>
@@ -384,28 +294,24 @@ function RouteFilter({
             <CommandGroup>
               <CommandItem
                 value="_all"
+                data-checked={value === null ? "true" : undefined}
                 onSelect={() => {
                   onChange(null);
                   setOpen(false);
                 }}
               >
-                <Check
-                  className={value === null ? "opacity-100" : "opacity-0"}
-                />
                 All routes
               </CommandItem>
               {ROUTE_REASON_CODES.map((code) => (
                 <CommandItem
                   key={code}
                   value={code}
+                  data-checked={value === code ? "true" : undefined}
                   onSelect={() => {
                     onChange(code);
                     setOpen(false);
                   }}
                 >
-                  <Check
-                    className={value === code ? "opacity-100" : "opacity-0"}
-                  />
                   {ROUTE_REASON_LABELS[code]}
                 </CommandItem>
               ))}
@@ -470,12 +376,7 @@ function TickerFilter({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={
-          <Button variant="outline" size="sm">
-            {triggerLabel("Ticker", values.length)}
-            <ChevronsUpDown />
-          </Button>
-        }
+        render={<FilterTrigger label="Ticker" count={values.length} />}
       />
       <PopoverContent align="start" className="p-0">
         <Command shouldFilter={false}>
@@ -509,9 +410,9 @@ function TickerFilter({
                   <CommandItem
                     key={`sel-${sym}`}
                     value={sym}
+                    data-checked="true"
                     onSelect={() => toggle(sym)}
                   >
-                    <Check className="opacity-100" />
                     <StockLogo ticker={sym} size="sm" />
                     <span className="font-medium">{sym}</span>
                   </CommandItem>
@@ -527,7 +428,6 @@ function TickerFilter({
                     value={sym}
                     onSelect={() => toggle(sym)}
                   >
-                    <Check className="opacity-0" />
                     <StockLogo ticker={sym} size="sm" />
                     <span className="font-medium">{sym}</span>
                   </CommandItem>
@@ -541,15 +441,9 @@ function TickerFilter({
                   <CommandItem
                     key={r.symbol}
                     value={r.symbol}
+                    data-checked={values.includes(r.symbol) ? "true" : undefined}
                     onSelect={() => toggle(r.symbol)}
                   >
-                    <Check
-                      className={
-                        values.includes(r.symbol)
-                          ? "opacity-100"
-                          : "opacity-0"
-                      }
-                    />
                     <StockLogo ticker={r.symbol} size="sm" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">
