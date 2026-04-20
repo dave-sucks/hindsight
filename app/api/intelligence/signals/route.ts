@@ -15,48 +15,65 @@ export async function GET(req: NextRequest) {
   })
   const analystIds = userAnalysts.map((a) => a.id)
 
-  const ticker = req.nextUrl.searchParams.get("ticker")
   const type = req.nextUrl.searchParams.get("type")
   const urgency = req.nextUrl.searchParams.get("urgency")
   const batchId = req.nextUrl.searchParams.get("batchId")
-  const analystId = req.nextUrl.searchParams.get("analystId")
-  const sector = req.nextUrl.searchParams.get("sector")
-  const industry = req.nextUrl.searchParams.get("industry")
   const theme = req.nextUrl.searchParams.get("theme")
   const routeReasonCode = req.nextUrl.searchParams.get("routeReasonCode")
   const orphans = req.nextUrl.searchParams.get("orphans") === "1"
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50")
 
-  // routeReasonCode accepts a single code or a comma-separated list. The
-  // analyst Routing strip collapses POSITION + WATCHLIST + DIRECT_TICKER into
-  // a single "Holdings" chip and sends all three codes in one request.
-  const parseRouteCodes = (raw: string | null): string[] | null => {
+  // ticker / sector / industry / analystId accept a single value or a
+  // comma-separated list. The shared SignalFilters always sends CSV; a single
+  // value is still a CSV of length 1. We convert to an array-has/in query.
+  const parseCsv = (raw: string | null): string[] | null => {
     if (!raw) return null;
-    const codes = raw.split(",").map((s) => s.trim()).filter(Boolean);
-    return codes.length > 0 ? codes : null;
+    const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : null;
   };
-  const routeCodes = parseRouteCodes(routeReasonCode);
+  const tickers = parseCsv(req.nextUrl.searchParams.get("ticker"));
+  const sectors = parseCsv(req.nextUrl.searchParams.get("sector"));
+  const industries = parseCsv(req.nextUrl.searchParams.get("industry"));
+  const filterAnalystIds = parseCsv(req.nextUrl.searchParams.get("analystId"));
+  const routeCodes = parseCsv(routeReasonCode);
+
   const routeReasonWhere = routeCodes
     ? routeCodes.length === 1
       ? { routeReasonCode: routeCodes[0] }
       : { routeReasonCode: { in: routeCodes } }
     : {};
 
-  // Build the analyst-route constraint once. When analystId is set, scope
-  // to just that analyst (and optionally that route reason); otherwise scope
-  // to any of this user's analysts.
-  const analystRouteWhere: Record<string, unknown> = analystId
-    ? { analystId, ...routeReasonWhere }
-    : { analystId: { in: analystIds }, ...routeReasonWhere };
+  // Build the analyst-route constraint once. When one or more analystIds are
+  // provided, scope to just those (still intersected with this user's set);
+  // otherwise scope to any of this user's analysts.
+  const scopedAnalystIds = filterAnalystIds
+    ? filterAnalystIds.filter((id) => analystIds.includes(id))
+    : analystIds;
+  const analystRouteWhere: Record<string, unknown> =
+    scopedAnalystIds.length === 1
+      ? { analystId: scopedAnalystIds[0], ...routeReasonWhere }
+      : { analystId: { in: scopedAnalystIds }, ...routeReasonWhere };
 
   const signals = await prisma.signal.findMany({
     where: {
-      ...(ticker ? { tickers: { has: ticker } } : {}),
+      ...(tickers
+        ? tickers.length === 1
+          ? { tickers: { has: tickers[0] } }
+          : { tickers: { hasSome: tickers } }
+        : {}),
       ...(type ? { type } : {}),
       ...(urgency ? { urgency } : {}),
       ...(batchId ? { batchId } : {}),
-      ...(sector ? { sectors: { has: sector } } : {}),
-      ...(industry ? { industries: { has: industry } } : {}),
+      ...(sectors
+        ? sectors.length === 1
+          ? { sectors: { has: sectors[0] } }
+          : { sectors: { hasSome: sectors } }
+        : {}),
+      ...(industries
+        ? industries.length === 1
+          ? { industries: { has: industries[0] } }
+          : { industries: { hasSome: industries } }
+        : {}),
       ...(theme ? { themes: { has: theme } } : {}),
       // Orphans: no sector tag AND no theme tag. Industry alone doesn't count
       // as "routable" — the router scores industry as a single-dim SECTOR

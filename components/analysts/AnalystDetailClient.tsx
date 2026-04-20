@@ -498,7 +498,15 @@ export default function AnalystDetailClient({
             </TabsContent>
             <TabsContent value={2}>
               <div className="w-full mx-auto px-4 py-6">
-                <AnalystFindingsTab analystId={config.id} />
+                <AnalystFindingsTab
+                  analystId={config.id}
+                  tickerSuggestions={Array.from(
+                    new Set([
+                      ...openPositions.map((p) => p.symbol),
+                      ...watchlistItems.map((w) => w.symbol),
+                    ]),
+                  )}
+                />
               </div>
             </TabsContent>
           </Tabs>

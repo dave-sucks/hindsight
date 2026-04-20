@@ -1,10 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EducationEmptyState } from "@/components/domain/education-card";
 import { SignalRow } from "@/components/intelligence/signal-feed";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
+import {
+  SignalFilters,
+  emptySignalFilters,
+  hasActiveFilters,
+  type SignalFiltersValue,
+} from "@/components/intelligence/signal-filters";
 import {
   RoutingStatsStrip,
   ROUTE_GROUP_CODES,
@@ -14,23 +20,30 @@ import type { Signal } from "@/components/intelligence/types";
 
 interface AnalystFindingsTabProps {
   analystId: string;
+  /** Tickers to pre-suggest in the ticker combobox — typically holdings + watchlist. */
+  tickerSuggestions?: string[];
 }
 
 // ── AnalystFindingsTab ──────────────────────────────────────────────────────
-// Same signal card as /intelligence — SignalRow shared from signal-feed. The
-// analyst-specific bits (routing stats + reason-group filter) live in the
-// strip above the list; per-card decoration stays off so both pages look
-// identical when viewed side-by-side.
+// Same signal card + shared filter row as /intelligence — analyst scoping
+// happens at the API level (analystId=). The routing strip (and its
+// group-chip quick filter) stays on top; SignalFilters sits below. Analyst
+// + Route dimensions are hidden here since we're already scoped to one
+// analyst and the strip handles route-group selection.
 
-export function AnalystFindingsTab({ analystId }: AnalystFindingsTabProps) {
+export function AnalystFindingsTab({
+  analystId,
+  tickerSuggestions = [],
+}: AnalystFindingsTabProps) {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Signal | null>(null);
   const [activeGroup, setActiveGroup] = useState<RouteGroup | null>(null);
+  const [filters, setFilters] = useState<SignalFiltersValue>(emptySignalFilters());
 
   useEffect(() => {
     setLoading(true);
-    const qs = new URLSearchParams({ analystId, limit: "50" });
+    const qs = new URLSearchParams({ analystId, limit: "100" });
     if (activeGroup) {
       const codes = ROUTE_GROUP_CODES[activeGroup];
       if (codes.length > 0) qs.set("routeReasonCode", codes.join(","));
@@ -45,6 +58,17 @@ export function AnalystFindingsTab({ analystId }: AnalystFindingsTabProps) {
     setSelected(signal);
   }, []);
 
+  const filtered = useMemo(() => {
+    return signals.filter((s) => {
+      if (filters.tickers.length > 0 && !filters.tickers.some((t) => s.tickers.includes(t))) return false;
+      if (filters.sectors.length > 0 && !filters.sectors.some((sec) => s.sectors.includes(sec))) return false;
+      if (filters.industries.length > 0 && !filters.industries.some((ind) => s.industries.includes(ind))) return false;
+      return true;
+    });
+  }, [signals, filters]);
+
+  const noResults = !loading && filtered.length === 0;
+
   return (
     <>
       <div className="space-y-4">
@@ -55,23 +79,29 @@ export function AnalystFindingsTab({ analystId }: AnalystFindingsTabProps) {
           onGroupChange={setActiveGroup}
         />
 
+        <SignalFilters
+          value={filters}
+          onChange={setFilters}
+          tickerSuggestions={tickerSuggestions}
+        />
+
         {loading ? (
           <div className="space-y-2">
             {[1, 2, 3, 4, 5].map((i) => (
               <Skeleton key={i} className="h-24 rounded-lg" />
             ))}
           </div>
-        ) : signals.length === 0 ? (
-          activeGroup ? (
+        ) : noResults ? (
+          activeGroup || hasActiveFilters(filters) ? (
             <p className="text-sm text-muted-foreground py-8 text-center">
-              No routes in this bucket over the last 30 days.
+              No findings match your filters.
             </p>
           ) : (
             <EducationEmptyState stateKey="analyst-findings" />
           )
         ) : (
           <div className="space-y-2">
-            {signals.map((signal) => (
+            {filtered.map((signal) => (
               <SignalRow key={signal.id} signal={signal} onSelect={handleSelect} />
             ))}
           </div>

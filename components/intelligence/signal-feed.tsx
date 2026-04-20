@@ -4,25 +4,24 @@ import { useState, useMemo, useCallback, memo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
 import {
   CoverageStrip,
   type CoverageData,
 } from "@/components/intelligence/coverage-strip";
+import {
+  SignalFilters,
+  emptySignalFilters,
+  type SignalFiltersValue,
+  type AnalystOption,
+} from "@/components/intelligence/signal-filters";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { Search } from "lucide-react";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
-import type { Signal, RouteReasonCode } from "./types";
-import { relativeTime, ROUTE_REASON_LABELS } from "./types";
+import type { Signal } from "./types";
+import { relativeTime } from "./types";
 import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo } from "./icons";
 
 type Icon = React.ComponentType<{ className?: string }>;
@@ -34,44 +33,51 @@ interface SignalFeedProps {
   coverage?: CoverageData | null;
   coverageLoading?: boolean;
   coverageDays?: number;
+  /** When true, exposes the Analyst + Route multi-selects. /intelligence only. */
+  showAnalystFilter?: boolean;
+  showRouteFilter?: boolean;
+  /** Seed for the ticker combobox "Your stocks" group (analyst pages). */
+  tickerSuggestions?: string[];
 }
-
-const ROUTE_REASON_CODES: RouteReasonCode[] = [
-  "DISCOVERY",
-  "SECTOR_MATCH",
-  "INDUSTRY_MATCH",
-  "THEME_MATCH",
-  "WATCHLIST",
-  "POSITION",
-  "DIRECT_TICKER",
-  "CROSS_ANALYST",
-];
 
 export function SignalFeed({
   signals,
   coverage = null,
   coverageLoading = false,
   coverageDays = 7,
+  showAnalystFilter = true,
+  showRouteFilter = true,
+  tickerSuggestions = [],
 }: SignalFeedProps) {
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [urgencyFilter, setUrgencyFilter] = useState("");
-  const [sector, setSector] = useState<string | null>(null);
-  const [industry, setIndustry] = useState<string | null>(null);
   const [theme, setTheme] = useState<string | null>(null);
-  const [routeReason, setRouteReason] = useState<RouteReasonCode | "">("");
   const [orphanOnly, setOrphanOnly] = useState(false);
+  const [filters, setFilters] = useState<SignalFiltersValue>(emptySignalFilters());
   const [selected, setSelected] = useState<Signal | null>(null);
+
+  // Derive analyst options from signals' routes — matches exactly the analyst
+  // set that has anything routable on this page.
+  const analystOptions = useMemo<AnalystOption[]>(() => {
+    const map = new Map<string, string>();
+    for (const s of signals) {
+      for (const r of s.routes) {
+        if (r.analyst) map.set(r.analyst.id, r.analyst.name);
+      }
+    }
+    return [...map.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [signals]);
 
   const filtered = useMemo(() => {
     return signals.filter((s) => {
-      if (typeFilter && s.type !== typeFilter) return false;
-      if (urgencyFilter && s.urgency !== urgencyFilter) return false;
-      if (sector && !s.sectors.includes(sector)) return false;
-      if (industry && !s.industries.includes(industry)) return false;
+      if (filters.tickers.length > 0 && !filters.tickers.some((t) => s.tickers.includes(t))) return false;
+      if (filters.sectors.length > 0 && !filters.sectors.some((sec) => s.sectors.includes(sec))) return false;
+      if (filters.industries.length > 0 && !filters.industries.some((ind) => s.industries.includes(ind))) return false;
+      if (filters.analystIds.length > 0 && !s.routes.some((r) => filters.analystIds.includes(r.analystId))) return false;
+      if (filters.routeReasonCode && !s.routes.some((r) => r.routeReasonCode === filters.routeReasonCode)) return false;
       if (theme && !s.themes.includes(theme)) return false;
       if (orphanOnly && (s.sectors.length > 0 || s.themes.length > 0)) return false;
-      if (routeReason && !s.routes.some((r) => r.routeReasonCode === routeReason)) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -82,19 +88,48 @@ export function SignalFeed({
       }
       return true;
     });
-  }, [signals, search, typeFilter, urgencyFilter, sector, industry, theme, routeReason, orphanOnly]);
+  }, [signals, search, filters, theme, orphanOnly]);
 
   const handleSelect = useCallback((signal: Signal) => {
     setSelected(signal);
   }, []);
 
-  const signalTypes = useMemo(
-    () => [...new Set(signals.map((s) => s.type))].sort(),
-    [signals]
-  );
+  // Toggle a value in one of the filter arrays — coverage strip row clicks
+  // share state with the SignalFilters row. Clicking the same bar twice
+  // removes it from the multi-select.
+  const toggleSector = (name: string | null) => {
+    if (name === null) {
+      setFilters((f) => ({ ...f, sectors: [] }));
+      return;
+    }
+    setFilters((f) => ({
+      ...f,
+      sectors: f.sectors.includes(name)
+        ? f.sectors.filter((x) => x !== name)
+        : [...f.sectors, name],
+    }));
+    setOrphanOnly(false);
+  };
+  const toggleIndustry = (name: string | null) => {
+    if (name === null) {
+      setFilters((f) => ({ ...f, industries: [] }));
+      return;
+    }
+    setFilters((f) => ({
+      ...f,
+      industries: f.industries.includes(name)
+        ? f.industries.filter((x) => x !== name)
+        : [...f.industries, name],
+    }));
+    setOrphanOnly(false);
+  };
 
-  const hasStructuralFilter =
-    !!sector || !!industry || !!theme || !!routeReason || orphanOnly;
+  // Coverage strip highlights a single "active" value per column; we pass
+  // the first selected from each multi so the bar shows lit when something
+  // in that bucket is selected. Users toggle additional bars via the filter
+  // row or click the bar again to remove.
+  const activeCoverageSector = filters.sectors[0] ?? null;
+  const activeCoverageIndustry = filters.industries[0] ?? null;
 
   return (
     <TooltipProvider>
@@ -104,33 +139,26 @@ export function SignalFeed({
           data={coverage}
           loading={coverageLoading}
           days={coverageDays}
-          activeSector={sector}
-          activeIndustry={industry}
+          activeSector={activeCoverageSector}
+          activeIndustry={activeCoverageIndustry}
           activeTheme={theme}
           orphanOnly={orphanOnly}
-          onSectorClick={(v) => {
-            setSector(v);
-            setOrphanOnly(false);
-          }}
-          onIndustryClick={(v) => {
-            setIndustry(v);
-            setOrphanOnly(false);
-          }}
+          onSectorClick={toggleSector}
+          onIndustryClick={toggleIndustry}
           onThemeClick={(v) => {
             setTheme(v);
             setOrphanOnly(false);
           }}
           onOrphanToggle={() => {
             setOrphanOnly((v) => !v);
-            setSector(null);
-            setIndustry(null);
+            setFilters(emptySignalFilters());
             setTheme(null);
           }}
         />
 
-        {/* Filters */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative flex-1 sm:max-w-sm">
+        {/* Search + shared filter row */}
+        <div className="flex flex-col gap-3">
+          <div className="relative sm:max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search signals..."
@@ -139,82 +167,38 @@ export function SignalFeed({
               className="pl-9"
             />
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Select value={typeFilter || undefined} onValueChange={(val) => setTypeFilter(val === "_all" ? "" : (val ?? ""))}>
-              <SelectTrigger className="flex-1 sm:flex-none sm:w-auto text-xs">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">All types</SelectItem>
-                {signalTypes.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={urgencyFilter || undefined} onValueChange={(val) => setUrgencyFilter(val === "_all" ? "" : (val ?? ""))}>
-              <SelectTrigger className="flex-1 sm:flex-none sm:w-auto text-xs">
-                <SelectValue placeholder="Urgency" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">All urgency</SelectItem>
-                <SelectItem value="BREAKING">Breaking</SelectItem>
-                <SelectItem value="HIGH">High</SelectItem>
-                <SelectItem value="MEDIUM">Medium</SelectItem>
-                <SelectItem value="LOW">Low</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={routeReason || undefined}
-              onValueChange={(val) => {
-                const s = val as string | null | undefined;
-                setRouteReason(!s || s === "_all" ? "" : (s as RouteReasonCode));
-              }}
-            >
-              <SelectTrigger className="flex-1 sm:flex-none sm:w-auto text-xs">
-                <SelectValue placeholder="Route" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">All routes</SelectItem>
-                {ROUTE_REASON_CODES.map((code) => (
-                  <SelectItem key={code} value={code}>
-                    {ROUTE_REASON_LABELS[code]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SignalFilters
+            value={filters}
+            onChange={setFilters}
+            analystOptions={analystOptions}
+            showAnalyst={showAnalystFilter}
+            showRoute={showRouteFilter}
+            tickerSuggestions={tickerSuggestions}
+          />
         </div>
 
-        {/* Active filter chips — visible only when a structural filter is set */}
-        {hasStructuralFilter && (
+        {/* Theme / orphan chips — driven by coverage strip only */}
+        {(theme || orphanOnly) && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            {sector && (
-              <ActiveFilterChip label={`Sector: ${sector}`} onClear={() => setSector(null)} />
-            )}
-            {industry && (
-              <ActiveFilterChip label={`Industry: ${industry}`} onClear={() => setIndustry(null)} />
-            )}
             {theme && (
-              <ActiveFilterChip label={`Theme: ${theme}`} onClear={() => setTheme(null)} />
-            )}
-            {routeReason && (
               <ActiveFilterChip
-                label={`Route: ${ROUTE_REASON_LABELS[routeReason]}`}
-                onClear={() => setRouteReason("")}
+                label={`Theme: ${theme}`}
+                onClear={() => setTheme(null)}
               />
             )}
             {orphanOnly && (
-              <ActiveFilterChip label="Orphans only" onClear={() => setOrphanOnly(false)} />
+              <ActiveFilterChip
+                label="Orphans only"
+                onClear={() => setOrphanOnly(false)}
+              />
             )}
           </div>
         )}
 
         {/* Signal list */}
         <div className="space-y-2">
-          {filtered.length === 0 && (
-            signals.length === 0 ? (
+          {filtered.length === 0 &&
+            (signals.length === 0 ? (
               <SkeletonCardStack
                 count={3}
                 title="No findings yet"
@@ -224,8 +208,7 @@ export function SignalFeed({
               <p className="text-sm text-muted-foreground py-8 text-center">
                 No findings match your filters
               </p>
-            )
-          )}
+            ))}
           {filtered.map((signal) =>
             signal.aggregateType ? (
               <AggregateFindingCard key={signal.id} signal={signal} />
@@ -235,7 +218,7 @@ export function SignalFeed({
                 signal={signal}
                 onSelect={handleSelect}
               />
-            )
+            ),
           )}
         </div>
 
@@ -432,4 +415,3 @@ function AggregateFindingCard({ signal }: { signal: Signal }) {
     </Card>
   );
 }
-
