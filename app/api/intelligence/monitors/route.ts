@@ -85,7 +85,7 @@ const createSchema = z.object({
   name: z.string().min(1),
   type: z.enum(["SEARCH", "DOMAIN", "API"]),
   method: z.string().default("perplexity_sonar"),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   scope: z.enum(["FIRM", "ANALYST"]).default("FIRM"),
   analystId: z.string().optional(),
   category: z.enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"]).default("MARKET"),
@@ -128,7 +128,7 @@ const patchSchema = z.object({
   id: z.string(),
   enabled: z.boolean().optional(),
   name: z.string().optional(),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   category: z.string().optional(),
 })
 

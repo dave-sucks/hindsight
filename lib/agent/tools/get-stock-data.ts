@@ -246,11 +246,17 @@ export const getStockData = defineTool({
       ctx.marketCapMax != null;
 
     if (hasFence) {
+      // Finnhub labels the field `finnhubIndustry` but populates it with a
+      // mix of sectors ("Technology"), industries ("Semiconductors"), and
+      // shorthand ("Tech", "Biotech"). checkUniverse normalizes through the
+      // canonical alias table + industry→parent-sector lookup so an IT fence
+      // matches any of those. Held + watchlisted tickers bypass the fence
+      // in code — never flagged "outside universe".
       universeCheck = checkUniverse(
         {
           ticker,
           sector: companyData?.sector ?? null,
-          industry: null, // Finnhub doesn't return GICS industry
+          industry: null, // Finnhub doesn't separately expose GICS industry
           marketCap: companyData?.marketCap ?? null,
         },
         {
@@ -259,6 +265,8 @@ export const getStockData = defineTool({
           marketCapMin: ctx.marketCapMin ?? null,
           marketCapMax: ctx.marketCapMax ?? null,
           exclusionList: ctx.exclusionList,
+          positionTickers: ctx.positionTickers,
+          watchlistTickers: ctx.watchlist,
         },
       );
       if (!universeCheck.inUniverse) {

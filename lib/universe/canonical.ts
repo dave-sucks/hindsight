@@ -19,7 +19,7 @@
  * at the query layer.
  */
 
-import { GICS_SECTORS, GICS_INDUSTRIES } from "./gics";
+import { GICS_SECTORS, GICS_INDUSTRIES, GICS_INDUSTRIES_BY_SECTOR } from "./gics";
 
 // ── Canonical enums ──────────────────────────────────────────────────────────
 
@@ -309,6 +309,57 @@ export function normalizeIndustry(
   const key = toLookupKey(raw);
   if (!key) return null;
   return INDUSTRY_LOOKUP.get(key) ?? INDUSTRY_ALIASES[key] ?? null;
+}
+
+// ── Industry → parent sector lookup ──────────────────────────────────────────
+//
+// Flipped view of GICS_INDUSTRIES_BY_SECTOR. Used to answer "if the ticker's
+// Finnhub-reported value is the industry 'Semiconductors', which sector does
+// that belong to?" — so a fence of `["Information Technology"]` still matches
+// a ticker whose reported sector field is actually "Semiconductors".
+
+const SECTOR_FOR_INDUSTRY: Record<string, Sector> = (() => {
+  const out: Record<string, Sector> = {};
+  for (const [sector, industries] of Object.entries(GICS_INDUSTRIES_BY_SECTOR) as [Sector, readonly string[]][]) {
+    for (const industry of industries) {
+      out[toLookupKey(industry)] = sector;
+    }
+  }
+  return out;
+})();
+
+/**
+ * Parent-sector lookup: given a canonical industry, return its parent sector.
+ * Returns `null` for unknown industries.
+ */
+export function parentSectorOf(industry: Industry | string): Sector | null {
+  return SECTOR_FOR_INDUSTRY[toLookupKey(industry)] ?? null;
+}
+
+/**
+ * Ticker-side sector normalizer. The problem this solves: Finnhub's
+ * `finnhubIndustry` field returns a mix of canonical sectors ("Technology"),
+ * canonical industries ("Semiconductors"), and aliased shorthand ("Tech",
+ * "Biotech"). Fence comparisons expect canonical GICS sectors, so:
+ *
+ *   1. Try `normalizeSector` — catches sector names + sector aliases.
+ *   2. Try `normalizeIndustry` → parent-sector lookup — catches industry-
+ *      shaped values like "Semiconductors" → "Information Technology".
+ *   3. Return `null` when neither path resolves; caller decides whether to
+ *      flag "outside universe" or fall back to a loose string compare.
+ *
+ * Canonical-in → canonical-out (round-trips cleanly for already-canonical
+ * sectors or industries).
+ */
+export function normalizeTickerSector(
+  raw: string | null | undefined,
+): Sector | null {
+  if (raw == null) return null;
+  const sector = normalizeSector(raw);
+  if (sector) return sector;
+  const industry = normalizeIndustry(raw);
+  if (industry) return parentSectorOf(industry);
+  return null;
 }
 
 /**

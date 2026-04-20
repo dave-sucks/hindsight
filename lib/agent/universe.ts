@@ -6,13 +6,20 @@
  *   - empty array / null numeric = no filter on that dimension
  *   - AND across non-empty dimensions, OR within a dimension
  *   - exclusionList wins (hard reject)
- *   - watchlist + open positions bypass the fence (handled upstream)
+ *   - watchlist + open positions bypass the fence — enforced in-code here,
+ *     not just at the prompt layer
  *
- * These helpers only cover the structured checks. The agent still owns the
- * narrative "outside Universe" judgment at the prompt layer — these guardrails
- * are belt-and-suspenders for the exclusionList case plus informational checks
- * on get_stock_data results.
+ * Session A follow-up: values arriving from Finnhub's `finnhubIndustry` field
+ * are a mix of sectors, industries, and aliases. checkUniverse runs them
+ * through `normalizeTickerSector` so a fence of `["Information Technology"]`
+ * matches tickers whose ticker-side field is `"Technology"`, `"Software"`,
+ * `"Semiconductors"`, etc.
  */
+
+import {
+  normalizeTickerSector,
+  normalizeIndustry,
+} from "@/lib/universe/canonical";
 
 export interface UniverseFence {
   sectors?: string[];
@@ -21,6 +28,16 @@ export interface UniverseFence {
   marketCapMin?: number | null;
   marketCapMax?: number | null;
   exclusionList?: string[];
+  /**
+   * Tickers the analyst already holds. Bypasses the sector / industry / cap
+   * checks — an existing position is always in-scope for analysis.
+   */
+  positionTickers?: string[];
+  /**
+   * Tickers on the analyst's watchlist. Bypasses the fence like positions
+   * do, so a watchlisted ticker never gets flagged "outside universe".
+   */
+  watchlistTickers?: string[];
 }
 
 export interface TickerFacts {
@@ -42,6 +59,8 @@ export interface UniverseCheck {
     sector?: string;
     industry?: string;
     marketCapOk?: boolean;
+    /** When the ticker bypassed the fence due to being held or watchlisted. */
+    bypass?: "position" | "watchlist";
   };
 }
 
@@ -82,20 +101,62 @@ export function isExcluded(ticker: string, fence: UniverseFence): boolean {
 export function checkUniverse(facts: TickerFacts, fence: UniverseFence): UniverseCheck {
   const failedReasons: string[] = [];
   const matched: UniverseCheck["matched"] = {};
+  const upperTicker = facts.ticker.toUpperCase().trim();
 
-  // 1. Exclusion — hard reject
+  // 1. Exclusion — hard reject (wins even over held positions)
   if (isExcluded(facts.ticker, fence)) {
     return {
       inUniverse: false,
       excluded: true,
-      failedReasons: [`$${facts.ticker.toUpperCase()} is on the exclusion list`],
+      failedReasons: [`$${upperTicker} is on the exclusion list`],
       matched: {},
     };
   }
 
-  // 2. Sectors (AND dimension)
+  // 2. Position / watchlist bypass — a ticker the analyst already owns or is
+  // watching is always in-scope for analysis. The fence exists to CONTROL
+  // discovery; it should never block review of known holdings. This is now
+  // enforced by code (not just prompt narration), so a prompt-layer wobble
+  // can't cause the agent to silently drop held positions.
+  if (fence.positionTickers?.some((t) => t.toUpperCase().trim() === upperTicker)) {
+    return {
+      inUniverse: true,
+      excluded: false,
+      failedReasons: [],
+      matched: { bypass: "position" },
+    };
+  }
+  if (fence.watchlistTickers?.some((t) => t.toUpperCase().trim() === upperTicker)) {
+    return {
+      inUniverse: true,
+      excluded: false,
+      failedReasons: [],
+      matched: { bypass: "watchlist" },
+    };
+  }
+
+  // 3. Sectors (AND dimension)
+  // The ticker-side `sector` field usually comes from Finnhub's
+  // `finnhubIndustry`, which is a grab bag of sector names ("Technology"),
+  // industry names ("Semiconductors"), and aliases ("Tech", "Biotech"). We
+  // run it through normalizeTickerSector first so an "Information Technology"
+  // fence matches either a reported sector of "Technology" OR a reported
+  // industry like "Semiconductors" / "Software" whose parent sector is IT.
   if (fence.sectors?.length) {
-    if (facts.sector && includesNorm(fence.sectors, facts.sector)) {
+    const normalizedFactsSector = normalizeTickerSector(facts.sector);
+    const canonicalFence = fence.sectors
+      .map((s) => normalizeTickerSector(s))
+      .filter((s): s is NonNullable<typeof s> => s != null);
+
+    if (
+      normalizedFactsSector &&
+      canonicalFence.includes(normalizedFactsSector)
+    ) {
+      matched.sector = normalizedFactsSector;
+    } else if (facts.sector && includesNorm(fence.sectors, facts.sector)) {
+      // Fallback: raw loose-norm compare. Catches pre-Session-A analyst
+      // configs still carrying legacy values + any Finnhub string outside
+      // the alias table that happens to match the fence verbatim.
       matched.sector = facts.sector;
     } else if (facts.sector) {
       failedReasons.push(`sector ${facts.sector} not in [${fence.sectors.join(", ")}]`);
@@ -103,9 +164,21 @@ export function checkUniverse(facts: TickerFacts, fence: UniverseFence): Univers
     // If facts.sector is null, don't fail — data missing, treat as inconclusive.
   }
 
-  // 3. Industries (AND dimension)
+  // 4. Industries (AND dimension)
+  // Same treatment as sectors — try canonical industry matching first, fall
+  // back to loose-norm compare so legacy values keep working.
   if (fence.industries?.length) {
-    if (facts.industry && includesNorm(fence.industries, facts.industry)) {
+    const normalizedFactsIndustry = normalizeIndustry(facts.industry);
+    const canonicalFence = fence.industries
+      .map((i) => normalizeIndustry(i))
+      .filter((i): i is NonNullable<typeof i> => i != null);
+
+    if (
+      normalizedFactsIndustry &&
+      canonicalFence.includes(normalizedFactsIndustry)
+    ) {
+      matched.industry = normalizedFactsIndustry;
+    } else if (facts.industry && includesNorm(fence.industries, facts.industry)) {
       matched.industry = facts.industry;
     } else if (facts.industry) {
       failedReasons.push(`industry ${facts.industry} not in [${fence.industries.join(", ")}]`);

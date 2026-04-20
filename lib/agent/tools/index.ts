@@ -35,6 +35,8 @@ interface ToolCtx {
   userId: string;
   analystId?: string;
   watchlist?: string[];
+  /** Open-position tickers (status=OPEN) for the analyst — fence bypass. */
+  positionTickers?: string[];
   exclusionList?: string[];
   sectors?: string[];
   // ── Universe (B1) ──────────────────────────────────────────────────
