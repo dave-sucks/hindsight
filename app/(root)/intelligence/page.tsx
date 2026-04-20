@@ -34,6 +34,7 @@ import { SignalFeed } from "@/components/intelligence/signal-feed";
 import type { CoverageData } from "@/components/intelligence/coverage-strip";
 import { MonitorList } from "@/components/intelligence/config-panel";
 import { BriefCards } from "@/components/intelligence/brief-cards";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { IntelligenceShowcaseTrigger, IntelligenceShowcaseButton } from "@/components/domain/run-showcase-trigger";
 import type {
@@ -224,30 +225,16 @@ export default function IntelligencePage() {
 
           {/* Briefs tab */}
           <TabsContent value="briefs" className="pt-4 space-y-4">
-            {/* Date selector */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant={briefDate === "today" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setBriefDate("today")}
-              >
-                Today
-              </Button>
-              <Button
-                variant={briefDate === "yesterday" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setBriefDate("yesterday")}
-              >
-                Yesterday
-              </Button>
-              <Button
-                variant={briefDate === "week" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setBriefDate("week")}
-              >
-                This Week
-              </Button>
-            </div>
+            <ChipTabs<"today" | "yesterday" | "week">
+              options={[
+                { value: "today", label: "Today" },
+                { value: "yesterday", label: "Yesterday" },
+                { value: "week", label: "This Week" },
+              ]}
+              value={briefDate}
+              onChange={(v) => v && setBriefDate(v)}
+              clearable={false}
+            />
 
             <BriefCards briefs={briefs} />
           </TabsContent>

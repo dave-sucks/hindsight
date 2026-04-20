@@ -26,6 +26,7 @@ import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/she
 import { TeamSheetContent } from "@/components/domain/team-card";
 import { getTeam } from "@/lib/agent/workflow-registry";
 import { TradeRow } from "@/components/ui/trade-row";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import { AnalystFindingsTab } from "@/components/analysts/AnalystFindingsTab";
 import { BriefCard } from "@/components/intelligence/brief-card";
 import { BriefDetailDialog } from "@/components/intelligence/brief-detail";
@@ -477,14 +478,7 @@ export default function AnalystDetailClient({
             <div className="px-4">
               <TabsList>
                 <TabsTrigger value={0}>Snapshot</TabsTrigger>
-                <TabsTrigger value={1}>
-                  Briefs
-                  {(detail.briefings.length + detail.morningBriefs.length) > 0 && (
-                    <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
-                      {detail.briefings.length + detail.morningBriefs.length}
-                    </span>
-                  )}
-                </TabsTrigger>
+                <TabsTrigger value={1}>Briefs</TabsTrigger>
                 <TabsTrigger value={2}>Findings</TabsTrigger>
               </TabsList>
             </div>
@@ -684,22 +678,8 @@ export default function AnalystDetailClient({
             <Tabs defaultValue={0} className="flex-1 overflow-hidden">
               <div className="px-3 pt-2 shrink-0">
                 <TabsList>
-                  <TabsTrigger value={0}>
-                    Trades
-                    {recentTrades.length > 0 && (
-                      <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
-                        {recentTrades.length}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger value={1}>
-                    Watching
-                    {watchlistItems.length > 0 && (
-                      <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
-                        {watchlistItems.length}
-                      </span>
-                    )}
-                  </TabsTrigger>
+                  <TabsTrigger value={0}>Trades</TabsTrigger>
+                  <TabsTrigger value={1}>Watching</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -719,27 +699,17 @@ export default function AnalystDetailClient({
                   </div>
                 ) : (
                   <>
-                    {/* Open / Closed filter */}
-                    <div className="flex items-center gap-1 px-3 py-2 shrink-0">
-                      {(["all", "open", "closed"] as const).map((f) => {
-                        const count = f === "all" ? recentTrades.length
-                          : f === "open" ? recentTrades.filter((t) => t.status === "OPEN").length
-                          : recentTrades.filter((t) => t.status !== "OPEN").length;
-                        return (
-                          <button
-                            key={f}
-                            onClick={() => setTradeFilter(f)}
-                            className={cn(
-                              "px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors border capitalize",
-                              tradeFilter === f
-                                ? "bg-secondary text-secondary-foreground border-secondary"
-                                : "text-muted-foreground opacity-60 hover:opacity-100 border-transparent",
-                            )}
-                          >
-                            {f} <span className="tabular-nums opacity-70">{count}</span>
-                          </button>
-                        );
-                      })}
+                    <div className="px-3 py-2 shrink-0">
+                      <ChipTabs<"all" | "open" | "closed">
+                        options={[
+                          { value: "all", label: "All" },
+                          { value: "open", label: "Open" },
+                          { value: "closed", label: "Closed" },
+                        ]}
+                        value={tradeFilter}
+                        onChange={(v) => v && setTradeFilter(v)}
+                        clearable={false}
+                      />
                     </div>
                     {recentTrades
                       .filter((t) => tradeFilter === "all" || (tradeFilter === "open" ? t.status === "OPEN" : t.status !== "OPEN"))

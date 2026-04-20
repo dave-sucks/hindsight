@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -9,13 +8,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ChipTabs, type ChipTabOption } from "@/components/ui/chip-tabs";
 import { Info } from "lucide-react";
-import { cn } from "@/lib/utils";
-import {
-  ROUTE_REASON_LABELS,
-  ROUTE_REASON_TOOLTIPS,
-  type RouteReasonCode,
-} from "@/components/intelligence/types";
+import type { RouteReasonCode } from "@/components/intelligence/types";
 
 interface RoutingStats {
   total: number;
@@ -24,33 +19,92 @@ interface RoutingStats {
   since: string | null;
 }
 
-// Display order — DISCOVERY first (most editorially meaningful), then the
-// specific-dimension matches, then ticker routes, then cross-analyst.
-const DISPLAY_ORDER: RouteReasonCode[] = [
-  "DISCOVERY",
-  "SECTOR_MATCH",
-  "INDUSTRY_MATCH",
-  "THEME_MATCH",
-  "WATCHLIST",
-  "POSITION",
-  "DIRECT_TICKER",
-  "CROSS_ANALYST",
+// ── Route reason groups ─────────────────────────────────────────────────────
+// The router tags 8 distinct reason codes, but for the user three of them
+// ("you already care about this ticker") collapse into one bucket. Keeping
+// this mapping in one place so the strip chip, the API filter string, and
+// the analyst signal feed all stay in sync.
+
+export type RouteGroup =
+  | "holdings"
+  | "discovery"
+  | "sector"
+  | "industry"
+  | "theme"
+  | "cross"
+  | "legacy";
+
+export const ROUTE_GROUP_CODES: Record<RouteGroup, RouteReasonCode[]> = {
+  holdings: ["POSITION", "WATCHLIST", "DIRECT_TICKER"],
+  discovery: ["DISCOVERY"],
+  sector: ["SECTOR_MATCH"],
+  industry: ["INDUSTRY_MATCH"],
+  theme: ["THEME_MATCH"],
+  cross: ["CROSS_ANALYST"],
+  legacy: [], // special-cased: counts routes with no routeReasonCode
+};
+
+const GROUP_LABEL: Record<RouteGroup, string> = {
+  holdings: "Holdings",
+  discovery: "Discovery",
+  sector: "Sector",
+  industry: "Industry",
+  theme: "Theme",
+  cross: "Cross-analyst",
+  legacy: "Legacy",
+};
+
+const GROUP_TOOLTIP: Record<RouteGroup, string> = {
+  holdings:
+    "Signal mentions a ticker you already hold, watch, or have a ticker-specific monitor for. Bypasses the sector fence.",
+  discovery:
+    "Signal matched two or more universe dimensions (e.g. sector + theme). Came through the fence, not via a known ticker.",
+  sector: "Signal matched only the analyst's sector dimension.",
+  industry: "Signal matched only the industry dimension.",
+  theme: "Signal matched only the theme dimension.",
+  cross:
+    "Signal was routed to another analyst first, cross-posted here because a ticker overlap exists.",
+  legacy:
+    "Routes from before the router tagged reason codes. Historical context only.",
+};
+
+// Display order — holdings first (most relevant), discovery next, then the
+// single-dimension matches, then cross-analyst, then the legacy fallback.
+const GROUP_DISPLAY_ORDER: RouteGroup[] = [
+  "holdings",
+  "discovery",
+  "sector",
+  "industry",
+  "theme",
+  "cross",
+  "legacy",
 ];
+
+function countForGroup(
+  group: RouteGroup,
+  stats: RoutingStats,
+): number {
+  if (group === "legacy") return stats.legacy;
+  return ROUTE_GROUP_CODES[group].reduce(
+    (acc, code) => acc + (stats.byReason[code] ?? 0),
+    0,
+  );
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 interface RoutingStatsStripProps {
   analystId: string;
   days?: number;
-  /** Active reason filter — when set, the matching chip renders filled. */
-  activeReason?: RouteReasonCode | null;
-  /** Click a chip to filter the Findings list below. Null = clear. */
-  onReasonClick?: (code: RouteReasonCode | null) => void;
+  activeGroup?: RouteGroup | null;
+  onGroupChange?: (group: RouteGroup | null) => void;
 }
 
 export function RoutingStatsStrip({
   analystId,
   days = 30,
-  activeReason = null,
-  onReasonClick,
+  activeGroup = null,
+  onGroupChange,
 }: RoutingStatsStripProps) {
   const [stats, setStats] = useState<RoutingStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,7 +145,17 @@ export function RoutingStatsStrip({
     );
   }
 
-  const shown = DISPLAY_ORDER.filter((code) => (stats.byReason[code] ?? 0) > 0);
+  // Only show groups that have at least one route in the window. Keeps the
+  // strip tight instead of stacking dead chips with zero counts.
+  const visibleGroups: RouteGroup[] = GROUP_DISPLAY_ORDER.filter(
+    (g) => countForGroup(g, stats) > 0,
+  );
+
+  const options: ChipTabOption<RouteGroup>[] = visibleGroups.map((g) => ({
+    value: g,
+    label: GROUP_LABEL[g],
+    title: GROUP_TOOLTIP[g],
+  }));
 
   return (
     <TooltipProvider>
@@ -105,59 +169,19 @@ export function RoutingStatsStrip({
               <Info className="h-3 w-3 text-muted-foreground/70" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs text-xs">
-              How many recent signals the router sent to this analyst, broken
-              down by why they matched. Click a chip to filter the list below.
+              How recent signals landed in this analyst&apos;s inbox, grouped
+              by why they matched. Click a chip to filter the list below.
             </TooltipContent>
           </Tooltip>
         </div>
         <span className="text-sm tabular-nums font-medium">{stats.total}</span>
 
-        {shown.map((code) => {
-          const count = stats.byReason[code] ?? 0;
-          const isActive = activeReason === code;
-          return (
-            <Tooltip key={code}>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    onClick={() => onReasonClick?.(isActive ? null : code)}
-                    className={cn(
-                      "transition-colors",
-                      !onReasonClick && "cursor-default",
-                    )}
-                  >
-                    <Badge
-                      variant={isActive ? "default" : "secondary"}
-                      className="gap-1.5"
-                    >
-                      <span>{ROUTE_REASON_LABELS[code]}</span>
-                      <span className="tabular-nums">{count}</span>
-                    </Badge>
-                  </button>
-                }
-              />
-              <TooltipContent className="max-w-xs text-xs">
-                {ROUTE_REASON_TOOLTIPS[code]}
-              </TooltipContent>
-            </Tooltip>
-          );
-        })}
-
-        {stats.legacy > 0 && (
-          <Tooltip>
-            <TooltipTrigger render={<span className="cursor-help" />}>
-              <Badge variant="secondary" className="gap-1.5 opacity-60">
-                <span>Legacy</span>
-                <span className="tabular-nums">{stats.legacy}</span>
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs text-xs">
-              Routes from before the router tagged reason codes. Left in place
-              for historical context only.
-            </TooltipContent>
-          </Tooltip>
-        )}
+        <ChipTabs<RouteGroup>
+          options={options}
+          value={activeGroup}
+          onChange={(v) => onGroupChange?.(v)}
+          className="ml-1"
+        />
       </div>
     </TooltipProvider>
   );

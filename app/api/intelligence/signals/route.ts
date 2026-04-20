@@ -27,12 +27,27 @@ export async function GET(req: NextRequest) {
   const orphans = req.nextUrl.searchParams.get("orphans") === "1"
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50")
 
+  // routeReasonCode accepts a single code or a comma-separated list. The
+  // analyst Routing strip collapses POSITION + WATCHLIST + DIRECT_TICKER into
+  // a single "Holdings" chip and sends all three codes in one request.
+  const parseRouteCodes = (raw: string | null): string[] | null => {
+    if (!raw) return null;
+    const codes = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    return codes.length > 0 ? codes : null;
+  };
+  const routeCodes = parseRouteCodes(routeReasonCode);
+  const routeReasonWhere = routeCodes
+    ? routeCodes.length === 1
+      ? { routeReasonCode: routeCodes[0] }
+      : { routeReasonCode: { in: routeCodes } }
+    : {};
+
   // Build the analyst-route constraint once. When analystId is set, scope
   // to just that analyst (and optionally that route reason); otherwise scope
   // to any of this user's analysts.
   const analystRouteWhere: Record<string, unknown> = analystId
-    ? { analystId, ...(routeReasonCode ? { routeReasonCode } : {}) }
-    : { analystId: { in: analystIds }, ...(routeReasonCode ? { routeReasonCode } : {}) };
+    ? { analystId, ...routeReasonWhere }
+    : { analystId: { in: analystIds }, ...routeReasonWhere };
 
   const signals = await prisma.signal.findMany({
     where: {
