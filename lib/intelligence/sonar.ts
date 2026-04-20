@@ -68,8 +68,8 @@ For each distinct piece of news/information found, create a signal with:
 - A 2-3 sentence summary with specific facts, numbers, and dates
 - All mentioned stock tickers in $TICKER format (without the $)
 - Thematic tags (e.g. AI_CAPEX, FED_RATE_CUT, EARNINGS_BEAT, SECTOR_ROTATION)
-- Relevant sectors (broad GICS: Technology, Healthcare, Financials, Energy, …)
-- Narrower industries when identifiable (e.g. Semiconductors, Biotech, EV_OEM, Cloud_Software) — optional; omit if you cannot tell
+- Relevant sectors (canonical GICS Title Case: "Information Technology", "Health Care", "Financials", "Energy", "Materials", "Industrials", "Consumer Discretionary", "Consumer Staples", "Communication Services", "Utilities", "Real Estate")
+- Narrower industries (canonical GICS Title Case ONLY — e.g. "Semiconductors", "Software", "Banks", "Biotechnology", "Automobiles", "Aerospace & Defense", "Pharmaceuticals", "Interactive Media & Services"). Omit if you cannot place it in GICS. DO NOT invent theme-shaped industry labels like "AI_Hardware", "Data_Centers", "Cybersecurity", "Quantum_Computing" — those belong in the themes field, not industries.
 - Sentiment assessment based on market impact
 - Urgency based on time-sensitivity and magnitude
 
