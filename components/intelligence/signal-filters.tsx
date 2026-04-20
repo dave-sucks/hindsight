@@ -374,7 +374,12 @@ function TickerFilter({
         : [...values, sym],
     );
 
-  const suggestionOptions = suggestions.filter((s) => !values.includes(s));
+  // Merge suggestions + selected values so selected items still render in the
+  // "Your stocks" group with a checkmark rather than being hoisted into a
+  // separate group. Keeps the dropdown flat.
+  const suggestionOptions = Array.from(
+    new Set([...values, ...suggestions]),
+  );
   const showingSuggestions = !query.trim() && suggestionOptions.length > 0;
   const showingResults = !!query.trim() && results.length > 0;
 
@@ -401,7 +406,6 @@ function TickerFilter({
             )}
             {!loading &&
               !query.trim() &&
-              values.length === 0 &&
               suggestionOptions.length === 0 && (
                 <CommandEmpty>Type a ticker to search</CommandEmpty>
               )}
@@ -409,28 +413,13 @@ function TickerFilter({
               <CommandEmpty>No results</CommandEmpty>
             )}
 
-            {values.length > 0 && (
-              <CommandGroup heading="Selected">
-                {values.map((sym) => (
-                  <CommandItem
-                    key={`sel-${sym}`}
-                    value={sym}
-                    data-checked="true"
-                    onSelect={() => toggle(sym)}
-                  >
-                    <StockLogo ticker={sym} size="sm" />
-                    <span className="font-medium">{sym}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-
             {showingSuggestions && (
               <CommandGroup heading="Your stocks">
                 {suggestionOptions.map((sym) => (
                   <CommandItem
-                    key={`sug-${sym}`}
+                    key={sym}
                     value={sym}
+                    data-checked={values.includes(sym) ? "true" : undefined}
                     onSelect={() => toggle(sym)}
                   >
                     <StockLogo ticker={sym} size="sm" />

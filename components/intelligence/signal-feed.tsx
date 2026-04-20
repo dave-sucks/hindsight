@@ -7,10 +7,6 @@ import { Input } from "@/components/ui/input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
 import {
-  CoverageStrip,
-  type CoverageData,
-} from "@/components/intelligence/coverage-strip";
-import {
   SignalFilters,
   emptySignalFilters,
   type SignalFiltersValue,
@@ -30,9 +26,6 @@ type Icon = React.ComponentType<{ className?: string }>;
 
 interface SignalFeedProps {
   signals: Signal[];
-  coverage?: CoverageData | null;
-  coverageLoading?: boolean;
-  coverageDays?: number;
   /** When true, exposes the Analyst + Route multi-selects. /intelligence only. */
   showAnalystFilter?: boolean;
   showRouteFilter?: boolean;
@@ -42,16 +35,11 @@ interface SignalFeedProps {
 
 export function SignalFeed({
   signals,
-  coverage = null,
-  coverageLoading = false,
-  coverageDays = 7,
   showAnalystFilter = true,
   showRouteFilter = true,
   tickerSuggestions = [],
 }: SignalFeedProps) {
   const [search, setSearch] = useState("");
-  const [theme, setTheme] = useState<string | null>(null);
-  const [orphanOnly, setOrphanOnly] = useState(false);
   const [filters, setFilters] = useState<SignalFiltersValue>(emptySignalFilters());
   const [selected, setSelected] = useState<Signal | null>(null);
 
@@ -76,8 +64,6 @@ export function SignalFeed({
       if (filters.industries.length > 0 && !filters.industries.some((ind) => s.industries.includes(ind))) return false;
       if (filters.analystIds.length > 0 && !s.routes.some((r) => filters.analystIds.includes(r.analystId))) return false;
       if (filters.routeReasonCode && !s.routes.some((r) => r.routeReasonCode === filters.routeReasonCode)) return false;
-      if (theme && !s.themes.includes(theme)) return false;
-      if (orphanOnly && (s.sectors.length > 0 || s.themes.length > 0)) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -88,74 +74,15 @@ export function SignalFeed({
       }
       return true;
     });
-  }, [signals, search, filters, theme, orphanOnly]);
+  }, [signals, search, filters]);
 
   const handleSelect = useCallback((signal: Signal) => {
     setSelected(signal);
   }, []);
 
-  // Toggle a value in one of the filter arrays — coverage strip row clicks
-  // share state with the SignalFilters row. Clicking the same bar twice
-  // removes it from the multi-select.
-  const toggleSector = (name: string | null) => {
-    if (name === null) {
-      setFilters((f) => ({ ...f, sectors: [] }));
-      return;
-    }
-    setFilters((f) => ({
-      ...f,
-      sectors: f.sectors.includes(name)
-        ? f.sectors.filter((x) => x !== name)
-        : [...f.sectors, name],
-    }));
-    setOrphanOnly(false);
-  };
-  const toggleIndustry = (name: string | null) => {
-    if (name === null) {
-      setFilters((f) => ({ ...f, industries: [] }));
-      return;
-    }
-    setFilters((f) => ({
-      ...f,
-      industries: f.industries.includes(name)
-        ? f.industries.filter((x) => x !== name)
-        : [...f.industries, name],
-    }));
-    setOrphanOnly(false);
-  };
-
-  // Coverage strip highlights a single "active" value per column; we pass
-  // the first selected from each multi so the bar shows lit when something
-  // in that bucket is selected. Users toggle additional bars via the filter
-  // row or click the bar again to remove.
-  const activeCoverageSector = filters.sectors[0] ?? null;
-  const activeCoverageIndustry = filters.industries[0] ?? null;
-
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        {/* Coverage strip — wires bars → filters */}
-        <CoverageStrip
-          data={coverage}
-          loading={coverageLoading}
-          days={coverageDays}
-          activeSector={activeCoverageSector}
-          activeIndustry={activeCoverageIndustry}
-          activeTheme={theme}
-          orphanOnly={orphanOnly}
-          onSectorClick={toggleSector}
-          onIndustryClick={toggleIndustry}
-          onThemeClick={(v) => {
-            setTheme(v);
-            setOrphanOnly(false);
-          }}
-          onOrphanToggle={() => {
-            setOrphanOnly((v) => !v);
-            setFilters(emptySignalFilters());
-            setTheme(null);
-          }}
-        />
-
         {/* Search + shared filter row — single line on desktop, wraps on mobile */}
         <div className="flex flex-wrap items-center gap-2">
           <SignalFilters
@@ -176,24 +103,6 @@ export function SignalFeed({
             />
           </div>
         </div>
-
-        {/* Theme / orphan chips — driven by coverage strip only */}
-        {(theme || orphanOnly) && (
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            {theme && (
-              <ActiveFilterChip
-                label={`Theme: ${theme}`}
-                onClear={() => setTheme(null)}
-              />
-            )}
-            {orphanOnly && (
-              <ActiveFilterChip
-                label="Orphans only"
-                onClear={() => setOrphanOnly(false)}
-              />
-            )}
-          </div>
-        )}
 
         {/* Signal list */}
         <div className="space-y-2">
@@ -318,17 +227,6 @@ function extractDomainFromUrls(urls: string[]): string | null {
     try { return new URL(url).hostname.replace(/^www\./, ""); } catch { /* skip */ }
   }
   return null;
-}
-
-// ── Active filter chip ───────────────────────────────────────────────────────
-
-function ActiveFilterChip({ label, onClear }: { label: string; onClear: () => void }) {
-  return (
-    <Badge variant="secondary" className="cursor-pointer gap-1" onClick={onClear}>
-      <span>{label}</span>
-      <span aria-hidden className="text-muted-foreground">×</span>
-    </Badge>
-  );
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────

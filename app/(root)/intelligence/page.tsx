@@ -150,7 +150,11 @@ export default function IntelligencePage() {
             </TabsList>
             <div className="flex items-center gap-1.5">
               <IntelligenceShowcaseButton />
-              <HowItWorksSheet flow="intelligence">
+              <HowItWorksSheet
+                flow="intelligence"
+                coverage={coverage}
+                coverageDays={COVERAGE_DAYS}
+              >
                 <ScanSearch className="h-4 w-4" />
               </HowItWorksSheet>
               <DropdownMenu>
@@ -210,12 +214,7 @@ export default function IntelligencePage() {
 
           {/* Findings tab */}
           <TabsContent value="findings" className="space-y-6 pt-4" keepMounted>
-            <SignalFeed
-              signals={signals}
-              coverage={coverage}
-              coverageLoading={loading}
-              coverageDays={COVERAGE_DAYS}
-            />
+            <SignalFeed signals={signals} />
           </TabsContent>
 
           {/* Monitors tab */}
