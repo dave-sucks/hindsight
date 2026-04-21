@@ -4,18 +4,16 @@ import { useState, useMemo, useCallback, memo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
+import {
+  SignalFilters,
+  emptySignalFilters,
+  type SignalFiltersValue,
+  type AnalystOption,
+} from "@/components/intelligence/signal-filters";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { Search } from "lucide-react";
-import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { cn } from "@/lib/utils";
 import type { Signal } from "./types";
 import { relativeTime } from "./types";
@@ -27,18 +25,44 @@ type Icon = React.ComponentType<{ className?: string }>;
 
 interface SignalFeedProps {
   signals: Signal[];
+  /** When true, exposes the Analyst + Route multi-selects. /intelligence only. */
+  showAnalystFilter?: boolean;
+  showRouteFilter?: boolean;
+  /** Seed for the ticker combobox "Your stocks" group (analyst pages). */
+  tickerSuggestions?: string[];
 }
 
-export function SignalFeed({ signals }: SignalFeedProps) {
+export function SignalFeed({
+  signals,
+  showAnalystFilter = true,
+  showRouteFilter = true,
+  tickerSuggestions = [],
+}: SignalFeedProps) {
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [urgencyFilter, setUrgencyFilter] = useState("");
+  const [filters, setFilters] = useState<SignalFiltersValue>(emptySignalFilters());
   const [selected, setSelected] = useState<Signal | null>(null);
+
+  // Derive analyst options from signals' routes — matches exactly the analyst
+  // set that has anything routable on this page.
+  const analystOptions = useMemo<AnalystOption[]>(() => {
+    const map = new Map<string, string>();
+    for (const s of signals) {
+      for (const r of s.routes) {
+        if (r.analyst) map.set(r.analyst.id, r.analyst.name);
+      }
+    }
+    return [...map.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [signals]);
 
   const filtered = useMemo(() => {
     return signals.filter((s) => {
-      if (typeFilter && s.type !== typeFilter) return false;
-      if (urgencyFilter && s.urgency !== urgencyFilter) return false;
+      if (filters.tickers.length > 0 && !filters.tickers.some((t) => s.tickers.includes(t))) return false;
+      if (filters.sectors.length > 0 && !filters.sectors.some((sec) => s.sectors.includes(sec))) return false;
+      if (filters.industries.length > 0 && !filters.industries.some((ind) => s.industries.includes(ind))) return false;
+      if (filters.analystIds.length > 0 && !s.routes.some((r) => filters.analystIds.includes(r.analystId))) return false;
+      if (filters.routeReasonCode && !s.routes.some((r) => r.routeReasonCode === filters.routeReasonCode)) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -49,23 +73,26 @@ export function SignalFeed({ signals }: SignalFeedProps) {
       }
       return true;
     });
-  }, [signals, search, typeFilter, urgencyFilter]);
+  }, [signals, search, filters]);
 
   const handleSelect = useCallback((signal: Signal) => {
     setSelected(signal);
   }, []);
 
-  const signalTypes = useMemo(
-    () => [...new Set(signals.map((s) => s.type))].sort(),
-    [signals]
-  );
-
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        {/* Filters */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative flex-1 sm:max-w-sm">
+        {/* Search + shared filter row — single line on desktop, wraps on mobile */}
+        <div className="flex flex-wrap items-center gap-2">
+          <SignalFilters
+            value={filters}
+            onChange={setFilters}
+            analystOptions={analystOptions}
+            showAnalyst={showAnalystFilter}
+            showRoute={showRouteFilter}
+            tickerSuggestions={tickerSuggestions}
+          />
+          <div className="relative w-full sm:ml-auto sm:w-56">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search signals..."
@@ -74,39 +101,12 @@ export function SignalFeed({ signals }: SignalFeedProps) {
               className="pl-9"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <Select value={typeFilter || undefined} onValueChange={(val) => setTypeFilter(val === "_all" ? "" : (val ?? ""))}>
-              <SelectTrigger className="flex-1 sm:flex-none sm:w-auto text-xs">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">All types</SelectItem>
-                {signalTypes.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={urgencyFilter || undefined} onValueChange={(val) => setUrgencyFilter(val === "_all" ? "" : (val ?? ""))}>
-              <SelectTrigger className="flex-1 sm:flex-none sm:w-auto text-xs">
-                <SelectValue placeholder="Urgency" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">All urgency</SelectItem>
-                <SelectItem value="BREAKING">Breaking</SelectItem>
-                <SelectItem value="HIGH">High</SelectItem>
-                <SelectItem value="MEDIUM">Medium</SelectItem>
-                <SelectItem value="LOW">Low</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </div>
 
         {/* Signal list */}
         <div className="space-y-2">
-          {filtered.length === 0 && (
-            signals.length === 0 ? (
+          {filtered.length === 0 &&
+            (signals.length === 0 ? (
               <SkeletonCardStack
                 count={3}
                 title="No findings yet"
@@ -116,8 +116,7 @@ export function SignalFeed({ signals }: SignalFeedProps) {
               <p className="text-sm text-muted-foreground py-8 text-center">
                 No findings match your filters
               </p>
-            )
-          )}
+            ))}
           {filtered.map((signal) =>
             signal.aggregateType ? (
               <AggregateFindingCard key={signal.id} signal={signal} />
@@ -127,7 +126,7 @@ export function SignalFeed({ signals }: SignalFeedProps) {
                 signal={signal}
                 onSelect={handleSelect}
               />
-            )
+            ),
           )}
         </div>
 
@@ -150,9 +149,9 @@ export const SignalRow = memo(function SignalRow({
   signal: Signal;
   onSelect: (signal: Signal) => void;
 }) {
+  const sourceCount = signal.sourceUrls.length;
   const primarySource = signal.sourceNames[0];
   const primaryDomain = extractDomainFromUrls(signal.sourceUrls);
-  const sentimentDir = signal.sentiment === "BULLISH" ? "up" : signal.sentiment === "BEARISH" ? "down" : null;
 
   return (
     <Card
@@ -160,43 +159,42 @@ export const SignalRow = memo(function SignalRow({
       onClick={() => onSelect(signal)}
     >
       <div className="space-y-2">
-        {/* Row 1: headline left, ticker + arrow right */}
-        <div className="flex items-start gap-3">
-          <p className="text-sm font-medium leading-tight flex-1 min-w-0">
-            {signal.headline}
-          </p>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {signal.tickers.length > 0 && (
-              <span className="text-xs font-mono font-medium text-muted-foreground">
-                {signal.tickers.length === 1
-                  ? signal.tickers[0]
-                  : signal.tickers.slice(0, 2).join(", ")
-                }
-                {signal.tickers.length > 2 && ` +${signal.tickers.length - 2}`}
-              </span>
-            )}
-            {sentimentDir && (
-              <PnlArrow direction={sentimentDir} className="h-4 w-4" />
-            )}
-          </div>
-        </div>
+        {/* Row 1: headline */}
+        <p className="text-sm font-medium leading-tight">
+          {signal.headline}
+        </p>
 
         {/* Row 2: summary — text-sm for readability */}
         <p className="text-sm text-muted-foreground line-clamp-2">
           {signal.summary}
         </p>
 
-        {/* Row 3: source logo + name, then timestamp */}
-        <div className="flex items-center gap-1.5">
-          {primaryDomain && (
-            <Favicon domain={primaryDomain} />
+        {/* Row 3: sources + timestamp inline. Single source renders favicon +
+            name; multi renders stacked favicon avatars. Timestamp sits right
+            next to them. */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {sourceCount > 1 ? (
+            <div className="flex -space-x-2">
+              {signal.sourceUrls.map((url, i) => {
+                const domain = extractDomainFromUrls([url]);
+                return (
+                  <span
+                    key={`${url}-${i}`}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-background ring-2 ring-background"
+                  >
+                    {domain && <Favicon domain={domain} size={16} />}
+                  </span>
+                );
+              })}
+            </div>
+          ) : (
+            <>
+              {primaryDomain && <Favicon domain={primaryDomain} />}
+              {primarySource && <span>{primarySource}</span>}
+            </>
           )}
-          {primarySource && (
-            <span className="text-xs text-muted-foreground">{primarySource}</span>
-          )}
-          <span className="text-xs text-muted-foreground tabular-nums ml-auto shrink-0">
-            {relativeTime(signal.createdAt)}
-          </span>
+          <span>·</span>
+          <span className="tabular-nums">{relativeTime(signal.createdAt)}</span>
         </div>
       </div>
     </Card>
@@ -313,4 +311,3 @@ function AggregateFindingCard({ signal }: { signal: Signal }) {
     </Card>
   );
 }
-

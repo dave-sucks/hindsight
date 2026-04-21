@@ -290,8 +290,10 @@ function MonitorRow({
         <MonitorTypeIcon type={monitor.type} />
       </TableCell>
 
-      {/* Name / detail — 1 line per type */}
-      <TableCell>
+      {/* Name / detail — domain shows URL on a second line, search/api on one.
+          max-w-0 w-full forces this column to absorb leftover width and clip
+          long content with truncate, instead of pushing the row off-screen. */}
+      <TableCell className="max-w-0 w-full">
         <div className="min-w-0">
           {isSearch && (
             <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
@@ -299,12 +301,14 @@ function MonitorRow({
             </p>
           )}
           {isDomain && (
-            <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
-              {monitor.name}
-              <span className="text-xs text-muted-foreground font-mono ml-2">
+            <div className="min-w-0">
+              <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
+                {monitor.name}
+              </p>
+              <p className="text-xs text-muted-foreground font-mono truncate">
                 {(config.domain as string) ?? ""}
-              </span>
-            </p>
+              </p>
+            </div>
           )}
           {isApi && (
             <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
@@ -352,10 +356,10 @@ function MonitorRow({
         </div>
       </TableCell>
 
-      {/* Scope */}
-      <TableCell>
-        <span className="text-xs text-muted-foreground">
-          {monitor.scope === "FIRM" ? "Firm" : monitor.analyst?.name ?? "Analyst"}
+      {/* Scope — compressed; analyst name lives in the info popover */}
+      <TableCell className="w-20">
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          {monitor.scope === "FIRM" ? "Firm" : "1 analyst"}
         </span>
       </TableCell>
 

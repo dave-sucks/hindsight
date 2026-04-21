@@ -1,18 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { X, ChevronsUpDown } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { GICS_SECTORS, GICS_INDUSTRIES } from "@/lib/universe/gics";
+import { MultiCombobox } from "@/components/ui/multi-combobox";
+// Session A established lib/universe/canonical as the single source of truth
+// for sector/industry vocabulary. Importing SECTORS/INDUSTRIES here keeps the
+// combobox options aligned with the alias table + normalization helpers — so
+// the values the user picks here are exactly what the router will compare.
+import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import {
   Sheet,
   SheetContent,
@@ -274,24 +270,32 @@ export function AnalystConfigSheet({
                 </Tooltip>
               </div>
 
-              <ChipListComboEditor
-                label="Sectors"
-                values={config.sectors}
-                options={GICS_SECTORS}
-                placeholder="Add a sector…"
-                groupLabel="GICS Sectors"
-                tooltip="GICS top-level sectors. Only signals whose ticker belongs to one of these sectors enter the fence."
-                onChange={(next) => saveField("sectors", next)}
-              />
-              <ChipListComboEditor
-                label="Industries"
-                values={config.industries}
-                options={GICS_INDUSTRIES}
-                placeholder="Add an industry…"
-                groupLabel="GICS Industries"
-                tooltip="Narrower than Sectors — a signal's ticker industry must match one of these (AND-joined with Sectors)."
-                onChange={(next) => saveField("industries", next)}
-              />
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel
+                  label="Sectors"
+                  tooltip="GICS top-level sectors. Only signals whose ticker belongs to one of these sectors enter the fence."
+                />
+                <MultiCombobox
+                  values={config.sectors}
+                  options={SECTORS}
+                  placeholder="Add a sector…"
+                  groupLabel="GICS Sectors"
+                  onChange={(next) => saveField("sectors", next)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel
+                  label="Industries"
+                  tooltip="Narrower than Sectors — a signal's ticker industry must match one of these (AND-joined with Sectors)."
+                />
+                <MultiCombobox
+                  values={config.industries}
+                  options={INDUSTRIES}
+                  placeholder="Add an industry…"
+                  groupLabel="GICS Industries"
+                  onChange={(next) => saveField("industries", next)}
+                />
+              </div>
               <ChipListEditor
                 label="Themes"
                 values={config.themes}
@@ -515,115 +519,6 @@ function ChipListEditor({
         }}
         onBlur={add}
       />
-    </div>
-  );
-}
-
-// ── ChipListComboEditor ─────────────────────────────────────────────────────
-// Chip editor backed by a PREDEFINED options list. Unlike ChipListEditor
-// (free text), this enforces that every chip comes from `options`. Used
-// for Sectors + Industries where the signal router string-matches against
-// a canonical taxonomy — free text like "tech" vs "Technology" silently
-// fails to route, so we don't let the user type anything.
-//
-// UX: Popover + Command combobox. Search filters the list. Already-picked
-// options are hidden from the dropdown. Group header shows count.
-
-interface ChipListComboEditorProps {
-  label: string;
-  values: string[];
-  options: readonly string[];
-  placeholder?: string;
-  /** Header text in the popover dropdown (e.g. "Sectors", "Industries"). */
-  groupLabel?: string;
-  /** Optional tooltip — shown as an info icon next to the label. */
-  tooltip?: React.ReactNode;
-  onChange: (next: string[]) => void;
-}
-
-function ChipListComboEditor({
-  label,
-  values,
-  options,
-  placeholder = "Select…",
-  groupLabel,
-  tooltip,
-  onChange,
-}: ChipListComboEditorProps) {
-  const [open, setOpen] = useState(false);
-
-  const add = (v: string) => {
-    if (values.includes(v)) return;
-    onChange([...values, v]);
-  };
-
-  const remove = (v: string) => {
-    onChange(values.filter((x) => x !== v));
-  };
-
-  const available = options.filter((o) => !values.includes(o));
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <FieldLabel label={label} tooltip={tooltip} />
-      {values.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {values.map((v) => (
-            <Badge key={v} variant="secondary">
-              <span>{v}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => remove(v)}
-                aria-label={`Remove ${v}`}
-              >
-                <X />
-              </Button>
-            </Badge>
-          ))}
-        </div>
-      )}
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="justify-between font-normal"
-              disabled={available.length === 0}
-            >
-              <span className="text-muted-foreground">
-                {available.length === 0 ? "All selected" : placeholder}
-              </span>
-              <ChevronsUpDown />
-            </Button>
-          }
-        />
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-          <Command>
-            <CommandInput placeholder="Search…" />
-            <CommandList>
-              <CommandEmpty>No match.</CommandEmpty>
-              <CommandGroup heading={groupLabel}>
-                {available.map((opt) => (
-                  <CommandItem
-                    key={opt}
-                    value={opt}
-                    onSelect={() => {
-                      add(opt);
-                      setOpen(false);
-                    }}
-                  >
-                    {opt}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
     </div>
   );
 }

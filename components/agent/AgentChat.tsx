@@ -227,6 +227,11 @@ function AgentChatInner({
       startMutating(async () => {
         try {
           if (mode === "builder") {
+            // Session B audit follow-up: builder branch mirrors the editor —
+            // industries / themes / marketCap ride through the `universe`
+            // payload so createAnalystFromBuilder persists them to the
+            // AgentConfig columns. Without this, new analysts start with
+            // empty industries/themes even though the Builder proposed them.
             const result = await createAnalystFromBuilder({
               name: config.name ?? "Untitled Analyst",
               analystPrompt: config.analystPrompt ?? "General market research analyst",
@@ -244,10 +249,39 @@ function AgentChatInner({
               domainMonitorProposal: config.domainMonitorProposal,
               intelligenceQueries: config.intelligenceQueries,
               intelligencePolicy: config.intelligencePolicy,
+              universe: {
+                sectors: config.sectors,
+                industries: config.industries,
+                themes: config.themes,
+                marketCapMin: config.marketCapMin ?? undefined,
+                marketCapMax: config.marketCapMax ?? undefined,
+              },
             });
             toast.success(`Analyst "${config.name}" created`);
             router.push(`/analysts/${result.id}`);
           } else {
+            // Session B: industries/themes/marketCapMin/Max ride through the
+            // `universe` payload so they reach AgentConfig columns. Without
+            // this, cherry-picking a Universe tab diff would silently no-op
+            // because updateAnalystFromBuilder only reads these from `universe`.
+            const universeKeys: Array<keyof AgentConfigData> = [
+              "sectors",
+              "industries",
+              "themes",
+              "marketCapMin",
+              "marketCapMax",
+            ];
+            const hasUniverseField = universeKeys.some((k) => config[k] !== undefined);
+            const universe = hasUniverseField
+              ? {
+                  sectors: config.sectors,
+                  industries: config.industries,
+                  themes: config.themes,
+                  marketCapMin: config.marketCapMin ?? undefined,
+                  marketCapMax: config.marketCapMax ?? undefined,
+                }
+              : undefined;
+
             await updateAnalystFromBuilder(analystId!, {
               name: config.name,
               analystPrompt: config.analystPrompt,
@@ -264,6 +298,7 @@ function AgentChatInner({
               domainMonitorProposal: config.domainMonitorProposal,
               intelligenceQueries: config.intelligenceQueries,
               intelligencePolicy: config.intelligencePolicy,
+              universe,
             });
             router.push(`/analysts/${analystId}`);
           }

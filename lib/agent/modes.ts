@@ -94,6 +94,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_market_context",
       "get_stock_data",
       "get_earnings_data",
+      // Live web search — same tool the builder has. Used sparingly (budget-
+      // limited) to check something beyond the inbox, e.g. "what are the
+      // best-in-class EV charging tickers right now".
+      "web_search",
     ] as const,
     hasSuggestConfig: true,
     maxDuration: 150,
@@ -386,6 +390,10 @@ The \`promptSkeleton\` is your STARTING POINT — adapt it into the analystPromp
 ### Step 5 — suggest_config with the COMPLETE updated config
 Call **suggest_config** with EVERY required field filled, including all four Universe fields (sectors, industries, themes, marketCapMin/Max).
 
+**Sectors + industries are always proposed together.** When you include a sector (lanes c or d), you must also propose the specific GICS industries inside it that match the strategy. Sector alone is a loose fence — "Information Technology" covers everything from IT Services to Semiconductors to Software, and routing in signals from all of those dilutes the feed. Narrow to the 2–4 industries the strategy actually trades. The only exception is if the user explicitly asked for cross-industry breadth ("I want all of tech, not just chips") — and in that case, say so in your summary sentence so the decision is visible.
+
+**marketCapMin/Max: omit the field entirely for no bound.** Do NOT send Number.MAX_SAFE_INTEGER, 0, or any other sentinel. An undefined field means "no filter on that axis". The tool schema rejects values above $10T.
+
 For the \`analystPrompt\` field specifically:
 - Lane (a): you won't call suggest_config at all.
 - Lane (b): copy the current analystPrompt VERBATIM. Do not touch it.
@@ -408,7 +416,11 @@ For optional fields (domainMonitorProposal, intelligenceQueries, intelligencePol
 
 5. **Lane (d): archetype skeleton required.** \`read_knowledge_library\` with topic:"archetype" and a specific id MUST be called BEFORE writing the new analystPrompt. Do not write a new strategy from memory.
 
-6. **Watchlist grounding.** New watchlist tickers MUST come from \`read_analyst_inbox_stats.topTickers\` or \`discover_signals_for_fence.tickerFrequency\`. Never from the model's training data.
+6. **Watchlist: preserve + extend, don't replace.** Start from the CURRENT watchlist in currentConfig and KEEP every ticker unless the user explicitly asks to remove one OR the ticker directly contradicts the new strategy (e.g. a small-cap on a large-cap-only analyst). **Additions** MUST come from \`read_analyst_inbox_stats.topTickers\` or \`discover_signals_for_fence.tickerFrequency\` — never from the model's training data. Default behavior on a rebuild is: send back the existing watchlist plus any new tickers the tools surfaced. Silently dropping the user's existing picks because they didn't appear in the discovery results is a BUG.
+
+6a. **Sectors → industries is non-optional.** If \`sectors\` is populated (in the top-level field or the \`universe\` sub-object), \`industries\` MUST also be populated with 2-4 GICS industries that match the strategy. The Zod schema rejects the tool call if you try to send sectors without industries. Same for \`universe.sectors\` vs \`universe.industries\`. Only leave both empty if the user explicitly asked for cross-industry sector-wide exposure — and if you do, say so in your summary sentence.
+
+6b. **marketCap omission.** OMIT \`marketCapMin\` / \`marketCapMax\` entirely for no bound. Never send 0, Number.MAX_SAFE_INTEGER, or any other sentinel. The Zod schema rejects \`marketCapMin: 0\` and caps both bounds at \`1e13\`.
 
 7. **NO citation markers, NO markdown headings.** Do NOT write [1], [2], [3] bracket citations in your prose. Do NOT use #, ##, ### markdown headings. The user sees every tool call directly in the chat as an expandable row — they can click to read exactly what you read. Citations and headings belong in documents, not in a chat conversation. Use **bold** for emphasis when you need it.
 

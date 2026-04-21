@@ -9,6 +9,7 @@ export interface Signal {
   tickers: string[];
   themes: string[];
   sectors: string[];
+  industries: string[];
   sentiment: string;
   urgency: string;
   freshness: string;
@@ -45,9 +46,57 @@ export interface Signal {
     analyst: { id: string; name: string };
     relevanceScore: number;
     routeReason: string;
+    /** Canonical route code set by the signal router. Nullable on legacy rows. */
+    routeReasonCode: RouteReasonCode | null;
+    /** Per-dimension overlap explaining why the signal landed. Only populated keys contribute. */
+    matchedUniverse: MatchedUniverse | null;
     status: string;
   }>;
 }
+
+// ── Route provenance (mirrors signal-router.ts; kept local so client bundles don't import server code) ──
+
+export type RouteReasonCode =
+  | "DISCOVERY"
+  | "WATCHLIST"
+  | "POSITION"
+  | "DIRECT_TICKER"
+  | "SECTOR_MATCH"
+  | "INDUSTRY_MATCH"
+  | "THEME_MATCH"
+  | "CROSS_ANALYST";
+
+export interface MatchedUniverse {
+  sectors?: string[];
+  industries?: string[];
+  themes?: string[];
+  inWatchlist?: boolean;
+  inPositions?: boolean;
+  fromAnalystId?: string;
+  marketCap?: string;
+}
+
+export const ROUTE_REASON_LABELS: Record<RouteReasonCode, string> = {
+  DISCOVERY: "Discovery",
+  WATCHLIST: "Watchlist",
+  POSITION: "Position",
+  DIRECT_TICKER: "Direct ticker",
+  SECTOR_MATCH: "Sector",
+  INDUSTRY_MATCH: "Industry",
+  THEME_MATCH: "Theme",
+  CROSS_ANALYST: "Cross-analyst",
+};
+
+export const ROUTE_REASON_TOOLTIPS: Record<RouteReasonCode, string> = {
+  DISCOVERY: "Signal matched two or more universe dimensions (sector + industry/theme). Came through the fence, not a direct ticker.",
+  WATCHLIST: "Signal mentions a ticker on this analyst's watchlist. Bypasses the fence.",
+  POSITION: "Signal mentions a ticker this analyst currently holds. Bypasses the fence.",
+  DIRECT_TICKER: "Signal matched a ticker-specific monitor owned by this analyst.",
+  SECTOR_MATCH: "Signal matched only the analyst's sector dimension.",
+  INDUSTRY_MATCH: "Signal matched only the analyst's industry dimension.",
+  THEME_MATCH: "Signal matched only the analyst's theme dimension.",
+  CROSS_ANALYST: "Signal was originally routed to another analyst, cross-posted because tickers overlap with this analyst's positions or watchlist.",
+};
 
 export interface SignalBatch {
   id: string;

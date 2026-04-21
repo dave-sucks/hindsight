@@ -89,6 +89,10 @@ export function AgentConfigCard({
   directionBias = "BOTH",
   holdDurations = [],
   sectors = [],
+  industries = [],
+  themes = [],
+  marketCapMin,
+  marketCapMax,
   signalTypes = [],
   minConfidence = 0,
   maxPositionSize = 0,
@@ -154,15 +158,33 @@ export function AgentConfigCard({
         <InfoRow label="Hold Duration" value={holdDurations.join(", ") || "—"} border={false} />
       </div>
 
-      {/* ── Sectors ────────────────────────────────────────────────── */}
-      {sectors.length > 0 && (
-        <div className="p-3 border-b">
-          <p className="text-sm font-medium mb-1.5">Sectors</p>
-          <div className="flex flex-wrap gap-1.5">
-            {sectors.map((s) => (
-              <Badge key={s} variant="outline">{s}</Badge>
-            ))}
-          </div>
+      {/* ── Universe (sectors / industries / themes / market cap) ────────── */}
+      {(sectors.length > 0 ||
+        industries.length > 0 ||
+        themes.length > 0 ||
+        marketCapMin != null ||
+        marketCapMax != null) && (
+        <div className="p-3 border-b space-y-2">
+          <p className="text-sm font-medium">Universe</p>
+          {sectors.length > 0 && (
+            <UniverseRow label="Sectors" values={sectors} />
+          )}
+          {industries.length > 0 && (
+            <UniverseRow label="Industries" values={industries} />
+          )}
+          {themes.length > 0 && (
+            <UniverseRow label="Themes" values={themes} />
+          )}
+          {(marketCapMin != null || marketCapMax != null) && (
+            <div className="flex items-start gap-3">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground w-20 shrink-0 pt-0.5">
+                Market Cap
+              </span>
+              <span className="text-sm tabular-nums">
+                {formatCap(marketCapMin ?? null)} – {formatCap(marketCapMax ?? null)}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -235,4 +257,29 @@ export function AgentConfigCard({
       )}
     </Card>
   );
+}
+
+// ── Universe row (label + canonical value chips) ────────────────────────────
+
+function UniverseRow({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground w-20 shrink-0 pt-0.5">
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1">
+        {values.map((v) => (
+          <Badge key={v} variant="outline">{v}</Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatCap(amount: number | null): string {
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) return "any";
+  if (amount >= 1_000_000_000_000) return `$${(amount / 1_000_000_000_000).toFixed(1)}T`;
+  if (amount >= 1_000_000_000) return `$${(amount / 1_000_000_000).toFixed(1)}B`;
+  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(0)}M`;
+  return `$${amount.toFixed(0)}`;
 }

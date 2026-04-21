@@ -61,22 +61,30 @@ export const configSchema = z.object({
       "Analyst-defined themes the strategy hunts. E.g. 'AI infrastructure', 'EV transition', 'GLP-1', 'datacenter capex'. " +
       "These route theme-tagged signals into the inbox. 3-6 themes is typical. Empty = no theme filter.",
     ),
+  // $10T ceiling — no company approaches this, and models like to send
+  // Number.MAX_SAFE_INTEGER when they interpret "no upper bound" as a
+  // sentinel instead of omitting the field. Reject at the tool layer.
   marketCapMin: z
     .number()
     .int()
     .nonnegative()
+    .max(1e13)
     .optional()
     .describe(
-      "Minimum market cap in dollars (integer). E.g. 500000000 for $500M. Leave undefined for no lower bound. " +
+      "Minimum market cap in dollars (integer). E.g. 500000000 for $500M. " +
+      "OMIT this field entirely for no lower bound — do NOT send 0 or any sentinel. " +
       "Use with marketCapMax to define a cap band (e.g. small-caps only, large-caps only).",
     ),
   marketCapMax: z
     .number()
     .int()
     .nonnegative()
+    .max(1e13)
     .optional()
     .describe(
-      "Maximum market cap in dollars (integer). E.g. 10000000000 for $10B. Leave undefined for no upper bound.",
+      "Maximum market cap in dollars (integer). E.g. 10000000000 for $10B. " +
+      "OMIT this field entirely for no upper bound — do NOT send Number.MAX_SAFE_INTEGER " +
+      "or any absurd sentinel. If you want an implicit cap above the largest mega-cap, omit.",
     ),
   // NOTE: signalTypes was removed here because it doesn't filter anything
   // at runtime — it was a cosmetic badge field. Builder/Editor should NOT
@@ -208,7 +216,67 @@ export const configSchema = z.object({
       "relevant to the strategy — this is the fence for new-ticker discovery. " +
       "Keep it focused (5-10 items total); too broad makes discovery noise."
     ),
-});
+})
+  // Cross-field rules — enforced at the Zod boundary so the agent can't
+  // ship half-populated fences. Validation failure here causes the AI SDK
+  // to reject the tool call and the model has to retry with a correction.
+  .refine(
+    (c) => {
+      const topHasSectors = Array.isArray(c.sectors) && c.sectors.length > 0;
+      const topHasIndustries =
+        Array.isArray(c.industries) && c.industries.length > 0;
+      if (topHasSectors && !topHasIndustries) return false;
+      return true;
+    },
+    {
+      message:
+        "`industries` must be non-empty whenever `sectors` is populated. " +
+        "Narrow to 2-4 GICS industries inside the sectors you chose — " +
+        "otherwise the fence lets through everything in the sector and " +
+        "dilutes routing. Leave both empty only if the user explicitly " +
+        "asked for cross-industry sector-wide exposure.",
+      path: ["industries"],
+    },
+  )
+  .refine(
+    (c) => {
+      const u = c.universe;
+      if (!u) return true;
+      const uHasSectors = Array.isArray(u.sectors) && u.sectors.length > 0;
+      const uHasIndustries =
+        Array.isArray(u.industries) && u.industries.length > 0;
+      if (uHasSectors && !uHasIndustries) return false;
+      return true;
+    },
+    {
+      message:
+        "`universe.industries` must be non-empty whenever `universe.sectors` " +
+        "is populated. Same rule as the top-level sectors/industries pair.",
+      path: ["universe", "industries"],
+    },
+  )
+  .refine(
+    (c) => c.marketCapMin !== 0,
+    {
+      message:
+        "Do not send `marketCapMin: 0` to mean no floor. OMIT the field " +
+        "entirely. 0 is a literal floor of $0 which is always-true and " +
+        "a sentinel the fence doesn't want.",
+      path: ["marketCapMin"],
+    },
+  )
+  .refine(
+    (c) => c.marketCapMax === undefined || c.marketCapMax < 5e12,
+    {
+      message:
+        "Do not send `marketCapMax: 10000000000000` (or anything above $5T) " +
+        "to mean no ceiling. OMIT the field entirely. The largest public " +
+        "company is ~$4T — any value above $5T is a sentinel, not a real " +
+        "fence. If the strategy truly wants large-caps only, send a real " +
+        "ceiling like 500000000000 ($500B), or OMIT for no ceiling.",
+      path: ["marketCapMax"],
+    },
+  );
 
 export type ConfigSchema = z.infer<typeof configSchema>;
 

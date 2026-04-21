@@ -10,12 +10,10 @@ import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 export function AnalystEditClient({
   analystId,
-  analystName,
   currentConfig,
   initialMessage,
 }: {
   analystId: string;
-  analystName: string;
   currentConfig: Record<string, unknown>;
   initialMessage?: string;
 }) {
@@ -41,7 +39,7 @@ export function AnalystEditClient({
   return (
     <div className="relative h-[calc(100dvh-3rem)] overflow-hidden">
       {/* Back button */}
-      <div className="absolute top-2 left-3 z-20">
+      <div className="absolute top-2 left-3 z-20 flex items-center gap-1">
         <Button variant="ghost" size="icon" render={<Link href={`/analysts/${analystId}`} />}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
