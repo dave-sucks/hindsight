@@ -61,22 +61,30 @@ export const configSchema = z.object({
       "Analyst-defined themes the strategy hunts. E.g. 'AI infrastructure', 'EV transition', 'GLP-1', 'datacenter capex'. " +
       "These route theme-tagged signals into the inbox. 3-6 themes is typical. Empty = no theme filter.",
     ),
+  // $10T ceiling — no company approaches this, and models like to send
+  // Number.MAX_SAFE_INTEGER when they interpret "no upper bound" as a
+  // sentinel instead of omitting the field. Reject at the tool layer.
   marketCapMin: z
     .number()
     .int()
     .nonnegative()
+    .max(1e13)
     .optional()
     .describe(
-      "Minimum market cap in dollars (integer). E.g. 500000000 for $500M. Leave undefined for no lower bound. " +
+      "Minimum market cap in dollars (integer). E.g. 500000000 for $500M. " +
+      "OMIT this field entirely for no lower bound — do NOT send 0 or any sentinel. " +
       "Use with marketCapMax to define a cap band (e.g. small-caps only, large-caps only).",
     ),
   marketCapMax: z
     .number()
     .int()
     .nonnegative()
+    .max(1e13)
     .optional()
     .describe(
-      "Maximum market cap in dollars (integer). E.g. 10000000000 for $10B. Leave undefined for no upper bound.",
+      "Maximum market cap in dollars (integer). E.g. 10000000000 for $10B. " +
+      "OMIT this field entirely for no upper bound — do NOT send Number.MAX_SAFE_INTEGER " +
+      "or any absurd sentinel. If you want an implicit cap above the largest mega-cap, omit.",
     ),
   // NOTE: signalTypes was removed here because it doesn't filter anything
   // at runtime — it was a cosmetic badge field. Builder/Editor should NOT

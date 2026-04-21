@@ -1234,13 +1234,20 @@ export async function updateAnalystFromBuilder(
     if (Array.isArray(u.exchanges)) updateData.exchanges = u.exchanges;
     if (Array.isArray(u.industries)) updateData.industries = normalizeIndustries(u.industries);
     if (Array.isArray(u.themes)) updateData.themes = normalizeThemes(u.themes);
+    // Sanity ceiling — the tool schema already caps at $10T, but belt-and-
+    // suspenders in case a legacy payload or direct API call lands with a
+    // larger value. Anything above the ceiling is clearly "no bound" and
+    // should be null, not stored as a BigInt garbage value.
+    const CAP_CEILING = 1e13;
     if (typeof u.marketCapMin === "number" && Number.isFinite(u.marketCapMin)) {
-      updateData.marketCapMin = BigInt(Math.round(u.marketCapMin));
+      updateData.marketCapMin =
+        u.marketCapMin >= CAP_CEILING ? null : BigInt(Math.round(u.marketCapMin));
     } else if (u.marketCapMin === null) {
       updateData.marketCapMin = null;
     }
     if (typeof u.marketCapMax === "number" && Number.isFinite(u.marketCapMax)) {
-      updateData.marketCapMax = BigInt(Math.round(u.marketCapMax));
+      updateData.marketCapMax =
+        u.marketCapMax >= CAP_CEILING ? null : BigInt(Math.round(u.marketCapMax));
     } else if (u.marketCapMax === null) {
       updateData.marketCapMax = null;
     }

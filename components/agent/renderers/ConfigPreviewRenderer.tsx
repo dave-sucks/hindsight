@@ -87,6 +87,10 @@ const UNIVERSE_FIELDS = new Set<FieldKey>([
 
 function formatValue(key: FieldKey, val: unknown): string {
   if (val == null || val === "") return "—";
+
+  // Specialized array/object cases — MUST come before the generic
+  // Array.isArray handler, otherwise arrays of objects render as
+  // "[object Object], [object Object], …".
   if (key === "watchlist" && Array.isArray(val)) {
     if (val.length === 0) return "—";
     return val
@@ -95,7 +99,39 @@ function formatValue(key: FieldKey, val: unknown): string {
       )
       .join(", ");
   }
+  if (key === "intelligenceQueries" && Array.isArray(val)) {
+    if (val.length === 0) return "—";
+    return val
+      .map((q) =>
+        typeof q === "string"
+          ? q
+          : ((q as { query?: string }).query ?? ""),
+      )
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (key === "domainMonitorProposal" && val && typeof val === "object") {
+    const sources = (val as { sources?: Array<Record<string, unknown>> })
+      .sources ?? [];
+    if (sources.length === 0) return "—";
+    return sources
+      .map(
+        (s) =>
+          (s.name as string | undefined) ??
+          (s.domain as string | undefined) ??
+          "",
+      )
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (key === "intelligencePolicy" && val && typeof val === "object") {
+    const p = val as Record<string, number | undefined>;
+    return `H ${Math.round((p.holdingsAttention ?? 0) * 100)}% · W ${Math.round((p.watchlistAttention ?? 0) * 100)}% · D ${Math.round((p.discoveryAttention ?? 0) * 100)}%`;
+  }
+
+  // Generic array of primitives (sectors, industries, themes, exclusionList)
   if (Array.isArray(val)) return val.length === 0 ? "—" : val.join(", ");
+
   if (
     (key === "maxPositionSize" ||
       key === "marketCapMin" ||
@@ -107,17 +143,6 @@ function formatValue(key: FieldKey, val: unknown): string {
   if (key === "minConfidence" && typeof val === "number") return `${val}%`;
   if (typeof val === "string" && key === "analystPrompt")
     return val.length > 140 ? val.slice(0, 140) + "…" : val;
-  if (key === "domainMonitorProposal" && val && typeof val === "object") {
-    const sources = (val as { sources?: unknown[] }).sources ?? [];
-    return `${sources.length} source${sources.length !== 1 ? "s" : ""}`;
-  }
-  if (key === "intelligenceQueries" && Array.isArray(val)) {
-    return `${val.length} quer${val.length !== 1 ? "ies" : "y"}`;
-  }
-  if (key === "intelligencePolicy" && val && typeof val === "object") {
-    const p = val as Record<string, number | undefined>;
-    return `H ${Math.round((p.holdingsAttention ?? 0) * 100)}% · W ${Math.round((p.watchlistAttention ?? 0) * 100)}% · D ${Math.round((p.discoveryAttention ?? 0) * 100)}%`;
-  }
   return String(val);
 }
 

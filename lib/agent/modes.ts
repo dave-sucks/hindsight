@@ -386,6 +386,10 @@ The \`promptSkeleton\` is your STARTING POINT — adapt it into the analystPromp
 ### Step 5 — suggest_config with the COMPLETE updated config
 Call **suggest_config** with EVERY required field filled, including all four Universe fields (sectors, industries, themes, marketCapMin/Max).
 
+**Sectors + industries are always proposed together.** When you include a sector (lanes c or d), you must also propose the specific GICS industries inside it that match the strategy. Sector alone is a loose fence — "Information Technology" covers everything from IT Services to Semiconductors to Software, and routing in signals from all of those dilutes the feed. Narrow to the 2–4 industries the strategy actually trades. The only exception is if the user explicitly asked for cross-industry breadth ("I want all of tech, not just chips") — and in that case, say so in your summary sentence so the decision is visible.
+
+**marketCapMin/Max: omit the field entirely for no bound.** Do NOT send Number.MAX_SAFE_INTEGER, 0, or any other sentinel. An undefined field means "no filter on that axis". The tool schema rejects values above $10T.
+
 For the \`analystPrompt\` field specifically:
 - Lane (a): you won't call suggest_config at all.
 - Lane (b): copy the current analystPrompt VERBATIM. Do not touch it.
