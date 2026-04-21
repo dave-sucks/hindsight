@@ -6,6 +6,10 @@
  * Used by read_morning_brief and read_signals. Renders one ToolProgressTickerItem
  * per entry in data.tickers[], with source chips below. Falls back to summary text
  * if no tickers are present.
+ *
+ * Optional `data.context` (prose string): rendered as a non-ticker ToolProgressItem
+ * above the ticker rows. Used by tools like read_morning_brief to surface narrative
+ * context (market regime, theme overview) that doesn't belong in a ticker row.
  */
 
 import type { ToolResult } from "@/lib/agent/tool-result";
@@ -41,19 +45,21 @@ interface Props {
 export function TickerListRenderer({ toolName, result, loading, inGroup }: Props) {
   const data = result.data as Record<string, unknown> | null;
   const tickers = (data?.tickers as TickerItem[] | undefined) ?? [];
+  const context = typeof data?.context === "string" ? data.context : null;
   const label = result.progressLabel ?? TOOL_LABELS[toolName] ?? result.summary.slice(0, 60);
   const rawResult = { ...data, _sources: result.sources };
   const sources = loading ? [] : extractToolSources(rawResult as Record<string, unknown>);
 
   const body = (
     <>
+      {context && <ToolProgressItem>{context}</ToolProgressItem>}
       {tickers.length > 0
         ? tickers.map((t, i) => (
             <ToolProgressTickerItem key={i} ticker={t.ticker} tag={t.tag}>
               {t.summary}
             </ToolProgressTickerItem>
           ))
-        : <ToolProgressItem>{result.summary}</ToolProgressItem>
+        : !context && <ToolProgressItem>{result.summary}</ToolProgressItem>
       }
       <SourceChips sources={sources} />
     </>

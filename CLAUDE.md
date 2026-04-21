@@ -365,10 +365,9 @@ The agent run page (`/runs/[id]`) renders via:
 - FIXED BY: explicit prohibition in Stage 4 — "narrated watchlist updates that skip the tool call are a run failure."
 - If the prohibition language is softened or removed, the regression returns immediately.
 
-**Morning brief first item missing** (`lib/agent/tools/read-morning-brief.ts`)
-- The marketContext field (full brief narrative) was not included in the tickers array so it was never rendered.
-- FIXED BY: prepending `{ ticker: "MARKET", tag: "Context", summary: brief.marketContext }` as the first tickers item.
-- DO NOT refactor the tickers array without preserving this prepend.
+**Morning brief marketContext rendering** (`lib/agent/tools/read-morning-brief.ts`, `components/agent/renderers/TickerListRenderer.tsx`)
+- `marketContext` is a prose narrative, not a ticker row — it must NOT be jammed into the `tickers` array as a fake `$MARKET` ticker. Doing so pollutes the ticker abstraction and renders it with a ticker chip as if it were a real symbol.
+- Correct wiring: the tool returns `data.context` alongside `data.tickers`. `TickerListRenderer` reads `data.context` and renders it as a plain `ToolProgressItem` (prose row) above the ticker rows. Any tool that needs narrative context above a ticker list uses the same `context` field — no custom renderer per tool.
 
 - FMP historical-price-full may 403 on legacy plan (affects
   technical analysis for small-cap/ADR tickers)
