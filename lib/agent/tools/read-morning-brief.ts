@@ -55,6 +55,10 @@ export const readMorningBrief = defineTool({
       : [];
 
     const tickers = [
+      // Market context is the first row — the full brief narrative text.
+      // DO NOT REMOVE: this was previously shown as a "generic row with full text"
+      // and gets dropped any time the tickers array is refactored without this line.
+      ...(brief.marketContext ? [{ ticker: "MARKET", tag: "Context", summary: brief.marketContext }] : []),
       ...alerts.map((a) => ({ ticker: a.ticker, tag: "Holding", summary: a.alert })),
       ...watches.map((w) => ({ ticker: w.ticker, tag: "Watching", summary: w.update })),
       ...opps.map((o) => ({ ticker: o.tickers?.[0] ?? "?", tag: "Opportunity", summary: o.thesisSeed || o.headline })),

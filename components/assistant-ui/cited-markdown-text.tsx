@@ -339,15 +339,31 @@ const citedComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  h3: ({ className, ...props }) => (
-    <h3
-      className={cn(
-        "aui-md-h3 mt-2.5 mb-1 scroll-m-20 font-semibold text-sm first:mt-0 last:mb-0",
-        className,
-      )}
-      {...props}
-    />
-  ),
+  h3: ({ className, children, ...props }) => {
+    // Belt-and-suspenders: strip "Stage N — NAME" / "Phase N — NAME" headings
+    // that GPT-4o copies from system prompt structure despite the narration rule.
+    // The system prompt uses these as internal instruction labels (not ### headers),
+    // but the model still sometimes outputs them. This filter is the last line of
+    // defense. DO NOT REMOVE — it will be needed as long as stage terminology
+    // appears anywhere in the system prompt.
+    const text = Array.isArray(children)
+      ? children.map((c) => (typeof c === "string" ? c : "")).join("")
+      : typeof children === "string"
+        ? children
+        : "";
+    if (/^(Stage|Phase)\s+\d+\s*[—–\-]/i.test(text.trim())) return null;
+    return (
+      <h3
+        className={cn(
+          "aui-md-h3 mt-2.5 mb-1 scroll-m-20 font-semibold text-sm first:mt-0 last:mb-0",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </h3>
+    );
+  },
   h4: ({ className, ...props }) => (
     <h4
       className={cn(

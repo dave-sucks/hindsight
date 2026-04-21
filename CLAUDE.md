@@ -351,6 +351,25 @@ The agent run page (`/runs/[id]`) renders via:
 10. complete_run marks run COMPLETE, triggers briefing agent
 
 ## Known Issues / Tech Debt
+
+### RECURRING BUGS — READ BEFORE TOUCHING THESE FILES
+
+**Stage labels in agent output** (`lib/agent/system-prompt.ts`, `components/assistant-ui/cited-markdown-text.tsx`)
+- GPT-4o copies `### Stage N — NAME` heading format from the system prompt into output text.
+- FIXED BY: using bold inline text (**Orient your session —**) instead of `###` headers for all stages.
+- The cited-markdown-text.tsx h3 renderer also strips any `Stage N —` / `Phase N —` headings as a last resort.
+- DO NOT change stage instruction headings back to `### Stage N — NAME` format. It will break every run.
+
+**manage_watchlist tool call not showing** (`lib/agent/system-prompt.ts`)
+- GPT-4o narrates "I'll add $X to the watchlist" as prose instead of calling manage_watchlist.
+- FIXED BY: explicit prohibition in Stage 4 — "narrated watchlist updates that skip the tool call are a run failure."
+- If the prohibition language is softened or removed, the regression returns immediately.
+
+**Morning brief first item missing** (`lib/agent/tools/read-morning-brief.ts`)
+- The marketContext field (full brief narrative) was not included in the tickers array so it was never rendered.
+- FIXED BY: prepending `{ ticker: "MARKET", tag: "Context", summary: brief.marketContext }` as the first tickers item.
+- DO NOT refactor the tickers array without preserving this prepend.
+
 - FMP historical-price-full may 403 on legacy plan (affects
   technical analysis for small-cap/ADR tickers)
 - Old analysts created before V3 may need V3 infra backfill
