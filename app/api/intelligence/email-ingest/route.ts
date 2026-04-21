@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
+import { inngest } from "@/lib/inngest/client";
 import {
   createSignal,
   createSignalBatch,
@@ -198,6 +199,18 @@ export async function POST(req: Request) {
   }
 
   await completeSignalBatch(batchId);
+
+  // Route inline so email signals appear on the dashboard immediately instead
+  // of waiting for the 7:30 AM router cron. Fire-and-forget — if routing
+  // fails, the morning cron will still pick these signals up.
+  try {
+    await inngest.send({ name: "intelligence/route-signals" });
+  } catch (err) {
+    console.error(
+      "[email-ingest] failed to fire signal-router event:",
+      err instanceof Error ? err.message : err
+    );
+  }
 
   const breakingTickers = [
     ...new Set(

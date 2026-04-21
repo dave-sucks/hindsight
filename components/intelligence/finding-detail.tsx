@@ -31,7 +31,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { PerplexityLogo, FirecrawlLogo } from "@/components/intelligence/icons";
+import { PerplexityLogo, FirecrawlLogo, EmailIcon } from "@/components/intelligence/icons";
 import { Globe, Search, Shuffle, Zap } from "lucide-react";
 import type { MatchedUniverse, RouteReasonCode, Signal } from "./types";
 import {
@@ -46,9 +46,11 @@ const MONITOR_ICON = {
   SEARCH: Search,
   DOMAIN: Globe,
   API: Zap,
+  EMAIL: EmailIcon,
 } as const;
 
 function getMonitorType(signal: Signal): keyof typeof MONITOR_ICON {
+  if (signal.searchTool === "EMAIL_INGEST") return "EMAIL";
   if (
     signal.monitor?.type === "DOMAIN" ||
     signal.searchContext?.startsWith("domain_group:")
@@ -61,6 +63,15 @@ function getMonitorType(signal: Signal): keyof typeof MONITOR_ICON {
   )
     return "API";
   return "SEARCH";
+}
+
+/** Pull "<subject>" out of searchContext which the email-ingest route stores
+ *  as "Inbound email: <subject>". Returns null if not an email signal. */
+function emailSubject(signal: Signal): string | null {
+  if (signal.searchTool !== "EMAIL_INGEST") return null;
+  const ctx = signal.searchContext ?? "";
+  const prefix = "Inbound email: ";
+  return ctx.startsWith(prefix) ? ctx.slice(prefix.length) : null;
 }
 
 // ── Finding Detail Dialog ───────────────────────────────────────────────────
@@ -80,9 +91,13 @@ export function FindingDetailDialog({
 
   const monitorType = getMonitorType(signal);
   const MonitorIcon = MONITOR_ICON[monitorType];
-  const query = signal.searchQuery ?? signal.headline;
+  const isEmail = monitorType === "EMAIL";
+  const subject = emailSubject(signal);
+  // Prefer the email subject line for email signals; fall back to the stored
+  // search query, then the headline.
+  const query = subject ?? signal.searchQuery ?? signal.headline;
   const usedPerplexity =
-    !signal.searchTool || signal.searchTool === "PERPLEXITY_SONAR";
+    !isEmail && (!signal.searchTool || signal.searchTool === "PERPLEXITY_SONAR");
   const usedFirecrawl = !!signal.artifactId;
 
   const hasSources = signal.sourceUrls.length > 0;
@@ -168,7 +183,11 @@ export function FindingDetailDialog({
                       rel="noopener noreferrer"
                       className="-ml-1.5 inline-flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                     >
-                      <Favicon domain={domain} size={14} />
+                      {isEmail ? (
+                        <EmailIcon className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <Favicon domain={domain} size={14} />
+                      )}
                       <span>{name}</span>
                     </a>
                   );
