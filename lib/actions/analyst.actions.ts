@@ -1234,11 +1234,10 @@ export async function updateAnalystFromBuilder(
     if (Array.isArray(u.exchanges)) updateData.exchanges = u.exchanges;
     if (Array.isArray(u.industries)) updateData.industries = normalizeIndustries(u.industries);
     if (Array.isArray(u.themes)) updateData.themes = normalizeThemes(u.themes);
-    // Sanity ceiling — the tool schema already caps at $10T, but belt-and-
-    // suspenders in case a legacy payload or direct API call lands with a
-    // larger value. Anything above the ceiling is clearly "no bound" and
-    // should be null, not stored as a BigInt garbage value.
-    const CAP_CEILING = 1e13;
+    // $5T ceiling — no real company approaches this, so anything above
+    // is definitely a "no bound" sentinel the model slipped through. Cap
+    // matches the Zod refine in suggest_config.ts.
+    const CAP_CEILING = 5e12;
     if (typeof u.marketCapMin === "number" && Number.isFinite(u.marketCapMin)) {
       // 0 is a sentinel "no floor" the model sometimes sends despite the
       // schema instruction to omit. Treat as null.

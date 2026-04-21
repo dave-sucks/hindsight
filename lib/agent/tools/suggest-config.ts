@@ -264,6 +264,18 @@ export const configSchema = z.object({
         "a sentinel the fence doesn't want.",
       path: ["marketCapMin"],
     },
+  )
+  .refine(
+    (c) => c.marketCapMax === undefined || c.marketCapMax < 5e12,
+    {
+      message:
+        "Do not send `marketCapMax: 10000000000000` (or anything above $5T) " +
+        "to mean no ceiling. OMIT the field entirely. The largest public " +
+        "company is ~$4T — any value above $5T is a sentinel, not a real " +
+        "fence. If the strategy truly wants large-caps only, send a real " +
+        "ceiling like 500000000000 ($500B), or OMIT for no ceiling.",
+      path: ["marketCapMax"],
+    },
   );
 
 export type ConfigSchema = z.infer<typeof configSchema>;

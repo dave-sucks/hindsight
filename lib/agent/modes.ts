@@ -94,6 +94,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_market_context",
       "get_stock_data",
       "get_earnings_data",
+      // Live web search — same tool the builder has. Used sparingly (budget-
+      // limited) to check something beyond the inbox, e.g. "what are the
+      // best-in-class EV charging tickers right now".
+      "web_search",
     ] as const,
     hasSuggestConfig: true,
     maxDuration: 150,
@@ -412,7 +416,7 @@ For optional fields (domainMonitorProposal, intelligenceQueries, intelligencePol
 
 5. **Lane (d): archetype skeleton required.** \`read_knowledge_library\` with topic:"archetype" and a specific id MUST be called BEFORE writing the new analystPrompt. Do not write a new strategy from memory.
 
-6. **Watchlist grounding.** New watchlist tickers MUST come from \`read_analyst_inbox_stats.topTickers\` or \`discover_signals_for_fence.tickerFrequency\`. Never from the model's training data.
+6. **Watchlist: preserve + extend, don't replace.** Start from the CURRENT watchlist in currentConfig and KEEP every ticker unless the user explicitly asks to remove one OR the ticker directly contradicts the new strategy (e.g. a small-cap on a large-cap-only analyst). **Additions** MUST come from \`read_analyst_inbox_stats.topTickers\` or \`discover_signals_for_fence.tickerFrequency\` — never from the model's training data. Default behavior on a rebuild is: send back the existing watchlist plus any new tickers the tools surfaced. Silently dropping the user's existing picks because they didn't appear in the discovery results is a BUG.
 
 6a. **Sectors → industries is non-optional.** If \`sectors\` is populated (in the top-level field or the \`universe\` sub-object), \`industries\` MUST also be populated with 2-4 GICS industries that match the strategy. The Zod schema rejects the tool call if you try to send sectors without industries. Same for \`universe.sectors\` vs \`universe.industries\`. Only leave both empty if the user explicitly asked for cross-industry sector-wide exposure — and if you do, say so in your summary sentence.
 

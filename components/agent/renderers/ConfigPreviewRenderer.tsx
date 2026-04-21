@@ -43,7 +43,10 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
       { key: "maxPositionSize", label: "Max Position Size" },
       { key: "maxOpenPositions", label: "Max Positions" },
       { key: "minMarketCapTier", label: "Market Cap Tier" },
-      { key: "signalTypes", label: "Signal Types" },
+      // signalTypes intentionally omitted — deprecated field, dropped from
+      // suggest_config's schema. Without this, every rebuild showed a false-
+      // positive diff: "NEWS_CATALYST, TECHNICAL, … → —" because the DB still
+      // has old values and the proposed config doesn't touch the key at all.
     ],
   },
   universe: {
@@ -188,11 +191,21 @@ function diffsFor(
     const bVal = before[spec.key as string];
     const aVal = (after as Record<string, unknown>)[spec.key as string];
     if (deepEq(bVal, aVal)) continue;
+    const beforeStr = formatValue(spec.key, bVal);
+    const afterStr = formatValue(spec.key, aVal);
+    // If the visible rendering is identical, suppress the diff. deepEq can
+    // return false for objects that differ in key ordering, missing optional
+    // keys, or numeric coercion (e.g. 0.3 vs 0.30000000000000004), while
+    // formatValue collapses both sides to the same human-readable string.
+    // Showing "changed" on an unchanged-looking row is worse than missing a
+    // field-level change the formatter doesn't surface — if the user can't
+    // see the difference, there's no diff to confirm.
+    if (beforeStr === afterStr) continue;
     out.push({
       key: spec.key,
       label: spec.label,
-      before: formatValue(spec.key, bVal),
-      after: formatValue(spec.key, aVal),
+      before: beforeStr,
+      after: afterStr,
     });
   }
   return out;
