@@ -354,11 +354,11 @@ The agent run page (`/runs/[id]`) renders via:
 
 ### RECURRING BUGS — READ BEFORE TOUCHING THESE FILES
 
-**Stage labels in agent output** (`lib/agent/system-prompt.ts`, `components/assistant-ui/cited-markdown-text.tsx`)
-- GPT-4o copies `### Stage N — NAME` heading format from the system prompt into output text.
-- FIXED BY: using bold inline text (**Orient your session —**) instead of `###` headers for all stages.
-- The cited-markdown-text.tsx h3 renderer also strips any `Stage N —` / `Phase N —` headings as a last resort.
-- DO NOT change stage instruction headings back to `### Stage N — NAME` format. It will break every run.
+**Stage structure in the agent system prompt** (`lib/agent/system-prompt.ts`, `components/assistant-ui/cited-markdown-text.tsx`)
+- The Run Flow section MUST use `### Stage N — NAME` markdown headers for each of the 6 stages. GPT-4o relies on that structural cue to treat the stage boundary as a mandatory tool-call emission point.
+- Replacing the `###` headers with inline bold (e.g. `**Record theses —**`) has been tried and **destroys the run**: the model narrates the transition as prose ("I'll proceed to thesis drafting…"), generateText terminates on that text-only step, and the run ends with 0 theses, 0 trades, 0 summary. Every analyst fails identically. Do not do this — it was attempted in commit 364b63a (Apr 20 2026) and broke the entire 8 AM cron the next morning.
+- GPT-4o occasionally leaks `### Stage N — NAME` verbatim into its narration output. That cosmetic issue is handled at the renderer — the h3 filter in `cited-markdown-text.tsx` (around line 342) strips any heading matching `/^(Stage|Phase)\s+\d+\s*[—–\-]/`. That renderer filter is the durable defense; it's safe to keep the headers in the prompt.
+- The `FORBIDDEN OUTPUT PATTERNS` list in Section 8 of the prompt is belt-and-suspenders. Keep it. Do not rely on it alone.
 
 **manage_watchlist tool call not showing** (`lib/agent/system-prompt.ts`)
 - GPT-4o narrates "I'll add $X to the watchlist" as prose instead of calling manage_watchlist.
