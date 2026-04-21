@@ -85,7 +85,6 @@ export default async function AnalystEditPage({
   return (
     <AnalystEditClient
       analystId={id}
-      analystName={config.name}
       currentConfig={currentConfig}
       initialMessage={message}
     />
