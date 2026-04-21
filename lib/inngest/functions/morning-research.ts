@@ -123,7 +123,7 @@ export const morningResearch = inngest.createFunction(
         console.log(`[morning-research] Starting generateText for ${config.name} run=${run.id} systemPrompt=${systemPrompt.length}chars`);
         try {
           const { text, steps, response } = await generateText({
-            model: openai("gpt-4.1"),
+            model: openai("gpt-4o"),
             system: systemPrompt,
             prompt: "Begin your research session. Follow all phases in order.",
             tools,

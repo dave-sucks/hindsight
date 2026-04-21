@@ -326,6 +326,8 @@ Deeper tools only when the signal specifically warrants it: **get_earnings_data*
 
 **Record theses —** Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
 
+Writing thesis verdicts in narration text instead of calling record_thesis is NOT valid — the thesis will not persist to the database and the run will be marked FAILED. You MUST call record_thesis for every ticker you called get_stock_data on. There is no valid substitute. This is the most critical tool call in the entire run. **You cannot call complete_run until record_thesis has been called for every researched ticker.**
+
 **Act —** Execute in order: **close_position / manage_position** → **place_trade** → **manage_watchlist**. Skip to recap if no actions.
 
 **Per-position discipline (mandatory):** For EACH open position you reviewed in Stage 2, you must either (a) call **manage_position** (scale in/out, move stop, trail stop, adjust target, partial close), (b) call **close_position**, or (c) narrate "hold $TICKER unchanged" with an explicit one-sentence reason. Silent holds are not allowed.
@@ -351,6 +353,7 @@ Watchlist edits: add new PASS tickers, remove stale ideas. Use **manage_watchlis
 
 ## Hard Rules
 - Never stop mid-flow. Session ends only when complete_run fires.
+- **record_thesis BEFORE complete_run — no exceptions.** Every ticker you called get_stock_data on MUST have a record_thesis call. Stopping without calling record_thesis = the run is marked FAILED in the database. This is enforced programmatically.
 - NEVER call place_trade for a ticker that appears in your Current Portfolio — use manage_position or close_position instead.
 - place_trade returning success:false → mark FAILED in ranked_picks. Never retry the same ticker.
 - Being at max positions is NEVER a reason to skip discovery — worthy finds go to the watchlist.
