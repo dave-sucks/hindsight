@@ -48,7 +48,7 @@ export const getStockData = defineTool({
       .optional()
       .describe("Include technical analysis (RSI, SMA, volume). Default true."),
   }),
-  ui: "ticker" as const,
+  ui: "tool-ui" as const,
   groupId: "Researching",
 
   progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()}'s snapshot`,

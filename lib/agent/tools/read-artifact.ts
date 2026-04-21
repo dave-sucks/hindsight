@@ -15,7 +15,7 @@ export const readArtifact = defineTool({
   schema: z.object({
     artifactId: z.string().describe("The artifact ID from a signal"),
   }),
-  ui: "source" as const,
+  ui: "tool-ui" as const,
 
   progressLabel: () => "Reading the full article behind this signal",
 

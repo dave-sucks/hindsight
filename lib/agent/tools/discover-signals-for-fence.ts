@@ -148,7 +148,7 @@ export const discoverSignalsForFence = defineTool({
           "Must pass at least one of: sectors, industries, themes, tickers.",
       },
     ),
-  ui: "ticker-list" as const,
+  ui: "tool-ui" as const,
   groupId: "Discovery",
 
   progressLabel: (args) => {

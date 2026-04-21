@@ -40,7 +40,7 @@ export const getMarketContext = defineTool({
   description:
     "Get current market conditions: S&P 500, VIX, sector ETF performance, macro events, and regime classification. A quick price snapshot for market orientation.",
   schema: z.object({}),
-  ui: "generic" as const,
+  ui: "tool-ui" as const,
   groupId: "Researching",
 
   progressLabel: () => "Checking today's market regime",
@@ -175,7 +175,7 @@ export const getMarketContext = defineTool({
         macroEvents: macroEventsToday,
         earningsDensity,
         ...(errors.length > 0 ? { apiErrors: errors } : {}),
-        // GenericRenderer reads summary; market-specific data in data object
+        // Tool UI renders the summary; raw market data lives on data for downstream consumers
         tickers: spyData
           ? [{ ticker: "SPY", summary: `$${spyData.price} (${fPct(spyData.changesPercentage)})${spyTrend ? `, ${spyTrend.position} SMA-20 by ${fPct(spyTrend.pct_from_sma)}` : ""}` }]
           : [],
