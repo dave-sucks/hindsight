@@ -50,6 +50,7 @@ import {
   Loader2,
   EllipsisVertical,
   ScanSearch,
+  Lightbulb,
 } from "lucide-react";
 import {
   Dialog,
@@ -194,11 +195,13 @@ export default function AnalystDetailClient({
   hasRunning,
   initialWatchlist = [],
   livePrices = {},
+  pendingSuggestionCount = 0,
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
   initialWatchlist?: WatchlistItemView[];
   livePrices?: Record<string, number>;
+  pendingSuggestionCount?: number;
 }) {
   const { config: rawConfig, stats, recentTrades } = detail;
 
@@ -446,6 +449,13 @@ export default function AnalystDetailClient({
                   <DropdownMenuItem onClick={() => setConfigOpen(true)}>
                     <Settings2 className="h-3.5 w-3.5" />
                     Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push(`/analysts/${config.id}/suggestions`)}>
+                    <Lightbulb className="h-3.5 w-3.5" />
+                    <span className="flex-1">Suggestions</span>
+                    {pendingSuggestionCount > 0 && (
+                      <Badge variant="secondary">{pendingSuggestionCount}</Badge>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setShowRunShowcase(true)}>

@@ -196,6 +196,7 @@ model AgentConfig {
   signalRoutes          AnalystSignalRoute[]
   morningBriefs         MorningBrief[]
   monitors              Monitor[]
+  suggestions           Suggestion[]
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -643,6 +644,58 @@ model AccuracyReport {
 // ─── USER API KEYS ─────────────────────────────────────────────────────────
 // Stores encrypted third-party API credentials per user.
 // One row per (userId, provider) pair. Keys are AES-256-GCM encrypted at rest.
+
+// ─── SELF-IMPROVEMENT PROPOSAL LOOP ────────────────────────────────────────
+// Weekly GPT-4o pass (see lib/inngest/functions/self-improvement-weekly.ts)
+// reads last-30d briefings + runs + closed trades per analyst and writes
+// Suggestion rows. User reviews at /analysts/[id]/suggestions and clicks
+// Approve / Dismiss / Snooze — no silent writes to AgentConfig or Monitor.
+// Dismissals (with feedback) suppress similar proposals on the next pass.
+
+model Suggestion {
+  id            String      @id @default(cuid())
+  analystId     String
+  analyst       AgentConfig @relation(fields: [analystId], references: [id], onDelete: Cascade)
+  userId        String
+
+  // SuggestionKind — see lib/suggestions/types.ts for the canonical union.
+  // String (not Postgres enum) so we can evolve without migrations.
+  kind          String
+
+  // Stable signature used for dedup against existing PENDING suggestions.
+  // Format: `${kind}:${targetKey}` (e.g. "WATCHLIST_ADD:NVDA", "PROMPT_EDIT").
+  // PROMPT_EDIT dedups on kind alone — one outstanding prompt-edit at a time.
+  dedupeKey     String
+
+  // Human-readable one-liner shown as the card title.
+  title         String
+
+  // Short rationale the user reads before deciding (2-3 sentences).
+  rationale     String
+
+  // Structured evidence — which runs, trades, briefings triggered this.
+  // Shape: { runIds: string[], tradeIds: string[], briefingIds: string[],
+  //          patternSummary: string, dataPoints: Array<{...}> }
+  evidence      Json
+
+  // What to change. Shape depends on kind — see lib/suggestions/types.ts.
+  proposedDiff  Json
+
+  status        String      @default("PENDING")  // "PENDING" | "APPROVED" | "DISMISSED" | "EXPIRED" | "SNOOZED"
+  dismissReason String?     // "NOT_RELEVANT" | "ALREADY_KNOW" | "WRONG" | "OTHER"
+  dismissNote   String?     // optional free-text the user typed in
+
+  sourceRunId   String?     // optional — run the pattern most strongly pointed at
+  expiresAt     DateTime    // hard TTL: set to createdAt + 14 days at write time
+
+  createdAt     DateTime    @default(now())
+  resolvedAt    DateTime?
+  resolvedBy    String?     // userId that approved / dismissed
+
+  @@index([analystId, status])
+  @@index([analystId, dedupeKey, status])
+  @@index([expiresAt])
+}
 
 model UserApiKey {
   id             String   @id @default(cuid())

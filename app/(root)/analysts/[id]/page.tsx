@@ -39,19 +39,25 @@ export default async function AnalystDetailPage({
     });
   }
 
-  const [detail, runningCount, watchlistItems, alpacaCreds] = await Promise.all([
-    getAnalystDetail(id).catch((err) => {
-      console.error("[analyst-page] getAnalystDetail failed:", err);
-      return null;
-    }),
-    userId
-      ? prisma.researchRun.count({
-          where: { userId, agentConfigId: id, status: "RUNNING" },
-        }).catch(() => 0)
-      : Promise.resolve(0),
-    getWatchlistItems(id).catch(() => []),
-    userId ? resolveAlpacaCredentials(userId).catch(() => null) : Promise.resolve(null),
-  ]);
+  const [detail, runningCount, watchlistItems, alpacaCreds, pendingSuggestionCount] =
+    await Promise.all([
+      getAnalystDetail(id).catch((err) => {
+        console.error("[analyst-page] getAnalystDetail failed:", err);
+        return null;
+      }),
+      userId
+        ? prisma.researchRun.count({
+            where: { userId, agentConfigId: id, status: "RUNNING" },
+          }).catch(() => 0)
+        : Promise.resolve(0),
+      getWatchlistItems(id).catch(() => []),
+      userId ? resolveAlpacaCredentials(userId).catch(() => null) : Promise.resolve(null),
+      userId
+        ? prisma.suggestion.count({
+            where: { userId, analystId: id, status: "PENDING" },
+          }).catch(() => 0)
+        : Promise.resolve(0),
+    ]);
 
   if (!detail) notFound();
 
@@ -71,6 +77,7 @@ export default async function AnalystDetailPage({
       hasRunning={runningCount > 0}
       initialWatchlist={watchlistItems}
       livePrices={livePrices}
+      pendingSuggestionCount={pendingSuggestionCount}
     />
   );
 }
