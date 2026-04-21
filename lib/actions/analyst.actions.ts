@@ -1240,8 +1240,12 @@ export async function updateAnalystFromBuilder(
     // should be null, not stored as a BigInt garbage value.
     const CAP_CEILING = 1e13;
     if (typeof u.marketCapMin === "number" && Number.isFinite(u.marketCapMin)) {
+      // 0 is a sentinel "no floor" the model sometimes sends despite the
+      // schema instruction to omit. Treat as null.
       updateData.marketCapMin =
-        u.marketCapMin >= CAP_CEILING ? null : BigInt(Math.round(u.marketCapMin));
+        u.marketCapMin === 0 || u.marketCapMin >= CAP_CEILING
+          ? null
+          : BigInt(Math.round(u.marketCapMin));
     } else if (u.marketCapMin === null) {
       updateData.marketCapMin = null;
     }

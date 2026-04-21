@@ -118,8 +118,17 @@ function formatValue(key: FieldKey, val: unknown): string {
       .join(", ");
   }
   if (key === "intelligencePolicy" && val && typeof val === "object") {
-    const p = val as Record<string, number | undefined>;
-    return `H ${Math.round((p.holdingsAttention ?? 0) * 100)}% · W ${Math.round((p.watchlistAttention ?? 0) * 100)}% · D ${Math.round((p.discoveryAttention ?? 0) * 100)}%`;
+    const p = val as Record<string, number | boolean | undefined>;
+    const parts: string[] = [
+      `H ${Math.round(((p.holdingsAttention as number | undefined) ?? 0) * 100)}%`,
+      `W ${Math.round(((p.watchlistAttention as number | undefined) ?? 0) * 100)}%`,
+      `D ${Math.round(((p.discoveryAttention as number | undefined) ?? 0) * 100)}%`,
+    ];
+    if (p.maxSignalsPerRun != null) parts.push(`max ${p.maxSignalsPerRun} signals`);
+    if (p.maxArtifactReads != null) parts.push(`${p.maxArtifactReads} artifacts`);
+    if (p.allowLiveSearch != null) parts.push(p.allowLiveSearch ? "live-search on" : "live-search off");
+    if (p.liveSearchBudget != null) parts.push(`live-search ${p.liveSearchBudget}`);
+    return parts.join(" · ");
   }
 
   // Generic array of primitives (sectors, industries, themes, exclusionList)

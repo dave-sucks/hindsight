@@ -216,7 +216,55 @@ export const configSchema = z.object({
       "relevant to the strategy — this is the fence for new-ticker discovery. " +
       "Keep it focused (5-10 items total); too broad makes discovery noise."
     ),
-});
+})
+  // Cross-field rules — enforced at the Zod boundary so the agent can't
+  // ship half-populated fences. Validation failure here causes the AI SDK
+  // to reject the tool call and the model has to retry with a correction.
+  .refine(
+    (c) => {
+      const topHasSectors = Array.isArray(c.sectors) && c.sectors.length > 0;
+      const topHasIndustries =
+        Array.isArray(c.industries) && c.industries.length > 0;
+      if (topHasSectors && !topHasIndustries) return false;
+      return true;
+    },
+    {
+      message:
+        "`industries` must be non-empty whenever `sectors` is populated. " +
+        "Narrow to 2-4 GICS industries inside the sectors you chose — " +
+        "otherwise the fence lets through everything in the sector and " +
+        "dilutes routing. Leave both empty only if the user explicitly " +
+        "asked for cross-industry sector-wide exposure.",
+      path: ["industries"],
+    },
+  )
+  .refine(
+    (c) => {
+      const u = c.universe;
+      if (!u) return true;
+      const uHasSectors = Array.isArray(u.sectors) && u.sectors.length > 0;
+      const uHasIndustries =
+        Array.isArray(u.industries) && u.industries.length > 0;
+      if (uHasSectors && !uHasIndustries) return false;
+      return true;
+    },
+    {
+      message:
+        "`universe.industries` must be non-empty whenever `universe.sectors` " +
+        "is populated. Same rule as the top-level sectors/industries pair.",
+      path: ["universe", "industries"],
+    },
+  )
+  .refine(
+    (c) => c.marketCapMin !== 0,
+    {
+      message:
+        "Do not send `marketCapMin: 0` to mean no floor. OMIT the field " +
+        "entirely. 0 is a literal floor of $0 which is always-true and " +
+        "a sentinel the fence doesn't want.",
+      path: ["marketCapMin"],
+    },
+  );
 
 export type ConfigSchema = z.infer<typeof configSchema>;
 
