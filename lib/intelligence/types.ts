@@ -312,6 +312,9 @@ export interface CreateSignalInput {
   dataPayload?: unknown;  // [{ticker, change, price, volume}...] or [{ticker, date, epsEstimate}...]
   itemCount?: number;     // how many items in the aggregate
   expiresAt?: Date;
+  // Resend inbound email_id — set only by the email-ingest route. Enables
+  // duplicate-delivery dedup across webhook retries.
+  emailMessageId?: string;
 }
 
 // ── Signal Routing ──────────────────────────────────────────────────────────
