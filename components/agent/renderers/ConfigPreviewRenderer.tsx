@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowDown, ArrowRight, Check } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -76,12 +75,6 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
     ],
   },
 };
-
-const UNIVERSE_FIELDS = new Set<FieldKey>([
-  "sectors",
-  "industries",
-  "themes",
-]);
 
 // ── Value formatters ────────────────────────────────────────────────────────
 
@@ -337,68 +330,14 @@ function EditorDiff({
     });
   };
 
-  const toggleGroup = (group: GroupId) => {
-    const keys = groupDiffs[group].map((d) => d.key);
-    const allSelected = keys.every((k) => approved.has(k));
-    setApproved((prev) => {
-      const next = new Set(prev);
-      if (allSelected) keys.forEach((k) => next.delete(k));
-      else keys.forEach((k) => next.add(k));
-      return next;
-    });
-  };
-
   const approvedCount = approved.size;
+  const allSelected = approvedCount === allKeys.length;
 
-  // Post-approval (pre-apply) fence validation — runs whenever the approved
-  // universe set changes. Projects the NEW fence (current ∪ approved universe
-  // fields), posts to the validate endpoint, surfaces a "would have routed X
-  // signals in last 7d" hint so the user knows the change actually does
-  // something before committing to it.
-  const projectedUniverse = useMemo(() => {
-    const pick = (key: FieldKey) =>
-      (approved.has(key) ? proposed[key] : currentConfig[key as string]) as
-        | string[]
-        | undefined;
-    return {
-      sectors: pick("sectors") ?? [],
-      industries: pick("industries") ?? [],
-      themes: pick("themes") ?? [],
-    };
-  }, [approved, proposed, currentConfig]);
-
-  const hasUniverseChange = [...UNIVERSE_FIELDS].some(
-    (k) => approved.has(k) && !deepEq(proposed[k], currentConfig[k as string]),
-  );
-
-  const [fenceCount, setFenceCount] = useState<number | null>(null);
-  const [fenceLoading, setFenceLoading] = useState(false);
-  useEffect(() => {
-    if (!hasUniverseChange) {
-      setFenceCount(null);
-      return;
-    }
-    let cancelled = false;
-    setFenceLoading(true);
-    const t = setTimeout(() => {
-      fetch("/api/universe/validate-fence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...projectedUniverse, lookbackDays: 7 }),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (!cancelled) setFenceCount(data?.count ?? 0);
-        })
-        .finally(() => {
-          if (!cancelled) setFenceLoading(false);
-        });
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [projectedUniverse, hasUniverseChange]);
+  const toggleAll = () => {
+    setApproved((prev) =>
+      prev.size === allKeys.length ? new Set() : new Set(allKeys),
+    );
+  };
 
   const handleApply = () => {
     if (!onConfirmConfig) return;
@@ -428,9 +367,19 @@ function EditorDiff({
       <Card className="overflow-hidden p-0">
         <div className="p-3 border-b flex items-center justify-between gap-2">
           <h4 className="text-sm font-medium">Proposed Changes</h4>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {approvedCount} of {totalChanges} selected
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {approvedCount} of {totalChanges} selected
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleAll}
+              className="h-6 text-xs"
+            >
+              {allSelected ? "Unselect all" : "Select all"}
+            </Button>
+          </div>
         </div>
 
         <Tabs defaultValue={firstGroupWithChanges(groupDiffs)} className="p-0">
@@ -455,80 +404,25 @@ function EditorDiff({
           </div>
 
           {(["trading", "universe", "monitors", "prompt"] as const).map((g) => (
-            <TabsContent key={g} value={g} className="p-3 space-y-3">
+            <TabsContent key={g} value={g} className="p-3">
               {groupDiffs[g].length === 0 ? (
                 <p className="text-xs text-muted-foreground">No changes.</p>
               ) : (
-                <>
-                  <div className="flex items-center justify-end">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleGroup(g)}
-                      className="h-6 text-xs"
-                    >
-                      {groupDiffs[g].every((d) => approved.has(d.key))
-                        ? "Unselect all"
-                        : "Select all"}
-                    </Button>
-                  </div>
-                  <div className="space-y-2.5">
-                    {groupDiffs[g].map((d) => {
-                      const isOn = approved.has(d.key);
-                      return (
-                        <div
-                          key={d.key}
-                          className={cn(
-                            "flex items-start gap-3 rounded-md border p-2.5 transition-colors",
-                            !isOn && "opacity-60",
-                          )}
-                        >
-                          <Checkbox
-                            checked={isOn}
-                            onCheckedChange={() => toggleField(d.key)}
-                            className="mt-0.5"
-                          />
-                          <div className="flex-1 min-w-0 text-sm">
-                            <span className="text-xs text-muted-foreground">
-                              {d.label}
-                            </span>
-                            <div className="flex items-start gap-2 mt-1">
-                              <span className="line-through text-red-500 min-w-0 break-words">
-                                {d.before}
-                              </span>
-                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
-                              <span className="text-emerald-500 font-medium min-w-0 break-words">
-                                {d.after}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
+                <div className="space-y-2.5">
+                  {groupDiffs[g].map((d) => (
+                    <DiffRow
+                      key={d.key}
+                      diff={d}
+                      checked={approved.has(d.key)}
+                      onToggle={() => toggleField(d.key)}
+                    />
+                  ))}
+                </div>
               )}
             </TabsContent>
           ))}
         </Tabs>
       </Card>
-
-      {/* Fence preview — shown only when a universe change is approved */}
-      {hasUniverseChange && (
-        <div className="text-xs text-muted-foreground px-1">
-          {fenceLoading ? (
-            "Checking fence against recent signals…"
-          ) : fenceCount != null ? (
-            <>
-              Projected fence:{" "}
-              <Badge variant="secondary">
-                <span className="tabular-nums">{fenceCount}</span>
-                <span className="ml-1">signals · last 7d</span>
-              </Badge>
-            </>
-          ) : null}
-        </div>
-      )}
 
       {onConfirmConfig && (
         <Button
@@ -556,4 +450,63 @@ function firstGroupWithChanges(
     if (diffs[g].length > 0) return g;
   }
   return "trading";
+}
+
+// ── DiffRow ─────────────────────────────────────────────────────────────────
+// Checkbox + before→after. Side-by-side when both values are short; stacks
+// vertically with a down arrow when either side is long. Muted+strike for
+// removed, foreground for added.
+
+const STACK_THRESHOLD = 60;
+
+function DiffRow({
+  diff,
+  checked,
+  onToggle,
+}: {
+  diff: FieldDiff;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  const shouldStack =
+    diff.before.length > STACK_THRESHOLD || diff.after.length > STACK_THRESHOLD;
+
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-3 rounded-md border p-2.5 transition-colors",
+        !checked && "opacity-60",
+      )}
+    >
+      <Checkbox
+        checked={checked}
+        onCheckedChange={onToggle}
+        className="mt-0.5"
+      />
+      <div className="flex-1 min-w-0 text-sm">
+        <span className="text-xs text-muted-foreground">{diff.label}</span>
+        {shouldStack ? (
+          <div className="mt-1 flex flex-col gap-1.5">
+            <span className="line-through text-muted-foreground/60 break-words">
+              {diff.before}
+            </span>
+            <ArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-foreground font-medium break-words">
+              {diff.after}
+            </span>
+          </div>
+        ) : (
+          <div className="mt-1 flex items-start gap-2">
+            <span className="line-through text-muted-foreground/60 break-words basis-1/2 min-w-0">
+              {diff.before}
+            </span>
+            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
+            <span className="text-foreground font-medium break-words basis-1/2 min-w-0">
+              {diff.after}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
