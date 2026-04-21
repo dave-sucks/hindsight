@@ -10,6 +10,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { updateAnalystField } from "@/lib/actions/analyst.actions";
+import { normalizeTheme } from "@/lib/universe/canonical";
 import type { ProposedDiff } from "./types";
 
 interface ApplyContext {
@@ -50,56 +51,71 @@ export async function applyProposedDiff(
       return;
 
     case "UNIVERSE_ADD_SECTOR": {
-      const next = addUnique(config.sectors, diff.sector);
-      await updateAnalystField(analystId, "sectors", next);
+      if (config.sectors.includes(diff.sector)) return;
+      await updateAnalystField(analystId, "sectors", [...config.sectors, diff.sector]);
       return;
     }
     case "UNIVERSE_REMOVE_SECTOR": {
       const next = config.sectors.filter((s) => s !== diff.sector);
+      if (next.length === config.sectors.length) return;
       await updateAnalystField(analystId, "sectors", next);
       return;
     }
 
     case "UNIVERSE_ADD_INDUSTRY": {
-      const next = addUnique(config.industries, diff.industry);
-      await updateAnalystField(analystId, "industries", next);
+      if (config.industries.includes(diff.industry)) return;
+      await updateAnalystField(analystId, "industries", [...config.industries, diff.industry]);
       return;
     }
     case "UNIVERSE_REMOVE_INDUSTRY": {
       const next = config.industries.filter((i) => i !== diff.industry);
+      if (next.length === config.industries.length) return;
       await updateAnalystField(analystId, "industries", next);
       return;
     }
 
     case "UNIVERSE_ADD_THEME": {
-      // normalizeThemes inside updateAnalystField will uppercase + snake_case.
-      const next = [...config.themes, diff.theme];
-      await updateAnalystField(analystId, "themes", next);
+      // Normalize through the single canonical helper (matches Sonar /
+      // Builder / inline-edit write paths — NFKD + punctuation stripping
+      // + underscore collapsing). If the canonical form is already in
+      // the set, the update is a no-op — approveSuggestion still flips
+      // status to APPROVED because the user's intent (theme present) is
+      // now true, but we skip the DB round-trip.
+      const target = normalizeTheme(diff.theme);
+      if (!target || config.themes.includes(target)) return;
+      await updateAnalystField(analystId, "themes", [...config.themes, target]);
       return;
     }
     case "UNIVERSE_REMOVE_THEME": {
-      // Compare after normalization so "AI Infrastructure" matches "AI_INFRASTRUCTURE".
-      const target = diff.theme.trim().toUpperCase().replace(/\s+/g, "_");
+      // Canonicalize via normalizeTheme so diacritics, punctuation, and
+      // variant spacing in the proposal all resolve to the same key as
+      // whatever is stored in config.themes.
+      const target = normalizeTheme(diff.theme);
+      if (!target) return;
       const next = config.themes.filter((t) => t !== target);
+      if (next.length === config.themes.length) return;
       await updateAnalystField(analystId, "themes", next);
       return;
     }
 
     case "WATCHLIST_ADD": {
-      const next = addUnique(config.watchlist, diff.ticker.toUpperCase());
-      await updateAnalystField(analystId, "watchlist", next);
+      const ticker = diff.ticker.toUpperCase();
+      if (config.watchlist.includes(ticker)) return;
+      await updateAnalystField(analystId, "watchlist", [...config.watchlist, ticker]);
       return;
     }
     case "WATCHLIST_REMOVE": {
-      const target = diff.ticker.toUpperCase();
-      const next = config.watchlist.filter((t) => t !== target);
+      const ticker = diff.ticker.toUpperCase();
+      const next = config.watchlist.filter((t) => t !== ticker);
+      if (next.length === config.watchlist.length) return;
       await updateAnalystField(analystId, "watchlist", next);
       return;
     }
 
     case "EXCLUSION_ADD": {
-      const next = addUnique(config.exclusionList, diff.ticker.toUpperCase());
-      await updateAnalystField(analystId, "exclusionList", next);
+      const ticker = diff.ticker.toUpperCase();
+      if (config.exclusionList.includes(ticker)) return;
+      await updateAnalystField(analystId, "exclusionList", [...config.exclusionList, ticker]);
       return;
     }
 
@@ -145,6 +161,3 @@ export async function applyProposedDiff(
   }
 }
 
-function addUnique<T>(arr: T[], v: T): T[] {
-  return arr.includes(v) ? arr : [...arr, v];
-}

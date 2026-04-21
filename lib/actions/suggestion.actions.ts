@@ -125,7 +125,11 @@ export async function listSuggestionsForAnalyst(
 
   const rows = await prisma.suggestion.findMany({
     where: { analystId, userId },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    // Order by createdAt only — we bucket by status in JS below. Sorting by
+    // status alphabetically buried PENDING under APPROVED/DISMISSED, which
+    // is safe given the 200-row cap but dangerous if anyone tightens that
+    // limit later (PENDING rows could get truncated out of the page).
+    orderBy: { createdAt: "desc" },
     take: 200,
   });
 

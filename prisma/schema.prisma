@@ -695,6 +695,11 @@ model Suggestion {
   @@index([analystId, status])
   @@index([analystId, dedupeKey, status])
   @@index([expiresAt])
+  // NOTE: there is also a DB-level partial unique index on
+  // (analystId, dedupeKey) WHERE status IN ('PENDING', 'SNOOZED') created
+  // in the migration SQL. Prisma can't express that in the schema DSL, so
+  // it lives as raw SQL only. Don't remove the migration without also
+  // relaxing the dedup guarantee in persistSuggestions.
 }
 
 model UserApiKey {
