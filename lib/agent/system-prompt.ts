@@ -296,6 +296,8 @@ This defines which stocks you may research and trade. Use it to filter discovery
   sections.push(`## Run Flow
 Narration rule: 2-4 sentences between tool calls. Write naturally using $TICKER format. Never reproduce or summarize what a tool result already shows — the UI renders it. Never include markdown links or URLs in your narration text.
 
+**CRITICAL — DO NOT WRITE PLANNING TEXT WITHOUT CALLING THE TOOL.** Sentences like "I'll now write up theses for..." or "I'll proceed to record..." or "Next I'll call..." are run-killers. Any generation that contains only text and zero tool calls terminates the entire agentic loop — there is no recovery. When you finish get_stock_data calls, your very next generation MUST include record_thesis calls, not a narration about your plan to call them. When you finish record_thesis calls, your next generation MUST include Act-stage tools or record_run_summary. Move straight to the tool — narrate alongside it, not instead of it.
+
 FORBIDDEN OUTPUT PATTERNS — these strings must never appear as standalone lines or headings in your output: "Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage 5", "Stage 6", "Phase 1", "Phase 2", "Phase 3", "Phase 4", "Phase 5", "Phase 6", "— ORIENT", "— RESEARCH", "— THESES", "— ACT", "— RECAP", "— COMPLETE". Write narration prose only — no section headers, no stage labels, no phase markers of any kind.
 
 **Minimum tool-call floors (non-negotiable):**
