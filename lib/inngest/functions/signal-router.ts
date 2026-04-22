@@ -489,7 +489,7 @@ export const signalRouter = inngest.createFunction(
           // Owner fast-path: no floor. Others: 15-point floor.
           if (!isOwner && rawScore < 15) continue
 
-          const novelty = computeNoveltyScore({
+          const rawNovelty = computeNoveltyScore({
             signalTickers: signal.tickers,
             signalThemes: signal.themes,
             recentRoutes: recentRoutesByAnalyst[profile.id] ?? [],
@@ -497,13 +497,16 @@ export const signalRouter = inngest.createFunction(
 
           // Aggregate signals (market movers, earnings calendar) are daily
           // recurring snapshots that intentionally cover wide ticker sets —
-          // the earnings calendar alone can be ~1000 tickers. That huge
-          // overlap with recent routes drives novelty to 5 and the standard
-          // floor silently discards every one of them. Exempt aggregates so
-          // the "Top Gainers" / "Earnings calendar" cards show up every day.
+          // earnings calendar alone can be ~1000 tickers. That huge overlap
+          // with recent routes drives computed novelty to 5, which was being
+          // killed by BOTH the novelty drop below AND the adjusted-threshold
+          // drop further down (rawScore * 5 / 100 = 3, below the 15 floor).
+          // PR #164 fixed the first drop but missed the second. Force novelty
+          // to 100 so aggregates pass through unpenalized on both gates.
           const isAggregate = signal.aggregateType != null
+          const novelty = isAggregate ? 100 : rawNovelty
 
-          if (novelty < 20 && signal.urgency !== "BREAKING" && !isOwner && !isAggregate) {
+          if (novelty < 20 && signal.urgency !== "BREAKING" && !isOwner) {
             droppedByNovelty++
             continue
           }
