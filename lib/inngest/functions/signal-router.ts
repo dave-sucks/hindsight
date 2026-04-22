@@ -497,17 +497,25 @@ export const signalRouter = inngest.createFunction(
             recentRoutes: recentRoutesByAnalyst[profile.id] ?? [],
           })
 
-          if (novelty < 20 && signal.urgency !== "BREAKING" && !isOwner) {
+          // Urgency carve-out: a HIGH or BREAKING signal is actionable news
+          // (e.g. a +49% breakout, an insider-buying burst, an earnings beat)
+          // even when the ticker is familiar. Spare it from the low-novelty
+          // drop, and floor the multiplier at 30 so a fresh development on a
+          // known name still beats generic noise after scoring.
+          const isUrgent =
+            signal.urgency === "BREAKING" || signal.urgency === "HIGH"
+          if (novelty < 20 && !isUrgent && !isOwner) {
             droppedByNovelty++
             continue
           }
 
+          const effectiveNovelty = isUrgent ? Math.max(novelty, 30) : novelty
           const crossPenalty = isCrossAnalyst ? 0.6 : 1.0
           const adjusted = Math.max(
             0,
             Math.min(
               100,
-              Math.round((rawScore * novelty * crossPenalty) / 100)
+              Math.round((rawScore * effectiveNovelty * crossPenalty) / 100)
             )
           )
 
@@ -599,6 +607,29 @@ export const signalRouter = inngest.createFunction(
           })),
           skipDuplicates: true,
         })
+
+        // Denormalize the MAX novelty for each signal back onto Signal.
+        // Novelty is per-(analyst, signal), but Signal.noveltyScore is the
+        // global "how fresh is this signal to *anyone*" value the /intelligence
+        // UI shows. Without this, every Signal row sits at the default 50
+        // forever and the global novelty view is meaningless. MAX reflects the
+        // "most-novel-for-some-analyst" read — stale cross-analyst signals fall
+        // to 5, genuinely new content stays at 80.
+        const maxByS: Record<string, number> = {}
+        for (const r of finalRoutes) {
+          const prev = maxByS[r.signalId]
+          if (prev === undefined || r.noveltyScore > prev) {
+            maxByS[r.signalId] = r.noveltyScore
+          }
+        }
+        await Promise.all(
+          Object.entries(maxByS).map(([signalId, noveltyScore]) =>
+            prisma.signal.update({
+              where: { id: signalId },
+              data: { noveltyScore },
+            })
+          )
+        )
       }
 
       return {

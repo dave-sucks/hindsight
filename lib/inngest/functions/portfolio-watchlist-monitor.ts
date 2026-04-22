@@ -151,6 +151,7 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
               searchQuery: query,
               searchContext: `ticker:${ticker}`,
               monitorId,
+              forceTicker: ticker,
             }
           )
 
