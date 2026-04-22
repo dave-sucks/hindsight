@@ -1,26 +1,59 @@
 /**
- * ToolResult — canonical shape for all agent tool returns in the new pipeline.
+ * ToolResult — canonical shape for all agent tool returns.
  *
  * Every tool using defineTool() returns one of these. The `ui` field is a
- * discriminator that ToolCallRow reads to dispatch to the correct renderer.
+ * discriminator that ToolCallRow reads to pick a renderer.
  *
- * Legacy tools (ResearchToolResult envelope) are shimmed to this shape in
- * ToolCallRow via normalizeToolResult().
+ * Renderer architecture (see CLAUDE.md):
+ *   "tool-ui"        → ToolUIRenderer — the ONE generic renderer. Reads
+ *                      data.items[] (each item is ticker- or generic-kind)
+ *                      and renders them as ToolProgress rows. ~90% of tools
+ *                      route here. No per-tool custom renderers.
+ *   "thesis-card"    → ThesisCardRenderer — renders the full ThesisCard
+ *   "run-summary"    → RunSummaryRenderer — renders the ranked-picks table
+ *                      (DecisionSummaryCard) with exposure breakdown
+ *   "config-preview" → ConfigPreviewRenderer — builder/editor diff view
+ *   "ask-question"   → AskQuestionRenderer — interactive QuickReply flow
+ *
+ * DO NOT add new UI values for list-shaped tools. If a tool returns a
+ * collapsible row with header + items + maybe sources, it uses "tool-ui".
  */
 
 // ── UI discriminator ─────────────────────────────────────────────────────────
 
 export type ToolUI =
-  | "generic"          // fallback: dot + summary text
-  | "ticker"           // logo + ticker + summary (research + action tools)
-  | "ticker-list"      // multiple ticker rows from data.tickers[] (signals)
-  | "morning-brief"    // morning brief: market context + sections + risk flags
-  | "source"           // favicon + title + site (artifact reads, web search)
-  | "thesis-card"      // ThesisCarousel — first call collects all theses via forward-read
-  | "decision-summary" // complete_run status row
-  | "run-summary"      // RunSummaryCard — the ONE summary card
-  | "config-preview"   // suggest_config (builder/editor only)
-  | "ask-question";    // ask_question: renders the question + QuickReply pills inline
+  | "tool-ui"          // ToolUIRenderer: ToolProgress with data.items[] + sources
+  | "thesis-card"      // ThesisCardRenderer
+  | "run-summary"      // RunSummaryRenderer (DecisionSummaryCard)
+  | "config-preview"   // ConfigPreviewRenderer
+  | "ask-question";    // AskQuestionRenderer
+
+// ── Unified item model for ToolUIRenderer ────────────────────────────────────
+
+/**
+ * A single row inside a ToolProgress content area. Every list-shaped tool
+ * returns an array of these on `data.items`. Two kinds, matching the two
+ * item components in components/ai-elements/tool-progress.tsx:
+ *   - "ticker" → ToolProgressTickerItem (ticker logo + chip + text)
+ *   - "generic" → ToolProgressItem (dot + text)
+ */
+export type ToolUIItem =
+  | {
+      kind: "ticker";
+      ticker: string;
+      tag?: string;
+      text: string;
+      /** Optional action badge overlay (buy/sell/watch/etc.) on the logo */
+      actionIcon?:
+        | "buy"
+        | "sell"
+        | "watch"
+        | "unwatch"
+        | "closed-win"
+        | "closed-loss"
+        | "failed";
+    }
+  | { kind: "generic"; text: string };
 
 // ── Source attribution ───────────────────────────────────────────────────────
 
@@ -62,20 +95,26 @@ export type ToolResult<T = unknown> =
 // ── Compatibility shim ───────────────────────────────────────────────────────
 
 /**
- * Convert any tool result shape (legacy ResearchToolResult or new ToolResult)
- * to a normalized ToolResult. Used by ToolCallRow for historical replay.
+ * Convert any tool result shape (legacy ResearchToolResult, pre-collapse
+ * ToolResult with legacy `ui` values, or current ToolResult) into the
+ * current ToolResult shape. Used by ToolCallRow for historical replay.
  */
 export function normalizeToolResult(
   toolName: string,
   raw: unknown,
 ): ToolResult {
   if (raw == null) {
-    return { ok: true, ui: "generic", summary: "Complete", data: null, sources: [] };
+    return { ok: true, ui: "tool-ui", summary: "Complete", data: null, sources: [] };
   }
 
-  // Already a new ToolResult
+  // Already a current ToolResult (ok + ui present)
   if (typeof raw === "object" && "ok" in (raw as object)) {
-    return raw as ToolResult;
+    const r = raw as ToolResult;
+    if (r.ok && "ui" in r) {
+      // Remap legacy UI discriminators baked into old DB rows.
+      return { ...r, ui: remapLegacyUi(r.ui as string) };
+    }
+    return r;
   }
 
   const r = raw as Record<string, unknown>;
@@ -120,10 +159,29 @@ function inferLegacyGroupId(toolName: string): string | undefined {
 function inferLegacyUI(toolName: string): ToolUI {
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
-  if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
-  if (toolName === "read_morning_brief") return "morning-brief";
-  if (toolName === "read_signals") return "ticker-list";
-  if (toolName === "read_artifact" || toolName === "web_search") return "source";
-  return "ticker";
+  if (toolName === "ask_question") return "ask-question";
+  return "tool-ui";
+}
+
+/**
+ * Remap a ui string persisted by an older tool implementation to the
+ * current collapsed ToolUI union. Replayed DB rows can carry strings like
+ * "generic" / "ticker" / "ticker-list" / "source" / "morning-brief" /
+ * "decision-summary" — all of those now render through the single
+ * ToolUIRenderer.
+ */
+function remapLegacyUi(ui: string): ToolUI {
+  switch (ui) {
+    case "thesis-card":
+    case "run-summary":
+    case "config-preview":
+    case "ask-question":
+    case "tool-ui":
+      return ui;
+    default:
+      // generic | ticker | ticker-list | source | morning-brief
+      // | decision-summary | anything-else → unified tool UI
+      return "tool-ui";
+  }
 }

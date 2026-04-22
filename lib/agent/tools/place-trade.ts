@@ -28,7 +28,7 @@ export const placeTrade = defineTool({
     shares: z.number().optional().describe("Number of shares. Only use if you need a specific share count; prefer notional instead."),
     thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
   }),
-  ui: "ticker" as const,
+  ui: "tool-ui" as const,
   groupId: "Executing",
 
   progressLabel: (args) => {

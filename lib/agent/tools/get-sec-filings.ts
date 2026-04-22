@@ -31,7 +31,7 @@ export const getSecFilings = defineTool({
   schema: z.object({
     symbol: z.string().describe("Ticker symbol, e.g. AAPL"),
   }),
-  ui: "ticker" as const,
+  ui: "tool-ui" as const,
   groupId: "Researching",
 
   progressLabel: (args) => `Pulling $${args.symbol.toUpperCase()} SEC filings`,

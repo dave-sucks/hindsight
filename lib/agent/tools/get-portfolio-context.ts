@@ -65,7 +65,7 @@ export const getPortfolioContext = defineTool({
       .default(true)
       .describe("Whether to include the original thesis reasoning for each position"),
   }),
-  ui: "ticker-list" as const,
+  ui: "tool-ui" as const,
 
   progressLabel: () => "Checking live portfolio P&L and exit levels",
 
