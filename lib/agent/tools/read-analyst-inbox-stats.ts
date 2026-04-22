@@ -71,7 +71,7 @@ export const readAnalystInboxStats = defineTool({
       .optional()
       .describe("How many items to return per ranked list. Default 10."),
   }),
-  ui: "ticker-list" as const,
+  ui: "tool-ui" as const,
   groupId: "InboxStats",
 
   progressLabel: (args) => {

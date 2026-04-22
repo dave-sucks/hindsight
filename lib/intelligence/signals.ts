@@ -104,6 +104,7 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
       dataPayload: (input.dataPayload ?? undefined) as any,
       itemCount: input.itemCount,
       expiresAt: input.expiresAt,
+      emailMessageId: input.emailMessageId,
       signalFingerprint: computeSignalFingerprint({
         headline: input.headline,
         tickers: input.tickers,

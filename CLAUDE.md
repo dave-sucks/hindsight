@@ -283,18 +283,42 @@ The agent run page (`/runs/[id]`) renders via:
 2. **AgentThread** connects to `/api/agent/research-run` via ChatRuntime
 3. **ToolCallGroup** (registered as the ToolGroup slot in Thread) reads all
    tool-call parts from `useMessage`, groups by `result.groupId`, and renders
-   each via **ToolCallRow** dispatching on `result.ui`:
-   - `ticker` → TickerRenderer (earnings, options flow, SEC filings)
-   - `source` → SourceRenderer (morning brief, signals, web search)
-   - `stock-card` → StockCardRenderer
-   - `trade-card` → TradeCardRenderer
+   each via **ToolCallRow** dispatching on `result.ui`. **Only 5 renderers exist**
+   (see "Tool UI architecture" below):
+   - `tool-ui` → **ToolUIRenderer** — the ONE generic renderer. ~90% of tools
+     route here. Reads `data.items[]` where each item is either ticker-kind
+     (logo + chip + text) or generic-kind (dot + text). No per-tool wrappers.
    - `thesis-card` → ThesisCardRenderer → full ThesisCard with sheet
-   - `decision-summary` → DecisionSummaryRenderer
-   - `config-preview` → ConfigPreviewRenderer (builder/editor)
-   - `generic` → GenericRenderer (fallback)
+   - `run-summary` → RunSummaryRenderer → ranked-picks DecisionSummaryCard
+   - `config-preview` → ConfigPreviewRenderer (builder/editor diff view)
+   - `ask-question` → AskQuestionRenderer (interactive QuickReply flow)
 4. Extended thinking blocks render via **Reasoning** component (collapsible)
 5. Quick replies appear after run completes via **FollowupQuickReplies**.
 6. For COMPLETE runs, **RunUnifiedChat** renders synthesized events.
+
+## Tool UI architecture
+The primitive is `components/ai-elements/tool-progress.tsx` (`ToolProgress` +
+`ToolProgressHeader` + `ToolProgressContent` + two item components:
+`ToolProgressTickerItem` for ticker rows, `ToolProgressItem` for generic prose
+rows). That's the "fake chain of thought" every tool row renders into.
+
+**Tools return items[], the renderer just iterates.** Simple tools set
+`ui: "tool-ui"` and return `data.items: ToolUIItem[]` where each item is
+either `{ kind: "ticker", ticker, tag?, text, actionIcon? }` or
+`{ kind: "generic", text }`. `ToolUIRenderer` wraps the items in a
+`ToolProgress` and maps each to the right component — no per-tool logic.
+
+**Never invent a new renderer** for a list-shaped tool (header + items +
+maybe sources). If you're tempted: add a generic row or a ticker row to
+`data.items` instead. The 5 renderers listed above are the full surface —
+4 specialty (thesis card, run summary table, config diff, interactive
+question) and 1 generic (`ToolUIRenderer`). Adding a sixth is almost
+always the wrong choice.
+
+**Never shove non-ticker content into a ticker row.** Narrative prose
+(market context, run wrap-up, a briefing status line) is a generic-kind
+item. A fake `$MARKET` ticker is a bug, not a fix — the UI will render
+it with a ticker chip as if it were a traded security.
 
 ## Design Rules — READ BEFORE ANY UI WORK
 - ONLY use ShadCN components from /components/ui
@@ -354,21 +378,21 @@ The agent run page (`/runs/[id]`) renders via:
 
 ### RECURRING BUGS — READ BEFORE TOUCHING THESE FILES
 
-**Stage labels in agent output** (`lib/agent/system-prompt.ts`, `components/assistant-ui/cited-markdown-text.tsx`)
-- GPT-4o copies `### Stage N — NAME` heading format from the system prompt into output text.
-- FIXED BY: using bold inline text (**Orient your session —**) instead of `###` headers for all stages.
-- The cited-markdown-text.tsx h3 renderer also strips any `Stage N —` / `Phase N —` headings as a last resort.
-- DO NOT change stage instruction headings back to `### Stage N — NAME` format. It will break every run.
+**Stage structure in the agent system prompt** (`lib/agent/system-prompt.ts`, `components/assistant-ui/cited-markdown-text.tsx`)
+- The Run Flow section MUST use `### Stage N — NAME` markdown headers for each of the 6 stages. GPT-4o relies on that structural cue to treat the stage boundary as a mandatory tool-call emission point.
+- Replacing the `###` headers with inline bold (e.g. `**Record theses —**`) has been tried and **destroys the run**: the model narrates the transition as prose ("I'll proceed to thesis drafting…"), generateText terminates on that text-only step, and the run ends with 0 theses, 0 trades, 0 summary. Every analyst fails identically. Do not do this — it was attempted in commit 364b63a (Apr 20 2026) and broke the entire 8 AM cron the next morning.
+- GPT-4o occasionally leaks `### Stage N — NAME` verbatim into its narration output. That cosmetic issue is handled at the renderer — the h3 filter in `cited-markdown-text.tsx` (around line 342) strips any heading matching `/^(Stage|Phase)\s+\d+\s*[—–\-]/`. That renderer filter is the durable defense; it's safe to keep the headers in the prompt.
+- The `FORBIDDEN OUTPUT PATTERNS` list in Section 8 of the prompt is belt-and-suspenders. Keep it. Do not rely on it alone.
 
 **manage_watchlist tool call not showing** (`lib/agent/system-prompt.ts`)
 - GPT-4o narrates "I'll add $X to the watchlist" as prose instead of calling manage_watchlist.
 - FIXED BY: explicit prohibition in Stage 4 — "narrated watchlist updates that skip the tool call are a run failure."
 - If the prohibition language is softened or removed, the regression returns immediately.
 
-**Morning brief first item missing** (`lib/agent/tools/read-morning-brief.ts`)
-- The marketContext field (full brief narrative) was not included in the tickers array so it was never rendered.
-- FIXED BY: prepending `{ ticker: "MARKET", tag: "Context", summary: brief.marketContext }` as the first tickers item.
-- DO NOT refactor the tickers array without preserving this prepend.
+**Never invent per-tool renderers** (`components/agent/renderers/`, `components/agent/ToolCallRow.tsx`)
+- The renderer surface is exactly 5 files: `ToolUIRenderer` (the generic one) + 4 specialty (`ThesisCardRenderer`, `RunSummaryRenderer`, `ConfigPreviewRenderer`, `AskQuestionRenderer`). Every prior attempt to add a sixth (`TickerRenderer`, `TickerListRenderer`, `SourceRenderer`, `GenericRenderer`, `DecisionSummaryRenderer`, `MorningBriefRenderer`) was a thin wrapper that should have been a row shape inside `ToolUIRenderer`. All six have been deleted.
+- The fix for "my tool's content doesn't show up" is never a new renderer. It is `data.items` with the right row kinds. See "Tool UI architecture" above.
+- The fix for "my narrative paragraph doesn't have a ticker" is never to invent a fake ticker. It is `{ kind: "generic", text }`. The `$MARKET` fake-ticker bug lived for weeks because a prior session did this exact thing.
 
 - FMP historical-price-full may 403 on legacy plan (affects
   technical analysis for small-cap/ADR tickers)

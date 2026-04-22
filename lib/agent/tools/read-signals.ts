@@ -114,7 +114,7 @@ export const readSignals = defineTool({
       .describe("Filter to a specific routing bucket. Omit to get all buckets split into three groups."),
     limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy)"),
   }),
-  ui: "ticker-list" as const,
+  ui: "tool-ui" as const,
 
   progressLabel: (args) => {
     if (args.bucket === "POSITION") return "Reading portfolio signals";

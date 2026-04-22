@@ -37,7 +37,7 @@ export const readKnowledgeLibrary = defineTool({
       "The entry ID (e.g. 'EARNINGS_DRIFT', 'SEC_EDGAR', 'INSIDER_BUYING'). Leave empty to list the index.",
     ),
   }),
-  ui: "generic" as const,
+  ui: "tool-ui" as const,
   groupId: "Knowledge",
 
   progressLabel: (args) => {
@@ -115,7 +115,7 @@ export const readKnowledgeLibrary = defineTool({
           found: true,
           entry,
           // `content` is the full human-readable text the agent actually
-          // read. GenericRenderer renders it as expandable markdown in the
+          // read. ToolUIRenderer renders the text via the generic fallback in the
           // tool row — same pattern Claude/Notion use. No custom card.
           content: formatArchetypeMarkdown(entry),
         },
@@ -209,7 +209,7 @@ export const readKnowledgeLibrary = defineTool({
   },
 });
 
-// ── Markdown formatters (content shown in the expanded GenericRenderer row) ──
+// ── Markdown formatters (content shown in the expanded Tool UI row) ──
 
 type ArchetypeEntry = ReturnType<typeof getArchetype>;
 type SourceEntryType = ReturnType<typeof getSource>;
@@ -225,7 +225,7 @@ function humanizeToken(s: string): string {
 }
 
 // Plain text formatters — no markdown headings, no ** bold, no list
-// markers. Output is a flat text block the GenericRenderer shows with
+// markers. Output is a flat text block the Tool UI shows with
 // whitespace-pre-wrap so it visually matches the other tool-call content
 // bodies (Reading Signals, Reading Morning Briefing, etc).
 

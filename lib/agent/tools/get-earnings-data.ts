@@ -16,7 +16,7 @@ export const getEarningsData = defineTool({
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
   }),
-  ui: "ticker" as const,
+  ui: "tool-ui" as const,
   groupId: "Researching",
 
   progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()} earnings`,
@@ -93,7 +93,7 @@ export const getEarningsData = defineTool({
         nextEarnings,
         beatRate,
         recentQuarters,
-        // TickerRenderer reads data.tickers for per-ticker UI rows
+        // data.tickers feeds ToolUIRenderer via the legacy-tickers fallback path
         tickers: [{ ticker, tag: "Research", summary: tickerSummary }],
       },
       sources: [

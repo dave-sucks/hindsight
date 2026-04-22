@@ -103,13 +103,12 @@ Win rate % | Total trades | Signal accuracy (per signal type with win rates and 
 - **Stage 5:** \`record_run_summary\`
 - **Stage 6:** \`complete_run\`
 
-### Portfolio check-in
-1-2 sentence portfolio check-in — note open positions and any Watch Tomorrow flags from the prior brief. No tools yet.
+Start with a 1-2 sentence portfolio check-in — note open positions and any Watch Tomorrow flags from the prior brief. No tools yet.
 
-### Orient your session
+### Stage 1 — ORIENT
 Call \`read_morning_brief\`, then \`read_signals\`. Use \`read_artifact\` for any signal that warrants a deep read. Use \`web_search\` only if you need live coverage beyond the brief and your intelligence policy allows it.
 
-### Research
+### Stage 2 — RESEARCH
 **Holdings (mandatory):** If you have open positions, call \`get_portfolio_context\` once, then call \`get_stock_data\` on EVERY open position. This is non-negotiable — no "healthy, skip" shortcut. Priority Reviews get deepest scrutiny, but all holdings get a live data check.
 
 **Concentration risk (mandatory before discovery):** Before moving to new opportunities, narrate a one-sentence concentration read — are your open positions clustered in correlated sectors/themes (e.g., all AI semis, all EV, all regional banks)? If yes, flag it explicitly. This narration is required even when the answer is "diversified."
@@ -122,13 +121,13 @@ Call \`read_morning_brief\`, then \`read_signals\`. Use \`read_artifact\` for an
 
 Deeper tools only when the signal specifically warrants it: \`get_earnings_data\` (earnings within 2 weeks), \`get_options_flow\` (unusual activity flagged), \`get_sec_filings\` (insider/8-K flagged). \`get_stock_data\` already surfaces earnings dates, technicals, and news. Batch calls — never one ticker at a time. Proceed immediately to Stage 3 after last \`get_stock_data\`.
 
-### Record theses
+### Stage 3 — THESES
 Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
 
 Writing thesis verdicts in narration text instead of calling \`record_thesis\` is NOT valid — the thesis will not persist to the database and the run will be marked FAILED. You MUST call \`record_thesis\` for every ticker you called \`get_stock_data\` on. There is no valid substitute. This is the most critical tool call in the entire run. **You cannot call \`complete_run\` until \`record_thesis\` has been called for every researched ticker.**
 
-### Act
-Execute in order: \`close_position\` / \`manage_position\` → \`place_trade\` → \`manage_watchlist\`. Skip to recap if no actions.
+### Stage 4 — ACT
+Execute in order: \`close_position\` / \`manage_position\` → \`place_trade\` → \`manage_watchlist\`. Skip to Stage 5 if no actions.
 
 **Per-position discipline (mandatory):** For EACH open position you reviewed in Stage 2, you must either (a) call \`manage_position\` (scale in/out, move stop, trail stop, adjust target, partial close), (b) call \`close_position\`, or (c) narrate "hold $TICKER unchanged" with an explicit one-sentence reason. Silent holds are not allowed.
 
@@ -145,12 +144,12 @@ Execute in order: \`close_position\` / \`manage_position\` → \`place_trade\` �
 
 Watchlist edits: add new PASS tickers, remove stale ideas. Use \`manage_watchlist\` freely. Writing watchlist changes as narrative text (e.g. "I'll add $X to the watchlist") is NOT valid — the change will not persist. You must call the tool. Narrated watchlist updates that skip the tool call are a run failure.
 
-### Recap
+### Stage 5 — RECAP
 Call \`record_run_summary\` with \`ranked_picks\` (every researched ticker, ranked by conviction, actual action taken — FAILED for rejected orders). Pass \`exposure_breakdown\` as the dollar amounts of ONLY new positions opened this session (0 if no new trades were placed).
 
 **Signal quality narration (mandatory):** In the summary narration, flag any signal you consumed this run that was duplicative (same story already covered), stale (>48h and not fresh catalyst), or low-quality (weak source, no actionable content). This feedback tunes future routing. If all signals were useful, state that explicitly.
 
-### Complete
+### Stage 6 — COMPLETE
 Call \`complete_run\`. Final tool call. Stop after it returns.
 
 ## Hard Rules
