@@ -136,7 +136,6 @@ export const domainMonitor = inngest.createFunction(
       const config = monitor.config as Record<string, unknown> | null
       const domain = (config?.domain as string) ?? ""
       const qualityScore = (config?.qualityScore as number) ?? 3
-      const priority = (config?.priority as number) ?? 5
       const configuredQuery =
         typeof config?.searchQuery === "string"
           ? (config.searchQuery as string).trim()
@@ -197,8 +196,11 @@ export const domainMonitor = inngest.createFunction(
       totalSignals += result.signalCount
       if (result.success) monitorsProcessed++
 
-      // For high-priority monitors (priority 1), try to extract full pages
-      if (priority === 1) {
+      // Extract full page content via Firecrawl for every domain monitor — the
+      // 5-URL cap below (urlsToExtract.length < 5) already bounds cost per
+      // monitor per run. The old `priority === 1` gate silently disabled
+      // Firecrawl for every monitor because there was no UI to set priority.
+      {
         const extractResult = await step.run(`extract-${monitor.id}`, async () => {
           try {
             const recentSignals = await prisma.signal.findMany({

@@ -17,7 +17,7 @@ import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Signal } from "./types";
 import { relativeTime } from "./types";
-import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo } from "./icons";
+import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo, EmailIcon } from "./icons";
 
 type Icon = React.ComponentType<{ className?: string }>;
 
@@ -63,6 +63,7 @@ export function SignalFeed({
       if (filters.industries.length > 0 && !filters.industries.some((ind) => s.industries.includes(ind))) return false;
       if (filters.analystIds.length > 0 && !s.routes.some((r) => filters.analystIds.includes(r.analystId))) return false;
       if (filters.routeReasonCode && !s.routes.some((r) => r.routeReasonCode === filters.routeReasonCode)) return false;
+      if (filters.sources.length > 0 && !filters.sources.includes(s.searchTool ?? "")) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -152,6 +153,7 @@ export const SignalRow = memo(function SignalRow({
   const sourceCount = signal.sourceUrls.length;
   const primarySource = signal.sourceNames[0];
   const primaryDomain = extractDomainFromUrls(signal.sourceUrls);
+  const isEmail = signal.searchTool === "EMAIL_INGEST";
 
   return (
     <Card
@@ -169,11 +171,16 @@ export const SignalRow = memo(function SignalRow({
           {signal.summary}
         </p>
 
-        {/* Row 3: sources + timestamp inline. Single source renders favicon +
-            name; multi renders stacked favicon avatars. Timestamp sits right
-            next to them. */}
+        {/* Row 3: sources + timestamp inline. Email signals render the mail
+            icon in place of the favicon; otherwise single source shows
+            favicon + name, multi shows stacked favicon avatars. */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {sourceCount > 1 ? (
+          {isEmail ? (
+            <>
+              <EmailIcon className="h-4 w-4 shrink-0" />
+              {primarySource && <span>{primarySource}</span>}
+            </>
+          ) : sourceCount > 1 ? (
             <div className="flex -space-x-2">
               {signal.sourceUrls.map((url, i) => {
                 const domain = extractDomainFromUrls([url]);

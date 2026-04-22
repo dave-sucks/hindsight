@@ -32,6 +32,8 @@ export interface SignalFiltersValue {
   industries: string[];
   analystIds: string[];
   routeReasonCode: RouteReasonCode | null;
+  /** Matches Signal.searchTool. Empty = no filter. */
+  sources: string[];
 }
 
 export interface AnalystOption {
@@ -46,6 +48,7 @@ export function emptySignalFilters(): SignalFiltersValue {
     industries: [],
     analystIds: [],
     routeReasonCode: null,
+    sources: [],
   };
 }
 
@@ -55,9 +58,22 @@ export function hasActiveFilters(v: SignalFiltersValue): boolean {
     v.sectors.length > 0 ||
     v.industries.length > 0 ||
     v.analystIds.length > 0 ||
-    v.routeReasonCode != null
+    v.routeReasonCode != null ||
+    v.sources.length > 0
   );
 }
+
+// ── Source filter options ─────────────────────────────────────────────────
+// Keys match Signal.searchTool; labels are what the user sees. Firecrawl is
+// intentionally absent — it's an enrichment layer that writes Artifacts, not
+// Signals, so no Signal row ever has `searchTool = "FIRECRAWL"`.
+
+export const SOURCE_OPTIONS: { value: string; label: string }[] = [
+  { value: "EMAIL_INGEST", label: "Email" },
+  { value: "PERPLEXITY_SONAR", label: "Sonar" },
+  { value: "FMP", label: "FMP" },
+  { value: "FINNHUB", label: "Finnhub" },
+];
 
 interface SignalFiltersProps {
   value: SignalFiltersValue;
@@ -119,6 +135,10 @@ export function SignalFilters({
           onChange={(v) => patch("routeReasonCode", v)}
         />
       )}
+      <SourceFilter
+        values={value.sources}
+        onChange={(v) => patch("sources", v)}
+      />
       {active && (
         <Button
           variant="ghost"
@@ -318,6 +338,47 @@ function RouteFilter({
                   }}
                 >
                   {ROUTE_REASON_LABELS[code]}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ── Source multi filter ──────────────────────────────────────────────────
+
+function SourceFilter({
+  values,
+  onChange,
+}: {
+  values: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const toggle = (v: string) =>
+    onChange(
+      values.includes(v) ? values.filter((x) => x !== v) : [...values, v],
+    );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger render={renderFilterTrigger("Source", values.length)} />
+      <PopoverContent align="start" className="p-0">
+        <Command>
+          <CommandList>
+            <CommandEmpty>No match.</CommandEmpty>
+            <CommandGroup>
+              {SOURCE_OPTIONS.map((opt) => (
+                <CommandItem
+                  key={opt.value}
+                  value={opt.label}
+                  data-checked={values.includes(opt.value) ? "true" : undefined}
+                  onSelect={() => toggle(opt.value)}
+                >
+                  {opt.label}
                 </CommandItem>
               ))}
             </CommandGroup>

@@ -141,13 +141,17 @@ export const firmMarketSweep = inngest.createFunction(
     const moversResult = await step.run("market-movers", async () => {
       let created = 0
       let failed = 0
+      const errors: string[] = []
 
       for (const { path, label, sentiment, aggregateType, monitorId } of MOVER_CONFIG) {
         try {
           const url = `https://financialmodelingprep.com/api/v3${path}?apikey=${FMP_KEY}`
           const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
           if (!res.ok) {
-            console.warn(`[firm-sweep] FMP ${path} returned ${res.status}`)
+            const body = await res.text().catch(() => "")
+            const msg = `FMP ${path} → HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
+            console.warn(`[firm-sweep] ${msg}`)
+            errors.push(msg)
             failed++
             continue
           }
@@ -220,12 +224,14 @@ export const firmMarketSweep = inngest.createFunction(
             console.warn(`[firm-sweep] Could not update lastRunAt for monitor ${monitorId}`)
           })
         } catch (error) {
-          console.error(`[firm-sweep] Market movers ${path} failed:`, error instanceof Error ? error.message : error)
+          const msg = `FMP ${path} threw: ${error instanceof Error ? error.message : String(error)}`
+          console.error(`[firm-sweep] ${msg}`)
+          errors.push(msg)
           failed++
         }
       }
 
-      return { created, failed }
+      return { created, failed, errors }
     })
 
     totalSignals += moversResult.created
@@ -243,8 +249,10 @@ export const firmMarketSweep = inngest.createFunction(
         const url = `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_KEY}`
         const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
         if (!res.ok) {
-          console.warn(`[firm-sweep] Finnhub earnings calendar returned ${res.status}`)
-          return { created: 0, failed: 1 }
+          const body = await res.text().catch(() => "")
+          const msg = `Finnhub /calendar/earnings → HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
+          console.warn(`[firm-sweep] ${msg}`)
+          return { created: 0, failed: 1, error: msg }
         }
 
         const data = (await res.json()) as {
@@ -325,8 +333,9 @@ export const firmMarketSweep = inngest.createFunction(
 
         return { created: 1, failed: 0 }
       } catch (error) {
-        console.error(`[firm-sweep] Earnings calendar failed:`, error instanceof Error ? error.message : error)
-        return { created: 0, failed: 1 }
+        const msg = `Finnhub earnings threw: ${error instanceof Error ? error.message : String(error)}`
+        console.error(`[firm-sweep] ${msg}`)
+        return { created: 0, failed: 1, error: msg }
       }
     })
 
