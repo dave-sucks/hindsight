@@ -375,6 +375,7 @@ export const signalRouter = inngest.createFunction(
           industries: true,
           themes: true,
           urgency: true,
+          aggregateType: true,
           monitorId: true,
           monitor: {
             select: { scope: true, analystId: true },
@@ -494,7 +495,15 @@ export const signalRouter = inngest.createFunction(
             recentRoutes: recentRoutesByAnalyst[profile.id] ?? [],
           })
 
-          if (novelty < 20 && signal.urgency !== "BREAKING" && !isOwner) {
+          // Aggregate signals (market movers, earnings calendar) are daily
+          // recurring snapshots that intentionally cover wide ticker sets —
+          // the earnings calendar alone can be ~1000 tickers. That huge
+          // overlap with recent routes drives novelty to 5 and the standard
+          // floor silently discards every one of them. Exempt aggregates so
+          // the "Top Gainers" / "Earnings calendar" cards show up every day.
+          const isAggregate = signal.aggregateType != null
+
+          if (novelty < 20 && signal.urgency !== "BREAKING" && !isOwner && !isAggregate) {
             droppedByNovelty++
             continue
           }
