@@ -297,10 +297,88 @@ export const configSchema = z.preprocess(normalizeSuggestConfig, rawConfigSchema
 
 export type ConfigSchema = z.infer<typeof configSchema>;
 
+// ── Fence vs watchlist validation (Session 4) ───────────────────────────────
+// Same data as scripts/audit-analyst-configs.ts. Kept inline here so the
+// builder can catch contradictions at propose-time — a config shipped with
+// NVDA in the watchlist and marketCapMax=$10B produces an analyst that can
+// never discover peers of its own holdings.
+const TICKER_CAP_USD: Record<string, number> = {
+  AAPL: 3_400_000_000_000,
+  MSFT: 3_100_000_000_000,
+  NVDA: 3_000_000_000_000,
+  GOOGL: 2_100_000_000_000,
+  GOOG: 2_100_000_000_000,
+  AMZN: 2_000_000_000_000,
+  META: 1_300_000_000_000,
+  TSLA: 800_000_000_000,
+  BRKB: 900_000_000_000,
+  AVGO: 700_000_000_000,
+  TSM: 700_000_000_000,
+  LLY: 700_000_000_000,
+  V: 550_000_000_000,
+  JPM: 550_000_000_000,
+  WMT: 550_000_000_000,
+  XOM: 500_000_000_000,
+  UNH: 500_000_000_000,
+  MA: 450_000_000_000,
+  ORCL: 400_000_000_000,
+  COST: 380_000_000_000,
+  HD: 370_000_000_000,
+  PG: 370_000_000_000,
+  ASML: 350_000_000_000,
+  NFLX: 300_000_000_000,
+  BAC: 280_000_000_000,
+  AMD: 260_000_000_000,
+  CRM: 260_000_000_000,
+  ADBE: 240_000_000_000,
+  KO: 270_000_000_000,
+  PEP: 230_000_000_000,
+  QCOM: 180_000_000_000,
+  INTC: 150_000_000_000,
+  MU: 100_000_000_000,
+  SHOP: 100_000_000_000,
+};
+
+function formatUsd(n: number): string {
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  return `$${n}`;
+}
+
+function validateFenceVsWatchlist(cfg: ConfigSchema): string | null {
+  const wl = cfg.watchlist ?? [];
+  const capMin = cfg.marketCapMin ?? cfg.universe?.marketCapMin ?? null;
+  const capMax = cfg.marketCapMax ?? cfg.universe?.marketCapMax ?? null;
+  if (!wl.length) return null;
+  if (capMin == null && capMax == null) return null;
+
+  for (const item of wl) {
+    const sym = item.symbol?.toUpperCase().replace(/[^A-Z]/g, "") ?? "";
+    const cap = TICKER_CAP_USD[sym];
+    if (cap == null) continue;
+    if (capMax != null && cap > capMax) {
+      return `Watchlist includes $${sym} (~${formatUsd(cap)}) but marketCapMax is set to ${formatUsd(capMax)}. Either widen the fence or remove oversized tickers from the watchlist.`;
+    }
+    if (capMin != null && cap < capMin) {
+      return `Watchlist includes $${sym} (~${formatUsd(cap)}) but marketCapMin is set to ${formatUsd(capMin)}. Either narrow the fence or remove undersized tickers from the watchlist.`;
+    }
+  }
+  return null;
+}
+
 /** The suggest_config tool — same in builder and editor modes. */
 export const suggestConfigTool = tool({
   description:
     "Suggest a complete analyst configuration. Call this when you have enough information to build a thorough config with a detailed strategy prompt. In editor mode, call this with the full updated config (all fields).",
   inputSchema: configSchema,
-  execute: async (config) => config,
+  execute: async (config) => {
+    const fenceError = validateFenceVsWatchlist(config);
+    if (fenceError) {
+      // Throw so the AI SDK surfaces the error back to the model (and the UI
+      // renders it via ToolCallRow's error path) — same shape Zod uses.
+      throw new Error(fenceError);
+    }
+    return config;
+  },
 });

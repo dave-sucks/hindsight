@@ -279,6 +279,15 @@ export async function POST(
       resolveOnFinish = resolve;
     });
 
+    // ── toolStats aggregator (Session 4 — observability) ────────────────────
+    // Collects per-tool call count / latency / error count across the run so
+    // /intelligence/health and run failure triage can see what the agent
+    // actually did. Persisted into ResearchRun.parameters.toolStats in
+    // onFinish (merged; doesn't overwrite the existing config snapshot).
+    const toolStats: Record<string, { count: number; totalLatencyMs: number; errors: number }> = {};
+    const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
+    let lastStepTimeMs = t0;
+
     // Strip tool results down to summary-only before sending to the model.
     // Full data stays on the client for UI rendering — the model only needs
     // the one-line summary to continue reasoning. This prevents accumulated
@@ -317,8 +326,12 @@ export async function POST(
       tools,
       stopWhen: stepCountIs(modeConfig.maxSteps),
 
-      onStepFinish({ stepNumber, toolCalls, text, finishReason, usage }) {
-        const elapsed = Date.now() - t0;
+      onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage }) {
+        const now = Date.now();
+        const elapsed = now - t0;
+        const stepLatencyMs = now - lastStepTimeMs;
+        lastStepTimeMs = now;
+
         const toolNames = toolCalls.map((tc) => tc.toolName).join(", ") || "none";
         console.log(
           `[agent/${agentMode}] STEP #${stepNumber} elapsed=${elapsed}ms tools=[${toolNames}] finish=${finishReason} tokens=${usage?.totalTokens ?? "?"}`,
@@ -327,6 +340,37 @@ export async function POST(
           console.warn(
             `[agent/${agentMode}] ⚠️ TIMEOUT WARNING: step #${stepNumber} at ${(elapsed / 1000).toFixed(0)}s`,
           );
+        }
+
+        // Aggregate toolStats — attribute step wall time across this step's
+        // tool calls, inspect tool results for ok:false errors. Approximate
+        // for parallel calls (each gets credited the full step delta) but
+        // directionally correct for the "which tools eat time" diagnostic.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const results = (toolResults ?? []) as Array<any>;
+        for (const call of toolCalls) {
+          const bucket = toolStats[call.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
+          bucket.count += 1;
+          bucket.totalLatencyMs += stepLatencyMs;
+          toolStats[call.toolName] = bucket;
+        }
+        for (const r of results) {
+          // AI SDK v6 shape: { toolCallId, toolName, output } where `output`
+          // is our ToolResult<T> envelope. Legacy field name `result` is
+          // checked as a fallback defensively.
+          const out = (r?.output ?? r?.result) as { ok?: boolean; error?: string } | undefined;
+          if (out && out.ok === false) {
+            const bucket = toolStats[r.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
+            bucket.errors += 1;
+            toolStats[r.toolName] = bucket;
+            failedToolCalls.push({
+              toolName: r.toolName ?? "unknown",
+              error: String(out.error ?? "").slice(0, 500),
+              at: new Date().toISOString(),
+            });
+            // Keep only the last 3 failures — cheap triage sample, not a log.
+            while (failedToolCalls.length > 3) failedToolCalls.shift();
+          }
         }
       },
 
@@ -368,6 +412,42 @@ export async function POST(
             console.warn(
               `[agent/${agentMode}] ⚠️ Run ${runId} was RUNNING after finish. Marked ${finalStatus}.`,
             );
+          }
+
+          // Persist toolStats into ResearchRun.parameters (merge — don't
+          // clobber the config snapshot). Thin-run warning only.
+          try {
+            const totalToolCalls = Object.values(toolStats).reduce((s, b) => s + b.count, 0);
+            const durationMs = Date.now() - t0;
+            if (finalStatus === "COMPLETE" && (totalToolCalls < 5 || durationMs < 60_000)) {
+              console.warn(
+                `[agent/${agentMode}] ⚠️ THIN RUN runId=${runId} tool_calls=${totalToolCalls} duration_ms=${durationMs}`,
+              );
+            }
+            const existing = await prisma.researchRun.findFirst({
+              where: { id: runId },
+              select: { parameters: true },
+            });
+            const existingParams =
+              existing?.parameters && typeof existing.parameters === "object"
+                ? (existing.parameters as Record<string, unknown>)
+                : {};
+            await prisma.researchRun.update({
+              where: { id: runId },
+              data: {
+                parameters: {
+                  ...existingParams,
+                  toolStats: {
+                    totalToolCalls,
+                    durationMs,
+                    byTool: toolStats,
+                    failedToolCalls,
+                  },
+                } as object,
+              },
+            });
+          } catch (err) {
+            console.error(`[agent/${agentMode}] Failed to persist toolStats:`, err);
           }
 
           // Persist messages — defensive: response.messages may be undefined
