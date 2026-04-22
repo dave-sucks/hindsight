@@ -119,7 +119,7 @@ export const managePosition = defineTool({
     "target/stop updates, trailing stops, or adding to a winning position. " +
     "Every action is audit-logged with your reason.",
   schema,
-  ui: "ticker" as const,
+  ui: "tool-ui" as const,
   groupId: "Executing",
 
   progressLabel: (args) => {

@@ -28,7 +28,10 @@ const CATEGORY_TO_SIGNAL_TYPE: Record<string, SignalType> = {
   EVENT: "EARNINGS",
 }
 
-// Map FMP endpoint paths to aggregate types and built-in monitor IDs
+// FMP's /api/v3/stock_market/{gainers,losers,actives} endpoints were retired
+// on Aug 31, 2025 ("Legacy Endpoint" 403 for any non-legacy subscriber). The
+// same functionality lives on the new /stable/ namespace — free plan still
+// gets access per FMP's "How to Retrieve Market Movers Using a Free API" doc.
 const MOVER_CONFIG: Array<{
   path: string
   label: string
@@ -36,9 +39,9 @@ const MOVER_CONFIG: Array<{
   aggregateType: string
   monitorId: string
 }> = [
-  { path: "/stock_market/gainers", label: "top gainers", sentiment: "BULLISH", aggregateType: "MARKET_MOVERS_GAINERS", monitorId: "monitor_fmp_gainers" },
-  { path: "/stock_market/losers", label: "top losers", sentiment: "BEARISH", aggregateType: "MARKET_MOVERS_LOSERS", monitorId: "monitor_fmp_losers" },
-  { path: "/stock_market/actives", label: "most active", sentiment: "NEUTRAL", aggregateType: "MARKET_MOVERS_ACTIVES", monitorId: "monitor_fmp_actives" },
+  { path: "/stable/biggest-gainers", label: "top gainers", sentiment: "BULLISH", aggregateType: "MARKET_MOVERS_GAINERS", monitorId: "monitor_fmp_gainers" },
+  { path: "/stable/biggest-losers",  label: "top losers",  sentiment: "BEARISH", aggregateType: "MARKET_MOVERS_LOSERS",  monitorId: "monitor_fmp_losers"  },
+  { path: "/stable/most-actives",    label: "most active", sentiment: "NEUTRAL", aggregateType: "MARKET_MOVERS_ACTIVES", monitorId: "monitor_fmp_actives" },
 ]
 
 export const firmMarketSweep = inngest.createFunction(
@@ -141,34 +144,44 @@ export const firmMarketSweep = inngest.createFunction(
     const moversResult = await step.run("market-movers", async () => {
       let created = 0
       let failed = 0
+      const errors: string[] = []
 
       for (const { path, label, sentiment, aggregateType, monitorId } of MOVER_CONFIG) {
         try {
-          const url = `https://financialmodelingprep.com/api/v3${path}?apikey=${FMP_KEY}`
+          // `path` already includes the namespace prefix (/stable/... or /api/v3/...).
+          const url = `https://financialmodelingprep.com${path}?apikey=${FMP_KEY}`
           const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
           if (!res.ok) {
-            console.warn(`[firm-sweep] FMP ${path} returned ${res.status}`)
+            const body = await res.text().catch(() => "")
+            const msg = `FMP ${path} → HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
+            console.warn(`[firm-sweep] ${msg}`)
+            errors.push(msg)
             failed++
             continue
           }
 
+          // FMP renamed `changesPercentage` to `percentChange` in the /stable
+          // namespace. Accept either so we're robust to further renames.
           const data = (await res.json()) as Array<{
             symbol: string
-            name: string
-            change: number
-            price: number
-            changesPercentage: number
+            name?: string
+            change?: number
+            price?: number
+            changesPercentage?: number
+            percentChange?: number
             volume?: number
           }>
 
           if (!Array.isArray(data) || data.length === 0) continue
 
           const top10 = data.slice(0, 10)
+          const pctOf = (item: (typeof top10)[number]): number =>
+            item.percentChange ?? item.changesPercentage ?? 0
 
           // Build aggregate payload
           const dataPayload = top10.map((item) => ({
             ticker: item.symbol,
-            change: item.changesPercentage ?? 0,
+            change: pctOf(item),
             price: item.price ?? 0,
             volume: item.volume ?? 0,
           }))
@@ -177,13 +190,14 @@ export const firmMarketSweep = inngest.createFunction(
           const top3Summary = top10
             .slice(0, 3)
             .map((item) => {
-              const sign = (item.changesPercentage ?? 0) >= 0 ? "+" : ""
-              return `${item.symbol} ${sign}${item.changesPercentage?.toFixed(1)}%`
+              const pct = pctOf(item)
+              const sign = pct >= 0 ? "+" : ""
+              return `${item.symbol} ${sign}${pct.toFixed(1)}%`
             })
             .join(", ")
 
           const allTickers = top10.map((item) => item.symbol)
-          const maxChangePct = Math.max(...top10.map((item) => Math.abs(item.changesPercentage ?? 0)))
+          const maxChangePct = Math.max(...top10.map((item) => Math.abs(pctOf(item))))
           const urgency: SignalUrgency =
             maxChangePct > 5 ? "HIGH" : maxChangePct > 2 ? "MEDIUM" : "LOW"
 
@@ -220,12 +234,14 @@ export const firmMarketSweep = inngest.createFunction(
             console.warn(`[firm-sweep] Could not update lastRunAt for monitor ${monitorId}`)
           })
         } catch (error) {
-          console.error(`[firm-sweep] Market movers ${path} failed:`, error instanceof Error ? error.message : error)
+          const msg = `FMP ${path} threw: ${error instanceof Error ? error.message : String(error)}`
+          console.error(`[firm-sweep] ${msg}`)
+          errors.push(msg)
           failed++
         }
       }
 
-      return { created, failed }
+      return { created, failed, errors }
     })
 
     totalSignals += moversResult.created
@@ -243,8 +259,10 @@ export const firmMarketSweep = inngest.createFunction(
         const url = `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_KEY}`
         const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
         if (!res.ok) {
-          console.warn(`[firm-sweep] Finnhub earnings calendar returned ${res.status}`)
-          return { created: 0, failed: 1 }
+          const body = await res.text().catch(() => "")
+          const msg = `Finnhub /calendar/earnings → HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
+          console.warn(`[firm-sweep] ${msg}`)
+          return { created: 0, failed: 1, error: msg }
         }
 
         const data = (await res.json()) as {
@@ -325,8 +343,9 @@ export const firmMarketSweep = inngest.createFunction(
 
         return { created: 1, failed: 0 }
       } catch (error) {
-        console.error(`[firm-sweep] Earnings calendar failed:`, error instanceof Error ? error.message : error)
-        return { created: 0, failed: 1 }
+        const msg = `Finnhub earnings threw: ${error instanceof Error ? error.message : String(error)}`
+        console.error(`[firm-sweep] ${msg}`)
+        return { created: 0, failed: 1, error: msg }
       }
     })
 

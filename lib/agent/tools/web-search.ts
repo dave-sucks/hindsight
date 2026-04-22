@@ -25,7 +25,7 @@ export const webSearch = defineTool({
       .optional()
       .describe("How recent results should be (default: day)"),
   }),
-  ui: "source" as const,
+  ui: "tool-ui" as const,
 
   progressLabel: (args) => {
     const q = args.query.trim();

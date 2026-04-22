@@ -215,10 +215,7 @@ function decideRouteCode(args: {
       matched.themes?.length ?? 0,
     ].filter((n) => n > 0)
 
-    if (dims.length >= 2) return "DISCOVERY"
-    if ((matched.industries?.length ?? 0) > 0) return "INDUSTRY_MATCH"
-    if ((matched.sectors?.length ?? 0) > 0) return "SECTOR_MATCH"
-    if ((matched.themes?.length ?? 0) > 0) return "THEME_MATCH"
+    if (dims.length >= 1) return "DISCOVERY"
   }
 
   if (isCrossAnalyst) return "CROSS_ANALYST"
@@ -378,6 +375,7 @@ export const signalRouter = inngest.createFunction(
           industries: true,
           themes: true,
           urgency: true,
+          aggregateType: true,
           monitorId: true,
           monitor: {
             select: { scope: true, analystId: true },
@@ -497,14 +495,25 @@ export const signalRouter = inngest.createFunction(
             recentRoutes: recentRoutesByAnalyst[profile.id] ?? [],
           })
 
-          // Urgency carve-out: a HIGH or BREAKING signal is actionable news
-          // (e.g. a +49% breakout, an insider-buying burst, an earnings beat)
-          // even when the ticker is familiar. Spare it from the low-novelty
-          // drop, and floor the multiplier at 30 so a fresh development on a
-          // known name still beats generic noise after scoring.
+          // Two independent novelty carve-outs:
+          //
+          // 1. Urgency — a HIGH or BREAKING signal is actionable news (+49%
+          //    breakout, insider burst, earnings beat) even when the ticker
+          //    is familiar. Spare it from the low-novelty drop AND floor the
+          //    multiplier at 30 so a fresh development on a known name still
+          //    beats generic noise after scoring.
+          //
+          // 2. Aggregate — market movers / earnings calendar are daily
+          //    recurring snapshots over wide ticker sets (earnings calendar
+          //    alone can be ~1000 tickers). That overlap drives novelty to 5
+          //    and the standard floor silently discards every one of them.
+          //    Exempt aggregates so "Top Gainers" / "Earnings calendar" land
+          //    every day.
           const isUrgent =
             signal.urgency === "BREAKING" || signal.urgency === "HIGH"
-          if (novelty < 20 && !isUrgent && !isOwner) {
+          const isAggregate = signal.aggregateType != null
+
+          if (novelty < 20 && !isUrgent && !isOwner && !isAggregate) {
             droppedByNovelty++
             continue
           }

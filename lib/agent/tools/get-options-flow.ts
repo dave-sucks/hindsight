@@ -32,7 +32,7 @@ export const getOptionsFlow = defineTool({
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
   }),
-  ui: "ticker" as const,
+  ui: "tool-ui" as const,
   groupId: "Researching",
 
   progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()} options flow`,

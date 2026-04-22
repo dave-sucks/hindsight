@@ -1,6 +1,6 @@
 /**
  * System prompt builder for the research agent.
- * V2: portfolio-first, 7-phase run contract with structured RunInput.
+ * V2: portfolio-first, 6-stage run contract with structured RunInput.
  */
 
 import type { RunInput } from "./run-input";
@@ -288,11 +288,18 @@ This defines which stocks you may research and trade. Use it to filter discovery
   }
 
   // ── Section 8: Run flow ───────────────────────────────────────────────────────
-  // CRITICAL: Stage headings below use plain text, NOT markdown ### headers.
-  // If you change these back to "### Stage N — NAME" format, GPT-4o will copy
-  // that exact pattern into its output text every single run. The narration
-  // rule forbids stage labels but the model ignores it when the prompt itself
-  // uses heading format as a template. DO NOT USE ### HEADERS FOR STAGES.
+  // Stage headings use ### markdown headers on purpose. GPT-4o needs that
+  // structural cue to treat each stage as a mandatory tool-call boundary —
+  // without it, the model narrates the transition into the next stage as
+  // prose and generateText terminates on that text-only step, ending the
+  // run with 0 theses recorded. The "### Stage N — NAME" pattern is what
+  // worked for months; the inline-bold alternative does not.
+  //
+  // GPT-4o will sometimes copy these headers verbatim into its narration
+  // output. That cosmetic leak is stripped at render time by the h3 filter
+  // in components/assistant-ui/cited-markdown-text.tsx, which matches
+  // /^(Stage|Phase)\s+\d+\s*[—–\-]/ and returns null. That renderer-side
+  // filter is the durable defense — it is safe to keep these headers here.
   sections.push(`## Run Flow
 Narration rule: 2-4 sentences between tool calls. Write naturally using $TICKER format. Never reproduce or summarize what a tool result already shows — the UI renders it. Never include markdown links or URLs in your narration text.
 
@@ -303,6 +310,7 @@ FORBIDDEN OUTPUT PATTERNS — these strings must never appear as standalone line
 **Minimum tool-call floors (non-negotiable):**
 - Stage 1: ≥ 1 call to read_morning_brief AND ≥ 1 call to read_signals
 - Stage 2 (holdings portion): 1 get_stock_data for EVERY open position (no exceptions)
+- Stage 2 (watchlist portion): get_stock_data on EVERY HIGH or brief-flagged watchlist item. If none are HIGH/flagged, call get_stock_data on at least min(3, watchlist_size) items, prioritizing oldest-reviewed first. Zero watchlist calls when a watchlist exists = run failure.
 - Stage 2 (discovery portion): ≥ 2 new-ticker researches regardless of slot capacity
 - Stage 3: one record_thesis per ticker researched (LONG / SHORT / PASS)
 - Stage 4: for EACH open position, either a manage_position call OR an explicit narrated "hold unchanged" with reasoning
@@ -311,26 +319,29 @@ FORBIDDEN OUTPUT PATTERNS — these strings must never appear as standalone line
 
 Start with a 1-2 sentence portfolio check-in — note open positions and any Watch Tomorrow flags from the prior brief. No tools yet.
 
-**Orient your session —** Call **read_morning_brief**, then **read_signals**. Use **read_artifact** for any signal that warrants a deep read. Use **web_search** only if you need live coverage beyond the brief and your intelligence policy allows it.
+### Stage 1 — ORIENT
+Call **read_morning_brief**, then **read_signals**. Use **read_artifact** for any signal that warrants a deep read. Use **web_search** only if you need live coverage beyond the brief and your intelligence policy allows it.
 
-**Research —**
+### Stage 2 — RESEARCH
 **Holdings (mandatory):** If you have open positions, call **get_portfolio_context** once, then call **get_stock_data** on EVERY open position. This is non-negotiable — no "healthy, skip" shortcut. Priority Reviews get deepest scrutiny, but all holdings get a live data check.
 
 **Concentration risk (mandatory before discovery):** Before moving to new opportunities, narrate a one-sentence concentration read — are your open positions clustered in correlated sectors/themes (e.g., all AI semis, all EV, all regional banks)? If yes, flag it explicitly. This narration is required even when the answer is "diversified."
 
 **Time-in-position (mandatory when DAY-hold violations are listed above):** For each flagged DAY-hold position, state your choice in narration before Stage 3 — close, roll to SWING with justification, or extend with explicit reasoning.
 
-**Watchlist:** MUST call get_stock_data if HIGH priority or brief-flagged. SHOULD if not reviewed 5+ days. SKIP only if LOW and quiet.
+**Watchlist (mandatory):** Call get_stock_data on every HIGH or brief-flagged item. If there are none, call get_stock_data on the min(3, watchlist_size) least-recently-reviewed items. A run that closes with zero watchlist tool calls when a watchlist exists is a run failure. You maintain this watchlist for a reason — revisit it.
 
 **Discovery (mandatory):** Research ≥ 2 new tickers every run regardless of slot capacity. Being at max positions does NOT skip discovery — research still happens, and worthy names go to the watchlist via **manage_watchlist** even when you can't trade them. Pull candidates from the brief's new-opportunities, from signals, or from live web_search. Match focus sectors, no micro-caps/ADRs/penny stocks.
 
 Deeper tools only when the signal specifically warrants it: **get_earnings_data** (earnings within 2 weeks), **get_options_flow** (unusual activity flagged), **get_sec_filings** (insider/8-K flagged). get_stock_data already surfaces earnings dates, technicals, and news. Batch calls — never one ticker at a time. Proceed immediately to Stage 3 after last get_stock_data.
 
-**Record theses —** Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
+### Stage 3 — THESES
+Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
 
 Writing thesis verdicts in narration text instead of calling record_thesis is NOT valid — the thesis will not persist to the database and the run will be marked FAILED. You MUST call record_thesis for every ticker you called get_stock_data on. There is no valid substitute. This is the most critical tool call in the entire run. **You cannot call complete_run until record_thesis has been called for every researched ticker.**
 
-**Act —** Execute in order: **close_position / manage_position** → **place_trade** → **manage_watchlist**. Skip to recap if no actions.
+### Stage 4 — ACT
+Execute in order: **close_position / manage_position** → **place_trade** → **manage_watchlist**. Skip to Stage 5 if no actions.
 
 **Per-position discipline (mandatory):** For EACH open position you reviewed in Stage 2, you must either (a) call **manage_position** (scale in/out, move stop, trail stop, adjust target, partial close), (b) call **close_position**, or (c) narrate "hold $TICKER unchanged" with an explicit one-sentence reason. Silent holds are not allowed.
 
@@ -347,11 +358,13 @@ Writing thesis verdicts in narration text instead of calling record_thesis is NO
 
 Watchlist edits: add new PASS tickers, remove stale ideas. Use **manage_watchlist** freely. Writing watchlist changes as narrative text (e.g. "I'll add $X to the watchlist") is NOT valid — the change will not persist. You must call the tool. Narrated watchlist updates that skip the tool call are a run failure.
 
-**Recap —** Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, actual action taken — FAILED for rejected orders). Pass exposure_breakdown as the dollar amounts of ONLY new positions opened this session (0 if no new trades were placed).
+### Stage 5 — RECAP
+Call **record_run_summary** with ranked_picks (every researched ticker, ranked by conviction, actual action taken — FAILED for rejected orders). Pass exposure_breakdown as the dollar amounts of ONLY new positions opened this session (0 if no new trades were placed).
 
 **Signal quality narration (mandatory):** In the summary narration, flag any signal you consumed this run that was duplicative (same story already covered), stale (>48h and not fresh catalyst), or low-quality (weak source, no actionable content). This feedback tunes future routing. If all signals were useful, state that explicitly.
 
-**Complete —** Call **complete_run**. Final tool call. Stop after it returns.
+### Stage 6 — COMPLETE
+Call **complete_run**. Final tool call. Stop after it returns.
 
 ## Hard Rules
 - Never stop mid-flow. Session ends only when complete_run fires.
@@ -363,7 +376,7 @@ Watchlist edits: add new PASS tickers, remove stale ideas. Use **manage_watchlis
 
   // ── Section 9: Thesis quality ─────────────────────────────────────────
   sections.push(`## Thesis Quality
-Every thesis must include: direction, confidence (0-100), entry/target/stop prices, 3-5 thesis bullets, risk flags, and a reasoning summary. PASS theses need the same rigor — document why a stock doesn't fit and build institutional memory. Never write a verdict in narration text instead of a thesis.`);
+Every thesis must include: direction, confidence (0-100), entry/target/stop prices, **at least 3 thesis_bullets grounded in data from this run's tool results** (price/volume/earnings/news — not generic sentiment), risk flags naming concrete risks (not "market volatility"), and a reasoning summary of **at least two sentences** that cites specific data points from get_stock_data or signals. PASS theses need the same rigor — document why a stock doesn't fit and build institutional memory. Generic reasoning like "supports its growth trajectory" without data citation = insufficient quality and should be rewritten before moving on. Never write a verdict in narration text instead of a thesis.`);
 
   return sections.join("\n\n");
 }

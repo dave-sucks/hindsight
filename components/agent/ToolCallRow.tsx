@@ -5,17 +5,23 @@
  *
  * When inGroup=true, renderers omit their outer ToolProgress wrapper and render
  * flat content only — the group's ToolProgress is the container.
+ *
+ * Renderer surface is intentionally minimal (see CLAUDE.md):
+ *   "tool-ui"        → ToolUIRenderer (the ONE generic renderer)
+ *   "thesis-card"    → ThesisCardRenderer
+ *   "run-summary"    → RunSummaryRenderer
+ *   "config-preview" → ConfigPreviewRenderer
+ *   "ask-question"   → AskQuestionRenderer
+ *
+ * Do NOT add a new renderer for a list-shaped tool. Return `ui: "tool-ui"`
+ * and `data.items: ToolUIItem[]` from the tool and let ToolUIRenderer handle it.
  */
 
 import type { ToolUI } from "@/lib/agent/tool-result";
 import { normalizeToolResult } from "@/lib/agent/tool-result";
 import type { ToolResult } from "@/lib/agent/tool-result";
-import { GenericRenderer } from "./renderers/GenericRenderer";
-import { TickerRenderer } from "./renderers/TickerRenderer";
-import { TickerListRenderer } from "./renderers/TickerListRenderer";
-import { SourceRenderer } from "./renderers/SourceRenderer";
+import { ToolUIRenderer } from "./renderers/ToolUIRenderer";
 import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
-import { DecisionSummaryRenderer } from "./renderers/DecisionSummaryRenderer";
 import { RunSummaryRenderer } from "./renderers/RunSummaryRenderer";
 import { ConfigPreviewRenderer } from "./renderers/ConfigPreviewRenderer";
 import { AskQuestionRenderer } from "./renderers/AskQuestionRenderer";
@@ -50,47 +56,24 @@ export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, in
   const ui: ToolUI = result.ui;
 
   switch (ui) {
-    case "ticker":
-      return <TickerRenderer toolName={toolName} args={args} result={result} loading={loading} inGroup={inGroup} />;
-    case "ticker-list":
-      return <TickerListRenderer toolName={toolName} result={result} loading={loading} inGroup={inGroup} />;
-    case "source":
-      return <SourceRenderer toolName={toolName} result={result} loading={loading} inGroup={inGroup} />;
     case "thesis-card":
       return <ThesisCardRenderer toolName={toolName} toolCallId={toolCallId} result={result} loading={loading} />;
-    case "decision-summary":
-      return <DecisionSummaryRenderer toolName={toolName} result={result} loading={loading} />;
     case "run-summary":
       return <RunSummaryRenderer result={result} loading={loading} />;
     case "config-preview":
       return <ConfigPreviewRenderer result={result} loading={loading} />;
     case "ask-question":
       return <AskQuestionRenderer toolName={toolName} result={result} loading={loading} />;
-    case "generic":
+    case "tool-ui":
     default:
-      return <GenericRenderer toolName={toolName} result={result} loading={loading} inGroup={inGroup} />;
+      return <ToolUIRenderer toolName={toolName} args={args} result={result} loading={loading} inGroup={inGroup} />;
   }
 }
 
 function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
-  if (toolName === "complete_run") return "decision-summary";
   if (toolName === "suggest_config") return "config-preview";
   if (toolName === "ask_question") return "ask-question";
-  if (toolName === "get_portfolio_context" || toolName === "read_morning_brief" || toolName === "read_signals" || toolName === "discover_signals_for_fence" || toolName === "read_analyst_inbox_stats") return "ticker-list";
-  if (toolName === "read_artifact" || toolName === "web_search") return "source";
-  if (toolName === "read_knowledge_library") return "generic";
-  if (
-    toolName === "get_stock_data" ||
-    toolName === "place_trade" ||
-    toolName === "close_position" ||
-    toolName === "manage_position" ||
-    toolName === "manage_watchlist" ||
-    toolName === "get_earnings_data" ||
-    toolName === "get_options_flow" ||
-    toolName === "get_sec_filings" ||
-    toolName === "get_market_context"
-  ) return "ticker";
-  return "generic";
+  return "tool-ui";
 }

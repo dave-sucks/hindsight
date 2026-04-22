@@ -229,7 +229,10 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 
 ## Intelligence Monitors (also on suggest_config)
 - **domainMonitorProposal**: 4–6 real domains. Prefer ones you saw in read_knowledge_library source catalog.
-- **intelligenceQueries**: 3–5 standing daily search queries for Perplexity Sonar.
+- **intelligenceQueries**: 3–5 DISCOVERY queries that find NEW tickers inside the Universe. These are NOT per-ticker news feeds — per-ticker coverage is FREE and AUTOMATIC via portfolio-watchlist-monitor for every position and watchlist item.
+  - GOOD examples: "breakout tech stocks this week small cap", "emerging EV companies 2026 production ramp", "AI infrastructure under-the-radar plays", "semiconductor equipment makers gaining share".
+  - BAD examples: "NVIDIA supply chain news" (NVDA already tracked), "$AMD earnings guidance" (same), "Tesla battery updates" (same).
+  - Every query must be discovery-flavored: no specific ticker name, includes a time qualifier ("this week"/"2026"/"recent"), aligns to at least one Universe dimension (sector/industry/theme). Schema rejects \`$TICKER\` patterns.
 - **intelligencePolicy**: holdingsAttention + watchlistAttention + discoveryAttention ≈ 1.0.`;
 
 /**
@@ -402,6 +405,8 @@ For the \`analystPrompt\` field specifically:
 
 For optional fields (domainMonitorProposal, intelligenceQueries, intelligencePolicy): only include them when actually changing them.
 
+**intelligenceQueries guardrail:** If you propose \`intelligenceQueries\`, every query MUST be a DISCOVERY query — no specific ticker names. Per-ticker news coverage is automatic via portfolio-watchlist-monitor for every position and watchlist item. Per-ticker queries here are rejected by the schema (\`$TICKER\` pattern refused) and waste Sonar spend. GOOD: "emerging small-cap AI infrastructure plays 2026". BAD: "NVIDIA partnership updates" or "$AMD earnings guidance".
+
 ═══════════════════════════════════════════════════════════════════════
 ## HARD RULES (violations waste the run — no exceptions)
 ═══════════════════════════════════════════════════════════════════════
@@ -418,9 +423,9 @@ For optional fields (domainMonitorProposal, intelligenceQueries, intelligencePol
 
 6. **Watchlist: preserve + extend, don't replace.** Start from the CURRENT watchlist in currentConfig and KEEP every ticker unless the user explicitly asks to remove one OR the ticker directly contradicts the new strategy (e.g. a small-cap on a large-cap-only analyst). **Additions** MUST come from \`read_analyst_inbox_stats.topTickers\` or \`discover_signals_for_fence.tickerFrequency\` — never from the model's training data. Default behavior on a rebuild is: send back the existing watchlist plus any new tickers the tools surfaced. Silently dropping the user's existing picks because they didn't appear in the discovery results is a BUG.
 
-6a. **Sectors → industries is non-optional.** If \`sectors\` is populated (in the top-level field or the \`universe\` sub-object), \`industries\` MUST also be populated with 2-4 GICS industries that match the strategy. The Zod schema rejects the tool call if you try to send sectors without industries. Same for \`universe.sectors\` vs \`universe.industries\`. Only leave both empty if the user explicitly asked for cross-industry sector-wide exposure — and if you do, say so in your summary sentence.
+6a. **Sectors → industries: narrow on purpose.** When \`sectors\` is populated, you SHOULD also populate \`industries\` with 2-4 specific GICS industries inside those sectors — that's what makes the discovery fence tight. The schema auto-fills \`industries\` from the full sector list when you forget, so your tool call won't die, but a wide fence dilutes routing. Same applies to \`universe.sectors\` and \`universe.industries\`. Only intentionally leave \`industries\` empty if the user explicitly asked for cross-industry sector-wide exposure — and say so in your summary sentence.
 
-6b. **marketCap omission.** OMIT \`marketCapMin\` / \`marketCapMax\` entirely for no bound. Never send 0, Number.MAX_SAFE_INTEGER, or any other sentinel. The Zod schema rejects \`marketCapMin: 0\` and caps both bounds at \`1e13\`.
+6b. **marketCap / price omission.** PREFER to omit \`marketCapMin\` / \`marketCapMax\` / \`priceMin\` / \`priceMax\` entirely when you mean "no bound." The schema silently strips sentinel values (0, or >$5T ceilings), so sending them won't fail, but omission is clearer and doesn't risk future strictness bringing the hard-error back.
 
 7. **NO citation markers, NO markdown headings.** Do NOT write [1], [2], [3] bracket citations in your prose. Do NOT use #, ##, ### markdown headings. The user sees every tool call directly in the chat as an expandable row — they can click to read exactly what you read. Citations and headings belong in documents, not in a chat conversation. Use **bold** for emphasis when you need it.
 

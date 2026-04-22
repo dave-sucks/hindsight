@@ -10,14 +10,14 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
-import type { ToolSource } from "@/lib/agent/tool-result";
+import type { ToolSource, ToolUIItem } from "@/lib/agent/tool-result";
 import type { MorningBriefToolData } from "@/lib/agent/tool-types";
 
 export const readMorningBrief = defineTool({
   description:
     "Read today's pre-generated intelligence brief. Contains market context, portfolio alerts, watchlist updates, new opportunities, and risk flags — all gathered by background jobs before your session started. Call this in Phase 0 to understand what happened overnight.",
   schema: z.object({}),
-  ui: "ticker-list" as const,
+  ui: "tool-ui" as const,
 
   progressLabel: () => "Reading today's morning brief",
 
@@ -54,14 +54,22 @@ export const readMorningBrief = defineTool({
       ? brief.newOpportunities as { headline: string; tickers: string[]; thesisSeed: string; signalIds: string[] }[]
       : [];
 
-    const tickers = [
-      // Market context is the first row — the full brief narrative text.
-      // DO NOT REMOVE: this was previously shown as a "generic row with full text"
-      // and gets dropped any time the tickers array is refactored without this line.
-      ...(brief.marketContext ? [{ ticker: "MARKET", tag: "Context", summary: brief.marketContext }] : []),
-      ...alerts.map((a) => ({ ticker: a.ticker, tag: "Holding", summary: a.alert })),
-      ...watches.map((w) => ({ ticker: w.ticker, tag: "Watching", summary: w.update })),
-      ...opps.map((o) => ({ ticker: o.tickers?.[0] ?? "?", tag: "Opportunity", summary: o.thesisSeed || o.headline })),
+    // Unified items for the generic Tool UI renderer. Market context is a
+    // narrative prose row (kind: "generic"); alerts / watches / opportunities
+    // are real ticker rows. Never shove marketContext into a fake ticker —
+    // that's how the $MARKET bug was born.
+    const items: ToolUIItem[] = [
+      ...(brief.marketContext
+        ? [{ kind: "generic" as const, text: brief.marketContext }]
+        : []),
+      ...alerts.map((a) => ({ kind: "ticker" as const, ticker: a.ticker, tag: "Holding", text: a.alert })),
+      ...watches.map((w) => ({ kind: "ticker" as const, ticker: w.ticker, tag: "Watching", text: w.update })),
+      ...opps.map((o) => ({
+        kind: "ticker" as const,
+        ticker: o.tickers?.[0] ?? "?",
+        tag: "Opportunity",
+        text: o.thesisSeed || o.headline,
+      })),
     ];
 
     // Resolve real signal sources
@@ -107,8 +115,8 @@ export const readMorningBrief = defineTool({
         portfolioAlerts: alerts,
         watchlistUpdates: watches,
         newOpportunities: opps,
-        tickers,
-      } as MorningBriefToolData & { tickers: typeof tickers },
+        items,
+      } as MorningBriefToolData & { items: ToolUIItem[] },
       sources: briefSources,
     };
   },

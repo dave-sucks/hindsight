@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useCallback, memo } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,10 +13,9 @@ import {
 } from "@/components/intelligence/signal-filters";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { Search } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { Signal } from "./types";
 import { relativeTime } from "./types";
-import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo } from "./icons";
+import { PerplexityLogo, FirecrawlLogo, FinnhubLogo, FmpLogo, EmailIcon } from "./icons";
 
 type Icon = React.ComponentType<{ className?: string }>;
 
@@ -63,6 +61,7 @@ export function SignalFeed({
       if (filters.industries.length > 0 && !filters.industries.some((ind) => s.industries.includes(ind))) return false;
       if (filters.analystIds.length > 0 && !s.routes.some((r) => filters.analystIds.includes(r.analystId))) return false;
       if (filters.routeReasonCode && !s.routes.some((r) => r.routeReasonCode === filters.routeReasonCode)) return false;
+      if (filters.sources.length > 0 && !filters.sources.includes(s.searchTool ?? "")) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -103,7 +102,9 @@ export function SignalFeed({
           </div>
         </div>
 
-        {/* Signal list */}
+        {/* Signal list — aggregate signals (market movers, earnings calendar)
+            render in the SAME SignalRow shell as individual signals. The rich
+            table of tickers/prices lives in the detail dialog instead. */}
         <div className="space-y-2">
           {filtered.length === 0 &&
             (signals.length === 0 ? (
@@ -117,17 +118,13 @@ export function SignalFeed({
                 No findings match your filters
               </p>
             ))}
-          {filtered.map((signal) =>
-            signal.aggregateType ? (
-              <AggregateFindingCard key={signal.id} signal={signal} />
-            ) : (
-              <SignalRow
-                key={signal.id}
-                signal={signal}
-                onSelect={handleSelect}
-              />
-            ),
-          )}
+          {filtered.map((signal) => (
+            <SignalRow
+              key={signal.id}
+              signal={signal}
+              onSelect={handleSelect}
+            />
+          ))}
         </div>
 
         <FindingDetailDialog
@@ -138,6 +135,30 @@ export function SignalFeed({
       </div>
     </TooltipProvider>
   );
+}
+
+// ── Aggregate helpers ───────────────────────────────────────────────────────
+
+const AGGREGATE_TITLES: Record<string, string> = {
+  MARKET_MOVERS_GAINERS: "Top Gainers",
+  MARKET_MOVERS_LOSERS: "Top Losers",
+  MARKET_MOVERS_ACTIVES: "Most Active",
+  EARNINGS_CALENDAR: "Upcoming Earnings",
+};
+
+export function aggregateTitle(aggregateType: string | null): string {
+  if (!aggregateType) return "Market Summary";
+  return AGGREGATE_TITLES[aggregateType] ?? "Market Summary";
+}
+
+/** Comma-joined `$TICKER` preview for aggregate rows. Caps at 12 tickers to
+ *  keep the two-line clamp honest. */
+export function aggregatePreview(signal: Signal): string {
+  const count = signal.itemCount ?? signal.tickers.length;
+  const max = 12;
+  const head = signal.tickers.slice(0, max).map((t) => `$${t}`).join(", ");
+  const remaining = Math.max(0, count - max);
+  return remaining > 0 ? `${head} · and ${remaining} more` : head;
 }
 
 // ── Signal Row ──────────────────────────────────────────────────────────────
@@ -152,6 +173,20 @@ export const SignalRow = memo(function SignalRow({
   const sourceCount = signal.sourceUrls.length;
   const primarySource = signal.sourceNames[0];
   const primaryDomain = extractDomainFromUrls(signal.sourceUrls);
+  const isEmail = signal.searchTool === "EMAIL_INGEST";
+  const isAggregate = signal.aggregateType != null;
+
+  // Aggregate rows use a friendly title and a ticker preview instead of the
+  // producer's headline/summary. The source row underneath stays identical
+  // so the row reads the same as every other card.
+  const title = isAggregate ? aggregateTitle(signal.aggregateType) : signal.headline;
+  const preview = isAggregate ? aggregatePreview(signal) : signal.summary;
+
+  // Tool logo for aggregates (FMP, Finnhub, etc.). Falls back to Favicon when
+  // we can't resolve a tool config — e.g. Sonar-style signals keep their
+  // existing favicon rendering.
+  const toolConfig = signal.searchTool ? TOOL_CONFIG[signal.searchTool] : null;
+  const AggregateSourceIcon = toolConfig?.icon;
 
   return (
     <Card
@@ -159,21 +194,27 @@ export const SignalRow = memo(function SignalRow({
       onClick={() => onSelect(signal)}
     >
       <div className="space-y-2">
-        {/* Row 1: headline */}
-        <p className="text-sm font-medium leading-tight">
-          {signal.headline}
-        </p>
+        {/* Row 1: title */}
+        <p className="text-sm font-medium leading-tight">{title}</p>
 
-        {/* Row 2: summary — text-sm for readability */}
-        <p className="text-sm text-muted-foreground line-clamp-2">
-          {signal.summary}
-        </p>
+        {/* Row 2: preview — summary for news, ticker list for aggregates */}
+        <p className="text-sm text-muted-foreground line-clamp-2">{preview}</p>
 
-        {/* Row 3: sources + timestamp inline. Single source renders favicon +
-            name; multi renders stacked favicon avatars. Timestamp sits right
-            next to them. */}
+        {/* Row 3: source + timestamp. Identical shell across card variants:
+            icon + source name · relative time. Email swaps the favicon for a
+            mailbox icon; aggregates swap for the tool logo. */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {sourceCount > 1 ? (
+          {isAggregate && AggregateSourceIcon ? (
+            <>
+              <AggregateSourceIcon className="h-4 w-4 shrink-0" />
+              {primarySource && <span>{primarySource}</span>}
+            </>
+          ) : isEmail ? (
+            <>
+              <EmailIcon className="h-4 w-4 shrink-0" />
+              {primarySource && <span>{primarySource}</span>}
+            </>
+          ) : sourceCount > 1 ? (
             <div className="flex -space-x-2">
               {signal.sourceUrls.map((url, i) => {
                 const domain = extractDomainFromUrls([url]);
@@ -236,78 +277,3 @@ const TOOL_CONFIG: Record<string, { name: string; icon: Icon }> = {
   FIRECRAWL: { name: "Firecrawl", icon: FirecrawlLogo },
 };
 
-// ── Aggregate Finding Card ──────────────────────────────────────────────────
-
-function AggregateFindingCard({ signal }: { signal: Signal }) {
-  const data = (signal.dataPayload ?? []) as Array<Record<string, unknown>>;
-  const isMovers = signal.aggregateType?.startsWith("MARKET_MOVERS");
-  const isEarnings = signal.aggregateType === "EARNINGS_CALENDAR";
-
-  const title = signal.aggregateType === "MARKET_MOVERS_GAINERS" ? "Top Gainers"
-    : signal.aggregateType === "MARKET_MOVERS_LOSERS" ? "Top Losers"
-    : signal.aggregateType === "MARKET_MOVERS_ACTIVES" ? "Most Active"
-    : signal.aggregateType === "EARNINGS_CALENDAR" ? "Upcoming Earnings"
-    : signal.headline;
-
-  return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {signal.monitor?.method === "finnhub"
-            ? <FinnhubLogo className="h-4 w-4 text-muted-foreground" />
-            : <FmpLogo className="h-4 w-4 text-muted-foreground" />}
-          <p className="text-sm font-medium">{title}</p>
-          <Badge variant="secondary">{signal.itemCount ?? data.length}</Badge>
-        </div>
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {relativeTime(signal.createdAt)}
-        </span>
-      </div>
-
-      {isMovers && (
-        <div className="space-y-1">
-          {data.slice(0, 10).map((item, i) => {
-            const change = Number(item.change ?? 0);
-            const isPositive = change >= 0;
-            return (
-              <div key={i} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary">${String(item.ticker)}</Badge>
-                </div>
-                <div className="flex items-center gap-4 tabular-nums">
-                  <span className={cn(
-                    "text-xs",
-                    isPositive ? "text-positive" : "text-negative"
-                  )}>
-                    {isPositive ? "+" : ""}{change.toFixed(1)}%
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    ${Number(item.price ?? 0).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {isEarnings && (
-        <div className="space-y-1">
-          {data.slice(0, 10).map((item, i) => (
-            <div key={i} className="flex items-center justify-between text-sm">
-              <Badge variant="secondary">${String(item.ticker)}</Badge>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground tabular-nums">
-                <span>{String(item.date ?? "")}</span>
-                {item.epsEstimate != null && <span>EPS est: ${Number(item.epsEstimate).toFixed(2)}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!isMovers && !isEarnings && (
-        <p className="text-sm text-muted-foreground">{signal.summary}</p>
-      )}
-    </Card>
-  );
-}

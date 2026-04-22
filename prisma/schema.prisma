@@ -305,14 +305,19 @@ model Signal {
   // See lib/intelligence/signals.ts:computeSignalFingerprint.
   signalFingerprint String?
 
+  // Resend inbound email_id — prevents duplicate processing when the same
+  // webhook delivery lands twice. Only populated for EMAIL_INGEST signals.
+  emailMessageId String?
+
   createdAt      DateTime @default(now())
 
-  @@index([tickers])
-  @@index([themes])
+  @@index([tickers], type: Gin)
+  @@index([themes], type: Gin)
   @@index([createdAt])
   @@index([batchId])
   @@index([monitorId])
   @@index([signalFingerprint, createdAt])
+  @@index([emailMessageId])
 }
 
 /// A group of signals from one intelligence job run.

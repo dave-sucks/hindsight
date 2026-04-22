@@ -15,7 +15,7 @@ export const completeRun = defineTool({
   description:
     "STAGE 6. Mark the run complete. This is your absolute final tool call. No arguments needed. Calling this triggers the post-run briefing agent automatically.",
   schema: z.object({}),
-  ui: "decision-summary" as const,
+  ui: "tool-ui" as const,
 
   progressLabel: () => "Wrapping up the run",
 
@@ -102,12 +102,19 @@ export const completeRun = defineTool({
         console.error(`[tool] complete_run: failed to write briefing_generated event:`, evtErr);
       }
 
+      const briefingLine =
+        briefingStatus === "success"
+          ? "Briefing: written and verified"
+          : briefingStatus === "failed"
+            ? `Briefing: failed${briefingError ? ` — ${briefingError}` : ""}`
+            : `Briefing: skipped${briefingError ? ` — ${briefingError}` : ""}`;
       return {
         summary: `Run complete. Briefing: ${briefingStatus}.`,
         data: {
           ok: true,
           briefing: briefingStatus,
           briefingError,
+          items: [{ kind: "generic" as const, text: briefingLine }],
         },
         sources: [],
       };

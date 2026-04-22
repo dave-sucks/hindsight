@@ -8,12 +8,71 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
+import { GICS_INDUSTRIES_BY_SECTOR, type GicsSector } from "@/lib/universe/gics";
 
 // z.enum needs a non-empty tuple literal; derive one from the canonical lists.
 const SECTOR_VALUES = [...SECTORS] as [string, ...string[]];
 const INDUSTRY_VALUES = [...INDUSTRIES] as [string, ...string[]];
 
-export const configSchema = z.object({
+// ── Normalizer: strips common agent mistakes before Zod validation ──────────
+// Every trip-wire below was being hit by real editor/builder runs and
+// producing a Zod wall of red in the UI. We now heal the config silently:
+// strip sentinel zeros, clamp oversized market-cap ceilings, and back-fill
+// `industries` from the chosen `sectors` when the agent forgets to narrow.
+// Auto-fill defaults to ALL GICS industries inside the chosen sectors — the
+// same semantics as "cross-industry sector-wide exposure" the strict refine
+// used to demand the user ask for. Wider fence is recoverable; a hard error
+// mid-edit is not.
+//
+// Kept strict: unknown sector/industry enum values, market-cap sentinels
+// above $5T (still caught by the belt-and-suspenders refine below).
+function normalizeSuggestConfig(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  const cfg: Record<string, unknown> = { ...(input as Record<string, unknown>) };
+
+  // Strip sentinel 0s on market cap — agents send 0 when they mean "no floor".
+  if (cfg.marketCapMin === 0) delete cfg.marketCapMin;
+  if (cfg.marketCapMax === 0) delete cfg.marketCapMax;
+  if (typeof cfg.marketCapMax === "number" && cfg.marketCapMax >= 5e12) {
+    delete cfg.marketCapMax;
+  }
+
+  // Auto-fill top-level industries from sectors when missing/empty.
+  if (Array.isArray(cfg.sectors) && cfg.sectors.length > 0) {
+    const industries = cfg.industries;
+    if (!Array.isArray(industries) || industries.length === 0) {
+      cfg.industries = (cfg.sectors as string[]).flatMap(
+        (s) => GICS_INDUSTRIES_BY_SECTOR[s as GicsSector] ?? [],
+      );
+    }
+  }
+
+  // Same normalizations inside the universe sub-object.
+  if (cfg.universe && typeof cfg.universe === "object") {
+    const u: Record<string, unknown> = { ...(cfg.universe as Record<string, unknown>) };
+    if (u.marketCapMin === 0) delete u.marketCapMin;
+    if (u.marketCapMax === 0) delete u.marketCapMax;
+    if (typeof u.marketCapMax === "number" && u.marketCapMax >= 5e12) {
+      delete u.marketCapMax;
+    }
+    if (u.priceMin === 0) delete u.priceMin;
+    if (u.priceMax === 0) delete u.priceMax;
+
+    if (Array.isArray(u.sectors) && u.sectors.length > 0) {
+      const industries = u.industries;
+      if (!Array.isArray(industries) || industries.length === 0) {
+        u.industries = (u.sectors as string[]).flatMap(
+          (s) => GICS_INDUSTRIES_BY_SECTOR[s as GicsSector] ?? [],
+        );
+      }
+    }
+    cfg.universe = u;
+  }
+
+  return cfg;
+}
+
+const rawConfigSchema = z.object({
   name: z.string().describe("Short analyst name (2-4 words). E.g. 'EV Momentum Trader'"),
   analystPrompt: z
     .string()
@@ -144,15 +203,29 @@ export const configSchema = z.object({
   intelligenceQueries: z
     .array(
       z.object({
-        query: z.string().describe("A specific, searchable query"),
-        category: z.enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"]),
-        reason: z.string().describe("Why this query matters for the analyst's strategy"),
+        query: z
+          .string()
+          .describe(
+            "A DISCOVERY query that finds NEW tickers matching the analyst's Universe. Examples: 'breakout tech stocks this week small cap', 'emerging EV companies 2026 production ramp', 'AI infrastructure under-the-radar plays'. DO NOT write per-ticker queries like 'NVIDIA supply chain news' or '$NVDA AI accelerator updates' — per-ticker coverage is FREE and AUTOMATIC via portfolio-watchlist-monitor for every position and watchlist item. Per-ticker queries here are redundant spend."
+          )
+          .refine(
+            (q) => !/\$[A-Z]{1,5}\b/.test(q),
+            "Query must not contain $TICKER symbols — per-ticker monitoring is automatic."
+          ),
+        category: z.enum(["MARKET", "SECTOR", "THEMATIC", "EVENT"]),
+        reason: z
+          .string()
+          .describe(
+            "Why this DISCOVERY query matters. Explain what Universe dimension it surfaces new names for (e.g., 'finds semiconductor small-caps outside current watchlist')."
+          ),
       })
     )
     .min(3)
     .max(5)
     .optional()
-    .describe("Search monitors: 3-5 queries the system searches daily via Perplexity Sonar."),
+    .describe(
+      "Discovery search monitors: 3-5 queries the system searches daily via Perplexity Sonar to find NEW tickers. Per-ticker news coverage is handled automatically by portfolio-watchlist-monitor — do NOT duplicate it here."
+    ),
   intelligencePolicy: z
     .object({
       holdingsAttention: z.number().min(0).max(1),
@@ -216,67 +289,11 @@ export const configSchema = z.object({
       "relevant to the strategy — this is the fence for new-ticker discovery. " +
       "Keep it focused (5-10 items total); too broad makes discovery noise."
     ),
-})
-  // Cross-field rules — enforced at the Zod boundary so the agent can't
-  // ship half-populated fences. Validation failure here causes the AI SDK
-  // to reject the tool call and the model has to retry with a correction.
-  .refine(
-    (c) => {
-      const topHasSectors = Array.isArray(c.sectors) && c.sectors.length > 0;
-      const topHasIndustries =
-        Array.isArray(c.industries) && c.industries.length > 0;
-      if (topHasSectors && !topHasIndustries) return false;
-      return true;
-    },
-    {
-      message:
-        "`industries` must be non-empty whenever `sectors` is populated. " +
-        "Narrow to 2-4 GICS industries inside the sectors you chose — " +
-        "otherwise the fence lets through everything in the sector and " +
-        "dilutes routing. Leave both empty only if the user explicitly " +
-        "asked for cross-industry sector-wide exposure.",
-      path: ["industries"],
-    },
-  )
-  .refine(
-    (c) => {
-      const u = c.universe;
-      if (!u) return true;
-      const uHasSectors = Array.isArray(u.sectors) && u.sectors.length > 0;
-      const uHasIndustries =
-        Array.isArray(u.industries) && u.industries.length > 0;
-      if (uHasSectors && !uHasIndustries) return false;
-      return true;
-    },
-    {
-      message:
-        "`universe.industries` must be non-empty whenever `universe.sectors` " +
-        "is populated. Same rule as the top-level sectors/industries pair.",
-      path: ["universe", "industries"],
-    },
-  )
-  .refine(
-    (c) => c.marketCapMin !== 0,
-    {
-      message:
-        "Do not send `marketCapMin: 0` to mean no floor. OMIT the field " +
-        "entirely. 0 is a literal floor of $0 which is always-true and " +
-        "a sentinel the fence doesn't want.",
-      path: ["marketCapMin"],
-    },
-  )
-  .refine(
-    (c) => c.marketCapMax === undefined || c.marketCapMax < 5e12,
-    {
-      message:
-        "Do not send `marketCapMax: 10000000000000` (or anything above $5T) " +
-        "to mean no ceiling. OMIT the field entirely. The largest public " +
-        "company is ~$4T — any value above $5T is a sentinel, not a real " +
-        "fence. If the strategy truly wants large-caps only, send a real " +
-        "ceiling like 500000000000 ($500B), or OMIT for no ceiling.",
-      path: ["marketCapMax"],
-    },
-  );
+});
+
+// Final exported schema: preprocess heals the common agent mistakes before
+// rawConfigSchema runs. Order matters — normalization first, then Zod.
+export const configSchema = z.preprocess(normalizeSuggestConfig, rawConfigSchema);
 
 export type ConfigSchema = z.infer<typeof configSchema>;
 
