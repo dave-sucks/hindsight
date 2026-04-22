@@ -82,21 +82,27 @@ type BriefSignal = {
 }
 
 async function buildBriefContext(analystId: string) {
+  // Ground the brief to TODAY's routing pool only. The old query loaded every
+  // PENDING route across all time, which let the generator recycle signalIds
+  // from prior days and report bogus `signalCount` values (the hardcoded
+  // `take: 50` cap was being surfaced verbatim). Scoping to today's trading
+  // day + requesting a generous ceiling means signalCount reflects reality
+  // and cited IDs can only come from today's router output.
+  const tradingDayStart = etTradingDayDate()
   const [analyst, signals, positions, watchlistItems] = await Promise.all([
     prisma.agentConfig.findUniqueOrThrow({
       where: { id: analystId },
     }),
-    // Get today's routed signals for this analyst
     prisma.analystSignalRoute.findMany({
       where: {
         analystId,
-        status: "PENDING",
+        routedAt: { gte: tradingDayStart },
       },
       include: {
         signal: true,
       },
       orderBy: { relevanceScore: "desc" },
-      take: 50, // cap to control token usage
+      take: 150, // generous ceiling — we want the real count, not the cap
     }),
     prisma.position.findMany({
       where: { analystId, status: "OPEN" },
@@ -144,6 +150,20 @@ async function buildBriefContext(analystId: string) {
       s.routeReasonCode !== "WATCHLIST"
   )
 
+  // IntelligencePolicy lives as JSON on AgentConfig. Extract the fields the
+  // brief generator cares about with defensive defaults so older analysts
+  // don't break.
+  const policy = (analyst.intelligencePolicy ?? {}) as {
+    holdingsAttention?: number
+    watchlistAttention?: number
+    discoveryAttention?: number
+  }
+
+  // Allowlist of signalIds that are in today's routing pool. The post-
+  // generation validator rejects any cited signalId not in this set so the
+  // model can't recycle IDs from prior days.
+  const allowedSignalIds = new Set(signalSummaries.map((s) => s.id))
+
   return {
     analystName: analyst.name,
     analystPrompt: analyst.analystPrompt ?? "",
@@ -158,6 +178,7 @@ async function buildBriefContext(analystId: string) {
       marketCapMax: analyst.marketCapMax ? Number(analyst.marketCapMax) : null,
     },
     positions: positions.map((p) => `${p.symbol} (${p.direction}, ${p.quantity} shares @ $${p.avgCost})`),
+    positionRows: positions,
     watchlist: watchlistItems.map((w) => `${w.symbol} [${w.priority}] — ${w.reason}`),
     positionTickers,
     watchlistTickers,
@@ -166,6 +187,112 @@ async function buildBriefContext(analystId: string) {
     portfolioSignals: portfolioBucket,
     watchlistSignals: watchlistBucket,
     discoverySignals: discoveryBucket,
+    allowedSignalIds,
+    holdingsAttention: policy.holdingsAttention ?? 0,
+  }
+}
+
+// ── Validators ──────────────────────────────────────────────────────────────
+
+type BriefOutput = {
+  marketContext: string
+  portfolioAlerts: Array<{
+    ticker: string
+    alert: string
+    urgency: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+    signalIds: string[]
+  }>
+  watchlistUpdates: Array<{
+    ticker: string
+    update: string
+    recommendation: string
+    signalIds: string[]
+  }>
+  newOpportunities: Array<{
+    headline: string
+    tickers: string[]
+    thesisSeed: string
+    signalIds: string[]
+  }>
+  attentionPriority: string[]
+  riskFlags: string[]
+}
+
+/**
+ * Strip any signalId that isn't in today's routed pool. Returns the cleaned
+ * brief and the count of hallucinated IDs (for logging). Cites that match
+ * nothing the model could have actually seen indicate drift — surface the
+ * count but don't fail the brief (we'd rather ship a scrubbed brief than
+ * none at all).
+ */
+function scrubHallucinatedSignalIds(
+  brief: BriefOutput,
+  allowed: Set<string>
+): { brief: BriefOutput; hallucinated: number } {
+  let hallucinated = 0
+  const scrub = (ids: string[]): string[] => {
+    const kept: string[] = []
+    for (const id of ids) {
+      if (allowed.has(id)) kept.push(id)
+      else hallucinated++
+    }
+    return kept
+  }
+
+  return {
+    brief: {
+      ...brief,
+      portfolioAlerts: brief.portfolioAlerts.map((a) => ({
+        ...a,
+        signalIds: scrub(a.signalIds),
+      })),
+      watchlistUpdates: brief.watchlistUpdates.map((u) => ({
+        ...u,
+        signalIds: scrub(u.signalIds),
+      })),
+      newOpportunities: brief.newOpportunities.map((o) => ({
+        ...o,
+        signalIds: scrub(o.signalIds),
+      })),
+    },
+    hallucinated,
+  }
+}
+
+/**
+ * If intelligencePolicy.holdingsAttention > 0 and the analyst has open
+ * positions, every holding must have at least one portfolioAlerts entry.
+ * The model often emits `portfolioAlerts: []` when there's no fresh signal
+ * on a position — not useful, the analyst needs to see every holding
+ * acknowledged each morning. Inject a "no material change" placeholder
+ * per missing position so the brief surfaces them all.
+ */
+function enforceHoldingsCoverage(
+  brief: BriefOutput,
+  positions: Array<{ symbol: string }>,
+  holdingsAttention: number
+): BriefOutput {
+  if (holdingsAttention <= 0 || positions.length === 0) return brief
+
+  const covered = new Set(
+    brief.portfolioAlerts.map((a) => a.ticker.toUpperCase())
+  )
+  const missing = positions.filter(
+    (p) => !covered.has(p.symbol.toUpperCase())
+  )
+
+  if (missing.length === 0) return brief
+
+  const placeholders = missing.map((p) => ({
+    ticker: p.symbol,
+    alert: "No material change in today's routed signals.",
+    urgency: "LOW" as const,
+    signalIds: [],
+  }))
+
+  return {
+    ...brief,
+    portfolioAlerts: [...brief.portfolioAlerts, ...placeholders],
   }
 }
 
@@ -218,7 +345,7 @@ export const morningBriefGenerator = inngest.createFunction(
             ? `- newOpportunities MUST include at least 1 (ideally 2) items drawn from DISCOVERY_SIGNALS below — these are candidates outside the analyst's watchlist/positions that matched the Universe. Do NOT skip them just because they look unfamiliar.`
             : `- No discovery signals today. Do NOT invent new tickers. If you cannot find a real opportunity in PORTFOLIO_SIGNALS or WATCHLIST_SIGNALS, return an empty newOpportunities array and set marketContext to explicitly note "No discovery candidates this session."`
 
-          const { object: brief } = await generateObject({
+          const { object: rawBrief } = await generateObject({
             model: openai("gpt-4o"),
             schema: morningBriefSchema,
             prompt: `You are the morning intelligence briefer for "${context.analystName}".
@@ -263,8 +390,28 @@ ${discoveryClause}
 - Include signal IDs in arrays so the analyst can drill into sources.
 - If a signal contradicts the analyst's current positioning, flag it prominently.
 - Max 3 new opportunities. Quality over quantity.
-- If a signal has routeReasonCode "CROSS_ANALYST" (matchedUniverse.fromAnalystId set), another analyst's owned monitor surfaced it because it touches a ticker in this analyst's book — treat it as a credible second opinion, not as noise.`,
+- If a signal has routeReasonCode "CROSS_ANALYST" (matchedUniverse.fromAnalystId set), another analyst's owned monitor surfaced it because it touches a ticker in this analyst's book — treat it as a credible second opinion, not as noise.
+- Every signalId you cite MUST appear in one of the three signal arrays above. Do not invent IDs. Do not reference signals from prior days.`,
           })
+
+          // Post-process: scrub any signalId the model cited that isn't in
+          // today's routed pool, then force an alert row per open position
+          // when holdingsAttention is nonzero. See scrubHallucinatedSignalIds
+          // + enforceHoldingsCoverage for rationale.
+          const { brief: scrubbed, hallucinated } = scrubHallucinatedSignalIds(
+            rawBrief,
+            context.allowedSignalIds
+          )
+          if (hallucinated > 0) {
+            console.warn(
+              `[morning-brief] ${analyst.name}: scrubbed ${hallucinated} hallucinated signalId reference(s) not in today's pool`
+            )
+          }
+          const brief = enforceHoldingsCoverage(
+            scrubbed,
+            context.positionRows,
+            context.holdingsAttention
+          )
 
           // Upsert today's brief (idempotent if re-run).
           // ET trading-day date — see lib/market-hours.ts for rationale.
