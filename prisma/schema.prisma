@@ -311,8 +311,8 @@ model Signal {
 
   createdAt      DateTime @default(now())
 
-  @@index([tickers])
-  @@index([themes])
+  @@index([tickers], type: Gin)
+  @@index([themes], type: Gin)
   @@index([createdAt])
   @@index([batchId])
   @@index([monitorId])
