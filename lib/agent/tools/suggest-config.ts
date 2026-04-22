@@ -144,15 +144,29 @@ export const configSchema = z.object({
   intelligenceQueries: z
     .array(
       z.object({
-        query: z.string().describe("A specific, searchable query"),
-        category: z.enum(["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"]),
-        reason: z.string().describe("Why this query matters for the analyst's strategy"),
+        query: z
+          .string()
+          .describe(
+            "A DISCOVERY query that finds NEW tickers matching the analyst's Universe. Examples: 'breakout tech stocks this week small cap', 'emerging EV companies 2026 production ramp', 'AI infrastructure under-the-radar plays'. DO NOT write per-ticker queries like 'NVIDIA supply chain news' or '$NVDA AI accelerator updates' — per-ticker coverage is FREE and AUTOMATIC via portfolio-watchlist-monitor for every position and watchlist item. Per-ticker queries here are redundant spend."
+          )
+          .refine(
+            (q) => !/\$[A-Z]{1,5}\b/.test(q),
+            "Query must not contain $TICKER symbols — per-ticker monitoring is automatic."
+          ),
+        category: z.enum(["MARKET", "SECTOR", "THEMATIC", "EVENT"]),
+        reason: z
+          .string()
+          .describe(
+            "Why this DISCOVERY query matters. Explain what Universe dimension it surfaces new names for (e.g., 'finds semiconductor small-caps outside current watchlist')."
+          ),
       })
     )
     .min(3)
     .max(5)
     .optional()
-    .describe("Search monitors: 3-5 queries the system searches daily via Perplexity Sonar."),
+    .describe(
+      "Discovery search monitors: 3-5 queries the system searches daily via Perplexity Sonar to find NEW tickers. Per-ticker news coverage is handled automatically by portfolio-watchlist-monitor — do NOT duplicate it here."
+    ),
   intelligencePolicy: z
     .object({
       holdingsAttention: z.number().min(0).max(1),

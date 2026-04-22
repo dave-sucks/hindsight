@@ -229,7 +229,10 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 
 ## Intelligence Monitors (also on suggest_config)
 - **domainMonitorProposal**: 4–6 real domains. Prefer ones you saw in read_knowledge_library source catalog.
-- **intelligenceQueries**: 3–5 standing daily search queries for Perplexity Sonar.
+- **intelligenceQueries**: 3–5 DISCOVERY queries that find NEW tickers inside the Universe. These are NOT per-ticker news feeds — per-ticker coverage is FREE and AUTOMATIC via portfolio-watchlist-monitor for every position and watchlist item.
+  - GOOD examples: "breakout tech stocks this week small cap", "emerging EV companies 2026 production ramp", "AI infrastructure under-the-radar plays", "semiconductor equipment makers gaining share".
+  - BAD examples: "NVIDIA supply chain news" (NVDA already tracked), "$AMD earnings guidance" (same), "Tesla battery updates" (same).
+  - Every query must be discovery-flavored: no specific ticker name, includes a time qualifier ("this week"/"2026"/"recent"), aligns to at least one Universe dimension (sector/industry/theme). Schema rejects \`$TICKER\` patterns.
 - **intelligencePolicy**: holdingsAttention + watchlistAttention + discoveryAttention ≈ 1.0.`;
 
 /**
@@ -401,6 +404,8 @@ For the \`analystPrompt\` field specifically:
 - Lane (d): rewrite the prompt, grounded in the archetype skeleton you just read. 3–5+ paragraphs covering edge, pattern, entry/exit, risk, and what to skip. Preserve anything about position sizing and exit discipline that was working.
 
 For optional fields (domainMonitorProposal, intelligenceQueries, intelligencePolicy): only include them when actually changing them.
+
+**intelligenceQueries guardrail:** If you propose \`intelligenceQueries\`, every query MUST be a DISCOVERY query — no specific ticker names. Per-ticker news coverage is automatic via portfolio-watchlist-monitor for every position and watchlist item. Per-ticker queries here are rejected by the schema (\`$TICKER\` pattern refused) and waste Sonar spend. GOOD: "emerging small-cap AI infrastructure plays 2026". BAD: "NVIDIA partnership updates" or "$AMD earnings guidance".
 
 ═══════════════════════════════════════════════════════════════════════
 ## HARD RULES (violations waste the run — no exceptions)

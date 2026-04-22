@@ -1,6 +1,6 @@
 /**
  * System prompt builder for the research agent.
- * V2: portfolio-first, 7-phase run contract with structured RunInput.
+ * V2: portfolio-first, 6-stage run contract with structured RunInput.
  */
 
 import type { RunInput } from "./run-input";
@@ -303,6 +303,7 @@ FORBIDDEN OUTPUT PATTERNS — these strings must never appear as standalone line
 **Minimum tool-call floors (non-negotiable):**
 - Stage 1: ≥ 1 call to read_morning_brief AND ≥ 1 call to read_signals
 - Stage 2 (holdings portion): 1 get_stock_data for EVERY open position (no exceptions)
+- Stage 2 (watchlist portion): get_stock_data on EVERY HIGH or brief-flagged watchlist item. If none are HIGH/flagged, call get_stock_data on at least min(3, watchlist_size) items, prioritizing oldest-reviewed first. Zero watchlist calls when a watchlist exists = run failure.
 - Stage 2 (discovery portion): ≥ 2 new-ticker researches regardless of slot capacity
 - Stage 3: one record_thesis per ticker researched (LONG / SHORT / PASS)
 - Stage 4: for EACH open position, either a manage_position call OR an explicit narrated "hold unchanged" with reasoning
@@ -320,7 +321,7 @@ Start with a 1-2 sentence portfolio check-in — note open positions and any Wat
 
 **Time-in-position (mandatory when DAY-hold violations are listed above):** For each flagged DAY-hold position, state your choice in narration before Stage 3 — close, roll to SWING with justification, or extend with explicit reasoning.
 
-**Watchlist:** MUST call get_stock_data if HIGH priority or brief-flagged. SHOULD if not reviewed 5+ days. SKIP only if LOW and quiet.
+**Watchlist (mandatory):** Call get_stock_data on every HIGH or brief-flagged item. If there are none, call get_stock_data on the min(3, watchlist_size) least-recently-reviewed items. A run that closes with zero watchlist tool calls when a watchlist exists is a run failure. You maintain this watchlist for a reason — revisit it.
 
 **Discovery (mandatory):** Research ≥ 2 new tickers every run regardless of slot capacity. Being at max positions does NOT skip discovery — research still happens, and worthy names go to the watchlist via **manage_watchlist** even when you can't trade them. Pull candidates from the brief's new-opportunities, from signals, or from live web_search. Match focus sectors, no micro-caps/ADRs/penny stocks.
 
@@ -363,7 +364,7 @@ Watchlist edits: add new PASS tickers, remove stale ideas. Use **manage_watchlis
 
   // ── Section 9: Thesis quality ─────────────────────────────────────────
   sections.push(`## Thesis Quality
-Every thesis must include: direction, confidence (0-100), entry/target/stop prices, 3-5 thesis bullets, risk flags, and a reasoning summary. PASS theses need the same rigor — document why a stock doesn't fit and build institutional memory. Never write a verdict in narration text instead of a thesis.`);
+Every thesis must include: direction, confidence (0-100), entry/target/stop prices, **at least 3 thesis_bullets grounded in data from this run's tool results** (price/volume/earnings/news — not generic sentiment), risk flags naming concrete risks (not "market volatility"), and a reasoning summary of **at least two sentences** that cites specific data points from get_stock_data or signals. PASS theses need the same rigor — document why a stock doesn't fit and build institutional memory. Generic reasoning like "supports its growth trajectory" without data citation = insufficient quality and should be rewritten before moving on. Never write a verdict in narration text instead of a thesis.`);
 
   return sections.join("\n\n");
 }
