@@ -215,10 +215,7 @@ function decideRouteCode(args: {
       matched.themes?.length ?? 0,
     ].filter((n) => n > 0)
 
-    if (dims.length >= 2) return "DISCOVERY"
-    if ((matched.industries?.length ?? 0) > 0) return "INDUSTRY_MATCH"
-    if ((matched.sectors?.length ?? 0) > 0) return "SECTOR_MATCH"
-    if ((matched.themes?.length ?? 0) > 0) return "THEME_MATCH"
+    if (dims.length >= 1) return "DISCOVERY"
   }
 
   if (isCrossAnalyst) return "CROSS_ANALYST"

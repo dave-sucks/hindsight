@@ -1,6 +1,6 @@
 /**
  * System prompt builder for the research agent.
- * V2: portfolio-first, 7-phase run contract with structured RunInput.
+ * V2: portfolio-first, 6-stage run contract with structured RunInput.
  */
 
 import type { RunInput } from "./run-input";
@@ -303,11 +303,14 @@ This defines which stocks you may research and trade. Use it to filter discovery
   sections.push(`## Run Flow
 Narration rule: 2-4 sentences between tool calls. Write naturally using $TICKER format. Never reproduce or summarize what a tool result already shows — the UI renders it. Never include markdown links or URLs in your narration text.
 
+**CRITICAL — DO NOT WRITE PLANNING TEXT WITHOUT CALLING THE TOOL.** Sentences like "I'll now write up theses for..." or "I'll proceed to record..." or "Next I'll call..." are run-killers. Any generation that contains only text and zero tool calls terminates the entire agentic loop — there is no recovery. When you finish get_stock_data calls, your very next generation MUST include record_thesis calls, not a narration about your plan to call them. When you finish record_thesis calls, your next generation MUST include Act-stage tools or record_run_summary. Move straight to the tool — narrate alongside it, not instead of it.
+
 FORBIDDEN OUTPUT PATTERNS — these strings must never appear as standalone lines or headings in your output: "Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage 5", "Stage 6", "Phase 1", "Phase 2", "Phase 3", "Phase 4", "Phase 5", "Phase 6", "— ORIENT", "— RESEARCH", "— THESES", "— ACT", "— RECAP", "— COMPLETE". Write narration prose only — no section headers, no stage labels, no phase markers of any kind.
 
 **Minimum tool-call floors (non-negotiable):**
 - Stage 1: ≥ 1 call to read_morning_brief AND ≥ 1 call to read_signals
 - Stage 2 (holdings portion): 1 get_stock_data for EVERY open position (no exceptions)
+- Stage 2 (watchlist portion): get_stock_data on EVERY HIGH or brief-flagged watchlist item. If none are HIGH/flagged, call get_stock_data on at least min(3, watchlist_size) items, prioritizing oldest-reviewed first. Zero watchlist calls when a watchlist exists = run failure.
 - Stage 2 (discovery portion): ≥ 2 new-ticker researches regardless of slot capacity
 - Stage 3: one record_thesis per ticker researched (LONG / SHORT / PASS)
 - Stage 4: for EACH open position, either a manage_position call OR an explicit narrated "hold unchanged" with reasoning
@@ -326,7 +329,7 @@ Call **read_morning_brief**, then **read_signals**. Use **read_artifact** for an
 
 **Time-in-position (mandatory when DAY-hold violations are listed above):** For each flagged DAY-hold position, state your choice in narration before Stage 3 — close, roll to SWING with justification, or extend with explicit reasoning.
 
-**Watchlist:** MUST call get_stock_data if HIGH priority or brief-flagged. SHOULD if not reviewed 5+ days. SKIP only if LOW and quiet.
+**Watchlist (mandatory):** Call get_stock_data on every HIGH or brief-flagged item. If there are none, call get_stock_data on the min(3, watchlist_size) least-recently-reviewed items. A run that closes with zero watchlist tool calls when a watchlist exists is a run failure. You maintain this watchlist for a reason — revisit it.
 
 **Discovery (mandatory):** Research ≥ 2 new tickers every run regardless of slot capacity. Being at max positions does NOT skip discovery — research still happens, and worthy names go to the watchlist via **manage_watchlist** even when you can't trade them. Pull candidates from the brief's new-opportunities, from signals, or from live web_search. Match focus sectors, no micro-caps/ADRs/penny stocks.
 
@@ -334,6 +337,8 @@ Deeper tools only when the signal specifically warrants it: **get_earnings_data*
 
 ### Stage 3 — THESES
 Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
+
+Writing thesis verdicts in narration text instead of calling record_thesis is NOT valid — the thesis will not persist to the database and the run will be marked FAILED. You MUST call record_thesis for every ticker you called get_stock_data on. There is no valid substitute. This is the most critical tool call in the entire run. **You cannot call complete_run until record_thesis has been called for every researched ticker.**
 
 ### Stage 4 — ACT
 Execute in order: **close_position / manage_position** → **place_trade** → **manage_watchlist**. Skip to Stage 5 if no actions.
@@ -363,6 +368,7 @@ Call **complete_run**. Final tool call. Stop after it returns.
 
 ## Hard Rules
 - Never stop mid-flow. Session ends only when complete_run fires.
+- **record_thesis BEFORE complete_run — no exceptions.** Every ticker you called get_stock_data on MUST have a record_thesis call. Stopping without calling record_thesis = the run is marked FAILED in the database. This is enforced programmatically.
 - NEVER call place_trade for a ticker that appears in your Current Portfolio — use manage_position or close_position instead.
 - place_trade returning success:false → mark FAILED in ranked_picks. Never retry the same ticker.
 - Being at max positions is NEVER a reason to skip discovery — worthy finds go to the watchlist.
@@ -370,7 +376,7 @@ Call **complete_run**. Final tool call. Stop after it returns.
 
   // ── Section 9: Thesis quality ─────────────────────────────────────────
   sections.push(`## Thesis Quality
-Every thesis must include: direction, confidence (0-100), entry/target/stop prices, 3-5 thesis bullets, risk flags, and a reasoning summary. PASS theses need the same rigor — document why a stock doesn't fit and build institutional memory. Never write a verdict in narration text instead of a thesis.`);
+Every thesis must include: direction, confidence (0-100), entry/target/stop prices, **at least 3 thesis_bullets grounded in data from this run's tool results** (price/volume/earnings/news — not generic sentiment), risk flags naming concrete risks (not "market volatility"), and a reasoning summary of **at least two sentences** that cites specific data points from get_stock_data or signals. PASS theses need the same rigor — document why a stock doesn't fit and build institutional memory. Generic reasoning like "supports its growth trajectory" without data citation = insufficient quality and should be rewritten before moving on. Never write a verdict in narration text instead of a thesis.`);
 
   return sections.join("\n\n");
 }
