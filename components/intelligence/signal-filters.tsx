@@ -71,7 +71,7 @@ export function hasActiveFilters(v: SignalFiltersValue): boolean {
 export const SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: "EMAIL_INGEST", label: "Email" },
   { value: "PERPLEXITY_SONAR", label: "Sonar" },
-  { value: "FMP", label: "FMP" },
+  { value: "ALPACA", label: "Alpaca" },
   { value: "FINNHUB", label: "Finnhub" },
 ];
 
