@@ -7,7 +7,6 @@
 import { inngest } from "@/lib/inngest/client"
 import { prisma } from "@/lib/prisma"
 import { searchSignals } from "@/lib/intelligence/sonar"
-import { fetchMovers, type AlpacaMover } from "@/lib/intelligence/alpaca-movers"
 import {
   createSignalBatch,
   createSignal,
@@ -17,6 +16,7 @@ import {
 } from "@/lib/intelligence/signals"
 import type { SignalType, SignalSentiment, SignalUrgency } from "@/lib/intelligence/types"
 
+const FMP_KEY = process.env.FMP_API_KEY!
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!
 
 // Map monitor categories to signal types
@@ -28,19 +28,17 @@ const CATEGORY_TO_SIGNAL_TYPE: Record<string, SignalType> = {
   EVENT: "EARNINGS",
 }
 
-// Aggregate buckets produced by the Alpaca screener. "Most actives" is
-// intentionally dropped — Alpaca's /most-actives returns only volume +
-// trade_count (no price/percent_change), which doesn't match the existing
-// card renderer. Revisit if we want to fetch quotes separately.
-const MOVER_BUCKETS: Array<{
-  side: "gainers" | "losers"
+// Map FMP endpoint paths to aggregate types and built-in monitor IDs
+const MOVER_CONFIG: Array<{
+  path: string
   label: string
   sentiment: SignalSentiment
   aggregateType: string
   monitorId: string
 }> = [
-  { side: "gainers", label: "top gainers", sentiment: "BULLISH", aggregateType: "MARKET_MOVERS_GAINERS", monitorId: "monitor_alpaca_gainers" },
-  { side: "losers",  label: "top losers",  sentiment: "BEARISH", aggregateType: "MARKET_MOVERS_LOSERS",  monitorId: "monitor_alpaca_losers"  },
+  { path: "/stock_market/gainers", label: "top gainers", sentiment: "BULLISH", aggregateType: "MARKET_MOVERS_GAINERS", monitorId: "monitor_fmp_gainers" },
+  { path: "/stock_market/losers", label: "top losers", sentiment: "BEARISH", aggregateType: "MARKET_MOVERS_LOSERS", monitorId: "monitor_fmp_losers" },
+  { path: "/stock_market/actives", label: "most active", sentiment: "NEUTRAL", aggregateType: "MARKET_MOVERS_ACTIVES", monitorId: "monitor_fmp_actives" },
 ]
 
 export const firmMarketSweep = inngest.createFunction(
@@ -138,51 +136,58 @@ export const firmMarketSweep = inngest.createFunction(
       }
     }
 
-    // ── Step 4: Market movers via Alpaca screener — one fetch, two signals.
-    // Replaces the old FMP /stock_market/{gainers,losers,actives} loop which
-    // silently 0-called in production (FMP paywall or missing env key — same
-    // outcome either way). Alpaca uses the same creds we already have for
-    // paper trading, so no new env vars.
+    // ── Step 4: Market movers (FMP gainers/losers/actives) — 1 aggregate signal per category
 
     const moversResult = await step.run("market-movers", async () => {
       let created = 0
       let failed = 0
       const errors: string[] = []
 
-      let movers: Awaited<ReturnType<typeof fetchMovers>>
-      try {
-        movers = await fetchMovers(10)
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        console.error(`[firm-sweep] Alpaca movers fetch failed: ${msg}`)
-        return { created: 0, failed: MOVER_BUCKETS.length, errors: [msg] }
-      }
-
-      for (const { side, label, sentiment, aggregateType, monitorId } of MOVER_BUCKETS) {
+      for (const { path, label, sentiment, aggregateType, monitorId } of MOVER_CONFIG) {
         try {
-          const items: AlpacaMover[] = movers[side] ?? []
-          if (items.length === 0) continue
+          const url = `https://financialmodelingprep.com/api/v3${path}?apikey=${FMP_KEY}`
+          const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+          if (!res.ok) {
+            const body = await res.text().catch(() => "")
+            const msg = `FMP ${path} → HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
+            console.warn(`[firm-sweep] ${msg}`)
+            errors.push(msg)
+            failed++
+            continue
+          }
 
-          const top10 = items.slice(0, 10)
+          const data = (await res.json()) as Array<{
+            symbol: string
+            name: string
+            change: number
+            price: number
+            changesPercentage: number
+            volume?: number
+          }>
 
+          if (!Array.isArray(data) || data.length === 0) continue
+
+          const top10 = data.slice(0, 10)
+
+          // Build aggregate payload
           const dataPayload = top10.map((item) => ({
             ticker: item.symbol,
-            change: item.percent_change ?? 0,
+            change: item.changesPercentage ?? 0,
             price: item.price ?? 0,
+            volume: item.volume ?? 0,
           }))
 
+          // Build a summary from the top 3
           const top3Summary = top10
             .slice(0, 3)
             .map((item) => {
-              const sign = (item.percent_change ?? 0) >= 0 ? "+" : ""
-              return `${item.symbol} ${sign}${item.percent_change?.toFixed(1)}%`
+              const sign = (item.changesPercentage ?? 0) >= 0 ? "+" : ""
+              return `${item.symbol} ${sign}${item.changesPercentage?.toFixed(1)}%`
             })
             .join(", ")
 
           const allTickers = top10.map((item) => item.symbol)
-          const maxChangePct = Math.max(
-            ...top10.map((item) => Math.abs(item.percent_change ?? 0)),
-          )
+          const maxChangePct = Math.max(...top10.map((item) => Math.abs(item.changesPercentage ?? 0)))
           const urgency: SignalUrgency =
             maxChangePct > 5 ? "HIGH" : maxChangePct > 2 ? "MEDIUM" : "LOW"
 
@@ -200,9 +205,9 @@ export const firmMarketSweep = inngest.createFunction(
             sourceQuality: 3,
             freshness: "TODAY",
             sourceUrls: [],
-            sourceNames: ["Alpaca"],
-            searchTool: "ALPACA",
-            searchQuery: `/v1beta1/screener/stocks/movers#${side}`,
+            sourceNames: ["FMP"],
+            searchTool: "FMP",
+            searchQuery: path,
             searchContext: `market_movers:${label}`,
             aggregateType,
             dataPayload,
@@ -210,21 +215,23 @@ export const firmMarketSweep = inngest.createFunction(
           })
           created++
 
+          // Update lastRunAt on the built-in monitor
           await prisma.monitor.update({
             where: { id: monitorId },
             data: { lastRunAt: new Date() },
           }).catch(() => {
+            // Monitor row may not exist yet during migration
             console.warn(`[firm-sweep] Could not update lastRunAt for monitor ${monitorId}`)
           })
         } catch (error) {
-          const msg = `Alpaca ${side} aggregate threw: ${error instanceof Error ? error.message : String(error)}`
+          const msg = `FMP ${path} threw: ${error instanceof Error ? error.message : String(error)}`
           console.error(`[firm-sweep] ${msg}`)
           errors.push(msg)
           failed++
         }
       }
 
-      return { created, failed, errors, lastUpdated: movers.last_updated }
+      return { created, failed, errors }
     })
 
     totalSignals += moversResult.created
@@ -233,39 +240,21 @@ export const firmMarketSweep = inngest.createFunction(
 
     const earningsResult = await step.run("earnings-calendar", async () => {
       const monitorId = "monitor_finnhub_earnings"
-      // Diagnostic: which stage failed last time? The catch below reports
-      // `stage` so the Inngest dashboard shows exactly where we blew up
-      // without us digging through Vercel logs again.
-      let stage: string = "init"
-      // Env-var presence check — empty key is the most common silent failure
-      // mode. Never log the key itself.
-      if (!FINNHUB_KEY) {
-        return {
-          created: 0,
-          failed: 1,
-          error: "FINNHUB_API_KEY missing in Vercel environment",
-          stage: "env-check",
-        }
-      }
-
       try {
-        stage = "build-url"
         const today = new Date()
         const weekOut = new Date(Date.now() + 7 * 86400_000)
         const from = today.toISOString().slice(0, 10)
         const to = weekOut.toISOString().slice(0, 10)
 
-        stage = "fetch"
         const url = `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_KEY}`
         const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
         if (!res.ok) {
           const body = await res.text().catch(() => "")
           const msg = `Finnhub /calendar/earnings → HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
           console.warn(`[firm-sweep] ${msg}`)
-          return { created: 0, failed: 1, error: msg, stage }
+          return { created: 0, failed: 1, error: msg }
         }
 
-        stage = "parse-json"
         const data = (await res.json()) as {
           earningsCalendar?: Array<{
             symbol: string
@@ -275,16 +264,15 @@ export const firmMarketSweep = inngest.createFunction(
           }>
         }
 
-        stage = "filter-calendar"
         const calendar = (data.earningsCalendar ?? []).filter(
           (item) => item.symbol && item.date
         )
 
         if (calendar.length === 0) {
-          return { created: 0, failed: 0, stage: "empty-calendar" }
+          return { created: 0, failed: 0 }
         }
 
-        stage = "build-payload"
+        // Build aggregate payload
         const dataPayload = calendar.map((item) => ({
           ticker: item.symbol,
           date: item.date,
@@ -294,6 +282,7 @@ export const firmMarketSweep = inngest.createFunction(
 
         const allTickers = [...new Set(calendar.map((item) => item.symbol))]
 
+        // Find nearest reporting date for urgency
         const nearestDaysOut = Math.min(
           ...calendar.map((item) => {
             const reportDate = new Date(item.date + "T00:00:00")
@@ -303,6 +292,7 @@ export const firmMarketSweep = inngest.createFunction(
         const urgency: SignalUrgency =
           nearestDaysOut <= 2 ? "HIGH" : nearestDaysOut <= 5 ? "MEDIUM" : "LOW"
 
+        // Build headline from the first few tickers reporting soonest
         const soonest = calendar
           .sort((a, b) => a.date.localeCompare(b.date))
           .slice(0, 5)
@@ -310,7 +300,6 @@ export const firmMarketSweep = inngest.createFunction(
         const headlineTickers = soonest.join(", ")
         const remaining = calendar.length - soonest.length
 
-        stage = "create-signal"
         await createSignal({
           batchId,
           monitorId,
@@ -334,7 +323,7 @@ export const firmMarketSweep = inngest.createFunction(
           itemCount: calendar.length,
         })
 
-        stage = "update-monitor"
+        // Update lastRunAt on the built-in monitor
         await prisma.monitor.update({
           where: { id: monitorId },
           data: { lastRunAt: new Date() },
@@ -342,11 +331,11 @@ export const firmMarketSweep = inngest.createFunction(
           console.warn(`[firm-sweep] Could not update lastRunAt for monitor ${monitorId}`)
         })
 
-        return { created: 1, failed: 0, stage: "done", tickers: allTickers.length }
+        return { created: 1, failed: 0 }
       } catch (error) {
-        const msg = `Finnhub earnings threw at stage=${stage}: ${error instanceof Error ? error.message : String(error)}`
+        const msg = `Finnhub earnings threw: ${error instanceof Error ? error.message : String(error)}`
         console.error(`[firm-sweep] ${msg}`)
-        return { created: 0, failed: 1, error: msg, stage }
+        return { created: 0, failed: 1, error: msg }
       }
     })
 
