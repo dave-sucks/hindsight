@@ -64,13 +64,13 @@ export function hasActiveFilters(v: SignalFiltersValue): boolean {
 }
 
 // ── Source filter options ─────────────────────────────────────────────────
-// Keys match Signal.searchTool; labels are what the user sees. "Market data"
-// collapses FMP+Finnhub since users don't distinguish them in practice.
+// Keys match Signal.searchTool; labels are what the user sees. Firecrawl is
+// intentionally absent — it's an enrichment layer that writes Artifacts, not
+// Signals, so no Signal row ever has `searchTool = "FIRECRAWL"`.
 
 export const SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: "EMAIL_INGEST", label: "Email" },
   { value: "PERPLEXITY_SONAR", label: "Sonar" },
-  { value: "FIRECRAWL", label: "Firecrawl" },
   { value: "FMP", label: "FMP" },
   { value: "FINNHUB", label: "Finnhub" },
 ];
