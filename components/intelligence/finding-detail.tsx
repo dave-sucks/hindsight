@@ -18,7 +18,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { Favicon } from "@/components/intelligence/signal-feed";
+import { Favicon, aggregateTitle } from "@/components/intelligence/signal-feed";
 import { StockLogo } from "@/components/StockLogo";
 import { TickerChip } from "@/components/chat/TickerChip";
 import {
@@ -92,15 +92,22 @@ export function FindingDetailDialog({
   const monitorType = getMonitorType(signal);
   const MonitorIcon = MONITOR_ICON[monitorType];
   const isEmail = monitorType === "EMAIL";
+  const isAggregate = signal.aggregateType != null;
   const subject = emailSubject(signal);
-  // Prefer the email subject line for email signals; fall back to the stored
-  // search query, then the headline.
-  const query = subject ?? signal.searchQuery ?? signal.headline;
+  // Query bar text priority: aggregate title → email subject → search query → headline.
+  const query = isAggregate
+    ? aggregateTitle(signal.aggregateType)
+    : subject ?? signal.searchQuery ?? signal.headline;
   const usedPerplexity =
-    !isEmail && (!signal.searchTool || signal.searchTool === "PERPLEXITY_SONAR");
+    !isEmail && !isAggregate && (!signal.searchTool || signal.searchTool === "PERPLEXITY_SONAR");
   const usedFirecrawl = !!signal.artifactId;
 
   const hasSources = signal.sourceUrls.length > 0;
+
+  // Headline/description also use the aggregate title when relevant so the
+  // dialog reads cohesively instead of showing the producer's raw headline.
+  const dialogTitle = isAggregate ? aggregateTitle(signal.aggregateType) : signal.headline;
+  const dialogDescription = signal.summary;
 
   const tagLine = [
     ...signal.sectors,
@@ -200,23 +207,30 @@ export function FindingDetailDialog({
           )}
 
           <DialogHeader>
-            <DialogTitle>{signal.headline}</DialogTitle>
-            <DialogDescription>{signal.summary}</DialogDescription>
+            <DialogTitle>{dialogTitle}</DialogTitle>
+            <DialogDescription>{dialogDescription}</DialogDescription>
           </DialogHeader>
 
-          {/* Tickers — logo + chat-style live-price chip */}
-          {signal.tickers.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              {signal.tickers.map((t) => (
-                <span
-                  key={t}
-                  className="inline-flex items-center gap-1.5"
-                >
-                  <StockLogo ticker={t} size="sm" className="h-5 w-5" />
-                  <TickerChip symbol={t} />
-                </span>
-              ))}
-            </div>
+          {/* Body: aggregate signals render a structured table using the
+              dataPayload (ticker + price/change for movers, ticker + date +
+              EPS for earnings). Non-aggregate signals render inline ticker
+              chips with live quotes. */}
+          {isAggregate ? (
+            <AggregateTable signal={signal} />
+          ) : (
+            signal.tickers.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                {signal.tickers.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <StockLogo ticker={t} size="sm" className="h-5 w-5" />
+                    <TickerChip symbol={t} />
+                  </span>
+                ))}
+              </div>
+            )
           )}
 
           {/* Routing — ButtonGroup per analyst */}
@@ -349,4 +363,93 @@ function extractMatchedValues(m: MatchedUniverse | null): string[] {
   if (m.inWatchlist) out.push("watchlist hit");
   if (m.inPositions) out.push("open position");
   return out;
+}
+
+// ── Aggregate table ──────────────────────────────────────────────────────
+// Renders the dataPayload for market movers / earnings calendar signals as a
+// structured table. Uses the same StockLogo + TickerChip components that the
+// regular ticker section uses so row chrome stays consistent.
+//
+// We cap the visible rows at 20 (and surface the remainder inline) because
+// the earnings calendar can contain ~1000 items and each TickerChip fetches
+// its own quote. 20 is enough to scan the top of the calendar without
+// torching Finnhub's quote quota.
+
+const MAX_ROWS = 20;
+
+function AggregateTable({ signal }: { signal: Signal }) {
+  const rawPayload = signal.dataPayload;
+  const items = Array.isArray(rawPayload)
+    ? (rawPayload as Array<Record<string, unknown>>)
+    : [];
+  const visible = items.slice(0, MAX_ROWS);
+  const remaining = Math.max(0, items.length - visible.length);
+  const isMovers = signal.aggregateType?.startsWith("MARKET_MOVERS") ?? false;
+  const isEarnings = signal.aggregateType === "EARNINGS_CALENDAR";
+
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="border-t pt-3">
+      <div className="space-y-1.5">
+        {visible.map((item, i) => {
+          const ticker = String(item.ticker ?? "").toUpperCase();
+          if (!ticker) return null;
+          return (
+            <div
+              key={`${ticker}-${i}`}
+              className="flex items-center justify-between gap-3 text-sm"
+            >
+              <div className="inline-flex items-center gap-1.5 min-w-0">
+                <StockLogo ticker={ticker} size="sm" className="h-5 w-5 shrink-0" />
+                <TickerChip symbol={ticker} />
+              </div>
+              {isMovers && <MoversMeta item={item} />}
+              {isEarnings && <EarningsMeta item={item} />}
+            </div>
+          );
+        })}
+      </div>
+      {remaining > 0 && (
+        <p className="mt-2 text-xs text-muted-foreground tabular-nums">
+          and {remaining} more
+        </p>
+      )}
+    </div>
+  );
+}
+
+function MoversMeta({ item }: { item: Record<string, unknown> }) {
+  const change = Number(item.change ?? 0);
+  const price = Number(item.price ?? 0);
+  const isPositive = change >= 0;
+  return (
+    <div className="flex items-center gap-4 tabular-nums shrink-0">
+      <span
+        className={
+          isPositive
+            ? "text-xs text-positive"
+            : "text-xs text-negative"
+        }
+      >
+        {isPositive ? "+" : ""}
+        {change.toFixed(1)}%
+      </span>
+      <span className="text-xs text-muted-foreground">
+        ${price.toFixed(2)}
+      </span>
+    </div>
+  );
+}
+
+function EarningsMeta({ item }: { item: Record<string, unknown> }) {
+  const date = String(item.date ?? "");
+  const epsEstimate =
+    typeof item.epsEstimate === "number" ? item.epsEstimate : null;
+  return (
+    <div className="flex items-center gap-4 text-xs text-muted-foreground tabular-nums shrink-0">
+      {date && <span>{date}</span>}
+      {epsEstimate !== null && <span>EPS est: ${epsEstimate.toFixed(2)}</span>}
+    </div>
+  );
 }
