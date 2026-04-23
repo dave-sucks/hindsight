@@ -263,22 +263,27 @@
   color: transparent;
   animation: shimmer-slide 2.5s linear infinite;
 }
-/* ── Replace assistant-ui dot cursor with three-dot typing indicator ──── */
-@keyframes aui-thinking-dots {
-  0%, 60%, 100% { opacity: 0.2; }
-  30%            { opacity: 1;   }
+/* ── Single breathing dot — the one and only in-flight indicator ──────── */
+/* Shown while the assistant message is streaming (data-status="running").
+ * Covers model-thinking AND tool-in-flight, so it stays lit the whole time
+ * the agent is working. Tool rows intentionally have no separate spinners —
+ * this dot is the single source of truth for "something is happening". */
+@keyframes aui-thinking-dot {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50%      { opacity: 1;    transform: scale(1);   }
 }
 
-/* Override the library's single ● with a styled "thinking" text indicator */
 :where(.aui-md[data-status="running"]):empty::after,
 :where(.aui-md[data-status="running"]) > :where(:not(ol):not(ul):not(pre)):last-child::after,
 :where(.aui-md[data-status="running"]) > pre:last-child code::after,
 :where(.aui-md[data-status="running"]) > :where(:is(ol, ul):last-child) > :where(li:last-child:not(:has(* > li)))::after {
-  --aui-content: "···";
-  content: var(--aui-content);
-  font-size: 1rem;
-  letter-spacing: 0.05em;
-  color: var(--muted-foreground);
-  animation: aui-thinking-dots 1.4s ease-in-out infinite;
-  margin-left: 0.15rem;
+  content: "●";
+  display: inline-block;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--foreground);
+  animation: aui-thinking-dot 1.4s ease-in-out infinite;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+  transform-origin: center;
 }
