@@ -58,8 +58,7 @@ See docs/AGENT_OVERHAUL_PLAN.md → Workstream B for the full spec.
 Routing output on AnalystSignalRoute (populated by Workstream A):
 - `routeReasonCode` — "DISCOVERY" | "WATCHLIST" | "POSITION" | "DIRECT_TICKER"
   | "SECTOR_MATCH" | "INDUSTRY_MATCH" | "THEME_MATCH" | "CROSS_ANALYST"
-  | "FIRM_AGGREGATE_FEED" *(reserved — wired in the follow-up router PR)*
-  | "AGGREGATE_TICKER_MATCH" *(reserved — wired in the follow-up router PR)*
+  | "FIRM_AGGREGATE_FEED" | "AGGREGATE_TICKER_MATCH"
 - `matchedUniverse` Json — { sectors, industries, themes, inWatchlist,
   inPositions, fromAnalystId?, feed? }
 
@@ -438,7 +437,7 @@ it with a ticker chip as if it were a traded security.
 - Aggregate signals (`Signal.aggregateType` populated) carry empty `sectors`/`industries` by design — they're firm-wide. Routing them through the news-signal fence (sector/industry match) silently drops everything; that's the bug that #163/#164/#165/#166 chased.
 - Right answer: aggregates match analysts via `feeds` membership (`analyst.feeds.includes(signal.aggregateType)`) — `feeds` is a peer Universe dimension, not a separate routing axis. Composition still applies: an analyst with `feeds:["EARNINGS_CALENDAR"]` + `industries:["Semiconductors"]` ends up with the calendar fenced to semis names by the existing AND-across-dimensions rule.
 - Producers populate canonical FEEDS values verbatim (no mapping). When you add a new aggregate type, add the value to `lib/universe/feeds.ts`, have the producer write that exact string as `aggregateType`, and add a default-feeds entry to any matching strategy archetype in `lib/agent/knowledge/strategy-archetypes.ts`.
-- The `aggregate-novelty-skip` hack in #164 is now redundant once the feeds-dimension fence lands in the router (queued — see follow-up after PR #168 merges). Remove it then; don't let it survive as cruft.
+- The `aggregate-novelty-skip` carve-out from #164 is kept in place even though feed-subscription + ticker-intersection are now the correct primary gates. Reason: existing analysts with empty `feeds` still rely on the ticker-overlap path, and that path would get crushed by 7d route-history novelty without the carve-out. Safe to remove in a follow-up once every enabled analyst has a populated `feeds` array AND there's a deploy cycle of data confirming no regression.
 
 - FMP historical-price-full may 403 on legacy plan (affects
   technical analysis for small-cap/ADR tickers)

@@ -1146,30 +1146,42 @@ _This doc is the persistence layer. Next session opens by reading it; every futu
     - Pull-tool authors explicitly told to use `ToolUIRenderer` items[],
       no per-tool renderer (extends the existing $MARKET-bug guidance to
       the firehose pull case)
-- **Scope deferred (Phase 2 — router wiring, follow-up PR after wave merges):**
-  - **Router fence dimension.** `lib/inngest/functions/signal-router.ts`
-    fence match needs `analyst.feeds.includes(signal.aggregateType)` added
-    as a peer dimension. New `routeReasonCode` values
-    `FIRM_AGGREGATE_FEED` and `AGGREGATE_TICKER_MATCH` are reserved in
-    CLAUDE.md but not yet emitted.
-  - **Remove the novelty-skip hack from #164** once the feeds-dimension
-    fence lands — feeds match is the correct gate; novelty math becomes
-    meaningful again because tickers will only overlap when the analyst
-    actually subscribed or the ticker hits their universe.
-  - **`suggest_config` schema.** Add `feeds: z.array(z.enum(FEEDS))` to
-    the builder/editor proposal schema. Plus a hard rule in
-    `BUILDER_SYSTEM_PROMPT` saying "after picking the archetype, propose
-    `feeds` from its `defaultFeeds` and justify in the rationale."
-  - **`read_signals` filter.** Add `{ category?: string }` so the agent
-    can pull any aggregate on demand even if not subscribed (simpler than
-    a third tool). Optional — defer if the two pull tools cover the need.
-  - **System prompt mention** of pull tools as the escape hatch when
-    a feed isn't subscribed but the analyst still wants today's data.
-  - **All five deferred items** touch files owned by in-flight PRs
-    (#168 router/system-prompt, #169 read-signals/system-prompt,
-    #170 suggest-config). Splitting Phase 2 into a follow-up PR after the
-    wave merges keeps this PR conflict-free with the orchestration plan
-    in `docs/SESSION-PLAN-PIPELINE-FIXES.md`.
+- **Phase 2 — router wiring (landed in the same PR after #168/#169/#170 merged):**
+  - **Router fence dimension.** `lib/inngest/functions/signal-router.ts`:
+    added `feeds` to `AnalystProfile`, short-circuited aggregate signals
+    through a `feedHit = analyst.feeds.includes(signal.aggregateType)`
+    check before `matchUniverse` (which would otherwise reject for any
+    analyst with a sector/industry fence since aggregates carry empty
+    sectors/industries). Two new route codes:
+    - `FIRM_AGGREGATE_FEED` — subscribed via `AgentConfig.feeds`; full
+      firehose.
+    - `AGGREGATE_TICKER_MATCH` — not subscribed, but the aggregate's
+      tickers overlap watchlist/positions.
+    - Exempted `feedHit` from both the 15-point raw-score floor and the
+      adjusted-score floor (subscription IS the intent signal;
+      aggregates carry no sector/industry boosts to clear it otherwise).
+    - `matchedUniverse.feed` populated with the canonical aggregateType
+      for all aggregate routes.
+  - **`suggest_config` schema.** `universe.feeds: z.array(z.enum(FEED_VALUES)).optional()`
+    added. Builder `BUILDER_SYSTEM_PROMPT` gains a Step-5 paragraph
+    instructing it to seed `universe.feeds` from the archetype's
+    `defaultFeeds` and a new Hard Rule #5 forbidding invented feed names.
+    Editor prompt gains a parallel "Feeds edits" paragraph gating
+    cosmetic churn.
+  - **Research-run system prompt.** Stage 1 gains one paragraph pointing
+    the agent at `get_earnings_calendar` / `get_market_movers` as the
+    on-demand escape hatch when a feed isn't subscribed, with
+    `scope:"universe"` vs `"all"` semantics spelled out.
+  - **`#164 aggregate-novelty-skip` carve-out — kept in place.** Intentional:
+    existing analysts with empty `feeds` still rely on the ticker-overlap
+    path, and that path would get crushed by 7d route-history novelty
+    without the carve-out. Safe to remove in a follow-up once every
+    enabled analyst has a populated `feeds` array AND there's a deploy
+    cycle of data confirming no regression.
+  - **`read_signals` category filter — deferred.** The three-bucket shape
+    (`portfolioSignals` / `watchlistSignals` / `discoverySignals`) from
+    #168 plus the two pull tools cover the on-demand case; a `{category?}`
+    filter is a nice-to-have, not a blocker.
 - **Notes:**
   - The `aggregate-channel-catalog` mentioned in earlier design discussion
     was collapsed into `defaultFeeds` on each archetype — keeping the
