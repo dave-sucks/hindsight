@@ -8,8 +8,9 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
+import { etTradingDayDate } from "@/lib/market-hours";
 
-const thesisSchema = z.object({
+const thesisFields = z.object({
   ticker: z.string(),
   company_name: z.string().optional().describe("Company name from get_stock_data"),
   exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
@@ -46,12 +47,47 @@ const thesisSchema = z.object({
     .describe("Key fundamentals from get_stock_data — populates the Data tab in the thesis card."),
   parent_thesis_id: z.string().optional()
     .describe("ID of the prior thesis being updated or invalidated. Links thesis chain."),
+  // V3 Session 3 — forcing-function trio.
+  // source_kind is REQUIRED. When it is ROUTED_SIGNAL the agent MUST supply
+  // non-empty source_signal_ids (enforced by superRefine below AND by an
+  // existence check against AnalystSignalRoute in execute()). Any other kind
+  // MUST supply a one-line source_rationale so the provenance is self-evident.
+  source_kind: z
+    .enum(["ROUTED_SIGNAL", "WEB_SEARCH", "WATCHLIST_REVIEW", "POSITION_REVIEW"])
+    .describe(
+      "Where this thesis came from. ROUTED_SIGNAL = informed by a signal from read_signals (requires non-empty source_signal_ids). WEB_SEARCH = came from a live web_search call only. WATCHLIST_REVIEW = triggered by reviewing your own watchlist. POSITION_REVIEW = triggered by reviewing an open position."
+    ),
   source_signal_ids: z
     .array(z.string())
     .default([])
     .describe(
-      "IDs of the signals from read_signals that informed this thesis. Persisted so the system can credit the originating monitors when the trade closes. Pass an empty array only if the thesis genuinely relied on no routed signals."
+      "signalId values from read_signals that informed this thesis. MUST be non-empty when source_kind is ROUTED_SIGNAL. Persisted so trade-evaluator can credit the originating monitors when the position closes."
     ),
+  source_rationale: z
+    .string()
+    .optional()
+    .describe(
+      "One-line explanation of how you got to this ticker. REQUIRED when source_kind is WEB_SEARCH, WATCHLIST_REVIEW, or POSITION_REVIEW."
+    ),
+});
+
+const thesisSchema = thesisFields.superRefine((val, ctx) => {
+  if (val.source_kind === "ROUTED_SIGNAL") {
+    if (!val.source_signal_ids || val.source_signal_ids.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "source_signal_ids must be non-empty when source_kind is ROUTED_SIGNAL. Cite the signalId values from read_signals that informed this thesis — or change source_kind to WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW if no routed signal was involved.",
+        path: ["source_signal_ids"],
+      });
+    }
+  } else if (!val.source_rationale || val.source_rationale.trim().length === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: `source_rationale is required when source_kind is ${val.source_kind}. Provide a one-line rationale for the thesis origin.`,
+      path: ["source_rationale"],
+    });
+  }
 });
 
 export const recordThesis = defineTool({
@@ -70,6 +106,46 @@ export const recordThesis = defineTool({
   execute: async (args, ctx) => {
     try {
       const sourceSignalIds = Array.from(new Set(args.source_signal_ids ?? []));
+
+      // Forcing function: when the agent claims ROUTED_SIGNAL provenance,
+      // every signalId must belong to this analyst's routed inbox for today
+      // (ET trading day). Rejecting out-of-pool IDs prevents the agent from
+      // satisfying the Zod non-empty check by fabricating strings.
+      if (args.source_kind === "ROUTED_SIGNAL" && sourceSignalIds.length > 0) {
+        if (!ctx.analystId) {
+          return {
+            summary: `Thesis rejected for ${args.ticker}: source_kind=ROUTED_SIGNAL requires an analyst context, which is missing for this run.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note: "Cannot validate source_signal_ids without an analystId. Use source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW with a source_rationale instead, or retry from an analyst-scoped run.",
+            },
+            sources: [],
+          };
+        }
+        const todayStart = etTradingDayDate();
+        const validRoutes = await prisma.analystSignalRoute.findMany({
+          where: {
+            analystId: ctx.analystId,
+            signalId: { in: sourceSignalIds },
+            routedAt: { gte: todayStart },
+          },
+          select: { signalId: true },
+        });
+        const validIds = new Set(validRoutes.map((r) => r.signalId));
+        const missing = sourceSignalIds.filter((id) => !validIds.has(id));
+        if (missing.length > 0) {
+          return {
+            summary: `Thesis rejected for ${args.ticker}: ${missing.length} source_signal_ids not in today's routed inbox.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note: `Invalid signalIds for ROUTED_SIGNAL: ${missing.join(", ")}. Every id must come from today's read_signals output for this analyst. Call read_signals and cite IDs from its result, or change source_kind to WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW with a source_rationale if this thesis did not actually rely on a routed signal.`,
+            },
+            sources: [],
+          };
+        }
+      }
 
       const coreData = {
         researchRunId: ctx.runId,

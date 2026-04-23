@@ -338,7 +338,7 @@ Deeper tools only when the signal specifically warrants it: **get_earnings_data*
 ### Stage 3 — THESES
 Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
 
-When recording a thesis, pass the IDs of the signals that informed it as source_signal_ids (the signalId values from read_signals). This is how the system learns which monitors produced winning theses — skip it and the outcome can't be credited back. An empty array is only valid when the thesis genuinely relied on no routed signals.
+Every record_thesis call MUST include source_kind. For ROUTED_SIGNAL, you MUST include at least one signalId in source_signal_ids — pull the IDs from today's read_signals output. Empty source_signal_ids on ROUTED_SIGNAL is a run failure; record_thesis will reject the call and no thesis will persist. For WEB_SEARCH, WATCHLIST_REVIEW, or POSITION_REVIEW, provide a one-line source_rationale instead. If a thesis actually blended routed signals with a watchlist review, use ROUTED_SIGNAL and cite the signalIds — the rationale for the watchlist context belongs in reasoning_summary, not in source_kind.
 
 Writing thesis verdicts in narration text instead of calling record_thesis is NOT valid — the thesis will not persist to the database and the run will be marked FAILED. You MUST call record_thesis for every ticker you called get_stock_data on. There is no valid substitute. This is the most critical tool call in the entire run. **You cannot call complete_run until record_thesis has been called for every researched ticker.**
 
@@ -371,6 +371,7 @@ Call **complete_run**. Final tool call. Stop after it returns.
 ## Hard Rules
 - Never stop mid-flow. Session ends only when complete_run fires.
 - **record_thesis BEFORE complete_run — no exceptions.** Every ticker you called get_stock_data on MUST have a record_thesis call. Stopping without calling record_thesis = the run is marked FAILED in the database. This is enforced programmatically.
+- **Every record_thesis MUST specify source_kind.** ROUTED_SIGNAL requires at least one signalId from today's read_signals output in source_signal_ids — the tool rejects empty arrays on ROUTED_SIGNAL and no thesis persists. Other kinds require source_rationale. Never fabricate signalIds to satisfy the requirement.
 - NEVER call place_trade for a ticker that appears in your Current Portfolio — use manage_position or close_position instead.
 - place_trade returning success:false → mark FAILED in ranked_picks. Never retry the same ticker.
 - Being at max positions is NEVER a reason to skip discovery — worthy finds go to the watchlist.
