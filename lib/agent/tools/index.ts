@@ -1,8 +1,12 @@
 /**
  * Tool registry — single export point for all agent tools.
  *
- * All 16 tools live in individual defineTool() files in this directory.
+ * All tools live in individual defineTool() files in this directory.
  * createResearchTools() assembles them for the unified route and crons.
+ *
+ * Pull tools for firm aggregates (get_earnings_calendar, get_market_movers)
+ * complement the subscription path (`AgentConfig.feeds`): subscribed analysts
+ * get the firehose routed automatically; any analyst can pull on-demand.
  */
 
 import type { AlpacaCredentials } from "@/lib/alpaca";
@@ -11,6 +15,8 @@ import type { IntelligencePolicy } from "@/lib/intelligence/types";
 import { getMarketContext } from "./get-market-context";
 import { getStockData } from "./get-stock-data";
 import { getEarningsData } from "./get-earnings-data";
+import { getEarningsCalendar } from "./get-earnings-calendar";
+import { getMarketMovers } from "./get-market-movers";
 import { getOptionsFlow } from "./get-options-flow";
 import { getSecFilings } from "./get-sec-filings";
 import { readMorningBrief } from "./read-morning-brief";
@@ -60,6 +66,8 @@ export function createResearchTools(ctx: ToolCtx) {
     get_market_context: getMarketContext(newCtx),
     get_stock_data: getStockData(newCtx),
     get_earnings_data: getEarningsData(newCtx),
+    get_earnings_calendar: getEarningsCalendar(newCtx),
+    get_market_movers: getMarketMovers(newCtx),
     get_options_flow: getOptionsFlow(newCtx),
     get_sec_filings: getSecFilings(newCtx),
     read_morning_brief: readMorningBrief(newCtx),
@@ -95,6 +103,8 @@ export function createResearchTools(ctx: ToolCtx) {
 export { getMarketContext } from "./get-market-context";
 export { getStockData } from "./get-stock-data";
 export { getEarningsData } from "./get-earnings-data";
+export { getEarningsCalendar } from "./get-earnings-calendar";
+export { getMarketMovers } from "./get-market-movers";
 export { getOptionsFlow } from "./get-options-flow";
 export { getSecFilings } from "./get-sec-filings";
 export { readMorningBrief } from "./read-morning-brief";

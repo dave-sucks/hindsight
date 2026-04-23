@@ -162,6 +162,14 @@ model AgentConfig {
   themes                String[]      @default([])
   marketCapMin          BigInt?
   marketCapMax          BigInt?
+  // ── Feeds (firm-aggregate subscription) ─────────────────────────────────
+  // Canonical FEEDS values (see lib/universe/feeds.ts) match Signal.aggregateType
+  // 1:1. The router treats `feeds` as another Universe dimension: a signal
+  // whose aggregateType is in this array passes the feeds-dimension match,
+  // composed AND-style with sectors/industries/themes/marketCap. Aggregate
+  // signals can also reach analysts via ticker-intersection, regardless of
+  // feed subscription. See docs/AGENT_OVERHAUL_PLAN.md "Feeds" section.
+  feeds                 String[]      @default([])
   tradePolicyAutoTrade  Boolean       @default(true) // true = auto-place paper trades
   // Prompt customization
   conceptPromptExtra    String?       // extra instructions for concept system prompt
