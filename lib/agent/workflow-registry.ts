@@ -353,9 +353,9 @@ export const TEAMS: Team[] = [
     id: "evaluation",
     title: "Evaluation & Tracking",
     summary:
-      "Background jobs that monitor positions hourly, evaluate closed trades, walk the signal→thesis→monitor chain for ROI, snapshot EOD prices, and score accuracy weekly. /intelligence/health surfaces pipeline drift.",
+      "Background jobs that monitor positions hourly, evaluate closed trades, walk the signal→thesis→monitor chain for ROI, snapshot EOD prices, and score accuracy weekly. /intelligence (Health tab) surfaces pipeline drift.",
     description:
-      "Five background jobs track analyst performance and pipeline health. The price monitor checks all open positions hourly via Alpaca and flags positions near target (80%) or stop-loss. When a position closes, the trade evaluator does two things: (1) GPT-4o reviews the trade and writes a lesson, and (2) it walks the provenance chain — Thesis.sourceSignalIds → Signal → Monitor — and credits each source Monitor's tradesSourced / winsSourced / lossesSourced counters, then recomputes successScore = (wins − losses) / trades. This is what turns the intelligence pipeline into a self-improving system: monitors that keep producing losing theses drift toward negative ROI, and the /intelligence/health page surfaces it. The EOD snapshot at 5 PM captures closing prices. The Sunday scorer calculates win rate, confidence calibration, and per-sector performance, all injected into the next run's prompt. The Health page layers observability on top: dead crons, signal funnel (routed → read → cited), ticker concentration, novelty histogram, and monitor ROI.",
+      "Five background jobs track analyst performance and pipeline health. The price monitor checks all open positions hourly via Alpaca and flags positions near target (80%) or stop-loss. When a position closes, the trade evaluator does two things: (1) GPT-4o reviews the trade and writes a lesson, and (2) it walks the provenance chain — Thesis.sourceSignalIds → Signal → Monitor — and credits each source Monitor's tradesSourced / winsSourced / lossesSourced counters, then recomputes successScore = (wins − losses) / trades. This is what turns the intelligence pipeline into a self-improving system: monitors that keep producing losing theses drift toward negative ROI, and the /intelligence (Health tab) page surfaces it. The EOD snapshot at 5 PM captures closing prices. The Sunday scorer calculates win rate, confidence calibration, and per-sector performance, all injected into the next run's prompt. The Health page layers observability on top: dead crons, signal funnel (routed → read → cited), ticker concentration, novelty histogram, and monitor ROI.",
     icon: BarChart3,
     schedule: "Hourly / EOD / Weekly + on every close",
     substeps: [
@@ -363,7 +363,7 @@ export const TEAMS: Team[] = [
       { title: "Trade evaluator", time: "On close", summary: "GPT-4o reviews each closed trade. Then walks Thesis.sourceSignalIds → Monitor and updates tradesSourced / winsSourced / lossesSourced / successScore." },
       { title: "EOD snapshot", time: "5 PM ET", summary: "Captures closing prices for all positions. Builds the equity curve." },
       { title: "Accuracy scorer", time: "Sunday 10 AM", summary: "Calculates win rate, confidence calibration buckets, and per-sector / per-signal-type performance." },
-      { title: "Health dashboard", time: "On demand", summary: "/intelligence/health: dead crons (>48h silent), signal funnel per analyst, ticker concentration (7d), novelty histogram, monitor ROI sorted by successScore." },
+      { title: "Health dashboard", time: "On demand", summary: "/intelligence (Health tab): dead crons (>48h silent), signal funnel per analyst, ticker concentration (7d), novelty histogram, monitor ROI sorted by successScore." },
     ],
     tools: [
       { name: "Alpaca Prices", provider: "alpaca", summary: "Live and closing prices for all open positions.",
@@ -378,8 +378,8 @@ export const TEAMS: Team[] = [
       { name: "GPT-4o Scorer", provider: "internal", summary: "Weekly calibration: does confidence predict actual win rate?",
         resources: [{ source: "internal", title: "Accuracy report", description: "Win rate, calibration analysis, per-sector breakdown.", type: "internal", endpointOrPath: "prisma.accuracyReport.create()", exampleOutput: "Win rate: 62% · Calibration: overconfident at 80%+ · Tech: strong" }],
       },
-      { name: "Health dashboard", provider: "internal", summary: "Live observability at /intelligence/health: dead crons, signal funnel, ticker concentration, novelty histogram, monitor ROI table.",
-        resources: [{ source: "internal", title: "Pipeline health", description: "Five panels surface dead crons, funnel drop-off per analyst, concentration, novelty distribution, and the top/bottom monitors by successScore.", type: "internal", endpointOrPath: "app/(root)/intelligence/health/page.tsx" }],
+      { name: "Health dashboard", provider: "internal", summary: "Live observability at /intelligence (Health tab): dead crons, signal funnel, ticker concentration, novelty histogram, monitor ROI table.",
+        resources: [{ source: "internal", title: "Pipeline health", description: "Five panels surface dead crons, funnel drop-off per analyst, concentration, novelty distribution, and the top/bottom monitors by successScore.", type: "internal", endpointOrPath: "components/intelligence/health-tab.tsx" }],
       },
     ],
   },
