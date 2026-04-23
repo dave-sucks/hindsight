@@ -28,6 +28,7 @@ function emptyProfile(overrides: Partial<AnalystProfile>): AnalystProfile {
     sectors: [],
     industries: [],
     themes: [],
+    feeds: [],
     exchanges: [],
     exclusions: [],
     keywords: [],

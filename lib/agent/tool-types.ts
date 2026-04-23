@@ -70,7 +70,14 @@ export type RouteReasonCode =
   | "INDUSTRY_MATCH"
   | "SECTOR_MATCH"
   | "THEME_MATCH"
-  | "CROSS_ANALYST";
+  | "CROSS_ANALYST"
+  // Aggregate routes — populated when Signal.aggregateType is set (earnings
+  // calendar, market movers). Aggregates bypass the news-signal universe
+  // fence and instead match via AgentConfig.feeds subscription OR via
+  // ticker overlap with watchlist/positions. See
+  // lib/inngest/functions/signal-router.ts and lib/universe/feeds.ts.
+  | "FIRM_AGGREGATE_FEED"
+  | "AGGREGATE_TICKER_MATCH";
 
 /**
  * matchedUniverse — JSON payload persisted on AnalystSignalRoute explaining
@@ -84,6 +91,9 @@ export interface MatchedUniverse {
   inPositions?: boolean;
   fromAnalystId?: string;
   marketCap?: number | null;
+  // Populated for aggregate routes — the canonical FEEDS value from
+  // Signal.aggregateType (e.g. "EARNINGS_CALENDAR", "MARKET_MOVERS_GAINERS").
+  feed?: string;
 }
 
 /** Signal item — shared shape for read_signals and web_search results */
@@ -269,11 +279,13 @@ export interface SignalsToolData {
   // Flat list — kept for legacy renderers and sorting by urgency.
   signals: SignalItem[];
   // Session 3: segmented view. Same signals, split by routeReasonCode.
-  //   portfolioSignals  — routeReasonCode === "POSITION"
-  //   watchlistSignals  — routeReasonCode === "WATCHLIST"
+  // Aggregate routes (FIRM_AGGREGATE_FEED / AGGREGATE_TICKER_MATCH) bucket
+  // by matchedUniverse.inPositions/inWatchlist when set, otherwise discovery.
+  //   portfolioSignals  — POSITION | (aggregate + inPositions)
+  //   watchlistSignals  — WATCHLIST | (aggregate + inWatchlist, no position)
   //   discoverySignals  — DISCOVERY | SECTOR_MATCH | INDUSTRY_MATCH | THEME_MATCH
-  //                       | DIRECT_TICKER | CROSS_ANALYST (anything that is not
-  //                       already in the analyst's book or watchlist)
+  //                       | DIRECT_TICKER | CROSS_ANALYST | (aggregate with no
+  //                       ticker overlap — the subscribed firehose itself)
   portfolioSignals: SignalItem[];
   watchlistSignals: SignalItem[];
   discoverySignals: SignalItem[];

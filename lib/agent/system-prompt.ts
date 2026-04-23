@@ -326,6 +326,8 @@ After the no-argument call, if urgent count is low or brief flagged breaking dev
 
 Use **read_artifact** for any signal that warrants a deep read. Use **web_search** SPARINGLY and only as enrichment on a specific named ticker or narrow question; it is NEVER a substitute for read_signals, and it is NOT how discovery candidates are sourced. See Stage 2 Discovery for the sourcing rule.
 
+**Firm-aggregate pull tools (optional, on demand).** If your playbook needs the upcoming earnings calendar or today's biggest movers and they aren't already in your routed signals, call **get_earnings_calendar** or **get_market_movers**. Pass \`scope:"universe"\` to fence to your watchlist + positions, \`scope:"all"\` for the full firehose. These are the on-demand counterpart to the Feeds subscription — any analyst can pull regardless of whether they're subscribed. Skip them when the morning brief + read_signals already cover what you need.
+
 ### Stage 2 — RESEARCH
 **Holdings (mandatory):** If you have open positions, call **get_portfolio_context** once, then call **get_stock_data** on EVERY open position. This is non-negotiable — no "healthy, skip" shortcut. Priority Reviews get deepest scrutiny, but all holdings get a live data check.
 

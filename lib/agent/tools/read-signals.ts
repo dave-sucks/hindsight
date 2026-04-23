@@ -8,10 +8,15 @@
  *
  * Returns three buckets, segmented by `routeReasonCode` (set by
  * signal-router.ts):
- *   portfolioSignals  — routeReasonCode === "POSITION"
- *   watchlistSignals  — routeReasonCode === "WATCHLIST"
+ *   portfolioSignals  — routeReasonCode === "POSITION" OR an aggregate
+ *                       route (FIRM_AGGREGATE_FEED / AGGREGATE_TICKER_MATCH)
+ *                       where matchedUniverse.inPositions is true
+ *   watchlistSignals  — routeReasonCode === "WATCHLIST" OR an aggregate
+ *                       route where matchedUniverse.inWatchlist is true
+ *                       (and inPositions is not)
  *   discoverySignals  — DISCOVERY | SECTOR_MATCH | INDUSTRY_MATCH |
- *                       THEME_MATCH | DIRECT_TICKER | CROSS_ANALYST
+ *                       THEME_MATCH | DIRECT_TICKER | CROSS_ANALYST |
+ *                       FIRM_AGGREGATE_FEED (with no ticker overlap)
  *
  * The flat `signals` array is kept for legacy renderers and urgency sorts.
  */
@@ -89,6 +94,19 @@ function bucketOf(
   const c = s.routeReasonCode;
   if (c === "POSITION") return "portfolio";
   if (c === "WATCHLIST") return "watchlist";
+  // Aggregate routes — FIRM_AGGREGATE_FEED and AGGREGATE_TICKER_MATCH —
+  // can land via ticker overlap with watchlist / positions. The route code
+  // reflects the matching DIMENSION (subscription vs. ticker) but bucket
+  // should reflect the name context: if one of the aggregate's tickers is
+  // in the analyst's portfolio, surface this signal in the portfolio bucket
+  // so holdings coverage isn't silently dropped to "discovery". Otherwise
+  // fall through to discovery — subscribed feeds with no holding overlap
+  // ARE the discovery firehose.
+  if (c === "FIRM_AGGREGATE_FEED" || c === "AGGREGATE_TICKER_MATCH") {
+    if (s.matchedUniverse?.inPositions) return "portfolio";
+    if (s.matchedUniverse?.inWatchlist) return "watchlist";
+    return "discovery";
+  }
   // Everything else — DISCOVERY, SECTOR_MATCH, INDUSTRY_MATCH, THEME_MATCH,
   // DIRECT_TICKER, CROSS_ANALYST, or undefined — reads as discovery.
   return "discovery";

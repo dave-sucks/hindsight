@@ -249,6 +249,11 @@ function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
     lines.push(entry.primarySignals.map(humanizeToken).join(", "));
     lines.push("");
   }
+  if (entry.defaultFeeds?.length) {
+    lines.push("Default firm-aggregate feeds:");
+    lines.push(entry.defaultFeeds.map(humanizeToken).join(", "));
+    lines.push("");
+  }
   if (entry.keySources?.length) {
     lines.push("Research sources it leans on:");
     lines.push(entry.keySources.map(humanizeToken).join(", "));

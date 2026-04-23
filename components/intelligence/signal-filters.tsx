@@ -297,6 +297,8 @@ const ROUTE_REASON_CODES: RouteReasonCode[] = [
   "POSITION",
   "DIRECT_TICKER",
   "CROSS_ANALYST",
+  "FIRM_AGGREGATE_FEED",
+  "AGGREGATE_TICKER_MATCH",
 ];
 
 function RouteFilter({

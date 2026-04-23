@@ -25,7 +25,7 @@ Built for one user now, marketed later.
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
 - Redirects to /runs/[id] → renders AgentThread component
 - AgentThread uses AI SDK v6 useChat → POST /api/agent/research-run
-- GPT-4o (maxSteps 50, temperature 0.2) + 17 tools autonomously
+- GPT-4o (maxSteps 50, temperature 0.2) + 19 tools autonomously
   researches, generates theses, places trades via Alpaca
 - Tools render via ToolCallGroup → ToolCallRow dispatching on result.ui
 - All research persisted to DB via tool execute functions
@@ -42,6 +42,11 @@ Universe fields on AgentConfig:
 - `sectors` — broad GICS-style ["Technology", "Energy", ...]
 - `industries` — narrower GICS ["Semiconductors", "Auto Manufacturers", ...]
 - `themes` — analyst-defined ["AI infrastructure", "EV transition", "GLP-1", ...]
+- `feeds` — firm-aggregate firehoses ["EARNINGS_CALENDAR", "MARKET_MOVERS_GAINERS",
+  "MARKET_MOVERS_LOSERS", "MARKET_MOVERS_ACTIVES"]. Canonical values mirror
+  `Signal.aggregateType` 1:1 (see lib/universe/feeds.ts). Same fence semantic
+  as the other dimensions. Composition: an analyst with `feeds:["EARNINGS_CALENDAR"]`
+  + `industries:["Semiconductors"]` ends up with the calendar fenced to semis names.
 - `marketCapMin` / `marketCapMax` — BigInt? in dollars; null = no bound
 - `exclusionList` — tickers/industries always skipped (hard reject)
 - `tickerUniverse` — DIRECTED-mode seed list (separate concept, kept as-is)
@@ -53,8 +58,33 @@ See docs/AGENT_OVERHAUL_PLAN.md → Workstream B for the full spec.
 Routing output on AnalystSignalRoute (populated by Workstream A):
 - `routeReasonCode` — "DISCOVERY" | "WATCHLIST" | "POSITION" | "DIRECT_TICKER"
   | "SECTOR_MATCH" | "INDUSTRY_MATCH" | "THEME_MATCH" | "CROSS_ANALYST"
+  | "FIRM_AGGREGATE_FEED" | "AGGREGATE_TICKER_MATCH"
 - `matchedUniverse` Json — { sectors, industries, themes, inWatchlist,
-  inPositions, fromAnalystId? }
+  inPositions, fromAnalystId?, feed? }
+
+### Three access tiers for firm-aggregate signals
+Firm aggregates (earnings calendar, market movers, future insider/options flow)
+reach analysts via three orthogonal paths. Pick the right one by intent, don't
+add a fourth.
+
+1. **Subscription push** — `AgentConfig.feeds` includes the aggregate's type.
+   The full firehose routes into the analyst's morning brief and `read_signals`
+   automatically. Earnings Catalyst archetype → `feeds:["EARNINGS_CALENDAR"]`;
+   Momentum Breakout → `feeds:["MARKET_MOVERS_GAINERS","MARKET_MOVERS_ACTIVES"]`.
+
+2. **Universe-intersection push** — the aggregate's tickers intersect with the
+   analyst's watchlist + open positions (router-side). Even an analyst with no
+   feed subscription gets a *fenced* view: "3 of your watchlist names are on
+   today's most-active list." This path is the right answer to "I want to know
+   when MY names move" without subscribing to the full firehose.
+
+3. **On-demand pull tools** — `get_earnings_calendar`, `get_market_movers`. Any
+   analyst can call them mid-run regardless of subscription. Use `scope:"universe"`
+   to fence to watchlist + positions; `scope:"all"` for the full firehose.
+
+Defaults are seeded by archetype via `defaultFeeds` on each StrategyArchetype
+in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
+`read_knowledge_library` and includes the matching feeds in `suggest_config`.
 
 ### V3 Intelligence Pipeline (background, pre-run)
 - 5 Inngest jobs run 6:30–7:45 AM ET before analysts wake up
@@ -128,7 +158,7 @@ Routing output on AnalystSignalRoute (populated by Workstream A):
 
 ## API Routes
 - /api/agent/[mode] — unified agent route (research-run, builder, editor)
-  - research-run: GPT-4o, temperature 0.2, maxSteps 50, all 17 tools
+  - research-run: GPT-4o, temperature 0.2, maxSteps 50, all 19 tools
   - builder: GPT-4o, research tools only + suggest_config
   - editor: GPT-4o, research tools only + suggest_config
 - /api/research/agent-run — creates ResearchRun row, returns runId
@@ -140,7 +170,7 @@ Routing output on AnalystSignalRoute (populated by Workstream A):
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools — 17 tools (lib/agent/tools/)
+## Agent Tools — 19 tools (lib/agent/tools/)
 Each tool is defined in its own file using `defineTool()` from
 `lib/agent/define-tool.ts`. The factory wraps execute() in timing/
 logging/try-catch and returns a `ToolResult<T>` envelope with a `ui`
@@ -155,19 +185,28 @@ discriminator that drives rendering in ToolCallRow.
 ### Research Tools (live data validation)
 5. get_market_context — SPY/VIX/sector ETFs, macro events, regime
 6. get_stock_data — quote + company profile + financials + technicals + news
-7. get_earnings_data — earnings calendar, EPS, beat rate
-8. get_options_flow — put/call ratio, unusual contracts
-9. get_sec_filings — SEC EDGAR filings
+7. get_earnings_data — per-ticker EPS history, beat rate, next report date
+8. get_earnings_calendar — firm-wide upcoming earnings calendar; `scope:"universe"`
+   fences to watchlist + positions, `scope:"all"` returns the full firehose.
+   Pull-tool counterpart to the `EARNINGS_CALENDAR` feed subscription.
+9. get_market_movers — today's gainers / losers / most-actives from FMP;
+   `scope:"universe"` fences to watchlist + positions, `scope:"all"` returns
+   the full top list. Pull-tool counterpart to the `MARKET_MOVERS_*` feeds.
+10. get_options_flow — put/call ratio, unusual contracts
+11. get_sec_filings — SEC EDGAR filings
 
 ### Action Tools
-10. record_thesis — persist thesis to DB (LONG/SHORT/PASS)
-11. place_trade — Alpaca market order, create Position
-12. close_position — close an existing open position
-    12b. manage_position — scale in/out, move stop, trail stop, adjust target (tool #17)
-13. record_decision_plan — persist synthesis + planned actions
-14. record_run_summary — persist HOLD decisions + run summary event
-15. manage_watchlist — add/remove/update watchlist items
-16. complete_run — mark run COMPLETE with ranked picks
+12. record_thesis — persist thesis to DB (LONG/SHORT/PASS)
+13. place_trade — Alpaca market order, create Position
+14. close_position — close an existing open position
+    14b. manage_position — scale in/out, move stop, trail stop, adjust target
+15. record_run_summary — persist HOLD decisions + run summary event
+16. manage_watchlist — add/remove/update watchlist items
+17. complete_run — mark run COMPLETE with ranked picks
+
+### Builder/Editor-only Tools
+18. read_knowledge_library — strategy archetypes, source catalog, signal types
+19. ask_question / discover_signals_for_fence / read_analyst_inbox_stats — see lib/agent/tools/
 
 ## How to Add a New Agent Tool
 
@@ -392,6 +431,13 @@ it with a ticker chip as if it were a traded security.
 - The renderer surface is exactly 5 files: `ToolUIRenderer` (the generic one) + 4 specialty (`ThesisCardRenderer`, `RunSummaryRenderer`, `ConfigPreviewRenderer`, `AskQuestionRenderer`). Every prior attempt to add a sixth (`TickerRenderer`, `TickerListRenderer`, `SourceRenderer`, `GenericRenderer`, `DecisionSummaryRenderer`, `MorningBriefRenderer`) was a thin wrapper that should have been a row shape inside `ToolUIRenderer`. All six have been deleted.
 - The fix for "my tool's content doesn't show up" is never a new renderer. It is `data.items` with the right row kinds. See "Tool UI architecture" above.
 - The fix for "my narrative paragraph doesn't have a ticker" is never to invent a fake ticker. It is `{ kind: "generic", text }`. The `$MARKET` fake-ticker bug lived for weeks because a prior session did this exact thing.
+- This applies equally to **firehose pull tools** like `get_earnings_calendar` and `get_market_movers` — opening generic row + ticker rows in `data.items[]`, no `EarningsCalendarRenderer` / `MoversRenderer`. The cap-and-truncate "and N more" line is a `{ kind: "generic", text }` row, not a ticker.
+
+**Aggregates and the FEEDS dimension** (`lib/universe/feeds.ts`, `lib/inngest/functions/firm-market-sweep.ts`, `lib/inngest/functions/signal-router.ts`)
+- Aggregate signals (`Signal.aggregateType` populated) carry empty `sectors`/`industries` by design — they're firm-wide. Routing them through the news-signal fence (sector/industry match) silently drops everything; that's the bug that #163/#164/#165/#166 chased.
+- Right answer: aggregates match analysts via `feeds` membership (`analyst.feeds.includes(signal.aggregateType)`) — `feeds` is a peer Universe dimension, not a separate routing axis. Composition still applies: an analyst with `feeds:["EARNINGS_CALENDAR"]` + `industries:["Semiconductors"]` ends up with the calendar fenced to semis names by the existing AND-across-dimensions rule.
+- Producers populate canonical FEEDS values verbatim (no mapping). When you add a new aggregate type, add the value to `lib/universe/feeds.ts`, have the producer write that exact string as `aggregateType`, and add a default-feeds entry to any matching strategy archetype in `lib/agent/knowledge/strategy-archetypes.ts`.
+- The `aggregate-novelty-skip` carve-out from #164 is kept in place even though feed-subscription + ticker-intersection are now the correct primary gates. Reason: existing analysts with empty `feeds` still rely on the ticker-overlap path, and that path would get crushed by 7d route-history novelty without the carve-out. Safe to remove in a follow-up once every enabled analyst has a populated `feeds` array AND there's a deploy cycle of data confirming no regression.
 
 - FMP historical-price-full may 403 on legacy plan (affects
   technical analysis for small-cap/ADR tickers)
@@ -404,9 +450,12 @@ it with a ticker chip as if it were a traded security.
 
 ## Key Files
 ### Agent System
-- lib/agent/tools/ — 17 individual tool files, each using defineTool()
+- lib/agent/tools/ — 19 individual tool files, each using defineTool()
 - lib/agent/tools/index.ts — single export + createResearchTools() wrapper
 - lib/agent/define-tool.ts — defineTool() factory with timing/logging
+- lib/universe/feeds.ts — canonical FEEDS enum + normalizeFeeds (mirrors Signal.aggregateType)
+- lib/agent/tools/get-earnings-calendar.ts — pull-tool counterpart to EARNINGS_CALENDAR feed
+- lib/agent/tools/get-market-movers.ts — pull-tool counterpart to MARKET_MOVERS_* feeds
 - lib/agent/tool-result.ts — ToolResult<T> discriminated union + normalizer
 - lib/agent/tool-context.ts — ToolContext interface + createToolContext()
 - lib/agent/modes.ts — model, provider, thinking budget, tool allowlists
