@@ -241,7 +241,13 @@ export const readSignals = defineTool({
     }
 
     // Fallback: no routed signals at all for this analyst today.
-    if (finalRoutes.length === 0) {
+    // Only fall back when the caller didn't ask for a specific bucket — if
+    // they explicitly asked for POSITION and there are 0 POSITION routes,
+    // they need to see an honest empty result, not a watchlist/sector
+    // fallback mislabeled as "portfolio signals" in the UI. An honest empty
+    // bucket is the signal to the agent that it should broaden its call
+    // (e.g. call read_signals() with no bucket argument to scan everything).
+    if (finalRoutes.length === 0 && !bucket) {
       const config = await prisma.agentConfig.findUnique({
         where: { id: ctx.analystId },
         select: {
@@ -380,6 +386,36 @@ export const readSignals = defineTool({
     const urgent = mappedSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
     const bullish = mappedSignals.filter((s) => s.sentiment === "BULLISH").length;
     const bearish = mappedSignals.filter((s) => s.sentiment === "BEARISH").length;
+
+    // When an explicit bucket was requested and returned empty, give the
+    // agent a clear signal that this specific bucket is empty (vs. a
+    // misleading "0 signals" blob). Hints at broadening the call.
+    if (bucket && mappedSignals.length === 0) {
+      const bucketLabel =
+        bucket === "POSITION"
+          ? "portfolio"
+          : bucket === "WATCHLIST"
+          ? "watchlist"
+          : "discovery";
+      return {
+        summary: `No ${bucketLabel} signals routed today. Call read_signals() with no bucket argument to scan the full routed pool.`,
+        data: {
+          count: 0,
+          policyApplied: {
+            maxSignals: policyMaxSignals,
+            minUrgency: urgencyOrder[effectiveMinIdx],
+            minSourceQuality,
+            excludedCategories,
+          },
+          signals: [],
+          portfolioSignals: [],
+          watchlistSignals: [],
+          discoverySignals: [],
+          discoveryNote: `Requested bucket "${bucket}" returned 0 signals — try read_signals() with no bucket to see all routed signals.`,
+        } as SignalsToolData,
+        sources: [],
+      };
+    }
 
     return {
       summary:
