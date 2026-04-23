@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 import {
   ChevronRightIcon,
   DotIcon,
-  Loader2Icon,
   PlusIcon,
   MinusIcon,
   EyeIcon,
@@ -74,12 +73,15 @@ ToolProgress.displayName = "ToolProgress";
 // ── Header (inline — chevron right after text) ─────────────────────────────
 
 export type ToolProgressHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
+  /** Accepted for API compatibility; the header no longer renders its own
+   *  spinner — the global breathing dot on the running assistant message is
+   *  the single source of progress. */
   loading?: boolean;
   icon?: React.ComponentType<{ className?: string }>;
 };
 
 export const ToolProgressHeader = memo(
-  ({ className, loading, icon: Icon, children, ...props }: ToolProgressHeaderProps) => (
+  ({ className, loading: _loading, icon: Icon, children, ...props }: ToolProgressHeaderProps) => (
     <CollapsibleTrigger
       className={cn(
         "inline-flex items-center gap-1.5 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none",
@@ -89,11 +91,7 @@ export const ToolProgressHeader = memo(
     >
       {Icon && <Icon className="size-3.5 shrink-0" />}
       <span>{children}</span>
-      {loading ? (
-        <Loader2Icon className="size-3 animate-spin" />
-      ) : (
-        <ChevronRightIcon className="size-3 transition-transform [[data-open]_&]:rotate-90" />
-      )}
+      <ChevronRightIcon className="size-3 transition-transform [[data-open]_&]:rotate-90" />
     </CollapsibleTrigger>
   )
 );
@@ -130,7 +128,7 @@ export const ToolProgressItem = memo(
       {...props}
     >
       <div className="size-4 shrink-0 mt-0.5 flex items-center justify-center">
-        <DotIcon className={cn("size-5", active && "animate-pulse")} />
+        <DotIcon className="size-5" />
       </div>
       <span className={cn("flex-1 min-w-0", active && "shimmer-text")}>{children}</span>
     </div>

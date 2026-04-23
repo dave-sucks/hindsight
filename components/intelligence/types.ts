@@ -185,24 +185,28 @@ export const JOB_LABELS: Record<string, string> = {
 
 export const JOB_DESCRIPTIONS: Record<string, { short: string; long: string }> = {
   "Market Sweep": {
-    short: "Searches for market-moving news across all enabled queries",
-    long: "Runs every enabled search query from Config through Perplexity Sonar. Results get parsed into structured signals with tickers, sentiment, urgency, and themes. Signals are deduplicated against the last 48 hours before storage.",
+    short: "Firm-wide sweep via Sonar + FMP movers + earnings calendar",
+    long: "Runs every firm-wide search query through Perplexity Sonar and pulls FMP movers (gainers/losers/actives) and Finnhub earnings. Every signal is normalized to canonical GICS sectors/industries via an alias table, then deduplicated against the last 48 hours.",
   },
   "Portfolio Monitor": {
-    short: "Monitors open positions and watchlist for price alerts and news",
-    long: "Checks current prices and recent news for every open position and watchlist item across all analysts. Generates alerts for stop-loss proximity, target price hits, and material news that could affect trade thesis.",
+    short: "Per-ticker searches for every holding and watchlist item, per analyst",
+    long: "For every analyst, runs per-ticker Sonar searches on each open position and watchlist item with forced ticker injection so the result is guaranteed to tag the target symbol. Routed directly with POSITION or WATCHLIST reason codes — these bypass the universe fence.",
   },
   "Domain Monitor": {
-    short: "Searches monitored domains for new articles, filings, and releases",
-    long: "For each enabled domain monitor, sends a domain-filtered search to Perplexity Sonar. Only results from that domain are returned. High-priority domains also get full-page HTML extraction via Firecrawl, stored as artifacts.",
+    short: "Domain-filtered Sonar + Firecrawl extraction for tracked sources",
+    long: "For each enabled domain monitor, sends a domain-filtered Sonar query; only results from that domain come back. High-priority domains also get full-page Firecrawl extraction, stored as Artifact rows the agent can read in full during a run.",
   },
   "Signal Router": {
-    short: "Routes unprocessed signals to matching analysts by coverage area",
-    long: "Takes all unrouted signals and matches them against each analyst's sector coverage, ticker watchlist, and category preferences. Each signal gets urgency-priority routing so analysts see the most important signals first in their briefs.",
+    short: "Routes each signal through every analyst's universe fence",
+    long: "For every signal × analyst pair: checks the universe fence (sectors + industries + themes + marketCap — AND across dimensions, OR within; watchlist + positions bypass the fence; exclusionList hard-rejects). Tags each route with a reason code (POSITION +50, WATCHLIST +45, DIRECT_TICKER, DISCOVERY, INDUSTRY_MATCH +22, SECTOR_MATCH +20, THEME_MATCH +18, CROSS_ANALYST). Adds urgency bonus (BREAKING +15, HIGH +10), multiplies by a 7-day novelty score (HIGH/BREAKING get a carve-out so a hot catalyst on a familiar name still ranks), caps each analyst at 40 routes, and reserves 20% of those slots for DISCOVERY.",
   },
   "Morning Brief": {
-    short: "Generates personalized daily briefs for each analyst from their signals",
-    long: "Uses GPT-4o to synthesize each analyst's pending signals into a structured brief: market context, portfolio alerts, watchlist updates, new opportunities, and attention priorities. Briefs appear in the Signals tab.",
+    short: "Grounded per-analyst brief from today's routes only",
+    long: "GPT-4o synthesizes each analyst's routed signals into a structured brief: market context, portfolio alerts, watchlist updates, new opportunities, attention priority, risk flags. Grounded to TODAY's routes only — every cited signalId is validated against the day's pool (hallucinated IDs trigger retry). Enforces holdings-attention: every open position must get an alert when holdingsAttention > 0. Requires at least one real discovery when the discovery bucket is non-empty.",
+  },
+  "Email Ingest": {
+    short: "Inbound newsletter emails → extracted signals",
+    long: "Resend's inbound webhook delivers emails to the intelligence pipeline. GPT-4o-mini extracts one signal per distinct investable idea from the email body — tickers, themes, urgency, sentiment, source names. Dedup by Resend email_id prevents double-ingest. Routed through the signal router alongside Sonar/FMP signals.",
   },
 };
 
@@ -212,6 +216,7 @@ export const JOB_TRIGGERS: Record<string, { event: string; time: string }> = {
   "Domain Monitor": { event: "domain-monitor", time: "7:15 AM" },
   "Signal Router": { event: "signal-router", time: "7:30 AM" },
   "Morning Brief": { event: "morning-brief", time: "7:45 AM" },
+  "Email Ingest": { event: "email-ingest", time: "on receipt" },
 };
 
 export const URGENCY_CONFIG: Record<string, { dot: string; label: string }> = {

@@ -44,7 +44,7 @@ export function OnboardingChecklist({
     },
     {
       label: "Run your first session",
-      description: "14 tools, live data, autonomous research",
+      description: "17 tools, live data, autonomous research",
       done: hasCompletedRun,
       action: () => { window.location.href = "/analysts"; },
     },
