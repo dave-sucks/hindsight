@@ -359,15 +359,14 @@ it with a ticker chip as if it were a traded security.
 3. AgentThread → ChatRuntime → POST /api/agent/research-run
 4. Route loads config + historical context (portfolio, watchlist,
    briefs, trades, accuracy, intelligence policy)
-5. GPT-4o (temperature 0.2) follows 8-phase workflow:
+5. GPT-4o (temperature 0.2) follows 6-stage flow (with Phase-0 check-in):
    Phase 0: Portfolio check-in (injected context, no tools)
-   Phase 1: Read intelligence (morning brief + signals + web_search)
-   Phase 2: Review holdings (get_stock_data per ticker)
-   Phase 3: Review watchlist
-   Phase 4: Discover (from signals, web_search for verification)
-   Phase 5: Synthesize (pure reasoning, decision table)
-   Phase 6: Execute (place_trade, close_position, manage_watchlist)
-   Phase 7: Wrap up (complete_run with ranked picks)
+   Stage 1 — Orient: read_morning_brief, read_signals, read_artifact, web_search
+   Stage 2 — Research: get_portfolio_context, then get_stock_data across holdings/watchlist/≥2 discovery
+   Stage 3 — Theses: record_thesis for every researched ticker (source_kind + source_signal_ids)
+   Stage 4 — Act: close_position / manage_position, then place_trade, then manage_watchlist
+   Stage 5 — Recap: record_run_summary (ranked picks + exposure)
+   Stage 6 — Complete: complete_run (blocked until every researched ticker has a thesis)
 6. Each tool result streams with a ToolResult envelope (ok, ui, data, sources)
 7. ToolCallGroup groups results by groupId; ToolCallRow dispatches on ui
 8. record_thesis persists Thesis to DB + ThesisCardRenderer shows full card
