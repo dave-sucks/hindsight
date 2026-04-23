@@ -39,6 +39,7 @@ import {
   ROUTE_REASON_TOOLTIPS,
   relativeTime,
 } from "./types";
+import { feedLabel } from "@/lib/universe/feeds";
 
 // ── Monitor type → icon ─────────────────────────────────────────────────────
 
@@ -362,6 +363,7 @@ function extractMatchedValues(m: MatchedUniverse | null): string[] {
   if (m.themes?.length) out.push(...m.themes.map((t) => t.replace(/_/g, " ")));
   if (m.inWatchlist) out.push("watchlist hit");
   if (m.inPositions) out.push("open position");
+  if (m.feed) out.push(feedLabel(m.feed));
   return out;
 }
 

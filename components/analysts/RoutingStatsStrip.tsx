@@ -32,15 +32,23 @@ export type RouteGroup =
   | "industry"
   | "theme"
   | "cross"
+  | "feeds"
   | "legacy";
 
 export const ROUTE_GROUP_CODES: Record<RouteGroup, RouteReasonCode[]> = {
-  holdings: ["POSITION", "WATCHLIST", "DIRECT_TICKER"],
+  // AGGREGATE_TICKER_MATCH joins the holdings bucket — the route exists
+  // because one of the analyst's held/watched tickers appears in today's
+  // aggregate firehose. Semantically "news about your name" from an
+  // aggregate source.
+  holdings: ["POSITION", "WATCHLIST", "DIRECT_TICKER", "AGGREGATE_TICKER_MATCH"],
   discovery: ["DISCOVERY"],
   sector: ["SECTOR_MATCH"],
   industry: ["INDUSTRY_MATCH"],
   theme: ["THEME_MATCH"],
   cross: ["CROSS_ANALYST"],
+  // Firm-aggregate feed subscriptions — the analyst opted into the firehose
+  // via AgentConfig.feeds (earnings calendar, market movers).
+  feeds: ["FIRM_AGGREGATE_FEED"],
   legacy: [], // special-cased: counts routes with no routeReasonCode
 };
 
@@ -51,12 +59,13 @@ const GROUP_LABEL: Record<RouteGroup, string> = {
   industry: "Industry",
   theme: "Theme",
   cross: "Cross-analyst",
+  feeds: "Feeds",
   legacy: "Legacy",
 };
 
 const GROUP_TOOLTIP: Record<RouteGroup, string> = {
   holdings:
-    "Signal mentions a ticker you already hold, watch, or have a ticker-specific monitor for. Bypasses the sector fence.",
+    "Signal mentions a ticker you already hold, watch, or have a ticker-specific monitor for. Includes aggregate signals (movers / earnings) where one of your names appears. Bypasses the sector fence.",
   discovery:
     "Signal matched two or more universe dimensions (e.g. sector + theme). Came through the fence, not via a known ticker.",
   sector: "Signal matched only the analyst's sector dimension.",
@@ -64,6 +73,8 @@ const GROUP_TOOLTIP: Record<RouteGroup, string> = {
   theme: "Signal matched only the theme dimension.",
   cross:
     "Signal was routed to another analyst first, cross-posted here because a ticker overlap exists.",
+  feeds:
+    "Firm-aggregate signal (earnings calendar / market movers) that this analyst is subscribed to via the Feeds field. Full firehose.",
   legacy:
     "Routes from before the router tagged reason codes. Historical context only.",
 };

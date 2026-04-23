@@ -9,6 +9,7 @@ import { MultiCombobox } from "@/components/ui/multi-combobox";
 // combobox options aligned with the alias table + normalization helpers — so
 // the values the user picks here are exactly what the router will compare.
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
+import { FEEDS, feedLabel } from "@/lib/universe/feeds";
 import {
   Sheet,
   SheetContent,
@@ -303,6 +304,21 @@ export function AnalystConfigSheet({
                 tooltip="Analyst-defined narratives (not a fixed list). Signals tagged with any of these themes route into the fence. Example: 'AI infrastructure', 'GLP-1', 'EV transition'."
                 onChange={(next) => saveField("themes", next)}
               />
+
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel
+                  label="Feeds"
+                  tooltip="Firm-aggregate firehoses this analyst auto-receives — earnings calendar, top movers, etc. Subscribed feeds route the FULL aggregate into the morning brief; unsubscribed analysts can still pull on-demand via get_earnings_calendar / get_market_movers, and any analyst gets fenced views when an aggregate names a watchlist or position ticker."
+                />
+                <MultiCombobox
+                  values={config.feeds}
+                  options={FEEDS}
+                  placeholder="Add a feed…"
+                  groupLabel="Firm Feeds"
+                  renderOption={feedLabel}
+                  onChange={(next) => saveField("feeds", next)}
+                />
+              </div>
 
               <MarketCapInput
                 label="Market cap min"

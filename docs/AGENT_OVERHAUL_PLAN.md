@@ -1083,3 +1083,113 @@ Things the signals session noted but that live outside their scope. If you're pi
 ---
 
 _This doc is the persistence layer. Next session opens by reading it; every future session appends to the Completion Log._
+
+---
+
+## Session 8 — Feeds (firm-aggregate subscription dimension), Phase 1
+- **Completed:** 2026-04-23 (Phase 1 — foundations)
+- **Branch:** `claude/review-agent-overhaul-1ZuX3`
+- **Scope delivered:**
+  - **Naming.** `feeds` chosen as the field name on `AgentConfig` for the
+    firm-aggregate subscription dimension (over `categories` /
+    `subscriptions` / `dataFeeds`). Reads naturally as a chip list,
+    distinguishes from `MorningBrief` "reports", parallels the real-finance
+    "earnings feed" / "movers feed" vocabulary.
+  - **Mental model.** Feeds are a **peer Universe dimension**, not a parallel
+    routing axis. Composition (AND-across, OR-within) is unchanged. An
+    analyst with `feeds:["EARNINGS_CALENDAR"]` + `industries:["Semiconductors"]`
+    ends up with the calendar fenced to semis names by the existing fence
+    rules — no per-feed scope mode.
+  - **Three access tiers** documented in CLAUDE.md (Universe section):
+    1. Subscription push (`feeds` membership routes the firehose)
+    2. Universe-intersection push (router-side ticker overlap, no
+       subscription needed) — name reserved as `AGGREGATE_TICKER_MATCH`
+    3. On-demand pull tools (`get_earnings_calendar`, `get_market_movers`)
+  - **Schema.** `AgentConfig.feeds String[] @default([])`. Migration
+    `20260423000000_add_feeds_to_agent_config`. Additive, zero-downtime.
+  - **Canonical FEEDS enum.** `lib/universe/feeds.ts` —
+    `EARNINGS_CALENDAR`, `MARKET_MOVERS_GAINERS`, `MARKET_MOVERS_LOSERS`,
+    `MARKET_MOVERS_ACTIVES`. Values match `Signal.aggregateType` 1:1 so the
+    router does a direct membership check; no mapping table.
+    `normalizeFeed` / `normalizeFeeds` / `feedLabel` helpers + lenient
+    aliases for builder slip-ups (`"earnings"` → `"EARNINGS_CALENDAR"`, etc).
+  - **Pull tools.** Two new tools:
+    - `get_earnings_calendar({ days?, scope: "universe" | "all" })` —
+      Finnhub `/calendar/earnings`, fenced to watchlist + positions when
+      `scope="universe"`. Renders via `tool-ui` with `data.items[]`.
+    - `get_market_movers({ type: "gainers"|"losers"|"active", scope })` —
+      FMP `/stable/biggest-gainers|losers|most-actives`. Same
+      `tool-ui` rendering. Sort by abs % change so extreme moves
+      bubble to the top.
+    - Both registered in `lib/agent/tools/index.ts`. **No new renderers.**
+      Fenced views live in the items array, not in renderer logic.
+  - **Knowledge library.** `StrategyArchetype.defaultFeeds: string[]` field
+    populated per archetype (Earnings Drift → `EARNINGS_CALENDAR`; Momentum
+    Breakout → `MARKET_MOVERS_GAINERS + MARKET_MOVERS_ACTIVES + EARNINGS_CALENDAR`;
+    etc.). Surfaced in `read_knowledge_library` archetype formatter so the
+    Builder sees the recommended feeds when picking a playbook.
+  - **AnalystConfig type + actions.** `feeds: string[]` added to the type,
+    mappedConfig, `UpdatableField` union, `updateAnalystField`
+    (with `normalizeFeeds`), `BuilderConfig.universe.feeds`,
+    `updateAnalystFromBuilder`, and `createAnalystFromBuilder` payload.
+  - **UI.** `AnalystConfigSheet` Universe section gets a Feeds
+    `MultiCombobox` between Themes and Market Cap, identical visual
+    treatment to Sectors / Industries. `renderOption={feedLabel}` so chips
+    show "Earnings Calendar" while storing `EARNINGS_CALENDAR`.
+  - **Docs.** CLAUDE.md updated:
+    - Universe field list now includes `feeds`
+    - Tool count 17 → 19
+    - New "Three access tiers for firm-aggregate signals" section
+    - New recurring-bugs entry "Aggregates and the FEEDS dimension"
+      explaining why aggregate signals dropped under the news-signal
+      router and how `feeds` membership is the right fence dimension
+    - Pull-tool authors explicitly told to use `ToolUIRenderer` items[],
+      no per-tool renderer (extends the existing $MARKET-bug guidance to
+      the firehose pull case)
+- **Phase 2 — router wiring (landed in the same PR after #168/#169/#170 merged):**
+  - **Router fence dimension.** `lib/inngest/functions/signal-router.ts`:
+    added `feeds` to `AnalystProfile`, short-circuited aggregate signals
+    through a `feedHit = analyst.feeds.includes(signal.aggregateType)`
+    check before `matchUniverse` (which would otherwise reject for any
+    analyst with a sector/industry fence since aggregates carry empty
+    sectors/industries). Two new route codes:
+    - `FIRM_AGGREGATE_FEED` — subscribed via `AgentConfig.feeds`; full
+      firehose.
+    - `AGGREGATE_TICKER_MATCH` — not subscribed, but the aggregate's
+      tickers overlap watchlist/positions.
+    - Exempted `feedHit` from both the 15-point raw-score floor and the
+      adjusted-score floor (subscription IS the intent signal;
+      aggregates carry no sector/industry boosts to clear it otherwise).
+    - `matchedUniverse.feed` populated with the canonical aggregateType
+      for all aggregate routes.
+  - **`suggest_config` schema.** `universe.feeds: z.array(z.enum(FEED_VALUES)).optional()`
+    added. Builder `BUILDER_SYSTEM_PROMPT` gains a Step-5 paragraph
+    instructing it to seed `universe.feeds` from the archetype's
+    `defaultFeeds` and a new Hard Rule #5 forbidding invented feed names.
+    Editor prompt gains a parallel "Feeds edits" paragraph gating
+    cosmetic churn.
+  - **Research-run system prompt.** Stage 1 gains one paragraph pointing
+    the agent at `get_earnings_calendar` / `get_market_movers` as the
+    on-demand escape hatch when a feed isn't subscribed, with
+    `scope:"universe"` vs `"all"` semantics spelled out.
+  - **`#164 aggregate-novelty-skip` carve-out — kept in place.** Intentional:
+    existing analysts with empty `feeds` still rely on the ticker-overlap
+    path, and that path would get crushed by 7d route-history novelty
+    without the carve-out. Safe to remove in a follow-up once every
+    enabled analyst has a populated `feeds` array AND there's a deploy
+    cycle of data confirming no regression.
+  - **`read_signals` category filter — deferred.** The three-bucket shape
+    (`portfolioSignals` / `watchlistSignals` / `discoverySignals`) from
+    #168 plus the two pull tools cover the on-demand case; a `{category?}`
+    filter is a nice-to-have, not a blocker.
+- **Notes:**
+  - The `aggregate-channel-catalog` mentioned in earlier design discussion
+    was collapsed into `defaultFeeds` on each archetype — keeping the
+    information attached to where the agent actually consumes it
+    (`read_knowledge_library`) instead of a separate catalog file.
+  - `signalTypes String[]` on AgentConfig remains unused; not deprecated
+    in this session to avoid touching surface area another in-flight PR
+    might also be touching. Cleanup queued for the follow-up.
+  - Future feed types (insider clusters, options flow, sector ETF
+    rotation, macro / Fed) are NOT added to the FEEDS enum yet — wait
+    for the producer to exist before declaring the canonical name.

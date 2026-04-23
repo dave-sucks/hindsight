@@ -9,10 +9,12 @@ import { tool } from "ai";
 import { z } from "zod";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import { GICS_INDUSTRIES_BY_SECTOR, type GicsSector } from "@/lib/universe/gics";
+import { FEEDS } from "@/lib/universe/feeds";
 
 // z.enum needs a non-empty tuple literal; derive one from the canonical lists.
 const SECTOR_VALUES = [...SECTORS] as [string, ...string[]];
 const INDUSTRY_VALUES = [...INDUSTRIES] as [string, ...string[]];
+const FEED_VALUES = [...FEEDS] as [string, ...string[]];
 
 // ── Normalizer: strips common agent mistakes before Zod validation ──────────
 // Every trip-wire below was being hit by real editor/builder runs and
@@ -282,6 +284,21 @@ const rawConfigSchema = z.object({
         .array(z.string())
         .optional()
         .describe("Tickers explicitly off-limits for discovery."),
+      // Feeds — firm-aggregate subscription dimension. Canonical values
+      // match Signal.aggregateType 1:1 (see lib/universe/feeds.ts). Seed
+      // from the chosen archetype's defaultFeeds via read_knowledge_library;
+      // omit when the archetype doesn't consume the firehose channels we
+      // currently produce (e.g. Deep Value, Insider Cluster). Analysts can
+      // always pull on-demand via get_earnings_calendar / get_market_movers
+      // regardless of subscription.
+      feeds: z
+        .array(z.enum(FEED_VALUES))
+        .optional()
+        .describe(
+          "Firm-aggregate feeds this analyst auto-receives. Canonical values: " +
+            FEEDS.join(", ") +
+            ". Seed from the archetype's defaultFeeds (via read_knowledge_library). Empty/omitted = no subscription; analyst still gets ticker-intersection views of aggregates when one of their names appears, and can pull on-demand via get_earnings_calendar / get_market_movers.",
+        ),
     })
     .optional()
     .describe(

@@ -48,6 +48,17 @@ type RouteReasonCode =
   | "INDUSTRY_MATCH"
   | "THEME_MATCH"
   | "CROSS_ANALYST"
+  // Aggregate signal routes — aggregates have empty sectors/industries by
+  // design, so they bypass the news-signal universe fence. They reach
+  // analysts via two paths:
+  //   • FIRM_AGGREGATE_FEED — analyst subscribed via AgentConfig.feeds
+  //     (canonical values match Signal.aggregateType 1:1 — see
+  //     lib/universe/feeds.ts). Full firehose.
+  //   • AGGREGATE_TICKER_MATCH — no feed subscription, but at least one of
+  //     the aggregate's tickers overlaps the analyst's watchlist + positions.
+  //     Fenced "your N names in this aggregate" view.
+  | "FIRM_AGGREGATE_FEED"
+  | "AGGREGATE_TICKER_MATCH"
 
 interface MatchedUniverse {
   sectors?: string[]
@@ -57,6 +68,10 @@ interface MatchedUniverse {
   inPositions?: boolean
   fromAnalystId?: string
   marketCap?: string
+  // Populated for aggregate routes — the canonical FEEDS value from
+  // Signal.aggregateType. Drives the UI's ability to show "earnings
+  // calendar" vs "movers gainers" in the matched-universe chip.
+  feed?: string
 }
 
 export interface AnalystProfile {
@@ -69,6 +84,10 @@ export interface AnalystProfile {
   sectors: string[]
   industries: string[]
   themes: string[]
+  // Feeds — firm-aggregate subscription dimension. Canonical values mirror
+  // Signal.aggregateType (see lib/universe/feeds.ts). Checked by exact string
+  // equality; no normalization at read time.
+  feeds: string[]
   exchanges: string[]
   exclusions: string[]
   // Keywords extracted from prompt/strategy — used for soft THEME_MATCH.
@@ -346,6 +365,9 @@ export const signalRouter = inngest.createFunction(
           sectors: a.sectors,
           industries: a.industries,
           themes: a.themes,
+          // Feeds values are canonical uppercase FEEDS; compared by exact
+          // equality against Signal.aggregateType (same casing, same spelling).
+          feeds: a.feeds ?? [],
           // Exchanges + exclusions are still uppercase-by-convention (tickers
           // + exchange codes), so keep the defensive toUpperCase() here.
           exchanges: a.exchanges.map((x) => x.toUpperCase()),
@@ -474,10 +496,40 @@ export const signalRouter = inngest.createFunction(
           // analyst.
           if (isCrossAnalyst && tickerHit === null) continue
 
-          // Universe match (skipped when ticker is owned — bypass).
+          // Feed-subscription check. Aggregate signals (earnings calendar,
+          // market movers — signal.aggregateType populated) carry empty
+          // sectors/industries by design, so the news-signal matchUniverse
+          // below would always reject them for any analyst with a configured
+          // sector/industry fence. Short-circuit: if this analyst subscribed
+          // to the feed via AgentConfig.feeds (canonical FEEDS values — see
+          // lib/universe/feeds.ts), route the full firehose. Ticker overlap
+          // is a separate tier-2 path handled by the existing tickerHit.
+          const feedHit =
+            signal.aggregateType != null &&
+            profile.feeds.includes(signal.aggregateType)
+
+          // Aggregates that don't match the feed AND don't have a ticker hit
+          // AND aren't owner-scoped drop here. Previously they squeaked
+          // through matchUniverse via the "empty dim = vacuous pass" semantic
+          // only for analysts with no Universe set; explicit short-circuit
+          // makes the behavior obvious.
+          if (
+            signal.aggregateType != null &&
+            !feedHit &&
+            tickerHit === null &&
+            !isOwner
+          ) {
+            droppedOutOfUniverse++
+            continue
+          }
+
+          // Universe match (skipped when ticker is owned, feeds-subscribed,
+          // or the signal is an aggregate that already passed the feed/ticker
+          // check above — aggregates have no sector/industry/theme fence to
+          // match against).
           const matched =
-            tickerHit !== null
-              ? ({} as MatchedUniverse) // ticker bypass; no dim info
+            tickerHit !== null || feedHit || signal.aggregateType != null
+              ? ({} as MatchedUniverse) // ticker / feeds / aggregate bypass
               : matchUniverse(
                   {
                     sectors: signal.sectors,
@@ -499,8 +551,11 @@ export const signalRouter = inngest.createFunction(
             tickerHit,
           })
 
-          // Owner fast-path: no floor. Others: 15-point floor.
-          if (!isOwner && rawScore < 15) continue
+          // Owner fast-path: no floor. Feed-subscribed aggregates: no floor
+          // either — subscription IS the intent signal, and aggregates carry
+          // no sector/industry/theme boosts that would otherwise lift them
+          // over 15 on relevance scoring alone. Everyone else: 15-point floor.
+          if (!isOwner && !feedHit && rawScore < 15) continue
 
           const novelty = computeNoveltyScore({
             signalTickers: signal.tickers,
@@ -559,7 +614,7 @@ export const signalRouter = inngest.createFunction(
             )
           )
 
-          if (adjusted < 15 && !isOwner && !isTickerOwned) {
+          if (adjusted < 15 && !isOwner && !isTickerOwned && !feedHit) {
             droppedByThreshold++
             continue
           }
@@ -574,9 +629,19 @@ export const signalRouter = inngest.createFunction(
             isCrossAnalyst,
           })
 
+          // Aggregate overrides take precedence over ticker-hit codes so the
+          // UI can distinguish "this aggregate contains one of your names"
+          // (AGGREGATE_TICKER_MATCH) from "news about your position"
+          // (POSITION). Subscription wins over ticker overlap when both
+          // are true — subscription IS the intent signal.
+          if (signal.aggregateType != null) {
+            if (feedHit) code = "FIRM_AGGREGATE_FEED"
+            else if (tickerHit !== null) code = "AGGREGATE_TICKER_MATCH"
+          }
+
           // Cross-analyst hits override to CROSS_ANALYST when the originating
           // analyst is NOT this one — so the UI can show provenance even if
-          // the ticker happens to be in watchlist.
+          // the ticker happens to be in watchlist. Applies to aggregates too.
           if (isCrossAnalyst) code = "CROSS_ANALYST"
 
           if (code === null) continue
@@ -589,6 +654,7 @@ export const signalRouter = inngest.createFunction(
           if (matched?.industries?.length) mu.industries = matched.industries
           if (matched?.themes?.length) mu.themes = matched.themes
           if (isCrossAnalyst && ownerId) mu.fromAnalystId = ownerId
+          if (signal.aggregateType != null) mu.feed = signal.aggregateType
 
           if (isOwner && code === "DIRECT_TICKER") fastPathed++
           if (isCrossAnalyst) crossPosted++
@@ -604,6 +670,10 @@ export const signalRouter = inngest.createFunction(
               `code:${code}`,
               ...(isOwner ? ["owned_monitor"] : []),
               ...(isCrossAnalyst ? [`cross_analyst:${ownerId}`] : []),
+              ...(feedHit ? [`feed:${signal.aggregateType}`] : []),
+              ...(signal.aggregateType != null && !feedHit && tickerHit !== null
+                ? [`aggregate_ticker_match:${signal.aggregateType}`]
+                : []),
               `novelty:${novelty}`,
               `raw:${rawScore}`,
             ].join(", "),
@@ -623,6 +693,8 @@ export const signalRouter = inngest.createFunction(
         INDUSTRY_MATCH: 0,
         THEME_MATCH: 0,
         CROSS_ANALYST: 0,
+        FIRM_AGGREGATE_FEED: 0,
+        AGGREGATE_TICKER_MATCH: 0,
       }
       for (const profileId of Object.keys(candidatesByAnalyst)) {
         const kept = applyDiscoveryReservation(candidatesByAnalyst[profileId])
