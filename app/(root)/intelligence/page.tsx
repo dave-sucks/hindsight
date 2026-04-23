@@ -142,7 +142,7 @@ export default function IntelligencePage() {
   return (
     <TooltipProvider>
       <IntelligenceShowcaseTrigger />
-      <div className="p-6 space-y-4">
+      <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto space-y-6">
         <Tabs defaultValue="findings">
           <div className="flex items-center justify-between gap-2">
             <TabsList>

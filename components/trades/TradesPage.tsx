@@ -229,7 +229,7 @@ export default function TradesPage({
   return (
     <div className="space-y-0">
       {/* Header + filter tabs */}
-      <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+      <div className="px-4 sm:px-6 pt-6 pb-4 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Trades</h1>
         <div className="flex items-center gap-0.5 bg-muted/50 rounded-md border px-1 py-0.5">
           {tabs.map((t) => (

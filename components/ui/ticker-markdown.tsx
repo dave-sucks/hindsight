@@ -57,7 +57,7 @@ function processChildrenWithTickers(children: ReactNode): ReactNode {
 
 function TickerP({ children }: { children?: ReactNode }) {
   return (
-    <p className="my-3 text-base leading-7 first:mt-0 last:mb-0">
+    <p className="my-3 leading-relaxed first:mt-0 last:mb-0">
       {processChildrenWithTickers(children)}
     </p>
   );
@@ -65,7 +65,7 @@ function TickerP({ children }: { children?: ReactNode }) {
 
 function TickerLi({ children }: { children?: ReactNode }) {
   return (
-    <li className="text-base leading-7">
+    <li className="leading-relaxed">
       {processChildrenWithTickers(children)}
     </li>
   );
@@ -156,7 +156,7 @@ export function TickerMarkdown({ children, className }: TickerMarkdownProps) {
   usePrefetchTickers(tickers);
 
   return (
-    <div className={cn("max-w-none text-foreground/90", className)}>
+    <div className={cn("max-w-none text-sm text-foreground/90", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={tickerProseComponents}

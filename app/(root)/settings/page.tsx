@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   const displayName = user?.user_metadata?.full_name ?? user?.email ?? "—";
 
   return (
-    <div className="p-6 max-w-2xl space-y-6">
+    <div className="px-4 sm:px-6 py-6 max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">

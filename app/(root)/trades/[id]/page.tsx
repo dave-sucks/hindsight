@@ -272,7 +272,7 @@ export default async function TradeDetailPage({
   const isQuoteUp = (changePct ?? 0) >= 0;
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">

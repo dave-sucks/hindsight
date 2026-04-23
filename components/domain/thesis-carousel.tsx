@@ -5,8 +5,8 @@
  *
  * Used in the agent run thread to group every record_thesis call from a
  * single agent turn into one widget instead of N stacked full ThesisCards.
- * Wraps the ShadCN/embla Carousel primitive — drag to scroll, prev/next
- * buttons, and slides snap to start.
+ * Wraps the ShadCN/embla Carousel primitive — drag to scroll, and slides
+ * snap to start.
  */
 
 import {
@@ -20,23 +20,32 @@ import type { ThesisCardData } from "@/components/domain";
 export function ThesisCarousel({ theses }: { theses: ThesisCardData[] }) {
   if (theses.length === 0) return null;
 
+  // Basis sized so the next card always peeks past the edge — combined with
+  // the right-side gradient fade, the scroll affordance is unambiguous
+  // without relying on arrows (which overlap content inside a chat thread).
+  // Mobile: ~1 1/4 visible. Tablet: ~2 1/4. Desktop: ~2 2/3.
   return (
-    // Full chat width. Tighter gutter (-ml-2 / pl-2 instead of the default
-    // -ml-4 / pl-4). Arrows pulled in to -left-3 / -right-3 so they sit
-    // just outside the card edges instead of needing a 48px parent gutter.
-    <Carousel opts={{ align: "start" }} className="py-1">
-      <CarouselContent className="-ml-2">
-        {theses.map((thesis, i) => (
-          <CarouselItem
-            key={`${thesis.ticker}-${i}`}
-            className="basis-full sm:basis-1/2 md:basis-1/3 pl-2"
-          >
-            <div className="p-1">
-              <ThesisMiniCard thesis={thesis} />
-            </div>
-          </CarouselItem>
-        ))}
-      </CarouselContent>
-    </Carousel>
+    <div className="relative py-1">
+      <Carousel opts={{ align: "start" }}>
+        <CarouselContent className="-ml-2">
+          {theses.map((thesis, i) => (
+            <CarouselItem
+              key={`${thesis.ticker}-${i}`}
+              className="basis-[80%] sm:basis-[45%] md:basis-[38%] pl-2"
+            >
+              <div className="p-1">
+                <ThesisMiniCard thesis={thesis} />
+              </div>
+            </CarouselItem>
+          ))}
+        </CarouselContent>
+
+        {/* Right-edge gradient fade implies more content off-screen. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-background to-transparent"
+        />
+      </Carousel>
+    </div>
   );
 }

@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 export default function StocksPage() {
   return (
-    <div className="p-6">
+    <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-semibold text-foreground mb-6">Stocks</h1>
       <Card className="border-border">
         <CardContent className="flex flex-col items-center justify-center py-24 gap-4">
