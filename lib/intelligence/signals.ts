@@ -120,25 +120,47 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
  * Create Signal rows from a raw Sonar structured response.
  * Maps SonarSignalOutput fields to CreateSignalInput.
  * Returns array of created signal IDs.
+ *
+ * `forceTicker` guarantees a specific ticker is present on every signal
+ * created — use it from per-ticker monitors (portfolio / watchlist) where
+ * the caller knows the search was scoped to one symbol but Sonar's response
+ * may omit it from the `tickers` array (e.g. when the headline references
+ * the company name without the symbol). Without this, watchlist searches
+ * for NVDA/AMD/MSFT were producing signals that never got tagged with the
+ * ticker and therefore never matched watchlist routes.
  */
 export async function createSignalsFromSonar(
   batchId: string,
   sonarResponse: SonarSignalResponse,
   signalType: SignalType,
   sourceQuality: number = 3,
-  provenance?: { searchTool?: string; searchQuery?: string; searchContext?: string; monitorId?: string }
+  provenance?: {
+    searchTool?: string;
+    searchQuery?: string;
+    searchContext?: string;
+    monitorId?: string;
+    forceTicker?: string;
+  }
 ): Promise<string[]> {
   const ids: string[] = [];
 
+  const forced = provenance?.forceTicker?.toUpperCase();
+
   for (const item of sonarResponse.signals) {
     try {
+      const mergedTickers = forced
+        ? (item.tickers.some((t) => t.toUpperCase() === forced)
+            ? item.tickers
+            : [forced, ...item.tickers])
+        : item.tickers;
+
       const id = await createSignal({
         batchId,
         monitorId: provenance?.monitorId,
         type: signalType,
         headline: item.headline,
         summary: item.summary,
-        tickers: item.tickers,
+        tickers: mergedTickers,
         themes: item.themes,
         sectors: item.sectors,
         industries: item.industries ?? [],

@@ -495,25 +495,36 @@ export const signalRouter = inngest.createFunction(
             recentRoutes: recentRoutesByAnalyst[profile.id] ?? [],
           })
 
-          // Aggregate signals (market movers, earnings calendar) are daily
-          // recurring snapshots that intentionally cover wide ticker sets —
-          // the earnings calendar alone can be ~1000 tickers. That huge
-          // overlap with recent routes drives novelty to 5 and the standard
-          // floor silently discards every one of them. Exempt aggregates so
-          // the "Top Gainers" / "Earnings calendar" cards show up every day.
+          // Two independent novelty carve-outs:
+          //
+          // 1. Urgency — a HIGH or BREAKING signal is actionable news (+49%
+          //    breakout, insider burst, earnings beat) even when the ticker
+          //    is familiar. Spare it from the low-novelty drop AND floor the
+          //    multiplier at 30 so a fresh development on a known name still
+          //    beats generic noise after scoring.
+          //
+          // 2. Aggregate — market movers / earnings calendar are daily
+          //    recurring snapshots over wide ticker sets (earnings calendar
+          //    alone can be ~1000 tickers). That overlap drives novelty to 5
+          //    and the standard floor silently discards every one of them.
+          //    Exempt aggregates so "Top Gainers" / "Earnings calendar" land
+          //    every day.
+          const isUrgent =
+            signal.urgency === "BREAKING" || signal.urgency === "HIGH"
           const isAggregate = signal.aggregateType != null
 
-          if (novelty < 20 && signal.urgency !== "BREAKING" && !isOwner && !isAggregate) {
+          if (novelty < 20 && !isUrgent && !isOwner && !isAggregate) {
             droppedByNovelty++
             continue
           }
 
+          const effectiveNovelty = isUrgent ? Math.max(novelty, 30) : novelty
           const crossPenalty = isCrossAnalyst ? 0.6 : 1.0
           const adjusted = Math.max(
             0,
             Math.min(
               100,
-              Math.round((rawScore * novelty * crossPenalty) / 100)
+              Math.round((rawScore * effectiveNovelty * crossPenalty) / 100)
             )
           )
 
@@ -605,6 +616,29 @@ export const signalRouter = inngest.createFunction(
           })),
           skipDuplicates: true,
         })
+
+        // Denormalize the MAX novelty for each signal back onto Signal.
+        // Novelty is per-(analyst, signal), but Signal.noveltyScore is the
+        // global "how fresh is this signal to *anyone*" value the /intelligence
+        // UI shows. Without this, every Signal row sits at the default 50
+        // forever and the global novelty view is meaningless. MAX reflects the
+        // "most-novel-for-some-analyst" read — stale cross-analyst signals fall
+        // to 5, genuinely new content stays at 80.
+        const maxByS: Record<string, number> = {}
+        for (const r of finalRoutes) {
+          const prev = maxByS[r.signalId]
+          if (prev === undefined || r.noveltyScore > prev) {
+            maxByS[r.signalId] = r.noveltyScore
+          }
+        }
+        await Promise.all(
+          Object.entries(maxByS).map(([signalId, noveltyScore]) =>
+            prisma.signal.update({
+              where: { id: signalId },
+              data: { noveltyScore },
+            })
+          )
+        )
       }
 
       return {
