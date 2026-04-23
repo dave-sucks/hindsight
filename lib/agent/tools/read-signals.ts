@@ -114,30 +114,42 @@ function bucketOf(
 
 export const readSignals = defineTool({
   description:
-    "Read intelligence signals routed to you by background discovery jobs. Returns pre-gathered news, filings, earnings, social, and macro signals matched to your mandate, split into three buckets: portfolioSignals (your open positions), watchlistSignals (your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence — sectors, industries, themes). Filter by tickers, themes, or urgency. Every returned signal carries a `signalId` — remember the ones that actually informed your thinking and pass them to record_thesis as `sourceSignalIds` so the system can later attribute the trade's outcome back to the monitors that produced them. Signals are marked as READ after retrieval. Use discoverySignals to find new names to research — do NOT ignore them.",
+    "Read intelligence signals routed to you by background discovery jobs. " +
+    "**DEFAULT USAGE: call with no arguments.** That returns today's entire routed pool for this analyst, ranked and split into three buckets — portfolioSignals (your open positions), watchlistSignals (your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence). ALL THREE BUCKETS come back in one call; you do not need three calls. " +
+    "Passing a `bucket` argument is an ANTI-PATTERN on the first call — it starves the other two buckets. The only valid use of `bucket` is a targeted follow-up AFTER a no-argument call revealed one bucket was empty and you need deeper sampling in another, or as a sweep for BREAKING urgency. " +
+    "Every returned signal carries a `signalId` — remember the ones that actually informed your thinking and pass them to record_thesis as `sourceSignalIds` so the system can attribute the trade's outcome back to the monitors that produced them. Signals are marked as READ after retrieval. Use discoverySignals to find new names to research — do NOT ignore them.",
   schema: z.object({
-    tickers: z.array(z.string()).optional().describe("Filter to signals mentioning these tickers"),
-    themes: z.array(z.string()).optional().describe("Filter to signals with these themes (e.g. AI_CAPEX, FED_RATE_CUT)"),
+    tickers: z.array(z.string()).optional().describe("Filter to signals mentioning these tickers. Rare — use only for targeted deep-dive on a specific ticker."),
+    themes: z.array(z.string()).optional().describe("Filter to signals with these themes (e.g. AI_CAPEX, FED_RATE_CUT). Rare — use only for targeted theme deep-dive."),
     type: z
       .enum(["NEWS", "EARNINGS", "FILING", "SOCIAL", "PRICE_ACTION", "ANALYST_NOTE", "OPTIONS", "MACRO", "SECTOR"])
       .optional()
-      .describe("Filter to a specific signal type"),
+      .describe("Filter to a specific signal type. Rare."),
     urgency: z
       .enum(["LOW", "MEDIUM", "HIGH", "BREAKING"])
       .optional()
-      .describe("Minimum urgency level"),
+      .describe("Minimum urgency level. Valid follow-up: urgency=BREAKING as a second call after the no-argument call."),
     bucket: z
       .enum(["POSITION", "WATCHLIST", "DISCOVERY"])
       .optional()
-      .describe("Filter to a specific routing bucket. Omit to get all buckets split into three groups."),
-    limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy)"),
+      .describe("DO NOT SET on your first call. Omitting bucket is the default and correct shape — it returns all three buckets ranked. Only pass this on a follow-up call when a specific bucket came back empty or thin and you want to confirm there's nothing there. Passing POSITION/WATCHLIST/DISCOVERY alone on the first call is a process failure."),
+    limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy). Rarely need to change."),
   }),
   ui: "tool-ui" as const,
 
   progressLabel: (args) => {
-    if (args.bucket === "POSITION") return "Reading portfolio signals";
-    if (args.bucket === "WATCHLIST") return "Reading watchlist signals";
-    if (args.bucket === "DISCOVERY") return "Reading discovery signals";
+    // Default path (no bucket) is the most natural label — the agent should
+    // feel this is the normal shape, not a secondary one.
+    if (!args.bucket && !args.tickers?.length && !args.themes?.length) {
+      if (args.urgency === "HIGH" || args.urgency === "BREAKING") {
+        return "Sweeping urgent signals";
+      }
+      return "Reading today's routed signals";
+    }
+    // Explicit narrow calls get a label that makes clear it was a follow-up.
+    if (args.bucket === "POSITION") return "Follow-up: portfolio signals only";
+    if (args.bucket === "WATCHLIST") return "Follow-up: watchlist signals only";
+    if (args.bucket === "DISCOVERY") return "Follow-up: discovery signals only";
     if (args.tickers && args.tickers.length > 0) {
       const sample = args.tickers.slice(0, 2).map((t) => `$${t.toUpperCase()}`).join(", ");
       const extra = args.tickers.length > 2 ? ` (+${args.tickers.length - 2} more)` : "";
@@ -149,7 +161,7 @@ export const readSignals = defineTool({
       return `Reading signals on ${sample}${extra}`;
     }
     if (args.urgency === "HIGH" || args.urgency === "BREAKING") {
-      return "Reading urgent signals";
+      return "Sweeping urgent signals";
     }
     return "Reading signals routed to this analyst";
   },
