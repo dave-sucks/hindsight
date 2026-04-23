@@ -48,12 +48,15 @@ const thesisFields = z.object({
   parent_thesis_id: z.string().optional()
     .describe("ID of the prior thesis being updated or invalidated. Links thesis chain."),
   // V3 Session 3 — forcing-function trio.
-  // source_kind is REQUIRED. When it is ROUTED_SIGNAL the agent MUST supply
-  // non-empty source_signal_ids (enforced by superRefine below AND by an
-  // existence check against AnalystSignalRoute in execute()). Any other kind
-  // MUST supply a one-line source_rationale so the provenance is self-evident.
+  // source_kind is optional at the Zod layer so the agent can't tank an
+  // entire run by forgetting the field — execute() infers a fallback
+  // from context. When the agent DOES pass it, the cross-field rule in
+  // superRefine below still enforces the per-kind shape, and the
+  // execute()-level existence check still verifies ROUTED_SIGNAL IDs
+  // against AnalystSignalRoute for this analyst.
   source_kind: z
     .enum(["ROUTED_SIGNAL", "WEB_SEARCH", "WATCHLIST_REVIEW", "POSITION_REVIEW"])
+    .optional()
     .describe(
       "Where this thesis came from. ROUTED_SIGNAL = informed by a signal from read_signals (requires non-empty source_signal_ids). WEB_SEARCH = came from a live web_search call only. WATCHLIST_REVIEW = triggered by reviewing your own watchlist. POSITION_REVIEW = triggered by reviewing an open position."
     ),
@@ -72,6 +75,8 @@ const thesisFields = z.object({
 });
 
 const thesisSchema = thesisFields.superRefine((val, ctx) => {
+  // If source_kind is absent the inference fallback in execute()
+  // handles it — don't reject here.
   if (val.source_kind === "ROUTED_SIGNAL") {
     if (!val.source_signal_ids || val.source_signal_ids.length === 0) {
       ctx.addIssue({
@@ -81,12 +86,15 @@ const thesisSchema = thesisFields.superRefine((val, ctx) => {
         path: ["source_signal_ids"],
       });
     }
-  } else if (!val.source_rationale || val.source_rationale.trim().length === 0) {
-    ctx.addIssue({
-      code: "custom",
-      message: `source_rationale is required when source_kind is ${val.source_kind}. Provide a one-line rationale for the thesis origin.`,
-      path: ["source_rationale"],
-    });
+  } else if (val.source_kind) {
+    // Explicit non-ROUTED_SIGNAL kind: rationale required.
+    if (!val.source_rationale || val.source_rationale.trim().length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: `source_rationale is required when source_kind is ${val.source_kind}. Provide a one-line rationale for the thesis origin.`,
+        path: ["source_rationale"],
+      });
+    }
   }
 });
 
@@ -107,11 +115,34 @@ export const recordThesis = defineTool({
     try {
       const sourceSignalIds = Array.from(new Set(args.source_signal_ids ?? []));
 
-      // Forcing function: when the agent claims ROUTED_SIGNAL provenance,
-      // every signalId must belong to this analyst's routed inbox for today
-      // (ET trading day). Rejecting out-of-pool IDs prevents the agent from
-      // satisfying the Zod non-empty check by fabricating strings.
-      if (args.source_kind === "ROUTED_SIGNAL" && sourceSignalIds.length > 0) {
+      // Inference fallback: GPT-4o occasionally drops required fields, and
+      // hard-rejecting the whole call would tank the whole run (zero theses
+      // => route.ts onFinish marks FAILED because hasWork = thesisCount > 0
+      // || tradeCount > 0). Infer a best-effort source_kind from context
+      // and log loudly so the compliance miss shows up in toolStats.
+      const inferredSourceKind =
+        args.source_kind ??
+        (sourceSignalIds.length > 0 ? "ROUTED_SIGNAL" : "WEB_SEARCH");
+
+      const inferredSourceRationale =
+        args.source_rationale ??
+        (inferredSourceKind === "ROUTED_SIGNAL"
+          ? undefined
+          : `Source: ${inferredSourceKind.toLowerCase().replace(/_/g, " ")}; rationale unspecified (agent did not provide).`);
+
+      if (!args.source_kind) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — source_kind missing, inferred=${inferredSourceKind}. Agent prompt compliance issue; investigate via toolStats.`,
+        );
+      }
+      void inferredSourceRationale;
+
+      // Forcing function: when the call claims (or infers) ROUTED_SIGNAL
+      // provenance, every signalId must belong to this analyst's routed
+      // inbox for today (ET trading day). Rejecting out-of-pool IDs prevents
+      // the agent from satisfying the Zod non-empty check by fabricating
+      // strings.
+      if (inferredSourceKind === "ROUTED_SIGNAL" && sourceSignalIds.length > 0) {
         if (!ctx.analystId) {
           return {
             summary: `Thesis rejected for ${args.ticker}: source_kind=ROUTED_SIGNAL requires an analyst context, which is missing for this run.`,
