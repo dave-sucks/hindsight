@@ -33,17 +33,21 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { Activity } from "lucide-react";
 import { SignalFeed } from "@/components/intelligence/signal-feed";
-import type { CoverageData } from "@/components/intelligence/coverage-strip";
 import { MonitorList } from "@/components/intelligence/config-panel";
 import { BriefCards } from "@/components/intelligence/brief-cards";
+import { HealthTab } from "@/components/intelligence/health-tab";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
-import { IntelligenceShowcaseTrigger, IntelligenceShowcaseButton } from "@/components/domain/run-showcase-trigger";
+import {
+  IntelligenceShowcaseTrigger,
+  IntelligenceShowcaseButton,
+} from "@/components/domain/run-showcase-trigger";
 import type {
   Signal,
   MorningBrief,
   Monitor,
 } from "@/components/intelligence/types";
+import type { HealthData } from "@/app/api/intelligence/health/route";
 
 // ── Fetch helper ────────────────────────────────────────────────────────────
 
@@ -59,12 +63,10 @@ export default function IntelligencePage() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [briefs, setBriefs] = useState<MorningBrief[]>([]);
-  const [coverage, setCoverage] = useState<CoverageData | null>(null);
+  const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Coverage lookback is fixed at 7d — matches the "last 7 days" language used
-  // in the spec and the natural morning cadence of the pipeline.
-  const COVERAGE_DAYS = 7;
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("findings");
 
   // Brief date selection
   const [briefDate, setBriefDate] = useState<"today" | "yesterday" | "week">(
@@ -85,7 +87,9 @@ export default function IntelligencePage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Failed: ${res.status}`);
       }
-      toast.success(`Triggered: ${label}`, { description: "Refresh in a few seconds to see results." });
+      toast.success(`Triggered: ${label}`, {
+        description: "Refresh in a few seconds to see results.",
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Trigger failed");
     } finally {
@@ -96,20 +100,16 @@ export default function IntelligencePage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [sig, mon, br, cov] = await Promise.all([
+      const [sig, mon, br] = await Promise.all([
         fetchJSON<Signal[]>("/api/intelligence/signals?limit=200").catch(
           () => []
         ),
         fetchJSON<Monitor[]>("/api/intelligence/monitors").catch(() => []),
         fetchJSON<MorningBrief[]>("/api/intelligence/briefs").catch(() => []),
-        fetchJSON<CoverageData>(
-          `/api/intelligence/coverage?days=${COVERAGE_DAYS}`,
-        ).catch(() => null),
       ]);
       setSignals(sig);
       setMonitors(mon);
       setBriefs(br);
-      setCoverage(cov);
     } catch (err) {
       console.error("[intelligence] Failed to load:", err);
     } finally {
@@ -117,9 +117,28 @@ export default function IntelligencePage() {
     }
   }, []);
 
+  const loadHealth = useCallback(async () => {
+    setHealthLoading(true);
+    try {
+      const data = await fetchJSON<HealthData>("/api/intelligence/health");
+      setHealth(data);
+    } catch (err) {
+      console.error("[intelligence] Failed to load health:", err);
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Lazy-load health data only when the tab is first opened
+  useEffect(() => {
+    if (activeTab === "health" && !health && !healthLoading) {
+      loadHealth();
+    }
+  }, [activeTab, health, healthLoading, loadHealth]);
 
   // Load briefs when date changes
   const loadBriefs = useCallback(async () => {
@@ -138,17 +157,26 @@ export default function IntelligencePage() {
     loadBriefs();
   }, [loadBriefs]);
 
+  const handleRefresh = useCallback(() => {
+    loadAll();
+    if (activeTab === "health") loadHealth();
+  }, [loadAll, loadHealth, activeTab]);
 
   return (
     <TooltipProvider>
       <IntelligenceShowcaseTrigger />
       <div className="p-6 space-y-4">
-        <Tabs defaultValue="findings">
+        <Tabs
+          defaultValue="findings"
+          value={activeTab}
+          onValueChange={setActiveTab}
+        >
           <div className="flex items-center justify-between gap-2">
             <TabsList>
               <TabsTrigger value="findings">Findings</TabsTrigger>
               <TabsTrigger value="monitors">Monitors</TabsTrigger>
               <TabsTrigger value="briefs">Briefs</TabsTrigger>
+              <TabsTrigger value="health">Health</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-1.5">
               <Button variant="outline" size="sm" render={<Link href="/intelligence/health" />}>
@@ -156,56 +184,79 @@ export default function IntelligencePage() {
                 <span className="hidden sm:inline">Health</span>
               </Button>
               <IntelligenceShowcaseButton />
-              <HowItWorksSheet
-                flow="intelligence"
-                coverage={coverage}
-                coverageDays={COVERAGE_DAYS}
-              >
+              <HowItWorksSheet flow="intelligence">
                 <ScanSearch className="h-4 w-4" />
               </HowItWorksSheet>
               <DropdownMenu>
-                <DropdownMenuTrigger render={
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={triggering !== null}
-                  >
-                    {triggering ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Play className="h-4 w-4" />
-                    )}
-                    <span className="hidden sm:inline">Start Pipeline</span>
-                  </Button>
-                } />
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={triggering !== null}
+                    >
+                      {triggering ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                      <span className="hidden sm:inline">Start Pipeline</span>
+                    </Button>
+                  }
+                />
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => triggerJob("full-pipeline", "Full Pipeline")}>
+                  <DropdownMenuItem
+                    onClick={() => triggerJob("full-pipeline", "Full Pipeline")}
+                  >
                     <Layers className="h-4 w-4" />
                     <span className="whitespace-nowrap">Run Full Pipeline</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => triggerJob("market-sweep", "Market Sweep")}>
+                  <DropdownMenuItem
+                    onClick={() => triggerJob("market-sweep", "Market Sweep")}
+                  >
                     <Search className="h-4 w-4" />
                     <span className="whitespace-nowrap">Market Sweep</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => triggerJob("portfolio-monitor", "Portfolio Monitor")}>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      triggerJob("portfolio-monitor", "Portfolio Monitor")
+                    }
+                  >
                     <Radar className="h-4 w-4" />
-                    <span className="whitespace-nowrap">Portfolio &amp; Watchlist</span>
+                    <span className="whitespace-nowrap">
+                      Portfolio &amp; Watchlist
+                    </span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => triggerJob("domain-monitor", "Source Monitor")}>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      triggerJob("domain-monitor", "Source Monitor")
+                    }
+                  >
                     <Globe className="h-4 w-4" />
                     <span className="whitespace-nowrap">Domain Sources</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => triggerJob("signal-router", "Signal Router")}>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      triggerJob("signal-router", "Signal Router")
+                    }
+                  >
                     <GitBranch className="h-4 w-4" />
                     <span className="whitespace-nowrap">Route Signals</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => triggerJob("morning-brief", "Morning Briefs")}>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      triggerJob("morning-brief", "Morning Briefs")
+                    }
+                  >
                     <FileText className="h-4 w-4" />
                     <span className="whitespace-nowrap">Generate Briefs</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={loadAll} disabled={loading}>
+                  <DropdownMenuItem
+                    onClick={handleRefresh}
+                    disabled={loading}
+                  >
                     {loading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
@@ -243,12 +294,16 @@ export default function IntelligencePage() {
 
             <BriefCards briefs={briefs} />
           </TabsContent>
+
+          {/* Health tab */}
+          <TabsContent value="health" className="pt-4">
+            <HealthTab data={health} loading={healthLoading} />
+          </TabsContent>
         </Tabs>
       </div>
     </TooltipProvider>
   );
 }
-
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
