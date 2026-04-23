@@ -72,3 +72,65 @@ If a cross-file pattern emerges that would require touching files outside
 Session 4's scope (Session 3's schema, record-thesis, read-signals,
 trade-evaluator), stop and raise before editing. Those are explicitly out of
 this session's allowlist.
+
+## Domain monitor silent cron
+
+**Symptom.** `SELECT COUNT(*) FROM "SignalBatch" WHERE "jobType" = 'DOMAIN_MONITOR'`
+returns 0 forever. Every one of the 27 enabled DOMAIN monitors still has
+`lastRunAt = NULL`.
+
+**What's been ruled out.**
+- The function exists (`lib/inngest/functions/domain-monitor.ts`).
+- It's registered in `app/api/inngest/route.ts`.
+- The cron spec (`TZ=America/New_York 15 7 * * 1-5`) parses and matches the
+  other four intelligence crons that do run.
+- Code path to `createSignalBatch` was clean — if the function had executed,
+  a SignalBatch row would exist even on Sonar failure, because batch
+  creation came before the per-monitor search step.
+
+So this is not a code bug inside the handler. The function is never being
+invoked. That narrows it to the Inngest layer: registration gap, missing
+event-key wiring in the deployed environment, cron-schedule conflict, or
+the Inngest deployment is simply not aware of this function.
+
+**Diagnostic added in this PR.**
+1. `console.log("[domain-monitor] invoked at <ts>, scope=<cron|event>")` is
+   the first line inside the async handler, before any `step.run`. Inngest
+   surfaces `console.log` in the run stream — if you see this line in the
+   dashboard, the function started. If you don't, Inngest never routed the
+   trigger to the handler.
+2. `createSignalBatch("DOMAIN_MONITOR")` is hoisted out of `step.run` and
+   called unconditionally at the top. This costs us duplicate batch rows on
+   retries (accepted) in exchange for unambiguous evidence: a SignalBatch
+   row means the handler's top-level code ran; no row means the handler
+   never ran at all. There's no middle state anymore.
+3. `retries` bumped from 1 → 3 so a first transient Sonar/Firecrawl failure
+   stops eating every subsequent invocation on that run.
+4. Smoke-test script `scripts/trigger-domain-monitor.ts` sends the
+   `intelligence/domain-monitor` event. Run it, then check SignalBatch:
+
+   ```sh
+   npx tsx scripts/trigger-domain-monitor.ts
+   ```
+
+   ```sql
+   SELECT id, status, "startedAt"
+     FROM "SignalBatch"
+    WHERE "jobType" = 'DOMAIN_MONITOR'
+    ORDER BY "startedAt" DESC LIMIT 5;
+   ```
+
+**Reading the result.**
+- New SignalBatch row + log line visible → event delivery works. Problem is
+  cron-registration: inspect the Inngest Cloud dashboard → Functions →
+  "Domain Monitors" → Cron tab; the cron schedule entry may be missing,
+  paused, or registered under a stale app ID.
+- No SignalBatch row and no log line → event delivery is also broken. Check
+  `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY` in Vercel, and confirm the
+  Inngest app is still registered against the production serve endpoint at
+  `/api/inngest`. Compare to `intelligence/market-sweep` which does run; if
+  only one of the five intelligence events is missing, it's most likely a
+  per-function registration issue in the Inngest dashboard.
+
+Follow-up belongs outside PR #170 — these four changes only add diagnostic
+visibility and can't fix an infra-layer gap.

@@ -85,13 +85,45 @@ export const domainMonitor = inngest.createFunction(
     id: "domain-monitor",
     name: "Domain Monitors",
     concurrency: { limit: 1 },
-    retries: 1,
+    // Bumped from 1 → 3. Sonar and Firecrawl both transient-fail often
+    // enough that a single retry leaves us with silent gaps on otherwise-
+    // recoverable errors.
+    retries: 3,
   },
   [
     { cron: "TZ=America/New_York 15 7 * * 1-5" },
     { event: "intelligence/domain-monitor" },
   ],
-  async ({ step }) => {
+  async ({ event, step }) => {
+    // ── Invocation diagnostic (Session 4 follow-up) ───────────────────────
+    // All 27 enabled DOMAIN monitors have lastRunAt=null and no SignalBatch
+    // row with jobType='DOMAIN_MONITOR' has ever been created. The function
+    // is registered and the cron spec is valid; the invocation is what's
+    // missing. These two changes make the next invocation self-evident:
+    //   1. An unconditional console.log surfaces in Inngest's run stream
+    //      the moment the handler starts. No log line → Inngest never
+    //      started the function.
+    //   2. createSignalBatch is hoisted out of step.run so a batch row
+    //      lands on the first DB touch instead of being gated behind the
+    //      monitor-load step. No batch row → handler crashed before the
+    //      hoisted write (or, again, was never invoked at all).
+    const invokedAt = new Date().toISOString()
+    const triggeredBy = event?.name ?? "unknown"
+    const scope =
+      triggeredBy === "intelligence/domain-monitor" ? "event" : "cron"
+    console.log(
+      `[domain-monitor] invoked at ${invokedAt}, scope=${scope}, event=${triggeredBy}`
+    )
+
+    // Create the batch row UP FRONT, OUTSIDE any step.run. The duplicate
+    // batch rows on retries are the accepted cost of this diagnostic —
+    // presence proves the function ran at least once, absence is now
+    // unambiguous evidence the function was never invoked.
+    const batchId = await createSignalBatch("DOMAIN_MONITOR")
+    console.log(
+      `[domain-monitor] created SignalBatch ${batchId} at ${invokedAt}`
+    )
+
     // ── Step 1: Load enabled DOMAIN monitors ─────────────────────────────
 
     const monitors = await step.run("load-domain-monitors", async () => {
@@ -111,14 +143,12 @@ export const domainMonitor = inngest.createFunction(
     })
 
     if (monitors.length === 0) {
-      return { ran: 0, reason: "no-domain-monitors" }
+      // Complete the hoisted batch so it doesn't sit RUNNING forever.
+      await step.run("complete-empty-batch", async () => {
+        await completeSignalBatch(batchId)
+      })
+      return { batchId, ran: 0, reason: "no-domain-monitors" }
     }
-
-    // ── Step 2: Create signal batch ────────────────────────────────────────
-
-    const batchId = await step.run("create-batch", async () => {
-      return createSignalBatch("DOMAIN_MONITOR")
-    })
 
     // ── Step 3: Process each monitor with its OWN searchQuery + domain ─────
     //
