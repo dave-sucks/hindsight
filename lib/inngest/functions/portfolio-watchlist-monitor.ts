@@ -138,8 +138,15 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
 
       const result = await step.run(`search-${ticker}`, async () => {
         try {
-          const sonarResponse = await searchTicker(ticker)
-          const query = `${ticker} stock news developments catalysts today`
+          // Two normal, human queries — one for holdings, one for watchlist.
+          // Holdings: what a trader Googles on a stock they own. Watchlist:
+          // what a trader Googles when deciding whether to buy. Simple,
+          // static, no keyword salad.
+          const query = isPortfolio
+            ? `${ticker} stock news today`
+            : `${ticker} stock news and price action today`
+
+          const sonarResponse = await searchTicker(ticker, isPortfolio ? "news" : "news and price action")
 
           const signalIds = await createSignalsFromSonar(
             batchId,
@@ -149,7 +156,7 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
             {
               searchTool: "PERPLEXITY_SONAR",
               searchQuery: query,
-              searchContext: `ticker:${ticker}`,
+              searchContext: `ticker:${ticker}:${isPortfolio ? "holding" : "watching"}`,
               monitorId,
               forceTicker: ticker,
             }
