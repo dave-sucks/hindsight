@@ -48,7 +48,13 @@ const morningBriefSchema = z.object({
         signalIds: z.array(z.string()),
       })
     )
-    .describe("New opportunities outside current positions/watchlist that match this analyst's mandate. Max 3."),
+    .describe(
+      "NEW tickers the analyst should consider — MUST be tickers NOT on the " +
+      "watchlist and NOT in open positions. Watchlist graduations belong in " +
+      "watchlistUpdates, not here. Surface up to 5 genuine discovery candidates; " +
+      "if DISCOVERY_SIGNALS has >= 3 eligible tickers, include at least 3. " +
+      "Cap watchlist-recycling will be scrubbed."
+    ),
   attentionPriority: z
     .array(z.string())
     .describe("Ordered list of tickers the analyst should focus on today, most urgent first. Max 5."),
@@ -260,6 +266,45 @@ function scrubHallucinatedSignalIds(
 }
 
 /**
+ * Scrub newOpportunities whose tickers overlap the analyst's watchlist or
+ * open positions. The prompt says "discovery candidates only" but GPT-4o
+ * defaults to safe watchlist names (NVDA, TSM) and collapses the brief to
+ * 2 familiar tickers even when the discovery bucket has 8+ genuine new
+ * candidates. Post-process: drop watchlist/position tickers, count drops,
+ * log so the failure is visible.
+ *
+ * Returns the cleaned brief and the count of scrubbed entries. If every
+ * newOpportunities entry gets scrubbed, the array becomes empty rather
+ * than silently corrected — that's intentional. An empty newOpportunities
+ * with >0 drops is a clearer failure signal than a laundered "looks fine"
+ * brief.
+ */
+function scrubWatchlistFromNewOpportunities(
+  brief: BriefOutput,
+  watchlistTickers: string[],
+  positionTickers: string[]
+): { brief: BriefOutput; scrubbed: number } {
+  const excluded = new Set<string>([
+    ...watchlistTickers.map((t) => t.toUpperCase()),
+    ...positionTickers.map((t) => t.toUpperCase()),
+  ])
+
+  let scrubbed = 0
+  const cleaned = brief.newOpportunities.filter((opp) => {
+    const hasOverlap = opp.tickers.some((t) =>
+      excluded.has(t.toUpperCase())
+    )
+    if (hasOverlap) scrubbed++
+    return !hasOverlap
+  })
+
+  return {
+    brief: { ...brief, newOpportunities: cleaned },
+    scrubbed,
+  }
+}
+
+/**
  * If intelligencePolicy.holdingsAttention > 0 and the analyst has open
  * positions, every holding must have at least one portfolioAlerts entry.
  * The model often emits `portfolioAlerts: []` when there's no fresh signal
@@ -382,23 +427,29 @@ INSTRUCTIONS:
 - Write a concise, actionable morning brief for this specific analyst.
 - portfolioAlerts MUST only cover tickers from PORTFOLIO_SIGNALS.
 - watchlistUpdates MUST only cover tickers from WATCHLIST_SIGNALS.
-- newOpportunities MUST come from DISCOVERY_SIGNALS (or occasionally WATCHLIST_SIGNALS if a watchlist candidate has truly graduated to a tradeable setup).
+- newOpportunities items MUST be tickers NOT in the analyst's watchlist and NOT in any open position. These are DISCOVERY candidates — new names the analyst should consider researching today. Watchlist names graduating to tradeable setup go in watchlistUpdates (with recommendation=INITIATE), NEVER in newOpportunities. newOpportunities tickers that overlap watchlist/positions will be scrubbed out post-generation as a quality failure.
 ${discoveryClause}
 - Be specific — reference the actual signals, not generic market commentary.
 - Attention priority should reflect what needs action TODAY, not just what's interesting.
 - Risk flags must be concrete and time-bound, not vague warnings.
 - Include signal IDs in arrays so the analyst can drill into sources.
 - If a signal contradicts the analyst's current positioning, flag it prominently.
-- Max 3 new opportunities. Quality over quantity.
+- Surface up to 5 newOpportunities. If DISCOVERY_SIGNALS has >= 3 tickers that are NOT in watchlist and NOT in positions, newOpportunities MUST include at least 3. Do not artificially cap at 2 because "quality over quantity" — the analyst wants visibility on every genuine new-ticker candidate, not a filtered 2-pick highlight reel.
 - If a signal has routeReasonCode "CROSS_ANALYST" (matchedUniverse.fromAnalystId set), another analyst's owned monitor surfaced it because it touches a ticker in this analyst's book — treat it as a credible second opinion, not as noise.
 - Every signalId you cite MUST appear in one of the three signal arrays above. Do not invent IDs. Do not reference signals from prior days.`,
           })
 
-          // Post-process: scrub any signalId the model cited that isn't in
-          // today's routed pool, then force an alert row per open position
-          // when holdingsAttention is nonzero. See scrubHallucinatedSignalIds
-          // + enforceHoldingsCoverage for rationale.
-          const { brief: scrubbed, hallucinated } = scrubHallucinatedSignalIds(
+          // Post-process pipeline:
+          //   1. scrubHallucinatedSignalIds — drop cited IDs not in today's pool
+          //   2. scrubWatchlistFromNewOpportunities — drop any newOpportunities
+          //      whose tickers are on the watchlist or in positions. The model
+          //      defaults to familiar watchlist names (NVDA, TSM) instead of
+          //      genuine discovery candidates, collapsing a 50-signal brief to
+          //      2 recycled tickers. This scrub forces the output to actually
+          //      reflect new-ticker opportunities from DISCOVERY_SIGNALS.
+          //   3. enforceHoldingsCoverage — ensure every open position has an
+          //      alert row when holdingsAttention > 0.
+          const { brief: idScrubbed, hallucinated } = scrubHallucinatedSignalIds(
             rawBrief,
             context.allowedSignalIds
           )
@@ -407,8 +458,19 @@ ${discoveryClause}
               `[morning-brief] ${analyst.name}: scrubbed ${hallucinated} hallucinated signalId reference(s) not in today's pool`
             )
           }
+          const { brief: noptScrubbed, scrubbed: nonDiscoveryDrops } =
+            scrubWatchlistFromNewOpportunities(
+              idScrubbed,
+              context.watchlistTickers,
+              context.positionTickers
+            )
+          if (nonDiscoveryDrops > 0) {
+            console.warn(
+              `[morning-brief] ${analyst.name}: scrubbed ${nonDiscoveryDrops} newOpportunities entry/entries that were watchlist/position tickers (not genuine discovery)`
+            )
+          }
           const brief = enforceHoldingsCoverage(
-            scrubbed,
+            noptScrubbed,
             context.positionRows,
             context.holdingsAttention
           )
