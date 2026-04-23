@@ -233,6 +233,17 @@ export const readSignals = defineTool({
     // Per-bucket cap so discovery isn't crowded out by a hot-ticker hour.
     const perBucketCap = Math.max(3, Math.floor(effectiveLimit / 3));
 
+    // Per-ticker cap within each bucket — SMH × 9 in the top 10 is how TMT
+    // missed POET/GSIT/CSCO today. Allow max 2 signals per ticker per bucket
+    // so one hot story doesn't starve discovery of unique names. Signals
+    // with no ticker (macro/aggregate) are not capped since they're
+    // category-level, not ticker-level.
+    const MAX_PER_TICKER_PER_BUCKET = 2;
+    const firstTickerKey = (r: (typeof filtered)[number]): string | null => {
+      const t = r.signal.tickers?.[0];
+      return t ? t.toUpperCase() : null;
+    };
+
     const groupedByBucket: {
       portfolio: typeof filtered;
       watchlist: typeof filtered;
@@ -248,15 +259,39 @@ export const readSignals = defineTool({
     const picked: typeof filtered = [];
     const pickedIds = new Set<string>();
     for (const b of ["portfolio", "watchlist", "discovery"] as const) {
-      for (const r of groupedByBucket[b].slice(0, perBucketCap)) {
+      // Enforce per-ticker cap while walking the bucket in score order.
+      const perTickerCount = new Map<string, number>();
+      let kept = 0;
+      for (const r of groupedByBucket[b]) {
+        if (kept >= perBucketCap) break;
+        const tk = firstTickerKey(r);
+        if (tk) {
+          const n = perTickerCount.get(tk) ?? 0;
+          if (n >= MAX_PER_TICKER_PER_BUCKET) continue;
+          perTickerCount.set(tk, n + 1);
+        }
         picked.push(r);
         pickedIds.add(r.id);
+        kept++;
       }
     }
-    // Backfill to effectiveLimit with whatever's left, highest score first.
+    // Backfill to effectiveLimit with whatever's left, highest score first,
+    // still respecting the per-ticker cap globally so backfill doesn't
+    // undo what the bucket loop enforced.
+    const globalPerTicker = new Map<string, number>();
+    for (const r of picked) {
+      const tk = firstTickerKey(r);
+      if (tk) globalPerTicker.set(tk, (globalPerTicker.get(tk) ?? 0) + 1);
+    }
     for (const r of filtered) {
       if (picked.length >= effectiveLimit) break;
       if (pickedIds.has(r.id)) continue;
+      const tk = firstTickerKey(r);
+      if (tk) {
+        const n = globalPerTicker.get(tk) ?? 0;
+        if (n >= MAX_PER_TICKER_PER_BUCKET) continue;
+        globalPerTicker.set(tk, n + 1);
+      }
       picked.push(r);
       pickedIds.add(r.id);
     }
