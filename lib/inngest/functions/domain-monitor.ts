@@ -147,18 +147,10 @@ export const domainMonitor = inngest.createFunction(
       const query = isFallback ? defaultQueryFor(monitor) : configuredQuery
       if (isFallback) {
         monitorsUsingFallbackQuery++
-        // Self-heal: write the generated query back into config so future runs
-        // don't re-generate it and the monitor is no longer "missing searchQuery".
-        await prisma.monitor.update({
-          where: { id: monitor.id },
-          data: {
-            config: {
-              ...(monitor.config as Record<string, unknown>),
-              searchQuery: query,
-            },
-          },
-        }).catch((e: unknown) =>
-          console.warn(`[domain-monitors] Could not backfill searchQuery for ${monitor.id}:`, e)
+        console.warn(
+          `[domain-monitors] Monitor ${monitor.id} (${monitor.name}, domain=${domain}) ` +
+            `has no config.searchQuery — using fallback query. Populate it via the ` +
+            `analyst editor or wait for Session 4/5 to backfill.`
         )
       }
 
