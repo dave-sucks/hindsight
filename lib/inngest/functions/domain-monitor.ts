@@ -147,16 +147,27 @@ export const domainMonitor = inngest.createFunction(
       const query = isFallback ? defaultQueryFor(monitor) : configuredQuery
       if (isFallback) {
         monitorsUsingFallbackQuery++
-        console.warn(
-          `[domain-monitors] Monitor ${monitor.id} (${monitor.name}, domain=${domain}) ` +
-            `has no config.searchQuery — using fallback query. Populate it via the ` +
-            `analyst editor or wait for Session 4/5 to backfill.`
+        // Self-heal: write the generated query back into config so future runs
+        // don't re-generate it and the monitor is no longer "missing searchQuery".
+        await prisma.monitor.update({
+          where: { id: monitor.id },
+          data: {
+            config: {
+              ...(monitor.config as Record<string, unknown>),
+              searchQuery: query,
+            },
+          },
+        }).catch((e: unknown) =>
+          console.warn(`[domain-monitors] Could not backfill searchQuery for ${monitor.id}:`, e)
         )
       }
 
       const stepKey = `search-${monitor.id}`
 
       const result = await step.run(stepKey, async () => {
+        let signalCount = 0
+        let success = false
+
         try {
           const sonarResponse = await searchDomain(query, [domain], "day")
 
@@ -175,22 +186,25 @@ export const domainMonitor = inngest.createFunction(
             }
           )
 
-          await prisma.monitor.update({
-            where: { id: monitor.id },
-            data: { lastRunAt: new Date() },
-          })
-
-          return {
-            success: true,
-            signalCount: signalIds.length,
-          }
+          signalCount = signalIds.length
+          success = true
         } catch (error) {
           console.error(
             `[domain-monitors] Monitor ${monitor.id} (${monitor.name}, domain=${domain}) search failed:`,
             error instanceof Error ? error.message : error
           )
-          return { success: false, signalCount: 0 }
         }
+
+        // Always stamp lastRunAt — even on failure, so the health tab can
+        // distinguish "never attempted" from "attempted but produced no signals".
+        await prisma.monitor.update({
+          where: { id: monitor.id },
+          data: { lastRunAt: new Date() },
+        }).catch((e: unknown) =>
+          console.error(`[domain-monitors] Failed to stamp lastRunAt for ${monitor.id}:`, e)
+        )
+
+        return { success, signalCount }
       })
 
       totalSignals += result.signalCount

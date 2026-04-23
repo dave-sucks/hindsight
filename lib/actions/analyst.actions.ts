@@ -966,6 +966,8 @@ export async function createAnalystFromBuilder(
               domain: src.domain,
               url: `https://${src.domain}`,
               qualityScore: Math.min(5, Math.max(1, Math.round(src.qualityScore))),
+              // Pre-populate so the domain cron never falls back to the generic query.
+              searchQuery: `latest news and analysis from ${src.name}: catalysts, earnings, guidance, regulatory, announcements`,
             },
             scope: "ANALYST",
             analystId: newAnalyst.id,
