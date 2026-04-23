@@ -21,6 +21,57 @@ import {
 const PORTFOLIO_MONITOR_ID = "monitor_portfolio_searches"
 const WATCHLIST_MONITOR_ID = "monitor_watchlist_searches"
 
+// ── Per-ticker analyst context ──────────────────────────────────────────────
+//
+// The old generic "${ticker} stock news developments catalysts today" query
+// returned retail pap — earnings recaps + analyst target tweaks + stock
+// splits. Same for every ticker, every analyst, every day. The signals
+// produced for your NVDA were the same as what Perplexity would return for
+// any random investor asking about NVDA.
+//
+// Per-ticker contextual query: for every (portfolio or watchlist) ticker, we
+// look up ALL analysts who hold/watch it, merge their themes + salient prompt
+// keywords, and inject those into the Sonar query. NVDA held by a
+// "Tech Momentum Trader" (themes: AI_INFRASTRUCTURE) now gets a query like
+// "NVDA stock AI infrastructure earnings acceleration today" instead of the
+// generic firehose.
+
+const STOPWORDS = new Set([
+  "the", "and", "for", "that", "with", "this", "from", "are", "was", "will",
+  "can", "has", "have", "been", "not", "but", "all", "any", "more", "when",
+  "than", "its", "also", "into", "just", "should", "would", "could", "about",
+  "each", "which", "their", "other", "stock", "stocks", "trade", "trades",
+  "trading", "market", "markets", "position", "positions", "analyst",
+  "research", "look", "find", "your",
+])
+
+function extractTopKeywords(text: string | null | undefined, n: number): string[] {
+  if (!text) return []
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !STOPWORDS.has(w))
+  const counts = new Map<string, number>()
+  for (const w of words) counts.set(w, (counts.get(w) ?? 0) + 1)
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([w]) => w)
+}
+
+/** Convert canonical theme tokens ("AI_INFRASTRUCTURE") to Sonar-friendly
+ *  lowercase phrases ("AI infrastructure"). */
+function humanizeTheme(theme: string): string {
+  return theme.replace(/_/g, " ").toLowerCase()
+}
+
+function buildTickerQuery(ticker: string, context: string | undefined): string {
+  return context
+    ? `${ticker} stock ${context} today`
+    : `${ticker} stock news developments catalysts today`
+}
+
 /** Ensure the two permanent monitor rows exist (idempotent).
  *  Also cleans up old per-ticker monitor rows from the previous architecture. */
 async function ensurePermanentMonitors() {
@@ -91,25 +142,80 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
   async ({ step }) => {
     // ── Step 1: Ensure permanent monitors + collect tickers ────────────
 
-    const { portfolioTickers, watchlistTickers } = await step.run(
+    const { portfolioTickers, watchlistTickers, perTickerContext } = await step.run(
       "collect-tickers",
       async () => {
         await ensurePermanentMonitors()
 
-        const [positions, watchlistItems] = await Promise.all([
+        const [positions, watchlistItems, analysts] = await Promise.all([
           prisma.position.findMany({
             where: { status: "OPEN" },
-            select: { symbol: true },
+            select: { symbol: true, analystId: true },
           }),
           prisma.analystWatchlistItem.findMany({
             where: { status: "ACTIVE" },
-            select: { symbol: true },
+            select: { symbol: true, analystId: true },
+          }),
+          prisma.agentConfig.findMany({
+            where: { enabled: true },
+            select: {
+              id: true,
+              themes: true,
+              analystPrompt: true,
+              strategyInstructions: true,
+            },
           }),
         ])
+
+        type AnalystContext = {
+          id: string
+          themes: string[]
+          analystPrompt: string | null
+          strategyInstructions: string | null
+        }
+        const analystMap = new Map<string, AnalystContext>(
+          analysts.map((a: AnalystContext) => [a.id, a] as const)
+        )
+
+        // ticker → analystIds that hold/watch it
+        const tickerToAnalysts = new Map<string, Set<string>>()
+        for (const p of positions) {
+          if (!p.analystId) continue
+          if (!tickerToAnalysts.has(p.symbol)) tickerToAnalysts.set(p.symbol, new Set())
+          tickerToAnalysts.get(p.symbol)!.add(p.analystId)
+        }
+        for (const w of watchlistItems) {
+          if (!w.analystId) continue
+          if (!tickerToAnalysts.has(w.symbol)) tickerToAnalysts.set(w.symbol, new Set())
+          tickerToAnalysts.get(w.symbol)!.add(w.analystId)
+        }
+
+        // Build per-ticker context: merge themes + top prompt keywords from
+        // every analyst that holds/watches this ticker. Cap length so Sonar
+        // queries stay focused.
+        const perTickerContext: Record<string, string> = {}
+        for (const [ticker, analystIds] of tickerToAnalysts.entries()) {
+          const themeSet = new Set<string>()
+          const keywordSet = new Set<string>()
+          for (const aId of analystIds) {
+            const a = analystMap.get(aId)
+            if (!a) continue
+            for (const t of a.themes) themeSet.add(humanizeTheme(t))
+            for (const k of extractTopKeywords(a.analystPrompt, 2)) keywordSet.add(k)
+            for (const k of extractTopKeywords(a.strategyInstructions, 2)) keywordSet.add(k)
+          }
+          const themes = [...themeSet].slice(0, 3)
+          const keywords = [...keywordSet].slice(0, 3)
+          const parts = [...themes, ...keywords].filter(Boolean)
+          if (parts.length > 0) {
+            perTickerContext[ticker] = parts.join(" ")
+          }
+        }
 
         return {
           portfolioTickers: [...new Set(positions.map((p) => p.symbol))].sort(),
           watchlistTickers: [...new Set(watchlistItems.map((w) => w.symbol))].sort(),
+          perTickerContext,
         }
       }
     )
@@ -138,8 +244,14 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
 
       const result = await step.run(`search-${ticker}`, async () => {
         try {
-          const sonarResponse = await searchTicker(ticker)
-          const query = `${ticker} stock news developments catalysts today`
+          // Contextual Sonar query: themes/keywords merged from every analyst
+          // who holds/watches this ticker. Generic fallback ("NVDA stock news
+          // developments catalysts today") only fires when no analyst claims
+          // the ticker — shouldn't happen in practice since tickers come from
+          // analyst-owned positions/watchlists.
+          const context = perTickerContext[ticker]
+          const sonarResponse = await searchTicker(ticker, context)
+          const query = buildTickerQuery(ticker, context)
 
           const signalIds = await createSignalsFromSonar(
             batchId,
@@ -149,7 +261,7 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
             {
               searchTool: "PERPLEXITY_SONAR",
               searchQuery: query,
-              searchContext: `ticker:${ticker}`,
+              searchContext: `ticker:${ticker}${context ? `:contextual` : `:generic_fallback`}`,
               monitorId,
               forceTicker: ticker,
             }
