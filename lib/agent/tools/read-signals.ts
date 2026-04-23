@@ -96,7 +96,7 @@ function bucketOf(
 
 export const readSignals = defineTool({
   description:
-    "Read intelligence signals routed to you by background discovery jobs. Returns pre-gathered news, filings, earnings, social, and macro signals matched to your mandate, split into three buckets: portfolioSignals (your open positions), watchlistSignals (your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence — sectors, industries, themes). Filter by tickers, themes, or urgency. Signals are marked as READ after retrieval. Use discoverySignals to find new names to research — do NOT ignore them.",
+    "Read intelligence signals routed to you by background discovery jobs. Returns pre-gathered news, filings, earnings, social, and macro signals matched to your mandate, split into three buckets: portfolioSignals (your open positions), watchlistSignals (your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence — sectors, industries, themes). Filter by tickers, themes, or urgency. Every returned signal carries a `signalId` — remember the ones that actually informed your thinking and pass them to record_thesis as `sourceSignalIds` so the system can later attribute the trade's outcome back to the monitors that produced them. Signals are marked as READ after retrieval. Use discoverySignals to find new names to research — do NOT ignore them.",
   schema: z.object({
     tickers: z.array(z.string()).optional().describe("Filter to signals mentioning these tickers"),
     themes: z.array(z.string()).optional().describe("Filter to signals with these themes (e.g. AI_CAPEX, FED_RATE_CUT)"),

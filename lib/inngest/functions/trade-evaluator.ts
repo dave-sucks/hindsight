@@ -37,6 +37,7 @@ export const evaluateTrade = inngest.createFunction(
                   reasoningSummary: true,
                   signalTypes: true,
                   thesisBullets: true,
+                  sourceSignalIds: true,
                 },
               },
             },
@@ -102,6 +103,69 @@ Write an honest post-trade evaluation. Was the thesis correct? Was sizing approp
       });
     });
 
-    return { positionId, evaluated: true };
+    // Step 4: Walk Thesis → Signal → Monitor and update per-monitor ROI counters.
+    // Credits/debits every Monitor whose signal informed this thesis with a
+    // win/loss and recomputes successScore. Historical theses with empty
+    // sourceSignalIds or signals with null monitorId skip silently.
+    const monitorUpdate = await step.run("update-monitor-outcomes", async () => {
+      const signalIds = thesis?.sourceSignalIds ?? [];
+      if (signalIds.length === 0) {
+        return { skipped: true, reason: "no-source-signals" };
+      }
+
+      const signals = await prisma.signal.findMany({
+        where: { id: { in: signalIds } },
+        select: { monitorId: true },
+      });
+
+      const monitorIds = Array.from(
+        new Set(signals.map((s) => s.monitorId).filter((id): id is string => !!id))
+      );
+
+      if (monitorIds.length === 0) {
+        return { skipped: true, reason: "no-monitor-linked-signals" };
+      }
+
+      const outcome = position.outcome;
+      const isWin = outcome === "WIN";
+      const isLoss = outcome === "LOSS";
+      const now = new Date();
+
+      const updated: Array<{ monitorId: string; successScore: number; tradesSourced: number }> = [];
+
+      // Per-monitor update — recompute successScore from the new totals inside
+      // a transaction so concurrent closes don't stomp each other.
+      for (const monitorId of monitorIds) {
+        const result = await prisma.$transaction(async (tx) => {
+          const bumped = await tx.monitor.update({
+            where: { id: monitorId },
+            data: {
+              tradesSourced: { increment: 1 },
+              winsSourced: { increment: isWin ? 1 : 0 },
+              lossesSourced: { increment: isLoss ? 1 : 0 },
+              lastOutcomeAt: now,
+            },
+            select: {
+              tradesSourced: true,
+              winsSourced: true,
+              lossesSourced: true,
+            },
+          });
+          const successScore = bumped.tradesSourced > 0
+            ? (bumped.winsSourced - bumped.lossesSourced) / bumped.tradesSourced
+            : null;
+          await tx.monitor.update({
+            where: { id: monitorId },
+            data: { successScore },
+          });
+          return { successScore: successScore ?? 0, tradesSourced: bumped.tradesSourced };
+        });
+        updated.push({ monitorId, ...result });
+      }
+
+      return { monitorsUpdated: updated.length, details: updated };
+    });
+
+    return { positionId, evaluated: true, monitorUpdate };
   }
 );

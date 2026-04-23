@@ -46,6 +46,12 @@ const thesisSchema = z.object({
     .describe("Key fundamentals from get_stock_data — populates the Data tab in the thesis card."),
   parent_thesis_id: z.string().optional()
     .describe("ID of the prior thesis being updated or invalidated. Links thesis chain."),
+  source_signal_ids: z
+    .array(z.string())
+    .default([])
+    .describe(
+      "IDs of the signals from read_signals that informed this thesis. Persisted so the system can credit the originating monitors when the trade closes. Pass an empty array only if the thesis genuinely relied on no routed signals."
+    ),
 });
 
 export const recordThesis = defineTool({
@@ -63,6 +69,8 @@ export const recordThesis = defineTool({
 
   execute: async (args, ctx) => {
     try {
+      const sourceSignalIds = Array.from(new Set(args.source_signal_ids ?? []));
+
       const coreData = {
         researchRunId: ctx.runId,
         userId: ctx.userId,
@@ -78,6 +86,7 @@ export const recordThesis = defineTool({
         holdDuration: args.hold_duration,
         signalTypes: args.signal_types,
         sourcesUsed: args.sources_used ?? [],
+        sourceSignalIds,
         source: "AGENT",
         modelUsed: "gpt-4o",
       };
@@ -110,9 +119,11 @@ export const recordThesis = defineTool({
         });
       } catch (v2Err: unknown) {
         const errMsg = v2Err instanceof Error ? v2Err.message : String(v2Err);
-        if (errMsg.includes("status") || errMsg.includes("parentThesisId") || errMsg.includes("Unknown arg")) {
+        if (errMsg.includes("status") || errMsg.includes("parentThesisId") || errMsg.includes("sourceSignalIds") || errMsg.includes("Unknown arg")) {
           console.warn("[tool] record_thesis: V2 columns not available, falling back to core schema");
-          thesis = await prisma.thesis.create({ data: coreData });
+          const { sourceSignalIds: _dropped, ...fallbackData } = coreData;
+          void _dropped;
+          thesis = await prisma.thesis.create({ data: fallbackData });
           resolvedParentId = null; // can't update parent if schema doesn't support it
         } else {
           throw v2Err;
@@ -143,6 +154,24 @@ export const recordThesis = defineTool({
             data: { lastThesisId: thesis.id },
           });
         } catch { /* Non-fatal */ }
+      }
+
+      // V3 Session 3 — flip any cited routes to ACTED_ON. Scoped by analystId
+      // so one analyst citing a signal doesn't close out a peer's inbox entry.
+      // Non-fatal: if this fails the thesis is still saved, we just lose the
+      // status flip for that run.
+      if (ctx.analystId && sourceSignalIds.length > 0) {
+        try {
+          await prisma.analystSignalRoute.updateMany({
+            where: {
+              analystId: ctx.analystId,
+              signalId: { in: sourceSignalIds },
+            },
+            data: { status: "ACTED_ON" },
+          });
+        } catch (routeErr) {
+          console.warn("[tool] record_thesis: ACTED_ON route flip failed:", routeErr);
+        }
       }
 
       // Persist RunEvent

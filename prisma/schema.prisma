@@ -116,6 +116,11 @@ model Thesis {
   invalidatedAt    DateTime?
   invalidReason    String?
 
+  // V3 Session 3 — signal→thesis→monitor traceability. When the agent cites
+  // signals via record_thesis, we store their IDs here. trade-evaluator walks
+  // this on position close to credit/debit the originating Monitors.
+  sourceSignalIds  String[]      @default([])
+
   // Relations
   researchRun      ResearchRun   @relation(fields: [researchRunId], references: [id])
   decisions        TradeDecision[]
@@ -225,6 +230,16 @@ model Monitor {
   expiresAt   DateTime? // null = permanent; set for temporary monitors from briefing agent
   sourceRunId String?   // which run created this (for dynamic monitors from briefing agent)
   lastRunAt   DateTime?
+
+  // V3 Session 3 — monitor-level ROI counters, incremented by trade-evaluator
+  // when a position whose thesis cited one of this monitor's signals closes.
+  // successScore = (winsSourced - lossesSourced) / tradesSourced, range -1..+1.
+  // Null successScore means "never sourced a closed trade yet."
+  successScore  Float?
+  tradesSourced Int       @default(0)
+  winsSourced   Int       @default(0)
+  lossesSourced Int       @default(0)
+  lastOutcomeAt DateTime?
 
   signals     Signal[]
 

@@ -338,6 +338,8 @@ Deeper tools only when the signal specifically warrants it: **get_earnings_data*
 ### Stage 3 — THESES
 Record a thesis for every ticker researched, back to back: LONG/SHORT for intended trades, PASS for researched but skipped. Prior theses for the same ticker are auto-superseded. Proceed immediately to Stage 4.
 
+When recording a thesis, pass the IDs of the signals that informed it as source_signal_ids (the signalId values from read_signals). This is how the system learns which monitors produced winning theses — skip it and the outcome can't be credited back. An empty array is only valid when the thesis genuinely relied on no routed signals.
+
 Writing thesis verdicts in narration text instead of calling record_thesis is NOT valid — the thesis will not persist to the database and the run will be marked FAILED. You MUST call record_thesis for every ticker you called get_stock_data on. There is no valid substitute. This is the most critical tool call in the entire run. **You cannot call complete_run until record_thesis has been called for every researched ticker.**
 
 ### Stage 4 — ACT
