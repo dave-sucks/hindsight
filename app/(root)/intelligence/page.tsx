@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 
+import Link from "next/link";
+import { Activity } from "lucide-react";
 import { SignalFeed } from "@/components/intelligence/signal-feed";
 import type { CoverageData } from "@/components/intelligence/coverage-strip";
 import { MonitorList } from "@/components/intelligence/config-panel";
@@ -149,6 +151,10 @@ export default function IntelligencePage() {
               <TabsTrigger value="briefs">Briefs</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-1.5">
+              <Button variant="outline" size="sm" render={<Link href="/intelligence/health" />}>
+                <Activity className="h-4 w-4" />
+                <span className="hidden sm:inline">Health</span>
+              </Button>
               <IntelligenceShowcaseButton />
               <HowItWorksSheet
                 flow="intelligence"
