@@ -308,12 +308,18 @@ export async function GET() {
     errors?: number;
     totalLatencyMs?: number;
   };
+  // Two possible shapes in parameters:
+  //   API route runs (PR #170+):   { toolStats: { totalToolCalls, durationMs, byTool } }
+  //   Morning cron runs (all):     { agentToolCalls: N, elapsedMs: N }
   type RunParams = {
     toolStats?: {
       byTool?: Record<string, ToolStatsEntry>;
       totalToolCalls?: number;
       durationMs?: number;
     };
+    // Morning cron fields
+    agentToolCalls?: number;
+    elapsedMs?: number;
   };
 
   const aggregatedTools = new Map<
@@ -327,11 +333,15 @@ export async function GET() {
     const params = run.parameters as RunParams;
     const ts = params?.toolStats;
 
+    // Prefer toolStats (API route), fall back to cron-written agentToolCalls
+    const totalToolCalls = ts?.totalToolCalls ?? params?.agentToolCalls ?? 0;
+    const durationMs = ts?.durationMs ?? params?.elapsedMs ?? 0;
+
     recentRunRows.push({
       date: run.startedAt.toISOString(),
       analystName: run.agentConfig?.name ?? "Unknown",
-      totalToolCalls: ts?.totalToolCalls ?? 0,
-      durationMs: ts?.durationMs ?? 0,
+      totalToolCalls,
+      durationMs,
       status: run.status,
     });
 
