@@ -359,14 +359,27 @@ export const signalRouter = inngest.createFunction(
       return { routed: 0, reason: "no-enabled-analysts" }
     }
 
-    // ── Step 2: Get today's unrouted signals (with monitor scope) ───────────
+    // ── Step 2: Get today's signals (with monitor scope) ────────────────────
+    //
+    // Historically this used `routes: { none: {} }` to skip signals that had
+    // any prior route. Problem: once ONE analyst was routed, every later
+    // router invocation (triggered by subsequent batch events) skipped the
+    // signal entirely — so analysts missed on the first pass could never
+    // recover. Observed in practice: TMT had 0 POSITION routes on NVDA/AMZN
+    // despite holding both; signals had routed to STA on an earlier pass
+    // and then got skipped.
+    //
+    // Fix: load every signal from today. The (analystId, signalId) UNIQUE
+    // constraint + skipDuplicates on createMany below makes re-evaluation
+    // idempotent — a second pass can only ADD missing routes, never dupe.
+    // Cost: N analysts × M signals evaluations per invocation, bounded by
+    // today's volume (~200 signals × 6 analysts = 1.2k iterations, trivial).
 
-    const signals = await step.run("load-unrouted-signals", async () => {
+    const signals = await step.run("load-todays-signals", async () => {
       const todayStart = etTradingDayDate()
       return prisma.signal.findMany({
         where: {
           createdAt: { gte: todayStart },
-          routes: { none: {} },
         },
         select: {
           id: true,
@@ -495,7 +508,7 @@ export const signalRouter = inngest.createFunction(
             recentRoutes: recentRoutesByAnalyst[profile.id] ?? [],
           })
 
-          // Two independent novelty carve-outs:
+          // Three independent novelty / threshold carve-outs:
           //
           // 1. Urgency — a HIGH or BREAKING signal is actionable news (+49%
           //    breakout, insider burst, earnings beat) even when the ticker
@@ -509,16 +522,34 @@ export const signalRouter = inngest.createFunction(
           //    and the standard floor silently discards every one of them.
           //    Exempt aggregates so "Top Gainers" / "Earnings calendar" land
           //    every day.
+          //
+          // 3. Ticker-owned — POSITION and WATCHLIST matches mean the analyst
+          //    holds or is tracking this ticker. They NEED news on it, even
+          //    MEDIUM-urgency news, even when the ticker has been in routing
+          //    history forever. Previously TMT held NVDA but got 0 POSITION
+          //    routes because novelty=5 killed every MEDIUM NVDA signal and
+          //    the cross-penalty pushed HIGH ones below the 15-point
+          //    threshold. Treat ticker-owned like isOwner: bypass novelty
+          //    drop, bypass threshold drop, and floor novelty at 30 for
+          //    scoring.
           const isUrgent =
             signal.urgency === "BREAKING" || signal.urgency === "HIGH"
           const isAggregate = signal.aggregateType != null
+          const isTickerOwned = tickerHit !== null
 
-          if (novelty < 20 && !isUrgent && !isOwner && !isAggregate) {
+          if (
+            novelty < 20 &&
+            !isUrgent &&
+            !isOwner &&
+            !isAggregate &&
+            !isTickerOwned
+          ) {
             droppedByNovelty++
             continue
           }
 
-          const effectiveNovelty = isUrgent ? Math.max(novelty, 30) : novelty
+          const effectiveNovelty =
+            isUrgent || isTickerOwned ? Math.max(novelty, 30) : novelty
           const crossPenalty = isCrossAnalyst ? 0.6 : 1.0
           const adjusted = Math.max(
             0,
@@ -528,7 +559,7 @@ export const signalRouter = inngest.createFunction(
             )
           )
 
-          if (adjusted < 15 && !isOwner) {
+          if (adjusted < 15 && !isOwner && !isTickerOwned) {
             droppedByThreshold++
             continue
           }
