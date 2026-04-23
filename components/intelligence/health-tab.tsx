@@ -1,9 +1,17 @@
 "use client";
 
 // ── Intelligence Health Tab ──────────────────────────────────────────────────
-// Uses shadcn ChartContainer / ChartConfig / ChartTooltipContent throughout.
-// Colors exclusively from var(--chart-N) CSS variables — no hardcoded hex.
-// Coverage renders as three separate cards in a 3-column grid.
+// Unified card design system:
+//   Frame   — <Card> (no className overrides)
+//   Header  — <CardHeader className="p-4 pb-2"> + <CardTitle className="text-sm font-medium">
+//   Content — <CardContent className="p-4 pt-0">  (charts: px-2 pt-0 pb-4 sm:px-4)
+//   Stats   — <CardContent className="p-4"> (no header; value=2xl, label=xs uppercase)
+// Typography (4 styles only):
+//   1. text-sm font-medium                            — card titles
+//   2. text-2xl font-semibold tabular-nums            — stat values
+//   3. text-xs text-muted-foreground                  — body / descriptions
+//   4. text-xs tabular-nums text-muted-foreground     — inline counts
+//   + text-xs font-medium uppercase tracking-wide text-muted-foreground — stat labels
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useMemo, useState } from "react";
@@ -67,20 +75,16 @@ const ROUTE_LABELS: Record<string, string> = {
 };
 
 // ── Chart configs ──────────────────────────────────────────────────────────────
-
-// ── Brand-aware chart configs ──────────────────────────────────────────────
-// Uses the app's own CSS variables (defined in globals.css):
-//   --brand-blue (#0085E6), --positive (green), --brand-orange (#ff4d00)
-// NOT the shadcn default purple var(--chart-N) monoculture.
+// Brand-aware: uses the app's own CSS variables, NOT shadcn purple var(--chart-N).
 
 const signalChartConfig = {
   total: {
     label: "Total",
-    color: "var(--muted-foreground)",
+    color: "var(--positive)",        // green — all signals collected
   },
   routed: {
     label: "Routed",
-    color: "var(--brand-blue)",
+    color: "var(--brand-blue)",      // blue — made it to an analyst
   },
 } satisfies ChartConfig;
 
@@ -106,7 +110,6 @@ const toolChartConfig = {
   },
 } satisfies ChartConfig;
 
-// Route breakdown: use brand + positive + muted for top 5 route codes
 const ROUTE_CHART_VARS = [
   "var(--positive)",
   "var(--brand-blue)",
@@ -119,11 +122,11 @@ const ROUTE_CHART_VARS = [
 
 function HealthSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
           <Card key={i}>
-            <CardContent className="p-6 space-y-2">
+            <CardContent className="p-4 space-y-2">
               <Skeleton className="h-3 w-20" />
               <Skeleton className="h-8 w-16" />
             </CardContent>
@@ -137,6 +140,8 @@ function HealthSkeleton() {
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
+// No CardHeader — all content in CardContent p-4.
+// The "flip" the user asked for: label is xs uppercase, value is 2xl bold.
 
 function StatCard({
   label,
@@ -153,7 +158,7 @@ function StatCard({
 }) {
   return (
     <Card>
-      <CardContent className="p-6">
+      <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -182,7 +187,7 @@ function StatCard({
   );
 }
 
-// ── Coverage bar section (inside card) ───────────────────────────────────────
+// ── Coverage bar section ──────────────────────────────────────────────────────
 
 const COVERAGE_ROWS = 8;
 
@@ -201,15 +206,15 @@ function CoverageSection({
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-baseline justify-between">
+      <CardHeader className="p-4 pb-2">
+        <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium">{label}</CardTitle>
           <span className="text-xs tabular-nums text-muted-foreground">
             {items.length}
           </span>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 pt-0">
         {items.length === 0 ? (
           <p className="text-xs text-muted-foreground/50">—</p>
         ) : (
@@ -362,7 +367,7 @@ export function HealthTab({ data, loading }: HealthTabProps) {
         </div>
       </div>
 
-      {/* ── Signal coverage — 3 separate cards ── */}
+      {/* ── Signal coverage — 3 cards ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <CoverageSection
           label="Sectors"
@@ -400,26 +405,18 @@ export function HealthTab({ data, loading }: HealthTabProps) {
 // ── Signal volume area chart ──────────────────────────────────────────────────
 
 function SignalVolumeChart({ data }: { data: HealthData["signalsByDay"] }) {
-  const formatted = useMemo(
-    () =>
-      data.map((d) => ({
-        ...d,
-        // XAxis uses the raw date string; tickFormatter parses it
-      })),
-    [data]
-  );
-
+  const formatted = useMemo(() => data.map((d) => ({ ...d })), [data]);
   const hasData = formatted.some((d) => d.total > 0);
 
   return (
-    <Card className="pt-0">
-      <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
-        <div className="grid flex-1 gap-1">
-          <CardTitle>Signal Volume</CardTitle>
-          <CardDescription>Total signals collected vs routed — last 14 days</CardDescription>
-        </div>
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-sm font-medium">Signal Volume</CardTitle>
+        <CardDescription className="text-xs">
+          Total signals collected vs routed — last 14 days
+        </CardDescription>
       </CardHeader>
-      <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+      <CardContent className="px-2 pt-0 pb-4 sm:px-4">
         {!hasData ? (
           <div className="flex items-center justify-center h-[250px] text-sm text-muted-foreground">
             No signals yet
@@ -469,7 +466,7 @@ function SignalVolumeChart({ data }: { data: HealthData["signalsByDay"] }) {
                   />
                 }
               />
-              {/* total is background — rendered first, no stackId so it's independent */}
+              {/* total is background — rendered first, independent (no stackId) */}
               <Area
                 dataKey="total"
                 type="natural"
@@ -500,7 +497,6 @@ function RouteOriginChart({ breakdown }: { breakdown: HealthData["routeBreakdown
   const top5 = breakdown.slice(0, 5);
   const total = top5.reduce((s, r) => s + r.count, 0);
 
-  // Build a ChartConfig dynamically from the top 5 codes
   const routeConfig = useMemo(() => {
     const cfg: ChartConfig = {};
     top5.forEach((r, i) => {
@@ -520,12 +516,14 @@ function RouteOriginChart({ breakdown }: { breakdown: HealthData["routeBreakdown
   }));
 
   return (
-    <Card className="pt-0">
-      <CardHeader className="border-b py-5">
-        <CardTitle>Route Origins</CardTitle>
-        <CardDescription>Last 7 days — how signals were matched</CardDescription>
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-sm font-medium">Route Origins</CardTitle>
+        <CardDescription className="text-xs">
+          Last 7 days — how signals were matched
+        </CardDescription>
       </CardHeader>
-      <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+      <CardContent className="px-2 pt-0 pb-4 sm:px-4">
         {total === 0 ? (
           <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
             No routes yet
@@ -552,7 +550,6 @@ function RouteOriginChart({ breakdown }: { breakdown: HealthData["routeBreakdown
             </PieChart>
           </ChartContainer>
         )}
-        {/* Legend rows */}
         {total > 0 && (
           <div className="space-y-1 mt-2">
             {chartData.map((r) => {
@@ -589,14 +586,12 @@ function TopTickersChart({ tickers }: { tickers: HealthData["topTickers"] }) {
   }));
 
   return (
-    <Card className="pt-0">
-      <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
-        <div className="grid flex-1 gap-1">
-          <CardTitle>Top Tickers by Signal Volume</CardTitle>
-          <CardDescription>Last 7 days</CardDescription>
-        </div>
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-sm font-medium">Top Tickers by Signal Volume</CardTitle>
+        <CardDescription className="text-xs">Last 7 days</CardDescription>
       </CardHeader>
-      <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+      <CardContent className="px-2 pt-0 pb-4 sm:px-4">
         {tickers.length === 0 ? (
           <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
             No ticker data yet
@@ -604,8 +599,7 @@ function TopTickersChart({ tickers }: { tickers: HealthData["topTickers"] }) {
         ) : (
           <ChartContainer
             config={tickerChartConfig}
-            className="aspect-auto w-full"
-            style={{ height: Math.max(180, tickers.length * 28) }}
+            className="aspect-auto h-[280px] w-full"
           >
             <BarChart data={chartData} layout="vertical">
               <CartesianGrid horizontal={false} />
@@ -628,7 +622,7 @@ function TopTickersChart({ tickers }: { tickers: HealthData["topTickers"] }) {
                 cursor={false}
                 content={
                   <ChartTooltipContent
-                    formatter={(value, name, item) => {
+                    formatter={(value, _name, item) => {
                       const kind = (item.payload as { kind: string })?.kind ?? "";
                       const kindLabel =
                         kind === "portfolio"
@@ -657,7 +651,6 @@ function TopTickersChart({ tickers }: { tickers: HealthData["topTickers"] }) {
             </BarChart>
           </ChartContainer>
         )}
-        {/* Kind legend */}
         {tickers.length > 0 && (
           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
             {(["portfolio", "watchlist", "discovery"] as const).map((k) => (
@@ -704,8 +697,8 @@ function MonitorHealthCard({
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+      <CardHeader className="p-4 pb-2">
+        <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-sm font-medium">Monitor Health</CardTitle>
           <div className="flex items-center gap-1.5">
             {neverRunCount > 0 && (
@@ -722,9 +715,9 @@ function MonitorHealthCard({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 pt-0">
         {monitors.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No monitors configured.</p>
+          <p className="text-xs text-muted-foreground">No monitors configured.</p>
         ) : (
           <div className="space-y-2">
             {visible.map((m) => (
@@ -780,12 +773,14 @@ function ToolStatsChart({ stats }: { stats: HealthData["toolStats"] }) {
   const top = stats.slice(0, 12);
 
   return (
-    <Card className="pt-0">
-      <CardHeader className="border-b py-5">
-        <CardTitle>Agent Tool Usage</CardTitle>
-        <CardDescription>Aggregated across last 14 runs</CardDescription>
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-sm font-medium">Agent Tool Usage</CardTitle>
+        <CardDescription className="text-xs">
+          Aggregated across last 14 runs
+        </CardDescription>
       </CardHeader>
-      <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+      <CardContent className="px-2 pt-0 pb-4 sm:px-4">
         <ChartContainer config={toolChartConfig} className="aspect-auto h-[280px] w-full">
           <BarChart data={top} layout="vertical">
             <CartesianGrid horizontal={false} />
@@ -846,10 +841,10 @@ function ToolStatsChart({ stats }: { stats: HealthData["toolStats"] }) {
 function RecentRunsCard({ runs }: { runs: HealthData["recentRuns"] }) {
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="p-4 pb-2">
         <CardTitle className="text-sm font-medium">Recent Agent Runs</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 pt-0">
         <div className="space-y-2">
           {runs.map((run, i) => {
             const date = new Date(run.date);
