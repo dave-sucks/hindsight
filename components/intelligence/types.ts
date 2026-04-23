@@ -64,7 +64,12 @@ export type RouteReasonCode =
   | "SECTOR_MATCH"
   | "INDUSTRY_MATCH"
   | "THEME_MATCH"
-  | "CROSS_ANALYST";
+  | "CROSS_ANALYST"
+  // Aggregate routes — populated when Signal.aggregateType is set (earnings
+  // calendar, market movers). See lib/inngest/functions/signal-router.ts
+  // and lib/universe/feeds.ts.
+  | "FIRM_AGGREGATE_FEED"
+  | "AGGREGATE_TICKER_MATCH";
 
 export interface MatchedUniverse {
   sectors?: string[];
@@ -74,6 +79,8 @@ export interface MatchedUniverse {
   inPositions?: boolean;
   fromAnalystId?: string;
   marketCap?: string;
+  // Canonical FEEDS value (e.g. "EARNINGS_CALENDAR") for aggregate routes.
+  feed?: string;
 }
 
 export const ROUTE_REASON_LABELS: Record<RouteReasonCode, string> = {
@@ -85,6 +92,8 @@ export const ROUTE_REASON_LABELS: Record<RouteReasonCode, string> = {
   INDUSTRY_MATCH: "Industry",
   THEME_MATCH: "Theme",
   CROSS_ANALYST: "Cross-analyst",
+  FIRM_AGGREGATE_FEED: "Feed",
+  AGGREGATE_TICKER_MATCH: "Aggregate — your ticker",
 };
 
 export const ROUTE_REASON_TOOLTIPS: Record<RouteReasonCode, string> = {
@@ -96,6 +105,8 @@ export const ROUTE_REASON_TOOLTIPS: Record<RouteReasonCode, string> = {
   INDUSTRY_MATCH: "Signal matched only the analyst's industry dimension.",
   THEME_MATCH: "Signal matched only the analyst's theme dimension.",
   CROSS_ANALYST: "Signal was originally routed to another analyst, cross-posted because tickers overlap with this analyst's positions or watchlist.",
+  FIRM_AGGREGATE_FEED: "Firm-aggregate signal (earnings calendar / market movers) that this analyst is subscribed to via AgentConfig.feeds. Full firehose.",
+  AGGREGATE_TICKER_MATCH: "Firm-aggregate signal where at least one of the aggregate's tickers is in this analyst's watchlist or open positions. Not subscribed, but fenced to your names.",
 };
 
 export interface SignalBatch {

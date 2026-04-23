@@ -670,6 +670,10 @@ export const signalRouter = inngest.createFunction(
               `code:${code}`,
               ...(isOwner ? ["owned_monitor"] : []),
               ...(isCrossAnalyst ? [`cross_analyst:${ownerId}`] : []),
+              ...(feedHit ? [`feed:${signal.aggregateType}`] : []),
+              ...(signal.aggregateType != null && !feedHit && tickerHit !== null
+                ? [`aggregate_ticker_match:${signal.aggregateType}`]
+                : []),
               `novelty:${novelty}`,
               `raw:${rawScore}`,
             ].join(", "),

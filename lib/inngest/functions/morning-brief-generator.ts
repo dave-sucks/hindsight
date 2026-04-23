@@ -148,12 +148,33 @@ async function buildBriefContext(analystId: string) {
   // the bottom of a flat 50-item list). The discovery bucket absorbs any
   // non-portfolio/non-watchlist code: DISCOVERY, SECTOR_MATCH, INDUSTRY_MATCH,
   // THEME_MATCH, DIRECT_TICKER, CROSS_ANALYST.
-  const portfolioBucket = signalSummaries.filter((s) => s.routeReasonCode === "POSITION")
-  const watchlistBucket = signalSummaries.filter((s) => s.routeReasonCode === "WATCHLIST")
+  //
+  // Aggregate routes (FIRM_AGGREGATE_FEED, AGGREGATE_TICKER_MATCH — from
+  // subscribed feeds or ticker-intersection with the aggregate firehose)
+  // route into portfolio / watchlist when matchedUniverse says one of the
+  // analyst's held/watched tickers is named; otherwise discovery. Without
+  // this the earnings calendar line about AAPL (which the analyst holds)
+  // gets buried under "new opportunities" — the user wanted the exact opposite.
+  const isAggregate = (s: BriefSignal) =>
+    s.routeReasonCode === "FIRM_AGGREGATE_FEED" ||
+    s.routeReasonCode === "AGGREGATE_TICKER_MATCH"
+  const mu = (s: BriefSignal) =>
+    (s.matchedUniverse as { inPositions?: boolean; inWatchlist?: boolean } | null) ?? null
+  const portfolioBucket = signalSummaries.filter(
+    (s) =>
+      s.routeReasonCode === "POSITION" ||
+      (isAggregate(s) && mu(s)?.inPositions === true)
+  )
+  const watchlistBucket = signalSummaries.filter(
+    (s) =>
+      s.routeReasonCode === "WATCHLIST" ||
+      (isAggregate(s) && mu(s)?.inPositions !== true && mu(s)?.inWatchlist === true)
+  )
   const discoveryBucket = signalSummaries.filter(
     (s) =>
       s.routeReasonCode !== "POSITION" &&
-      s.routeReasonCode !== "WATCHLIST"
+      s.routeReasonCode !== "WATCHLIST" &&
+      !(isAggregate(s) && (mu(s)?.inPositions === true || mu(s)?.inWatchlist === true))
   )
 
   // IntelligencePolicy lives as JSON on AgentConfig. Extract the fields the
