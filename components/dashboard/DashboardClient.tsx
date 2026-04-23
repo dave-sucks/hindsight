@@ -710,7 +710,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
 
   return (
     <div className="overflow-y-auto h-[calc(100dvh-3rem)]">
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         <div className="flex gap-6 items-start">
 
           {/* ══ LEFT column ══════════════════════════════════════════════════ */}

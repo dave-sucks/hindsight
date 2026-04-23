@@ -116,7 +116,7 @@ export default async function RunsPage() {
   });
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-3">
+    <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto space-y-3">
       <div className="mb-4 space-y-1">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">

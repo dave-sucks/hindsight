@@ -395,7 +395,7 @@ export default function PerformancePage({ data }: Props) {
   const noTrades = closedTrades === 0;
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto space-y-6">
       <h1 className="text-2xl font-semibold text-foreground">Performance</h1>
 
       {/* ── Top stats bar ── */}

@@ -75,19 +75,14 @@ function stripMarkdown(text: string): string {
 }
 
 function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete: (id: string) => void }) {
+  const router = useRouter();
   const rawPrompt = analyst.analystPrompt || analyst.description || null;
   const promptText = rawPrompt ? stripMarkdown(rawPrompt) : null;
 
   const openCount = analyst.openTrades.length;
 
   return (
-    // Stretched-link pattern: invisible full-cover anchor at z-0, buttons at z-10
-    <div className="relative group">
-      <Link
-        href={`/analysts/${analyst.id}`}
-        className="absolute inset-0 z-0 rounded-[inherit]"
-        aria-label={`Open ${analyst.name}`}
-      />
+    <Link href={`/analysts/${analyst.id}`} className="block group min-w-0">
       <Card className="group-hover:bg-muted/20 transition-colors gap-2 h-full overflow-hidden shadow-none py-0">
 
         {/* ── Top SectionHeader ── */}
@@ -97,7 +92,7 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
             <h2 className="font-brand text-base font-bold leading-tight truncate flex-1 min-w-0">
               {analyst.name}
             </h2>
-            <div className="flex items-center gap-1.5 shrink-0 relative z-10">
+            <div className="flex items-center gap-1.5 shrink-0">
               {openCount > 0 && (
                 <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
                   {openCount} open
@@ -108,35 +103,22 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground pointer-events-auto"
-                  onClick={(e) => e.stopPropagation()}
+                  className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem
-                    className="pointer-events-auto"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Link href={`/analysts/${analyst.id}`} className="w-full">
-                      View details
-                    </Link>
+                  <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}`)}>
+                    View details
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="pointer-events-auto"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Link href={`/analysts/${analyst.id}/edit`} className="w-full">
-                      Edit config
-                    </Link>
+                  <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}/edit`)}>
+                    Edit config
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    className="text-negative focus:text-negative pointer-events-auto"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(analyst.id);
-                    }}
+                    className="text-negative focus:text-negative"
+                    onSelect={() => onDelete(analyst.id)}
                   >
                     Delete analyst
                   </DropdownMenuItem>
@@ -147,7 +129,7 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
 
           {/* ── Prompt ── */}
           <div className="pt-2">
-            <p className="text-sm text-foreground leading-relaxed line-clamp-2">
+            <p className="text-sm text-foreground leading-relaxed line-clamp-2 break-words">
               {promptText ?? (
                 <span className="text-muted-foreground/40 not-italic">No prompt set</span>
               )}
@@ -162,14 +144,19 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
 
         {/* ── Stock rows: up to 3 active trades ── */}
         {analyst.openTrades.length > 0 && (
-          <div className="relative z-10">
+          <div>
             {analyst.openTrades.map((trade) => {
               const cost = trade.entryPrice * trade.shares;
               return (
-                <Link
+                <button
                   key={trade.id}
-                  href={`/trades/${trade.id}`}
-                  className="flex items-center gap-2 px-2 py-1.5 border-t hover:bg-accent/50 transition-colors"
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    router.push(`/trades/${trade.id}`);
+                  }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 border-t hover:bg-accent/50 transition-colors text-left"
                 >
                   <StockLogo ticker={trade.ticker} size="sm" />
                   <span className="text-xs font-mono font-medium">{trade.ticker}</span>
@@ -179,16 +166,13 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
                   <span className="text-xs tabular-nums text-muted-foreground ml-auto">
                     ${cost.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                   </span>
-                </Link>
+                </button>
               );
             })}
           </div>
         )}
-
-
-
       </Card>
-    </div>
+    </Link>
   );
 }
 
@@ -321,7 +305,7 @@ export default function AnalystsPageClient({
 
   if (analysts.length === 0) {
     return (
-      <div className="p-6 max-w-5xl mx-auto space-y-4">
+      <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto space-y-6">
         <BuilderShowcaseTrigger />
         <div>
           <div className="flex items-center gap-2">
@@ -338,7 +322,7 @@ export default function AnalystsPageClient({
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Analysts</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -346,7 +330,7 @@ export default function AnalystsPageClient({
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {analysts.map((analyst) => (
           <AnalystCard key={analyst.id} analyst={analyst} onDelete={setDeleteTarget} />
         ))}
