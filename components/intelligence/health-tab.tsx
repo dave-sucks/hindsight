@@ -68,46 +68,51 @@ const ROUTE_LABELS: Record<string, string> = {
 
 // ── Chart configs ──────────────────────────────────────────────────────────────
 
+// ── Brand-aware chart configs ──────────────────────────────────────────────
+// Uses the app's own CSS variables (defined in globals.css):
+//   --brand-blue (#0085E6), --positive (green), --brand-orange (#ff4d00)
+// NOT the shadcn default purple var(--chart-N) monoculture.
+
 const signalChartConfig = {
   total: {
     label: "Total",
-    color: "var(--chart-2)",
+    color: "var(--muted-foreground)",
   },
   routed: {
     label: "Routed",
-    color: "var(--chart-1)",
+    color: "var(--brand-blue)",
   },
 } satisfies ChartConfig;
 
 const tickerChartConfig = {
   portfolio: {
     label: "Portfolio",
-    color: "var(--chart-2)",
+    color: "var(--positive)",        // green — you own it
   },
   watchlist: {
     label: "Watchlist",
-    color: "var(--chart-1)",
+    color: "var(--brand-blue)",      // blue — you're watching it
   },
   discovery: {
     label: "Discovery",
-    color: "var(--chart-3)",
+    color: "var(--brand-orange)",    // orange — new find
   },
 } satisfies ChartConfig;
 
 const toolChartConfig = {
   calls: {
     label: "Calls",
-    color: "var(--chart-1)",
+    color: "var(--brand-blue)",
   },
 } satisfies ChartConfig;
 
-// Route breakdown uses up to 5 chart colors for the top 5 route codes
+// Route breakdown: use brand + positive + muted for top 5 route codes
 const ROUTE_CHART_VARS = [
+  "var(--positive)",
+  "var(--brand-blue)",
+  "var(--brand-orange)",
   "var(--chart-1)",
   "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
 ];
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -464,19 +469,21 @@ function SignalVolumeChart({ data }: { data: HealthData["signalsByDay"] }) {
                   />
                 }
               />
+              {/* total is background — rendered first, no stackId so it's independent */}
               <Area
                 dataKey="total"
                 type="natural"
                 fill="url(#fillTotal)"
                 stroke="var(--color-total)"
-                stackId="a"
+                strokeWidth={1.5}
               />
+              {/* routed renders on top — shows what fraction got to analysts */}
               <Area
                 dataKey="routed"
                 type="natural"
                 fill="url(#fillRouted)"
                 stroke="var(--color-routed)"
-                stackId="b"
+                strokeWidth={2}
               />
               <ChartLegend content={<ChartLegendContent />} />
             </AreaChart>
@@ -591,11 +598,15 @@ function TopTickersChart({ tickers }: { tickers: HealthData["topTickers"] }) {
       </CardHeader>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         {tickers.length === 0 ? (
-          <div className="flex items-center justify-center h-[250px] text-sm text-muted-foreground">
+          <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
             No ticker data yet
           </div>
         ) : (
-          <ChartContainer config={tickerChartConfig} className="aspect-auto h-[250px] w-full">
+          <ChartContainer
+            config={tickerChartConfig}
+            className="aspect-auto w-full"
+            style={{ height: Math.max(180, tickers.length * 28) }}
+          >
             <BarChart data={chartData} layout="vertical">
               <CartesianGrid horizontal={false} />
               <XAxis
