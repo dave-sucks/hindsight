@@ -85,13 +85,29 @@ export const domainMonitor = inngest.createFunction(
     id: "domain-monitor",
     name: "Domain Monitors",
     concurrency: { limit: 1 },
-    retries: 1,
+    retries: 3,
   },
   [
     { cron: "TZ=America/New_York 15 7 * * 1-5" },
     { event: "intelligence/domain-monitor" },
   ],
-  async ({ step }) => {
+  async ({ step, attempt }) => {
+    // ── Invocation log — surfaces in Inngest function logs ─────────────────
+    // This line proves the function was invoked. If it's absent from logs,
+    // Inngest never called us (scheduler sync issue). If it's present but
+    // monitors all show lastRunAt=null, the failure is inside the loop.
+    console.log(
+      `[domain-monitor] invoked at ${new Date().toISOString()}, attempt=${attempt}`
+    )
+
+    // ── Batch created unconditionally ──────────────────────────────────────
+    // Hoisted out of step.run so a DOMAIN_MONITOR batch row is written on
+    // every invocation. Absence of a batch row = function truly never ran.
+    // (Previously the batch was inside a step.run that only fired if monitors
+    // existed, making "ran but found no monitors" indistinguishable from
+    // "never ran at all".)
+    const batchId = await createSignalBatch("DOMAIN_MONITOR")
+
     // ── Step 1: Load enabled DOMAIN monitors ─────────────────────────────
 
     const monitors = await step.run("load-domain-monitors", async () => {
@@ -111,14 +127,9 @@ export const domainMonitor = inngest.createFunction(
     })
 
     if (monitors.length === 0) {
+      await completeSignalBatch(batchId)
       return { ran: 0, reason: "no-domain-monitors" }
     }
-
-    // ── Step 2: Create signal batch ────────────────────────────────────────
-
-    const batchId = await step.run("create-batch", async () => {
-      return createSignalBatch("DOMAIN_MONITOR")
-    })
 
     // ── Step 3: Process each monitor with its OWN searchQuery + domain ─────
     //
