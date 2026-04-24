@@ -133,7 +133,7 @@ export const readSignals = defineTool({
       .enum(["POSITION", "WATCHLIST", "DISCOVERY"])
       .optional()
       .describe("DO NOT SET on your first call. Omitting bucket is the default and correct shape — it returns all three buckets ranked. Only pass this on a follow-up call when a specific bucket came back empty or thin and you want to confirm there's nothing there. Passing POSITION/WATCHLIST/DISCOVERY alone on the first call is a process failure."),
-    limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy). Rarely need to change."),
+    limit: z.number().optional().describe("Max signals to return (default 100, capped by intelligence policy which defaults to 100). The default is deliberately generous so the agent sees the full day's routed pool in one call. Only lower this if you explicitly want a shorter slice."),
   }),
   ui: "tool-ui" as const,
 
@@ -166,7 +166,7 @@ export const readSignals = defineTool({
     return "Reading signals routed to this analyst";
   },
 
-  execute: async ({ tickers, themes, type, urgency, bucket, limit = 20 }, ctx) => {
+  execute: async ({ tickers, themes, type, urgency, bucket, limit = 100 }, ctx) => {
     if (!ctx.analystId) {
       return {
         summary: "No analyst context — cannot read signals.",
