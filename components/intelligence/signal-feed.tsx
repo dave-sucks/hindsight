@@ -225,12 +225,20 @@ export const SignalRow = memo(function SignalRow({
               );
             })}
           </div>
-        ) : (
+        ) : primaryDomain ? (
           <>
-            {primaryDomain && <Favicon domain={primaryDomain} />}
+            <Favicon domain={primaryDomain} />
             {primarySource && <span>{primarySource}</span>}
           </>
-        )}
+        ) : toolConfig ? (
+          // Sonar-style signals without a sourceUrl (backfill, or Sonar
+          // returned no citation) fall back to the tool logo + monitor name
+          // so the row never renders icon-less.
+          <>
+            <toolConfig.icon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{signal.monitor?.name ?? toolConfig.name}</span>
+          </>
+        ) : null}
         <span className="tabular-nums ml-auto">{relativeTime(signal.createdAt)}</span>
       </div>
 

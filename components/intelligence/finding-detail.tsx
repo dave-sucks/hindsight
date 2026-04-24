@@ -108,12 +108,15 @@ export function FindingDetailDialog({
     primaryName && primaryDomain
       ? `${primaryName} · ${primaryDomain}`
       : primaryDomain ?? primaryName ?? null;
+  // For SEARCH monitors prefer the monitor's name (e.g. "Portfolio Searches")
+  // over the raw prompt — Sonar prompts are multi-topic kitchen-sink strings
+  // that read like garbage in the header pill.
   const query =
     isDomain && domainHeader
       ? domainHeader
       : isAggregate
       ? aggregateTitle(signal.aggregateType)
-      : subject ?? signal.searchQuery ?? signal.headline;
+      : subject ?? signal.monitor?.name ?? signal.searchQuery ?? signal.headline;
 
   // Tool popovers live in the header pill only when the pill is a real
   // "search bar" — i.e. SEARCH-type Sonar signals. DOMAIN findings also use
