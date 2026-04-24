@@ -343,13 +343,6 @@ export default async function TradeDetailPage({
                               dollarChange={stockQuote.d}
                               percentChange={changePct ?? null}
                               size="xl"
-                              className="hidden sm:inline-flex"
-                            />
-                            <PriceChange
-                              dollarChange={stockQuote.d}
-                              percentChange={changePct ?? null}
-                              size="base"
-                              className="sm:hidden"
                             />
                           </span>
                         } />

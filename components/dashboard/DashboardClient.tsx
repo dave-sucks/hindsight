@@ -244,14 +244,18 @@ function StatTile({
   info?: ReactNode;
   valueClassName?: string;
 }) {
+  // Both label and value are text-sm on every breakpoint — differentiated
+  // by font-mono + uppercase + muted color on the label vs. tabular-nums
+  // normal-weight default color on the value. User explicitly asked for
+  // no size hierarchy here.
   const labelNode = (
-    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
+    <span className="text-sm font-mono uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
       {label}
       {info}
     </span>
   );
   const valueNode = (
-    <span className={cn('text-base tabular-nums', valueClassName)}>{value}</span>
+    <span className={cn('text-sm tabular-nums', valueClassName)}>{value}</span>
   );
   return (
     <div className="flex items-baseline justify-between gap-3 sm:flex-col-reverse sm:items-start sm:justify-start sm:gap-1">
@@ -816,14 +820,11 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
           {/* ══ LEFT column ══════════════════════════════════════════════════ */}
           <div className="flex-1 min-w-0 space-y-5">
 
-            {/* Portfolio header — matches the stock-detail header styling
-                (Trade page → app/(root)/trades/[id]/page.tsx). Same text-xl
-                total + colored delta, rendered via the shared PriceChange
-                component so dashboard, trade detail, and stock detail never
-                drift apart on arrow icon / color / sign convention.
-                Mobile: total on its own line (text-xl), delta underneath
-                (text-base — one size down). sm+ collapses back to a single
-                row. */}
+            {/* Portfolio header — shared styling with the stock-detail
+                header (Trade page → app/(root)/trades/[id]/page.tsx). Both
+                total and delta are text-xl so they carry the same visual
+                weight. Mobile collapses the two into stacked rows; desktop
+                keeps them on a single row. */}
             <div className="space-y-0.5">
               {loading ? (
                 <Skeleton className="h-8 w-72" />
@@ -836,13 +837,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                     dollarChange={rangePnl}
                     percentChange={rangePnlPct}
                     size="xl"
-                    className="hidden sm:inline-flex"
-                  />
-                  <PriceChange
-                    dollarChange={rangePnl}
-                    percentChange={rangePnlPct}
-                    size="base"
-                    className="sm:hidden"
                   />
                 </div>
               )}
@@ -1176,7 +1170,11 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                 - Success Rate = win rate across closed positions. */}
             {!loading && (
               <UITooltipProvider>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                {/* -mt-3 pulls the grid up toward the chart — user wanted
+                    the two visually adjacent, not separated by the parent's
+                    space-y-5 gap. gap-0 on mobile stacks tile rows flush;
+                    sm:gap-4 gives the 4-col desktop tiles breathing room. */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-0 sm:gap-4 -mt-3 sm:mt-0">
                   <StatTile
                     label="Available Cash"
                     value={fmtTileCash(portfolio.cash)}
