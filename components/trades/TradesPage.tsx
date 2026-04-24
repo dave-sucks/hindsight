@@ -194,9 +194,9 @@ export default function TradesPage({
   ];
 
   return (
-    <div className="space-y-0">
-      {/* Header + filter tabs */}
-      <div className="px-4 sm:px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+    <div className="h-[calc(100dvh-3rem)] flex flex-col">
+      {/* Header + filter tabs — fixed at the top of the page; doesn't scroll */}
+      <div className="px-4 sm:px-6 pt-6 pb-4 flex items-center justify-between gap-4 shrink-0">
         <h1 className="text-2xl font-semibold">Trades</h1>
         <div className="flex items-center gap-0.5 bg-muted/50 rounded-md border px-1 py-0.5">
           {tabs.map((t) => (
@@ -216,11 +216,14 @@ export default function TradesPage({
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table container — takes remaining vertical space, scrolls both axes.
+          Vertical scroll so long trade histories don't spill into page scroll;
+          horizontal scroll handled by <Table>'s own overflow-x-auto wrapper. */}
       {filtered.length === 0 ? (
         <EmptyState filtered={isFiltered} />
       ) : (
-        <Table>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="pl-6">Name</TableHead>
@@ -231,7 +234,10 @@ export default function TradesPage({
               <TableHead className="text-right">Total Value</TableHead>
               <TableHead className="w-28">Target</TableHead>
               <TableHead>Placed</TableHead>
-              <TableHead className="pr-6"></TableHead>
+              {/* Sticky-right action column. w-0 keeps the column from
+                  adding width when empty; bg-background keeps the header
+                  cell opaque when table content scrolls underneath it. */}
+              <TableHead className="pr-6 sticky right-0 bg-background w-0"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -422,12 +428,19 @@ export default function TradesPage({
                   </TableCell>
 
                   {/* Hover-revealed action group — opacity-0 by default,
-                      opacity-100 on row hover via the `group` class on
-                      TableRow. Two buttons: open-trade (explicit nav
-                      since row is no longer a link) and the 3-dot menu
-                      (Cancel / Close). Kept pr-6 on the cell so rows
-                      stay the same width whether buttons are visible. */}
-                  <TableCell className="pr-6">
+                      opacity-100 on row hover via `group` class on
+                      TableRow. Two buttons: open-trade (explicit nav since
+                      row is no longer a link) and the 3-dot menu (Cancel /
+                      Close).
+                      Cell is `sticky right-0` so when the table scrolls
+                      horizontally, the buttons stay pinned to the right
+                      edge and overlay whichever column is visible
+                      underneath. Solid bg-background + subtle inset
+                      shadow-on-the-left signals the float-over relationship
+                      (similar to how Google Sheets / Airtable handle a
+                      frozen last column). On row hover, the row's muted bg
+                      shows through via bg-muted/50 to match. */}
+                  <TableCell className="pr-6 sticky right-0 bg-background group-hover:bg-muted transition-colors shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.25)] group-hover:shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.35)]">
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                       <Tooltip>
                         <TooltipTrigger
@@ -481,6 +494,7 @@ export default function TradesPage({
             })}
           </TableBody>
         </Table>
+        </div>
       )}
 
       {filtered.length > 0 && isFiltered && (
