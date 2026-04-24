@@ -77,8 +77,10 @@ async function main() {
         direction: true,
         quantity: true,
         avgCost: true,
+        openedAt: true,
         analyst: { select: { name: true } },
       },
+      orderBy: { openedAt: "desc" },
     }),
   ]);
 
@@ -96,9 +98,31 @@ async function main() {
     alpacaBySymbol.set(key(p.symbol, p.side), p);
   }
 
-  const dbBySymbol = new Map<string, (typeof dbPositions)[number]>();
+  // Group DB rows by key — there can be multiple OPEN rows for the same
+  // symbol+direction (drift from place_trade). A single-row Map would
+  // silently collapse them and the diagnostic would undercount.
+  const dbBySymbol = new Map<string, Array<(typeof dbPositions)[number]>>();
   for (const p of dbPositions) {
-    dbBySymbol.set(key(p.symbol, p.direction), p);
+    const k = key(p.symbol, p.direction);
+    const arr = dbBySymbol.get(k);
+    if (arr) arr.push(p);
+    else dbBySymbol.set(k, [p]);
+  }
+
+  // Report duplicates up front — they're the loudest signal the DB is
+  // out of sync with itself.
+  const duplicateGroups = [...dbBySymbol.entries()].filter(([, g]) => g.length > 1);
+  if (duplicateGroups.length > 0) {
+    const totalDupeRows = duplicateGroups.reduce((n, [, g]) => n + g.length, 0);
+    console.log(
+      `⚠️  DUPLICATE_DB_ROWS (${duplicateGroups.length} symbols, ${totalDupeRows} rows) — multiple OPEN rows for the same symbol+direction:\n`,
+    );
+    for (const [k, g] of duplicateGroups) {
+      console.log(
+        `  ${k.padEnd(14)}  ${g.length} rows, qtys=[${g.map((r) => r.quantity).join(", ")}], ids=[${g.map((r) => r.id).join(", ")}]`,
+      );
+    }
+    console.log();
   }
 
   // ── IN_ALPACA_NOT_IN_DB — the invisible positions ───────────────────────
@@ -128,14 +152,16 @@ async function main() {
   }
 
   // ── IN_DB_NOT_IN_ALPACA — DB thinks it's open, Alpaca doesn't ───────────
-  const onlyDb = [...dbBySymbol.entries()].filter(
-    ([k]) => !alpacaBySymbol.has(k),
-  );
-  if (onlyDb.length > 0) {
+  // Flatten each group — every row in a no-match group is stale, not just one.
+  const onlyDbRows: typeof dbPositions = [];
+  for (const [k, g] of dbBySymbol) {
+    if (!alpacaBySymbol.has(k)) onlyDbRows.push(...g);
+  }
+  if (onlyDbRows.length > 0) {
     console.log(
-      `⚠️  IN_DB_NOT_IN_ALPACA (${onlyDb.length}) — DB thinks these are still open but Alpaca says no:\n`,
+      `⚠️  IN_DB_NOT_IN_ALPACA (${onlyDbRows.length}) — DB thinks these are still open but Alpaca says no:\n`,
     );
-    for (const [, p] of onlyDb) {
+    for (const p of onlyDbRows) {
       console.log(
         `  ${p.symbol.padEnd(6)} ${p.direction.padEnd(5)}  qty=${String(p.quantity).padStart(6)}  ` +
           `avg=${fmtMoney(p.avgCost).padStart(10)}  ` +
@@ -148,26 +174,30 @@ async function main() {
   }
 
   // ── IN_BOTH — sanity check for quantity / side mismatch ─────────────────
+  // Compare Alpaca's single qty to the SUM of matching DB rows. Per-row
+  // qty comparisons would be misleading when duplicates are present.
   const both = [...alpacaBySymbol.keys()].filter((k) => dbBySymbol.has(k));
   const mismatches = both.filter((k) => {
     const a = alpacaBySymbol.get(k)!;
-    const d = dbBySymbol.get(k)!;
-    return Math.abs(parseFloat(a.qty) - d.quantity) > 0.01;
+    const group = dbBySymbol.get(k)!;
+    const dbQty = group.reduce((n, r) => n + r.quantity, 0);
+    return Math.abs(parseFloat(a.qty) - dbQty) > 0.01;
   });
   if (mismatches.length > 0) {
     console.log(
-      `⚠️  QUANTITY_MISMATCH (${mismatches.length}) — matched symbol+side but quantities differ:\n`,
+      `⚠️  QUANTITY_MISMATCH (${mismatches.length}) — matched symbol+side but quantities differ (alpaca vs sum-of-DB-rows):\n`,
     );
     for (const k of mismatches) {
       const a = alpacaBySymbol.get(k)!;
-      const d = dbBySymbol.get(k)!;
+      const group = dbBySymbol.get(k)!;
+      const dbQty = group.reduce((n, r) => n + r.quantity, 0);
       console.log(
-        `  ${a.symbol.padEnd(6)}  alpaca=${a.qty}  db=${d.quantity}  (Position.id=${d.id})`,
+        `  ${a.symbol.padEnd(6)}  alpaca=${a.qty}  db-sum=${dbQty}  (${group.length} row${group.length === 1 ? "" : "s"})`,
       );
     }
     console.log();
   } else if (both.length > 0) {
-    console.log(`✓ ${both.length} matched positions have consistent quantities.\n`);
+    console.log(`✓ ${both.length} matched symbols have consistent summed quantities.\n`);
   }
 
   // ── Remediation guide ───────────────────────────────────────────────────

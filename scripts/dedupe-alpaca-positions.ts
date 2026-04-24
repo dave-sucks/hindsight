@@ -22,6 +22,13 @@
  *      'RECONCILE_MANUAL'. The row stays as history; its P&L impact is
  *      neutralized.
  *
+ *   4. DUPLICATES: when multiple DB OPEN rows exist for the same
+ *      symbol+direction (e.g. 4 MU LONG rows), Alpaca has exactly one
+ *      aggregate position. Pick the most-recently-opened DB row as the
+ *      MATCHED keeper (freshest thesis) and route the rest through the
+ *      same neutralize path as DB-ONLY, but with closeReason set to
+ *      'RECONCILE_DUPLICATE' so the origin is obvious in the audit log.
+ *
  * Usage:
  *   npx tsx scripts/dedupe-alpaca-positions.ts                # dry run
  *   npx tsx scripts/dedupe-alpaca-positions.ts --execute      # actually do it
@@ -71,8 +78,10 @@ async function main() {
         direction: true,
         quantity: true,
         avgCost: true,
+        openedAt: true,
         analyst: { select: { name: true } },
       },
+      orderBy: { openedAt: "desc" },
     }),
   ]);
 
@@ -88,8 +97,17 @@ async function main() {
   const alpacaBy = new Map<string, (typeof alpacaPositions)[number]>();
   for (const p of alpacaPositions) alpacaBy.set(key(p.symbol, alpacaDirOf(p)), p);
 
-  const dbBy = new Map<string, (typeof dbPositions)[number]>();
-  for (const p of dbPositions) dbBy.set(key(p.symbol, p.direction), p);
+  // Group DB rows by key. There can be MANY OPEN rows per symbol+direction
+  // when place_trade drifted (e.g. four MU LONG rows for one Alpaca MU
+  // aggregate). A Map<key, row> would silently drop all but the last —
+  // that's the bug. Group into arrays, then pick one keeper per group.
+  const dbByKey = new Map<string, Array<(typeof dbPositions)[number]>>();
+  for (const p of dbPositions) {
+    const k = key(p.symbol, p.direction);
+    const arr = dbByKey.get(k);
+    if (arr) arr.push(p);
+    else dbByKey.set(k, [p]);
+  }
 
   // ── Classify ───────────────────────────────────────────────────────────
   const matched: Array<{
@@ -99,14 +117,22 @@ async function main() {
   }> = [];
   const alpacaOnly: Array<(typeof alpacaPositions)[number]> = [];
   const dbOnly: Array<(typeof dbPositions)[number]> = [];
+  // Extra DB rows beyond the chosen keeper when a group has duplicates.
+  const duplicates: Array<(typeof dbPositions)[number]> = [];
 
   for (const [k, a] of alpacaBy) {
-    const d = dbBy.get(k);
-    if (d) matched.push({ k, alpaca: a, db: d });
-    else alpacaOnly.push(a);
+    const group = dbByKey.get(k);
+    if (!group || group.length === 0) {
+      alpacaOnly.push(a);
+      continue;
+    }
+    // Most-recently-opened row wins the match — freshest thesis / target.
+    // findMany already ordered by openedAt desc, so group[0] is newest.
+    matched.push({ k, alpaca: a, db: group[0] });
+    if (group.length > 1) duplicates.push(...group.slice(1));
   }
-  for (const [k, d] of dbBy) {
-    if (!alpacaBy.has(k)) dbOnly.push(d);
+  for (const [k, group] of dbByKey) {
+    if (!alpacaBy.has(k)) dbOnly.push(...group);
   }
 
   // ── Print the plan ─────────────────────────────────────────────────────
@@ -142,7 +168,17 @@ async function main() {
   console.log(`  ─ Total exposure to unwind: ${fmtMoney(orphanValue)}\n`);
 
   console.log(
-    `DB-ONLY (${dbOnly.length}) — Alpaca has no record, will mark DB CLOSED:\n`,
+    `DUPLICATES (${duplicates.length}) — multiple DB OPEN rows for one Alpaca position, will neutralize the stale ones:\n`,
+  );
+  for (const p of duplicates) {
+    console.log(
+      `  ${p.symbol.padEnd(6)} ${p.direction.padEnd(5)}  qty=${String(p.quantity).padStart(6)}  ` +
+        `avg=${fmtMoney(p.avgCost).padStart(10)}  opened=${p.openedAt.toISOString().slice(0, 10)}  analyst=${p.analyst?.name ?? "?"}  (Position.id=${p.id})`,
+    );
+  }
+
+  console.log(
+    `\nDB-ONLY (${dbOnly.length}) — Alpaca has no record, will mark DB CLOSED:\n`,
   );
   for (const p of dbOnly) {
     console.log(
@@ -163,6 +199,9 @@ The --execute pass:
   • Calls closePosition(symbol) on Alpaca for each ALPACA-ONLY row
     (buys to cover shorts, sells to exit longs). Paper-trading only.
   • Updates each MATCHED DB row's quantity + avgCost from Alpaca.
+  • Sets each DUPLICATE row to status=CLOSED, closePrice=avgCost,
+    realizedPnl=0, outcome=BREAKEVEN, closeReason=RECONCILE_DUPLICATE,
+    closedAt=NOW.
   • Sets each DB-ONLY row to status=CLOSED, closePrice=avgCost,
     realizedPnl=0, outcome=BREAKEVEN, closeReason=RECONCILE_MANUAL,
     closedAt=NOW.
@@ -209,7 +248,28 @@ The --execute pass:
     synced++;
   }
 
-  // 3) Mark DB-only rows as CLOSED (neutralized)
+  // 3) Neutralize duplicates (extra DB rows for a symbol that mapped to
+  //    one Alpaca aggregate). Same shape as DB-only, different reason
+  //    code so the audit log distinguishes "Alpaca closed behind our
+  //    back" from "we had stacked dupes".
+  let duplicatesClosed = 0;
+  for (const p of duplicates) {
+    await prisma.position.update({
+      where: { id: p.id },
+      data: {
+        status: "CLOSED",
+        closePrice: p.avgCost,
+        realizedPnl: 0,
+        outcome: "BREAKEVEN",
+        closeReason: "RECONCILE_DUPLICATE",
+        closedAt: new Date(),
+      },
+    });
+    console.log(`  ✓ Neutralized DB dup ${p.symbol} (Position.id=${p.id})`);
+    duplicatesClosed++;
+  }
+
+  // 4) Mark DB-only rows as CLOSED (neutralized)
   let closed = 0;
   for (const p of dbOnly) {
     await prisma.position.update({
@@ -232,6 +292,7 @@ The --execute pass:
   if (orphansFailed > 0)
     console.log(`  Orphans FAILED to close:  ${orphansFailed} ← re-run or close manually`);
   console.log(`  Matched rows synced:      ${synced}`);
+  console.log(`  Duplicates neutralized:   ${duplicatesClosed}`);
   console.log(`  DB rows neutralized:      ${closed}`);
   console.log(
     `\nAlpaca and DB should now agree on what's open. Re-run this script\nwith no flags to verify (dry run will show zero changes needed).`,
