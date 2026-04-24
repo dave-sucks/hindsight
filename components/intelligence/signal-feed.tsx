@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useCallback, memo } from "react";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
@@ -196,8 +195,8 @@ export const SignalRow = memo(function SignalRow({
   const AggregateSourceIcon = toolConfig?.icon;
 
   return (
-    <Card
-      className="p-3 gap-2 flex flex-col cursor-pointer shadow-none hover:bg-accent/50 transition-colors"
+    <div
+      className="p-3 gap-2 flex flex-col cursor-pointer rounded-lg hover:bg-accent/50 transition-colors"
       onClick={() => onSelect(signal)}
     >
       {/* Row 1: avatars/source + timestamp on top */}
@@ -240,7 +239,7 @@ export const SignalRow = memo(function SignalRow({
 
       {/* Row 3: description */}
       <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{preview}</p>
-    </Card>
+    </div>
   );
 });
 
