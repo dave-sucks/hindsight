@@ -404,12 +404,18 @@ export const morningBriefGenerator = inngest.createFunction(
           }
 
           // Session 3: force discovery representation when discovery signals
-          // exist. If they don't, tell the model explicitly so it doesn't
-          // hallucinate new tickers from thin air.
+          // exist. When they don't, we previously told the brief "do NOT
+          // invent new tickers" — that cascaded into the research run as
+          // a license for the agent to skip discovery entirely. Revised
+          // 2026-04-24: even when DISCOVERY_SIGNALS is empty, nudge the
+          // brief toward a discovery-intent signal to the analyst rather
+          // than explicitly forbidding new names. The analyst's Stage 2
+          // Discovery gate ALWAYS fires regardless of what the brief says,
+          // so the brief should orient the agent, not give it an out.
           const hasDiscovery = context.discoverySignals.length > 0
           const discoveryClause = hasDiscovery
             ? `- newOpportunities MUST include at least 1 (ideally 2) items drawn from DISCOVERY_SIGNALS below — these are candidates outside the analyst's watchlist/positions that matched the Universe. Do NOT skip them just because they look unfamiliar.`
-            : `- No discovery signals today. Do NOT invent new tickers. If you cannot find a real opportunity in PORTFOLIO_SIGNALS or WATCHLIST_SIGNALS, return an empty newOpportunities array and set marketContext to explicitly note "No discovery candidates this session."`
+            : `- No discovery signals were routed to this analyst today. Leave newOpportunities empty in the structured output, but in marketContext note "Discovery router returned no candidates today — the analyst will run universe-fit discovery via get_stock_data and web_search during Stage 2." Do NOT tell the analyst to skip discovery; they are required to research at least 2 new tickers every run regardless of brief content.`
 
           const { object: rawBrief } = await generateObject({
             model: openai("gpt-4o"),

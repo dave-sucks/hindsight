@@ -103,11 +103,47 @@ function bucketOf(
   return "discovery";
 }
 
+/**
+ * ──────────────────────────────────────────────────────────────────────────────
+ * TOOL DESIGN NOTE — why `bucket` was removed from the schema (2026-04-24)
+ * ──────────────────────────────────────────────────────────────────────────────
+ *
+ * Earlier versions of this tool exposed a `bucket` parameter
+ * (POSITION | WATCHLIST | DISCOVERY) to let the agent narrow to one
+ * routing bucket. In practice GPT-4o reached for it on every FIRST call,
+ * passing `bucket: "POSITION"` (or similar) and only seeing 1/3 of its
+ * routed day. That happened despite:
+ *
+ *   • Tool description LEADING with "CALL WITH NO ARGUMENTS"
+ *   • Parameter description saying "FOLLOW-UP ONLY. Do not use on first call"
+ *   • System prompt Stage 1 listing "DO NOT pass bucket..." explicitly
+ *
+ * The enum shape `["POSITION","WATCHLIST","DISCOVERY"]` simply looks like a
+ * "pick one" knob to the model. No amount of prompt hardening stuck.
+ *
+ * Decision: remove `bucket` from the schema entirely. All other filters
+ * (tickers, themes, type, urgency, limit) remain available for legitimate
+ * targeted follow-ups — those have lower footgun risk because they require
+ * the agent to supply specific values (a ticker, a theme name) it can only
+ * know AFTER seeing the first call's response.
+ *
+ * What if someone later wants to add bucket back? Acceptable paths:
+ *   1. Add a new tool like `browse_signals_by_bucket` that's explicit and
+ *      not the default research path.
+ *   2. Add `bucket` back ONLY after building a runtime gate that enforces
+ *      "first read_signals call in this run must be no-args" — e.g. via the
+ *      run context tracker.
+ *
+ * Do NOT just add `bucket` back with stronger prompt language. Been there.
+ * See commit history 2026-04-24 and run cmodf9ipe000004kvmai13sne for
+ * evidence.
+ * ──────────────────────────────────────────────────────────────────────────────
+ */
 export const readSignals = defineTool({
   description:
     "Read TODAY's intelligence signals routed to you by background discovery jobs. Scoped to the current ET trading day.\n\n" +
-    "**CALL WITH NO ARGUMENTS** to get today's entire routed pool for this analyst, grouped into three buckets — portfolioSignals (news on your open positions), watchlistSignals (news on your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence). That is the default and standard usage.\n\n" +
-    "All filters are OPTIONAL and exist for rare, targeted FOLLOW-UP calls after you've already seen the full pool. Passing any filter on your FIRST call narrows what you see and starves the other buckets — do not do this. Examples of legitimate follow-up use: `tickers: [\"NVDA\"]` to pull every NVDA-tagged signal after noticing NVDA in the first call; `bucket: \"DISCOVERY\"` to re-sample the discovery bucket deeper; `urgency: \"BREAKING\"` to sweep breaking news across all buckets.\n\n" +
+    "The tool ALWAYS returns today's entire routed pool for this analyst, grouped into three buckets — portfolioSignals (news on your open positions), watchlistSignals (news on your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence). You cannot filter to a single bucket; that's the point — you need to see all three every run.\n\n" +
+    "All parameters are OPTIONAL. For your FIRST call in a run, pass nothing — that returns the complete pool across all three buckets. Filters (tickers, themes, type, urgency) are for rare follow-up calls to deep-dive a specific ticker or sweep BREAKING urgency; never narrow on the first call.\n\n" +
     "Every returned signal carries a `signalId` — pass them to record_thesis as `sourceSignalIds` so the system can attribute the trade's outcome back to the monitors that produced them. Signals are marked as READ after retrieval. Do NOT ignore discoverySignals — that bucket is how new names surface.",
   schema: z.object({
     tickers: z
@@ -126,29 +162,21 @@ export const readSignals = defineTool({
       .enum(["LOW", "MEDIUM", "HIGH", "BREAKING"])
       .optional()
       .describe("FOLLOW-UP ONLY. Minimum urgency floor. Use urgency='BREAKING' only as a targeted sweep after an initial no-argument call."),
-    bucket: z
-      .enum(["POSITION", "WATCHLIST", "DISCOVERY"])
-      .optional()
-      .describe("FOLLOW-UP ONLY. Re-sample a single bucket more deeply. Do not use on your first call — the no-argument default already returns all three buckets."),
     limit: z
       .number()
       .optional()
-      .describe("Max signals to return. Defaults to 50 (your policy cap). Rarely need to change."),
+      .describe("Max signals to return. Defaults to your policy cap. Rarely need to change."),
   }),
   ui: "tool-ui" as const,
 
   progressLabel: (args) => {
     const hasFilters =
-      args.bucket ||
       (args.tickers && args.tickers.length > 0) ||
       (args.themes && args.themes.length > 0) ||
       args.type ||
       args.urgency ||
       args.limit !== undefined;
     if (!hasFilters) return "Reading today's routed signals";
-    if (args.bucket === "POSITION") return "Follow-up: portfolio signals";
-    if (args.bucket === "WATCHLIST") return "Follow-up: watchlist signals";
-    if (args.bucket === "DISCOVERY") return "Follow-up: discovery signals";
     if (args.tickers && args.tickers.length > 0) {
       const sample = args.tickers.slice(0, 2).map((t) => `$${t.toUpperCase()}`).join(", ");
       const extra = args.tickers.length > 2 ? ` (+${args.tickers.length - 2} more)` : "";
@@ -161,7 +189,7 @@ export const readSignals = defineTool({
     return "Reading signals routed to this analyst";
   },
 
-  execute: async ({ tickers, themes, type, urgency, bucket, limit }, ctx) => {
+  execute: async ({ tickers, themes, type, urgency, limit }, ctx) => {
     if (!ctx.analystId) {
       return {
         summary: "No analyst context — cannot read signals.",
@@ -200,26 +228,11 @@ export const readSignals = defineTool({
     // signal-router uses when writing routes.
     const todayStart = etTradingDayDate();
 
-    // Bucket filter → map to the set of routeReasonCodes to include.
-    // Kept for rare follow-up calls where the agent wants to re-sample one
-    // bucket more deeply. Prompt instructs agent NOT to use on first call.
-    const DISCOVERY_CODES: RouteReasonCode[] = [
-      "DISCOVERY",
-      "SECTOR_MATCH",
-      "INDUSTRY_MATCH",
-      "THEME_MATCH",
-      "DIRECT_TICKER",
-      "CROSS_ANALYST",
-      "FIRM_AGGREGATE_FEED",
-      "AGGREGATE_TICKER_MATCH",
-    ];
-    let codeFilter: RouteReasonCode[] | null = null;
-    if (bucket === "POSITION") codeFilter = ["POSITION"];
-    else if (bucket === "WATCHLIST") codeFilter = ["WATCHLIST"];
-    else if (bucket === "DISCOVERY") codeFilter = DISCOVERY_CODES;
-
     // Load a wide slice so we can enforce per-ticker dedup and still have
-    // enough variety left across all three buckets.
+    // enough variety left across all three buckets. The tool ALWAYS returns
+    // all three buckets (see top-of-file design note — `bucket` was
+    // removed from the schema because GPT-4o kept narrowing to one bucket
+    // on first calls despite every prompt warning).
     const loadCap = Math.max(effectiveLimit * 2, 60);
 
     const routes = await prisma.analystSignalRoute.findMany({
@@ -227,7 +240,6 @@ export const readSignals = defineTool({
         analystId: ctx.analystId,
         status: { in: ["PENDING", "READ"] },
         routedAt: { gte: todayStart },
-        ...(codeFilter ? { routeReasonCode: { in: codeFilter } } : {}),
         signal: {
           ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
           ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
