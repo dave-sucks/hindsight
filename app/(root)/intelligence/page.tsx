@@ -169,8 +169,8 @@ export default function IntelligencePage() {
           value={activeTab}
           onValueChange={setActiveTab}
         >
-          <div className="flex items-center justify-between gap-2">
-            <TabsList>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <TabsList className="self-start">
               <TabsTrigger value="findings">Findings</TabsTrigger>
               <TabsTrigger value="monitors">Monitors</TabsTrigger>
               <TabsTrigger value="briefs">Briefs</TabsTrigger>

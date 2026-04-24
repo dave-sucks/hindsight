@@ -393,7 +393,7 @@ export default function AnalystDetailClient({
       <RunShowcaseDialog open={showRunShowcase} onOpenChange={setShowRunShowcase} />
       <div className="lg:grid lg:grid-cols-3 h-[calc(100dvh-3rem)] overflow-y-auto lg:overflow-hidden">
         {/* ── Left: Analyst briefing ──────────────────────────────────── */}
-        <div className="lg:col-span-2 lg:h-full lg:overflow-y-auto flex flex-col">
+        <div className="lg:col-span-2 lg:h-full flex flex-col lg:min-h-0">
           {/* Header */}
           <div className="flex items-start justify-between gap-4 p-4">
             {/* Left Side Analyst Name */}
@@ -473,8 +473,13 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
-          {/* ── Tabs: Snapshot | Briefs | Findings ───── */}
-          <Tabs defaultValue={0} className="flex-1">
+          {/* ── Tabs: Snapshot | Briefs | Findings ─────
+              The tabs area owns the scroll. The column itself is a flex
+              column so the composer below sits as a normal flex child,
+              always anchored to the column's bottom — sticky-inside-scroll
+              fought flex-1 and caused the composer to drift off-screen
+              when briefs grew tall. */}
+          <Tabs defaultValue={0} className="flex-1 lg:min-h-0 lg:overflow-y-auto">
             <div className="px-4">
               <TabsList>
                 <TabsTrigger value={0}>Snapshot</TabsTrigger>
@@ -512,7 +517,7 @@ export default function AnalystDetailClient({
           </Tabs>
 
           {/* ── Floating composer — desktop only ── */}
-          <div className="hidden lg:block sticky bottom-0 px-4 pb-4">
+          <div className="hidden lg:block px-4 pb-4 shrink-0">
             <FloatingEditorComposer analystId={config.id} />
           </div>
         </div>

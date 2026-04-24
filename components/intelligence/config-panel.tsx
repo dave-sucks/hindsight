@@ -12,12 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
-} from "@/components/ui/table";
+import { Card } from "@/components/ui/card";
 import {
   Popover,
   PopoverContent,
@@ -225,35 +220,31 @@ export function MonitorList({ monitors, onRefresh }: MonitorListProps) {
           {filtered.length} of {monitors.length} monitors
         </p>
 
-        {/* Table */}
-        <Table>
-          <TableBody>
-            {filtered.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">
-                    {monitors.length === 0
-                      ? "No monitors configured"
-                      : "No monitors match your filters"}
-                  </p>
-                  {monitors.length === 0 && (
-                    <p className="text-xs text-muted-foreground/70 mt-1">
-                      Monitors are search queries and tracked websites checked daily by the intelligence pipeline. Create an analyst to generate monitors automatically.
-                    </p>
-                  )}
-                </TableCell>
-              </TableRow>
-            )}
-            {filtered.map((monitor) => (
-              <MonitorRow
-                key={monitor.id}
-                monitor={monitor}
-                onToggle={() => toggleMonitor(monitor)}
-                onDelete={() => deleteMonitor(monitor)}
-              />
-            ))}
-          </TableBody>
-        </Table>
+        {/* Card list — mirrors Findings card shape (avatars/meta top → title → description) */}
+        <div className="space-y-2">
+          {filtered.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-sm text-muted-foreground">
+                {monitors.length === 0
+                  ? "No monitors configured"
+                  : "No monitors match your filters"}
+              </p>
+              {monitors.length === 0 && (
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Monitors are search queries and tracked websites checked daily by the intelligence pipeline. Create an analyst to generate monitors automatically.
+                </p>
+              )}
+            </div>
+          )}
+          {filtered.map((monitor) => (
+            <MonitorRow
+              key={monitor.id}
+              monitor={monitor}
+              onToggle={() => toggleMonitor(monitor)}
+              onDelete={() => deleteMonitor(monitor)}
+            />
+          ))}
+        </div>
       </div>
     </TooltipProvider>
   );
@@ -283,105 +274,81 @@ function MonitorRow({
   const isDomain = monitor.type === "DOMAIN";
   const isApi = monitor.type === "API";
 
+  // Title + description mapping — mirrors Finding card: title = headline
+  // equivalent, description = the "what" in muted text.
+  const title = isDomain
+    ? monitor.name
+    : isApi
+      ? monitor.name
+      : (config.query as string) ?? monitor.name;
+  const description = isDomain
+    ? (config.domain as string) ?? ""
+    : isApi
+      ? `from ${monitor.method === "finnhub" ? "Finnhub" : "FMP"}`
+      : "Search query";
+
   return (
-    <TableRow>
-      {/* Colored type icon */}
-      <TableCell>
+    <Card className="p-3 gap-2 flex flex-col shadow-none hover:bg-accent/50 transition-colors">
+      {/* Row 1: type icon + scope · findings count | switch + info */}
+      <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
         <MonitorTypeIcon type={monitor.type} />
-      </TableCell>
-
-      {/* Name / detail — domain shows URL on a second line, search/api on one.
-          max-w-0 w-full forces this column to absorb leftover width and clip
-          long content with truncate, instead of pushing the row off-screen. */}
-      <TableCell className="max-w-0 w-full">
-        <div className="min-w-0">
-          {isSearch && (
-            <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
-              {(config.query as string) ?? monitor.name}
-            </p>
-          )}
-          {isDomain && (
-            <div className="min-w-0">
-              <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
-                {monitor.name}
-              </p>
-              <p className="text-xs text-muted-foreground font-mono truncate">
-                {(config.domain as string) ?? ""}
-              </p>
-            </div>
-          )}
-          {isApi && (
-            <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
-              {monitor.name}
-              <span className="text-xs text-muted-foreground ml-2">
-                from {monitor.method === "finnhub" ? "Finnhub" : "FMP"}
-              </span>
-            </p>
-          )}
-          {!isSearch && !isDomain && !isApi && (
-            <p className={cn("text-sm truncate", !monitor.enabled && "text-muted-foreground")}>
-              {monitor.name}
-            </p>
-          )}
-          {hasTickers && (
-            <Collapsible open={tickersOpen} onOpenChange={setTickersOpen}>
-              <CollapsibleTrigger
-                render={<Button variant="ghost" size="sm" className="h-auto px-0 py-0.5" />}
-              >
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {monitor.monitoredTickers!.length} tickers
-                </span>
-                {tickersOpen ? (
-                  <ChevronDown className="h-3 w-3 text-muted-foreground ml-1" />
-                ) : (
-                  <ChevronRight className="h-3 w-3 text-muted-foreground ml-1" />
-                )}
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {monitor.monitoredTickers!.map((t) => (
-                    <Tooltip key={t.ticker}>
-                      <TooltipTrigger render={<span className="inline-flex" />}>
-                        <Badge variant="secondary">${t.ticker}</Badge>
-                      </TooltipTrigger>
-                      {t.reason && (
-                        <TooltipContent>{t.reason}</TooltipContent>
-                      )}
-                    </Tooltip>
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-        </div>
-      </TableCell>
-
-      {/* Scope — compressed; analyst name lives in the info popover */}
-      <TableCell className="w-20">
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {monitor.scope === "FIRM" ? "Firm" : "1 analyst"}
-        </span>
-      </TableCell>
-
-      {/* Today's findings count — only show badge when > 0 */}
-      <TableCell>
+        <span>{monitor.scope === "FIRM" ? "Firm" : "1 analyst"}</span>
         {monitor._count.signals > 0 && (
-          <Badge variant="secondary">
-            <span className="tabular-nums">{monitor._count.signals}</span>
-          </Badge>
+          <>
+            <span>·</span>
+            <Badge variant="secondary">
+              <span className="tabular-nums">{monitor._count.signals} findings</span>
+            </Badge>
+          </>
         )}
-      </TableCell>
+        <div className="ml-auto flex items-center gap-1">
+          <Switch checked={monitor.enabled} onCheckedChange={onToggle} />
+          <MonitorInfoPopover monitor={monitor} onDelete={onDelete} />
+        </div>
+      </div>
 
-      {/* Enabled toggle */}
-      <TableCell>
-        <Switch checked={monitor.enabled} onCheckedChange={onToggle} />
-      </TableCell>
+      {/* Row 2: title */}
+      <p className={cn("text-sm font-medium text-foreground leading-tight truncate", !monitor.enabled && "text-muted-foreground")}>
+        {title}
+      </p>
 
-      {/* Detail popover */}
-      <TableCell>
-        <MonitorInfoPopover monitor={monitor} onDelete={onDelete} />
-      </TableCell>
-    </TableRow>
+      {/* Row 3: description (domain/query/endpoint context) */}
+      <p className="text-sm text-muted-foreground leading-relaxed truncate">
+        {description}
+      </p>
+
+      {/* Optional tickers collapsible */}
+      {hasTickers && (
+        <Collapsible open={tickersOpen} onOpenChange={setTickersOpen}>
+          <CollapsibleTrigger
+            render={<Button variant="ghost" size="sm" className="h-auto px-0 py-0.5 self-start" />}
+          >
+            <span className="text-xs font-mono text-muted-foreground tabular-nums">
+              {monitor.monitoredTickers!.length} tickers
+            </span>
+            {tickersOpen ? (
+              <ChevronDown className="h-3 w-3 text-muted-foreground ml-1" />
+            ) : (
+              <ChevronRight className="h-3 w-3 text-muted-foreground ml-1" />
+            )}
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {monitor.monitoredTickers!.map((t) => (
+                <Tooltip key={t.ticker}>
+                  <TooltipTrigger render={<span className="inline-flex" />}>
+                    <Badge variant="secondary">${t.ticker}</Badge>
+                  </TooltipTrigger>
+                  {t.reason && (
+                    <TooltipContent>{t.reason}</TooltipContent>
+                  )}
+                </Tooltip>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </Card>
   );
 }
 
