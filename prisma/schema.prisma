@@ -389,6 +389,13 @@ model AnalystSignalRoute {
 
   routedAt       DateTime    @default(now())
 
+  // Critical: prevents duplicate routes when signal-router runs multiple
+  // times per day (cron + batch-event invocations). Without this,
+  // skipDuplicates:true on createMany is a no-op and every invocation
+  // creates fresh duplicate rows for the same (analyst, signal) pair.
+  // Added 2026-04-24 after PR #173's removal of `routes:{none:{}}` filter
+  // caused 7-8x inflation of route rows across Apr 23-24 (~3,100 dupes).
+  @@unique([analystId, signalId])
   @@index([analystId, status])
   @@index([analystId, routedAt])
   // Session 3: optimized for "give me DISCOVERY routes for this analyst, newest first".

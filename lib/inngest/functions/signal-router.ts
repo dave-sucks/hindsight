@@ -405,9 +405,17 @@ export const signalRouter = inngest.createFunction(
     // despite holding both; signals had routed to STA on an earlier pass
     // and then got skipped.
     //
-    // Fix: load every signal from today. The (analystId, signalId) UNIQUE
-    // constraint + skipDuplicates on createMany below makes re-evaluation
-    // idempotent — a second pass can only ADD missing routes, never dupe.
+    // Fix: load every signal from today. The UNIQUE (analystId, signalId)
+    // constraint on AnalystSignalRoute (see schema + migration
+    // 20260424160000_analyst_signal_route_unique) plus `skipDuplicates: true`
+    // on the createMany below make re-evaluation idempotent — a second
+    // pass can only ADD missing routes, never dupe.
+    //
+    // ⚠ DO NOT REMOVE THE UNIQUE CONSTRAINT. Without it, skipDuplicates is
+    // a no-op and this loop creates fresh duplicate rows on every
+    // invocation. That's exactly the bug Apr 23-24 surfaced (7x row
+    // inflation, 3,100 dupe rows deleted).
+    //
     // Cost: N analysts × M signals evaluations per invocation, bounded by
     // today's volume (~200 signals × 6 analysts = 1.2k iterations, trivial).
 
