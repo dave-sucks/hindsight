@@ -138,6 +138,36 @@ export const recordThesis = defineTool({
         };
       }
 
+      // Researched-before-thesis gate. Every record_thesis call MUST have
+      // a matching get_stock_data call for the same ticker earlier in the
+      // run. Without this gate, the agent could narrate a thesis on a
+      // ticker it never looked at — we saw this on Apr 24 runs where the
+      // agent wrote LONG theses on held tickers after only pulling live
+      // snapshots on unrelated discovery names.
+      //
+      // Exception: if ctx.calledTickers is undefined (older call paths that
+      // don't initialize the tracker, e.g. builder/editor modes), fall
+      // through without gating. The research-run path always sets it.
+      if (ctx.calledTickers) {
+        const tickerKey = args.ticker.toUpperCase();
+        const callsForTicker = ctx.calledTickers.get(tickerKey);
+        const researched = callsForTicker?.has("get_stock_data") ?? false;
+        if (!researched) {
+          console.warn(
+            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — get_stock_data was not called for this ticker in this run.`
+          );
+          return {
+            summary: `Thesis rejected for ${args.ticker}: no get_stock_data call in this run.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note: `Every thesis must be grounded in live research. Call get_stock_data for ${args.ticker} first, then retry record_thesis. A thesis without an underlying data pull is not valid — the tool's UI cards, fence check, and downstream analytics all depend on it.`,
+            },
+            sources: [],
+          };
+        }
+      }
+
       // Inference fallback (only fires when agent provided at least SOME
       // provenance but missed source_kind). Infers from what's present:
       //   - signal_ids present → ROUTED_SIGNAL
@@ -243,18 +273,47 @@ export const recordThesis = defineTool({
         });
       } catch (v2Err: unknown) {
         const errMsg = v2Err instanceof Error ? v2Err.message : String(v2Err);
-        if (errMsg.includes("status") || errMsg.includes("parentThesisId") || errMsg.includes("sourceSignalIds") || errMsg.includes("sourceKind") || errMsg.includes("sourceRationale") || errMsg.includes("Unknown arg")) {
-          console.warn("[tool] record_thesis: V2/V3 columns not available, falling back to core schema");
+        // Narrow fallback: only trigger when the error is specifically about an
+        // unknown column/argument from the V2/V3 schema additions. The previous
+        // catch matched errMsg.includes("status") which matched almost ANY
+        // Prisma error (most error messages contain the word "status"), silently
+        // stripping sourceSignalIds / sourceKind / sourceRationale from every
+        // thesis regardless of the real error cause. That's why 100% of theses
+        // Apr 23-24 showed sourceKind=null — the fallback was eating real
+        // errors.
+        const isUnknownArgError =
+          errMsg.includes("Unknown arg") ||
+          errMsg.includes("Unknown argument") ||
+          // Prisma validation-error shapes vary across versions; catch the
+          // variants that name a specific new column:
+          (errMsg.includes("parentThesisId") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("sourceSignalIds") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("sourceKind") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("sourceRationale") && errMsg.includes("does not exist"));
+
+        if (isUnknownArgError) {
+          // LOUD log — we want to see this in Vercel if it ever happens.
+          console.error(
+            `[tool] record_thesis V2/V3 FALLBACK TRIGGERED for ${args.ticker}. ` +
+              `Prisma client appears out of sync with schema. Dropping new columns. ` +
+              `Full error: ${errMsg}`
+          );
           const {
             sourceSignalIds: _ids,
             sourceKind: _kind,
             sourceRationale: _rationale,
             ...fallbackData
           } = coreData;
-          void _ids; void _kind; void _rationale;
+          void _ids;
+          void _kind;
+          void _rationale;
           thesis = await prisma.thesis.create({ data: fallbackData });
-          resolvedParentId = null; // can't update parent if schema doesn't support it
+          resolvedParentId = null;
         } else {
+          // Any other error is a real failure — log with full context and throw.
+          console.error(
+            `[tool] record_thesis create() FAILED for ${args.ticker}: ${errMsg}`
+          );
           throw v2Err;
         }
       }

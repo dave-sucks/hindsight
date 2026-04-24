@@ -136,6 +136,14 @@ export const morningResearch = inngest.createFunction(
             system: systemPrompt,
             prompt: "Begin your research session. Follow all phases in order.",
             tools,
+            // strictJsonSchema forces OpenAI to reject tool calls whose arguments
+            // don't match the Zod-derived JSON Schema. Without this, the model
+            // can invent parameters (observed: passing bucket="DISCOVERY" on
+            // read_signals even after bucket was removed from the schema) that
+            // Zod silently strips, leaving the transcript misleading.
+            providerOptions: {
+              openai: { strictJsonSchema: true },
+            },
             stopWhen: stepCountIs(30),
             abortSignal: AbortSignal.timeout(240_000), // 4 min — leaves 1 min for cleanup before Vercel's 5 min limit
             onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage }) {
@@ -221,6 +229,7 @@ export const morningResearch = inngest.createFunction(
                   },
                 ],
                 tools,
+                providerOptions: { openai: { strictJsonSchema: true } },
                 stopWhen: stepCountIs(15),
                 abortSignal: AbortSignal.timeout(120_000),
                 onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, finishReason }) {

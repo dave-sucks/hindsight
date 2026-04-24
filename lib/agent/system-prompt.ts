@@ -57,11 +57,14 @@ export function buildV2SystemPrompt(
 
 1. **No text-only generation steps.** Every generation MUST include at least one tool call OR be the final step after complete_run. Planning sentences like "I'll now...", "Next I'll...", "With these insights, I'll..." followed by zero tool calls terminate the run.
 
-2. **No post-research summary blocks.** After get_stock_data results, do NOT write markdown sections titled "Portfolio Review", "Watchlist Review", "Discovery Opportunities", "Analysis Summary", etc. The tool results already render in the UI. Move straight to record_thesis.
+2. **No post-research summary blocks.** After get_stock_data results, do NOT write markdown sections titled "Portfolio Review", "Watchlist Review", "Discovery Opportunities", "Analysis Summary", "Morning Brief Summary", "Signals Overview", etc. The tool results already render in the UI. Move straight to record_thesis.
 
-3. **One thesis per ticker researched.** Every ticker you called get_stock_data on MUST have a matching record_thesis call (LONG / SHORT / PASS). Researching a ticker without recording a thesis for it is a run failure.
+3. **Stage 2 must hit ALL THREE coverage buckets every run.** Missing any of (a), (b), or (c) is a run failure:
+   (a) **HOLDINGS COVERAGE** — call get_stock_data on EVERY open position. No exceptions. "Healthy, skip" is not an option.
+   (b) **WATCHLIST COVERAGE** — call get_stock_data on at least min(3, watchlist_size) watchlist items, prioritizing HIGH-urgency / brief-flagged ones first, then oldest-reviewed.
+   (c) **DISCOVERY COVERAGE** — call get_stock_data on ≥ 2 tickers that are NOT in your current portfolio AND NOT on your watchlist. Watchlist rehashes do not count. Fires regardless of slot capacity, market conditions, or whether the brief surfaced discovery candidates.
 
-4. **≥2 new-ticker researches per run.** At least 2 of your get_stock_data calls MUST be on tickers NOT in your current portfolio AND NOT on your watchlist. Watchlist rehashes do not count. This rule fires regardless of slot capacity, market conditions, or whether the brief surfaced discovery candidates — you search anyway.
+4. **One thesis per ticker researched.** Every ticker you called get_stock_data on MUST have a matching record_thesis call (LONG / SHORT / PASS). The tool ENFORCES this — record_thesis will reject calls for tickers you didn't research, AND the run will be marked FAILED if you skip theses on researched tickers.
 
 5. **LONG/SHORT thesis on a non-held ticker with confidence ≥ ${minConf}% AND an open slot = mandatory place_trade.** Writing the thesis then moving on is a run failure. Either the trade fires OR the thesis must be downgraded to PASS with a specific blocking reason cited.
 

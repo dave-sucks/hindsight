@@ -310,14 +310,29 @@ export async function POST(
 
     const result = streamText({
       model: resolvedModel,
+      // Provider-specific options. For OpenAI, strictJsonSchema forces OpenAI
+      // to validate tool-call arguments against the Zod-derived JSON Schema at
+      // the API level — rejecting hallucinated fields (e.g. `bucket` when it's
+      // not in the schema) before they reach the SDK. Without this, AI SDK
+      // relies on Zod to strip unknown keys server-side, which succeeds
+      // functionally but leaves the transcript full of phantom parameters the
+      // model thought it was using. Anthropic gets its thinking budget.
       ...(effectiveProvider === "anthropic" &&
-        modeConfig.thinkingBudget != null && {
-          providerOptions: {
-            anthropic: {
-              thinking: { type: "enabled", budgetTokens: modeConfig.thinkingBudget },
+      modeConfig.thinkingBudget != null
+        ? {
+            providerOptions: {
+              anthropic: {
+                thinking: { type: "enabled", budgetTokens: modeConfig.thinkingBudget },
+              },
             },
-          },
-        }),
+          }
+        : effectiveProvider === "openai"
+          ? {
+              providerOptions: {
+                openai: { strictJsonSchema: true },
+              },
+            }
+          : {}),
       // Low temperature for research-run consistency — the agent should follow
       // the stage contract deterministically, not riff on it.
       ...(agentMode === "research-run" && { temperature: 0.2 }),

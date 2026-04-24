@@ -54,6 +54,19 @@ export const getStockData = defineTool({
   progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()}'s snapshot`,
 
   execute: async ({ ticker, include_technicals }, ctx) => {
+    // Mark this ticker as researched in the in-run tracker so record_thesis
+    // can gate against it ("was get_stock_data called for this ticker?").
+    // Populated before any early-return paths so even failed/partial fetches
+    // count as "researched" — the agent attempted, which is what the gate
+    // checks. Falls back gracefully if ctx.calledTickers is undefined
+    // (older call sites that don't initialize the tracker).
+    if (ctx.calledTickers) {
+      const key = ticker.toUpperCase();
+      const existing = ctx.calledTickers.get(key) ?? new Set<string>();
+      existing.add("get_stock_data");
+      ctx.calledTickers.set(key, existing);
+    }
+
     const doTechnicals = include_technicals !== false;
     const now = Math.floor(Date.now() / 1000);
     const ninetyDaysAgo = now - 90 * 86400;
