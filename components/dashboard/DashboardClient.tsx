@@ -249,7 +249,7 @@ function StatTile({
   // normal-weight default color on the value. User explicitly asked for
   // no size hierarchy here.
   const labelNode = (
-    <span className="text-sm font-mono uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
+    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
       {label}
       {info}
     </span>
