@@ -223,7 +223,12 @@ export default function TradesPage({
         <EmptyState filtered={isFiltered} />
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <Table>
+          {/* border-separate + border-spacing-0 is REQUIRED for
+              `position: sticky` on <th>/<td> to work — collapsed borders
+              break sticky positioning across browsers. The TableHeader
+              still gets its border-b via the [&_tr]:border-b selector
+              from shadcn so visual rendering is unchanged. */}
+          <Table className="border-separate border-spacing-0">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="pl-6">Name</TableHead>
