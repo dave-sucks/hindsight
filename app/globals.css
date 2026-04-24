@@ -69,10 +69,7 @@
   100% { transform: translateX(100%); }
 }
 
-/* ── Light (Nova) ─────────────────────────────────────────────────
-   Light theme uses a muted canvas (`--background`) with pure-white
-   `--card` + `--popover` surfaces so cards read as "paper" floating on
-   the page. Dark mode inverts: muted mid-dark canvas, near-black cards. */
+/* ── Light (Nova) ───────────────────────────────────────────────── */
 :root {
   --radius: 0.625rem;
   --card: oklch(1 0 0);
@@ -112,17 +109,17 @@
   --brand-blue-foreground: #ffffff;
   --brand-orange: #ff4d00;
   --brand-orange-foreground: #ffffff;
-  --background: oklch(0.966 0.005 106.5);
+  --background: oklch(1 0 0);
   --foreground: oklch(0.153 0.006 107.1);
 }
 
 /* ── Dark (Nova) ────────────────────────────────────────────────── */
 .dark {
-  --background: oklch(0.228 0.013 107.4);
+  --background: oklch(0.153 0.006 107.1);
   --foreground: oklch(0.988 0.003 106.5);
-  --card: oklch(0.153 0.006 107.1);
+  --card: oklch(0.228 0.013 107.4);
   --card-foreground: oklch(0.988 0.003 106.5);
-  --popover: oklch(0.153 0.006 107.1);
+  --popover: oklch(0.228 0.013 107.4);
   --popover-foreground: oklch(0.988 0.003 106.5);
   --primary: oklch(0.93 0.007 106.5);
   --primary-foreground: oklch(0.228 0.013 107.4);
