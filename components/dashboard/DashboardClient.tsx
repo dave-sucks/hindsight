@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 import {
   Area,
@@ -209,6 +209,50 @@ function groupActivityByDay(items: ActivityFeedItem[]) {
     else { groups.push({ label: lbl, items: [item] }); }
   }
   return groups;
+}
+
+// ── StatTile — one cell in the portfolio stats grid below the chart ────────
+// Label is uppercase mono text-xs muted; value sits below at text-base normal.
+// Optional sublabel renders in a smaller muted line under the value for
+// secondary context (e.g. "3 positions").
+function StatTile({
+  label,
+  value,
+  sublabel,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  sublabel?: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className={cn('text-base tabular-nums', valueClassName)}>{value}</p>
+      {sublabel && (
+        <p className="text-xs text-muted-foreground tabular-nums">{sublabel}</p>
+      )}
+    </div>
+  );
+}
+
+function fmtTileCurrency(n: number): string {
+  // Match the header — no cents, thousands separator. Large enough that
+  // decimal precision is just visual noise in a stat tile.
+  return '$' + Math.round(n).toLocaleString();
+}
+
+function fmtTileSigned(n: number): string {
+  // Like fmtTileCurrency but always explicit sign, for deltas / cash that
+  // can go negative on margin accounts. "-$7,496" reads cleaner than
+  // "$-7,496" — put the sign before the $.
+  const abs = '$' + Math.round(Math.abs(n)).toLocaleString();
+  if (n < 0) return `-${abs}`;
+  if (n > 0) return `+${abs}`;
+  return abs;
 }
 
 // Mirrors ACTION_STATUS from decision-summary-card.tsx
@@ -620,10 +664,12 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     realizedPnl: mockPortfolio.totalPnl,
     winRate: 0.6,
     openCount: mockOpenTrades.length,
-    // Mock fallback — these are never shown in prod, just satisfy the type.
+    // Mock fallback — never rendered in prod, just satisfies the type.
+    netPositionValue: 0,
     positionMarketValue: 0,
     longMarketValue: 0,
     shortMarketValue: 0,
+    cash: mockPortfolio.totalValue,
     buyingPower: mockPortfolio.totalValue,
     usingMargin: false,
     leverageRatio: 1,
@@ -639,10 +685,6 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
 
   // ── Portfolio header values ─────────────────────────────────────────────────
   const totalValueStr = formatCurrency(portfolio.totalValue);
-  const winRateStr =
-    portfolio.winRate != null
-      ? `${(portfolio.winRate * 100).toFixed(0)}% win rate`
-      : null;
 
   // Range-aware P&L: delta over the selected range from the active (filtered) curve
   const rangePnl = portfolioData.length >= 2
@@ -725,67 +767,36 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
           {/* ══ LEFT column ══════════════════════════════════════════════════ */}
           <div className="flex-1 min-w-0 space-y-5">
 
-            {/* Portfolio header */}
-            <div className="space-y-1">
+            {/* Portfolio header — matches the stock-detail header styling
+                (Trade page → app/(root)/trades/[id]/page.tsx). Single text-xl
+                line: total account value + colored delta with arrow + %.
+                Everything else (cash, net value, unrealized, win rate) now
+                lives in the 4-tile grid below the chart. */}
+            <div className="space-y-0.5">
               {loading ? (
-                <>
-                  <Skeleton className="h-10 w-48" />
-                  <Skeleton className="h-5 w-64" />
-                </>
+                <Skeleton className="h-8 w-72" />
               ) : (
-                <>
-                  <p className="text-4xl font-semibold tabular-nums tracking-tight">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xl font-semibold tabular-nums">
                     {totalValueStr}
-                  </p>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <p className="text-sm tabular-nums flex items-center gap-1">
-                      <span className={pnlPositive ? 'text-positive' : 'text-negative'}>
-                        {pnlPositive ? '+' : '-'}${Math.abs(rangePnl).toFixed(2)}{' '}
-                        ({pnlPositive ? '+' : ''}{rangePnlPct.toFixed(2)}%)
-                      </span>
-                      {winRateStr && (
-                        <>
-                          <span className="text-muted-foreground mx-0.5">—</span>
-                          <span className="text-muted-foreground">{winRateStr}</span>
-                        </>
+                  </span>
+                  <span
+                    className={cn(
+                      'text-xl tabular-nums flex items-center gap-2',
+                      pnlPositive ? 'text-positive' : 'text-negative',
+                    )}
+                  >
+                    {pnlPositive ? '+' : '-'}${Math.abs(rangePnl).toFixed(2)}
+                    <div className="flex items-center">
+                      {pnlPositive ? (
+                        <ArrowUpRight className="h-5 w-5" />
+                      ) : (
+                        <ArrowDownRight className="h-4 w-4" />
                       )}
-                    </p>
-                  </div>
-                  {/* Account-shape line — what you're holding, what's still
-                      available to trade. Deliberately plain language; the
-                      raw "cash" number is misleading on margin accounts
-                      (goes negative when borrowed), so we don't surface it.
-                      Return-on-deployed (a trading-edge metric) lives on
-                      the Performance page where it can be computed
-                      unambiguously from closed-trade data. */}
-                  {(portfolio.positionMarketValue > 0 || portfolio.openCount > 0) && (
-                    <div className="pt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums">
-                      <span>
-                        Holding{' '}
-                        <span className="text-foreground font-medium">
-                          ${portfolio.positionMarketValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </span>
-                        {portfolio.openCount > 0 && (
-                          <span className="opacity-70"> · {portfolio.openCount} {portfolio.openCount === 1 ? 'position' : 'positions'}</span>
-                        )}
-                      </span>
-                      <span>
-                        Buying power{' '}
-                        <span className="text-foreground font-medium">
-                          ${portfolio.buyingPower.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </span>
-                      </span>
-                      {portfolio.usingMargin && (
-                        <span
-                          title={`Gross exposure ${portfolio.leverageRatio.toFixed(2)}× equity — short positions and/or margin in use.`}
-                          className="text-amber-500"
-                        >
-                          {portfolio.leverageRatio.toFixed(2)}× leverage
-                        </span>
-                      )}
+                      {rangePnlPct.toFixed(2)}%
                     </div>
-                  )}
-                </>
+                  </span>
+                </div>
               )}
             </div>
 
@@ -1096,6 +1107,48 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                 )
               )}
             </div>
+
+            {/* ── Portfolio stats grid (below the chart) ─────────────────
+                4 tiles. Values reconcile against the top-of-page total:
+                  cash + netPositionValue = totalValue (accounting identity)
+                …so the user can add tile 1 + tile 2 and get the big number,
+                which is the whole reason the user asked for this redesign.
+                - Available Cash = raw Alpaca cash. Negative when the
+                  account is borrowing from the margin line; we annotate
+                  that case in the sublabel rather than hide it.
+                - Net Value = long MV − short MV (signed) — the actual
+                  net worth of open positions.
+                - Unrealized Gain = equity-derived, always matches what
+                  Alpaca reports (not DB-summed, which could undercount
+                  when live prices don't fetch).
+                - Success Rate = win rate across closed positions. */}
+            {!loading && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <StatTile
+                  label="Available Cash"
+                  value={fmtTileSigned(portfolio.cash)}
+                  valueClassName={portfolio.cash < 0 ? 'text-negative' : undefined}
+                  sublabel={portfolio.usingMargin ? 'using margin' : undefined}
+                />
+                <StatTile
+                  label="Net Value"
+                  value={fmtTileCurrency(portfolio.netPositionValue)}
+                  sublabel={portfolio.openCount > 0
+                    ? `${portfolio.openCount} position${portfolio.openCount === 1 ? '' : 's'}`
+                    : undefined}
+                />
+                <StatTile
+                  label="Unrealized Gain"
+                  value={fmtTileSigned(portfolio.unrealizedPnl)}
+                  valueClassName={portfolio.unrealizedPnl >= 0 ? 'text-positive' : 'text-negative'}
+                />
+                <StatTile
+                  label="Success Rate"
+                  value={portfolio.winRate != null ? `${Math.round(portfolio.winRate * 100)}%` : '—'}
+                  sublabel={portfolio.winRate == null ? 'no closed trades yet' : undefined}
+                />
+              </div>
+            )}
 
             {/* Theses + Activity tabbed section */}
             <HomeBottomSection

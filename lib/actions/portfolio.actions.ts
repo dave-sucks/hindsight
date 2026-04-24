@@ -26,12 +26,25 @@ export interface PortfolioStats {
   // is on margin. Avoid showing raw "cash" on the dashboard — on margin
   // accounts cash can be negative (borrowed) which is confusing and not
   // actionable. Buying power is the useful "what can I deploy next" number.
-  /** Gross position market value = long + |short|. Alpaca reports this as separate fields. */
+  /**
+   * Net position value — signed sum of long and short market values.
+   * Math identity: `cash + netPositionValue = equity` (always, regardless
+   * of margin state). This is the "Net Value" tile on the dashboard
+   * because the user can verify the math adds up: cash + net = total.
+   */
+  netPositionValue: number;
+  /** Gross position market value = long + |short|. Used for leverage calc, not shown directly. */
   positionMarketValue: number;
   /** Market value of long positions only. */
   longMarketValue: number;
-  /** Market value of short positions (absolute, i.e. $13K short reported as 13000 not -13000). */
+  /** Market value of short positions (absolute — $13K short stored as 13000). */
   shortMarketValue: number;
+  /**
+   * Literal Alpaca cash. NEGATIVE means the account is borrowing from
+   * the margin line. Surfaced raw so `cash + netPositionValue` reconciles
+   * to total equity; UI can annotate the negative case as "using margin."
+   */
+  cash: number;
   /** What you can still trade — includes margin. From Alpaca `buying_power`. */
   buyingPower: number;
   /** True if the account is using borrowed capital (positionMarketValue > equity). */
@@ -334,9 +347,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     realizedPnl: 0,
     winRate: null,
     openCount: 0,
+    netPositionValue: 0,
     positionMarketValue: 0,
     longMarketValue: 0,
     shortMarketValue: 0,
+    cash: STARTING_CAPITAL,
     buyingPower: STARTING_CAPITAL,
     usingMargin: false,
     leverageRatio: 1,
@@ -745,13 +760,21 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   // ── 6. Portfolio stats ─────────────────────────────────────────────────────
   const realizedPnl = dbClosedPositions.reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0);
-  const unrealizedPnl = openTrades.reduce((sum, t) => sum + t.pnl, 0);
-  const totalPnl = realizedPnl + unrealizedPnl;
-  // Use Alpaca's live equity as the source of truth. Falls back to DB math
-  // only if Alpaca creds are missing or the account call failed.
+  // Alpaca's equity is always correct — it includes every open position's
+  // live mark-to-market. Derive unrealized from that identity:
+  //   equity = starting_capital + realized + unrealized
+  //   ⇒ unrealized = equity − starting_capital − realized
+  // The old path summed openTrades[].pnl, but per-position pnl is 0 when
+  // the live-price fetch silently misses a ticker — so a 10-position
+  // portfolio where 3 prices didn't fetch would under-count by those 3.
+  // Falls back to the DB-summed path only when Alpaca creds are absent.
   const totalValue = alpacaAccount
     ? parseFloat(alpacaAccount.equity)
-    : STARTING_CAPITAL + realizedPnl + unrealizedPnl;
+    : STARTING_CAPITAL + realizedPnl + openTrades.reduce((sum, t) => sum + t.pnl, 0);
+  const unrealizedPnl = alpacaAccount
+    ? totalValue - STARTING_CAPITAL - realizedPnl
+    : openTrades.reduce((sum, t) => sum + t.pnl, 0);
+  const totalPnl = realizedPnl + unrealizedPnl;
 
   const closedWithOutcome = dbClosedPositions.filter((p) => p.outcome);
   const winRate =
@@ -769,19 +792,36 @@ export async function getDashboardData(): Promise<DashboardData> {
   const longMarketValue = alpacaAccount?.long_market_value
     ? parseFloat(alpacaAccount.long_market_value)
     : 0;
-  // Alpaca returns short_market_value as a negative number. Store absolute
-  // value so downstream consumers don't have to sign-guess.
-  const shortMarketValue = alpacaAccount?.short_market_value
-    ? Math.abs(parseFloat(alpacaAccount.short_market_value))
+  // Alpaca returns short_market_value as a NEGATIVE number. Store its
+  // absolute value (so shortMarketValue = 13000 for a $13k short position)
+  // — downstream callers that want the signed version compute it via
+  // `netPositionValue` below, which retains the accounting-correct signs.
+  const shortMarketValueRaw = alpacaAccount?.short_market_value
+    ? parseFloat(alpacaAccount.short_market_value)
     : 0;
-  const positionMarketValue = longMarketValue + shortMarketValue;
+  const shortMarketValue = Math.abs(shortMarketValueRaw);
+  const positionMarketValue = longMarketValue + shortMarketValue; // gross
+  // Net position = long − shorts. Accounting identity: cash + netPositionValue
+  // = equity. Used for the "Net Value" dashboard tile so the visible math
+  // reconciles: Available Cash + Net Value = Total Account Value.
+  const netPositionValue = longMarketValue + shortMarketValueRaw; // signed sum
+  // DB-only fallback (no Alpaca creds): approximate cash as starting capital
+  // + realized proceeds − capital currently tied up in open positions at
+  // entry cost. Under-counts unrealized appreciation on open positions, but
+  // at least reconciles directionally with totalValue.
+  const dbOpenCostBasis = dbOpenPositions.reduce(
+    (s, p) => s + p.avgCost * p.quantity,
+    0,
+  );
+  const cash = alpacaAccount
+    ? parseFloat(alpacaAccount.cash)
+    : STARTING_CAPITAL + realizedPnl - dbOpenCostBasis;
   const buyingPower = alpacaAccount
     ? parseFloat(alpacaAccount.buying_power)
     : Math.max(0, totalValue);
   // Any time gross exposure exceeds equity, the account is using borrowed
-  // capital. We surface this explicitly rather than exposing raw (negative)
-  // cash — which is the "cash" field but not actionable information for a
-  // user thinking about "what can I deploy next."
+  // capital. Surfacing this lets the UI badge the header + warn users who
+  // aren't expecting margin semantics (negative cash, amplified P&L).
   const usingMargin = positionMarketValue > totalValue + 1; // $1 tolerance for float noise
   const leverageRatio = totalValue > 0 ? positionMarketValue / totalValue : 1;
   const accountReturnPct = (totalPnl / STARTING_CAPITAL) * 100;
@@ -999,9 +1039,11 @@ export async function getDashboardData(): Promise<DashboardData> {
       realizedPnl,
       winRate,
       openCount: openTrades.length,
+      netPositionValue,
       positionMarketValue,
       longMarketValue,
       shortMarketValue,
+      cash,
       buyingPower,
       usingMargin,
       leverageRatio,
