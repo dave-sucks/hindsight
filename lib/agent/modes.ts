@@ -52,7 +52,17 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   "research-run": {
     model: "gpt-4o",
     provider: "openai",
-    maxSteps: 50,
+    // Bumped 50 → 65 on 2026-04-24. A complete 6-stage run has roughly:
+    //   Stage 1: 2–3 steps (brief + signals)
+    //   Stage 2: 4–7 steps (holdings + watchlist + discovery get_stock_data)
+    //   Stage 3: 3–5 steps (theses per researched ticker, batched)
+    //   Stage 4: 3–5 steps (manage_position / place_trade / manage_watchlist)
+    //   Stage 5: 1 step (record_run_summary)
+    //   Stage 6: 1 step (complete_run)
+    // Plus retry overhead if the text-only death retry fires, plus some
+    // narration-only steps. 50 was hitting the ceiling mid-Stage 4. 65
+    // leaves ~10 steps of breathing room.
+    maxSteps: 65,
     toolAllowlist: undefined,
     hasSuggestConfig: false,
     maxDuration: 300,
