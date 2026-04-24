@@ -105,25 +105,63 @@ function bucketOf(
 
 export const readSignals = defineTool({
   description:
-    "Read today's intelligence signals routed to you by background discovery jobs. " +
-    "Returns all three buckets in one call — portfolioSignals (your open positions), watchlistSignals (your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence). You cannot filter to a single bucket; the tool always returns the full routed pool. Call with no arguments for standard usage. " +
-    "Every returned signal carries a `signalId` — remember the ones that actually informed your thinking and pass them to record_thesis as `sourceSignalIds` so the system can attribute the trade's outcome back to the monitors that produced them. Signals are marked as READ after retrieval. Do NOT ignore discoverySignals — that bucket is how new names surface.",
+    "Read TODAY's intelligence signals routed to you by background discovery jobs. Scoped to the current ET trading day.\n\n" +
+    "**CALL WITH NO ARGUMENTS** to get today's entire routed pool for this analyst, grouped into three buckets — portfolioSignals (news on your open positions), watchlistSignals (news on your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence). That is the default and standard usage.\n\n" +
+    "All filters are OPTIONAL and exist for rare, targeted FOLLOW-UP calls after you've already seen the full pool. Passing any filter on your FIRST call narrows what you see and starves the other buckets — do not do this. Examples of legitimate follow-up use: `tickers: [\"NVDA\"]` to pull every NVDA-tagged signal after noticing NVDA in the first call; `bucket: \"DISCOVERY\"` to re-sample the discovery bucket deeper; `urgency: \"BREAKING\"` to sweep breaking news across all buckets.\n\n" +
+    "Every returned signal carries a `signalId` — pass them to record_thesis as `sourceSignalIds` so the system can attribute the trade's outcome back to the monitors that produced them. Signals are marked as READ after retrieval. Do NOT ignore discoverySignals — that bucket is how new names surface.",
   schema: z.object({
+    tickers: z
+      .array(z.string())
+      .optional()
+      .describe("FOLLOW-UP ONLY. Restrict to signals mentioning these tickers. Do not use on your first call."),
+    themes: z
+      .array(z.string())
+      .optional()
+      .describe("FOLLOW-UP ONLY. Restrict to signals tagged with these themes (e.g. AI_CAPEX, FED_RATE_CUT). Do not use on your first call."),
+    type: z
+      .enum(["NEWS", "EARNINGS", "FILING", "SOCIAL", "PRICE_ACTION", "ANALYST_NOTE", "OPTIONS", "MACRO", "SECTOR"])
+      .optional()
+      .describe("FOLLOW-UP ONLY. Restrict to one signal type. Do not use on your first call."),
     urgency: z
       .enum(["LOW", "MEDIUM", "HIGH", "BREAKING"])
       .optional()
-      .describe("Optional minimum urgency floor. Omit for the full pool. Use urgency='BREAKING' only as a rare targeted follow-up after the default call."),
+      .describe("FOLLOW-UP ONLY. Minimum urgency floor. Use urgency='BREAKING' only as a targeted sweep after an initial no-argument call."),
+    bucket: z
+      .enum(["POSITION", "WATCHLIST", "DISCOVERY"])
+      .optional()
+      .describe("FOLLOW-UP ONLY. Re-sample a single bucket more deeply. Do not use on your first call — the no-argument default already returns all three buckets."),
+    limit: z
+      .number()
+      .optional()
+      .describe("Max signals to return. Defaults to 50 (your policy cap). Rarely need to change."),
   }),
   ui: "tool-ui" as const,
 
   progressLabel: (args) => {
-    if (args.urgency === "HIGH" || args.urgency === "BREAKING") {
-      return "Sweeping urgent signals";
+    const hasFilters =
+      args.bucket ||
+      (args.tickers && args.tickers.length > 0) ||
+      (args.themes && args.themes.length > 0) ||
+      args.type ||
+      args.urgency ||
+      args.limit !== undefined;
+    if (!hasFilters) return "Reading today's routed signals";
+    if (args.bucket === "POSITION") return "Follow-up: portfolio signals";
+    if (args.bucket === "WATCHLIST") return "Follow-up: watchlist signals";
+    if (args.bucket === "DISCOVERY") return "Follow-up: discovery signals";
+    if (args.tickers && args.tickers.length > 0) {
+      const sample = args.tickers.slice(0, 2).map((t) => `$${t.toUpperCase()}`).join(", ");
+      const extra = args.tickers.length > 2 ? ` (+${args.tickers.length - 2} more)` : "";
+      return `Follow-up: signals on ${sample}${extra}`;
     }
-    return "Reading today's routed signals";
+    if (args.themes && args.themes.length > 0) {
+      return `Follow-up: signals on ${args.themes[0]}${args.themes.length > 1 ? ` (+${args.themes.length - 1} more)` : ""}`;
+    }
+    if (args.urgency === "HIGH" || args.urgency === "BREAKING") return "Sweeping urgent signals";
+    return "Reading signals routed to this analyst";
   },
 
-  execute: async ({ urgency }, ctx) => {
+  execute: async ({ tickers, themes, type, urgency, bucket, limit }, ctx) => {
     if (!ctx.analystId) {
       return {
         summary: "No analyst context — cannot read signals.",
@@ -139,12 +177,12 @@ export const readSignals = defineTool({
     }
 
     const policy = ctx.intelligencePolicy;
-    // Practical hard ceiling on what a single call can return. Keeps context
-    // bounded while still covering a full day's routes for normal analysts.
-    // TMT hit 165 routes on 2026-04-23 — this fits the expected shape.
-    const HARD_LIMIT = 150;
-    const policyMaxSignals = policy?.maxSignalsPerRun ?? 100;
-    const effectiveLimit = Math.min(policyMaxSignals, HARD_LIMIT);
+    // Cap how many routes a single call returns. Practical upper bound kept
+    // bounded so the response stays inside the reasoning-token budget.
+    const HARD_LIMIT = 75;
+    const policyMaxSignals = policy?.maxSignalsPerRun ?? 50;
+    const callerLimit = typeof limit === "number" && limit > 0 ? limit : policyMaxSignals;
+    const effectiveLimit = Math.min(callerLimit, policyMaxSignals, HARD_LIMIT);
 
     const urgencyOrder = ["LOW", "MEDIUM", "HIGH", "BREAKING"];
     const callerMinIdx = urgency ? urgencyOrder.indexOf(urgency) : 0;
@@ -155,6 +193,31 @@ export const readSignals = defineTool({
     const minSourceQuality = policy?.minSourceQuality ?? 2;
     const excludedCategories = policy?.excludedSourceCategories ?? [];
 
+    // Scope to TODAY's routes only. The tool's contract is "today's routed
+    // signals for this analyst" — carrying yesterday's PENDING rows forward
+    // pollutes the pool with stale news the router already decided to
+    // reconsider on the current run. ET trading day matches what the
+    // signal-router uses when writing routes.
+    const todayStart = etTradingDayDate();
+
+    // Bucket filter → map to the set of routeReasonCodes to include.
+    // Kept for rare follow-up calls where the agent wants to re-sample one
+    // bucket more deeply. Prompt instructs agent NOT to use on first call.
+    const DISCOVERY_CODES: RouteReasonCode[] = [
+      "DISCOVERY",
+      "SECTOR_MATCH",
+      "INDUSTRY_MATCH",
+      "THEME_MATCH",
+      "DIRECT_TICKER",
+      "CROSS_ANALYST",
+      "FIRM_AGGREGATE_FEED",
+      "AGGREGATE_TICKER_MATCH",
+    ];
+    let codeFilter: RouteReasonCode[] | null = null;
+    if (bucket === "POSITION") codeFilter = ["POSITION"];
+    else if (bucket === "WATCHLIST") codeFilter = ["WATCHLIST"];
+    else if (bucket === "DISCOVERY") codeFilter = DISCOVERY_CODES;
+
     // Load a wide slice so we can enforce per-ticker dedup and still have
     // enough variety left across all three buckets.
     const loadCap = Math.max(effectiveLimit * 2, 60);
@@ -163,7 +226,12 @@ export const readSignals = defineTool({
       where: {
         analystId: ctx.analystId,
         status: { in: ["PENDING", "READ"] },
+        routedAt: { gte: todayStart },
+        ...(codeFilter ? { routeReasonCode: { in: codeFilter } } : {}),
         signal: {
+          ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
+          ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
+          ...(type ? { type } : {}),
           urgency: { in: validUrgencies },
           sourceQuality: { gte: minSourceQuality },
         },
