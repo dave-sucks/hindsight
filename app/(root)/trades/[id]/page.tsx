@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { StockLogo } from '@/components/StockLogo';
 import { PnlBadge } from '@/components/ui/pnl-badge';
+import { PriceChange } from '@/components/ui/price-change';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -29,8 +30,6 @@ import {
   Brain,
   ExternalLink,
   Target,
-  ArrowUpRight,
-  ArrowDownRight,
   Bot,
   Clock,
   User,
@@ -327,9 +326,11 @@ export default async function TradeDetailPage({
 
             {/* ── OVERVIEW ─────────────────────────────────────────── */}
             <TabsContent value="overview" className="mt-4 space-y-4">
-              {/* Live market price — always shows current stock price with today's change */}
+              {/* Live market price — always shows current stock price with
+                  today's change. Mobile: price on own row, delta underneath
+                  at text-base (one size down). sm+ collapses to single row. */}
               <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
                   <span className="text-xl font-semibold tabular-nums">
                     {fmtCur(livePrice ?? currentPrice)}
                   </span>
@@ -337,15 +338,12 @@ export default async function TradeDetailPage({
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger render={
-                          <span className={cn(
-                            'text-xl tabular-nums flex items-center gap-2 cursor-default',
-                            isQuoteUp ? 'text-positive' : 'text-negative',
-                          )}>
-                            {isQuoteUp ? '+' : ''}{fmtCur(stockQuote.d)}
-                            <div className="flex items-center">
-                              {isQuoteUp ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-4 w-4" />}
-                              {changePct != null ? `${Math.abs(changePct).toFixed(2)}%` : '—'}
-                            </div>
+                          <span className="cursor-default">
+                            <PriceChange
+                              dollarChange={stockQuote.d}
+                              percentChange={changePct ?? null}
+                              size="xl"
+                            />
                           </span>
                         } />
                         <TooltipContent side="bottom" className="text-xs">Today&apos;s market movement</TooltipContent>
@@ -396,11 +394,12 @@ export default async function TradeDetailPage({
                         <span className="font-medium">{fmtCur(trade.entryPrice)}</span>
                       </span>
                     </div>
-                    <div className={cn('tabular-nums flex items-center gap-1 shrink-0', isPos ? 'text-positive' : 'text-negative')}>
-                      {isPos ? '+' : ''}{fmtCur(pnl)}
-                      {isPos ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                      {Math.abs(pnlPct).toFixed(2)}%
-                    </div>
+                    <PriceChange
+                      dollarChange={pnl}
+                      percentChange={pnlPct}
+                      size="sm"
+                      className="shrink-0"
+                    />
                   </div>
                 </TooltipProvider>
               </StockPriceChart>

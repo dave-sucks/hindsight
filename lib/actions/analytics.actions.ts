@@ -66,7 +66,17 @@ export interface GraduationData {
 
 export interface AnalyticsStats {
   totalReturn: number;
+  /** Total return ÷ STARTING_CAPITAL — account-level return. */
   totalReturnPct: number;
+  /**
+   * Total return ÷ sum of closed-position cost basis — return on the
+   * capital actually deployed across closed trades. This is the
+   * "trading edge" number; totalReturnPct mixes in idle cash.
+   * Null when no closed trades (can't divide by zero).
+   */
+  returnOnDeployedPct: number | null;
+  /** Sum of cost basis across all closed positions — "how much was put to work." */
+  deployedCapital: number;
   winRate: number;
   avgReturnPerTrade: number;
   openTrades: number;
@@ -233,6 +243,15 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 
   const totalReturn = closedPositions.reduce((s, p) => s + (p.realizedPnl ?? 0), 0);
   const totalReturnPct = (totalReturn / STARTING_CAPITAL) * 100;
+  // Return on deployed capital across closed trades. The difference vs
+  // totalReturnPct matters a lot when the account doesn't fully deploy —
+  // +13% account return on $20K deployed = +65% on capital at work.
+  const deployedCapital = closedPositions.reduce(
+    (s, p) => s + p.avgCost * p.quantity,
+    0,
+  );
+  const returnOnDeployedPct =
+    deployedCapital > 0 ? (totalReturn / deployedCapital) * 100 : null;
 
   const positionsWithOutcome = closedPositions.filter((p) => p.outcome);
   const wins = positionsWithOutcome.filter((p) => p.outcome === "WIN");
@@ -316,6 +335,8 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   const stats: AnalyticsStats = {
     totalReturn,
     totalReturnPct,
+    returnOnDeployedPct,
+    deployedCapital,
     winRate,
     avgReturnPerTrade,
     openTrades: openCount,

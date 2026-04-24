@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { BarGauge } from '@/components/ui/bar-gauge';
 import {
   Dialog,
   DialogContent,
@@ -30,8 +28,8 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { StockLogo } from '@/components/StockLogo';
-import { PnlBadge } from '@/components/ui/pnl-badge';
-import { PnlArrow } from '@/components/ui/pnl-arrow';
+import { PriceChange } from '@/components/ui/price-change';
+import { PriceGauge } from '@/components/ui/gauge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { TRADE_STATUS_DISPLAY, shortAlpacaId } from '@/lib/trade-status';
@@ -41,7 +39,7 @@ import {
   mockClosedTrades,
   type MockTrade,
 } from '@/lib/mock-data/trades';
-import { Loader2, MoreHorizontal } from 'lucide-react';
+import { Loader2, MoreHorizontal, ExternalLink } from 'lucide-react';
 import { ConceptTooltip } from '@/components/domain/education-card';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 
@@ -79,37 +77,6 @@ function formatExactTime(dateStr: string): string {
     minute: '2-digit',
     hour12: true,
   });
-}
-
-// ─── Target progress bar ─────────────────────────────────────────────────────
-
-function TargetDots({
-  entry,
-  current,
-  target,
-  stop,
-  direction,
-}: {
-  entry: number;
-  current: number;
-  target: number;
-  stop: number;
-  direction: string;
-}) {
-  const range = target - stop;
-  if (range === 0) return null;
-
-  const progress = direction === 'LONG'
-    ? (current - stop) / range
-    : (stop - current) / range;
-
-  return (
-    <BarGauge
-      mode="range"
-      value={Math.max(0, Math.min(1, progress))}
-      segments={8}
-    />
-  );
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
@@ -227,9 +194,9 @@ export default function TradesPage({
   ];
 
   return (
-    <div className="space-y-0">
-      {/* Header + filter tabs */}
-      <div className="px-4 sm:px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+    <div className="h-[calc(100dvh-3rem)] flex flex-col">
+      {/* Header + filter tabs — fixed at the top of the page; doesn't scroll */}
+      <div className="px-4 sm:px-6 pt-6 pb-4 flex items-center justify-between gap-4 shrink-0">
         <h1 className="text-2xl font-semibold">Trades</h1>
         <div className="flex items-center gap-0.5 bg-muted/50 rounded-md border px-1 py-0.5">
           {tabs.map((t) => (
@@ -249,25 +216,33 @@ export default function TradesPage({
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table container — takes remaining vertical space, scrolls both axes.
+          Vertical scroll so long trade histories don't spill into page scroll;
+          horizontal scroll handled by <Table>'s own overflow-x-auto wrapper. */}
       {filtered.length === 0 ? (
         <EmptyState filtered={isFiltered} />
       ) : (
-        <Table>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* border-separate + border-spacing-0 is REQUIRED for
+              `position: sticky` on <th>/<td> to work — collapsed borders
+              break sticky positioning across browsers. The TableHeader
+              still gets its border-b via the [&_tr]:border-b selector
+              from shadcn so visual rendering is unchanged. */}
+          <Table className="border-separate border-spacing-0">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="pl-6">Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">Value</TableHead>
-              <TableHead className="text-right">Qty</TableHead>
               <TableHead className="text-right">Entry</TableHead>
+              <TableHead className="text-right">Current Price</TableHead>
               <TableHead className="text-right">P&amp;L</TableHead>
-              <TableHead className="w-20">Target</TableHead>
-              <TableHead>Direction</TableHead>
+              <TableHead className="text-right">Qty</TableHead>
+              <TableHead className="text-right">Total Value</TableHead>
+              <TableHead className="w-28">Target</TableHead>
               <TableHead>Placed</TableHead>
-              <TableHead className="text-right">Stop</TableHead>
-              <TableHead className="pr-6"></TableHead>
+              {/* Sticky-right action column. w-0 keeps the column from
+                  adding width when empty; bg-background keeps the header
+                  cell opaque when table content scrolls underneath it. */}
+              <TableHead className="pr-6 sticky right-0 bg-background w-0"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -289,46 +264,50 @@ export default function TradesPage({
               const isUp = totalGain >= 0;
 
               return (
-                <TableRow key={trade.id} className="cursor-pointer">
-                  {/* Name: logo + company name + ticker/confidence/analyst subhead */}
+                <TableRow key={trade.id} className="group">
+                  {/* Name: logo + ticker with inline status dot + analyst
+                      subhead. No longer wrapped in a Link — navigation
+                      happens via the hover-revealed action buttons on the
+                      right so the Target column's tick bar + tooltips
+                      stay interactive (hover on the stop/target ticks
+                      wasn't possible under a row-spanning <a>). */}
                   <TableCell className="pl-6">
-                    <Link href={`/trades/${trade.id}`} className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-2.5">
                       <StockLogo ticker={trade.ticker} size="sm" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium leading-tight">{trade.companyName ?? trade.ticker}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono leading-tight">
-                          {trade.ticker} <span className="opacity-30">·</span> {trade.confidenceScore}%
-                          {trade.analystName && (
-                            <>
-                              <span className="opacity-30"> · </span>
-                              {trade.analystName}
-                            </>
-                          )}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium leading-tight">{trade.ticker}</span>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <span
+                                  className={cn('h-1.5 w-1.5 rounded-full shrink-0 cursor-default', cfg.dotClass)}
+                                  aria-label={cfg.label}
+                                />
+                              }
+                            />
+                            <TooltipContent side="top">
+                              <div>
+                                <div>{cfg.label} · {timeLabel}</div>
+                                {shortId && (
+                                  <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        {trade.analystName && (
+                          <p className="text-[10px] text-muted-foreground font-mono leading-tight">
+                            {trade.analystName}
+                          </p>
+                        )}
                       </div>
-                    </Link>
+                    </div>
                   </TableCell>
 
-                  {/* Status */}
-                  <TableCell>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default">
-                            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', cfg.dotClass)} />
-                            {cfg.label}
-                          </span>
-                        }
-                      />
-                      <TooltipContent side="bottom">
-                        <div>
-                          <div>{timeLabel}</div>
-                          {shortId && (
-                            <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>
-                          )}
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
+                  {/* Entry Price */}
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    ${trade.entryPrice.toFixed(2)}
                   </TableCell>
 
                   {/* Current Price */}
@@ -361,9 +340,20 @@ export default function TradesPage({
                     </Tooltip>
                   </TableCell>
 
-                  {/* Total Value */}
-                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                    ${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  {/* P&L — unified PriceChange component (same arrow+color
+                      language as the dashboard header). Em-dash when we
+                      don't have a live price to compute against. */}
+                  <TableCell className="text-right">
+                    {isStalePrice && isOpen ? (
+                      <span className="text-sm text-muted-foreground/60">—</span>
+                    ) : (
+                      <PriceChange
+                        dollarChange={totalGain}
+                        percentChange={totalGainPct}
+                        size="sm"
+                        className="justify-end"
+                      />
+                    )}
                   </TableCell>
 
                   {/* Quantity */}
@@ -371,40 +361,52 @@ export default function TradesPage({
                     {shares}
                   </TableCell>
 
-                  {/* Entry Price */}
+                  {/* Total Value */}
                   <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                    ${trade.entryPrice.toFixed(2)}
+                    ${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                   </TableCell>
 
-                  {/* P&L — shows em-dash when no live price */}
-                  <TableCell className="text-right">
-                    {isStalePrice && isOpen ? (
-                      <span className="text-sm text-muted-foreground/60">—</span>
-                    ) : (
-                      <div className="flex items-center justify-end gap-1">
-                        <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
-                        <span className="text-sm tabular-nums">
-                          {isUp ? '+' : ''}${totalGain.toFixed(2)}
-                        </span>
-                        <PnlBadge value={totalGainPct} />
-                      </div>
-                    )}
-                  </TableCell>
-
-                  {/* Target dots */}
+                  {/* Target — PriceGauge tick-bar (same design as the
+                      ThesisSheet). Summarizes entry / stop / target /
+                      current-price in one glance. Hover reveals the
+                      three price labels so users can read exact numbers
+                      without clicking into the trade detail page. */}
                   <TableCell>
-                    <TargetDots
-                      entry={trade.entryPrice}
-                      current={trade.currentPrice}
-                      target={trade.targetPrice}
-                      stop={trade.stopPrice}
-                      direction={trade.direction}
-                    />
-                  </TableCell>
-
-                  {/* Direction — plain Badge component */}
-                  <TableCell>
-                    <Badge variant="secondary">{trade.direction}</Badge>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <div className="cursor-default">
+                            <PriceGauge
+                              entry={trade.entryPrice}
+                              target={trade.targetPrice}
+                              stop={trade.stopPrice}
+                              current={trade.currentPrice}
+                              direction={trade.direction === 'LONG' ? 'LONG' : 'SHORT'}
+                              height={12}
+                            />
+                          </div>
+                        }
+                      />
+                      <TooltipContent side="top" className="text-xs tabular-nums">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-negative" />
+                            Stop ${trade.stopPrice.toFixed(2)}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-foreground" />
+                            Current ${trade.currentPrice.toFixed(2)}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-positive" />
+                            Target ${trade.targetPrice.toFixed(2)}
+                          </div>
+                          <div className="pt-1 text-muted-foreground">
+                            Entry ${trade.entryPrice.toFixed(2)}
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
 
                   {/* Time placed — tooltip shows full placed/filled timeline */}
@@ -430,56 +432,74 @@ export default function TradesPage({
                     </Tooltip>
                   </TableCell>
 
-                  {/* Stop — muted foreground */}
-                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                    ${trade.stopPrice.toFixed(2)}
-                  </TableCell>
-
-                  {/* 3-dot menu */}
-                  <TableCell className="pr-6">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                          <Link href={`/trades/${trade.id}`} className="w-full">
-                            View details
-                          </Link>
-                        </DropdownMenuItem>
-                        {isOpen && (
-                          <>
-                            <DropdownMenuItem
-                              className="text-amber-500 focus:text-amber-500"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCancelTarget(trade.id);
-                              }}
+                  {/* Hover-revealed action group — opacity-0 by default,
+                      opacity-100 on row hover via `group` class on
+                      TableRow. Two buttons: open-trade (explicit nav since
+                      row is no longer a link) and the 3-dot menu (Cancel /
+                      Close).
+                      Cell is `sticky right-0` so when the table scrolls
+                      horizontally, the buttons stay pinned to the right
+                      edge and overlay whichever column is visible
+                      underneath. Solid bg-background + subtle inset
+                      shadow-on-the-left signals the float-over relationship
+                      (similar to how Google Sheets / Airtable handle a
+                      frozen last column). On row hover, the row's muted bg
+                      shows through via bg-muted/50 to match. */}
+                  <TableCell className="pr-6 sticky right-0 bg-background group-hover:bg-muted transition-colors shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.25)] group-hover:shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.35)]">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Link
+                              href={`/trades/${trade.id}`}
+                              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                              aria-label="Open trade details"
                             >
-                              Cancel order
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-negative focus:text-negative"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCloseTarget(trade.id);
-                              }}
-                            >
-                              Close trade
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                              <ExternalLink className="h-4 w-4" />
+                            </Link>
+                          }
+                        />
+                        <TooltipContent side="top">Open trade</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                          aria-label="More actions"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem>
+                            <Link href={`/trades/${trade.id}`} className="w-full">
+                              View details
+                            </Link>
+                          </DropdownMenuItem>
+                          {isOpen && (
+                            <>
+                              <DropdownMenuItem
+                                className="text-amber-500 focus:text-amber-500"
+                                onClick={() => setCancelTarget(trade.id)}
+                              >
+                                Cancel order
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-negative focus:text-negative"
+                                onClick={() => setCloseTarget(trade.id)}
+                              >
+                                Close trade
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
         </Table>
+        </div>
       )}
 
       {filtered.length > 0 && isFiltered && (

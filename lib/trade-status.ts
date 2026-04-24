@@ -52,7 +52,10 @@ export const TRADE_STATUS_DISPLAY: Record<TradeStatus, TradeStatusDisplay> = {
   },
   OPEN: {
     label: "Holding",
-    dotClass: "bg-muted-foreground/60",
+    // Blue + blinking so an active position is visually distinct from
+    // closed/idle states. "Holding" is the most common status in the UI
+    // and the muted gray didn't signal "this is live" strongly enough.
+    dotClass: "bg-blue-500 animate-pulse",
     timeLabel: (c) => (c.filledAt ? `Filled ${fmt(c.filledAt)}` : `Opened ${fmt(c.placedAt)}`),
   },
   CLOSED_WIN: {

@@ -29,6 +29,16 @@ export interface AlpacaAccount {
   portfolio_value: string;
   equity: string;
   buying_power: string;
+  /** Long side market value. Present on margin/paper accounts; may be absent on cash accounts. */
+  long_market_value?: string;
+  /** Short side market value — NEGATIVE number (positions you're short on). Present when shorting is enabled. */
+  short_market_value?: string;
+  /** Regulation-T buying power. Usually equals buying_power on margin accounts. */
+  regt_buying_power?: string;
+  /** Initial margin required for current positions. */
+  initial_margin?: string;
+  /** Maintenance margin — how much equity must remain to avoid a margin call. */
+  maintenance_margin?: string;
   shorting_enabled: boolean;
   trade_suspended_by_user: boolean;
   trading_blocked: boolean;
