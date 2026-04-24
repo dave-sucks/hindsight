@@ -39,7 +39,7 @@ import {
   mockClosedTrades,
   type MockTrade,
 } from '@/lib/mock-data/trades';
-import { Loader2, MoreHorizontal } from 'lucide-react';
+import { Loader2, MoreHorizontal, ExternalLink } from 'lucide-react';
 import { ConceptTooltip } from '@/components/domain/education-card';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 
@@ -253,16 +253,15 @@ export default function TradesPage({
               const isUp = totalGain >= 0;
 
               return (
-                <TableRow key={trade.id} className="cursor-pointer">
+                <TableRow key={trade.id} className="group">
                   {/* Name: logo + ticker with inline status dot + analyst
-                      subhead. Status is communicated entirely by the dot
-                      color / animation (see lib/trade-status.ts — HOLDING
-                      is blue+pulse, pending amber+pulse, won/lost green/red);
-                      tooltip on the dot carries the time label and Alpaca id.
-                      No company name, no confidence %, no standalone Status
-                      column — the dot is the whole status story. */}
+                      subhead. No longer wrapped in a Link — navigation
+                      happens via the hover-revealed action buttons on the
+                      right so the Target column's tick bar + tooltips
+                      stay interactive (hover on the stop/target ticks
+                      wasn't possible under a row-spanning <a>). */}
                   <TableCell className="pl-6">
-                    <Link href={`/trades/${trade.id}`} className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-2.5">
                       <StockLogo ticker={trade.ticker} size="sm" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -292,7 +291,7 @@ export default function TradesPage({
                           </p>
                         )}
                       </div>
-                    </Link>
+                    </div>
                   </TableCell>
 
                   {/* Entry Price */}
@@ -358,17 +357,45 @@ export default function TradesPage({
 
                   {/* Target — PriceGauge tick-bar (same design as the
                       ThesisSheet). Summarizes entry / stop / target /
-                      current-price in one glance; replaces the old
-                      range-progress TargetDots. */}
+                      current-price in one glance. Hover reveals the
+                      three price labels so users can read exact numbers
+                      without clicking into the trade detail page. */}
                   <TableCell>
-                    <PriceGauge
-                      entry={trade.entryPrice}
-                      target={trade.targetPrice}
-                      stop={trade.stopPrice}
-                      current={trade.currentPrice}
-                      direction={trade.direction === 'LONG' ? 'LONG' : 'SHORT'}
-                      height={12}
-                    />
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <div className="cursor-default">
+                            <PriceGauge
+                              entry={trade.entryPrice}
+                              target={trade.targetPrice}
+                              stop={trade.stopPrice}
+                              current={trade.currentPrice}
+                              direction={trade.direction === 'LONG' ? 'LONG' : 'SHORT'}
+                              height={12}
+                            />
+                          </div>
+                        }
+                      />
+                      <TooltipContent side="top" className="text-xs tabular-nums">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-negative" />
+                            Stop ${trade.stopPrice.toFixed(2)}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-foreground" />
+                            Current ${trade.currentPrice.toFixed(2)}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-positive" />
+                            Target ${trade.targetPrice.toFixed(2)}
+                          </div>
+                          <div className="pt-1 text-muted-foreground">
+                            Entry ${trade.entryPrice.toFixed(2)}
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
 
                   {/* Time placed — tooltip shows full placed/filled timeline */}
@@ -394,45 +421,60 @@ export default function TradesPage({
                     </Tooltip>
                   </TableCell>
 
-                  {/* 3-dot menu */}
+                  {/* Hover-revealed action group — opacity-0 by default,
+                      opacity-100 on row hover via the `group` class on
+                      TableRow. Two buttons: open-trade (explicit nav
+                      since row is no longer a link) and the 3-dot menu
+                      (Cancel / Close). Kept pr-6 on the cell so rows
+                      stay the same width whether buttons are visible. */}
                   <TableCell className="pr-6">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                          <Link href={`/trades/${trade.id}`} className="w-full">
-                            View details
-                          </Link>
-                        </DropdownMenuItem>
-                        {isOpen && (
-                          <>
-                            <DropdownMenuItem
-                              className="text-amber-500 focus:text-amber-500"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCancelTarget(trade.id);
-                              }}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Link
+                              href={`/trades/${trade.id}`}
+                              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                              aria-label="Open trade details"
                             >
-                              Cancel order
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-negative focus:text-negative"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCloseTarget(trade.id);
-                              }}
-                            >
-                              Close trade
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                              <ExternalLink className="h-4 w-4" />
+                            </Link>
+                          }
+                        />
+                        <TooltipContent side="top">Open trade</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                          aria-label="More actions"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem>
+                            <Link href={`/trades/${trade.id}`} className="w-full">
+                              View details
+                            </Link>
+                          </DropdownMenuItem>
+                          {isOpen && (
+                            <>
+                              <DropdownMenuItem
+                                className="text-amber-500 focus:text-amber-500"
+                                onClick={() => setCancelTarget(trade.id)}
+                              >
+                                Cancel order
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-negative focus:text-negative"
+                                onClick={() => setCloseTarget(trade.id)}
+                              >
+                                Close trade
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
