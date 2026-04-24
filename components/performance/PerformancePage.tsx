@@ -386,7 +386,7 @@ export default function PerformancePage({ data }: Props) {
   const [activeRange, setActiveRange] = useState<TimeRange>('1M');
 
   const { equityCurve, directionBreakdown, durationBreakdown, sectorBreakdown, confidenceScatter, stats, analystBreakdown, recentRuns, calibration } = data;
-  const { totalReturn, totalReturnPct, winRate, avgReturnPerTrade, openTrades, closedTrades, totalTrades, graduation } = stats;
+  const { totalReturn, totalReturnPct, returnOnDeployedPct, winRate, avgReturnPerTrade, openTrades, closedTrades, totalTrades, graduation } = stats;
 
   const winRatePct = Math.min((graduation.currentWinRate / graduation.winRateTarget) * 100, 100);
   const tradesPct = Math.min((graduation.currentClosedTrades / graduation.closedTradesRequired) * 100, 100);
@@ -406,9 +406,18 @@ export default function PerformancePage({ data }: Props) {
           positive={totalReturn > 0}
         />
         <StatCard
-          label="Total Return %"
+          label="Account Return %"
           value={`${totalReturnPct >= 0 ? '+' : ''}${totalReturnPct.toFixed(2)}%`}
           positive={totalReturnPct > 0}
+        />
+        <StatCard
+          label="Return on Deployed"
+          value={
+            returnOnDeployedPct != null
+              ? `${returnOnDeployedPct >= 0 ? '+' : ''}${returnOnDeployedPct.toFixed(2)}%`
+              : '—'
+          }
+          positive={returnOnDeployedPct != null && returnOnDeployedPct > 0}
         />
         <StatCard
           label="Win Rate"

@@ -19,6 +19,24 @@ export interface PortfolioStats {
   realizedPnl: number;
   winRate: number | null; // 0–1 or null if no closed positions
   openCount: number;
+  // ── Capital-deployed metrics ──────────────────────────────────────────────
+  // totalValue answers "what's the account worth." These answer "how much
+  // capital did I actually put to work, and what did I get back on it?"
+  // Best-practice trading-journal numbers — a +13% account return that came
+  // from $20K deployed is a +65% return on the money at risk. The dashboard
+  // shows both so "account return" and "trading edge" are never conflated.
+  /** Cash available for new positions. From Alpaca when connected, else totalValue − openCostBasis. */
+  cash: number;
+  /** Cost basis of currently OPEN positions (what's deployed RIGHT NOW). */
+  openCostBasis: number;
+  /** Sum of cost basis across every position ever opened (closed + still-open). */
+  lifetimeCostBasis: number;
+  /** Total P&L (realized + unrealized). Same value as unrealizedPnl + realizedPnl, surfaced explicitly. */
+  totalPnl: number;
+  /** Total P&L as % of lifetime cost basis — "overall return on the money I've put to work." */
+  returnOnDeployedPct: number | null;
+  /** Total P&L as % of STARTING_CAPITAL — "how the account itself has performed." */
+  accountReturnPct: number;
 }
 
 export interface AgentConfigSummary {
@@ -311,6 +329,12 @@ export async function getDashboardData(): Promise<DashboardData> {
     realizedPnl: 0,
     winRate: null,
     openCount: 0,
+    cash: STARTING_CAPITAL,
+    openCostBasis: 0,
+    lifetimeCostBasis: 0,
+    totalPnl: 0,
+    returnOnDeployedPct: null,
+    accountReturnPct: 0,
   };
 
   if (!user) {
@@ -715,6 +739,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   // ── 6. Portfolio stats ─────────────────────────────────────────────────────
   const realizedPnl = dbClosedPositions.reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0);
   const unrealizedPnl = openTrades.reduce((sum, t) => sum + t.pnl, 0);
+  const totalPnl = realizedPnl + unrealizedPnl;
   // Use Alpaca's live equity as the source of truth. Falls back to DB math
   // only if Alpaca creds are missing or the account call failed.
   const totalValue = alpacaAccount
@@ -727,6 +752,34 @@ export async function getDashboardData(): Promise<DashboardData> {
       ? closedWithOutcome.filter((p) => p.outcome === "WIN").length /
         closedWithOutcome.length
       : null;
+
+  // ── 6b. Capital-deployed metrics ───────────────────────────────────────────
+  // Cost basis = avgCost × quantity. openCostBasis is what's currently tied
+  // up in positions; lifetimeCostBasis is the cumulative "money I've put to
+  // work ever" across both open and closed. The two answer different
+  // questions and the dashboard labels them explicitly so a user can't
+  // confuse "my account is worth X" with "I made Y on the Z I actually
+  // deployed."
+  const openCostBasis = dbOpenPositions.reduce(
+    (sum, p) => sum + p.avgCost * p.quantity,
+    0,
+  );
+  const closedCostBasis = dbClosedPositions.reduce(
+    (sum, p) => sum + p.avgCost * p.quantity,
+    0,
+  );
+  const lifetimeCostBasis = openCostBasis + closedCostBasis;
+  // Cash = Alpaca's `cash` field when we have live creds; otherwise
+  // totalValue − openCostBasis is a reasonable fallback (ignores P&L drift
+  // on open positions but close enough for the sidebar).
+  const cash = alpacaAccount
+    ? parseFloat(alpacaAccount.cash)
+    : Math.max(0, totalValue - openCostBasis);
+  // Return on deployed = total P&L ÷ lifetime capital deployed. Null when
+  // no trades have happened (can't divide by zero).
+  const returnOnDeployedPct =
+    lifetimeCostBasis > 0 ? (totalPnl / lifetimeCostBasis) * 100 : null;
+  const accountReturnPct = (totalPnl / STARTING_CAPITAL) * 100;
 
   // ── 7. Equity curves ───────────────────────────────────────────────────────
   // realizedCurve: cumulative closed P&L starting from STARTING_CAPITAL (old behavior)
@@ -941,6 +994,12 @@ export async function getDashboardData(): Promise<DashboardData> {
       realizedPnl,
       winRate,
       openCount: openTrades.length,
+      cash,
+      openCostBasis,
+      lifetimeCostBasis,
+      totalPnl,
+      returnOnDeployedPct,
+      accountReturnPct,
     },
     equityCurve,
     realizedCurve,
