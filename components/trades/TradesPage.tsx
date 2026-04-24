@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { BarGauge } from '@/components/ui/bar-gauge';
 import {
   Dialog,
   DialogContent,
@@ -30,8 +28,8 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { StockLogo } from '@/components/StockLogo';
-import { PnlBadge } from '@/components/ui/pnl-badge';
-import { PnlArrow } from '@/components/ui/pnl-arrow';
+import { PriceChange } from '@/components/ui/price-change';
+import { PriceGauge } from '@/components/ui/gauge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { TRADE_STATUS_DISPLAY, shortAlpacaId } from '@/lib/trade-status';
@@ -79,37 +77,6 @@ function formatExactTime(dateStr: string): string {
     minute: '2-digit',
     hour12: true,
   });
-}
-
-// ─── Target progress bar ─────────────────────────────────────────────────────
-
-function TargetDots({
-  entry,
-  current,
-  target,
-  stop,
-  direction,
-}: {
-  entry: number;
-  current: number;
-  target: number;
-  stop: number;
-  direction: string;
-}) {
-  const range = target - stop;
-  if (range === 0) return null;
-
-  const progress = direction === 'LONG'
-    ? (current - stop) / range
-    : (stop - current) / range;
-
-  return (
-    <BarGauge
-      mode="range"
-      value={Math.max(0, Math.min(1, progress))}
-      segments={8}
-    />
-  );
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
@@ -257,16 +224,13 @@ export default function TradesPage({
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="pl-6">Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">Value</TableHead>
-              <TableHead className="text-right">Qty</TableHead>
               <TableHead className="text-right">Entry</TableHead>
+              <TableHead className="text-right">Current Price</TableHead>
               <TableHead className="text-right">P&amp;L</TableHead>
-              <TableHead className="w-20">Target</TableHead>
-              <TableHead>Direction</TableHead>
+              <TableHead className="text-right">Qty</TableHead>
+              <TableHead className="text-right">Total Value</TableHead>
+              <TableHead className="w-28">Target</TableHead>
               <TableHead>Placed</TableHead>
-              <TableHead className="text-right">Stop</TableHead>
               <TableHead className="pr-6"></TableHead>
             </TableRow>
           </TableHeader>
@@ -290,45 +254,50 @@ export default function TradesPage({
 
               return (
                 <TableRow key={trade.id} className="cursor-pointer">
-                  {/* Name: logo + company name + ticker/confidence/analyst subhead */}
+                  {/* Name: logo + ticker with inline status dot + analyst
+                      subhead. Status is communicated entirely by the dot
+                      color / animation (see lib/trade-status.ts — HOLDING
+                      is blue+pulse, pending amber+pulse, won/lost green/red);
+                      tooltip on the dot carries the time label and Alpaca id.
+                      No company name, no confidence %, no standalone Status
+                      column — the dot is the whole status story. */}
                   <TableCell className="pl-6">
                     <Link href={`/trades/${trade.id}`} className="flex items-center gap-2.5">
                       <StockLogo ticker={trade.ticker} size="sm" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium leading-tight">{trade.companyName ?? trade.ticker}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono leading-tight">
-                          {trade.ticker} <span className="opacity-30">·</span> {trade.confidenceScore}%
-                          {trade.analystName && (
-                            <>
-                              <span className="opacity-30"> · </span>
-                              {trade.analystName}
-                            </>
-                          )}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium leading-tight">{trade.ticker}</span>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <span
+                                  className={cn('h-1.5 w-1.5 rounded-full shrink-0 cursor-default', cfg.dotClass)}
+                                  aria-label={cfg.label}
+                                />
+                              }
+                            />
+                            <TooltipContent side="top">
+                              <div>
+                                <div>{cfg.label} · {timeLabel}</div>
+                                {shortId && (
+                                  <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        {trade.analystName && (
+                          <p className="text-[10px] text-muted-foreground font-mono leading-tight">
+                            {trade.analystName}
+                          </p>
+                        )}
                       </div>
                     </Link>
                   </TableCell>
 
-                  {/* Status */}
-                  <TableCell>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default">
-                            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', cfg.dotClass)} />
-                            {cfg.label}
-                          </span>
-                        }
-                      />
-                      <TooltipContent side="bottom">
-                        <div>
-                          <div>{timeLabel}</div>
-                          {shortId && (
-                            <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>
-                          )}
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
+                  {/* Entry Price */}
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    ${trade.entryPrice.toFixed(2)}
                   </TableCell>
 
                   {/* Current Price */}
@@ -361,9 +330,20 @@ export default function TradesPage({
                     </Tooltip>
                   </TableCell>
 
-                  {/* Total Value */}
-                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                    ${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  {/* P&L — unified PriceChange component (same arrow+color
+                      language as the dashboard header). Em-dash when we
+                      don't have a live price to compute against. */}
+                  <TableCell className="text-right">
+                    {isStalePrice && isOpen ? (
+                      <span className="text-sm text-muted-foreground/60">—</span>
+                    ) : (
+                      <PriceChange
+                        dollarChange={totalGain}
+                        percentChange={totalGainPct}
+                        size="sm"
+                        className="justify-end"
+                      />
+                    )}
                   </TableCell>
 
                   {/* Quantity */}
@@ -371,40 +351,24 @@ export default function TradesPage({
                     {shares}
                   </TableCell>
 
-                  {/* Entry Price */}
+                  {/* Total Value */}
                   <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                    ${trade.entryPrice.toFixed(2)}
+                    ${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                   </TableCell>
 
-                  {/* P&L — shows em-dash when no live price */}
-                  <TableCell className="text-right">
-                    {isStalePrice && isOpen ? (
-                      <span className="text-sm text-muted-foreground/60">—</span>
-                    ) : (
-                      <div className="flex items-center justify-end gap-1">
-                        <PnlArrow direction={isUp ? 'up' : 'down'} className="h-4 w-4" />
-                        <span className="text-sm tabular-nums">
-                          {isUp ? '+' : ''}${totalGain.toFixed(2)}
-                        </span>
-                        <PnlBadge value={totalGainPct} />
-                      </div>
-                    )}
-                  </TableCell>
-
-                  {/* Target dots */}
+                  {/* Target — PriceGauge tick-bar (same design as the
+                      ThesisSheet). Summarizes entry / stop / target /
+                      current-price in one glance; replaces the old
+                      range-progress TargetDots. */}
                   <TableCell>
-                    <TargetDots
+                    <PriceGauge
                       entry={trade.entryPrice}
-                      current={trade.currentPrice}
                       target={trade.targetPrice}
                       stop={trade.stopPrice}
-                      direction={trade.direction}
+                      current={trade.currentPrice}
+                      direction={trade.direction === 'LONG' ? 'LONG' : 'SHORT'}
+                      height={12}
                     />
-                  </TableCell>
-
-                  {/* Direction — plain Badge component */}
-                  <TableCell>
-                    <Badge variant="secondary">{trade.direction}</Badge>
                   </TableCell>
 
                   {/* Time placed — tooltip shows full placed/filled timeline */}
@@ -428,11 +392,6 @@ export default function TradesPage({
                         </div>
                       </TooltipContent>
                     </Tooltip>
-                  </TableCell>
-
-                  {/* Stop — muted foreground */}
-                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                    ${trade.stopPrice.toFixed(2)}
                   </TableCell>
 
                   {/* 3-dot menu */}
