@@ -14,27 +14,32 @@ const STARTING_CAPITAL = 100_000;
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PortfolioStats {
+  /** Total account equity — what you'd have if everything closed and margin was paid. Alpaca `equity`. */
   totalValue: number;
   unrealizedPnl: number;
   realizedPnl: number;
   winRate: number | null; // 0–1 or null if no closed positions
   openCount: number;
-  // ── Capital-deployed metrics ──────────────────────────────────────────────
-  // totalValue answers "what's the account worth." These answer "how much
-  // capital did I actually put to work, and what did I get back on it?"
-  // Best-practice trading-journal numbers — a +13% account return that came
-  // from $20K deployed is a +65% return on the money at risk. The dashboard
-  // shows both so "account return" and "trading edge" are never conflated.
-  /** Cash available for new positions. From Alpaca when connected, else totalValue − openCostBasis. */
-  cash: number;
-  /** Cost basis of currently OPEN positions (what's deployed RIGHT NOW). */
-  openCostBasis: number;
-  /** Sum of cost basis across every position ever opened (closed + still-open). */
-  lifetimeCostBasis: number;
-  /** Total P&L (realized + unrealized). Same value as unrealizedPnl + realizedPnl, surfaced explicitly. */
+  // ── Account-shape metrics (margin-aware, sourced from Alpaca) ─────────────
+  // These answer "what do I have / what am I holding / what can I still
+  // trade" in terms anyone can understand, regardless of whether the account
+  // is on margin. Avoid showing raw "cash" on the dashboard — on margin
+  // accounts cash can be negative (borrowed) which is confusing and not
+  // actionable. Buying power is the useful "what can I deploy next" number.
+  /** Gross position market value = long + |short|. Alpaca reports this as separate fields. */
+  positionMarketValue: number;
+  /** Market value of long positions only. */
+  longMarketValue: number;
+  /** Market value of short positions (absolute, i.e. $13K short reported as 13000 not -13000). */
+  shortMarketValue: number;
+  /** What you can still trade — includes margin. From Alpaca `buying_power`. */
+  buyingPower: number;
+  /** True if the account is using borrowed capital (positionMarketValue > equity). */
+  usingMargin: boolean;
+  /** Gross leverage ratio = positionMarketValue / equity. 1.0 = unleveraged. */
+  leverageRatio: number;
+  /** Total P&L (realized + unrealized). Surfaced for convenience. */
   totalPnl: number;
-  /** Total P&L as % of lifetime cost basis — "overall return on the money I've put to work." */
-  returnOnDeployedPct: number | null;
   /** Total P&L as % of STARTING_CAPITAL — "how the account itself has performed." */
   accountReturnPct: number;
 }
@@ -329,11 +334,13 @@ export async function getDashboardData(): Promise<DashboardData> {
     realizedPnl: 0,
     winRate: null,
     openCount: 0,
-    cash: STARTING_CAPITAL,
-    openCostBasis: 0,
-    lifetimeCostBasis: 0,
+    positionMarketValue: 0,
+    longMarketValue: 0,
+    shortMarketValue: 0,
+    buyingPower: STARTING_CAPITAL,
+    usingMargin: false,
+    leverageRatio: 1,
     totalPnl: 0,
-    returnOnDeployedPct: null,
     accountReturnPct: 0,
   };
 
@@ -753,32 +760,30 @@ export async function getDashboardData(): Promise<DashboardData> {
         closedWithOutcome.length
       : null;
 
-  // ── 6b. Capital-deployed metrics ───────────────────────────────────────────
-  // Cost basis = avgCost × quantity. openCostBasis is what's currently tied
-  // up in positions; lifetimeCostBasis is the cumulative "money I've put to
-  // work ever" across both open and closed. The two answer different
-  // questions and the dashboard labels them explicitly so a user can't
-  // confuse "my account is worth X" with "I made Y on the Z I actually
-  // deployed."
-  const openCostBasis = dbOpenPositions.reduce(
-    (sum, p) => sum + p.avgCost * p.quantity,
-    0,
-  );
-  const closedCostBasis = dbClosedPositions.reduce(
-    (sum, p) => sum + p.avgCost * p.quantity,
-    0,
-  );
-  const lifetimeCostBasis = openCostBasis + closedCostBasis;
-  // Cash = Alpaca's `cash` field when we have live creds; otherwise
-  // totalValue − openCostBasis is a reasonable fallback (ignores P&L drift
-  // on open positions but close enough for the sidebar).
-  const cash = alpacaAccount
-    ? parseFloat(alpacaAccount.cash)
-    : Math.max(0, totalValue - openCostBasis);
-  // Return on deployed = total P&L ÷ lifetime capital deployed. Null when
-  // no trades have happened (can't divide by zero).
-  const returnOnDeployedPct =
-    lifetimeCostBasis > 0 ? (totalPnl / lifetimeCostBasis) * 100 : null;
+  // ── 6b. Account-shape (margin-aware, Alpaca as source of truth) ───────────
+  // Alpaca is always right about what's currently held, how much is
+  // borrowed, and what's available to trade. The DB Position table can
+  // drift — stale rows, sync gaps — so don't derive position market value
+  // from Prisma for the dashboard. Fall back to a DB-only estimate only
+  // when Alpaca creds are absent (onboarding, API failure).
+  const longMarketValue = alpacaAccount?.long_market_value
+    ? parseFloat(alpacaAccount.long_market_value)
+    : 0;
+  // Alpaca returns short_market_value as a negative number. Store absolute
+  // value so downstream consumers don't have to sign-guess.
+  const shortMarketValue = alpacaAccount?.short_market_value
+    ? Math.abs(parseFloat(alpacaAccount.short_market_value))
+    : 0;
+  const positionMarketValue = longMarketValue + shortMarketValue;
+  const buyingPower = alpacaAccount
+    ? parseFloat(alpacaAccount.buying_power)
+    : Math.max(0, totalValue);
+  // Any time gross exposure exceeds equity, the account is using borrowed
+  // capital. We surface this explicitly rather than exposing raw (negative)
+  // cash — which is the "cash" field but not actionable information for a
+  // user thinking about "what can I deploy next."
+  const usingMargin = positionMarketValue > totalValue + 1; // $1 tolerance for float noise
+  const leverageRatio = totalValue > 0 ? positionMarketValue / totalValue : 1;
   const accountReturnPct = (totalPnl / STARTING_CAPITAL) * 100;
 
   // ── 7. Equity curves ───────────────────────────────────────────────────────
@@ -994,11 +999,13 @@ export async function getDashboardData(): Promise<DashboardData> {
       realizedPnl,
       winRate,
       openCount: openTrades.length,
-      cash,
-      openCostBasis,
-      lifetimeCostBasis,
+      positionMarketValue,
+      longMarketValue,
+      shortMarketValue,
+      buyingPower,
+      usingMargin,
+      leverageRatio,
       totalPnl,
-      returnOnDeployedPct,
       accountReturnPct,
     },
     equityCurve,

@@ -621,11 +621,13 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     winRate: 0.6,
     openCount: mockOpenTrades.length,
     // Mock fallback — these are never shown in prod, just satisfy the type.
-    cash: mockPortfolio.totalValue,
-    openCostBasis: 0,
-    lifetimeCostBasis: 0,
+    positionMarketValue: 0,
+    longMarketValue: 0,
+    shortMarketValue: 0,
+    buyingPower: mockPortfolio.totalValue,
+    usingMargin: false,
+    leverageRatio: 1,
     totalPnl: mockPortfolio.totalPnl,
-    returnOnDeployedPct: null,
     accountReturnPct: 0,
   };
 
@@ -749,48 +751,40 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                       )}
                     </p>
                   </div>
-                  {/* Capital breakdown + return-on-deployed.
-                      Answers "how much did I actually deploy and what did
-                      that earn" separately from the account-level number
-                      above. Account return (above) treats idle cash as
-                      capital at risk, which under-states a strategy that
-                      only deploys a fraction of the account. ROC reflects
-                      the edge of the trades themselves, size-weighted. */}
-                  <div className="pt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums">
-                    <span>
-                      Cash{' '}
-                      <span className="text-foreground font-medium">
-                        ${portfolio.cash.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </span>
-                    </span>
-                    <span>
-                      Deployed{' '}
-                      <span className="text-foreground font-medium">
-                        ${portfolio.openCostBasis.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </span>
-                      {portfolio.openCount > 0 && (
-                        <span className="opacity-70"> · {portfolio.openCount} {portfolio.openCount === 1 ? 'pos' : 'pos'}</span>
-                      )}
-                    </span>
-                    {portfolio.returnOnDeployedPct != null && (
+                  {/* Account-shape line — what you're holding, what's still
+                      available to trade. Deliberately plain language; the
+                      raw "cash" number is misleading on margin accounts
+                      (goes negative when borrowed), so we don't surface it.
+                      Return-on-deployed (a trading-edge metric) lives on
+                      the Performance page where it can be computed
+                      unambiguously from closed-trade data. */}
+                  {(portfolio.positionMarketValue > 0 || portfolio.openCount > 0) && (
+                    <div className="pt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums">
                       <span>
-                        Return on deployed{' '}
-                        <span
-                          className={
-                            portfolio.returnOnDeployedPct >= 0
-                              ? 'text-positive font-medium'
-                              : 'text-negative font-medium'
-                          }
-                        >
-                          {portfolio.returnOnDeployedPct >= 0 ? '+' : ''}
-                          {portfolio.returnOnDeployedPct.toFixed(2)}%
+                        Holding{' '}
+                        <span className="text-foreground font-medium">
+                          ${portfolio.positionMarketValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
-                        <span className="opacity-70">
-                          {' '}on ${portfolio.lifetimeCostBasis.toLocaleString(undefined, { maximumFractionDigits: 0 })} lifetime
+                        {portfolio.openCount > 0 && (
+                          <span className="opacity-70"> · {portfolio.openCount} {portfolio.openCount === 1 ? 'position' : 'positions'}</span>
+                        )}
+                      </span>
+                      <span>
+                        Buying power{' '}
+                        <span className="text-foreground font-medium">
+                          ${portfolio.buyingPower.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
                       </span>
-                    )}
-                  </div>
+                      {portfolio.usingMargin && (
+                        <span
+                          title={`Gross exposure ${portfolio.leverageRatio.toFixed(2)}× equity — short positions and/or margin in use.`}
+                          className="text-amber-500"
+                        >
+                          {portfolio.leverageRatio.toFixed(2)}× leverage
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>
