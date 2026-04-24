@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
-import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
+import { placeMarketOrder, getOrder, getLatestPrice, getAccount, cancelOrder, closePosition as closeAlpacaPosition } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
@@ -232,7 +232,19 @@ export const placeTrade = defineTool({
 
       const finalShares = resolvedShares ?? 1;
 
-      const { position, order } = await prisma.$transaction(async (tx: TransactionClient) => {
+      // Saga compensation: if the DB transaction below fails, Alpaca already
+      // has a live order / filled position. Best-effort unwind so we don't
+      // leak an orphan — cancel the order (works if unfilled) and close the
+      // position (works if already filled). Both are tried unconditionally;
+      // whichever is a no-op throws and is swallowed.
+      const rollbackAlpaca = async () => {
+        try { await cancelOrder(alpacaOrder.id, ctx.alpacaCreds); } catch { /* unfilled path */ }
+        try { await closeAlpacaPosition(ticker, ctx.alpacaCreds); } catch { /* never-filled path */ }
+      };
+
+      let txResult;
+      try {
+        txResult = await prisma.$transaction(async (tx: TransactionClient) => {
         const pos = await tx.position.create({
           data: {
             analystId,
@@ -311,7 +323,17 @@ export const placeTrade = defineTool({
         }
 
         return { position: pos, order: ord };
-      });
+        });
+      } catch (dbErr) {
+        const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+        console.error(
+          `[place_trade] DB transaction FAILED after Alpaca order ${alpacaOrder.id} for ${ticker} — rolling back Alpaca side: ${msg}`,
+        );
+        await rollbackAlpaca();
+        // Rethrow so the outer catch returns a FAILED tool result to the agent
+        throw dbErr;
+      }
+      const { position, order } = txResult;
 
       // Graduate watchlist item (non-fatal)
       try {

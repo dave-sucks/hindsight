@@ -61,6 +61,46 @@ function makeReturn(summary: string, data: ManagePositionData): ManagePositionRe
   return { summary, data, sources: [] };
 }
 
+/**
+ * Retry a DB transaction that runs AFTER an Alpaca mutation has already
+ * committed. We can't un-fill an Alpaca order, so the best we can do is
+ * retry the DB write on transient failures, then CRITICAL-log with the
+ * Alpaca order id so the reconcile job can neutralize the drift.
+ *
+ * Used for partial_close and add_to_position — both have an Alpaca fill
+ * that can't be rolled back without creating a new, differently-priced
+ * Alpaca event. full_close uses closeOpenPosition which has its own
+ * retry loop.
+ */
+async function commitOrLogCritical(
+  label: string,
+  context: { positionId: string; alpacaOrderId: string | null; symbol: string; extra?: string },
+  tx: () => Promise<void>,
+): Promise<void> {
+  const maxAttempts = 3;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await tx();
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 250 * 2 ** (attempt - 1)));
+      }
+    }
+  }
+  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  console.error(
+    `[manage_position:${label}] CRITICAL: Alpaca fill SUCCEEDED but DB commit FAILED after ${maxAttempts} attempts. ` +
+      `Position/orders will be stale vs Alpaca — reconcile-orders must neutralize. ` +
+      `positionId=${context.positionId} alpacaOrderId=${context.alpacaOrderId ?? "null"} symbol=${context.symbol}` +
+      (context.extra ? ` ${context.extra}` : "") +
+      ` error=${msg}`,
+  );
+  throw lastErr;
+}
+
 const schema = z.object({
   symbol: z.string().describe("Ticker symbol of the position to manage"),
   action: z.enum([
@@ -298,7 +338,10 @@ export const managePosition = defineTool({
             : (position.avgCost - fillPrice) * closeQty;
           const pnlSign = partialPnl >= 0 ? "+" : "";
 
-          await prisma.$transaction(async (tx) => {
+          await commitOrLogCritical(
+            "partial_close",
+            { positionId: position.id, alpacaOrderId, symbol: ticker, extra: `closeQty=${closeQty}` },
+            () => prisma.$transaction(async (tx) => {
             // Update position qty
             await tx.position.update({
               where: { id: position.id },
@@ -374,7 +417,8 @@ export const managePosition = defineTool({
                 orderId: ord.id,
               },
             });
-          });
+            }),
+          );
 
           return {
             summary: `Partial close ${ticker}: sold ${pct}% (${closeQty} shares) ${pnlSign}$${partialPnl.toFixed(2)}`,
@@ -451,7 +495,10 @@ export const managePosition = defineTool({
           const newTotalQty = position.quantity + fillQty;
           const newAvgCost = ((position.avgCost * position.quantity) + (fillPrice * fillQty)) / newTotalQty;
 
-          await prisma.$transaction(async (tx) => {
+          await commitOrLogCritical(
+            "add_to_position",
+            { positionId: position.id, alpacaOrderId, symbol: ticker, extra: `addedQty=${fillQty} notional=${notional}` },
+            () => prisma.$transaction(async (tx) => {
             await tx.position.update({
               where: { id: position.id },
               data: { quantity: newTotalQty, avgCost: newAvgCost },
@@ -521,7 +568,8 @@ export const managePosition = defineTool({
                 orderId: ord.id,
               },
             });
-          });
+            }),
+          );
 
           return {
             summary: `Added to ${ticker}: +${fillQty} shares @ $${fillPrice.toFixed(2)}. Now ${newTotalQty} shares.`,
