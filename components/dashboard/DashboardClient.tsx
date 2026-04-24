@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
-import { SlidersHorizontal, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 
 import {
   Area,
@@ -54,6 +54,14 @@ import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
 import { Button } from '@/components/ui/button';
+import { PriceChange } from '@/components/ui/price-change';
+import {
+  Tooltip as UITooltip,
+  TooltipContent as UITooltipContent,
+  TooltipProvider as UITooltipProvider,
+  TooltipTrigger as UITooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Info } from 'lucide-react';
 import {
   mockOpenTrades,
   mockEquityCurve,
@@ -212,29 +220,43 @@ function groupActivityByDay(items: ActivityFeedItem[]) {
 }
 
 // ── StatTile — one cell in the portfolio stats grid below the chart ────────
-// Label is uppercase mono text-xs muted; value sits below at text-base normal.
-// Optional sublabel renders in a smaller muted line under the value for
-// secondary context (e.g. "3 positions").
+//
+// Responsive layout:
+//   Mobile — single row per tile. Label on the left (uppercase mono muted),
+//            value stretches to the right via flex-grow justify-end. This
+//            is what the user asked for on narrow screens: 4 rows stacked,
+//            each a horizontal label|value pair, not stacked inner content.
+//   Desktop — 4-column grid. Within each tile, VALUE sits on top (text-base
+//            normal weight), LABEL sits below (text-xs mono muted). Opposite
+//            of the original ordering — user explicitly asked for this.
+//
+// `info` prop renders a tiny info button next to the label that opens a
+// tooltip — used for the Net Value tile to explain semantics + surface the
+// position count the label itself no longer carries.
 function StatTile({
   label,
   value,
-  sublabel,
+  info,
   valueClassName,
 }: {
   label: string;
   value: string;
-  sublabel?: string;
+  info?: ReactNode;
   valueClassName?: string;
 }) {
+  const labelNode = (
+    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
+      {label}
+      {info}
+    </span>
+  );
+  const valueNode = (
+    <span className={cn('text-base tabular-nums', valueClassName)}>{value}</span>
+  );
   return (
-    <div className="space-y-1">
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p className={cn('text-base tabular-nums', valueClassName)}>{value}</p>
-      {sublabel && (
-        <p className="text-xs text-muted-foreground tabular-nums">{sublabel}</p>
-      )}
+    <div className="flex items-baseline justify-between gap-3 sm:flex-col-reverse sm:items-start sm:justify-start sm:gap-1">
+      {labelNode}
+      {valueNode}
     </div>
   );
 }
@@ -253,6 +275,33 @@ function fmtTileSigned(n: number): string {
   if (n < 0) return `-${abs}`;
   if (n > 0) return `+${abs}`;
   return abs;
+}
+
+function fmtTileCash(n: number): string {
+  // Cash-specific: show NO sign when positive (a bare "$28,426" reads as
+  // normal account state), show explicit '-' only when negative (borrowed
+  // on margin — signals something non-default is happening).
+  const abs = '$' + Math.round(Math.abs(n)).toLocaleString();
+  return n < 0 ? `-${abs}` : abs;
+}
+
+function InfoPopover({ children }: { children: ReactNode }) {
+  return (
+    <UITooltip>
+      <UITooltipTrigger render={
+        <button
+          type="button"
+          className="inline-flex h-3 w-3 items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors cursor-help"
+          aria-label="More info"
+        >
+          <Info className="h-3 w-3" />
+        </button>
+      } />
+      <UITooltipContent side="top" className="max-w-[220px] text-xs normal-case font-normal tracking-normal">
+        {children}
+      </UITooltipContent>
+    </UITooltip>
+  );
 }
 
 // Mirrors ACTION_STATUS from decision-summary-card.tsx
@@ -768,34 +817,33 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
           <div className="flex-1 min-w-0 space-y-5">
 
             {/* Portfolio header — matches the stock-detail header styling
-                (Trade page → app/(root)/trades/[id]/page.tsx). Single text-xl
-                line: total account value + colored delta with arrow + %.
-                Everything else (cash, net value, unrealized, win rate) now
-                lives in the 4-tile grid below the chart. */}
+                (Trade page → app/(root)/trades/[id]/page.tsx). Same text-xl
+                total + colored delta, rendered via the shared PriceChange
+                component so dashboard, trade detail, and stock detail never
+                drift apart on arrow icon / color / sign convention.
+                Mobile: total on its own line (text-xl), delta underneath
+                (text-base — one size down). sm+ collapses back to a single
+                row. */}
             <div className="space-y-0.5">
               {loading ? (
                 <Skeleton className="h-8 w-72" />
               ) : (
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
                   <span className="text-xl font-semibold tabular-nums">
                     {totalValueStr}
                   </span>
-                  <span
-                    className={cn(
-                      'text-xl tabular-nums flex items-center gap-2',
-                      pnlPositive ? 'text-positive' : 'text-negative',
-                    )}
-                  >
-                    {pnlPositive ? '+' : '-'}${Math.abs(rangePnl).toFixed(2)}
-                    <div className="flex items-center">
-                      {pnlPositive ? (
-                        <ArrowUpRight className="h-5 w-5" />
-                      ) : (
-                        <ArrowDownRight className="h-4 w-4" />
-                      )}
-                      {rangePnlPct.toFixed(2)}%
-                    </div>
-                  </span>
+                  <PriceChange
+                    dollarChange={rangePnl}
+                    percentChange={rangePnlPct}
+                    size="xl"
+                    className="hidden sm:inline-flex"
+                  />
+                  <PriceChange
+                    dollarChange={rangePnl}
+                    percentChange={rangePnlPct}
+                    size="base"
+                    className="sm:hidden"
+                  />
                 </div>
               )}
             </div>
@@ -1111,43 +1159,68 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
             {/* ── Portfolio stats grid (below the chart) ─────────────────
                 4 tiles. Values reconcile against the top-of-page total:
                   cash + netPositionValue = totalValue (accounting identity)
-                …so the user can add tile 1 + tile 2 and get the big number,
-                which is the whole reason the user asked for this redesign.
-                - Available Cash = raw Alpaca cash. Negative when the
-                  account is borrowing from the margin line; we annotate
-                  that case in the sublabel rather than hide it.
-                - Net Value = long MV − short MV (signed) — the actual
-                  net worth of open positions.
-                - Unrealized Gain = equity-derived, always matches what
-                  Alpaca reports (not DB-summed, which could undercount
-                  when live prices don't fetch).
+                …so user can add tile 1 + tile 2 and get the big number.
+                Responsive: mobile = 1-col stacked rows (label left,
+                value right-aligned); desktop = 4-col grid with value
+                above label.
+                - Available Cash = raw Alpaca cash. Negative on margin.
+                  Only the negative case shows a '-' prefix; positive shows
+                  no '+' — a bare dollar amount reads as normal.
+                - Net Value = long MV + signed-short MV — net worth of
+                  open positions. Info tooltip explains it + surfaces
+                  position count (moved out of the tile body on user ask,
+                  who found it confusing inline).
+                - Unrealized Gain = derived from Alpaca equity, not DB
+                  per-position sums (which undercount when a live-price
+                  fetch silently misses a ticker).
                 - Success Rate = win rate across closed positions. */}
             {!loading && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <StatTile
-                  label="Available Cash"
-                  value={fmtTileSigned(portfolio.cash)}
-                  valueClassName={portfolio.cash < 0 ? 'text-negative' : undefined}
-                  sublabel={portfolio.usingMargin ? 'using margin' : undefined}
-                />
-                <StatTile
-                  label="Net Value"
-                  value={fmtTileCurrency(portfolio.netPositionValue)}
-                  sublabel={portfolio.openCount > 0
-                    ? `${portfolio.openCount} position${portfolio.openCount === 1 ? '' : 's'}`
-                    : undefined}
-                />
-                <StatTile
-                  label="Unrealized Gain"
-                  value={fmtTileSigned(portfolio.unrealizedPnl)}
-                  valueClassName={portfolio.unrealizedPnl >= 0 ? 'text-positive' : 'text-negative'}
-                />
-                <StatTile
-                  label="Success Rate"
-                  value={portfolio.winRate != null ? `${Math.round(portfolio.winRate * 100)}%` : '—'}
-                  sublabel={portfolio.winRate == null ? 'no closed trades yet' : undefined}
-                />
-              </div>
+              <UITooltipProvider>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <StatTile
+                    label="Available Cash"
+                    value={fmtTileCash(portfolio.cash)}
+                    valueClassName={portfolio.cash < 0 ? 'text-negative' : undefined}
+                    info={portfolio.usingMargin ? (
+                      <InfoPopover>
+                        Negative because the account is borrowing from the
+                        margin line. You still have buying power; this is
+                        the literal Alpaca cash field.
+                      </InfoPopover>
+                    ) : undefined}
+                  />
+                  <StatTile
+                    label="Net Value"
+                    value={fmtTileCurrency(portfolio.netPositionValue)}
+                    info={
+                      <InfoPopover>
+                        Total market value of your open positions (long
+                        minus short). Combined with Available Cash, this
+                        equals the account total above.
+                        {portfolio.openCount > 0 && (
+                          <>
+                            <br />
+                            {portfolio.openCount} open position
+                            {portfolio.openCount === 1 ? '' : 's'}.
+                          </>
+                        )}
+                      </InfoPopover>
+                    }
+                  />
+                  <StatTile
+                    label="Unrealized Gain"
+                    value={fmtTileSigned(portfolio.unrealizedPnl)}
+                    valueClassName={portfolio.unrealizedPnl >= 0 ? 'text-positive' : 'text-negative'}
+                  />
+                  <StatTile
+                    label="Success Rate"
+                    value={portfolio.winRate != null ? `${Math.round(portfolio.winRate * 100)}%` : '—'}
+                    info={portfolio.winRate == null ? (
+                      <InfoPopover>No closed trades yet.</InfoPopover>
+                    ) : undefined}
+                  />
+                </div>
+              </UITooltipProvider>
             )}
 
             {/* Theses + Activity tabbed section */}
