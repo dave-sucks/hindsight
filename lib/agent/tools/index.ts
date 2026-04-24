@@ -59,8 +59,17 @@ interface ToolCtx {
 }
 
 export function createResearchTools(ctx: ToolCtx) {
+  // In-run tool-call tracker — shared across all tool instances in this
+  // run. get_stock_data populates TICKER → {"get_stock_data", ...};
+  // record_thesis gates against this to enforce "researched before thesis."
+  // Lives for the duration of a single run (one createResearchTools call).
+  const calledTickers = new Map<string, Set<string>>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const newCtx: any = { ...ctx, groupId: (phase: string) => phase };
+  const newCtx: any = {
+    ...ctx,
+    groupId: (phase: string) => phase,
+    calledTickers,
+  };
 
   const toolsBase = {
     get_market_context: getMarketContext(newCtx),

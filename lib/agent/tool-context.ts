@@ -46,6 +46,20 @@ export interface ToolContext {
    * A non-grouped tool (action tool) returns no groupId, breaking the chain.
    */
   groupId(phase: string): string;
+
+  /**
+   * In-run tool-call tracker. Maps TICKER (uppercase) → set of tool names
+   * that were called for that ticker in this run. Enables programmatic
+   * gates like "record_thesis may only be called for tickers that were
+   * researched via get_stock_data earlier in this run." Without this,
+   * the agent can narrate a thesis with no underlying research and
+   * record_thesis accepts it silently.
+   *
+   * Tools populate this themselves (see get_stock_data). Shared reference
+   * across all tool instances in the same run — created once per run in
+   * createResearchTools().
+   */
+  calledTickers?: Map<string, Set<string>>;
 }
 
 /** Create a ToolContext from plain options (adds the groupId method). */
