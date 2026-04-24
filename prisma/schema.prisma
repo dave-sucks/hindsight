@@ -121,6 +121,13 @@ model Thesis {
   // this on position close to credit/debit the originating Monitors.
   sourceSignalIds  String[]      @default([])
 
+  // V3 Fix 5 — provenance enforcement. Every thesis must declare where the
+  // idea came from so we can audit compliance from the DB (not just logs)
+  // and later bucket theses by origin for hit-rate analysis. Nullable
+  // because legacy rows predate this column.
+  sourceKind       String?       // "ROUTED_SIGNAL" | "WEB_SEARCH" | "WATCHLIST_REVIEW" | "POSITION_REVIEW"
+  sourceRationale  String?
+
   // Relations
   researchRun      ResearchRun   @relation(fields: [researchRunId], references: [id])
   decisions        TradeDecision[]

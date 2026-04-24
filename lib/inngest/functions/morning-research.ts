@@ -121,6 +121,15 @@ export const morningResearch = inngest.createFunction(
         // Use AbortSignal to kill the agent before Vercel's 300s timeout kills the process.
         // Without this, a timeout leaves the run stuck in RUNNING status forever.
         console.log(`[morning-research] Starting generateText for ${config.name} run=${run.id} systemPrompt=${systemPrompt.length}chars`);
+
+        // toolStats aggregator — mirrors the pattern in /api/agent/[mode]/route.ts
+        // so morning-cron runs are observable in /intelligence/health alongside
+        // UI-triggered runs. Without this, toolStats is null on every cron row
+        // and we cannot tell from the DB what the agent actually called.
+        const toolStats: Record<string, { count: number; totalLatencyMs: number; errors: number }> = {};
+        const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
+        let lastStepTimeMs = t0;
+
         try {
           const { text, steps, response } = await generateText({
             model: openai("gpt-4o"),
@@ -129,20 +138,140 @@ export const morningResearch = inngest.createFunction(
             tools,
             stopWhen: stepCountIs(30),
             abortSignal: AbortSignal.timeout(240_000), // 4 min — leaves 1 min for cleanup before Vercel's 5 min limit
-            onStepFinish({ stepNumber, toolCalls: stepTools, text: stepText, finishReason, usage }) {
-              const elapsed = Date.now() - t0;
+            onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage }) {
+              const now = Date.now();
+              const elapsed = now - t0;
+              const stepLatencyMs = now - lastStepTimeMs;
+              lastStepTimeMs = now;
               const ts = new Date().toISOString().slice(11, 23);
               const toolNames = stepTools.map((tc) => tc.toolName).join(", ") || "none";
               const textPreview = stepText?.slice(0, 120)?.replace(/\n/g, " ") || "";
               console.log(
                 `[morning-research] ${ts} STEP #${stepNumber} ${config.name} run=${run.id} elapsed=${elapsed}ms tools=[${toolNames}] finish=${finishReason} tokens=${usage?.totalTokens ?? "?"} text="${textPreview}${stepText && stepText.length > 120 ? "..." : ""}"`
               );
+
+              // Aggregate toolStats — attribute step wall time across this
+              // step's tool calls, inspect tool results for ok:false errors.
+              // Approximate for parallel calls (each credited the full step
+              // delta) but directionally correct for the diagnostic.
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const results = (toolResults ?? []) as Array<any>;
+              for (const call of stepTools) {
+                const bucket = toolStats[call.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
+                bucket.count += 1;
+                bucket.totalLatencyMs += stepLatencyMs;
+                toolStats[call.toolName] = bucket;
+              }
+              for (const r of results) {
+                // AI SDK v6 tool-result shape: { toolCallId, toolName, output }
+                // where `output` is our ToolResult<T> envelope. Legacy `result`
+                // field checked defensively.
+                const out = (r?.output ?? r?.result) as { ok?: boolean; error?: string } | undefined;
+                if (out && out.ok === false) {
+                  const bucket = toolStats[r.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
+                  bucket.errors += 1;
+                  toolStats[r.toolName] = bucket;
+                  if (failedToolCalls.length < 3) {
+                    failedToolCalls.push({
+                      toolName: r.toolName ?? "unknown",
+                      error: String(out.error ?? "").slice(0, 500),
+                      at: new Date().toISOString(),
+                    });
+                  }
+                }
+              }
             },
           });
 
-          const toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
-          const elapsed = Date.now() - t0;
+          let toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
+          let elapsed = Date.now() - t0;
           console.log(`[morning-research] Agent completed for ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`);
+
+          // ── Text-only-narration death retry ────────────────────────────────
+          // If the agent finished the generateText loop without calling
+          // record_thesis but DID call get_stock_data multiple times, it
+          // almost certainly died at a post-research markdown summary block
+          // ("### Portfolio Review / ### Discovery Opportunities ... With
+          // these insights, I'll formulate theses"). One retry with a
+          // forceful tool-call-only prompt usually recovers — the
+          // conversation state (research results) is preserved in
+          // response.messages, we just need to unstick the agent.
+          const preRetryThesisCount = await prisma.thesis.count({
+            where: { researchRunId: run.id },
+          });
+          const stockDataCalls = steps.reduce((sum, s) => {
+            return sum + (s.toolCalls?.filter((tc) => tc.toolName === "get_stock_data").length ?? 0);
+          }, 0);
+          if (preRetryThesisCount === 0 && stockDataCalls >= 2 && response?.messages) {
+            console.warn(
+              `[morning-research] 🔁 ${config.name} finished with 0 theses after ${stockDataCalls} get_stock_data calls — attempting record_thesis retry`
+            );
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const priorMessages = response.messages as any[];
+              const retry = await generateText({
+                model: openai("gpt-4o"),
+                system: systemPrompt,
+                messages: [
+                  ...priorMessages,
+                  {
+                    role: "user",
+                    content:
+                      "You researched tickers with get_stock_data but did not call record_thesis. The run will be marked FAILED unless you act NOW. Do the following, in order, as TOOL CALLS only — no narration, no markdown, no summary blocks: (1) Call record_thesis for EVERY ticker you researched this session (LONG / SHORT / PASS, each with source_kind and source_signal_ids if available). (2) Then call record_run_summary. (3) Then call complete_run. Emit tool calls only. Any text output beyond a short status sentence is a failure.",
+                  },
+                ],
+                tools,
+                stopWhen: stepCountIs(15),
+                abortSignal: AbortSignal.timeout(120_000),
+                onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, finishReason }) {
+                  const now = Date.now();
+                  const stepLatencyMs = now - lastStepTimeMs;
+                  lastStepTimeMs = now;
+                  const toolNames = stepTools.map((tc) => tc.toolName).join(", ") || "none";
+                  console.log(
+                    `[morning-research] RETRY STEP #${stepNumber} ${config.name} tools=[${toolNames}] finish=${finishReason}`
+                  );
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const results = (toolResults ?? []) as Array<any>;
+                  for (const call of stepTools) {
+                    const bucket = toolStats[call.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
+                    bucket.count += 1;
+                    bucket.totalLatencyMs += stepLatencyMs;
+                    toolStats[call.toolName] = bucket;
+                  }
+                  for (const r of results) {
+                    const out = (r?.output ?? r?.result) as { ok?: boolean; error?: string } | undefined;
+                    if (out && out.ok === false) {
+                      const bucket = toolStats[r.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
+                      bucket.errors += 1;
+                      toolStats[r.toolName] = bucket;
+                      if (failedToolCalls.length < 3) {
+                        failedToolCalls.push({
+                          toolName: r.toolName ?? "unknown",
+                          error: String(out.error ?? "").slice(0, 500),
+                          at: new Date().toISOString(),
+                        });
+                      }
+                    }
+                  }
+                },
+              });
+              const retryToolCalls = retry.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
+              const postRetryThesisCount = await prisma.thesis.count({
+                where: { researchRunId: run.id },
+              });
+              console.log(
+                `[morning-research] 🔁 ${config.name} retry: ${retry.steps.length} steps, ${retryToolCalls} tool calls, theses ${preRetryThesisCount} → ${postRetryThesisCount}`
+              );
+              toolCalls += retryToolCalls;
+              elapsed = Date.now() - t0;
+            } catch (retryErr) {
+              console.error(
+                `[morning-research] 🔁 ${config.name} retry failed:`,
+                retryErr instanceof Error ? retryErr.message : retryErr
+              );
+            }
+          }
 
           // Count positions opened by checking DB (the place_trade tool already created them)
           const tradesPlaced = await prisma.tradeDecision.count({
@@ -190,23 +319,41 @@ export const morningResearch = inngest.createFunction(
               });
             } catch { /* event write is best-effort */ }
           }
-          // Enrich parameters with run metadata (non-critical, separate write)
-          if (beltResult.count > 0) {
-            try {
-              const freshRun = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } });
-              await prisma.researchRun.update({
-                where: { id: run.id },
-                data: {
-                  parameters: {
-                    ...((freshRun?.parameters as object) ?? {}),
-                    tradesPlaced,
-                    agentSteps: steps.length,
-                    agentToolCalls: toolCalls,
-                    elapsedMs: elapsed,
-                  } as object,
-                },
-              });
-            } catch { /* parameter enrichment is non-critical */ }
+          // Enrich parameters with run metadata + toolStats (non-critical,
+          // separate write). toolStats mirrors /api/agent/[mode]/route.ts
+          // shape so /intelligence/health can read cron runs and UI runs
+          // uniformly.
+          const totalToolCalls = Object.values(toolStats).reduce((s, b) => s + b.count, 0);
+          try {
+            const freshRun = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } });
+            await prisma.researchRun.update({
+              where: { id: run.id },
+              data: {
+                parameters: {
+                  ...((freshRun?.parameters as object) ?? {}),
+                  tradesPlaced,
+                  agentSteps: steps.length,
+                  agentToolCalls: toolCalls,
+                  elapsedMs: elapsed,
+                  toolStats: {
+                    totalToolCalls,
+                    durationMs: elapsed,
+                    byTool: toolStats,
+                    failedToolCalls,
+                  },
+                } as object,
+              },
+            });
+          } catch (err) {
+            console.error(`[morning-research] Failed to persist toolStats for ${config.name}:`, err);
+          }
+
+          // Thin-run warning (mirrors agent route) — surface as log; the
+          // /intelligence/health dashboard's run-failure-triage reads these.
+          if (finalStatus === "COMPLETE" && (totalToolCalls < 5 || elapsed < 60_000)) {
+            console.warn(
+              `[morning-research] ⚠️ THIN RUN ${config.name} run=${run.id} tool_calls=${totalToolCalls} duration_ms=${elapsed}`
+            );
           }
 
           // Persist full conversation messages for replay (atomic — old messages preserved on failure)
@@ -276,7 +423,10 @@ export const morningResearch = inngest.createFunction(
             where: { id: run.id, status: "RUNNING" },
             data: { status: finalStatus, completedAt: new Date() },
           });
-          // Enrich parameters with error metadata (non-critical, separate write)
+          // Enrich parameters with error metadata + toolStats (non-critical,
+          // separate write). Writing toolStats on the error path is the
+          // most valuable case — it's how we diagnose WHY a run failed.
+          const totalToolCalls = Object.values(toolStats).reduce((s, b) => s + b.count, 0);
           try {
             const freshRun = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } });
             await prisma.researchRun.update({
@@ -287,6 +437,12 @@ export const morningResearch = inngest.createFunction(
                   error: message,
                   failedAt: new Date().toISOString(),
                   ...(hasPartialWork ? { partialTheses, partialTrades, timedOut: true } : {}),
+                  toolStats: {
+                    totalToolCalls,
+                    durationMs: Date.now() - t0,
+                    byTool: toolStats,
+                    failedToolCalls,
+                  },
                 } as object,
               },
             });

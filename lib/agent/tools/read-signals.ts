@@ -33,15 +33,6 @@ import type {
   MatchedUniverse,
 } from "@/lib/agent/tool-types";
 
-const DISCOVERY_CODES: RouteReasonCode[] = [
-  "DISCOVERY",
-  "SECTOR_MATCH",
-  "INDUSTRY_MATCH",
-  "THEME_MATCH",
-  "DIRECT_TICKER",
-  "CROSS_ANALYST",
-];
-
 function mapSignal(
   r: {
     relevanceScore: number;
@@ -114,47 +105,63 @@ function bucketOf(
 
 export const readSignals = defineTool({
   description:
-    "Read intelligence signals routed to you by background discovery jobs. Returns pre-gathered news, filings, earnings, social, and macro signals matched to your mandate, split into three buckets: portfolioSignals (your open positions), watchlistSignals (your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence — sectors, industries, themes). Filter by tickers, themes, or urgency. Every returned signal carries a `signalId` — remember the ones that actually informed your thinking and pass them to record_thesis as `sourceSignalIds` so the system can later attribute the trade's outcome back to the monitors that produced them. Signals are marked as READ after retrieval. Use discoverySignals to find new names to research — do NOT ignore them.",
+    "Read TODAY's intelligence signals routed to you by background discovery jobs. Scoped to the current ET trading day.\n\n" +
+    "**CALL WITH NO ARGUMENTS** to get today's entire routed pool for this analyst, grouped into three buckets — portfolioSignals (news on your open positions), watchlistSignals (news on your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence). That is the default and standard usage.\n\n" +
+    "All filters are OPTIONAL and exist for rare, targeted FOLLOW-UP calls after you've already seen the full pool. Passing any filter on your FIRST call narrows what you see and starves the other buckets — do not do this. Examples of legitimate follow-up use: `tickers: [\"NVDA\"]` to pull every NVDA-tagged signal after noticing NVDA in the first call; `bucket: \"DISCOVERY\"` to re-sample the discovery bucket deeper; `urgency: \"BREAKING\"` to sweep breaking news across all buckets.\n\n" +
+    "Every returned signal carries a `signalId` — pass them to record_thesis as `sourceSignalIds` so the system can attribute the trade's outcome back to the monitors that produced them. Signals are marked as READ after retrieval. Do NOT ignore discoverySignals — that bucket is how new names surface.",
   schema: z.object({
-    tickers: z.array(z.string()).optional().describe("Filter to signals mentioning these tickers"),
-    themes: z.array(z.string()).optional().describe("Filter to signals with these themes (e.g. AI_CAPEX, FED_RATE_CUT)"),
+    tickers: z
+      .array(z.string())
+      .optional()
+      .describe("FOLLOW-UP ONLY. Restrict to signals mentioning these tickers. Do not use on your first call."),
+    themes: z
+      .array(z.string())
+      .optional()
+      .describe("FOLLOW-UP ONLY. Restrict to signals tagged with these themes (e.g. AI_CAPEX, FED_RATE_CUT). Do not use on your first call."),
     type: z
       .enum(["NEWS", "EARNINGS", "FILING", "SOCIAL", "PRICE_ACTION", "ANALYST_NOTE", "OPTIONS", "MACRO", "SECTOR"])
       .optional()
-      .describe("Filter to a specific signal type"),
+      .describe("FOLLOW-UP ONLY. Restrict to one signal type. Do not use on your first call."),
     urgency: z
       .enum(["LOW", "MEDIUM", "HIGH", "BREAKING"])
       .optional()
-      .describe("Minimum urgency level"),
+      .describe("FOLLOW-UP ONLY. Minimum urgency floor. Use urgency='BREAKING' only as a targeted sweep after an initial no-argument call."),
     bucket: z
       .enum(["POSITION", "WATCHLIST", "DISCOVERY"])
       .optional()
-      .describe("Filter to a specific routing bucket. Omit to get all buckets split into three groups."),
-    limit: z.number().optional().describe("Max signals to return (default 20, capped by intelligence policy)"),
+      .describe("FOLLOW-UP ONLY. Re-sample a single bucket more deeply. Do not use on your first call — the no-argument default already returns all three buckets."),
+    limit: z
+      .number()
+      .optional()
+      .describe("Max signals to return. Defaults to 50 (your policy cap). Rarely need to change."),
   }),
   ui: "tool-ui" as const,
 
   progressLabel: (args) => {
-    if (args.bucket === "POSITION") return "Reading portfolio signals";
-    if (args.bucket === "WATCHLIST") return "Reading watchlist signals";
-    if (args.bucket === "DISCOVERY") return "Reading discovery signals";
+    const hasFilters =
+      args.bucket ||
+      (args.tickers && args.tickers.length > 0) ||
+      (args.themes && args.themes.length > 0) ||
+      args.type ||
+      args.urgency ||
+      args.limit !== undefined;
+    if (!hasFilters) return "Reading today's routed signals";
+    if (args.bucket === "POSITION") return "Follow-up: portfolio signals";
+    if (args.bucket === "WATCHLIST") return "Follow-up: watchlist signals";
+    if (args.bucket === "DISCOVERY") return "Follow-up: discovery signals";
     if (args.tickers && args.tickers.length > 0) {
       const sample = args.tickers.slice(0, 2).map((t) => `$${t.toUpperCase()}`).join(", ");
       const extra = args.tickers.length > 2 ? ` (+${args.tickers.length - 2} more)` : "";
-      return `Reading signals on ${sample}${extra}`;
+      return `Follow-up: signals on ${sample}${extra}`;
     }
     if (args.themes && args.themes.length > 0) {
-      const sample = args.themes[0];
-      const extra = args.themes.length > 1 ? ` (+${args.themes.length - 1} more)` : "";
-      return `Reading signals on ${sample}${extra}`;
+      return `Follow-up: signals on ${args.themes[0]}${args.themes.length > 1 ? ` (+${args.themes.length - 1} more)` : ""}`;
     }
-    if (args.urgency === "HIGH" || args.urgency === "BREAKING") {
-      return "Reading urgent signals";
-    }
+    if (args.urgency === "HIGH" || args.urgency === "BREAKING") return "Sweeping urgent signals";
     return "Reading signals routed to this analyst";
   },
 
-  execute: async ({ tickers, themes, type, urgency, bucket, limit = 20 }, ctx) => {
+  execute: async ({ tickers, themes, type, urgency, bucket, limit }, ctx) => {
     if (!ctx.analystId) {
       return {
         summary: "No analyst context — cannot read signals.",
@@ -170,8 +177,12 @@ export const readSignals = defineTool({
     }
 
     const policy = ctx.intelligencePolicy;
-    const policyMaxSignals = policy?.maxSignalsPerRun ?? 30;
-    const effectiveLimit = Math.min(limit, policyMaxSignals);
+    // Cap how many routes a single call returns. Practical upper bound kept
+    // bounded so the response stays inside the reasoning-token budget.
+    const HARD_LIMIT = 75;
+    const policyMaxSignals = policy?.maxSignalsPerRun ?? 50;
+    const callerLimit = typeof limit === "number" && limit > 0 ? limit : policyMaxSignals;
+    const effectiveLimit = Math.min(callerLimit, policyMaxSignals, HARD_LIMIT);
 
     const urgencyOrder = ["LOW", "MEDIUM", "HIGH", "BREAKING"];
     const callerMinIdx = urgency ? urgencyOrder.indexOf(urgency) : 0;
@@ -182,20 +193,40 @@ export const readSignals = defineTool({
     const minSourceQuality = policy?.minSourceQuality ?? 2;
     const excludedCategories = policy?.excludedSourceCategories ?? [];
 
+    // Scope to TODAY's routes only. The tool's contract is "today's routed
+    // signals for this analyst" — carrying yesterday's PENDING rows forward
+    // pollutes the pool with stale news the router already decided to
+    // reconsider on the current run. ET trading day matches what the
+    // signal-router uses when writing routes.
+    const todayStart = etTradingDayDate();
+
     // Bucket filter → map to the set of routeReasonCodes to include.
+    // Kept for rare follow-up calls where the agent wants to re-sample one
+    // bucket more deeply. Prompt instructs agent NOT to use on first call.
+    const DISCOVERY_CODES: RouteReasonCode[] = [
+      "DISCOVERY",
+      "SECTOR_MATCH",
+      "INDUSTRY_MATCH",
+      "THEME_MATCH",
+      "DIRECT_TICKER",
+      "CROSS_ANALYST",
+      "FIRM_AGGREGATE_FEED",
+      "AGGREGATE_TICKER_MATCH",
+    ];
     let codeFilter: RouteReasonCode[] | null = null;
     if (bucket === "POSITION") codeFilter = ["POSITION"];
     else if (bucket === "WATCHLIST") codeFilter = ["WATCHLIST"];
     else if (bucket === "DISCOVERY") codeFilter = DISCOVERY_CODES;
 
-    // Pull a wider slice than `effectiveLimit` so we can split into three
-    // buckets and still have enough in each.
-    const loadCap = Math.max(effectiveLimit * 3, 30);
+    // Load a wide slice so we can enforce per-ticker dedup and still have
+    // enough variety left across all three buckets.
+    const loadCap = Math.max(effectiveLimit * 2, 60);
 
     const routes = await prisma.analystSignalRoute.findMany({
       where: {
         analystId: ctx.analystId,
         status: { in: ["PENDING", "READ"] },
+        routedAt: { gte: todayStart },
         ...(codeFilter ? { routeReasonCode: { in: codeFilter } } : {}),
         signal: {
           ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
@@ -218,9 +249,18 @@ export const readSignals = defineTool({
       });
     }
 
-    // Per-bucket cap so discovery isn't crowded out by a hot-ticker hour.
-    const perBucketCap = Math.max(3, Math.floor(effectiveLimit / 3));
+    // Per-ticker cap: SMH × 9 in the top 10 is how TMT missed POET/GSIT/CSCO
+    // on 2026-04-23. Allow max 2 signals per ticker so one hot story doesn't
+    // starve discovery of unique names. Macro/aggregate signals with no
+    // ticker are uncapped.
+    const MAX_PER_TICKER = 2;
+    const firstTickerKey = (r: (typeof filtered)[number]): string | null => {
+      const t = r.signal.tickers?.[0];
+      return t ? t.toUpperCase() : null;
+    };
 
+    // Group by bucket for the return shape, but do NOT filter to one bucket
+    // — the agent always gets all three.
     const groupedByBucket: {
       portfolio: typeof filtered;
       watchlist: typeof filtered;
@@ -233,18 +273,44 @@ export const readSignals = defineTool({
       else groupedByBucket.discovery.push(r);
     }
 
+    // Per-bucket fair-share so a hot bucket doesn't dominate. Generous
+    // (~50/bucket at limit 150) — the point is the agent sees a reasonable
+    // slice of each bucket, not a thin token from one.
+    const perBucketCap = Math.max(10, Math.floor(effectiveLimit / 3));
     const picked: typeof filtered = [];
     const pickedIds = new Set<string>();
     for (const b of ["portfolio", "watchlist", "discovery"] as const) {
-      for (const r of groupedByBucket[b].slice(0, perBucketCap)) {
+      const perTickerCount = new Map<string, number>();
+      let kept = 0;
+      for (const r of groupedByBucket[b]) {
+        if (kept >= perBucketCap) break;
+        const tk = firstTickerKey(r);
+        if (tk) {
+          const n = perTickerCount.get(tk) ?? 0;
+          if (n >= MAX_PER_TICKER) continue;
+          perTickerCount.set(tk, n + 1);
+        }
         picked.push(r);
         pickedIds.add(r.id);
+        kept++;
       }
     }
-    // Backfill to effectiveLimit with whatever's left, highest score first.
+    // Backfill to effectiveLimit with whatever's left, highest score first,
+    // respecting the per-ticker cap globally.
+    const globalPerTicker = new Map<string, number>();
+    for (const r of picked) {
+      const tk = firstTickerKey(r);
+      if (tk) globalPerTicker.set(tk, (globalPerTicker.get(tk) ?? 0) + 1);
+    }
     for (const r of filtered) {
       if (picked.length >= effectiveLimit) break;
       if (pickedIds.has(r.id)) continue;
+      const tk = firstTickerKey(r);
+      if (tk) {
+        const n = globalPerTicker.get(tk) ?? 0;
+        if (n >= MAX_PER_TICKER) continue;
+        globalPerTicker.set(tk, n + 1);
+      }
       picked.push(r);
       pickedIds.add(r.id);
     }
@@ -258,14 +324,9 @@ export const readSignals = defineTool({
       });
     }
 
-    // Fallback: no routed signals at all for this analyst today.
-    // Only fall back when the caller didn't ask for a specific bucket — if
-    // they explicitly asked for POSITION and there are 0 POSITION routes,
-    // they need to see an honest empty result, not a watchlist/sector
-    // fallback mislabeled as "portfolio signals" in the UI. An honest empty
-    // bucket is the signal to the agent that it should broaden its call
-    // (e.g. call read_signals() with no bucket argument to scan everything).
-    if (finalRoutes.length === 0 && !bucket) {
+    // Fallback: no routed signals at all for this analyst today — fall back
+    // to direct sector/industry/theme/watchlist matching on today's signals.
+    if (finalRoutes.length === 0) {
       const config = await prisma.agentConfig.findUnique({
         where: { id: ctx.analystId },
         select: {
@@ -405,35 +466,6 @@ export const readSignals = defineTool({
     const bullish = mappedSignals.filter((s) => s.sentiment === "BULLISH").length;
     const bearish = mappedSignals.filter((s) => s.sentiment === "BEARISH").length;
 
-    // When an explicit bucket was requested and returned empty, give the
-    // agent a clear signal that this specific bucket is empty (vs. a
-    // misleading "0 signals" blob). Hints at broadening the call.
-    if (bucket && mappedSignals.length === 0) {
-      const bucketLabel =
-        bucket === "POSITION"
-          ? "portfolio"
-          : bucket === "WATCHLIST"
-          ? "watchlist"
-          : "discovery";
-      return {
-        summary: `No ${bucketLabel} signals routed today. Call read_signals() with no bucket argument to scan the full routed pool.`,
-        data: {
-          count: 0,
-          policyApplied: {
-            maxSignals: policyMaxSignals,
-            minUrgency: urgencyOrder[effectiveMinIdx],
-            minSourceQuality,
-            excludedCategories,
-          },
-          signals: [],
-          portfolioSignals: [],
-          watchlistSignals: [],
-          discoverySignals: [],
-          discoveryNote: `Requested bucket "${bucket}" returned 0 signals — try read_signals() with no bucket to see all routed signals.`,
-        } as SignalsToolData,
-        sources: [],
-      };
-    }
 
     return {
       summary:

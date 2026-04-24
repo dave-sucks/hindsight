@@ -167,8 +167,9 @@ function computeRelevance(args: {
   profile: AnalystProfile
   matched: MatchedUniverse | null
   tickerHit: "POSITION" | "WATCHLIST" | null
+  isOwner: boolean  // signal came from this analyst's own monitor
 }): { score: number; reasons: string[] } {
-  const { signal, profile, matched, tickerHit } = args
+  const { signal, profile, matched, tickerHit, isOwner } = args
   let score = 0
   const reasons: string[] = []
 
@@ -178,6 +179,19 @@ function computeRelevance(args: {
   } else if (tickerHit === "WATCHLIST") {
     score += 45
     reasons.push("watchlist_match")
+  }
+
+  // Owner bonus — a signal from the analyst's OWN monitor (T2/T3/T5 analyst-
+  // scoped) represents explicit intent: the analyst built that monitor to find
+  // exactly this kind of signal. Without this bonus, owner-built discovery
+  // monitors (like "52-week highs tech sector" finding POET/NVTS/SNDK) get
+  // buried under FIRM-scope "Watchlist Searches" output that flooded TMT's
+  // inbox with 9 SMH dupes at higher relevance than POET at rank #15. The
+  // bonus is large enough to lift a pure sector-match DIRECT_TICKER (42
+  // baseline) above a pure sector-match DISCOVERY (42 baseline).
+  if (isOwner) {
+    score += 20
+    reasons.push("owner_bonus")
   }
 
   if (matched?.sectors && matched.sectors.length > 0) {
@@ -549,6 +563,7 @@ export const signalRouter = inngest.createFunction(
             profile,
             matched: tickerHit !== null ? null : matched,
             tickerHit,
+            isOwner,
           })
 
           // Owner fast-path: no floor. Feed-subscribed aggregates: no floor

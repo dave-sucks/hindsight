@@ -114,28 +114,43 @@ export const recordThesis = defineTool({
   execute: async (args, ctx) => {
     try {
       const sourceSignalIds = Array.from(new Set(args.source_signal_ids ?? []));
+      const sourceRationale = args.source_rationale?.trim() ?? "";
 
-      // Inference fallback: GPT-4o occasionally drops required fields, and
-      // hard-rejecting the whole call would tank the whole run (zero theses
-      // => route.ts onFinish marks FAILED because hasWork = thesisCount > 0
-      // || tradeCount > 0). Infer a best-effort source_kind from context
-      // and log loudly so the compliance miss shows up in toolStats.
+      // Provenance gate: every thesis must declare WHERE the idea came from.
+      // Today 11 of 19 theses landed with null sourceSignalIds because the
+      // agent passed neither signal IDs nor rationale and the old inference
+      // fallback silently saved with empty provenance. The "don't tank the
+      // run" argument doesn't apply anymore — we have a retry path in
+      // morning-research.ts that recovers FAILED theses. Reject here and
+      // make the agent fix the call.
+      if (!args.source_kind && sourceSignalIds.length === 0 && sourceRationale.length === 0) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — no provenance provided (no source_kind, no source_signal_ids, no source_rationale).`
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: no provenance provided.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note: "Every record_thesis call MUST declare provenance. Add EITHER source_signal_ids (non-empty array of IDs from today's read_signals output) with source_kind=ROUTED_SIGNAL, OR source_rationale (one-line explanation like 'Reviewed position after price alert' or 'Identified via 52-week-high discovery monitor') with source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW. Retry with the correct shape.",
+          },
+          sources: [],
+        };
+      }
+
+      // Inference fallback (only fires when agent provided at least SOME
+      // provenance but missed source_kind). Infers from what's present:
+      //   - signal_ids present → ROUTED_SIGNAL
+      //   - rationale present → WEB_SEARCH (conservative default)
       const inferredSourceKind =
         args.source_kind ??
         (sourceSignalIds.length > 0 ? "ROUTED_SIGNAL" : "WEB_SEARCH");
 
-      const inferredSourceRationale =
-        args.source_rationale ??
-        (inferredSourceKind === "ROUTED_SIGNAL"
-          ? undefined
-          : `Source: ${inferredSourceKind.toLowerCase().replace(/_/g, " ")}; rationale unspecified (agent did not provide).`);
-
       if (!args.source_kind) {
         console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — source_kind missing, inferred=${inferredSourceKind}. Agent prompt compliance issue; investigate via toolStats.`,
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — source_kind missing, inferred=${inferredSourceKind} from signal_ids=${sourceSignalIds.length} rationale_len=${sourceRationale.length}. Agent prompt compliance issue.`
         );
       }
-      void inferredSourceRationale;
 
       // Forcing function: when the call claims (or infers) ROUTED_SIGNAL
       // provenance, every signalId must belong to this analyst's routed
@@ -194,6 +209,8 @@ export const recordThesis = defineTool({
         signalTypes: args.signal_types,
         sourcesUsed: args.sources_used ?? [],
         sourceSignalIds,
+        sourceKind: inferredSourceKind,
+        sourceRationale: sourceRationale.length > 0 ? sourceRationale : null,
         source: "AGENT",
         modelUsed: "gpt-4o",
       };
@@ -226,10 +243,15 @@ export const recordThesis = defineTool({
         });
       } catch (v2Err: unknown) {
         const errMsg = v2Err instanceof Error ? v2Err.message : String(v2Err);
-        if (errMsg.includes("status") || errMsg.includes("parentThesisId") || errMsg.includes("sourceSignalIds") || errMsg.includes("Unknown arg")) {
-          console.warn("[tool] record_thesis: V2 columns not available, falling back to core schema");
-          const { sourceSignalIds: _dropped, ...fallbackData } = coreData;
-          void _dropped;
+        if (errMsg.includes("status") || errMsg.includes("parentThesisId") || errMsg.includes("sourceSignalIds") || errMsg.includes("sourceKind") || errMsg.includes("sourceRationale") || errMsg.includes("Unknown arg")) {
+          console.warn("[tool] record_thesis: V2/V3 columns not available, falling back to core schema");
+          const {
+            sourceSignalIds: _ids,
+            sourceKind: _kind,
+            sourceRationale: _rationale,
+            ...fallbackData
+          } = coreData;
+          void _ids; void _kind; void _rationale;
           thesis = await prisma.thesis.create({ data: fallbackData });
           resolvedParentId = null; // can't update parent if schema doesn't support it
         } else {

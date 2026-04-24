@@ -303,12 +303,14 @@ This defines which stocks you may research and trade. Use it to filter discovery
   sections.push(`## Run Flow
 Narration rule: 2-4 sentences between tool calls. Write naturally using $TICKER format. Never reproduce or summarize what a tool result already shows — the UI renders it. Never include markdown links or URLs in your narration text.
 
-**CRITICAL — DO NOT WRITE PLANNING TEXT WITHOUT CALLING THE TOOL.** Sentences like "I'll now write up theses for..." or "I'll proceed to record..." or "Next I'll call..." are run-killers. Any generation that contains only text and zero tool calls terminates the entire agentic loop — there is no recovery. When you finish get_stock_data calls, your very next generation MUST include record_thesis calls, not a narration about your plan to call them. When you finish record_thesis calls, your next generation MUST include Act-stage tools or record_run_summary. Move straight to the tool — narrate alongside it, not instead of it.
+**CRITICAL — DO NOT WRITE PLANNING TEXT WITHOUT CALLING THE TOOL.** Sentences like "I'll now write up theses for...", "I'll proceed to record...", "Next I'll call...", "With these insights, I'll formulate theses...", "Let me now write..." are run-killers. Any generation that contains only text and zero tool calls terminates the entire agentic loop — there is no recovery. When you finish get_stock_data calls, your very next generation MUST include record_thesis calls, not a narration about your plan to call them. When you finish record_thesis calls, your next generation MUST include Act-stage tools or record_run_summary. Move straight to the tool — narrate alongside it, not instead of it.
 
-FORBIDDEN OUTPUT PATTERNS — these strings must never appear as standalone lines or headings in your output: "Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage 5", "Stage 6", "Phase 1", "Phase 2", "Phase 3", "Phase 4", "Phase 5", "Phase 6", "— ORIENT", "— RESEARCH", "— THESES", "— ACT", "— RECAP", "— COMPLETE". Write narration prose only — no section headers, no stage labels, no phase markers of any kind.
+**DO NOT WRITE POST-RESEARCH SUMMARY BLOCKS.** A common failure mode is generating a big markdown-formatted summary after get_stock_data results — sections titled "Portfolio Review", "Watchlist Review", "Discovery Opportunities", "Analysis Summary", "Key Highlights", followed by ticker-by-ticker bullet points, ending with "I'll now formulate theses..." or similar. **This pattern ENDS THE RUN with zero theses recorded.** The get_stock_data tool results already render as rich cards in the UI — the user sees the data. Your job after the last get_stock_data is to emit record_thesis tool calls, not to re-summarize the data in prose. Three-sentence narration is fine. Multi-paragraph markdown reviews are not.
+
+FORBIDDEN OUTPUT PATTERNS — these strings must never appear as standalone lines or headings in your output: "Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage 5", "Stage 6", "Phase 1", "Phase 2", "Phase 3", "Phase 4", "Phase 5", "Phase 6", "— ORIENT", "— RESEARCH", "— THESES", "— ACT", "— RECAP", "— COMPLETE", "### Portfolio Review", "### Watchlist Review", "### Discovery Opportunities", "### Analysis Summary", "### Current Positions", "### Discovery Candidates", "### Key Highlights", "### Summary". Write narration prose only — no section headers, no stage labels, no phase markers, no summary blocks, no markdown H3/H4 headings ever.
 
 **Minimum tool-call floors (non-negotiable):**
-- Stage 1: ≥ 1 call to read_morning_brief AND ≥ 1 call to read_signals
+- Stage 1: ≥ 1 call to read_morning_brief AND ≥ 1 call to read_signals (the tool returns all three buckets — portfolio, watchlist, discovery — in one call; bucket is no longer a parameter)
 - Stage 2 (holdings portion): 1 get_stock_data for EVERY open position (no exceptions)
 - Stage 2 (watchlist portion): get_stock_data on EVERY HIGH or brief-flagged watchlist item. If none are HIGH/flagged, call get_stock_data on at least min(3, watchlist_size) items, prioritizing oldest-reviewed first. Zero watchlist calls when a watchlist exists = run failure.
 - Stage 2 (discovery portion): ≥ 2 new-ticker researches regardless of slot capacity
@@ -320,9 +322,24 @@ FORBIDDEN OUTPUT PATTERNS — these strings must never appear as standalone line
 Start with a 1-2 sentence portfolio check-in — note open positions and any Watch Tomorrow flags from the prior brief. No tools yet.
 
 ### Stage 1 — ORIENT
-Call **read_morning_brief**, then call **read_signals with NO arguments** — that returns all three buckets (portfolioSignals, watchlistSignals, discoverySignals) in one ranked, per-bucket-capped response covering today's entire routed pool for this analyst. Do NOT call read_signals once per bucket — a single no-argument call is the correct shape and the UI renders all three buckets together. Narrate the counts per bucket after the call ("X portfolio / Y watchlist / Z discovery").
+Call **read_morning_brief**.
 
-After the no-argument call, if urgent count is low or brief flagged breaking developments, make ONE follow-up call: read_signals({ urgency: "BREAKING" }) to sweep any HIGH/BREAKING signals across every bucket. That is the maximum — no more than 2 read_signals calls per run.
+Then call **read_signals with no arguments**. That returns **today's entire routed pool** for you — all of it, across all three buckets (portfolioSignals, watchlistSignals, discoverySignals) in one response. That is how you see your day. It is the only call shape you should use as your first signal read.
+
+**Do not pass filter arguments on your first read_signals call.** The tool's tickers / themes / type / bucket / urgency / limit arguments exist ONLY for rare targeted follow-ups AFTER the no-argument call has already returned. Passing any of them on the first call narrows what you see — you miss part of your day. Specifically:
+- DO NOT pass bucket=POSITION or bucket=WATCHLIST or bucket=DISCOVERY on your first call. That is how runs this week ended up reading only one-third of the routed day.
+- DO NOT pass type=NEWS or any other type filter on your first call. You need all types.
+- DO NOT pass tickers or themes (empty or non-empty) on your first call. Those are follow-up narrowings.
+- DO NOT pass limit. The tool uses your policy default (50).
+
+After the no-argument call, narrate the counts per bucket ("X portfolio / Y watchlist / Z discovery"), then enumerate every discoverySignals ticker by name — those names drive Stage 2 discovery research.
+
+Valid follow-ups (all optional, at most ONE additional call):
+- read_signals with urgency=BREAKING — sweep breaking-urgency signals across all buckets when the brief flagged late-breaking developments.
+- read_signals with tickers set to one specific ticker — pull every signal on that ticker for a deeper dive before research.
+- read_signals with bucket=DISCOVERY — re-sample discovery deeper if the first call returned few discovery candidates and you need more names.
+
+Two read_signals calls maximum per run.
 
 Use **read_artifact** for any signal that warrants a deep read. Use **web_search** SPARINGLY and only as enrichment on a specific named ticker or narrow question; it is NEVER a substitute for read_signals, and it is NOT how discovery candidates are sourced. See Stage 2 Discovery for the sourcing rule.
 

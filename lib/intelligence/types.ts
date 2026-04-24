@@ -174,8 +174,11 @@ export const SONAR_SIGNAL_SCHEMA = {
 // Stored as JSON on AgentConfig.intelligencePolicy.
 
 export interface IntelligencePolicy {
-  // Discovery budget — caps how much the agent reads per run
-  maxSignalsPerRun: number;        // default 30 — max signals to surface via read_signals
+  // Discovery budget — caps how much the agent reads per run.
+  // 30 was too low (TMT had 165 routes, agent saw 20), 100 was over-generous.
+  // 50 balances "see the full useful slice of your day" with context budget.
+  // read_signals' HARD_LIMIT = 75 acts as a secondary ceiling.
+  maxSignalsPerRun: number;        // default 50 — max signals to surface via read_signals
   maxArtifactReads: number;        // default 5 — full article reads per run
 
   // Source category preferences — steer what types of intelligence get priority
@@ -199,7 +202,7 @@ export interface IntelligencePolicy {
 
 /** Sensible defaults for new analysts — balanced attention, moderate budgets. */
 export const DEFAULT_INTELLIGENCE_POLICY: IntelligencePolicy = {
-  maxSignalsPerRun: 30,
+  maxSignalsPerRun: 50,
   maxArtifactReads: 5,
   preferredSourceCategories: [],
   excludedSourceCategories: [],
