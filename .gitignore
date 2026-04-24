@@ -47,3 +47,4 @@ next-env.d.ts
 /lib/generated/prisma
 .claude/worktrees/
 .worktrees/
+.claude/scheduled_tasks.lock

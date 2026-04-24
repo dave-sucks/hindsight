@@ -35,38 +35,45 @@ export function BriefCard({
 
   return (
     <Card
-      className="p-0 cursor-pointer hover:bg-accent/50 transition-colors overflow-hidden"
+      className="p-0 gap-0 cursor-pointer hover:bg-accent/50 transition-colors overflow-hidden shadow-none py-0"
       onClick={onClick}
     >
-      {/* Top section: metadata + title */}
-      <div className="px-3 pt-3 pb-2 border-b">
-        <div className="flex items-center gap-2 mb-1">
-          {brief.type === "intel" && brief.signalCount != null && (
-            <SourceAvatars
-              sources={[
-                { icon: <PerplexityLogo className="h-3 w-3" /> },
-                { icon: <FinnhubLogo className="h-3 w-3" /> },
-                { icon: <FmpLogo className="h-3 w-3" /> },
-              ]}
-              count={brief.signalCount}
-              label={`${brief.signalCount} signals`}
-            />
-          )}
-          {meta && (
-            <span className="text-xs text-muted-foreground tabular-nums">{meta}</span>
-          )}
+      {/* Section 1: badges row + title + preview */}
+      <div className="p-3 flex flex-col gap-2 min-w-0">
+        {/* Row 1: badges/meta left · timestamp right */}
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            {brief.type === "intel" && brief.signalCount != null && (
+              <SourceAvatars
+                sources={[
+                  { icon: <PerplexityLogo className="h-3 w-3" /> },
+                  { icon: <FinnhubLogo className="h-3 w-3" /> },
+                  { icon: <FmpLogo className="h-3 w-3" /> },
+                ]}
+                count={brief.signalCount}
+                label={`${brief.signalCount} signals`}
+              />
+            )}
+            {meta && (
+              <span className="text-xs font-mono text-muted-foreground tabular-nums">
+                {meta}
+              </span>
+            )}
+          </div>
+          <span className="text-xs font-mono text-muted-foreground tabular-nums shrink-0">
+            {relativeTime(brief.date)}
+          </span>
         </div>
-        <p className="text-sm font-medium leading-snug">{title}</p>
-      </div>
 
-      {/* Body: preview text + timestamp */}
-      <div className="px-3 pt-2 pb-3">
-        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-4">
+        {/* Row 2: title */}
+        <h2 className="text-sm font-medium text-foreground leading-tight truncate">
+          {title}
+        </h2>
+
+        {/* Row 3: preview */}
+        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
           {brief.preview}
         </p>
-        <span className="text-xs font-mono text-muted-foreground tabular-nums mt-2 block">
-          {relativeTime(brief.date)}
-        </span>
       </div>
     </Card>
   );

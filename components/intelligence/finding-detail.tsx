@@ -93,15 +93,42 @@ export function FindingDetailDialog({
   const monitorType = getMonitorType(signal);
   const MonitorIcon = MONITOR_ICON[monitorType];
   const isEmail = monitorType === "EMAIL";
+  const isDomain = monitorType === "DOMAIN";
   const isAggregate = signal.aggregateType != null;
   const subject = emailSubject(signal);
-  // Query bar text priority: aggregate title → email subject → search query → headline.
-  const query = isAggregate
-    ? aggregateTitle(signal.aggregateType)
-    : subject ?? signal.searchQuery ?? signal.headline;
+
+  // Header pill text. DOMAIN monitors read like a Chrome link preview —
+  // "Site Name · domain.com" — because the domain IS the story, not a query.
+  // Everything else keeps the search-bar treatment:
+  //   aggregate title → email subject → search query → headline.
+  const primaryUrl = signal.sourceUrls[0];
+  const primaryDomain = primaryUrl ? extractDomain(primaryUrl) : null;
+  const primaryName = signal.sourceNames[0];
+  const domainHeader =
+    primaryName && primaryDomain
+      ? `${primaryName} · ${primaryDomain}`
+      : primaryDomain ?? primaryName ?? null;
+  // For SEARCH monitors prefer the monitor's name (e.g. "Portfolio Searches")
+  // over the raw prompt — Sonar prompts are multi-topic kitchen-sink strings
+  // that read like garbage in the header pill.
+  const query =
+    isDomain && domainHeader
+      ? domainHeader
+      : isAggregate
+      ? aggregateTitle(signal.aggregateType)
+      : subject ?? signal.monitor?.name ?? signal.searchQuery ?? signal.headline;
+
+  // Tool popovers live in the header pill only when the pill is a real
+  // "search bar" — i.e. SEARCH-type Sonar signals. DOMAIN findings also use
+  // Sonar under the hood, but labeling the pill as a "search" there misleads:
+  // the pill is a link preview, not a query. Firecrawl is a backing detail
+  // and only surfaces alongside a real search, never standalone.
   const usedPerplexity =
-    !isEmail && !isAggregate && (!signal.searchTool || signal.searchTool === "PERPLEXITY_SONAR");
-  const usedFirecrawl = !!signal.artifactId;
+    !isEmail &&
+    !isAggregate &&
+    !isDomain &&
+    (!signal.searchTool || signal.searchTool === "PERPLEXITY_SONAR");
+  const usedFirecrawl = usedPerplexity && !!signal.artifactId;
 
   const hasSources = signal.sourceUrls.length > 0;
 

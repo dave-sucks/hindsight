@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { Card } from "@/components/ui/card";
 import { StockLogo } from "@/components/StockLogo";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConceptTooltip } from "@/components/domain/education-card";
@@ -199,85 +200,88 @@ export default async function RunsPage() {
               : null;
 
           return (
-            <Link
-              key={run.id}
-              href={`/runs/${run.id}`}
-              className="block border rounded-xl p-4 hover:bg-muted/20 transition-colors"
-            >
-              {/* Header: status dot (conditional) · analyst name · time · duration | logo stack */}
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  {statusDotClass && (
-                    <div className={`h-2 w-2 rounded-full shrink-0 ${statusDotClass}`} />
-                  )}
-                  <span className="text-sm font-medium truncate">{analystName}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                    {formatRelativeTime(run.startedAt)}
-                    {duration != null && ` · ${duration}s`}
-                  </span>
-                </div>
+            <Link key={run.id} href={`/runs/${run.id}`} className="block">
+              <Card className="p-0 gap-0 py-0 shadow-none hover:bg-accent/50 transition-colors overflow-hidden">
+                {/* Section 1: header + action line */}
+                <div className="p-3 flex flex-col gap-2 min-w-0">
+                  {/* Row 1: status · analyst · time | logo stack */}
+                  <div className="flex items-center justify-between gap-3 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {statusDotClass && (
+                        <div className={`h-2 w-2 rounded-full shrink-0 ${statusDotClass}`} />
+                      )}
+                      <span className="text-sm font-medium text-foreground truncate">
+                        {analystName}
+                      </span>
+                      <span className="text-xs font-mono text-muted-foreground tabular-nums shrink-0">
+                        {formatRelativeTime(run.startedAt)}
+                        {duration != null && ` · ${duration}s`}
+                      </span>
+                    </div>
 
-                {orderedTickers.length > 0 && (
-                  <div className="flex items-center shrink-0">
-                    {orderedTickers.slice(0, 5).map((ticker, i) => (
-                      <div
-                        key={ticker}
-                        className={i > 0 ? "-ml-1" : ""}
-                        style={{ zIndex: orderedTickers.length - i }}
-                      >
-                        <LogoWithDot
-                          ticker={ticker}
-                          badge={summary.tickerBadges.get(ticker)}
-                        />
-                      </div>
-                    ))}
-                    {orderedTickers.length > 5 && (
-                      <div className="-ml-1 h-6 w-6 rounded-full bg-muted border border-background flex items-center justify-center text-xs font-medium text-muted-foreground">
-                        +{orderedTickers.length - 5}
+                    {orderedTickers.length > 0 && (
+                      <div className="flex items-center shrink-0">
+                        {orderedTickers.slice(0, 5).map((ticker, i) => (
+                          <div
+                            key={ticker}
+                            className={i > 0 ? "-ml-1" : ""}
+                            style={{ zIndex: orderedTickers.length - i }}
+                          >
+                            <LogoWithDot
+                              ticker={ticker}
+                              badge={summary.tickerBadges.get(ticker)}
+                            />
+                          </div>
+                        ))}
+                        {orderedTickers.length > 5 && (
+                          <div className="-ml-1 h-6 w-6 rounded-full bg-muted border border-background flex items-center justify-center text-xs font-medium text-muted-foreground">
+                            +{orderedTickers.length - 5}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              {/* Primary action line — plain text, no dots */}
-              <p className="text-sm text-muted-foreground line-clamp-2">
-                {segments.map((seg, i) => (
-                  <span key={i}>
-                    {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
-                    <span>{seg.text}</span>
-                  </span>
-                ))}
-              </p>
-
-              {/* Stats row — "N researched" is the headline, rest is breakdown */}
-              {summary.counts.researched > 0 && (
-                <div className="flex items-center justify-between border-t pt-2 mt-2 text-xs tabular-nums">
-                  <span>
-                    <span className="font-medium text-foreground">
-                      {summary.counts.researched} researched
-                    </span>
-                    <span className="text-muted-foreground">
-                      {summary.counts.new > 0 && ` · ${summary.counts.new} new`}
-                      {summary.counts.closed > 0 && ` · ${summary.counts.closed} closed`}
-                      {summary.counts.held > 0 && ` · ${summary.counts.held} held`}
-                      {summary.counts.passed > 0 && ` · ${summary.counts.passed} passed`}
-                      {summary.counts.watchlist > 0 &&
-                        ` · ${summary.counts.watchlist} watchlist`}
-                    </span>
-                  </span>
-                  {pnlLabel && (
-                    <span
-                      className={cn(
-                        "font-medium",
-                        pnl! >= 0 ? "text-emerald-500" : "text-red-500",
-                      )}
-                    >
-                      {pnlLabel}
-                    </span>
-                  )}
+                  {/* Row 2: action line */}
+                  <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                    {segments.map((seg, i) => (
+                      <span key={i}>
+                        {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
+                        <span>{seg.text}</span>
+                      </span>
+                    ))}
+                  </p>
                 </div>
-              )}
+
+                {/* Section 2: stats row — full-width border */}
+                {summary.counts.researched > 0 && (
+                  <div className="flex items-center justify-between p-3 border-t text-xs font-mono tabular-nums">
+                    <span>
+                      <span className="font-medium text-foreground">
+                        {summary.counts.researched} researched
+                      </span>
+                      <span className="text-muted-foreground">
+                        {summary.counts.new > 0 && ` · ${summary.counts.new} new`}
+                        {summary.counts.closed > 0 && ` · ${summary.counts.closed} closed`}
+                        {summary.counts.held > 0 && ` · ${summary.counts.held} held`}
+                        {summary.counts.passed > 0 && ` · ${summary.counts.passed} passed`}
+                        {summary.counts.watchlist > 0 &&
+                          ` · ${summary.counts.watchlist} watchlist`}
+                      </span>
+                    </span>
+                    {pnlLabel && (
+                      <span
+                        className={cn(
+                          "font-medium",
+                          pnl! >= 0 ? "text-emerald-500" : "text-red-500",
+                        )}
+                      >
+                        {pnlLabel}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </Card>
             </Link>
           );
         })

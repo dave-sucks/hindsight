@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useCallback, memo } from "react";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FindingDetailDialog } from "@/components/intelligence/finding-detail";
@@ -81,16 +80,23 @@ export function SignalFeed({
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        {/* Search + shared filter row — single line on desktop, wraps on mobile */}
-        <div className="flex flex-wrap items-center gap-2">
-          <SignalFilters
-            value={filters}
-            onChange={setFilters}
-            analystOptions={analystOptions}
-            showAnalyst={showAnalystFilter}
-            showRoute={showRouteFilter}
-            tickerSuggestions={tickerSuggestions}
-          />
+        {/* Filters + search.
+            Mobile: filters scroll horizontally in their own row (no wrap so
+            the chips stay compact instead of stacking three tall). Search
+            drops to its own full-width row below.
+            Desktop (sm+): collapses back to a single wrap row with search
+            pinned right, matching the original compact layout. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="-mx-2 flex items-center gap-2 overflow-x-auto px-2 pb-1 [&>*]:shrink-0 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 sm:[&>*]:shrink">
+            <SignalFilters
+              value={filters}
+              onChange={setFilters}
+              analystOptions={analystOptions}
+              showAnalyst={showAnalystFilter}
+              showRoute={showRouteFilter}
+              tickerSuggestions={tickerSuggestions}
+            />
+          </div>
           <div className="relative w-full sm:ml-auto sm:w-56">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -189,56 +195,59 @@ export const SignalRow = memo(function SignalRow({
   const AggregateSourceIcon = toolConfig?.icon;
 
   return (
-    <Card
-      className="p-4 cursor-pointer hover:bg-accent/50 transition-colors"
+    <div
+      className="p-3 gap-2 flex flex-col cursor-pointer rounded-lg hover:bg-accent/50 transition-colors"
       onClick={() => onSelect(signal)}
     >
-      <div className="space-y-2">
-        {/* Row 1: title */}
-        <p className="text-sm font-medium leading-tight">{title}</p>
-
-        {/* Row 2: preview — summary for news, ticker list for aggregates */}
-        <p className="text-sm text-muted-foreground line-clamp-2">{preview}</p>
-
-        {/* Row 3: source + timestamp. Identical shell across card variants:
-            icon + source name · relative time. Email swaps the favicon for a
-            mailbox icon; aggregates swap for the tool logo. */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {isAggregate && AggregateSourceIcon ? (
-            <>
-              <AggregateSourceIcon className="h-4 w-4 shrink-0" />
-              {primarySource && <span>{primarySource}</span>}
-            </>
-          ) : isEmail ? (
-            <>
-              <EmailIcon className="h-4 w-4 shrink-0" />
-              {primarySource && <span>{primarySource}</span>}
-            </>
-          ) : sourceCount > 1 ? (
-            <div className="flex -space-x-2">
-              {signal.sourceUrls.map((url, i) => {
-                const domain = extractDomainFromUrls([url]);
-                return (
-                  <span
-                    key={`${url}-${i}`}
-                    className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-background ring-2 ring-background"
-                  >
-                    {domain && <Favicon domain={domain} size={16} />}
-                  </span>
-                );
-              })}
-            </div>
-          ) : (
-            <>
-              {primaryDomain && <Favicon domain={primaryDomain} />}
-              {primarySource && <span>{primarySource}</span>}
-            </>
-          )}
-          <span>·</span>
-          <span className="tabular-nums">{relativeTime(signal.createdAt)}</span>
-        </div>
+      {/* Row 1: avatars/source + timestamp on top */}
+      <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+        {isAggregate && AggregateSourceIcon ? (
+          <>
+            <AggregateSourceIcon className="h-4 w-4 shrink-0" />
+            {primarySource && <span>{primarySource}</span>}
+          </>
+        ) : isEmail ? (
+          <>
+            <EmailIcon className="h-4 w-4 shrink-0" />
+            {primarySource && <span>{primarySource}</span>}
+          </>
+        ) : sourceCount > 1 ? (
+          <div className="flex -space-x-2">
+            {signal.sourceUrls.map((url, i) => {
+              const domain = extractDomainFromUrls([url]);
+              return (
+                <span
+                  key={`${url}-${i}`}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-background ring-2 ring-background"
+                >
+                  {domain && <Favicon domain={domain} size={16} />}
+                </span>
+              );
+            })}
+          </div>
+        ) : primaryDomain ? (
+          <>
+            <Favicon domain={primaryDomain} />
+            {primarySource && <span>{primarySource}</span>}
+          </>
+        ) : toolConfig ? (
+          // Sonar-style signals without a sourceUrl (backfill, or Sonar
+          // returned no citation) fall back to the tool logo + monitor name
+          // so the row never renders icon-less.
+          <>
+            <toolConfig.icon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{signal.monitor?.name ?? toolConfig.name}</span>
+          </>
+        ) : null}
+        <span className="tabular-nums ml-auto">{relativeTime(signal.createdAt)}</span>
       </div>
-    </Card>
+
+      {/* Row 2: title */}
+      <p className="text-sm font-medium text-foreground leading-tight">{title}</p>
+
+      {/* Row 3: description */}
+      <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{preview}</p>
+    </div>
   );
 });
 

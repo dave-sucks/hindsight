@@ -83,16 +83,13 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
 
   return (
     <Link href={`/analysts/${analyst.id}`} className="block group min-w-0">
-      <Card className="group-hover:bg-muted/20 transition-colors gap-2 h-full overflow-hidden shadow-none py-0">
+      <Card className="group-hover:bg-muted/20 transition-colors gap-0 h-full overflow-hidden shadow-none py-0">
 
-        {/* ── Top SectionHeader ── */}
-        <div className="p-2 flex flex-col gap-1 min-w-0">
-          {/* ── Header: name | PnlBadge + 3-dot menu ── */}
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="font-brand text-base font-bold leading-tight truncate flex-1 min-w-0">
-              {analyst.name}
-            </h2>
-            <div className="flex items-center gap-1.5 shrink-0">
+        {/* ── Section 1: header, name, description ── */}
+        <div className="p-3 flex flex-col gap-2 min-w-0">
+          {/* Row 1: badges left · 3-dot right */}
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
               {openCount > 0 && (
                 <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
                   {openCount} open
@@ -101,51 +98,54 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
               {analyst.totalPnl !== 0 && (
                 <PnlBadge value={analyst.totalPnl} format="currency" />
               )}
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}`)}>
-                    View details
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}/edit`)}>
-                    Edit config
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-negative focus:text-negative"
-                    onSelect={() => onDelete(analyst.id)}
-                  >
-                    Delete analyst
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground shrink-0"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}`)}>
+                  View details
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}/edit`)}>
+                  Edit config
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-negative focus:text-negative"
+                  onSelect={() => onDelete(analyst.id)}
+                >
+                  Delete analyst
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
-          {/* ── Prompt ── */}
-          <div className="pt-2">
-            <p className="text-sm text-foreground leading-relaxed line-clamp-2 break-words">
-              {promptText ?? (
-                <span className="text-muted-foreground/40 not-italic">No prompt set</span>
-              )}
-            </p>
-          </div>
+          {/* Row 2: name — unified header style */}
+          <h2 className="text-sm font-medium text-foreground leading-tight truncate">
+            {analyst.name}
+          </h2>
+
+          {/* Row 3: description */}
+          <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
+            {promptText ?? (
+              <span className="text-muted-foreground/60 not-italic">No prompt set</span>
+            )}
+          </p>
         </div>
 
-        {/* ── Performance: win-rate bar ── */}
-        <div className="px-2 pb-2">
+        {/* ── Section 2: win-rate bar ── */}
+        <div className="p-3 border-t">
           <WinRateBar winRate={analyst.winRate} tradeCount={analyst.tradeCount} />
         </div>
 
-        {/* ── Stock rows: up to 3 active trades ── */}
+        {/* ── Section 3: active trades ── */}
         {analyst.openTrades.length > 0 && (
-          <div>
-            {analyst.openTrades.map((trade) => {
+          <div className="border-t">
+            {analyst.openTrades.map((trade, i) => {
               const cost = trade.entryPrice * trade.shares;
               return (
                 <button
@@ -156,14 +156,17 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
                     e.stopPropagation();
                     router.push(`/trades/${trade.id}`);
                   }}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 border-t hover:bg-accent/50 transition-colors text-left"
+                  className={cn(
+                    "w-full flex items-center gap-2 p-3 hover:bg-accent/50 transition-colors text-left",
+                    i > 0 && "border-t",
+                  )}
                 >
                   <StockLogo ticker={trade.ticker} size="sm" />
                   <span className="text-xs font-mono font-medium">{trade.ticker}</span>
-                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                  <span className="text-xs font-mono text-muted-foreground tabular-nums">
                     ({trade.shares} shares)
                   </span>
-                  <span className="text-xs tabular-nums text-muted-foreground ml-auto">
+                  <span className="text-xs font-mono text-muted-foreground tabular-nums ml-auto">
                     ${cost.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                   </span>
                 </button>
