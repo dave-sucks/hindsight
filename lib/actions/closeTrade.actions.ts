@@ -166,9 +166,17 @@ export async function closeOpenPosition(
         ? "LOSS"
         : "BREAKEVEN";
 
-  // 5. Write Order + Position update + PositionEvent atomically
+  // 5. Write Order + Position update + PositionEvent atomically.
+  //
+  // At this point Alpaca has (in most paths) already closed the position on
+  // their side. If the DB transaction fails here and we don't retry, the
+  // Position stays status='OPEN' in our DB forever while Alpaca knows it's
+  // gone — the exact drift mode that triggered the 2026-04-24 cleanup.
+  // Retry transient failures (connection blips, pool timeouts) a few times
+  // before giving up, and log CRITICAL on final failure so the reconcile
+  // job can find and neutralize the stuck row.
   const sign = realizedPnl >= 0 ? "+" : "";
-  const orderId = await prisma.$transaction(async (tx) => {
+  const runTx = async () => prisma.$transaction(async (tx) => {
     // Create the closing sell Order — honest about fill state
     const ord = await tx.order.create({
       data: {
@@ -241,6 +249,29 @@ export async function closeOpenPosition(
 
     return ord.id;
   });
+
+  const maxAttempts = 3;
+  const runTxWithRetry = async (): Promise<string> => {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await runTx();
+      } catch (err) {
+        lastErr = err;
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 250 * 2 ** (attempt - 1)));
+        }
+      }
+    }
+    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    console.error(
+      `[closeOpenPosition] CRITICAL: Alpaca close SUCCEEDED but DB finalize FAILED after ${maxAttempts} attempts. ` +
+        `Position will appear OPEN in the DB while Alpaca has closed it — reconcile-orders must neutralize. ` +
+        `positionId=${positionId} alpacaOrderId=${alpacaOrderId ?? "null"} symbol=${position.symbol} error=${msg}`,
+    );
+    throw lastErr;
+  };
+  const orderId = await runTxWithRetry();
 
   // 6. Fire post-trade evaluator + email — only if the close actually completed
   if (didFill) {
