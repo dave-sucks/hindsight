@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { X } from "lucide-react";
+import { X, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { MultiCombobox } from "@/components/ui/multi-combobox";
 // Session A established lib/universe/canonical as the single source of truth
 // for sector/industry vocabulary. Importing SECTORS/INDUSTRIES here keeps the
@@ -53,11 +54,24 @@ export function AnalystConfigSheet({
   config,
 }: AnalystConfigSheetProps) {
   const [, startTransition] = useTransition();
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [draftPrompt, setDraftPrompt] = useState(config.analystPrompt ?? "");
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
 
   const saveField = (field: Parameters<typeof updateAnalystField>[1], value: unknown) => {
     startTransition(async () => {
       await updateAnalystField(config.id, field, value);
     });
+  };
+
+  const savePrompt = async () => {
+    setIsSavingPrompt(true);
+    try {
+      await updateAnalystField(config.id, "analystPrompt", draftPrompt);
+      setIsEditingPrompt(false);
+    } finally {
+      setIsSavingPrompt(false);
+    }
   };
 
   const policy = config.intelligencePolicy;
@@ -86,13 +100,59 @@ export function AnalystConfigSheet({
           </TabsList>
 
           {/* ── Strategy (analystPrompt) ────────────────────────── */}
-          <TabsContent value="strategy" className="p-3">
-            {config.analystPrompt ? (
-              <Markdown variant="compact">{config.analystPrompt}</Markdown>
+          <TabsContent value="strategy" className="p-3 flex flex-col gap-3">
+            {isEditingPrompt ? (
+              <>
+                <Textarea
+                  value={draftPrompt}
+                  onChange={(e) => setDraftPrompt(e.target.value)}
+                  className="min-h-[420px] text-xs font-mono resize-y"
+                  placeholder="Write the analyst's strategy playbook here. Markdown is supported."
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDraftPrompt(config.analystPrompt ?? "");
+                      setIsEditingPrompt(false);
+                    }}
+                    disabled={isSavingPrompt}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={savePrompt}
+                    disabled={isSavingPrompt}
+                  >
+                    {isSavingPrompt ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              </>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                No strategy prompt set yet. Use the AI chat to write one.
-              </p>
+              <>
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDraftPrompt(config.analystPrompt ?? "");
+                      setIsEditingPrompt(true);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                    Edit
+                  </Button>
+                </div>
+                {config.analystPrompt ? (
+                  <Markdown variant="compact">{config.analystPrompt}</Markdown>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No strategy prompt set yet. Use the AI chat to write one, or click Edit to write one directly.
+                  </p>
+                )}
+              </>
             )}
           </TabsContent>
 
