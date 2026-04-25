@@ -3,6 +3,7 @@
 
 import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { currentTradingDay, freshnessWindowForType } from "@/lib/intelligence/trading-day";
 import type {
   BatchJobType,
   BatchStatus,
@@ -105,6 +106,10 @@ export async function createSignal(input: CreateSignalInput): Promise<string> {
       itemCount: input.itemCount,
       expiresAt: input.expiresAt,
       emailMessageId: input.emailMessageId,
+      // Phase 1 — today-only filtering. Set at write boundary so every signal,
+      // regardless of producer, lands with the correct trading day + lifespan.
+      tradingDay: currentTradingDay(),
+      freshnessWindow: freshnessWindowForType(input.type),
       signalFingerprint: computeSignalFingerprint({
         headline: input.headline,
         tickers: input.tickers,

@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
     where: {
       createdAt: { gte: since },
       routes: { some: { analystId: { in: analystIds } } },
+      deletedAt: null,
     },
     select: {
       id: true,

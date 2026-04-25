@@ -51,16 +51,16 @@ const morningBriefSchema = z.object({
     .describe(
       "NEW tickers the analyst should consider — MUST be tickers NOT on the " +
       "watchlist and NOT in open positions. Watchlist graduations belong in " +
-      "watchlistUpdates, not here. Surface up to 5 genuine discovery candidates; " +
-      "if DISCOVERY_SIGNALS has >= 3 eligible tickers, include at least 3. " +
-      "Cap watchlist-recycling will be scrubbed."
+      "watchlistUpdates, not here. Target 5-10 genuine discovery candidates; " +
+      "include every eligible ticker (not in watchlist/positions) that DISCOVERY_SIGNALS " +
+      "surfaces, up to 10. Watchlist-recycling will be scrubbed."
     ),
   attentionPriority: z
     .array(z.string())
     .describe("Ordered list of tickers the analyst should focus on today, most urgent first. Max 5."),
   riskFlags: z
     .array(z.string())
-    .describe("Specific risk warnings — earnings today, ex-div dates, sector rotation signals, macro events. Only include real, concrete flags."),
+    .describe("Specific risk warnings — earnings today, ex-div dates, sector rotation signals, macro events. Target 2-5 concrete flags grounded in today's signals; do not invent generic warnings, but do not return an empty array if real risks exist."),
 })
 
 // ── Build prompt context ────────────────────────────────────────────────────
@@ -88,13 +88,11 @@ type BriefSignal = {
 }
 
 async function buildBriefContext(analystId: string) {
-  // Ground the brief to TODAY's routing pool only. The old query loaded every
-  // PENDING route across all time, which let the generator recycle signalIds
-  // from prior days and report bogus `signalCount` values (the hardcoded
-  // `take: 50` cap was being surfaced verbatim). Scoping to today's trading
-  // day + requesting a generous ceiling means signalCount reflects reality
-  // and cited IDs can only come from today's router output.
-  const tradingDayStart = etTradingDayDate()
+  // Phase 1 — explicit today-scoping via the denormalized tradingDay field on
+  // AnalystSignalRoute. Backfilled for legacy rows; populated at write time
+  // by signal-router going forward. The OR fallback to routedAt covers the
+  // narrow window where a route from before backfill might still leak through.
+  const today = etTradingDayDate()
   const [analyst, signals, positions, watchlistItems] = await Promise.all([
     prisma.agentConfig.findUniqueOrThrow({
       where: { id: analystId },
@@ -102,7 +100,16 @@ async function buildBriefContext(analystId: string) {
     prisma.analystSignalRoute.findMany({
       where: {
         analystId,
-        routedAt: { gte: tradingDayStart },
+        OR: [
+          { tradingDay: today },
+          { tradingDay: null, routedAt: { gte: today } },
+        ],
+        // Defense in depth: even though same-day routes can't reference
+        // soft-deleted signals under normal operation (signals only soft-
+        // delete after 30d), this guards against a manual backfill or
+        // out-of-band update flipping deletedAt on a row with a same-day
+        // route. Cheap insurance, no perf cost in the common case.
+        signal: { deletedAt: null },
       },
       include: {
         signal: true,
@@ -337,8 +344,9 @@ function enforceHoldingsCoverage(
   brief: BriefOutput,
   positions: Array<{ symbol: string }>,
   holdingsAttention: number
-): BriefOutput {
-  if (holdingsAttention <= 0 || positions.length === 0) return brief
+): { brief: BriefOutput; injected: number } {
+  if (holdingsAttention <= 0 || positions.length === 0)
+    return { brief, injected: 0 }
 
   const covered = new Set(
     brief.portfolioAlerts.map((a) => a.ticker.toUpperCase())
@@ -347,7 +355,7 @@ function enforceHoldingsCoverage(
     (p) => !covered.has(p.symbol.toUpperCase())
   )
 
-  if (missing.length === 0) return brief
+  if (missing.length === 0) return { brief, injected: 0 }
 
   const placeholders = missing.map((p) => ({
     ticker: p.symbol,
@@ -357,8 +365,11 @@ function enforceHoldingsCoverage(
   }))
 
   return {
-    ...brief,
-    portfolioAlerts: [...brief.portfolioAlerts, ...placeholders],
+    brief: {
+      ...brief,
+      portfolioAlerts: [...brief.portfolioAlerts, ...placeholders],
+    },
+    injected: placeholders.length,
   }
 }
 
@@ -403,19 +414,35 @@ export const morningBriefGenerator = inngest.createFunction(
             return { success: true, skipped: true, reason: "no-signals" }
           }
 
-          // Session 3: force discovery representation when discovery signals
-          // exist. When they don't, we previously told the brief "do NOT
-          // invent new tickers" — that cascaded into the research run as
-          // a license for the agent to skip discovery entirely. Revised
-          // 2026-04-24: even when DISCOVERY_SIGNALS is empty, nudge the
-          // brief toward a discovery-intent signal to the analyst rather
-          // than explicitly forbidding new names. The analyst's Stage 2
-          // Discovery gate ALWAYS fires regardless of what the brief says,
-          // so the brief should orient the agent, not give it an out.
-          const hasDiscovery = context.discoverySignals.length > 0
+          // Session 3 + Phase 2: force discovery representation when eligible
+          // discovery candidates exist. eligibleCount counts DISCOVERY_SIGNALS
+          // tickers that are NOT already in watchlist or positions. If
+          // discoverySignals exists but every ticker overlaps watchlist /
+          // positions, eligibleCount = 0 and we treat it as "no discovery
+          // candidates" — otherwise we'd tell the model "include at least 0"
+          // which is nonsense it has to reason past.
+          //
+          // When eligibleCount = 0 we DON'T tell the agent to skip discovery
+          // — Stage 2's Discovery gate fires regardless of brief content. The
+          // brief should orient, not give the agent an out.
+          const watchSet = new Set(context.watchlistTickers.map((w) => w.toUpperCase()))
+          const positionSet = new Set(context.positionTickers.map((p) => p.toUpperCase()))
+          const eligibleDiscoveryTickers = new Set<string>()
+          for (const sig of context.discoverySignals) {
+            for (const t of sig.tickers ?? []) {
+              const T = t.toUpperCase()
+              if (!watchSet.has(T) && !positionSet.has(T)) eligibleDiscoveryTickers.add(T)
+            }
+          }
+          const eligibleCount = eligibleDiscoveryTickers.size
+          const hasDiscovery = eligibleCount > 0
+          const discoveryTarget = Math.min(10, eligibleCount)
+          const discoveryFloor = Math.min(5, eligibleCount)
           const discoveryClause = hasDiscovery
-            ? `- newOpportunities MUST include at least 1 (ideally 2) items drawn from DISCOVERY_SIGNALS below — these are candidates outside the analyst's watchlist/positions that matched the Universe. Do NOT skip them just because they look unfamiliar.`
-            : `- No discovery signals were routed to this analyst today. Leave newOpportunities empty in the structured output, but in marketContext note "Discovery router returned no candidates today — the analyst will run universe-fit discovery via get_stock_data and web_search during Stage 2." Do NOT tell the analyst to skip discovery; they are required to research at least 2 new tickers every run regardless of brief content.`
+            ? `- newOpportunities target = 5-10 items. There are ${eligibleCount} eligible discovery ticker(s) (not in watchlist or positions) in DISCOVERY_SIGNALS today. You MUST surface at least ${discoveryFloor} of them and SHOULD aim for ${discoveryTarget}. Do NOT skip eligible candidates because they look unfamiliar — that is the entire point of discovery. Returning fewer than ${discoveryFloor} when ${eligibleCount} are available is a quality failure.`
+            : `- No eligible discovery candidates today (every DISCOVERY_SIGNALS ticker is already in watchlist/positions, or DISCOVERY_SIGNALS is empty). Leave newOpportunities empty, but in marketContext note "Discovery router returned no candidates today — the analyst will run universe-fit discovery via get_stock_data and web_search during Stage 2." Do NOT tell the analyst to skip discovery; they are required to research new tickers every run regardless of brief content.`
+          const positionCount = context.positionTickers.length
+          const watchlistCount = context.watchlistTickers.length
 
           const { object: rawBrief } = await generateObject({
             model: openai("gpt-4o"),
@@ -452,16 +479,25 @@ ${JSON.stringify(context.discoverySignals, null, 2)}
 
 INSTRUCTIONS:
 - Write a concise, actionable morning brief for this specific analyst.
-- portfolioAlerts MUST only cover tickers from PORTFOLIO_SIGNALS.
-- watchlistUpdates MUST only cover tickers from WATCHLIST_SIGNALS.
-- newOpportunities items MUST be tickers NOT in the analyst's watchlist and NOT in any open position. These are DISCOVERY candidates — new names the analyst should consider researching today. Watchlist names graduating to tradeable setup go in watchlistUpdates (with recommendation=INITIATE), NEVER in newOpportunities. newOpportunities tickers that overlap watchlist/positions will be scrubbed out post-generation as a quality failure.
+
+BUCKET SIZE TARGETS (every bucket has a job — empty buckets are a quality failure unless explicitly justified by context):
+- portfolioAlerts: every one of the analyst's ${positionCount} open position(s) MUST appear with an alert. Use PORTFOLIO_SIGNALS where available; for positions with no fresh signal, write a brief "no new signal — last quote/thesis stands" alert at urgency=LOW. A position silently missing from portfolioAlerts is a critical failure.
+- watchlistUpdates: every watchlist ticker that has a signal in WATCHLIST_SIGNALS MUST appear (${watchlistCount} watchlist tickers total). Tickers with no signal can be omitted.
+- newOpportunities: target 5-10 entries. See discovery clause below.
+- riskFlags: target 2-5 concrete, time-bound risks grounded in today's signals (earnings today, ex-div, macro event, sector rotation, idiosyncratic risk on a holding). Do not invent generic warnings; do not return empty if real risks exist.
+- attentionPriority: 3-5 tickers ordered by what needs action TODAY.
+
+ROUTING RULES:
+- portfolioAlerts MUST only cover tickers from positions.
+- watchlistUpdates MUST only cover tickers from the watchlist.
+- newOpportunities items MUST be tickers NOT on the watchlist and NOT in any open position. Watchlist names graduating to tradeable setup go in watchlistUpdates (with recommendation=INITIATE), NEVER in newOpportunities. newOpportunities tickers that overlap watchlist/positions will be scrubbed.
 ${discoveryClause}
+
+QUALITY:
 - Be specific — reference the actual signals, not generic market commentary.
-- Attention priority should reflect what needs action TODAY, not just what's interesting.
 - Risk flags must be concrete and time-bound, not vague warnings.
 - Include signal IDs in arrays so the analyst can drill into sources.
 - If a signal contradicts the analyst's current positioning, flag it prominently.
-- Surface up to 5 newOpportunities. If DISCOVERY_SIGNALS has >= 3 tickers that are NOT in watchlist and NOT in positions, newOpportunities MUST include at least 3. Do not artificially cap at 2 because "quality over quantity" — the analyst wants visibility on every genuine new-ticker candidate, not a filtered 2-pick highlight reel.
 - If a signal has routeReasonCode "CROSS_ANALYST" (matchedUniverse.fromAnalystId set), another analyst's owned monitor surfaced it because it touches a ticker in this analyst's book — treat it as a credible second opinion, not as noise.
 - Every signalId you cite MUST appear in one of the three signal arrays above. Do not invent IDs. Do not reference signals from prior days.`,
           })
@@ -496,11 +532,19 @@ ${discoveryClause}
               `[morning-brief] ${analyst.name}: scrubbed ${nonDiscoveryDrops} newOpportunities entry/entries that were watchlist/position tickers (not genuine discovery)`
             )
           }
-          const brief = enforceHoldingsCoverage(
+          const { brief, injected: coverageInjected } = enforceHoldingsCoverage(
             noptScrubbed,
             context.positionRows,
             context.holdingsAttention
           )
+          if (coverageInjected > 0) {
+            // The new prompt explicitly tells the model "every position MUST
+            // appear." Logging here so we can tell whether the model obeyed
+            // (no log) or the post-processor had to fix it (log fires).
+            console.warn(
+              `[morning-brief] ${analyst.name}: injected ${coverageInjected} portfolioAlerts placeholder(s) — model omitted ${coverageInjected}/${context.positionRows.length} position(s)`
+            )
+          }
 
           // Upsert today's brief (idempotent if re-run).
           // ET trading-day date — see lib/market-hours.ts for rationale.

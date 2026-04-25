@@ -27,7 +27,21 @@ export const manageWatchlist = defineTool({
     stop_price: z.number().optional().describe("Price level that would invalidate the thesis"),
     conviction: z.number().min(0).max(100).optional().describe("Conviction score 0-100"),
     catalyst: z.string().optional().describe("Key catalyst being monitored (e.g. 'Q2 earnings Aug 1')"),
-    trigger_condition: z.string().optional().describe("Machine-readable trigger: 'price < 145', 'RSI < 30', 'earnings this week'"),
+    trigger_condition: z
+      .string()
+      .optional()
+      .describe(
+        "What would make this tradeable. STRONGLY ENCOURAGED on ADD. Concrete and machine-readable when possible: 'price < 145', 'RSI < 30', 'earnings beat', 'guidance raised'. If you don't supply one, the tool will derive a default from catalyst/target_price/stop_price.",
+      ),
+    expires_in_days: z
+      .number()
+      .int()
+      .min(1)
+      .max(90)
+      .optional()
+      .describe(
+        "How many days this watchlist entry stays active before EOD cleanup expires it. Default 30. Use 7-14 for tactical setups (earnings, near-term catalyst), 60-90 for slow-burn structural watches.",
+      ),
     review_frequency: z.enum(["DAILY", "WEEKLY", "ON_CATALYST"]).optional().describe("How often to review this item"),
   }),
   ui: "tool-ui" as const,
@@ -94,6 +108,18 @@ export const manageWatchlist = defineTool({
         });
 
         if (existing) {
+          // Re-affirming an existing watchlist item is a positive signal —
+          // the analyst still cares. Bump expiresAt to MAX(existing,
+          // now + N days) so an item touched daily never silently expires.
+          // Explicit expires_in_days wins; otherwise default extension is 30d.
+          const extensionDays = args.expires_in_days ?? 30;
+          const candidateExpiry = new Date(
+            Date.now() + extensionDays * 24 * 60 * 60 * 1000,
+          );
+          const reExpiresAt =
+            existing.expiresAt && existing.expiresAt > candidateExpiry
+              ? existing.expiresAt
+              : candidateExpiry;
           const updated = await prisma.analystWatchlistItem.update({
             where: { id: existing.id },
             data: {
@@ -107,6 +133,7 @@ export const manageWatchlist = defineTool({
               ...(args.catalyst !== undefined ? { catalyst: args.catalyst } : {}),
               ...(args.trigger_condition !== undefined ? { triggerCondition: args.trigger_condition } : {}),
               ...(args.review_frequency !== undefined ? { reviewFrequency: args.review_frequency } : {}),
+              expiresAt: reExpiresAt,
               lastReviewedAt: new Date(),
             },
           });
@@ -136,6 +163,33 @@ export const manageWatchlist = defineTool({
           };
         }
 
+        // Phase 3 — watchlist items are the carryover mechanism replacing
+        // stale-signal residue. Every new entry gets a triggerCondition (what
+        // would make this tradeable) and an expiresAt (so dead ideas age out
+        // automatically). If the model omits them, derive sensible defaults
+        // rather than rejecting the call — but log so we can see how often
+        // the model defaults instead of supplying intentional values.
+        const derivedTrigger =
+          args.trigger_condition ??
+          (args.catalyst
+            ? `Watch for: ${args.catalyst}`
+            : args.target_price
+              ? `Price approaches $${args.target_price}`
+              : args.stop_price
+                ? `Price drops below $${args.stop_price}`
+                : "Monitor for setup or new catalyst");
+
+        const expiresInDays = args.expires_in_days ?? 30;
+        const expiresAt = new Date(
+          Date.now() + expiresInDays * 24 * 60 * 60 * 1000,
+        );
+
+        if (!args.trigger_condition) {
+          console.log(
+            `[tool] manage_watchlist: derived triggerCondition for $${ticker} (model omitted explicit trigger)`,
+          );
+        }
+
         const created = await prisma.analystWatchlistItem.create({
           data: {
             analystId: ctx.analystId,
@@ -151,8 +205,9 @@ export const manageWatchlist = defineTool({
             stopPrice: args.stop_price ?? null,
             conviction: args.conviction ?? null,
             catalyst: args.catalyst ?? null,
-            triggerCondition: args.trigger_condition ?? null,
+            triggerCondition: derivedTrigger,
             reviewFrequency: args.review_frequency ?? null,
+            expiresAt,
             addedRunId: ctx.runId ?? null,
             lastReviewedAt: new Date(),
           },
@@ -323,6 +378,10 @@ export const manageWatchlist = defineTool({
           };
         }
 
+        const updExpiresAt =
+          args.expires_in_days !== undefined
+            ? new Date(Date.now() + args.expires_in_days * 24 * 60 * 60 * 1000)
+            : undefined;
         const updated = await prisma.analystWatchlistItem.update({
           where: { id: item.id },
           data: {
@@ -336,6 +395,7 @@ export const manageWatchlist = defineTool({
             ...(args.catalyst !== undefined ? { catalyst: args.catalyst } : {}),
             ...(args.trigger_condition !== undefined ? { triggerCondition: args.trigger_condition } : {}),
             ...(args.review_frequency !== undefined ? { reviewFrequency: args.review_frequency } : {}),
+            ...(updExpiresAt ? { expiresAt: updExpiresAt } : {}),
             lastReviewedAt: new Date(),
           },
         });

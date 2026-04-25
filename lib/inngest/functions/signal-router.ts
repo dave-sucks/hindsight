@@ -419,11 +419,28 @@ export const signalRouter = inngest.createFunction(
     // Cost: N analysts × M signals evaluations per invocation, bounded by
     // today's volume (~200 signals × 6 analysts = 1.2k iterations, trivial).
 
+    const today = etTradingDayDate()
+
     const signals = await step.run("load-todays-signals", async () => {
-      const todayStart = etTradingDayDate()
+      // Phase 1 — today-only filtering. The explicit `tradingDay` field is
+      // populated at write time (lib/intelligence/signals.ts) and backfilled
+      // for legacy rows. createdAt fallback covers any producer that forgot
+      // to set tradingDay.
+      //
+      // Phase 3 — exclude soft-deleted signals (pipeline-cleanup tombstones
+      // signals after 30d).
+      //
+      // Note: NO `routes: { none: {} }` filter — re-evaluation is idempotent
+      // via UNIQUE(analystId, signalId) + skipDuplicates on createMany.
+      // Removing the filter is what fixed the cross-analyst starvation bug
+      // (PR #173). Do not re-add it.
       return prisma.signal.findMany({
         where: {
-          createdAt: { gte: todayStart },
+          OR: [
+            { tradingDay: today },
+            { tradingDay: null, createdAt: { gte: today } },
+          ],
+          deletedAt: null,
         },
         select: {
           id: true,
@@ -737,6 +754,8 @@ export const signalRouter = inngest.createFunction(
             noveltyScore: r.noveltyScore,
             routeReason: r.routeReason,
             routeReasonCode: r.routeReasonCode,
+            // Phase 1 — denormalized today-tag for fast brief lookups.
+            tradingDay: today,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             matchedUniverse: r.matchedUniverse as any,
           })),
