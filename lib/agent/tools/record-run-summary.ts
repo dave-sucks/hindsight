@@ -13,6 +13,22 @@ export const recordRunSummary = defineTool({
   description:
     "STAGE 5. Fires after all execution tools, before complete_run. Pass every ticker you researched (ranked by conviction) with the action that ACTUALLY happened. Your IMMEDIATE next step after this is Stage 6 — call complete_run.",
   schema: z.object({
+    // Decision-framework v1 — required field. The agent's overall capital
+    // allocation decision for this run. Persisted in ResearchRun.parameters
+    // and on the run_summary RunEvent payload. Drives day-over-day analytics:
+    // are runs producing HOLD when there's no edge, or busywork-trading
+    // because of compliance pressure?
+    primary_decision: z
+      .enum(["HOLD", "ADJUST", "ROTATE", "ADD", "WATCH"])
+      .describe(
+        "The run's primary capital allocation decision: HOLD (current portfolio is optimal, no changes), ADJUST (modify existing positions only), ROTATE (close a current position to fund a clearly better entry), ADD (open a new position that beats existing options AND cash), WATCH (log a candidate for later, no trade today). HOLD is a successful run; do not force a trade to fill a quota.",
+      ),
+    decision_rationale: z
+      .string()
+      .min(40)
+      .describe(
+        "2-4 sentences on WHY this primary_decision. Cite specific data: weakest current holding's score, best new candidate's score, what the bar was, what cleared/failed it. Example: 'Held NVDA, MSFT scoring 8/10 with active setups. Best new candidate INTC at +23% intraday — late-stage chase, scored 4/10 entryQuality. No A-grade ADD cleared the bar over current holdings. HOLD.'",
+      ),
     ranked_picks: z
       .array(
         z.object({
@@ -22,10 +38,18 @@ export const recordRunSummary = defineTool({
           confidence: z.number(),
           reasoning: z.string().describe("One-line rationale (<= 80 chars)"),
           action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS", "FAILED"]),
+          composite_score: z
+            .number()
+            .min(0)
+            .max(10)
+            .optional()
+            .describe(
+              "Composite of the six decision-framework dimensions from record_thesis.scoring (avg, 0-10). Required when scoring was provided to record_thesis.",
+            ),
         }),
       )
       .describe(
-        "Every ticker you researched in Stage 2, ranked by conviction, with the action that ACTUALLY happened in Stage 5. Use FAILED for tickers where place_trade returned success: false.",
+        "Every ticker you researched in Step 3, ranked by composite_score (or by conviction if composite unavailable), with the action that ACTUALLY happened in Step 5. Use FAILED for tickers where place_trade returned success: false.",
       ),
     exposure_breakdown: z
       .object({
@@ -75,15 +99,46 @@ export const recordRunSummary = defineTool({
             data: {
               runId: ctx.runId,
               type: "run_summary",
-              title: "Run Summary",
-              message: `${args.ranked_picks.length} tickers analyzed, ${traded} traded`,
+              title: `Run Summary — ${args.primary_decision}`,
+              message: `${args.primary_decision}: ${args.ranked_picks.length} tickers analyzed, ${traded} traded`,
               payload: {
+                primary_decision: args.primary_decision,
+                decision_rationale: args.decision_rationale,
                 ranked_picks: args.ranked_picks,
               } as object,
             },
           });
         } catch (evtErr) {
           console.error(`[tool] record_run_summary RunEvent write failed:`, evtErr instanceof Error ? evtErr.message : evtErr);
+        }
+
+        // Persist primary_decision + rationale into ResearchRun.parameters
+        // so day-over-day analytics can SQL-query them directly without
+        // joining to RunEvent. Merge with existing params (toolStats, etc.).
+        try {
+          const existing = await prisma.researchRun.findUnique({
+            where: { id: ctx.runId },
+            select: { parameters: true },
+          });
+          const existingParams =
+            existing?.parameters && typeof existing.parameters === "object"
+              ? (existing.parameters as Record<string, unknown>)
+              : {};
+          await prisma.researchRun.update({
+            where: { id: ctx.runId },
+            data: {
+              parameters: {
+                ...existingParams,
+                primaryDecision: args.primary_decision,
+                decisionRationale: args.decision_rationale,
+              } as object,
+            },
+          });
+        } catch (paramErr) {
+          console.warn(
+            `[tool] record_run_summary parameter write failed:`,
+            paramErr instanceof Error ? paramErr.message : paramErr
+          );
         }
       }
 

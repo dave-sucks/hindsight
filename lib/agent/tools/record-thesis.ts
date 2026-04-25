@@ -72,6 +72,44 @@ const thesisFields = z.object({
     .describe(
       "One-line explanation of how you got to this ticker. REQUIRED when source_kind is WEB_SEARCH, WATCHLIST_REVIEW, or POSITION_REVIEW."
     ),
+  // ── Decision-framework scoring (added 2026-04-25) ────────────────────────
+  // Six dimensions, 0-10 each, with a one-sentence note per dimension. These
+  // make the decision auditable: was the agent's PASS/LONG/SHORT call grounded
+  // in actual analysis or just vibes? The composite (avg of the six) drives
+  // Step 4's portfolio comparison — a candidate must score ≥ 7 composite to
+  // be ADD/ROTATE eligible. Optional during the rollout window so existing
+  // call sites don't break; will become required once analysts are migrated.
+  scoring: z
+    .object({
+      trendMomentum: z.object({
+        score: z.number().min(0).max(10),
+        note: z.string().describe("One sentence on trend strength + structure (e.g. 'multi-week uptrend with rising 50d, no major distribution')"),
+      }),
+      relativeStrength: z.object({
+        score: z.number().min(0).max(10),
+        note: z.string().describe("Leader vs laggard call within the cohort (e.g. 'leader in AI semis, outperforming AMD/INTC YTD')"),
+      }),
+      entryQuality: z.object({
+        score: z.number().min(0).max(10),
+        note: z.string().describe("Defined setup vs late-stage chase (e.g. 'pullback to 20d in trend, NOT a chase' or 'extended +14% intraday, late-stage')"),
+      }),
+      catalystFreshness: z.object({
+        score: z.number().min(0).max(10),
+        note: z.string().describe("Catalyst still ahead vs already played (e.g. 'earnings next Tuesday' vs 'reported yesterday, gap already faded')"),
+      }),
+      riskReward: z.object({
+        score: z.number().min(0).max(10),
+        note: z.string().describe("R/R ratio with concrete numbers (e.g. 'target $X, stop $Y, 2.4:1')"),
+      }),
+      portfolioFit: z.object({
+        score: z.number().min(0).max(10),
+        note: z.string().describe("Concentration / correlation impact (e.g. 'diversifies away from concentrated AI semis exposure' or 'doubles down on existing semi cluster')"),
+      }),
+    })
+    .optional()
+    .describe(
+      "Decision-framework scoring: six dimensions, 0-10 each with a one-sentence note. Required for Decision Framework v1 — record this on every record_thesis call so the run's decision logic is auditable. Composite (average of six) drives portfolio comparison: composite ≥ 7 is ADD/ROTATE-eligible; below 7 must be PASS or WATCH."
+    ),
 });
 
 const thesisSchema = thesisFields.superRefine((val, ctx) => {
@@ -223,6 +261,32 @@ export const recordThesis = defineTool({
         }
       }
 
+      // Compute composite score for the decision-framework scoring object,
+      // if the agent provided one. Stored alongside the raw scoring in
+      // fullResearch so downstream analytics can query average composite
+      // per analyst, per run, etc., without parsing the six sub-fields each
+      // time. No DB migration needed — fullResearch is an existing Json
+      // column.
+      const scoringComposite = args.scoring
+        ? Math.round(
+            ((args.scoring.trendMomentum.score +
+              args.scoring.relativeStrength.score +
+              args.scoring.entryQuality.score +
+              args.scoring.catalystFreshness.score +
+              args.scoring.riskReward.score +
+              args.scoring.portfolioFit.score) /
+              6) *
+              10
+          ) / 10
+        : null;
+
+      const fullResearch = {
+        ...(args.fundamentals ? { fundamentals: args.fundamentals } : {}),
+        ...(args.scoring
+          ? { scoring: args.scoring, scoringComposite }
+          : {}),
+      };
+
       const coreData = {
         researchRunId: ctx.runId,
         userId: ctx.userId,
@@ -241,6 +305,7 @@ export const recordThesis = defineTool({
         sourceSignalIds,
         sourceKind: inferredSourceKind,
         sourceRationale: sourceRationale.length > 0 ? sourceRationale : null,
+        fullResearch: Object.keys(fullResearch).length > 0 ? fullResearch : undefined,
         source: "AGENT",
         modelUsed: "gpt-4o",
       };
