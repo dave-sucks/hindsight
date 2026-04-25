@@ -73,42 +73,62 @@ const thesisFields = z.object({
       "One-line explanation of how you got to this ticker. REQUIRED when source_kind is WEB_SEARCH, WATCHLIST_REVIEW, or POSITION_REVIEW."
     ),
   // ── Decision-framework scoring (added 2026-04-25) ────────────────────────
-  // Six dimensions, 0-10 each, with a one-sentence note per dimension. These
-  // make the decision auditable: was the agent's PASS/LONG/SHORT call grounded
-  // in actual analysis or just vibes? The composite (avg of the six) drives
-  // Step 4's portfolio comparison — a candidate must score ≥ 7 composite to
-  // be ADD/ROTATE eligible. Optional during the rollout window so existing
-  // call sites don't break; will become required once analysts are migrated.
+  // Four weighted dimensions summing to 10. Locked structure: don't add
+  // freeform "7/10 because vibes" — every score is the SUM of explicit
+  // sub-scores with caps that force the agent to allocate attention across
+  // the dimensions that actually matter for a setup-grade decision.
+  //
+  // Dimension caps:
+  //   trendStrength      0-3   (1pt = trending; 3pts = clean multi-week trend)
+  //   relativeStrength   0-3   (3pts = sector leader; 0 = laggard with leader available)
+  //   entryQuality       0-2   (2pts = clean setup; 0 = extended chase / no setup)
+  //   catalystFreshness  0-2   (2pts = catalyst still ahead; 0 = already played)
+  //
+  // R/R and portfolioFit are NOT scoring components — they're QUALITY-BAR
+  // gates and PORTFOLIO-COMPARISON rules, applied separately in the
+  // workflow. R/R < 2:1 = PASS regardless of composite. Worse than weakest
+  // holding = WATCH or PASS regardless of composite.
+  //
+  // Required for Decision Framework v1 once the prompt lands. Optional for
+  // this rollout commit so existing call sites don't break.
   scoring: z
     .object({
-      trendMomentum: z.object({
-        score: z.number().min(0).max(10),
-        note: z.string().describe("One sentence on trend strength + structure (e.g. 'multi-week uptrend with rising 50d, no major distribution')"),
+      trendStrength: z.object({
+        score: z
+          .number()
+          .min(0)
+          .max(3)
+          .describe("0-3. Trend strength + structure. 0 = no trend / breaking down. 1 = sideways but constructive. 2 = trending. 3 = clean multi-week uptrend with rising MAs and no distribution."),
+        note: z.string().describe("One sentence citing concrete trend evidence (e.g. 'multi-week uptrend, rising 50d, no major distribution candles')"),
       }),
       relativeStrength: z.object({
-        score: z.number().min(0).max(10),
-        note: z.string().describe("Leader vs laggard call within the cohort (e.g. 'leader in AI semis, outperforming AMD/INTC YTD')"),
+        score: z
+          .number()
+          .min(0)
+          .max(3)
+          .describe("0-3. Leader vs laggard within cohort. 0 = laggard while a leader has the same setup (PASS in favor of leader). 1 = mid-cohort. 2 = strong relative strength. 3 = clear sector leader, outperforming peers."),
+        note: z.string().describe("Concrete relative-strength call (e.g. 'NVDA leads AI semis, +28% YTD vs AMD +14%, INTC -3%')"),
       }),
       entryQuality: z.object({
-        score: z.number().min(0).max(10),
-        note: z.string().describe("Defined setup vs late-stage chase (e.g. 'pullback to 20d in trend, NOT a chase' or 'extended +14% intraday, late-stage')"),
+        score: z
+          .number()
+          .min(0)
+          .max(2)
+          .describe("0-2. Defined setup vs late-stage chase. 0 = extended >10% intraday / parabolic / no setup. 1 = OK setup with caveats. 2 = clean defined setup (breakout from base on volume, pullback to 20d in trend, post-earnings drift)."),
+        note: z.string().describe("Setup name + entry context (e.g. 'pullback to 20d in trend, $185 entry vs $200 prior high — NOT a chase')"),
       }),
       catalystFreshness: z.object({
-        score: z.number().min(0).max(10),
-        note: z.string().describe("Catalyst still ahead vs already played (e.g. 'earnings next Tuesday' vs 'reported yesterday, gap already faded')"),
-      }),
-      riskReward: z.object({
-        score: z.number().min(0).max(10),
-        note: z.string().describe("R/R ratio with concrete numbers (e.g. 'target $X, stop $Y, 2.4:1')"),
-      }),
-      portfolioFit: z.object({
-        score: z.number().min(0).max(10),
-        note: z.string().describe("Concentration / correlation impact (e.g. 'diversifies away from concentrated AI semis exposure' or 'doubles down on existing semi cluster')"),
+        score: z
+          .number()
+          .min(0)
+          .max(2)
+          .describe("0-2. Catalyst timing. 0 = already played (reported, moved, faded). 1 = mixed (catalyst behind but follow-through pattern visible). 2 = catalyst still ahead (earnings next week, FDA decision pending, upcoming product launch)."),
+        note: z.string().describe("Specific catalyst + timing (e.g. 'Q1 earnings 4/29, expecting beat-and-raise on AI demand')"),
       }),
     })
     .optional()
     .describe(
-      "Decision-framework scoring: six dimensions, 0-10 each with a one-sentence note. Required for Decision Framework v1 — record this on every record_thesis call so the run's decision logic is auditable. Composite (average of six) drives portfolio comparison: composite ≥ 7 is ADD/ROTATE-eligible; below 7 must be PASS or WATCH."
+      "Required composite scoring: trendStrength (0-3) + relativeStrength (0-3) + entryQuality (0-2) + catalystFreshness (0-2) = composite /10. Composite ≥ 7 is required for ADD/ROTATE eligibility. Below 7 must be PASS or WATCH. R/R and portfolio fit are separate quality-bar gates, NOT scoring components — apply them in the workflow."
     ),
 });
 
@@ -261,23 +281,16 @@ export const recordThesis = defineTool({
         }
       }
 
-      // Compute composite score for the decision-framework scoring object,
-      // if the agent provided one. Stored alongside the raw scoring in
-      // fullResearch so downstream analytics can query average composite
-      // per analyst, per run, etc., without parsing the six sub-fields each
-      // time. No DB migration needed — fullResearch is an existing Json
-      // column.
+      // Compute composite = SUM of the four weighted dimensions (caps:
+      // 3+3+2+2 = 10). NOT an average — each dimension's cap is the weight,
+      // so summing produces a score on the same /10 scale. ≥ 7 = ADD/ROTATE
+      // eligible; < 7 must be PASS or WATCH. R/R and portfolio comparison
+      // are separate gates, applied in the workflow.
       const scoringComposite = args.scoring
-        ? Math.round(
-            ((args.scoring.trendMomentum.score +
-              args.scoring.relativeStrength.score +
-              args.scoring.entryQuality.score +
-              args.scoring.catalystFreshness.score +
-              args.scoring.riskReward.score +
-              args.scoring.portfolioFit.score) /
-              6) *
-              10
-          ) / 10
+        ? args.scoring.trendStrength.score +
+          args.scoring.relativeStrength.score +
+          args.scoring.entryQuality.score +
+          args.scoring.catalystFreshness.score
         : null;
 
       const fullResearch = {

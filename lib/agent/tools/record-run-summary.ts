@@ -25,9 +25,15 @@ export const recordRunSummary = defineTool({
       ),
     decision_rationale: z
       .string()
-      .min(40)
+      .min(120)
       .describe(
-        "2-4 sentences on WHY this primary_decision. Cite specific data: weakest current holding's score, best new candidate's score, what the bar was, what cleared/failed it. Example: 'Held NVDA, MSFT scoring 8/10 with active setups. Best new candidate INTC at +23% intraday — late-stage chase, scored 4/10 entryQuality. No A-grade ADD cleared the bar over current holdings. HOLD.'",
+        "STRUCTURED rationale. Required content depends on primary_decision: " +
+        "HOLD → must cite (a) weakest holding's composite score with dimension breakdown, (b) best candidate's composite, (c) why each evaluated candidate failed (composite < 7, quality-bar gate, didn't beat weakest by ≥+2, leader extended). " +
+        "ADD/ROTATE → must cite (a) candidate's composite breakdown by dimension (3+3+2+2), (b) which holding it beats (or whether it's an addition not rotation), (c) why leader-first isn't blocking, (d) R/R ratio. " +
+        "ADJUST → must cite which holding(s) and what changed in the score that triggered the adjustment. " +
+        "WATCH → must cite what's promising AND what's missing. " +
+        "Vague rationales like 'holdings still working' or 'no good setups today' are INSUFFICIENT — every score and every PASS reason must be explicit and auditable. " +
+        "Example HOLD: 'Weakest holding NVDA 8/10 (3+3+1+1, entryQuality dinged for extended intraday). Best candidate INTC 5/10 (2+1+1+1) — fails leader-first (NVDA leads), fails entryQuality (post-earnings gap already faded). ON Semi 6/10 — fails extended-chase gate at +12% intraday. No candidate clears bar; HOLD.'",
       ),
     ranked_picks: z
       .array(
