@@ -39,6 +39,12 @@ model ResearchRun {
   agentConfigId String?      // FK to AgentConfig; null for manual/legacy runs
   source        String       // "AGENT" | "MANUAL"
   status        String       // "PENDING" | "RUNNING" | "COMPLETE" | "FAILED"
+  // Phase 1 — what kind of run this is. Drives prompt, tool allowlist, scope.
+  //   MORNING_PLAN       — daily 8 AM cron, full universe + brief + tools
+  //   INTRADAY_TACTICAL  — event-triggered, single-ticker single-decision scope
+  //   EOD_REFLECTIVE     — 4:30 PM cron, validate theses + journal + age watchlist
+  // Existing rows backfilled to MORNING_PLAN.
+  mode          String       @default("MORNING_PLAN")
   parameters    Json         // agent config snapshot at time of run
   startedAt     DateTime     @default(now())
   completedAt   DateTime?
@@ -127,6 +133,13 @@ model Thesis {
   // because legacy rows predate this column.
   sourceKind       String?       // "ROUTED_SIGNAL" | "WEB_SEARCH" | "WATCHLIST_REVIEW" | "POSITION_REVIEW"
   sourceRationale  String?
+
+  // Phase 1 — what should fire an intraday tactical re-evaluation of this
+  // thesis. Shape: { events: ["EARNINGS_BEAT","GUIDANCE_CUT"],
+  // priceTriggers: { stop: 145, target: 180 }, watchedTickers: ["NVDA"] }.
+  // Read by the tactical-trigger-evaluator (Phase 5) to decide whether a
+  // new signal warrants spawning an intraday run on this thesis's ticker.
+  revalidationTriggers Json?
 
   // Relations
   researchRun      ResearchRun   @relation(fields: [researchRunId], references: [id])
@@ -242,6 +255,13 @@ model Monitor {
   builtIn     Boolean   @default(false) // FMP, Finnhub, Portfolio, Watchlist — can't be deleted
   origin      String    @default("USER") // "USER" | "BUILDER" | "BRIEFING_AGENT"
   category    String    @default("MARKET") // "MARKET" | "SECTOR" | "TICKER" | "THEMATIC" | "EVENT"
+  // Phase 1 — monitor lifecycle class. Drives how the pipeline uses this monitor:
+  //   FIRM_WIDE — broad market scans (FMP movers, macro, calendar). Pre-market batch.
+  //   UNIVERSE  — sector/industry/theme queries. Feeds DISCOVERY route. Pre-market + EOD.
+  //   POSITION  — per-held-ticker monitor. Continuous; can fire intraday tactical runs.
+  //   WATCHLIST — per-watchlist-ticker monitor. Continuous; can fire intraday tactical runs.
+  // Existing rows backfilled from scope/builtIn/name heuristics in migration.
+  class       String    @default("FIRM_WIDE")
   expiresAt   DateTime? // null = permanent; set for temporary monitors from briefing agent
   sourceRunId String?   // which run created this (for dynamic monitors from briefing agent)
   lastRunAt   DateTime?
@@ -330,6 +350,17 @@ model Signal {
   expiresAt      DateTime?
   routes         AnalystSignalRoute[]
 
+  // Phase 1 — today-only filtering. The market trading day this signal
+  // belongs to (ET timezone). All consumers (router, brief, read_signals)
+  // default-filter on this. Backfilled from createdAt for legacy rows.
+  tradingDay     DateTime? @db.Date
+
+  // Phase 1 — how long this signal stays actionable, in hours from createdAt.
+  // Producers set this by source type (NEWS=24, EARNINGS=72, FILING=72,
+  // MACRO=24, SOCIAL=12, PRICE_ACTION=4, OPTIONS=8). Used to age signals
+  // out of default queries.
+  freshnessWindow Int? @default(24)
+
   // Stable fingerprint for tiered/cross-batch dedup.
   // Hash of normalized headline + primary ticker + ISO-week bucket.
   // See lib/intelligence/signals.ts:computeSignalFingerprint.
@@ -338,6 +369,12 @@ model Signal {
   // Resend inbound email_id — prevents duplicate processing when the same
   // webhook delivery lands twice. Only populated for EMAIL_INGEST signals.
   emailMessageId String?
+
+  // Phase 3 — soft-delete tombstone. Set by pipeline-cleanup cron when a
+  // signal ages past 30d. Active queries (router, brief, read_signals,
+  // discovery) filter out non-null. Theses still resolve sourceSignalIds
+  // against soft-deleted rows for historical attribution.
+  deletedAt      DateTime?
 
   createdAt      DateTime @default(now())
 
@@ -348,6 +385,8 @@ model Signal {
   @@index([monitorId])
   @@index([signalFingerprint, createdAt])
   @@index([emailMessageId])
+  @@index([tradingDay])
+  @@index([deletedAt])
 }
 
 /// A group of signals from one intelligence job run.
@@ -387,6 +426,11 @@ model AnalystSignalRoute {
   matchedUniverse Json?
   status         String      @default("PENDING") // "PENDING" | "READ" | "ACTED_ON" | "DISMISSED"
 
+  // Phase 1 — denormalized trading day for fast today-only queries. Every
+  // consumer (brief generator, dashboards, read_signals) filters on this.
+  // Backfilled from routedAt::date (ET) for legacy rows.
+  tradingDay     DateTime?   @db.Date
+
   routedAt       DateTime    @default(now())
 
   // Critical: prevents duplicate routes when signal-router runs multiple
@@ -401,6 +445,8 @@ model AnalystSignalRoute {
   // Session 3: optimized for "give me DISCOVERY routes for this analyst, newest first".
   @@index([analystId, routeReasonCode, routedAt(sort: Desc)])
   @@index([signalId])
+  // Phase 1 — today-only filtering hot path.
+  @@index([analystId, tradingDay])
 }
 
 /// Pre-run intelligence summary generated per analyst each morning.
@@ -452,6 +498,12 @@ model AnalystWatchlistItem {
   reviewFrequency   String?       // "DAILY" | "WEEKLY" | "ON_CATALYST"
   addedRunId        String?       // Which run added this item
   lastThesisId      String?       // Most recent thesis for this symbol
+
+  // Phase 1 — explicit carryover expiry. EOD reflective run expires items past
+  // this date (auto-removes or downgrades priority). null = no expiry. Pairs
+  // with triggerCondition to make the watchlist the carryover mechanism instead
+  // of stale signal residue.
+  expiresAt         DateTime?
 
   removedAt       DateTime?
   removeReason    String?

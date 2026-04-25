@@ -166,6 +166,15 @@ export const readSignals = defineTool({
       .number()
       .optional()
       .describe("Max signals to return. Defaults to your policy cap. Rarely need to change."),
+    lookbackDays: z
+      .number()
+      .int()
+      .min(0)
+      .max(14)
+      .optional()
+      .describe(
+        "How many trading days back to include. Default 0 (today only). Use sparingly — historical signals are noisy and pollute today's picture.",
+      ),
   }),
   ui: "tool-ui" as const,
 
@@ -189,7 +198,7 @@ export const readSignals = defineTool({
     return "Reading signals routed to this analyst";
   },
 
-  execute: async ({ tickers, themes, type, urgency, limit }, ctx) => {
+  execute: async ({ tickers, themes, type, urgency, limit, lookbackDays = 0 }, ctx) => {
     if (!ctx.analystId) {
       return {
         summary: "No analyst context — cannot read signals.",
@@ -221,13 +230,6 @@ export const readSignals = defineTool({
     const minSourceQuality = policy?.minSourceQuality ?? 2;
     const excludedCategories = policy?.excludedSourceCategories ?? [];
 
-    // Scope to TODAY's routes only. The tool's contract is "today's routed
-    // signals for this analyst" — carrying yesterday's PENDING rows forward
-    // pollutes the pool with stale news the router already decided to
-    // reconsider on the current run. ET trading day matches what the
-    // signal-router uses when writing routes.
-    const todayStart = etTradingDayDate();
-
     // Load a wide slice so we can enforce per-ticker dedup and still have
     // enough variety left across all three buckets. The tool ALWAYS returns
     // all three buckets (see top-of-file design note — `bucket` was
@@ -235,17 +237,30 @@ export const readSignals = defineTool({
     // on first calls despite every prompt warning).
     const loadCap = Math.max(effectiveLimit * 2, 60);
 
+    // Today-only by default. lookbackDays opens the window backwards in
+    // trading-day terms; legacy rows with null tradingDay are tolerated by
+    // matching on routedAt/createdAt for the same window. The signal-router
+    // writes tradingDay using the same ET trading-day boundary.
+    const today = etTradingDayDate();
+    const windowStart = new Date(today);
+    windowStart.setUTCDate(windowStart.getUTCDate() - lookbackDays);
+    const tradingDayWindow = { gte: windowStart, lte: today };
+
     const routes = await prisma.analystSignalRoute.findMany({
       where: {
         analystId: ctx.analystId,
         status: { in: ["PENDING", "READ"] },
-        routedAt: { gte: todayStart },
+        OR: [
+          { tradingDay: tradingDayWindow },
+          { tradingDay: null, routedAt: { gte: windowStart } },
+        ],
         signal: {
           ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
           ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
           ...(type ? { type } : {}),
           urgency: { in: validUrgencies },
           sourceQuality: { gte: minSourceQuality },
+          deletedAt: null,
         },
       },
       include: { signal: { include: { artifact: true } } },
@@ -365,18 +380,27 @@ export const readSignals = defineTool({
         cfgThemes.length > 0;
 
       if (hasAnyFilter) {
-        const today = etTradingDayDate();
         const fallbackSignals = await prisma.signal.findMany({
           where: {
-            createdAt: { gte: today },
+            AND: [
+              {
+                OR: [
+                  { tradingDay: tradingDayWindow },
+                  { tradingDay: null, createdAt: { gte: windowStart } },
+                ],
+              },
+              {
+                OR: [
+                  ...(cfgWatchlist.length > 0 ? [{ tickers: { hasSome: cfgWatchlist } }] : []),
+                  ...(cfgSectors.length > 0 ? [{ sectors: { hasSome: cfgSectors } }] : []),
+                  ...(cfgIndustries.length > 0 ? [{ industries: { hasSome: cfgIndustries } }] : []),
+                  ...(cfgThemes.length > 0 ? [{ themes: { hasSome: cfgThemes } }] : []),
+                ],
+              },
+            ],
             urgency: { in: validUrgencies },
             sourceQuality: { gte: minSourceQuality },
-            OR: [
-              ...(cfgWatchlist.length > 0 ? [{ tickers: { hasSome: cfgWatchlist } }] : []),
-              ...(cfgSectors.length > 0 ? [{ sectors: { hasSome: cfgSectors } }] : []),
-              ...(cfgIndustries.length > 0 ? [{ industries: { hasSome: cfgIndustries } }] : []),
-              ...(cfgThemes.length > 0 ? [{ themes: { hasSome: cfgThemes } }] : []),
-            ],
+            deletedAt: null,
           },
           orderBy: { createdAt: "desc" },
           take: effectiveLimit,

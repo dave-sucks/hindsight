@@ -81,6 +81,11 @@ export const readMorningBrief = defineTool({
 
     const briefSources: ToolSource[] = [];
     if (allSignalIds.length > 0) {
+      // Intentional: NO `deletedAt: null` filter here. This lookup resolves
+      // signalIds the brief already cited so we can render source chips.
+      // Briefs older than 30d would otherwise lose their source links once
+      // pipeline-cleanup tombstones the underlying signals, breaking the
+      // historical record. Soft-deleted rows still resolve by id.
       const signals = await prisma.signal.findMany({
         where: { id: { in: allSignalIds } },
         select: { headline: true, sourceUrls: true, sourceNames: true },

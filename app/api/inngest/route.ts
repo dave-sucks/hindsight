@@ -15,6 +15,7 @@ import { domainMonitor } from "@/lib/inngest/functions/domain-monitor";
 import { signalRouter } from "@/lib/inngest/functions/signal-router";
 import { morningBriefGenerator } from "@/lib/inngest/functions/morning-brief-generator";
 import { backfillSignalFingerprint } from "@/lib/inngest/functions/backfill-signal-fingerprint";
+import { pipelineCleanup } from "@/lib/inngest/functions/pipeline-cleanup";
 
 // morning-research runs a full agent (generateText with 30 tool steps)
 // inside a single step.run — needs extended timeout to avoid Vercel killing it
@@ -40,5 +41,7 @@ export const { GET, POST, PUT } = serve({
     morningBriefGenerator,
     // One-shot Session 2 backfill (event-triggered, idempotent)
     backfillSignalFingerprint,
+    // Phase 3 — daily pruning at 11 PM ET (route archive + signal soft-delete)
+    pipelineCleanup,
   ],
 });

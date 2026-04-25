@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { createClient } from "@/lib/supabase/server"
+import { etTradingDayDate } from "@/lib/market-hours"
 
 // GET /api/intelligence/signals — list recent signals/findings.
 //
@@ -39,6 +40,28 @@ export async function GET(req: NextRequest) {
   const routeReasonCode = req.nextUrl.searchParams.get("routeReasonCode")
   const orphans = req.nextUrl.searchParams.get("orphans") === "1"
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50")
+
+  // Time scoping. Default: today's trading day only. Callers can:
+  //   ?lookbackDays=N — extend N trading days backwards
+  //   ?all=1          — no time filter (full history, audit/debug only)
+  const allTime = req.nextUrl.searchParams.get("all") === "1"
+  const lookbackDaysRaw = req.nextUrl.searchParams.get("lookbackDays")
+  const lookbackDays = Math.max(
+    0,
+    Math.min(30, parseInt(lookbackDaysRaw ?? "0") || 0),
+  )
+  let timeFilterClause: object = {}
+  if (!allTime) {
+    const today = etTradingDayDate()
+    const windowStart = new Date(today)
+    windowStart.setUTCDate(windowStart.getUTCDate() - lookbackDays)
+    timeFilterClause = {
+      OR: [
+        { tradingDay: { gte: windowStart, lte: today } },
+        { tradingDay: null, createdAt: { gte: windowStart } },
+      ],
+    }
+  }
 
   const parseCsv = (raw: string | null): string[] | null => {
     if (!raw) return null;
@@ -96,6 +119,8 @@ export async function GET(req: NextRequest) {
       ...(theme ? { themes: { has: theme } } : {}),
       ...(orphans ? { sectors: { isEmpty: true }, themes: { isEmpty: true } } : {}),
       ...routeFilterClause,
+      ...timeFilterClause,
+      deletedAt: null,
     },
     orderBy: { createdAt: "desc" },
     take: Math.min(limit, 200),

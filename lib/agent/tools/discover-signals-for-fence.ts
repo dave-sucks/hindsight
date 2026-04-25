@@ -207,7 +207,7 @@ export const discoverSignalsForFence = defineTool({
       orClauses.length === 0
         ? []
         : await prisma.signal.findMany({
-            where: { createdAt: { gte: since }, OR: orClauses },
+            where: { createdAt: { gte: since }, deletedAt: null, OR: orClauses },
             orderBy: { createdAt: "desc" },
             take: Math.max(limit * 4, 40),
           });
