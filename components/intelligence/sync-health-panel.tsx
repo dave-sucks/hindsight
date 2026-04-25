@@ -96,8 +96,8 @@ export function SyncHealthPanel() {
         </CardHeader>
         <CardContent className="p-3 pt-0">
           <p className="text-xs text-muted-foreground">
-            No heartbeat snapshots yet. The cron runs every minute during RTH;
-            it will populate within a few minutes after deploy.
+            No heartbeat snapshots yet. The cron runs hourly; the first row
+            will appear at the top of the next hour.
           </p>
         </CardContent>
       </Card>

@@ -201,11 +201,10 @@ async function checkOneUser(input: SnapshotInput): Promise<{
   return { snapshotId: snapshot.id, drift };
 }
 
-// Two crons feeding the same handler: one for RTH (1 min), one for off-hours
-// (15 min). Inngest doesn't support a "different cadence inside the same
-// cron expression" so we register the handler with two triggers and let
-// each fire on its own schedule. We still gate by isMarketOpen so the RTH
-// cron is a no-op outside RTH and the off-hours one is a no-op during it.
+// Single hourly cron. Activity on the trading book is bursty and rare for
+// this app — one morning agent run, hourly price-monitor exits, the odd
+// manual run. Hourly drift detection lines up with that cadence; finer
+// granularity is just noise.
 
 async function runHeartbeat(): Promise<{
   ranAt: string;
@@ -252,32 +251,12 @@ async function runHeartbeat(): Promise<{
   };
 }
 
-export const syncHeartbeatRth = inngest.createFunction(
+export const syncHeartbeat = inngest.createFunction(
   {
-    id: "sync-heartbeat-rth",
-    name: "Sync Heartbeat (RTH)",
+    id: "sync-heartbeat",
+    name: "Sync Heartbeat",
     retries: 0,
   },
-  { cron: "TZ=America/New_York */1 9-16 * * 1-5" },
-  async () => {
-    if (!isMarketOpen()) {
-      return { skipped: "outside-rth" };
-    }
-    return runHeartbeat();
-  },
-);
-
-export const syncHeartbeatOffHours = inngest.createFunction(
-  {
-    id: "sync-heartbeat-offhours",
-    name: "Sync Heartbeat (off-hours)",
-    retries: 0,
-  },
-  { cron: "TZ=America/New_York */15 * * * *" },
-  async () => {
-    if (isMarketOpen()) {
-      return { skipped: "rth-handled-by-other-cron" };
-    }
-    return runHeartbeat();
-  },
+  { cron: "0 * * * *" },
+  async () => runHeartbeat(),
 );
