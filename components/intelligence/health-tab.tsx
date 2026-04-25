@@ -42,6 +42,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BarGauge } from "@/components/ui/bar-gauge";
 import { CheckCircle2, Clock, AlertTriangle, TrendingDown } from "lucide-react";
 import type { HealthData } from "@/app/api/intelligence/health/route";
+import { SyncHealthPanel } from "@/components/intelligence/sync-health-panel";
 
 // ── Route label map ────────────────────────────────────────────────────────────
 
@@ -226,6 +227,9 @@ export function HealthTab({ data, loading }: HealthTabProps) {
 
   return (
     <div className="space-y-3">
+      {/* Alpaca↔DB sync heartbeat — always at top, real-money correctness check */}
+      <SyncHealthPanel />
+
       {/* ── Stat row ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard

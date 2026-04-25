@@ -2,6 +2,7 @@ import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
 import { priceMonitor } from "@/lib/inngest/functions/price-monitor";
 import { reconcileOrders } from "@/lib/inngest/functions/reconcile-orders";
+import { syncHeartbeat } from "@/lib/inngest/functions/sync-heartbeat";
 import { evaluateTrade } from "@/lib/inngest/functions/trade-evaluator";
 import { morningResearch } from "@/lib/inngest/functions/morning-research";
 import { eodEvaluation } from "@/lib/inngest/functions/eod-evaluation";
@@ -25,6 +26,7 @@ export const { GET, POST, PUT } = serve({
     // Existing
     priceMonitor,
     reconcileOrders,
+    syncHeartbeat,
     evaluateTrade,
     morningResearch,
     eodEvaluation,

@@ -223,5 +223,5 @@ export async function checkExitConditions(
 
   // Lazy import to avoid circular dependency
   const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
-  await closeOpenPosition(position.id, signal.reason, currentPrice, undefined, "price_monitor");
+  await closeOpenPosition(position.id, signal.reason, undefined, "price_monitor");
 }

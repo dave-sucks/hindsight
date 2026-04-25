@@ -545,6 +545,14 @@ model Order {
   filledAt        DateTime?
   // Alpaca
   alpacaOrderId   String?
+  // Sync (Workstream B). Server-generated cuid, passed to Alpaca as
+  // client_order_id so an interrupted submit can be looked up by it on
+  // recovery. Null on legacy rows; UNIQUE on populated values only via
+  // a partial index added in the migration SQL.
+  idempotencyKey  String?         @unique
+  intent          String?         // "OPEN" | "CLOSE" | "PARTIAL_CLOSE" | "ADD" | "CANCEL"
+  alpacaSubmittedAt DateTime?     // when we attempted the Alpaca call
+  alpacaConfirmedAt DateTime?     // when we got a non-error response back
   // Relations
   position        Position        @relation(fields: [positionId], references: [id])
   decision        TradeDecision?
@@ -554,6 +562,30 @@ model Order {
 
   @@index([positionId])
   @@index([userId])
+  @@index([status, createdAt])
+}
+
+/// Persisted snapshot of an Alpaca↔DB sync invariant check.
+/// Written by the heartbeat cron (lib/inngest/functions/sync-heartbeat.ts).
+/// One row per heartbeat run; cheap to keep ~90 days.
+/// See docs/ALPACA_DB_SYNC_DESIGN.md §5.
+model SyncHealthSnapshot {
+  id                          String   @id @default(cuid())
+  capturedAt                  DateTime @default(now())
+  // Invariant counts — see §1 of the design doc.
+  orphansAlpacaNotInDb        Int      // I1a violations
+  staleDbNotInAlpaca          Int      // I1b violations
+  duplicateDbRows             Int      // duplicate OPEN rows for same (symbol, direction)
+  quantityMismatches          Int      // I1c violations
+  pendingOrdersOverSla        Int      // I2b violations
+  costBasisDriftDollars       Float    // I3 — abs($ delta vs Alpaca cost_basis)
+  // Affected ids per category for one-click drill-down.
+  affectedIds                 Json
+  // Snapshot of the live Alpaca account at capture time so we can correlate
+  // drift to broker state without a second round-trip.
+  alpacaAccountSnapshot       Json
+
+  @@index([capturedAt])
 }
 
 /// Lifecycle events on a position — price checks, near-target alerts, close, evaluation.
