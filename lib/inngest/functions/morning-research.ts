@@ -195,24 +195,40 @@ export const morningResearch = inngest.createFunction(
           let elapsed = Date.now() - t0;
           console.log(`[morning-research] Agent completed for ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`);
 
-          // ── Text-only-narration death retry ────────────────────────────────
-          // If the agent finished the generateText loop without calling
-          // record_thesis but DID call get_stock_data multiple times, it
-          // almost certainly died at a post-research markdown summary block
-          // ("### Portfolio Review / ### Discovery Opportunities ... With
-          // these insights, I'll formulate theses"). One retry with a
-          // forceful tool-call-only prompt usually recovers — the
-          // conversation state (research results) is preserved in
-          // response.messages, we just need to unstick the agent.
+          // ── Process-violation retry ────────────────────────────────────────
+          // Decision-framework v1 (2026-04-25): a HOLD run with no theses and
+          // no trades IS a successful run — that's the agent saying "no
+          // A-grade setups today, preserve capital." We must NOT retry that
+          // case anymore.
+          //
+          // Retry fires only when there's a real process violation:
+          //   • get_stock_data was called for one or more tickers AND
+          //   • record_thesis count < get_stock_data ticker count (the agent
+          //     researched but skipped the thesis step)
+          //
+          // If the agent did NO research, that's a HOLD-without-research call
+          // — log a warning but treat as COMPLETE (record_run_summary should
+          // explain why; if it didn't even fire, the downstream hasWork check
+          // catches the failure).
           const preRetryThesisCount = await prisma.thesis.count({
             where: { researchRunId: run.id },
           });
-          const stockDataCalls = steps.reduce((sum, s) => {
-            return sum + (s.toolCalls?.filter((tc) => tc.toolName === "get_stock_data").length ?? 0);
-          }, 0);
-          if (preRetryThesisCount === 0 && stockDataCalls >= 2 && response?.messages) {
+          const stockDataTickers = new Set<string>();
+          for (const s of steps) {
+            for (const tc of s.toolCalls ?? []) {
+              if (tc.toolName === "get_stock_data") {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const t = (tc.input as any)?.ticker;
+                if (typeof t === "string") stockDataTickers.add(t.toUpperCase());
+              }
+            }
+          }
+          const researchedCount = stockDataTickers.size;
+          const processViolation =
+            researchedCount > 0 && preRetryThesisCount < researchedCount;
+          if (processViolation && response?.messages) {
             console.warn(
-              `[morning-research] 🔁 ${config.name} finished with 0 theses after ${stockDataCalls} get_stock_data calls — attempting record_thesis retry`
+              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers but only recorded ${preRetryThesisCount} theses — process violation, attempting record_thesis retry`
             );
             try {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -294,26 +310,55 @@ export const morningResearch = inngest.createFunction(
           // but if the agent stopped mid-workflow without calling it we
           // need to do it here AND honestly report the outcome.
           //
-          // hasWork mirrors the agent route's onFinish logic: if the agent
-          // produced zero theses and zero trade decisions, it bailed out
-          // before reaching Phase 5/6/7 — that's a failed run, not a
-          // legitimate "no picks today". Marking it FAILED makes the
-          // failure visible in /runs instead of pretending nothing happened.
-          const [thesisCount, decisionCount] = await Promise.all([
-            prisma.thesis.count({ where: { researchRunId: run.id } }),
-            prisma.tradeDecision.count({ where: { runId: run.id } }),
-          ]);
-          const hasWork = thesisCount > 0 || decisionCount > 0;
-          const finalStatus = hasWork ? "COMPLETE" : "FAILED";
+          // Decision-framework v1 (2026-04-25): the success signal is
+          // "record_run_summary fired" (which only happens after the agent
+          // explicitly captures its primary_decision). A run that reaches
+          // record_run_summary with HOLD as the decision and 0 theses /
+          // 0 trades IS a successful run — that's the agent saying "no
+          // A-grade setups today, preserve capital." Forcing such runs to
+          // FAILED was the old compliance-machine bug.
+          //
+          // FAILED criteria (any one):
+          //   • record_run_summary never fired AND there's no thesis or
+          //     trade decision (agent died mid-flow with no work output)
+          //   • research happened (get_stock_data called) but no theses
+          //     were recorded (process violation; retry should have caught
+          //     this, but if retry also failed, fail loudly)
+          const [thesisCount, decisionCount, runSummaryEvent] =
+            await Promise.all([
+              prisma.thesis.count({ where: { researchRunId: run.id } }),
+              prisma.tradeDecision.count({ where: { runId: run.id } }),
+              prisma.runEvent.findFirst({
+                where: { runId: run.id, type: "run_summary" },
+                select: { id: true },
+              }),
+            ]);
+          const ranSummary = runSummaryEvent !== null;
+          const hadResearch = researchedCount > 0;
+          const hasWork = thesisCount > 0 || decisionCount > 0 || ranSummary;
+
+          // Process-violation override: if research was done but theses lag
+          // behind researched-ticker count, that's still FAILED even if
+          // record_run_summary fired (the run has a process integrity gap).
+          const processViolationFinal =
+            hadResearch && thesisCount < researchedCount;
+
+          const finalStatus =
+            processViolationFinal ? "FAILED" : hasWork ? "COMPLETE" : "FAILED";
           // Atomic: only transition RUNNING → terminal. No-op if complete_run
           // already marked it COMPLETE.
           const beltResult = await prisma.researchRun.updateMany({
             where: { id: run.id, status: "RUNNING" },
             data: { status: finalStatus, completedAt: new Date() },
           });
-          if (beltResult.count > 0 && !hasWork) {
+          if (beltResult.count > 0 && finalStatus === "FAILED") {
+            const reason = processViolationFinal
+              ? `process violation: researched ${researchedCount} tickers but only recorded ${thesisCount} theses`
+              : !ranSummary
+                ? "agent stopped before record_run_summary — no decision captured"
+                : "no work output (no theses, no trades, no run summary)";
             console.warn(
-              `[morning-research] ⚠️ ${config.name} run=${run.id} bailed before Phase 5+ — ${steps.length} steps, ${toolCalls} tool calls, 0 theses, 0 decisions. Marked FAILED.`
+              `[morning-research] ⚠️ ${config.name} run=${run.id} FAILED — ${reason}. Steps: ${steps.length}, tool calls: ${toolCalls}, researched: ${researchedCount}, theses: ${thesisCount}, decisions: ${decisionCount}.`
             );
             // Surface the failure in the run UI
             try {
@@ -322,8 +367,16 @@ export const morningResearch = inngest.createFunction(
                   runId: run.id,
                   type: "run_failed",
                   title: "Run did not complete",
-                  message: `Agent stopped after ${steps.length} steps and ${toolCalls} tool calls without calling record_thesis or complete_run. No theses or trade decisions were produced.`,
-                  payload: { steps: steps.length, toolCalls, thesisCount, decisionCount } as object,
+                  message: `Run marked FAILED: ${reason}. Agent ran ${steps.length} steps and ${toolCalls} tool calls.`,
+                  payload: {
+                    steps: steps.length,
+                    toolCalls,
+                    researchedCount,
+                    thesisCount,
+                    decisionCount,
+                    ranSummary,
+                    processViolation: processViolationFinal,
+                  } as object,
                 },
               });
             } catch { /* event write is best-effort */ }
