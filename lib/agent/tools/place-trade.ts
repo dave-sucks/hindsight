@@ -6,12 +6,31 @@
  */
 
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
-import { placeMarketOrder, getOrder, getLatestPrice, getAccount, cancelOrder, closePosition as closeAlpacaPosition } from "@/lib/alpaca";
+import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
+
+/**
+ * Classify an Alpaca submit error.
+ *
+ *   "rejected" — Alpaca returned a 4xx with a definitive "no" (validation,
+ *                buying-power, market closed, symbol unknown). Safe to mark
+ *                Order REJECTED and Position CANCELLED — Alpaca holds nothing.
+ *   "uncertain" — Network failure, timeout, 5xx. The order may or may not
+ *                 have landed. We must NOT mark anything as failed; leave
+ *                 Order PENDING and let reconcile-orders look it up by
+ *                 client_order_id.
+ */
+function classifyAlpacaError(err: unknown): "rejected" | "uncertain" {
+  const e = err as { statusCode?: number; status?: number; message?: string };
+  const code = e?.statusCode ?? e?.status;
+  if (typeof code === "number" && code >= 400 && code < 500) return "rejected";
+  return "uncertain";
+}
 
 export const placeTrade = defineTool({
   description:
@@ -188,63 +207,26 @@ export const placeTrade = defineTool({
         resolvedShares = Math.max(1, Math.floor(budget / args.entry_price));
       }
 
-      // 2. Place Alpaca paper order
-      const alpacaOrder = await placeMarketOrder({
-        symbol: ticker,
-        ...(resolvedNotional != null ? { notional: resolvedNotional } : { qty: resolvedShares }),
-        side: args.direction === "LONG" ? "buy" : "sell",
-      }, ctx.alpacaCreds);
+      // ── Workstream B: DB-first write path ────────────────────────────────
+      // Old flow: Alpaca first, then DB. A crash between the two left an
+      // invisible Alpaca position with no DB attribution. New flow: DB first
+      // with a server-generated idempotencyKey, then Alpaca with that key as
+      // client_order_id. If the Alpaca call doesn't return cleanly, the
+      // PENDING Order row is recoverable by reconcile-orders looking it up
+      // by client_order_id.
 
-      // Recalculate resolvedShares from notional fill if Alpaca returns qty
-      // (paper trading fills notional orders with fractional shares sometimes)
-      // 3. Wait for fill (max 5s)
-      let fillPrice = args.entry_price;
-      let didFill = false;
-      let filledAt: Date | null = null;
-      const placedAt = new Date();
-      const deadline = Date.now() + 5_000;
-      while (Date.now() < deadline) {
-        const order = await getOrder(alpacaOrder.id, ctx.alpacaCreds);
-        if (order.status === "filled" && order.filled_avg_price) {
-          fillPrice = parseFloat(order.filled_avg_price);
-          didFill = true;
-          filledAt = order.filled_at ? new Date(order.filled_at) : new Date();
-          break;
-        }
-        if (["cancelled", "expired", "rejected"].includes(order.status)) {
-          throw new Error(`Alpaca order ${order.status}`);
-        }
-        await new Promise((r) => setTimeout(r, 1_000));
-      }
-      if (!didFill) {
-        try { fillPrice = await getLatestPrice(args.ticker, ctx.alpacaCreds); } catch { /* keep entry_price */ }
-        // Recompute shares from notional using actual fill price
-        if (resolvedNotional != null) {
-          resolvedShares = Math.max(1, Math.floor(resolvedNotional / fillPrice));
-        }
-      }
-
-      // 4. Create Position + Order + PositionEvent + TradeDecision + RunEvent
       const analystId = ctx.analystId;
       if (!analystId) {
         throw new Error("Cannot place trade without an analyst ID. Ensure the run is linked to an analyst.");
       }
 
       const finalShares = resolvedShares ?? 1;
+      const idempotencyKey = randomUUID();
+      const placedAt = new Date();
 
-      // Saga compensation: if the DB transaction below fails, Alpaca already
-      // has a live order / filled position. Best-effort unwind so we don't
-      // leak an orphan — cancel the order (works if unfilled) and close the
-      // position (works if already filled). Both are tried unconditionally;
-      // whichever is a no-op throws and is swallowed.
-      const rollbackAlpaca = async () => {
-        try { await cancelOrder(alpacaOrder.id, ctx.alpacaCreds); } catch { /* unfilled path */ }
-        try { await closeAlpacaPosition(ticker, ctx.alpacaCreds); } catch { /* never-filled path */ }
-      };
-
-      let txResult;
-      try {
-        txResult = await prisma.$transaction(async (tx: TransactionClient) => {
+      // 2. DB tx: create the row of record. avgCost starts at the entry guess
+      // and is corrected to the real fill price in step 4.
+      const { position, order } = await prisma.$transaction(async (tx: TransactionClient) => {
         const pos = await tx.position.create({
           data: {
             analystId,
@@ -253,7 +235,7 @@ export const placeTrade = defineTool({
             direction: args.direction,
             status: "OPEN",
             quantity: finalShares,
-            avgCost: fillPrice,
+            avgCost: args.entry_price,
             targetPrice: args.target_price,
             stopLoss: args.stop_loss,
             exitStrategy: "PRICE_TARGET",
@@ -269,11 +251,10 @@ export const placeTrade = defineTool({
             side: args.direction === "LONG" ? "BUY" : "SELL",
             orderType: "MARKET",
             quantity: finalShares,
-            status: didFill ? "FILLED" : "PENDING",
-            filledPrice: didFill ? fillPrice : null,
-            filledQty: didFill ? finalShares : null,
-            filledAt: didFill ? (filledAt ?? new Date()) : null,
-            alpacaOrderId: alpacaOrder.id,
+            status: "PENDING",
+            alpacaOrderId: null,
+            idempotencyKey,
+            intent: "OPEN",
             createdAt: placedAt,
           },
         });
@@ -282,8 +263,8 @@ export const placeTrade = defineTool({
           data: {
             positionId: pos.id,
             eventType: "OPENED",
-            description: `${args.direction} ${finalShares} shares of ${ticker} at $${fillPrice.toFixed(2)}`,
-            priceAt: fillPrice,
+            description: `${args.direction} ${finalShares} shares of ${ticker} submitted at ~$${args.entry_price.toFixed(2)} (idem=${idempotencyKey.slice(0, 8)})`,
+            priceAt: args.entry_price,
           },
         });
 
@@ -294,7 +275,7 @@ export const placeTrade = defineTool({
             userId: ctx.userId,
             symbol: ticker,
             decision: "INITIATE",
-            reasoning: `${args.direction} ${finalShares} shares at $${fillPrice.toFixed(2)} (target: $${args.target_price.toFixed(2)}, stop: $${args.stop_loss.toFixed(2)})`,
+            reasoning: `${args.direction} ${finalShares} shares — submitting market order (target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)})`,
             thesisId: args.thesis_id,
             positionId: pos.id,
             orderId: ord.id,
@@ -306,34 +287,204 @@ export const placeTrade = defineTool({
             data: {
               runId: ctx.runId,
               type: "trade_placed",
-              title: `Trade placed: ${args.direction} ${ticker}`,
-              message: `${args.direction} ${finalShares} shares of ${ticker} at $${fillPrice.toFixed(2)}`,
+              title: `Trade submitted: ${args.direction} ${ticker}`,
+              message: `${args.direction} ${finalShares} shares of ${ticker}`,
               payload: {
                 ticker,
                 direction: args.direction,
-                entry: fillPrice,
+                entry: args.entry_price,
                 target_price: args.target_price,
                 stop_loss: args.stop_loss,
                 shares: finalShares,
                 position_id: pos.id,
                 order_id: ord.id,
+                idempotency_key: idempotencyKey,
               } as object,
             },
           });
         }
 
         return { position: pos, order: ord };
+      });
+
+      // 3. Submit to Alpaca with client_order_id = idempotencyKey.
+      let alpacaOrderId: string | null = null;
+      let submitOutcome: "ok" | "rejected" | "uncertain" = "ok";
+      try {
+        const alpacaOrder = await placeMarketOrder({
+          symbol: ticker,
+          ...(resolvedNotional != null ? { notional: resolvedNotional } : { qty: resolvedShares }),
+          side: args.direction === "LONG" ? "buy" : "sell",
+          clientOrderId: idempotencyKey,
+        }, ctx.alpacaCreds);
+        alpacaOrderId = alpacaOrder.id;
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            alpacaOrderId,
+            alpacaSubmittedAt: placedAt,
+            alpacaConfirmedAt: new Date(),
+          },
         });
-      } catch (dbErr) {
-        const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+      } catch (submitErr) {
+        submitOutcome = classifyAlpacaError(submitErr);
+        const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);
+        if (submitOutcome === "rejected") {
+          // Definitive no from Alpaca. Mark Order REJECTED and Position
+          // CANCELLED so the book doesn't carry a phantom OPEN row.
+          console.warn(
+            `[place_trade] Alpaca rejected order for ${ticker} (idem=${idempotencyKey.slice(0, 8)}): ${msg}`,
+          );
+          await prisma.$transaction([
+            prisma.order.update({
+              where: { id: order.id },
+              data: { status: "REJECTED", alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
+            }),
+            prisma.position.update({
+              where: { id: position.id },
+              data: { status: "CANCELLED", closedAt: new Date(), closeReason: "MANUAL" },
+            }),
+            prisma.positionEvent.create({
+              data: {
+                positionId: position.id,
+                eventType: "CLOSED",
+                description: `Alpaca rejected: ${msg}`,
+                priceAt: args.entry_price,
+              },
+            }),
+          ]);
+          return {
+            summary: `Trade rejected: $${ticker}`,
+            data: {
+              success: false,
+              ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: `Alpaca rejected: ${msg}`,
+              tickers: [{ ticker, tag: "Rejected", summary: msg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+        // Uncertain — network/5xx/timeout. Order may or may not have landed.
+        // Leave Order PENDING; reconcile-orders looks it up by client_order_id.
         console.error(
-          `[place_trade] DB transaction FAILED after Alpaca order ${alpacaOrder.id} for ${ticker} — rolling back Alpaca side: ${msg}`,
+          `CRITICAL-SYNC-UNCERTAIN [place_trade] Alpaca submit uncertain for ${ticker} (idem=${idempotencyKey.slice(0, 8)}): ${msg}. Reconcile will recover by client_order_id.`,
         );
-        await rollbackAlpaca();
-        // Rethrow so the outer catch returns a FAILED tool result to the agent
-        throw dbErr;
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { alpacaSubmittedAt: placedAt },
+        });
+        return {
+          summary: `Trade submitted (status uncertain): $${ticker}`,
+          data: {
+            success: true,
+            ticker,
+            status: "PENDING" as const,
+            fillStatus: "PENDING" as const,
+            direction: args.direction,
+            shares: finalShares,
+            entryPrice: args.entry_price,
+            targetPrice: args.target_price,
+            stopLoss: args.stop_loss,
+            positionId: position.id,
+            orderId: order.id,
+            alpacaOrderId: null,
+            placedAt: placedAt.toISOString(),
+            filledAt: null,
+            message: `Submission status uncertain (${msg}). Reconcile cron will resolve via client_order_id.`,
+            tickers: [{ ticker, tag: "Pending", summary: "Awaiting reconcile", actionIcon: "buy" }],
+          },
+          sources: [{ provider: "Alpaca", title: `Trade ${ticker} (pending)` }],
+        };
       }
-      const { position, order } = txResult;
+
+      // 4. Poll up to 5s for fill, then promote to FILLED + correct avgCost.
+      let fillPrice = args.entry_price;
+      let didFill = false;
+      let filledAt: Date | null = null;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline && alpacaOrderId) {
+        const probed = await getOrder(alpacaOrderId, ctx.alpacaCreds);
+        if (probed.status === "filled" && probed.filled_avg_price) {
+          fillPrice = parseFloat(probed.filled_avg_price);
+          didFill = true;
+          filledAt = probed.filled_at ? new Date(probed.filled_at) : new Date();
+          break;
+        }
+        if (["cancelled", "expired", "rejected"].includes(probed.status)) {
+          // Alpaca accepted then killed it — treat like a rejection.
+          await prisma.$transaction([
+            prisma.order.update({
+              where: { id: order.id },
+              data: { status: "CANCELLED", alpacaConfirmedAt: new Date() },
+            }),
+            prisma.position.update({
+              where: { id: position.id },
+              data: { status: "CANCELLED", closedAt: new Date(), closeReason: "MANUAL" },
+            }),
+          ]);
+          return {
+            summary: `Trade ${probed.status}: $${ticker}`,
+            data: {
+              success: false,
+              ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: `Alpaca order ${probed.status}`,
+              tickers: [{ ticker, tag: probed.status, summary: `Alpaca ${probed.status}`, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+        await new Promise((r) => setTimeout(r, 1_000));
+      }
+
+      if (didFill) {
+        // Recompute share count for notional fills (Alpaca may give fractional)
+        if (resolvedNotional != null) {
+          resolvedShares = Math.max(1, Math.floor(resolvedNotional / fillPrice));
+        }
+        const finalSharesAfterFill = resolvedShares ?? finalShares;
+        await prisma.$transaction([
+          prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: "FILLED",
+              filledPrice: fillPrice,
+              filledQty: finalSharesAfterFill,
+              filledAt: filledAt ?? new Date(),
+            },
+          }),
+          prisma.position.update({
+            where: { id: position.id },
+            data: {
+              avgCost: fillPrice,
+              quantity: finalSharesAfterFill,
+              initialQty: finalSharesAfterFill,
+            },
+          }),
+          prisma.positionEvent.create({
+            data: {
+              positionId: position.id,
+              eventType: "OPENED",
+              description: `Filled: ${args.direction} ${finalSharesAfterFill} shares at $${fillPrice.toFixed(2)}`,
+              priceAt: fillPrice,
+            },
+          }),
+        ]);
+      } else {
+        // Order accepted but not filled within poll window — leave PENDING.
+        // reconcile-orders will pick it up via alpacaOrderId.
+        try {
+          fillPrice = await getLatestPrice(args.ticker, ctx.alpacaCreds);
+        } catch {
+          /* keep entry_price */
+        }
+      }
+
+      // suppress unused warning if a path doesn't read submitOutcome
+      void submitOutcome;
 
       // Graduate watchlist item (non-fatal)
       try {
@@ -397,7 +548,7 @@ export const placeTrade = defineTool({
           stopLoss: args.stop_loss,
           positionId: position.id,
           orderId: order.id,
-          alpacaOrderId: alpacaOrder.id,
+          alpacaOrderId,
           placedAt: placedAt.toISOString(),
           filledAt: filledAt ? filledAt.toISOString() : null,
           message,

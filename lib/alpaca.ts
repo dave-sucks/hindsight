@@ -78,6 +78,15 @@ export interface OrderParams {
   qty?: number;
   side: "buy" | "sell";
   notional?: number; // dollar amount instead of qty
+  /**
+   * Optional idempotency token. Forwarded to Alpaca as `client_order_id`,
+   * which Alpaca uses to dedupe a re-submission of the same order — and
+   * which we use as the join key when reconciling a PENDING DB row whose
+   * Alpaca call may or may not have landed (a crash between the DB tx
+   * commit and the Alpaca response). Generate once per intent (cuid is
+   * fine), persist on `Order.idempotencyKey`, then pass it here.
+   */
+  clientOrderId?: string;
 }
 
 export interface LimitOrderParams extends OrderParams {
@@ -140,6 +149,10 @@ export async function placeMarketOrder(
     order.qty = params.qty;
   }
 
+  if (params.clientOrderId) {
+    order.client_order_id = params.clientOrderId;
+  }
+
   return (await withTimeout(getClient(creds).createOrder(order), `placeMarketOrder(${params.symbol})`)) as AlpacaOrder;
 }
 
@@ -159,6 +172,47 @@ export async function placeLimitOrder(
 
 export async function getOrder(orderId: string, creds?: AlpacaCredentials): Promise<AlpacaOrder> {
   return (await withTimeout(getClient(creds).getOrder(orderId), `getOrder(${orderId.slice(0, 8)})`)) as AlpacaOrder;
+}
+
+/**
+ * Look up an order by `client_order_id` (the idempotency token we sent on
+ * submission). Returns null when Alpaca has no record of it.
+ *
+ * Used by reconcile-orders to recover from the (DB tx commit) → (Alpaca call)
+ * crash gap: if our DB has a PENDING Order whose Alpaca call may not have
+ * landed, we ask Alpaca "do you have anything with this client_order_id?"
+ * If yes, we adopt it. If no, the call never reached the broker — safe to
+ * mark our row REJECTED.
+ *
+ * Alpaca exposes this via GET /v2/orders:by_client_order_id?client_order_id=...
+ * The SDK's `getOrderByClientOrderId` wraps it; we call REST directly so we
+ * can return null on 404 instead of throwing.
+ */
+export async function getOrderByClientOrderId(
+  clientOrderId: string,
+  creds?: AlpacaCredentials,
+): Promise<AlpacaOrder | null> {
+  const baseUrl = (creds?.baseUrl || process.env.ALPACA_BASE_URL || PAPER_BASE_URL).replace(/\/$/, "");
+  const keyId = creds?.keyId || process.env.ALPACA_API_KEY!;
+  const secretKey = creds?.secretKey || process.env.ALPACA_API_SECRET!;
+
+  const url = `${baseUrl}/v2/orders:by_client_order_id?client_order_id=${encodeURIComponent(clientOrderId)}`;
+  return withTimeout(
+    fetch(url, {
+      headers: {
+        "APCA-API-KEY-ID": keyId,
+        "APCA-API-SECRET-KEY": secretKey,
+      },
+    }).then(async (res) => {
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`Alpaca getOrderByClientOrderId ${res.status}: ${body.slice(0, 200)}`);
+      }
+      return (await res.json()) as AlpacaOrder;
+    }),
+    `getOrderByClientOrderId(${clientOrderId.slice(0, 8)})`,
+  );
 }
 
 // ─── Positions ────────────────────────────────────────────────────────────────
@@ -194,14 +248,19 @@ export async function closePositionPartial(
   qty: number,
   side: "sell" | "buy",
   creds?: AlpacaCredentials,
+  clientOrderId?: string,
 ): Promise<AlpacaOrder> {
-  return (await getClient(creds).createOrder({
+  const order: Record<string, unknown> = {
     symbol,
     qty: qty.toString(),
     side,
     type: "market",
     time_in_force: "day",
-  } as Parameters<ReturnType<typeof getClient>["createOrder"]>[0])) as AlpacaOrder;
+  };
+  if (clientOrderId) order.client_order_id = clientOrderId;
+  return (await getClient(creds).createOrder(
+    order as Parameters<ReturnType<typeof getClient>["createOrder"]>[0],
+  )) as AlpacaOrder;
 }
 
 export async function cancelOrder(orderId: string, creds?: AlpacaCredentials): Promise<void> {

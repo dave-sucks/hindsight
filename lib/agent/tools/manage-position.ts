@@ -13,11 +13,28 @@
  */
 
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+
+/**
+ * Classify an Alpaca submit error — same shape as place_trade / closeOpenPosition.
+ *
+ *   "rejected"  — 4xx with a definitive "no". Mark Order REJECTED; Position
+ *                 unchanged (we never mutated it).
+ *   "uncertain" — Network/5xx/timeout. Leave Order PENDING; reconcile-orders
+ *                 looks it up by client_order_id and adopts whatever Alpaca
+ *                 actually has.
+ */
+function classifyAlpacaError(err: unknown): "rejected" | "uncertain" {
+  const e = err as { statusCode?: number; status?: number; message?: string };
+  const code = e?.statusCode ?? e?.status;
+  if (typeof code === "number" && code >= 400 && code < 500) return "rejected";
+  return "uncertain";
+}
 
 type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "FAILED";
 
@@ -59,46 +76,6 @@ type ManagePositionReturn = { summary: string; data: ManagePositionData; sources
 
 function makeReturn(summary: string, data: ManagePositionData): ManagePositionReturn {
   return { summary, data, sources: [] };
-}
-
-/**
- * Retry a DB transaction that runs AFTER an Alpaca mutation has already
- * committed. We can't un-fill an Alpaca order, so the best we can do is
- * retry the DB write on transient failures, then CRITICAL-log with the
- * Alpaca order id so the reconcile job can neutralize the drift.
- *
- * Used for partial_close and add_to_position — both have an Alpaca fill
- * that can't be rolled back without creating a new, differently-priced
- * Alpaca event. full_close uses closeOpenPosition which has its own
- * retry loop.
- */
-async function commitOrLogCritical(
-  label: string,
-  context: { positionId: string; alpacaOrderId: string | null; symbol: string; extra?: string },
-  tx: () => Promise<void>,
-): Promise<void> {
-  const maxAttempts = 3;
-  let lastErr: unknown;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      await tx();
-      return;
-    } catch (err) {
-      lastErr = err;
-      if (attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 250 * 2 ** (attempt - 1)));
-      }
-    }
-  }
-  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
-  console.error(
-    `[manage_position:${label}] CRITICAL: Alpaca fill SUCCEEDED but DB commit FAILED after ${maxAttempts} attempts. ` +
-      `Position/orders will be stale vs Alpaca — reconcile-orders must neutralize. ` +
-      `positionId=${context.positionId} alpacaOrderId=${context.alpacaOrderId ?? "null"} symbol=${context.symbol}` +
-      (context.extra ? ` ${context.extra}` : "") +
-      ` error=${msg}`,
-  );
-  throw lastErr;
 }
 
 const schema = z.object({
@@ -221,7 +198,6 @@ export const managePosition = defineTool({
           const result = await closeOpenPosition(
             position.id,
             closeReasonCode,
-            undefined,
             creds,
             "agent",
             args.reason,
@@ -308,64 +284,145 @@ export const managePosition = defineTool({
             };
           }
 
-          const closeSide = position.direction === "LONG" ? "sell" : "buy";
-          let fillPrice: number | null = null;
+          const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
+          const idempotencyKey = randomUUID();
+          const placedAt = new Date();
+
+          // 1. DB tx — create PENDING order, do not mutate Position yet.
+          const order = await prisma.order.create({
+            data: {
+              positionId: position.id,
+              userId: ctx.userId,
+              symbol: ticker,
+              side: closeSide.toUpperCase(),
+              orderType: "MARKET",
+              quantity: closeQty,
+              status: "PENDING",
+              alpacaOrderId: null,
+              idempotencyKey,
+              intent: "PARTIAL_CLOSE",
+              createdAt: placedAt,
+            },
+          });
+
+          // 2. Submit to Alpaca with client_order_id = idempotencyKey.
           let alpacaOrderId: string | null = null;
-
           try {
-            const alpacaOrder = await closePositionPartial(ticker, closeQty, closeSide, creds);
+            const alpacaOrder = await closePositionPartial(ticker, closeQty, closeSide, creds, idempotencyKey);
             alpacaOrderId = alpacaOrder.id;
-            // Poll up to 5s for fill
-            const deadline = Date.now() + 5_000;
-            while (Date.now() < deadline) {
-              const polled = await getOrder(alpacaOrder.id, creds);
-              if (polled.status === "filled" && polled.filled_avg_price) {
-                fillPrice = parseFloat(polled.filled_avg_price);
-                break;
-              }
-              await new Promise((r) => setTimeout(r, 1_000));
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { alpacaOrderId, alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
+            });
+          } catch (submitErr) {
+            const outcome = classifyAlpacaError(submitErr);
+            const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);
+            if (outcome === "rejected") {
+              await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "REJECTED", alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
+              });
+              return {
+                summary: `Partial close rejected: ${ticker}`,
+                data: {
+                  success: false, ticker, action: args.action, status: "FAILED" as const,
+                  message: `Alpaca rejected partial close: ${msg}`,
+                  tickers: [{ ticker, tag: "Rejected", summary: msg, actionIcon: "failed" }],
+                },
+                sources: [],
+              };
             }
-          } catch { /* fall back to latest price */ }
-
-          if (!fillPrice) {
-            try { fillPrice = await getLatestPrice(ticker, creds); }
-            catch { fillPrice = position.avgCost; }
+            // Uncertain — leave PENDING, reconcile will recover via clientOrderId.
+            console.error(
+              `CRITICAL-SYNC-UNCERTAIN [manage_position:partial_close] ${ticker} (idem=${idempotencyKey.slice(0, 8)}): ${msg}. Reconcile will recover.`,
+            );
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { alpacaSubmittedAt: placedAt },
+            });
+            return {
+              summary: `Partial close pending: ${ticker} (status uncertain)`,
+              data: {
+                success: true, ticker, action: args.action, status: "PARTIAL_CLOSE" as const,
+                closedQty: closeQty,
+                remainingQty: position.quantity - closeQty,
+                fillPrice: position.avgCost,
+                partialPnl: 0,
+                message: `Partial close submitted but status uncertain (${msg}). Reconcile cron will resolve.`,
+                tickers: [{ ticker, tag: "Pending", summary: "Awaiting reconcile", actionIcon: "hold" }],
+              },
+              sources: [],
+            };
           }
 
+          // 3. Poll up to 5s for fill.
+          let fillPrice: number | null = null;
+          const deadline = Date.now() + 5_000;
+          while (Date.now() < deadline && alpacaOrderId) {
+            const polled = await getOrder(alpacaOrderId, creds);
+            if (polled.status === "filled" && polled.filled_avg_price) {
+              fillPrice = parseFloat(polled.filled_avg_price);
+              break;
+            }
+            if (["cancelled", "expired", "rejected"].includes(polled.status)) {
+              await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "CANCELLED", alpacaConfirmedAt: new Date() },
+              });
+              return {
+                summary: `Partial close ${polled.status}: ${ticker}`,
+                data: {
+                  success: false, ticker, action: args.action, status: "FAILED" as const,
+                  message: `Alpaca partial close ${polled.status}`,
+                  tickers: [{ ticker, tag: polled.status, summary: `Alpaca ${polled.status}`, actionIcon: "failed" }],
+                },
+                sources: [],
+              };
+            }
+            await new Promise((r) => setTimeout(r, 1_000));
+          }
+
+          // 4a. Still pending — leave Order PENDING, Position unchanged.
+          if (fillPrice == null) {
+            const lastPrice = await getLatestPrice(ticker, creds).catch(() => position.avgCost);
+            return {
+              summary: `Partial close pending: ${ticker} (${closeQty} shares awaiting fill)`,
+              data: {
+                success: true, ticker, action: args.action, status: "PARTIAL_CLOSE" as const,
+                closedQty: closeQty,
+                remainingQty: position.quantity - closeQty,
+                fillPrice: lastPrice,
+                partialPnl: 0,
+                message: `Partial close submitted (${closeQty} shares of ${ticker}) — awaiting Alpaca fill.`,
+                tickers: [{ ticker, tag: "Pending", summary: `${closeQty} shares awaiting fill`, actionIcon: "hold" }],
+              },
+              sources: [],
+            };
+          }
+
+          // 4b. Filled — finalize the partial close.
           const newQty = position.quantity - closeQty;
           const partialPnl = position.direction === "LONG"
             ? (fillPrice - position.avgCost) * closeQty
             : (position.avgCost - fillPrice) * closeQty;
           const pnlSign = partialPnl >= 0 ? "+" : "";
 
-          await commitOrLogCritical(
-            "partial_close",
-            { positionId: position.id, alpacaOrderId, symbol: ticker, extra: `closeQty=${closeQty}` },
-            () => prisma.$transaction(async (tx) => {
-            // Update position qty
+          await prisma.$transaction(async (tx) => {
             await tx.position.update({
               where: { id: position.id },
               data: { quantity: newQty },
             });
 
-            // Create the partial-sell order
-            const ord = await tx.order.create({
+            await tx.order.update({
+              where: { id: order.id },
               data: {
-                positionId: position.id,
-                userId: ctx.userId,
-                symbol: ticker,
-                side: closeSide === "sell" ? "SELL" : "BUY",
-                orderType: "MARKET",
-                quantity: closeQty,
                 status: "FILLED",
                 filledPrice: fillPrice!,
                 filledQty: closeQty,
                 filledAt: new Date(),
-                alpacaOrderId,
               },
             });
 
-            // Position event
             await tx.positionEvent.create({
               data: {
                 positionId: position.id,
@@ -376,7 +433,6 @@ export const managePosition = defineTool({
               },
             });
 
-            // Audit record
             await tx.positionManagementAction.create({
               data: {
                 positionId: position.id,
@@ -386,7 +442,7 @@ export const managePosition = defineTool({
                 prevQty: position.quantity,
                 newQty,
                 reason: args.reason,
-                alpacaOrderId: alpacaOrderId ?? null,
+                alpacaOrderId,
                 fillPrice: fillPrice!,
                 fillQty: closeQty,
               },
@@ -404,7 +460,6 @@ export const managePosition = defineTool({
               });
             }
 
-            // Record as a TradeDecision
             await tx.tradeDecision.create({
               data: {
                 runId: ctx.runId,
@@ -414,11 +469,10 @@ export const managePosition = defineTool({
                 decision: "PARTIAL_EXIT",
                 reasoning: args.reason,
                 positionId: position.id,
-                orderId: ord.id,
+                orderId: order.id,
               },
             });
-            }),
-          );
+          });
 
           return {
             summary: `Partial close ${ticker}: sold ${pct}% (${closeQty} shares) ${pnlSign}$${partialPnl.toFixed(2)}`,
@@ -468,55 +522,147 @@ export const managePosition = defineTool({
             };
           }
 
-          const addOrder = await placeMarketOrder({
-            symbol: ticker,
-            side: position.direction === "LONG" ? "buy" : "sell",
-            notional,
-          }, creds);
+          const idempotencyKey = randomUUID();
+          const placedAt = new Date();
+          const addSide: "buy" | "sell" = position.direction === "LONG" ? "buy" : "sell";
+          // Approximate share count for the PENDING row; corrected to real fill qty below.
+          const approxQty = Math.max(1, Math.floor(notional / position.avgCost));
 
+          // 1. DB tx — create PENDING order, do not mutate Position yet.
+          const order = await prisma.order.create({
+            data: {
+              positionId: position.id,
+              userId: ctx.userId,
+              symbol: ticker,
+              side: addSide.toUpperCase(),
+              orderType: "MARKET",
+              quantity: approxQty,
+              status: "PENDING",
+              alpacaOrderId: null,
+              idempotencyKey,
+              intent: "ADD",
+              createdAt: placedAt,
+            },
+          });
+
+          // 2. Submit to Alpaca with client_order_id = idempotencyKey.
+          let alpacaOrderId: string | null = null;
+          try {
+            const addOrder = await placeMarketOrder({
+              symbol: ticker,
+              side: addSide,
+              notional,
+              clientOrderId: idempotencyKey,
+            }, creds);
+            alpacaOrderId = addOrder.id;
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { alpacaOrderId, alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
+            });
+          } catch (submitErr) {
+            const outcome = classifyAlpacaError(submitErr);
+            const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);
+            if (outcome === "rejected") {
+              await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "REJECTED", alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
+              });
+              return {
+                summary: `Add rejected: ${ticker}`,
+                data: {
+                  success: false, ticker, action: args.action, status: "FAILED" as const,
+                  message: `Alpaca rejected add: ${msg}`,
+                  tickers: [{ ticker, tag: "Rejected", summary: msg, actionIcon: "failed" }],
+                },
+                sources: [],
+              };
+            }
+            console.error(
+              `CRITICAL-SYNC-UNCERTAIN [manage_position:add_to_position] ${ticker} (idem=${idempotencyKey.slice(0, 8)}): ${msg}. Reconcile will recover.`,
+            );
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { alpacaSubmittedAt: placedAt },
+            });
+            return {
+              summary: `Add pending: ${ticker} (status uncertain)`,
+              data: {
+                success: true, ticker, action: args.action, status: "ADDED" as const,
+                addedQty: approxQty,
+                newTotalQty: position.quantity + approxQty,
+                fillPrice: position.avgCost,
+                newAvgCost: position.avgCost,
+                message: `Add submitted but status uncertain (${msg}). Reconcile cron will resolve.`,
+                tickers: [{ ticker, tag: "Pending", summary: "Awaiting reconcile", actionIcon: "hold" }],
+              },
+              sources: [],
+            };
+          }
+
+          // 3. Poll up to 5s for fill.
           let fillPrice: number | null = null;
           let fillQty: number | null = null;
-          const alpacaOrderId = addOrder.id;
-
           const deadline = Date.now() + 5_000;
-          while (Date.now() < deadline) {
-            const polled = await getOrder(addOrder.id, creds);
+          while (Date.now() < deadline && alpacaOrderId) {
+            const polled = await getOrder(alpacaOrderId, creds);
             if (polled.status === "filled" && polled.filled_avg_price && polled.filled_qty) {
               fillPrice = parseFloat(polled.filled_avg_price);
               fillQty = parseFloat(polled.filled_qty);
               break;
             }
+            if (["cancelled", "expired", "rejected"].includes(polled.status)) {
+              await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "CANCELLED", alpacaConfirmedAt: new Date() },
+              });
+              return {
+                summary: `Add ${polled.status}: ${ticker}`,
+                data: {
+                  success: false, ticker, action: args.action, status: "FAILED" as const,
+                  message: `Alpaca add ${polled.status}`,
+                  tickers: [{ ticker, tag: polled.status, summary: `Alpaca ${polled.status}`, actionIcon: "failed" }],
+                },
+                sources: [],
+              };
+            }
             await new Promise((r) => setTimeout(r, 1_000));
           }
 
-          if (!fillPrice) fillPrice = await getLatestPrice(ticker, creds).catch(() => position.avgCost);
-          if (!fillQty) fillQty = Math.floor(notional / fillPrice);
+          // 4a. Still pending — Position unchanged; reconcile will pick it up.
+          if (fillPrice == null || fillQty == null) {
+            return {
+              summary: `Add pending: ${ticker} (awaiting fill)`,
+              data: {
+                success: true, ticker, action: args.action, status: "ADDED" as const,
+                addedQty: approxQty,
+                newTotalQty: position.quantity + approxQty,
+                fillPrice: position.avgCost,
+                newAvgCost: position.avgCost,
+                message: `Add submitted ($${notional} of ${ticker}) — awaiting Alpaca fill.`,
+                tickers: [{ ticker, tag: "Pending", summary: `$${notional} awaiting fill`, actionIcon: "hold" }],
+              },
+              sources: [],
+            };
+          }
 
+          // 4b. Filled — update Position with real fill price/qty.
           const newTotalQty = position.quantity + fillQty;
           const newAvgCost = ((position.avgCost * position.quantity) + (fillPrice * fillQty)) / newTotalQty;
 
-          await commitOrLogCritical(
-            "add_to_position",
-            { positionId: position.id, alpacaOrderId, symbol: ticker, extra: `addedQty=${fillQty} notional=${notional}` },
-            () => prisma.$transaction(async (tx) => {
+          await prisma.$transaction(async (tx) => {
             await tx.position.update({
               where: { id: position.id },
               data: { quantity: newTotalQty, avgCost: newAvgCost },
             });
 
-            const ord = await tx.order.create({
+            await tx.order.update({
+              where: { id: order.id },
               data: {
-                positionId: position.id,
-                userId: ctx.userId,
-                symbol: ticker,
-                side: position.direction === "LONG" ? "BUY" : "SELL",
-                orderType: "MARKET",
-                quantity: fillQty!,
                 status: "FILLED",
+                quantity: fillQty!,
                 filledPrice: fillPrice!,
                 filledQty: fillQty!,
                 filledAt: new Date(),
-                alpacaOrderId,
               },
             });
 
@@ -565,11 +711,10 @@ export const managePosition = defineTool({
                 decision: "ADD",
                 reasoning: args.reason,
                 positionId: position.id,
-                orderId: ord.id,
+                orderId: order.id,
               },
             });
-            }),
-          );
+          });
 
           return {
             summary: `Added to ${ticker}: +${fillQty} shares @ $${fillPrice.toFixed(2)}. Now ${newTotalQty} shares.`,
