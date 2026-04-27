@@ -217,70 +217,119 @@ the podcast lens forces a rewrite, log it here with the reason.
 
 ---
 
-## Schema teardown — every DB object the podcast feature owns
+## Database — what's owned vs what's shared
 
-Source of truth for what the podcast feature put in the database.
-Use this list to verify before/after a teardown, and as the audit
-for the eventual app fork. Every item is created in
-`prisma/migrations/20260427000000_podcast_phase1/migration.sql` and
-dropped by `prisma/migrations/_podcast_teardown.sql`.
+The podcast feature is NOT 4 isolated tables. It's 4 podcast-specific
+tables PLUS rows interleaved into 6 existing trading-shared tables.
+This is the whole point of the design — the agent runtime, signal
+infra, and run streaming UI work for podcasts because podcast runs
+land in the same `ResearchRun` rows the trading agent uses, just
+discriminated by which FK is set.
 
-### New tables (all PODCAST-NEW — drop with `DROP TABLE … CASCADE`)
+Read this before any rollback or fork. Three layers:
 
-| Table | Owner | Purpose |
-|-------|-------|---------|
-| `Podcast` | podcast | Show metadata (name, voice, host style, cadence, cover art). |
-| `PodcastSegment` | podcast | Recurring beat inside a podcast. Has its own prompt, monitors, topic fence. |
-| `SegmentTranscript` | podcast | One per Run. Transcript text + citations + (Phase 2) audio + alignment. Unique on `runId`. |
-| `Episode` | podcast | Ordered list of `SegmentTranscript` ids assembled into a listenable episode. Phase 3. |
+### Layer 1 — Tables OWNED BY podcasts (drop on rollback)
 
-### New enums (all PODCAST-NEW)
+These hold only podcast data. Always safe to drop on teardown.
+
+| Table | Purpose |
+|-------|---------|
+| `Podcast` | Show metadata (name, voice, host style, cadence, cover art). |
+| `PodcastSegment` | Recurring beat inside a podcast. Has its own prompt, monitors, topic fence. |
+| `SegmentTranscript` | One per Run. Transcript text + citations + (Phase 2) audio + alignment. Unique on `runId`. |
+| `Episode` | Ordered list of `SegmentTranscript` ids assembled into a listenable episode. Phase 3. |
+
+### Layer 2 — Tables SHARED with trading (interleaved data)
+
+These tables hold rows from BOTH the trading agent and the podcast
+agent. Schema is unchanged for trading; the column additions are
+nullable so trading queries that don't reference them are unaffected.
+On rollback, these tables stay — but they will contain
+podcast-origin rows that become orphaned (their discriminator
+columns are gone). The teardown script has an optional purge step
+for cleaning those up.
+
+| Table | What podcast writes | How to identify podcast rows |
+|-------|---------------------|------------------------------|
+| `ResearchRun` | One row per segment run | `podcastSegmentId IS NOT NULL` (`agentConfigId IS NULL`) |
+| `RunEvent` | `transcript_complete`, `segment_run_complete` events | FK to a podcast `ResearchRun` |
+| `RunMessage` | The agent's chat history for the run | FK to a podcast `ResearchRun` |
+| `Monitor` | Segment search monitors (Sonar queries) | `podcastSegmentId IS NOT NULL` (`analystId IS NULL`) |
+| `Signal` | Stories surfaced by segment monitors | `monitorId` points at a podcast `Monitor` |
+| `Artifact` | Articles extracted for podcast research | Reachable via Signal → Monitor chain. May be shared with trading if the same URL was crawled. |
+
+### Layer 3 — Tables NEVER touched by podcasts (trading-only forever)
+
+| Table | Why podcasts don't touch it |
+|-------|------------------------------|
+| `User`, `WatchlistItem` | App-wide user data, irrelevant. |
+| `AgentConfig`, `AnalystWatchlistItem` | Trading analyst entities. Podcasts use Podcast/PodcastSegment instead. |
+| `Thesis`, `TradeDecision` | Trading outputs. Podcasts produce SegmentTranscripts instead. |
+| `Position`, `Order`, `PositionEvent`, `PositionManagementAction`, `SyncHealthSnapshot` | Alpaca trading state. Excluded from segment-run tool allowlist. |
+| `AnalystSignalRoute`, `MorningBrief`, `AnalystBriefing`, `AccuracyReport` | Per-analyst intelligence + briefing. Phase 4 will add podcast briefings as a peer. |
+| `SignalBatch` | Batch tracking for signal-router runs. Podcast Phase 1 doesn't run a router; Phase 4 will. |
+| `UserApiKey` | Alpaca creds. Phase 2 will repurpose this shape for ElevenLabs. |
+
+### New enums
 
 | Enum | Values |
 |------|--------|
 | `SegmentTranscriptStatus` | `DRAFT` / `READY` / `SYNTHESIZING` / `AUDIO_READY` / `FAILED` |
 | `EpisodeStatus` | `DRAFT` / `ASSEMBLING` / `READY` / `FAILED` |
 
-### New columns on existing tables (additive, all nullable)
+### New columns on existing tables (additive, nullable)
 
 | Table | Column | Type | FK target | Note |
 |-------|--------|------|-----------|------|
 | `ResearchRun` | `podcastSegmentId` | `TEXT` (nullable) | `PodcastSegment(id) ON DELETE SET NULL` | Mutually exclusive with `agentConfigId`. The unified agent route picks mode by which FK is populated. |
 | `Monitor`     | `podcastSegmentId` | `TEXT` (nullable) | `PodcastSegment(id) ON DELETE CASCADE` | Mutually exclusive with `analystId`. |
 
-Both columns default to `NULL` for every existing row, so the
-trading half sees the schema unchanged at runtime.
+Both default to `NULL` for every existing row, so the trading half
+sees the schema unchanged at runtime.
 
-### New indexes (auto-dropped with their parent table; explicit DROPs only for the existing-table additions)
+### New indexes
 
+Auto-dropped with their parent table:
 - `Podcast_userId_idx`
 - `PodcastSegment_podcastId_idx`, `PodcastSegment_userId_idx`
 - `SegmentTranscript_segmentId_idx`, `SegmentTranscript_userId_idx`
   (the `runId` UNIQUE index comes from the column constraint)
 - `Episode_podcastId_idx`, `Episode_userId_idx`
-- `ResearchRun_podcastSegmentId_idx` *(on existing table — drop explicitly)*
-- `Monitor_podcastSegmentId_idx` *(on existing table — drop explicitly)*
 
-### Trading tables NOT touched
-
-For audit completeness — every trading table is unchanged: `User`,
-`WatchlistItem`, `Thesis`, `AgentConfig`, `Artifact`, `Signal`,
-`SignalBatch`, `AnalystSignalRoute`, `MorningBrief`,
-`AnalystWatchlistItem`, `Position`, `Order`, `SyncHealthSnapshot`,
-`PositionEvent`, `PositionManagementAction`, `TradeDecision`,
-`AnalystBriefing`, `AccuracyReport`, `UserApiKey`. No columns
-added, no enums altered, no indexes touched, no rows mutated.
+Dropped explicitly during teardown (on existing tables):
+- `ResearchRun_podcastSegmentId_idx`
+- `Monitor_podcastSegmentId_idx`
 
 ### Rollback procedure
 
-1. Run `prisma/migrations/_podcast_teardown.sql` against the DB.
-2. Remove the four podcast models + the two FK additions from `prisma/schema.prisma`.
-3. `npx prisma migrate resolve --rolled-back 20260427000000_podcast_phase1`
-4. `npx prisma generate` to refresh the client types.
-5. Delete the files listed in PODCAST-NEW above.
+The teardown script (`prisma/migrations/_podcast_teardown.sql`)
+has TWO sections:
 
-After step 1 the trading app keeps running with no schema drift.
-Steps 2–5 just clean up the codebase.
+- **Section A** — drop podcast-specific schema (tables, columns, enums).
+  Always runs. Layer 2 tables keep their podcast-origin rows but the
+  rows become unreachable (discriminator columns are gone) and are
+  effectively dead weight.
+- **Section B** — purge orphaned podcast rows from Layer 2 tables.
+  Commented out by default. Run BEFORE Section A if you want a fully
+  clean teardown.
+
+Full procedure:
+
+1. **(Optional, recommended)** Run Section B from the teardown script
+   to delete podcast-origin rows from `ResearchRun`, `RunEvent`,
+   `RunMessage`, `Monitor`, `Signal`, `Artifact`. Trading rows are
+   untouched (the WHERE clauses filter on `podcastSegmentId IS NOT NULL`
+   etc.).
+2. Run Section A from the teardown script — drops 4 tables, 2 enums,
+   2 columns, 2 indexes.
+3. Remove the four podcast models + the two FK additions from
+   `prisma/schema.prisma`.
+4. `npx prisma migrate resolve --rolled-back 20260427000000_podcast_phase1`
+5. `npx prisma generate` to refresh the client types.
+6. Delete the files listed in PODCAST-NEW.
+
+After step 2 the trading app keeps running with no schema drift.
+Steps 3–6 just clean up the codebase.
 
 ---
 
