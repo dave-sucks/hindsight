@@ -46,6 +46,67 @@ export const completeRun = defineTool({
         }
       }
 
+      // ── Podcast-segment-run branch ───────────────────────────────────────
+      // For podcast segment runs the briefing concept doesn't apply (Phase 1).
+      // Skip the analyst-briefing block entirely, write a podcast-flavored
+      // run-complete event with a transcript link, and return.
+      if (ctx.podcastSegmentId) {
+        const transcript = await prisma.segmentTranscript.findUnique({
+          where: { runId: ctx.runId },
+          select: {
+            id: true,
+            title: true,
+            durationSec: true,
+            citations: true,
+          },
+        });
+        try {
+          await prisma.runEvent.create({
+            data: {
+              runId: ctx.runId,
+              type: "segment_run_complete",
+              title: transcript
+                ? `Segment ready: ${transcript.title}`
+                : "Segment run complete (no transcript)",
+              message: transcript
+                ? `~${transcript.durationSec ?? "?"}s · ${
+                    Array.isArray(transcript.citations)
+                      ? (transcript.citations as unknown[]).length
+                      : 0
+                  } citations`
+                : "Run finished without writing a transcript.",
+              payload: {
+                transcriptId: transcript?.id ?? null,
+              } as object,
+            },
+          });
+        } catch (evtErr) {
+          console.error(
+            `[tool] complete_run podcast-event failed:`,
+            evtErr instanceof Error ? evtErr.message : evtErr,
+          );
+        }
+        return {
+          summary: transcript
+            ? `Segment complete: ${transcript.title}.`
+            : "Segment run complete (no transcript saved).",
+          data: {
+            ok: true,
+            podcastSegmentId: ctx.podcastSegmentId,
+            transcriptId: transcript?.id ?? null,
+            items: [
+              {
+                kind: "generic" as const,
+                text: transcript
+                  ? `Transcript ready · ~${transcript.durationSec ?? "?"}s`
+                  : "No transcript was written for this run.",
+              },
+            ],
+          },
+          sources: [],
+        };
+      }
+
       // ── Briefing block (UNTOUCHED from PR #132) ──────────────────────────
       console.log(`[tool] complete_run: ENTERING briefing block for run=${ctx.runId} analystId=${ctx.analystId ?? "MISSING"}`);
       let briefingStatus: "success" | "failed" | "skipped" = "skipped";

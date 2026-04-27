@@ -21,7 +21,15 @@ export const RESEARCH_MODEL_OPTIONS: ModelOption[] = [
 
 // ── Mode type ────────────────────────────────────────────────────────────────
 
-export type AgentMode = "research-run" | "builder" | "editor";
+export type AgentMode =
+  | "research-run"
+  | "builder"
+  | "editor"
+  // Podcast feature (PoC) — see docs/PODCAST_PLAN.md.
+  // podcast-builder: chat to create a Podcast + child Segments.
+  // podcast-segment-run: run a single Segment to produce a SegmentTranscript.
+  | "podcast-builder"
+  | "podcast-segment-run";
 
 // ── Mode config ──────────────────────────────────────────────────────────────
 
@@ -111,6 +119,46 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     ] as const,
     hasSuggestConfig: true,
     maxDuration: 150,
+  },
+  // ── Podcast feature (PoC) ───────────────────────────────────────────────
+  // podcast-builder: structured interview to create a Podcast + Segments.
+  // suggest_podcast_config is the equivalent of suggest_config.
+  "podcast-builder": {
+    model: "gpt-4o",
+    provider: "openai",
+    maxSteps: 25,
+    toolAllowlist: [
+      "ask_question",
+      "web_search",
+      "discover_signals_for_fence",
+      "suggest_podcast_config",
+    ] as const,
+    hasSuggestConfig: false, // we use suggest_podcast_config instead
+    maxDuration: 180,
+  },
+  // podcast-segment-run: produces a SegmentTranscript via write_segment_transcript.
+  // Trading action tools (place_trade, close_position, manage_position,
+  // record_thesis, etc.) are intentionally excluded — segments are
+  // research+write, not trade.
+  //
+  // read_signals is intentionally NOT in this allowlist for Phase 1: signals
+  // are routed against analyst universes (sectors/industries/themes), not
+  // podcast segment topics. Until a segment-aware signal router lands
+  // (Phase 4), the segment uses web_search as its discovery surface and
+  // read_artifact for any URLs it surfaces. See docs/PODCAST_PLAN.md.
+  "podcast-segment-run": {
+    model: "gpt-4o",
+    provider: "openai",
+    maxSteps: 40,
+    toolAllowlist: [
+      "read_artifact",
+      "web_search",
+      "get_stock_data",
+      "write_segment_transcript",
+      "complete_run",
+    ] as const,
+    hasSuggestConfig: false,
+    maxDuration: 240,
   },
 };
 

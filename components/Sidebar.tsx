@@ -18,6 +18,7 @@ import {
   Workflow,
   SatelliteDish,
   Sparkles,
+  Mic,
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
 import { SidebarMarquee } from '@/components/MarketPulseStrip';
@@ -56,6 +57,7 @@ import { signOut } from '@/lib/actions/auth.actions';
 const MAIN_NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, tooltip: 'Portfolio overview' },
   { href: '/analysts', label: 'Analysts', icon: Bot, tooltip: 'AI trading personas' },
+  { href: '/podcasts', label: 'Podcasts', icon: Mic, tooltip: 'AI-generated podcasts (PoC)' },
   { href: '/runs', label: 'Runs', icon: PlayCircle, tooltip: 'Research sessions' },
   { href: '/intelligence', label: 'Intelligence', icon: SatelliteDish, tooltip: 'Signals, monitors, briefs' },
 ];

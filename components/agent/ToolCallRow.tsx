@@ -25,6 +25,7 @@ import { ThesisCardRenderer } from "./renderers/ThesisCardRenderer";
 import { RunSummaryRenderer } from "./renderers/RunSummaryRenderer";
 import { ConfigPreviewRenderer } from "./renderers/ConfigPreviewRenderer";
 import { AskQuestionRenderer } from "./renderers/AskQuestionRenderer";
+import { PodcastConfigPreviewRenderer } from "./renderers/PodcastConfigPreviewRenderer";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface Props {
@@ -64,6 +65,8 @@ export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, in
       return <ConfigPreviewRenderer result={result} loading={loading} />;
     case "ask-question":
       return <AskQuestionRenderer toolName={toolName} result={result} loading={loading} />;
+    case "podcast-config-preview":
+      return <PodcastConfigPreviewRenderer result={result} loading={loading} />;
     case "tool-ui":
     default:
       return <ToolUIRenderer toolName={toolName} args={args} result={result} loading={loading} inGroup={inGroup} />;
@@ -74,6 +77,7 @@ function inferLoadingUI(toolName: string): ToolUI {
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
   if (toolName === "suggest_config") return "config-preview";
+  if (toolName === "suggest_podcast_config") return "podcast-config-preview";
   if (toolName === "ask_question") return "ask-question";
   return "tool-ui";
 }

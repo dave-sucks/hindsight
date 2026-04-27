@@ -35,11 +35,14 @@ import { readKnowledgeLibrary } from "./read-knowledge-library";
 import { askQuestion } from "./ask-question";
 import { discoverSignalsForFence } from "./discover-signals-for-fence";
 import { readAnalystInboxStats } from "./read-analyst-inbox-stats";
+import { writeSegmentTranscript } from "./write-segment-transcript";
 
 interface ToolCtx {
   runId: string;
   userId: string;
   analystId?: string;
+  /** Podcast feature — FK to PodcastSegment for segment runs. */
+  podcastSegmentId?: string;
   watchlist?: string[];
   /** Open-position tickers (status=OPEN) for the analyst — fence bypass. */
   positionTickers?: string[];
@@ -95,6 +98,8 @@ export function createResearchTools(ctx: ToolCtx) {
     ask_question: askQuestion(newCtx),
     discover_signals_for_fence: discoverSignalsForFence(newCtx),
     read_analyst_inbox_stats: readAnalystInboxStats(newCtx),
+    // Podcast feature — see docs/PODCAST_PLAN.md.
+    write_segment_transcript: writeSegmentTranscript(newCtx),
   };
 
   // Backward-compat aliases for old persisted RunMessages
@@ -132,3 +137,6 @@ export { readKnowledgeLibrary } from "./read-knowledge-library";
 export { askQuestion } from "./ask-question";
 export { discoverSignalsForFence } from "./discover-signals-for-fence";
 export { readAnalystInboxStats } from "./read-analyst-inbox-stats";
+export { writeSegmentTranscript } from "./write-segment-transcript";
+export { suggestPodcastConfigTool } from "./suggest-podcast-config";
+export type { SuggestedPodcastConfig } from "./suggest-podcast-config";

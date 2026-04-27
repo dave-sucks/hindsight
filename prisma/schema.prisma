@@ -55,11 +55,18 @@ model ResearchRun {
   agentConfig   AgentConfig?      @relation(fields: [agentConfigId], references: [id], onDelete: SetNull)
   briefing      AnalystBriefing?
   managementActions PositionManagementAction[]
+  // Podcast feature — when set, this run was a podcast segment run.
+  // Mutually exclusive with agentConfigId in practice (the route picks
+  // mode by which FK is populated). See docs/PODCAST_PLAN.md.
+  podcastSegmentId String?
+  segment       PodcastSegment?   @relation("SegmentRuns", fields: [podcastSegmentId], references: [id], onDelete: SetNull)
+  segmentTranscript SegmentTranscript?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
   @@index([agentConfigId])
   @@index([userId])
+  @@index([podcastSegmentId])
 }
 
 model RunEvent {
@@ -248,9 +255,13 @@ model Monitor {
   type        String    // "SEARCH" | "DOMAIN" | "API"
   method      String    // "perplexity_sonar" | "firecrawl" | "fmp" | "finnhub" | "auto"
   config      Json?     // type-specific: {query}, {domain, qualityScore}, {endpoint, params}, etc.
-  scope       String    @default("FIRM") // "FIRM" | "ANALYST"
+  scope       String    @default("FIRM") // "FIRM" | "ANALYST" | "PODCAST_SEGMENT"
   analystId   String?
   analyst     AgentConfig? @relation(fields: [analystId], references: [id], onDelete: Cascade)
+  // Podcast feature — when set, this monitor belongs to a podcast segment.
+  // Same scoping pattern as analystId; mutually exclusive in practice.
+  podcastSegmentId String?
+  segment     PodcastSegment? @relation("SegmentMonitors", fields: [podcastSegmentId], references: [id], onDelete: Cascade)
   enabled     Boolean   @default(true)
   builtIn     Boolean   @default(false) // FMP, Finnhub, Portfolio, Watchlist — can't be deleted
   origin      String    @default("USER") // "USER" | "BUILDER" | "BRIEFING_AGENT"
@@ -284,6 +295,7 @@ model Monitor {
   @@index([type])
   @@index([scope, enabled])
   @@index([analystId])
+  @@index([podcastSegmentId])
   @@index([expiresAt])
 }
 
@@ -789,5 +801,120 @@ model UserApiKey {
   updatedAt      DateTime @updatedAt
 
   @@unique([userId, provider])
+  @@index([userId])
+}
+
+// ─── PODCAST FEATURE ───────────────────────────────────────────────────────
+// Proof-of-concept podcast generator built on top of the agent runtime.
+// Podcast = container (name, voice, host style). PodcastSegment = the
+// runnable unit (own prompt, own monitors, own universe fence). A
+// ResearchRun with podcastSegmentId set produces a SegmentTranscript.
+// N transcripts assemble into an Episode (Phase 3). See docs/PODCAST_PLAN.md.
+
+enum SegmentTranscriptStatus {
+  DRAFT
+  READY          // text-final, no audio yet (Phase 1 default)
+  SYNTHESIZING   // ElevenLabs in flight (Phase 2)
+  AUDIO_READY    // audioUrl + alignmentJson populated
+  FAILED
+}
+
+enum EpisodeStatus {
+  DRAFT
+  ASSEMBLING
+  READY
+  FAILED
+}
+
+model Podcast {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  description   String?
+  hostStyle     String?
+  voiceId       String?  // ElevenLabs voice id; null until Phase 2
+  coverArtUrl   String?
+  cadence       String?  // "DAILY" | "WEEKLY" | "ON_DEMAND"
+  enabled       Boolean  @default(true)
+  builderPrompt String?  // user's original "make me a podcast about…" message
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  segments      PodcastSegment[]
+  episodes      Episode[]
+
+  @@index([userId])
+}
+
+model PodcastSegment {
+  id              String   @id @default(cuid())
+  podcastId       String
+  userId          String   // denormalized for fast list queries
+  name            String
+  description     String?
+  segmentPrompt   String   // master prompt — analog of AgentConfig.analystPrompt
+  targetSeconds   Int      @default(300)
+  orderIndex      Int      @default(0)
+  enabled         Boolean  @default(true)
+
+  // Universe fence — topics the segment covers, sources to lean on,
+  // topics to skip. Same fence semantics as the analyst Universe.
+  topics          String[] @default([])
+  sources         String[] @default([])
+  excludeTopics   String[] @default([])
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  podcast         Podcast              @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  monitors        Monitor[]            @relation("SegmentMonitors")
+  runs            ResearchRun[]        @relation("SegmentRuns")
+  transcripts     SegmentTranscript[]
+
+  @@index([podcastId])
+  @@index([userId])
+}
+
+model SegmentTranscript {
+  id              String   @id @default(cuid())
+  runId           String   @unique
+  segmentId       String
+  userId          String
+  title           String
+  plainText       String
+  ssml            String?                 // populated in Phase 2 if/when needed
+  citations       Json     // [{ claim, signalId?, artifactId?, url, quote, startChar, endChar }]
+  durationSec     Int?
+  audioUrl        String?                 // Phase 2 — Supabase Storage URL
+  alignmentJson   Json?                   // Phase 2 — ElevenLabs char-level alignment
+  status          SegmentTranscriptStatus @default(READY)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  run             ResearchRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  segment         PodcastSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@index([segmentId])
+  @@index([userId])
+}
+
+model Episode {
+  id                  String   @id @default(cuid())
+  podcastId           String
+  userId              String
+  title               String
+  description         String?
+  publishedAt         DateTime?
+  transcriptIds       String[] @default([]) // ordered SegmentTranscript ids
+  audioUrl            String?
+  durationSec         Int?
+  combinedAlignment   Json?
+  status              EpisodeStatus @default(DRAFT)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  podcast             Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+
+  @@index([podcastId])
   @@index([userId])
 }

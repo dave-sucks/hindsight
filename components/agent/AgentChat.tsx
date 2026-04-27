@@ -66,6 +66,18 @@ const EDITOR_WELCOME: WelcomeConfig = {
   subtitle: "Ask questions about the current strategy or suggest changes.",
 };
 
+// Podcast-builder welcome — see docs/PODCAST_PLAN.md.
+const PODCAST_BUILDER_WELCOME: WelcomeConfig = {
+  title: "Create a new podcast",
+  subtitle:
+    "Describe the show — topic, length, tone — and I'll set up the segments.",
+  icon: (
+    <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <Sparkles className="size-5" />
+    </div>
+  ),
+};
+
 const BUILDER_COMPOSER: HindsightComposerFeatures = {
   tickerSearch: true,
   placeholder: "Describe your ideal trading analyst…",
@@ -74,6 +86,17 @@ const BUILDER_COMPOSER: HindsightComposerFeatures = {
 const EDITOR_COMPOSER: HindsightComposerFeatures = {
   tickerSearch: true,
   placeholder: "Ask a question or suggest strategy changes…",
+};
+
+const PODCAST_BUILDER_COMPOSER: HindsightComposerFeatures = {
+  placeholder: "What's the show about? How long are episodes? Daily or weekly?",
+};
+
+// podcast-segment-run welcome — shown briefly before the agent kicks off.
+// Subtitle uses analystName which the run page passes as
+// "Podcast Name · Segment Name" so the user knows which segment is running.
+const PODCAST_SEGMENT_RUN_COMPOSER: HindsightComposerFeatures = {
+  placeholder: "Ask a follow-up about the segment…",
 };
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -113,6 +136,14 @@ interface AgentChatProps {
     onConfirm: (override?: AgentConfigData) => void,
   ) => void;
 
+  /**
+   * Podcast feature — called when the AI suggests a podcast configuration
+   * via suggest_podcast_config. The shape is `unknown` here to avoid a
+   * hard import on the agent tools file from this UI component; the
+   * caller (/podcasts/new client) casts it to SuggestedPodcastConfig.
+   */
+  onPodcastConfigSuggested?: (config: unknown) => void;
+
   /** Called when a DB mutation (create/update) starts or finishes */
   onMutatingChange?: (mutating: boolean) => void;
 }
@@ -134,6 +165,7 @@ export function AgentChat({
   composerSlot,
   initialPrompt,
   onConfigSuggested,
+  onPodcastConfigSuggested,
   onMutatingChange,
 }: AgentChatProps) {
   const api = `/api/agent/${mode}`;
@@ -177,6 +209,7 @@ export function AgentChat({
         composerSlot={composerSlot}
         initialPrompt={initialPrompt}
         onConfigSuggested={onConfigSuggested}
+        onPodcastConfigSuggested={onPodcastConfigSuggested}
         onMutatingChange={onMutatingChange}
         selectedModel={selectedModel}
         onModelChange={handleModelChange}
@@ -203,6 +236,7 @@ interface InnerProps {
     config: AgentConfigData,
     onConfirm: (override?: AgentConfigData) => void,
   ) => void;
+  onPodcastConfigSuggested?: (config: unknown) => void;
   onMutatingChange?: (mutating: boolean) => void;
   selectedModel?: string;
   onModelChange?: (value: string) => void;
@@ -221,6 +255,7 @@ function AgentChatInner({
   composerSlot,
   initialPrompt,
   onConfigSuggested,
+  onPodcastConfigSuggested,
   onMutatingChange,
   selectedModel,
   onModelChange,
@@ -339,12 +374,14 @@ function AgentChatInner({
     () => ({
       onConfirmConfig: handleConfirmConfig,
       onConfigSuggested: onConfigSuggested ? handleConfigSuggested : undefined,
+      onPodcastConfigSuggested:
+        mode === "podcast-builder" ? onPodcastConfigSuggested : undefined,
       isCreating: isMutating,
       confirmLabel: mode === "builder" ? "Create Analyst" : "Apply Changes",
       confirmingLabel: mode === "builder" ? "Creating..." : "Applying...",
       currentConfig: mode === "editor" ? currentConfig : undefined,
     }),
-    [handleConfirmConfig, handleConfigSuggested, onConfigSuggested, isMutating, mode, currentConfig],
+    [handleConfirmConfig, handleConfigSuggested, onConfigSuggested, onPodcastConfigSuggested, isMutating, mode, currentConfig],
   );
 
   // ── research-run: tabbed layout ───────────────────────────────────────────
@@ -411,13 +448,55 @@ function AgentChatInner({
     );
   }
 
-  // ── builder / editor: config chat ────────────────────────────────────────
+  // ── podcast-segment-run: single Thread, no tabs ──────────────────────────
+  // Same streaming surface as research-run, but no Sources/Theses tabs (a
+  // podcast segment run produces a transcript, not a thesis list). The
+  // useAutoSend above already kicks "Run" when autoStart is true.
+  if (mode === "podcast-segment-run") {
+    const isFollowupMode = !autoStart;
+    return (
+      <div className="flex h-full flex-col">
+        {headerAction && (
+          <div className="shrink-0 px-4 pt-2 flex items-center justify-end">
+            {headerAction}
+          </div>
+        )}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <Thread
+            welcomeConfig={{
+              title: analystName ?? "Segment Run",
+              subtitle: isFollowupMode
+                ? "Run complete — ask a follow-up about this segment"
+                : "Researching this segment and writing the transcript",
+            }}
+            composerFeatures={PODCAST_SEGMENT_RUN_COMPOSER}
+            composerSlot={composerSlot}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ── builder / editor / podcast-builder: config chat ───────────────────────
+
+  const welcomeConfig =
+    mode === "builder"
+      ? BUILDER_WELCOME
+      : mode === "podcast-builder"
+        ? PODCAST_BUILDER_WELCOME
+        : EDITOR_WELCOME;
+  const composerFeatures =
+    mode === "builder"
+      ? BUILDER_COMPOSER
+      : mode === "podcast-builder"
+        ? PODCAST_BUILDER_COMPOSER
+        : EDITOR_COMPOSER;
 
   return (
     <ToolUICallbacksProvider value={callbacks}>
       <Thread
-        welcomeConfig={mode === "builder" ? BUILDER_WELCOME : EDITOR_WELCOME}
-        composerFeatures={mode === "builder" ? BUILDER_COMPOSER : EDITOR_COMPOSER}
+        welcomeConfig={welcomeConfig}
+        composerFeatures={composerFeatures}
         composerSlot={composerSlot}
       />
     </ToolUICallbacksProvider>

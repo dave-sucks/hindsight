@@ -76,6 +76,18 @@ export default async function RunsPage() {
     where: { userId },
     include: {
       agentConfig: { select: { id: true, name: true } },
+      // Podcast feature — render segment runs with "Podcast · Segment" name
+      // instead of falling back to "Manual Research". See docs/PODCAST_PLAN.md.
+      segment: {
+        select: {
+          id: true,
+          name: true,
+          podcast: { select: { id: true, name: true } },
+        },
+      },
+      segmentTranscript: {
+        select: { title: true, durationSec: true, citations: true },
+      },
       theses: {
         select: {
           ticker: true,
@@ -160,9 +172,11 @@ export default async function RunsPage() {
         </div>
       ) : (
         runs.map((run) => {
-          const analystName =
-            run.agentConfig?.name ??
-            (run.source === "MANUAL" ? "Manual Research" : "Agent");
+          const isPodcastSegmentRun = run.podcastSegmentId != null;
+          const analystName = isPodcastSegmentRun
+            ? `${run.segment?.podcast?.name ?? "Podcast"} · ${run.segment?.name ?? "Segment"}`
+            : run.agentConfig?.name ??
+              (run.source === "MANUAL" ? "Manual Research" : "Agent");
 
           const summary = buildRunSummary(run);
           const segments = buildActionSegments(summary);
@@ -243,18 +257,45 @@ export default async function RunsPage() {
                   </div>
 
                   {/* Row 2: action line */}
-                  <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
-                    {segments.map((seg, i) => (
-                      <span key={i}>
-                        {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
-                        <span>{seg.text}</span>
-                      </span>
-                    ))}
-                  </p>
+                  {isPodcastSegmentRun ? (
+                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                      {run.segmentTranscript?.title ??
+                        (run.status === "RUNNING"
+                          ? "Researching segment…"
+                          : "No transcript saved")}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                      {segments.map((seg, i) => (
+                        <span key={i}>
+                          {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
+                          <span>{seg.text}</span>
+                        </span>
+                      ))}
+                    </p>
+                  )}
                 </div>
 
-                {/* Section 2: stats row — full-width border */}
-                {summary.counts.researched > 0 && (
+                {/* Section 2 (podcast): transcript stats row */}
+                {isPodcastSegmentRun && run.segmentTranscript && (
+                  <div className="flex items-center justify-between p-3 border-t text-xs font-mono tabular-nums">
+                    <span className="font-medium text-foreground">
+                      Segment transcript
+                    </span>
+                    <span className="text-muted-foreground">
+                      {run.segmentTranscript.durationSec != null && (
+                        <>~{run.segmentTranscript.durationSec}s · </>
+                      )}
+                      {Array.isArray(run.segmentTranscript.citations)
+                        ? (run.segmentTranscript.citations as unknown[]).length
+                        : 0}{" "}
+                      citations
+                    </span>
+                  </div>
+                )}
+
+                {/* Section 2 (analyst): stats row — full-width border */}
+                {!isPodcastSegmentRun && summary.counts.researched > 0 && (
                   <div className="flex items-center justify-between p-3 border-t text-xs font-mono tabular-nums">
                     <span>
                       <span className="font-medium text-foreground">

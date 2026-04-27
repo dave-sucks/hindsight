@@ -25,8 +25,13 @@ export type ToolUI =
   | "tool-ui"          // ToolUIRenderer: ToolProgress with data.items[] + sources
   | "thesis-card"      // ThesisCardRenderer
   | "run-summary"      // RunSummaryRenderer (DecisionSummaryCard)
-  | "config-preview"   // ConfigPreviewRenderer
-  | "ask-question";    // AskQuestionRenderer
+  | "config-preview"   // ConfigPreviewRenderer (analyst builder/editor)
+  | "ask-question"     // AskQuestionRenderer
+  // Podcast feature — analog of config-preview for the podcast builder.
+  // Mirrors ConfigPreviewRenderer's role: small in-chat summary card +
+  // fires onPodcastConfigSuggested via ToolUICallbacks so the side panel
+  // opens with the proposal. See docs/PODCAST_PLAN.md.
+  | "podcast-config-preview";
 
 // ── Unified item model for ToolUIRenderer ────────────────────────────────────
 
@@ -160,6 +165,7 @@ function inferLegacyUI(toolName: string): ToolUI {
   if (toolName === "record_thesis" || toolName === "show_thesis") return "thesis-card";
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
   if (toolName === "suggest_config") return "config-preview";
+  if (toolName === "suggest_podcast_config") return "podcast-config-preview";
   if (toolName === "ask_question") return "ask-question";
   return "tool-ui";
 }

@@ -13,6 +13,14 @@ export interface ToolContext {
   userId: string;
   /** FK to AgentConfig — required for Position, TradeDecision, Thesis creation */
   analystId?: string;
+  /**
+   * FK to PodcastSegment — set when the run is a podcast-segment-run.
+   * Mutually exclusive with analystId in practice; the route picks one
+   * based on which FK is populated on the ResearchRun row.
+   * write_segment_transcript and the podcast branch of complete_run
+   * read this. See docs/PODCAST_PLAN.md.
+   */
+  podcastSegmentId?: string;
   alpacaCreds?: AlpacaCredentials;
   watchlist?: string[];
   /**

@@ -27,6 +27,12 @@ export default async function RunPage({
     where: { id, userId },
     include: {
       agentConfig: { select: { id: true, name: true } },
+      // Podcast feature — segment runs share the ResearchRun table and
+      // route through the same /runs/[id] page. We branch the AgentChat
+      // mode below based on which FK is set.
+      segment: {
+        select: { id: true, name: true, podcast: { select: { name: true } } },
+      },
       messages: {
         where: { role: "thread" },
         orderBy: { createdAt: "desc" },
@@ -37,9 +43,12 @@ export default async function RunPage({
 
   if (!run) notFound();
 
-  const analystName =
-    run.agentConfig?.name ??
-    (run.source === "MANUAL" ? "Manual Research" : "Agent");
+  const isPodcastSegmentRun = run.podcastSegmentId != null;
+
+  const analystName = isPodcastSegmentRun
+    ? `${run.segment?.podcast?.name ?? "Podcast"} · ${run.segment?.name ?? "Segment"}`
+    : (run.agentConfig?.name ??
+        (run.source === "MANUAL" ? "Manual Research" : "Agent"));
 
   // Extract config snapshot from the run parameters
   const config =
@@ -95,15 +104,15 @@ export default async function RunPage({
       <div className="flex-1 min-h-0">
         {isLive || hasReplay ? (
           <AgentChat
-            mode="research-run"
+            mode={isPodcastSegmentRun ? "podcast-segment-run" : "research-run"}
             runId={id}
-            analystId={run.agentConfig?.id}
+            analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
             autoStart={isLive}
             messages={persistedMessages ?? undefined}
-            brief={brief}
-            sources={sources}
-            theses={theses}
+            brief={isPodcastSegmentRun ? null : brief}
+            sources={isPodcastSegmentRun ? [] : sources}
+            theses={isPodcastSegmentRun ? [] : theses}
             headerAction={
               <HowItWorksSheet flow="agent">
                 <ScanSearch className="h-4 w-4" />
