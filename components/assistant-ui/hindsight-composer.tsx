@@ -41,24 +41,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
-import { useDebounce } from "@/hooks/useDebounce";
+import { StockSearch } from "@/components/stocks/StockSearch";
 import {
   SuggestionList,
   type SuggestionListHandle,
@@ -69,7 +56,6 @@ import {
   Send,
   Square,
   Slash,
-  Loader2,
   Globe,
   BarChart3,
   TrendingUp,
@@ -485,33 +471,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     [editor],
   );
 
-  // ── Ticker toolbar popover ────────────────────────────────────────────────
-  const [tickerOpen, setTickerOpen] = useState(false);
-  const [tickerQuery, setTickerQuery] = useState("");
-  const [tickerResults, setTickerResults] = useState<TickerItem[]>(DEFAULT_STOCKS);
-  const [tickerLoading, setTickerLoading] = useState(false);
-
-  const handleTickerSearch = useCallback(async () => {
-    if (!tickerQuery.trim()) {
-      setTickerResults(DEFAULT_STOCKS);
-      return;
-    }
-    setTickerLoading(true);
-    try {
-      const results = await searchStocks(tickerQuery.trim());
-      setTickerResults(results.map((r) => ({ symbol: r.symbol, name: r.name })));
-    } catch {
-      setTickerResults([]);
-    } finally {
-      setTickerLoading(false);
-    }
-  }, [tickerQuery]);
-
-  const debouncedTickerSearch = useDebounce(handleTickerSearch, 300);
-
-  useEffect(() => {
-    debouncedTickerSearch();
-  }, [tickerQuery]);
+  // Ticker toolbar popover is now <StockSearch> — see render below.
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -723,62 +683,18 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                 </FirstVisitTooltip>
               )}
 
-              {/* $ Stocks combobox (ghost, no chevron) */}
+              {/* $ Stocks — opens the shared StockSearch popover */}
               {tickerSearch && (
-                <Popover open={tickerOpen} onOpenChange={setTickerOpen}>
-                  <PopoverTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        role="combobox"
-                        aria-expanded={tickerOpen}
-                      />
-                    }
-                  >
-                    <DollarSign className="size-3.5" />
-                    Stocks
-                  </PopoverTrigger>
-                  <PopoverContent className="p-0 w-64">
-                    <Command shouldFilter={false}>
-                      <CommandInput
-                        placeholder="Search stocks…"
-                        value={tickerQuery}
-                        onValueChange={setTickerQuery}
-                      />
-                      <CommandList>
-                        {tickerLoading ? (
-                          <div className="flex items-center justify-center gap-2 py-6">
-                            <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">Searching…</span>
-                          </div>
-                        ) : (
-                          <>
-                            <CommandEmpty>No stocks found.</CommandEmpty>
-                            <CommandGroup>
-                              {tickerResults.map((stock) => (
-                                <CommandItem
-                                  key={stock.symbol}
-                                  value={stock.symbol}
-                                  onSelect={() => {
-                                    insertTicker(stock.symbol, stock.name);
-                                    setTickerOpen(false);
-                                    setTickerQuery("");
-                                    setTickerResults(DEFAULT_STOCKS);
-                                  }}
-                                >
-                                  <StockLogo ticker={stock.symbol} size="sm" />
-                                  <span className="font-medium">{stock.symbol}</span>
-                                  <span className="text-muted-foreground truncate">{stock.name}</span>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </>
-                        )}
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <StockSearch
+                  defaultItems={DEFAULT_STOCKS}
+                  onSelect={(symbol, name) => insertTicker(symbol, name)}
+                  trigger={
+                    <Button variant="ghost" size="sm">
+                      <DollarSign className="size-3.5" />
+                      Stocks
+                    </Button>
+                  }
+                />
               )}
             </div>
 

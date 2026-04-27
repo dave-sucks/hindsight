@@ -90,3 +90,23 @@ export function shortAlpacaId(id: string | null | undefined): string | null {
   if (!id) return null;
   return id.length > 12 ? `${id.slice(0, 8)}…` : id;
 }
+
+/**
+ * Derive the display TradeStatus from raw Position.status + outcome.
+ * Use this at every call site that hands a Position into TradeRow — the
+ * raw enum has no win/loss split, so passing it directly makes every
+ * closed row fall back to the OPEN default (blue pulse). Dashboard and
+ * the analyst sidebar both go through this so the dot stays consistent.
+ */
+export function deriveTradeStatus(
+  status: string,
+  outcome?: string | null,
+): TradeStatus {
+  if (status === "OPEN") return "OPEN";
+  if (status === "PENDING") return "PENDING";
+  if (status === "CANCELLED") return "CANCELLED";
+  if (status === "REJECTED") return "REJECTED";
+  if (outcome === "WIN") return "CLOSED_WIN";
+  if (outcome === "LOSS") return "CLOSED_LOSS";
+  return "CLOSED_EXPIRED";
+}
