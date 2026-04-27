@@ -54,10 +54,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { signOut } from '@/lib/actions/auth.actions';
 
+// Podcasts is gated behind NEXT_PUBLIC_PODCASTS_ENABLED so the UI can stay
+// hidden in production until we're ready to show it. Code is always deployed,
+// pages are always navigable directly via URL — the flag only controls
+// whether the sidebar entry shows. See docs/PODCAST_PLAN.md.
+const PODCASTS_ENABLED = process.env.NEXT_PUBLIC_PODCASTS_ENABLED === "true";
+
 const MAIN_NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, tooltip: 'Portfolio overview' },
   { href: '/analysts', label: 'Analysts', icon: Bot, tooltip: 'AI trading personas' },
-  { href: '/podcasts', label: 'Podcasts', icon: Mic, tooltip: 'AI-generated podcasts (PoC)' },
+  ...(PODCASTS_ENABLED
+    ? [{ href: '/podcasts', label: 'Podcasts', icon: Mic, tooltip: 'AI-generated podcasts (PoC)' }]
+    : []),
   { href: '/runs', label: 'Runs', icon: PlayCircle, tooltip: 'Research sessions' },
   { href: '/intelligence', label: 'Intelligence', icon: SatelliteDish, tooltip: 'Signals, monitors, briefs' },
 ];

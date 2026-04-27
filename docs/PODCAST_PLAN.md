@@ -369,6 +369,35 @@ read its transcript with citations.
 
 ---
 
+## Deploy & rollback safety
+
+Phase 1 is built to be **safe to deploy and easy to undo**:
+
+- **All schema additions are additive.** Four new tables + two new
+  enums + two nullable FK columns on existing tables. No drops, no
+  backfills, no destructive ALTERs. Trading rows get `NULL` for the
+  new FKs and the trading code never reads them.
+- **Forward migration**:
+  `prisma/migrations/20260427000000_podcast_phase1/migration.sql`.
+  Applied automatically by `prisma migrate deploy`.
+- **Rollback script**: `prisma/migrations/_podcast_teardown.sql` —
+  runnable manually against the database. Drops every table, column,
+  enum, and index this feature added. Trading data is untouched.
+  Procedure documented in `docs/PODCAST_FILES.md` "Rollback procedure".
+- **Sidebar feature flag**: `NEXT_PUBLIC_PODCASTS_ENABLED`. The
+  Podcasts entry only appears when this is `"true"`. With the flag
+  off, code is deployed but the surface is hidden — you can navigate
+  to `/podcasts` directly via URL to smoke-test without exposing it
+  to anyone else. Flip the flag in Vercel env when ready to ship.
+
+The PoC runtime contract: even with the feature flag on, no podcast
+code runs unless a user actively visits `/podcasts/*` or kicks a
+segment run. There is no cron, no background job, no auto-run, no
+trading-tool intersection. Worst case (flag on, podcast routes
+crash): trading stays green.
+
+---
+
 ## Open decisions deferred
 
 These are decisions the user has not yet locked in; PoC defaults

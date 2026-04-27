@@ -25,7 +25,9 @@ Categories:
 
 | File | Notes |
 |------|-------|
-| `prisma/schema.prisma` (additions) | New models: `Podcast`, `PodcastSegment`, `SegmentTranscript`, `Episode`, enums `SegmentTranscriptStatus`, `EpisodeStatus`. Two FK columns added on existing tables (`ResearchRun.podcastSegmentId`, `Monitor.podcastSegmentId`) — both nullable, no migration risk. |
+| `prisma/schema.prisma` (additions) | New models: `Podcast`, `PodcastSegment`, `SegmentTranscript`, `Episode`, enums `SegmentTranscriptStatus`, `EpisodeStatus`. Two FK columns added on existing tables (`ResearchRun.podcastSegmentId`, `Monitor.podcastSegmentId`) — both nullable, no migration risk. See "Schema teardown" below for the full DB-level audit + rollback SQL. |
+| `prisma/migrations/20260427000000_podcast_phase1/migration.sql` | Forward migration — the SQL Prisma applies. Idempotent for a clean DB; safe re-run guards (`IF NOT EXISTS`) are NOT included because Prisma's migration runner is single-shot per directory. |
+| `prisma/migrations/_podcast_teardown.sql` | Manual rollback script. NOT a real Prisma migration (leading `_` skips the runner). Run this + remove podcast models from schema.prisma + `prisma migrate resolve --rolled-back` to fully retire the feature. |
 
 ### Agent runtime
 
@@ -212,6 +214,94 @@ codebase without leaving dead imports.
 
 Empty for now. If we choose to retire any trading-side file because
 the podcast lens forces a rewrite, log it here with the reason.
+
+---
+
+## Schema teardown — every DB object the podcast feature owns
+
+Source of truth for what the podcast feature put in the database.
+Use this list to verify before/after a teardown, and as the audit
+for the eventual app fork. Every item is created in
+`prisma/migrations/20260427000000_podcast_phase1/migration.sql` and
+dropped by `prisma/migrations/_podcast_teardown.sql`.
+
+### New tables (all PODCAST-NEW — drop with `DROP TABLE … CASCADE`)
+
+| Table | Owner | Purpose |
+|-------|-------|---------|
+| `Podcast` | podcast | Show metadata (name, voice, host style, cadence, cover art). |
+| `PodcastSegment` | podcast | Recurring beat inside a podcast. Has its own prompt, monitors, topic fence. |
+| `SegmentTranscript` | podcast | One per Run. Transcript text + citations + (Phase 2) audio + alignment. Unique on `runId`. |
+| `Episode` | podcast | Ordered list of `SegmentTranscript` ids assembled into a listenable episode. Phase 3. |
+
+### New enums (all PODCAST-NEW)
+
+| Enum | Values |
+|------|--------|
+| `SegmentTranscriptStatus` | `DRAFT` / `READY` / `SYNTHESIZING` / `AUDIO_READY` / `FAILED` |
+| `EpisodeStatus` | `DRAFT` / `ASSEMBLING` / `READY` / `FAILED` |
+
+### New columns on existing tables (additive, all nullable)
+
+| Table | Column | Type | FK target | Note |
+|-------|--------|------|-----------|------|
+| `ResearchRun` | `podcastSegmentId` | `TEXT` (nullable) | `PodcastSegment(id) ON DELETE SET NULL` | Mutually exclusive with `agentConfigId`. The unified agent route picks mode by which FK is populated. |
+| `Monitor`     | `podcastSegmentId` | `TEXT` (nullable) | `PodcastSegment(id) ON DELETE CASCADE` | Mutually exclusive with `analystId`. |
+
+Both columns default to `NULL` for every existing row, so the
+trading half sees the schema unchanged at runtime.
+
+### New indexes (auto-dropped with their parent table; explicit DROPs only for the existing-table additions)
+
+- `Podcast_userId_idx`
+- `PodcastSegment_podcastId_idx`, `PodcastSegment_userId_idx`
+- `SegmentTranscript_segmentId_idx`, `SegmentTranscript_userId_idx`
+  (the `runId` UNIQUE index comes from the column constraint)
+- `Episode_podcastId_idx`, `Episode_userId_idx`
+- `ResearchRun_podcastSegmentId_idx` *(on existing table — drop explicitly)*
+- `Monitor_podcastSegmentId_idx` *(on existing table — drop explicitly)*
+
+### Trading tables NOT touched
+
+For audit completeness — every trading table is unchanged: `User`,
+`WatchlistItem`, `Thesis`, `AgentConfig`, `Artifact`, `Signal`,
+`SignalBatch`, `AnalystSignalRoute`, `MorningBrief`,
+`AnalystWatchlistItem`, `Position`, `Order`, `SyncHealthSnapshot`,
+`PositionEvent`, `PositionManagementAction`, `TradeDecision`,
+`AnalystBriefing`, `AccuracyReport`, `UserApiKey`. No columns
+added, no enums altered, no indexes touched, no rows mutated.
+
+### Rollback procedure
+
+1. Run `prisma/migrations/_podcast_teardown.sql` against the DB.
+2. Remove the four podcast models + the two FK additions from `prisma/schema.prisma`.
+3. `npx prisma migrate resolve --rolled-back 20260427000000_podcast_phase1`
+4. `npx prisma generate` to refresh the client types.
+5. Delete the files listed in PODCAST-NEW above.
+
+After step 1 the trading app keeps running with no schema drift.
+Steps 2–5 just clean up the codebase.
+
+---
+
+## Feature flag — `NEXT_PUBLIC_PODCASTS_ENABLED`
+
+The Podcasts entry in the left sidebar is gated on
+`NEXT_PUBLIC_PODCASTS_ENABLED === "true"`. Default behavior:
+
+- Flag unset / "false" → Podcasts entry is **hidden** in the sidebar.
+  Pages still exist; you can navigate to `/podcasts` directly via URL
+  to test, but a regular user won't see anything pointing them there.
+- Flag set to "true" → Podcasts entry shows up next to Analysts.
+
+This lets you deploy the code + run the migration without exposing
+the feature to anyone. Flip the flag in your Vercel env config when
+you're ready to test in the live deployment.
+
+The flag is `NEXT_PUBLIC_*` so it bakes into the client bundle —
+toggling requires a redeploy. That's intentional for a PoC; we don't
+want runtime drift between server and client about whether the
+feature exists.
 
 ---
 
