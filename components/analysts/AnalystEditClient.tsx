@@ -19,11 +19,13 @@ export function AnalystEditClient({
 }) {
   // Panel hidden until AI suggests changes (same behavior as builder)
   const [configData, setConfigData] = useState<AgentConfigData | null>(null);
-  const [confirmHandler, setConfirmHandler] = useState<(() => void) | null>(null);
+  const [confirmHandler, setConfirmHandler] = useState<
+    ((override?: AgentConfigData) => void) | null
+  >(null);
   const [isApplying, setIsApplying] = useState(false);
 
   const handleConfigSuggested = useCallback(
-    (config: AgentConfigData, onConfirm: () => void) => {
+    (config: AgentConfigData, onConfirm: (override?: AgentConfigData) => void) => {
       setConfigData(config);
       setConfirmHandler(() => onConfirm);
     },
@@ -74,7 +76,8 @@ export function AnalystEditClient({
             {configData && (
               <AnalystConfigPanel
                 config={configData}
-                onConfirm={confirmHandler ?? (() => {})}
+                onConfigChange={setConfigData}
+                onConfirm={() => confirmHandler?.(configData)}
                 isCreating={isApplying}
                 confirmLabel="Apply Changes"
                 confirmingLabel="Applying..."

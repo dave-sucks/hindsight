@@ -6,6 +6,7 @@ import { getAccount, getLatestPrices, getLatestPricesWithMeta, getPortfolioHisto
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
+import { deriveTradeStatus } from "@/lib/trade-status";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -162,13 +163,8 @@ export interface DashboardData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mapStatus(status: string, outcome: string | null): TradeStatus {
-  if (status === "OPEN") return "OPEN";
-  if (status === "CANCELLED") return "CANCELLED";
-  if (outcome === "WIN") return "CLOSED_WIN";
-  if (outcome === "LOSS") return "CLOSED_LOSS";
-  return "CLOSED_EXPIRED";
-}
+const mapStatus = (status: string, outcome: string | null): TradeStatus =>
+  deriveTradeStatus(status, outcome);
 
 function calcPnl(
   direction: string,

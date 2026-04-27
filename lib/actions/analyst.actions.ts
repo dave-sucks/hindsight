@@ -1030,6 +1030,8 @@ export async function createAnalystFromBuilder(
 // ── updateAnalystField (direct inline edit of a single config field) ──────────
 
 type UpdatableField =
+  | "name"
+  | "description"
   | "directionBias"
   | "minConfidence"
   | "maxPositionSize"

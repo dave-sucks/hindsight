@@ -103,8 +103,15 @@ interface AgentChatProps {
   /** Auto-send initial message (builder/editor) */
   initialPrompt?: string;
 
-  /** Called when the AI suggests a config — opens the preview panel */
-  onConfigSuggested?: (config: AgentConfigData, onConfirm: () => void) => void;
+  /**
+   * Called when the AI suggests a config — opens the preview panel.
+   * The `onConfirm` callback accepts an optional override so the panel
+   * can submit a user-edited version of the suggested config.
+   */
+  onConfigSuggested?: (
+    config: AgentConfigData,
+    onConfirm: (override?: AgentConfigData) => void,
+  ) => void;
 
   /** Called when a DB mutation (create/update) starts or finishes */
   onMutatingChange?: (mutating: boolean) => void;
@@ -192,7 +199,10 @@ interface InnerProps {
   currentConfig?: Record<string, unknown>;
   composerSlot?: ReactNode;
   initialPrompt?: string;
-  onConfigSuggested?: (config: AgentConfigData, onConfirm: () => void) => void;
+  onConfigSuggested?: (
+    config: AgentConfigData,
+    onConfirm: (override?: AgentConfigData) => void,
+  ) => void;
   onMutatingChange?: (mutating: boolean) => void;
   selectedModel?: string;
   onModelChange?: (value: string) => void;
@@ -317,7 +327,9 @@ function AgentChatInner({
   const handleConfigSuggested = useCallback(
     (config: AgentConfigData) => {
       if (onConfigSuggested) {
-        onConfigSuggested(config, () => handleConfirmConfig(config));
+        onConfigSuggested(config, (override) =>
+          handleConfirmConfig(override ?? config),
+        );
       }
     },
     [onConfigSuggested, handleConfirmConfig],

@@ -19,12 +19,12 @@ export function NewAnalystClient({
 }) {
   const [configData, setConfigData] = useState<AgentConfigData | null>(null);
   const [confirmHandler, setConfirmHandler] = useState<
-    (() => void) | null
+    ((override?: AgentConfigData) => void) | null
   >(null);
   const [isCreating, setIsCreating] = useState(false);
 
   const handleConfigSuggested = useCallback(
-    (config: AgentConfigData, onConfirm: () => void) => {
+    (config: AgentConfigData, onConfirm: (override?: AgentConfigData) => void) => {
       setConfigData(config);
       setConfirmHandler(() => onConfirm);
     },
@@ -81,7 +81,8 @@ export function NewAnalystClient({
             {configData && (
               <AnalystConfigPanel
                 config={configData}
-                onConfirm={confirmHandler ?? (() => {})}
+                onConfigChange={setConfigData}
+                onConfirm={() => confirmHandler?.(configData)}
                 isCreating={isCreating}
               />
             )}

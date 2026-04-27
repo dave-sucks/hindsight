@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useMemo, useTransition } from "react";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import {
@@ -12,8 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AnalystConfigSheet } from "@/components/analysts/AnalystConfigSheet";
-import { StockCombobox } from "@/components/analysts/StockCombobox";
-import { StockLogo } from "@/components/StockLogo";
+import { StockSearch } from "@/components/stocks/StockSearch";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import {
   addWatchlistItem,
@@ -25,7 +23,9 @@ import { RunResearchButton } from "@/components/RunResearchButton";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { TeamSheetContent } from "@/components/domain/team-card";
 import { getTeam } from "@/lib/agent/workflow-registry";
-import { TradeRow } from "@/components/ui/trade-row";
+import { TradeRow, WatchlistRow, AddStockRow } from "@/components/ui/trade-row";
+import { deriveTradeStatus } from "@/lib/trade-status";
+import { closeTrade } from "@/lib/actions/closeTrade.actions";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { AnalystFindingsTab } from "@/components/analysts/AnalystFindingsTab";
 import { BriefCard } from "@/components/intelligence/brief-card";
@@ -101,7 +101,20 @@ function sliceByRange(
 // ── Sidebar trade row (uses shared TradeRow component) ───────────────────────
 
 function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; livePrice?: number }) {
+  const [isClosing, startClose] = useTransition();
   const isOpen = trade.status === "OPEN";
+
+  const handleClose = () => {
+    startClose(async () => {
+      try {
+        await closeTrade(trade.id, "MANUAL");
+        toast.success(`Closed ${trade.symbol}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to close trade");
+      }
+    });
+  };
+  void isClosing;
   const currentPrice = isOpen ? (livePrice ?? trade.avgCost) : (trade.closePrice ?? trade.avgCost);
   const pnl = isOpen
     ? (currentPrice - trade.avgCost) * trade.quantity * (trade.direction === "SHORT" ? -1 : 1)
@@ -130,44 +143,11 @@ function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; live
       shares={trade.quantity}
       pnl={hasPnl ? pnl : 0}
       pnlPct={hasPnl ? pnlPct : 0}
-      status={trade.status}
-      openedAt={trade.openedAt}
+      status={deriveTradeStatus(trade.status, trade.outcome)}
+      closedAt={trade.closedAt?.toISOString()}
       priceSource={isOpen ? (livePrice !== undefined ? "alpaca" : "missing") : undefined}
+      onClose={isOpen ? handleClose : undefined}
     />
-  );
-}
-
-// ── Watching row for sidebar ──────────────────────────────────────────────────
-
-function WatchingRow({
-  item,
-  onRemove,
-}: {
-  item: WatchlistItemView;
-  onRemove: (symbol: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-accent/40 transition-colors border-b border-border/40 last:border-0 group">
-      <Link href={`/stocks/${item.symbol}`} className="shrink-0">
-        <StockLogo ticker={item.symbol} size="md" className="rounded-md" />
-      </Link>
-      <Link href={`/stocks/${item.symbol}`} className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">{item.symbol}</span>
-        </div>
-        <div className="flex items-center justify-between mt-0.5">
-          <span className="text-xs text-muted-foreground truncate">
-            {item.reason}
-          </span>
-        </div>
-      </Link>
-      <button
-        onClick={(e) => { e.preventDefault(); onRemove(item.symbol); }}
-        className="p-1 rounded hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
   );
 }
 
@@ -677,7 +657,7 @@ export default function AnalystDetailClient({
                       stroke={equityStroke}
                       strokeWidth={1.5}
                       fill="url(#analystEqGrad)"
-                      baseValue={0}
+                      baseValue="dataMin"
                       dot={false}
                       activeDot={{ r: 2, fill: equityStroke }}
                       isAnimationActive={false}
@@ -735,23 +715,22 @@ export default function AnalystDetailClient({
               </TabsContent>
 
               <TabsContent value={1} className="flex-1 overflow-y-auto">
-                <div className="px-3 py-2 shrink-0">
-                  <StockCombobox
-                    onSelect={handleAddStock}
-                    excludeSymbols={watchlistItems.map((i) => i.symbol)}
-                  />
-                </div>
-                {watchlistItems.length === 0 ? (
+                {watchlistItems.length === 0 && (
                   <EducationEmptyState stateKey="analyst-watchlist" size="inline" />
-                ) : (
-                  watchlistItems.map((item) => (
-                    <WatchingRow
-                      key={item.id}
-                      item={item}
-                      onRemove={handleRemoveStock}
-                    />
-                  ))
                 )}
+                {watchlistItems.map((item) => (
+                  <WatchlistRow
+                    key={item.id}
+                    ticker={item.symbol}
+                    currentPrice={livePrices[item.symbol]}
+                    onRemove={() => handleRemoveStock(item.symbol)}
+                  />
+                ))}
+                <StockSearch
+                  onSelect={handleAddStock}
+                  excludeSymbols={watchlistItems.map((i) => i.symbol)}
+                  trigger={<AddStockRow />}
+                />
               </TabsContent>
             </Tabs>
           </div>
@@ -764,6 +743,7 @@ export default function AnalystDetailClient({
         open={configOpen}
         onOpenChange={setConfigOpen}
         config={config}
+        livePrices={livePrices}
       />
 
       {/* Agent overview sheet */}

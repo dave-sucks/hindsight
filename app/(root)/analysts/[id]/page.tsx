@@ -55,11 +55,13 @@ export default async function AnalystDetailPage({
 
   if (!detail) notFound();
 
-  // Fetch live prices for open positions using user's Alpaca credentials
+  // Fetch live prices for open positions AND watchlist tickers — both render
+  // through TradeRow / WatchlistRow and need a current price.
   const openSymbols = detail.recentTrades
     .filter((t) => t.status === "OPEN")
     .map((t) => t.symbol);
-  const uniqueSymbols = [...new Set(openSymbols)];
+  const watchlistSymbols = watchlistItems.map((w) => w.symbol);
+  const uniqueSymbols = [...new Set([...openSymbols, ...watchlistSymbols])];
   const livePrices: Record<string, number> =
     uniqueSymbols.length > 0
       ? await getLatestPrices(uniqueSymbols, alpacaCreds ?? undefined).catch(() => ({}))
