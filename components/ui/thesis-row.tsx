@@ -237,9 +237,12 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
               {t.analystName}
             </a>
           )}
+          <a href={`/theses/${t.id}`} className="inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+            Thesis
+          </a>
           {t.runId && (
             <a href={`/runs/${t.runId}`} className="inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-              View run
+              Run
             </a>
           )}
         </div>

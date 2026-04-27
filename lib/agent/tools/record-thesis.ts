@@ -9,6 +9,8 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
+import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 
 const thesisFields = z.object({
   ticker: z.string(),
@@ -129,6 +131,78 @@ const thesisFields = z.object({
     .optional()
     .describe(
       "Required composite scoring: trendStrength (0-3) + relativeStrength (0-3) + entryQuality (0-2) + catalystFreshness (0-2) = composite /10. Composite ≥ 7 is required for ADD/ROTATE eligibility. Below 7 must be PASS or WATCH. R/R and portfolio fit are separate quality-bar gates, NOT scoring components — apply them in the workflow."
+    ),
+
+  // ── Thesis Durable State (PR 1) ────────────────────────────────────────
+  // Optional today; will become required as PR 2 (tactical mode) and PR 3
+  // (housekeeping) come online and start consuming these fields. Existing
+  // call paths keep working without them.
+  horizon: z
+    .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
+    .optional()
+    .describe(
+      "Exit policy for this thesis. CATALYST = exit on the catalyst event (good or bad), or 30d past catalyst_date. TARGET = exit at target/stop or thesis invalidation; open-ended. TRADE = stop/target/max_hold_days, short bounded. COMPOUNDER = exit only when invalidation conditions fire; never on price alone. Pick the kind that matches your reasoning, not just the holding period.",
+    ),
+  core_belief: z
+    .string()
+    .optional()
+    .describe(
+      "The actual claim, separate from the trade rationale. 1-2 sentences stating what you believe will happen and why. Often overlaps with reasoning_summary on first creation; diverges as the thesis is updated.",
+    ),
+  key_assumptions: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Premises that must hold for this thesis to work. Each item is a single checkable claim (e.g. 'Datacenter capex stays above $200B/yr through 2027'). The agent re-evaluates these against fresh signals during housekeeping.",
+    ),
+  invalidation_conditions: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Specific things that would prove this thesis wrong. Used to decide when a signal counts as thesis-breaking. e.g. ['Guidance cut on next print', 'Sector ETF breaks 200d SMA'].",
+    ),
+  target_size_pct: z
+    .number()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe(
+      "% of portfolio at full position. Captures intent — actual position size may be smaller while scaling in or after a partial trim.",
+    ),
+  scaling_plan: z
+    .array(
+      z.object({
+        pct: z.number().min(0).max(100),
+        atPrice: z.number().optional(),
+        atSignal: z.string().optional(),
+        rationale: z.string(),
+      }),
+    )
+    .optional()
+    .describe(
+      "Optional ladder for scaling in/out. e.g. [{pct: 33, rationale: 'starter'}, {pct: 33, atPrice: 175, rationale: 'add on pullback'}, {pct: 34, atSignal: 'earnings beat', rationale: 'full position post-print'}].",
+    ),
+  triggers: triggersArraySchema.optional(),
+  catalyst_date: z
+    .string()
+    .datetime()
+    .optional()
+    .describe(
+      "ISO timestamp. CATALYST horizon only — when the catalyst event is expected (e.g. earnings date, FDA decision date).",
+    ),
+  max_hold_days: z
+    .number()
+    .int()
+    .positive()
+    .max(365)
+    .optional()
+    .describe("TRADE horizon only. Default 14 if omitted."),
+  next_review_at: z
+    .string()
+    .datetime()
+    .optional()
+    .describe(
+      "When housekeeping should re-look at this thesis even with no trigger fire. Default derived from horizon: CATALYST = 1 day, TRADE = 1 day, TARGET = 7 days, COMPOUNDER = 30 days.",
     ),
 });
 
@@ -300,6 +374,27 @@ export const recordThesis = defineTool({
           : {}),
       };
 
+      // Default nextReviewAt by horizon. Cheap, transparent, lets the
+      // housekeeping run pick up theses without the agent having to do
+      // the date math. Falls through to null when horizon is omitted —
+      // legacy theses don't get an auto-review date.
+      let nextReviewAt: Date | null = null;
+      if (args.next_review_at) {
+        nextReviewAt = new Date(args.next_review_at);
+      } else if (args.horizon) {
+        const now = Date.now();
+        const dayMs = 24 * 60 * 60 * 1000;
+        const days =
+          args.horizon === "CATALYST"
+            ? 1
+            : args.horizon === "TRADE"
+              ? 1
+              : args.horizon === "TARGET"
+                ? 7
+                : 30; // COMPOUNDER
+        nextReviewAt = new Date(now + days * dayMs);
+      }
+
       const coreData = {
         researchRunId: ctx.runId,
         userId: ctx.userId,
@@ -321,6 +416,20 @@ export const recordThesis = defineTool({
         fullResearch: Object.keys(fullResearch).length > 0 ? fullResearch : undefined,
         source: "AGENT",
         modelUsed: "gpt-4o",
+        // ── Durable-state fields (PR 1) ─────────────────────────────────
+        horizon: args.horizon ?? null,
+        coreBelief: args.core_belief ?? null,
+        keyAssumptions: args.key_assumptions ?? [],
+        invalidationConds: args.invalidation_conditions ?? [],
+        targetSizePct: args.target_size_pct ?? null,
+        scalingPlan: args.scaling_plan
+          ? (args.scaling_plan as object)
+          : undefined,
+        triggers: (args.triggers ?? []) as object,
+        catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
+        maxHoldDays:
+          args.max_hold_days ?? (args.horizon === "TRADE" ? 14 : null),
+        nextReviewAt,
       };
 
       // Auto-SUPERSEDE: find any existing ACTIVE thesis for this ticker+analyst.
@@ -380,11 +489,33 @@ export const recordThesis = defineTool({
             sourceSignalIds: _ids,
             sourceKind: _kind,
             sourceRationale: _rationale,
+            // PR 1 durable-state columns — also strip if Prisma client is
+            // out of sync with the schema.
+            horizon: _horizon,
+            coreBelief: _belief,
+            keyAssumptions: _assumptions,
+            invalidationConds: _invalid,
+            targetSizePct: _size,
+            scalingPlan: _scaling,
+            triggers: _triggers,
+            catalystDate: _cdate,
+            maxHoldDays: _maxhold,
+            nextReviewAt: _review,
             ...fallbackData
           } = coreData;
           void _ids;
           void _kind;
           void _rationale;
+          void _horizon;
+          void _belief;
+          void _assumptions;
+          void _invalid;
+          void _size;
+          void _scaling;
+          void _triggers;
+          void _cdate;
+          void _maxhold;
+          void _review;
           thesis = await prisma.thesis.create({ data: fallbackData });
           resolvedParentId = null;
         } else {
@@ -396,16 +527,64 @@ export const recordThesis = defineTool({
         }
       }
 
-      // Transition parent thesis lifecycle
+      // ── ThesisUpdate(CREATED) — durable activity log ─────────────────
+      // Single source of truth for thesis history. Non-fatal: if this
+      // fails the thesis still landed; we just lose the timeline row.
+      // Logs LOUD so we notice if writes start dropping.
+      const createdSummary =
+        args.direction === "PASS"
+          ? `Passed on ${args.ticker}`
+          : `${args.direction} thesis on ${args.ticker} at confidence ${args.confidence_score}`;
+      void writeThesisUpdate({
+        thesisId: thesis.id,
+        type: "CREATED",
+        summary: createdSummary,
+        rationale: args.reasoning_summary,
+        signalIds: sourceSignalIds,
+        runId: ctx.runId,
+        priceAtTime: args.entry_price ?? null,
+      });
+
+      // Transition parent thesis lifecycle.
       if (resolvedParentId) {
         try {
           if (args.direction === "PASS") {
+            const invalidReason =
+              args.reasoning_summary?.slice(0, 500) ||
+              "Thesis invalidated by follow-up research";
             await prisma.thesis.update({
               where: { id: resolvedParentId },
-              data: { status: "INVALIDATED", invalidatedAt: new Date(), invalidReason: args.reasoning_summary?.slice(0, 500) || "Thesis invalidated by follow-up research" },
+              data: {
+                status: "INVALIDATED",
+                invalidatedAt: new Date(),
+                invalidReason,
+              },
+            });
+            void writeThesisUpdate({
+              thesisId: resolvedParentId,
+              type: "INVALIDATED",
+              summary: `Invalidated by PASS thesis on ${args.ticker}`,
+              rationale: invalidReason,
+              fieldChanges: {
+                status: { from: "ACTIVE", to: "INVALIDATED" },
+              },
+              runId: ctx.runId,
             });
           } else {
-            await prisma.thesis.update({ where: { id: resolvedParentId }, data: { status: "SUPERSEDED" } });
+            await prisma.thesis.update({
+              where: { id: resolvedParentId },
+              data: { status: "SUPERSEDED" },
+            });
+            void writeThesisUpdate({
+              thesisId: resolvedParentId,
+              type: "SUPERSEDED",
+              summary: `Replaced by newer ${args.direction} thesis on ${args.ticker}`,
+              rationale: args.reasoning_summary,
+              fieldChanges: {
+                status: { from: "ACTIVE", to: "SUPERSEDED" },
+              },
+              runId: ctx.runId,
+            });
           }
         } catch (parentErr) {
           console.warn(`[tool] record_thesis: parent thesis update skipped:`, parentErr);
