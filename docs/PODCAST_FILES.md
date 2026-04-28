@@ -388,3 +388,64 @@ the podcast feature from this repo, or forking into a podcast-only
 app — see **`docs/PODCAST_OPERATIONS.md`**. That doc is the
 step-by-step checklist; this doc is the file inventory the
 checklist points at.
+
+---
+
+## Known gaps for Session 1
+
+Concrete file-level checklist for the "build a podcast → run a segment
+→ see the transcript everywhere" loop, plus editor-mode parity with
+analysts. See `docs/PODCAST_PLAN.md` "Session 1 — Build experience
+completeness" for design discussion.
+
+### Transcript visibility
+
+| File | Action |
+|------|--------|
+| `lib/actions/podcast.actions.ts` | **Extend `SegmentSummary` + `getPodcastDetail`** to include each segment's most-recent transcript as a `TranscriptRowData`-compatible shape (id, title, plainText, citations, durationSec). |
+| `components/podcasts/PodcastDetailClient.tsx` | **Make segment cards open the latest transcript.** Either click-through to the latest TranscriptCard sheet, or "View latest transcript" entry in the 3-dot menu. |
+| `components/podcasts/PodcastDetailClient.tsx` | **Replace `RecentTranscriptsRail` static rows with `TranscriptRow`** so the right-rail entries open the same sheet. |
+
+### Editor mode (analyst-parity)
+
+| File | Action |
+|------|--------|
+| `lib/agent/modes.ts` | **Add `podcast-editor` mode** with allowlist mirroring `editor`: ask_question, web_search, read_knowledge_library, suggest_podcast_config. `hasSuggestConfig: false` (use the podcast-specific tool). |
+| `lib/podcast/editor-prompt.ts` | **New file.** `buildPodcastEditorSystemPrompt(currentPodcast, currentSegments)` — mirror of `buildEditorSystemPrompt`. Inject current shape into prompt for refine-by-chat. |
+| `app/(root)/podcasts/[id]/edit/page.tsx` | **New page.** Mirror of `/analysts/[id]/edit/page.tsx`. Loads podcast + segments, passes to AgentChat with `mode="podcast-editor"`. |
+| `app/(root)/podcasts/[id]/edit/client.tsx` | **New client.** Split layout (chat + side panel) mirroring `/analysts/[id]/edit`'s client. Reuse `PodcastConfigPreview` as the side panel. |
+| `lib/actions/podcast.actions.ts` | **Add `updatePodcastFromEditor`** action. Diffs edited shape against current, persists podcast meta + segment add/remove/update + Monitor row reconciliation. Pattern mirrors `updateAnalystFromBuilder`. |
+| `app/api/agent/[mode]/route.ts` | **Add `podcast-editor` branch.** Loads current podcast + segments shape, builds system prompt with `buildPodcastEditorSystemPrompt`. |
+| `components/podcasts/PodcastDetailClient.tsx` | **Wire the 3-dot Edit menu entry** to `router.push(`/podcasts/${id}/edit`)`. (Header dropdown already has it stubbed; ensure it goes here.) |
+| `components/agent/AgentChat.tsx` | **Extend** mode handling for `podcast-editor` — reuse the builder welcome/composer pattern, route `onPodcastConfigSuggested` to the editor's update flow instead of create. |
+
+### Knowledge library
+
+| File | Action |
+|------|--------|
+| `lib/agent/knowledge/podcast-formats.ts` | **New file.** Mirror of `strategy-archetypes.ts`. Format archetypes ("5-min daily news brief", "30-min interview", "10-min essay", "weekly culture roundup", etc.). Each entry: id, name, tagline, description, recommendedSegmentCount, recommendedEpisodeSeconds, segmentTemplates, defaultMonitorPatterns, hostStyleHints. |
+| `lib/agent/tools/read-knowledge-library.ts` | **Extend.** Add `topic: "podcast-format"` branch that reads `podcast-formats.ts` index + per-id detail. Same three-beat usage pattern. |
+| `lib/agent/modes.ts` | **Add `read_knowledge_library`** to `podcast-builder` and `podcast-editor` allowlists. |
+| `lib/podcast/builder-prompt.ts` | **Update prompt.** Require three-beat playbook selection (browse → ask_question → deep-read → adapt) before `suggest_podcast_config`. Cite specific format archetype in the proposal. |
+
+### Findings / signal inbox
+
+| File | Action |
+|------|--------|
+| `lib/actions/podcast.actions.ts` | **Add `getPodcastFindings(podcastId)`** — queries `PodcastSegmentSignalRoute` for all segments of the podcast, returns the same shape `getRunSourcesData` returns for analysts. |
+| `components/podcasts/PodcastFindingsTab.tsx` | **New component.** Mirror of `AnalystFindingsTab`. Renders signals via the same row component the analyst surface uses. |
+| `components/podcasts/PodcastDetailClient.tsx` | **Add Findings tab** to the existing `Tabs` (Segments / Episodes / Findings). |
+
+### Defensive fixes already in this commit
+
+- `app/api/agent/[mode]/route.ts` — `podcastSegmentBriefing.findFirst` wrapped in try/catch so a missing-table scenario (migration lag during deploy) degrades to "no continuity" instead of crashing the run. Real fix is still: apply pending migrations before deploying agent code.
+
+### Migration deploy reminder
+
+Two migrations from the post-Phase-1 commits need to be applied before the route works end-to-end:
+
+```bash
+npx prisma migrate deploy
+```
+
+Applies all pending migrations including `20260427120000_podcast_segment_signal_route` and `20260427130000_podcast_segment_briefing`. Run before each deploy that includes new schema changes.

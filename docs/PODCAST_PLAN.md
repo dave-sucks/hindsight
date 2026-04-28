@@ -326,17 +326,84 @@ CRUD for Podcasts and Segments lives in
 
 ## Phased delivery
 
-### Phase 1 — Foundation (this PR)
+### Phase 1 — Foundation (initial PR + follow-up commits)
 
-- Schema + migration.
+Initial PR shipped:
+- Schema + migration (`Podcast`, `PodcastSegment`, `SegmentTranscript`, `Episode`, enums, FKs).
 - `podcast-builder` and `podcast-segment-run` modes.
 - `write_segment_transcript` + `suggest_podcast_config` tools.
 - `complete_run` segment branch.
 - `lib/actions/podcast.actions.ts`.
-- Pages: `/podcasts`, `/podcasts/new`, `/podcasts/[id]`,
-  `/podcasts/[id]/segments/[segmentId]`.
-- Sidebar nav entry.
-- **No audio.** A run produces a text transcript, end of story.
+- Pages: `/podcasts`, `/podcasts/new`, `/podcasts/[id]` (segments live as cards on this page; no per-segment route).
+- Sidebar nav entry behind `NEXT_PUBLIC_PODCASTS_ENABLED`.
+
+Follow-up commits (`e3fe63a`, `3d3f11e`, `6e76a30`):
+- **Signal pipeline reaches segments.** New `PodcastSegmentSignalRoute` model. `signal-router.ts` extended with a segment-routing pass (OWNER + TOPIC_MATCH). `read_signals` branches on `ctx.podcastSegmentId`. `domain-monitor.ts` and `firm-market-sweep.ts` already pick up segment-scoped Monitor rows (filter by Monitor.type only).
+- **Briefing continuity for segment runs.** New `PodcastSegmentBriefing` model + `lib/podcast/update-segment-briefing.ts` (mirror of `update-analyst-briefing.ts`). `complete_run` segment branch calls it. Route loads most-recent briefing into the system prompt as continuity context.
+- **Transcripts render through their own card+sheet pipeline.** `TranscriptCardRenderer` + `TranscriptCard` + `TranscriptSheetBody` (mirror of ThesisCardRenderer/ThesisCard/ThesisSheet). `TranscriptRow` for list surfaces. `write_segment_transcript` returns `ui: "transcript-card"` with full data. AgentChat renders Chat | Transcript tabs for `podcast-segment-run` mode.
+- **`RunResearchButton` extended** to support `podcastSegmentId` — same chrome, same hasRunning logic, available for any future segment-level surface.
+
+**No audio. No episode assembly. No editor mode. Open gaps tracked in Session 1 below.**
+
+### Session 1 — Build experience completeness (next PR)
+
+The minimum to make the build → run → see transcripts loop feel complete and consistent with the analyst surface.
+
+**Required for "open a podcast, run a segment, see the transcript":**
+
+1. **Transcript visibility everywhere it should be reachable.**
+   - Segment card on `/podcasts/[id]` — clicking the card surface (or a "View transcript" entry in the 3-dot menu) opens the latest TranscriptCard sheet
+   - Recent-transcripts list on the right rail of `/podcasts/[id]` — rows become clickable `TranscriptRow` instances with the same Sheet
+   - Requires: extend `SegmentSummary` in `getPodcastDetail` to include the latest transcript's full data (currently only carries title + count)
+2. **Defensive route fix already applied** — briefing fetch wrapped in try/catch so segment runs don't crash if a follow-up migration lags (commit follows this doc update).
+
+**Editor mode (analyst-parity):**
+
+3. **`podcast-editor` mode** in `lib/agent/modes.ts` (mirror of `editor`).
+4. **`buildPodcastEditorSystemPrompt(currentPodcast, currentSegments)`** — mirror of `buildEditorSystemPrompt`. Loads the current shape into the system prompt so the agent can refine it.
+5. **`/podcasts/[id]/edit` page + client** — mirror of `/analysts/[id]/edit`. Handles both podcast-level edits (cadence, host style, voice) and segment-level edits (brief, monitors, topics, add/remove segments).
+6. **`updatePodcastFromEditor`** server action — diff the edited shape against the current and persist (handles segment add/remove/update + Monitor row reconciliation).
+7. Reuse `suggest_podcast_config` for the editor's update tool — same shape.
+
+**Knowledge library (analyst-parity):**
+
+8. **`lib/agent/knowledge/podcast-formats.ts`** — mirror of `strategy-archetypes.ts`. Format archetypes ("5-min daily news brief", "30-min interview", "10-min essay", "weekly culture roundup", etc.) with example structures, recommended segment counts, tone guidance, default monitor patterns.
+9. **Extend `read_knowledge_library`** to recognize `topic: "podcast-format"`.
+10. **Add `read_knowledge_library`** to the `podcast-builder` and `podcast-editor` allowlists.
+11. **Update `podcast-builder` system prompt** to require the same three-beat playbook selection analysts do (browse → ask_question → deep-read → adapt).
+
+**Findings / signal inbox (analyst-parity):**
+
+12. **`PodcastFindingsTab`** on the podcast detail page (or per-segment Findings tab on the SegmentConfigSheet — pick one). Queries `PodcastSegmentSignalRoute` aggregated across the podcast's segments (or for the single segment). Renders with the same signal-row component the analyst Findings tab uses.
+
+**Out of scope for Session 1 (V2+):**
+
+- Pre-run morning brief equivalent for segments (`MorningBrief` table, `morning-brief-generator` cron, `read_morning_brief` tool) — confirmed not wanted for now.
+- Daily auto-run cron — V2.
+- `/intelligence` dashboard surfaces for podcast monitors/signals/briefs — not needed yet.
+- Rendering `PodcastSegmentBriefing` rows as a UI surface — agent reads them via the system prompt for continuity; no user-facing brief view needed.
+
+### Session 2 — Phase 2: Audio (ElevenLabs)
+
+[Same scope as previously documented — TTS integration, audio player on TranscriptCard, voice picker, ElevenLabs creds in UserApiKey.]
+
+### Session 3 — Iterate on script + voice quality
+
+Tuning session. No scope until Session 2's first segment audio lands.
+
+### Session 4 — Phase 3: Episode assembly + karaoke
+
+[Same scope — ffmpeg concat, Episode CRUD, karaoke player using combined alignment JSON.]
+
+### Session 5 — Phase 4: Crons + polish
+
+- Daily auto-run cron per podcast (mirror of `morning-research.ts`)
+- RSS feed export
+- Cover art upload (manual + DALL-E stretch)
+
+---
+
+## Phased delivery (legacy structure — superseded by sessions above)
 
 Outcome: a user can create a podcast, see segments, run a segment,
 read its transcript with citations.

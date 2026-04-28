@@ -261,18 +261,33 @@ export async function POST(
 
       // Last transcript title + most-recent briefing for continuity.
       // Mirror of how analyst runs load AnalystBriefing into buildRunInput.
-      const [lastTranscript, priorBriefing] = await Promise.all([
-        prisma.segmentTranscript.findFirst({
-          where: { segmentId: segment.id },
-          orderBy: { createdAt: "desc" },
-          select: { title: true },
-        }),
-        prisma.podcastSegmentBriefing.findFirst({
+      // Briefing fetch is wrapped in try/catch so a missing table (migration
+      // lag during deploy) degrades to "no continuity" instead of crashing
+      // the run. Segment table is required — if that's missing we have
+      // bigger problems and the segment lookup above will already have
+      // failed.
+      const lastTranscript = await prisma.segmentTranscript.findFirst({
+        where: { segmentId: segment.id },
+        orderBy: { createdAt: "desc" },
+        select: { title: true },
+      });
+      let priorBriefing: {
+        narrative: string;
+        followUps: unknown;
+        generatedAt: Date;
+      } | null = null;
+      try {
+        priorBriefing = await prisma.podcastSegmentBriefing.findFirst({
           where: { segmentId: segment.id },
           orderBy: { generatedAt: "desc" },
           select: { narrative: true, followUps: true, generatedAt: true },
-        }),
-      ]);
+        });
+      } catch (briefErr) {
+        console.warn(
+          `[agent/podcast-segment-run] briefing lookup failed (likely migration lag) — continuing without continuity context:`,
+          briefErr instanceof Error ? briefErr.message : briefErr,
+        );
+      }
 
       systemPrompt = buildPodcastSegmentRunPrompt({
         podcast: {
