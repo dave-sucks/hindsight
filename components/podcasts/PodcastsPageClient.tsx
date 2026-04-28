@@ -67,13 +67,13 @@ function PodcastCard({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
                 <DropdownMenuItem
-                  onSelect={() => router.push(`/podcasts/${podcast.id}`)}
+                  onClick={() => router.push(`/podcasts/${podcast.id}`)}
                 >
                   View detail
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
-                  onSelect={() => onDelete(podcast.id)}
+                  onClick={() => onDelete(podcast.id)}
                 >
                   Delete podcast
                 </DropdownMenuItem>

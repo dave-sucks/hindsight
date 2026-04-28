@@ -78,16 +78,15 @@ function formatRelative(date: Date | null): string {
 // header row with badges + 3-dot dropdown, name, description, topics row,
 // bottom border-t section with last-run info.
 
-function SegmentCard({
-  segment,
-  onOpenSettings,
-}: {
-  segment: SegmentSummary;
-  /** Receives the segment id so the parent can resolve fresh data after refetch. */
-  onOpenSettings: (segmentId: string) => void;
-}) {
+function SegmentCard({ segment }: { segment: SegmentSummary }) {
   const router = useRouter();
   const [isStarting, startStarting] = useTransition();
+  // Each card owns its own settings Sheet — local state, controlled by
+  // the dropdown item's onClick. Local state means the Sheet is mounted
+  // from the start (closed), and the open animation fires when state
+  // flips false→true. Same shape the shadcn Sheet docs recommend:
+  // https://ui.shadcn.com/docs/components/radix/sheet
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const minutes = Math.round(segment.targetSeconds / 60);
 
   const handleRun = () => {
@@ -103,7 +102,8 @@ function SegmentCard({
   };
 
   return (
-    <Card className="gap-0 overflow-hidden shadow-none py-0">
+    <>
+      <Card className="gap-0 overflow-hidden shadow-none py-0">
       {/* Section 1: header, name, description */}
       <div className="p-3 flex flex-col gap-2 min-w-0">
         {/* Row 1: badges left · 3-dot right */}
@@ -134,11 +134,11 @@ function SegmentCard({
               <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onSelect={handleRun} disabled={isStarting}>
+              <DropdownMenuItem onClick={handleRun} disabled={isStarting}>
                 <Play className="h-3.5 w-3.5" />
                 {isStarting ? "Starting…" : "Run segment"}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onOpenSettings(segment.id)}>
+              <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
                 <Settings2 className="h-3.5 w-3.5" />
                 Settings
               </DropdownMenuItem>
@@ -184,6 +184,16 @@ function SegmentCard({
         </span>
       </div>
     </Card>
+
+    {/* Per-segment settings sheet — co-located with its trigger.
+        Mounts with open=false on first render; the dropdown item's
+        onClick flips it to true. Standard shadcn Sheet pattern. */}
+    <SegmentConfigSheet
+      open={settingsOpen}
+      onOpenChange={setSettingsOpen}
+      segment={segment}
+    />
+    </>
   );
 }
 
@@ -199,19 +209,9 @@ export default function PodcastDetailClient({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [runAllPending, startRunAll] = useTransition();
-  // The settings sheet is launched per-segment from a card's 3-dot menu.
-  // We track the active segment's id (not the object) so a refetch that
-  // mutates detail.segments still resolves to the latest data via the
-  // useMemo below. The Sheet itself is always mounted — see its props
-  // at the bottom of this component.
-  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
-  const activeSegment = useMemo(
-    () =>
-      activeSegmentId
-        ? detail.segments.find((s) => s.id === activeSegmentId) ?? null
-        : null,
-    [activeSegmentId, detail.segments],
-  );
+  // Per-segment settings sheets live inside each SegmentCard with their
+  // own local state — that's the canonical shadcn Sheet pattern (Sheet
+  // co-located with its trigger).
 
   const segmentCount = detail.segments.length;
   const transcriptCount = detail.segments.reduce(
@@ -343,11 +343,7 @@ export default function PodcastDetailClient({
               ) : (
                 <div className="w-full mx-auto px-4 py-6 grid grid-cols-1 md:grid-cols-2 gap-3">
                   {detail.segments.map((s) => (
-                    <SegmentCard
-                      key={s.id}
-                      segment={s}
-                      onOpenSettings={setActiveSegmentId}
-                    />
+                    <SegmentCard key={s.id} segment={s} />
                   ))}
                 </div>
               )}
@@ -402,17 +398,7 @@ export default function PodcastDetailClient({
         detail={detail}
       />
 
-      {/* Per-segment settings sheet (card 3-dot menu).
-          Always mounted so the Sheet's open animation fires correctly when
-          the user toggles `open` from false to true. When no segment is
-          selected the Sheet renders with an empty body but stays closed. */}
-      <SegmentConfigSheet
-        open={!!activeSegmentId}
-        onOpenChange={(open) => {
-          if (!open) setActiveSegmentId(null);
-        }}
-        segment={activeSegment}
-      />
+      {/* Per-segment settings sheets live inside each SegmentCard, not here. */}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-[420px]">
