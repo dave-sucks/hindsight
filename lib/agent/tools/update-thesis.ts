@@ -31,6 +31,7 @@ import {
   diffThesisFields,
   type ThesisUpdateType,
 } from "@/lib/agent/thesis-updates";
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -167,6 +168,13 @@ export const updateThesis = defineTool({
   },
 
   execute: async (args, ctx) => {
+    // Resolve priceAtTime defensively. The agent SHOULD pass price_at_time
+    // (it just called get_stock_data on this ticker). When it forgets, we
+    // fall back to a fresh Finnhub quote so the timeline row never has a
+    // null price for an active update. Cheap (one HTTP call, 30s cache);
+    // worth it for the timeline integrity.
+    let resolvedPriceAtTime: number | null = args.price_at_time ?? null;
+
     // Load + scope check. A thesis must belong to an analyst's user;
     // updating someone else's thesis would be a security hole.
     const existing = await prisma.thesis.findUnique({
@@ -211,6 +219,19 @@ export const updateThesis = defineTool({
         data: { ok: false, error: "scope_mismatch" },
         sources: [],
       };
+    }
+
+    // priceAtTime fallback: agent didn't pass one → fetch a fresh quote
+    // for this ticker. Failure is non-fatal; just leaves it null.
+    if (resolvedPriceAtTime == null) {
+      try {
+        const quote = await getStockQuote(existing.ticker);
+        if (quote && Number.isFinite(quote.c) && quote.c > 0) {
+          resolvedPriceAtTime = quote.c;
+        }
+      } catch {
+        /* non-fatal */
+      }
     }
     if (
       ctx.analystId &&
@@ -292,7 +313,7 @@ export const updateThesis = defineTool({
         runId: ctx.runId,
         signalIds: args.signal_ids,
         triggerId: args.trigger_id,
-        priceAtTime: args.price_at_time ?? null,
+        priceAtTime: resolvedPriceAtTime,
       });
       return {
         summary: `Reviewed ${existing.ticker} thesis: no changes.`,
@@ -389,7 +410,7 @@ export const updateThesis = defineTool({
       signalIds: args.signal_ids,
       triggerId: args.trigger_id,
       tradeId: args.trade_id,
-      priceAtTime: args.price_at_time ?? null,
+      priceAtTime: resolvedPriceAtTime,
     });
 
     return {

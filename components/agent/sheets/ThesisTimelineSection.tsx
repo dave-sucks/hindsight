@@ -4,27 +4,25 @@
  * ThesisTimelineSection — durable activity log embedded inside ThesisSheet.
  *
  * Lazy-fetches /api/theses/:id/updates when mounted. Renders the timeline
- * newest-first as a flat list of CoT-style entries (no rail, no big icon
- * column).
+ * newest-first as a vertical rail: small dot per entry connected by a line.
  *
  * Per-entry layout:
- *   [price + arrow]                                           [tiny dot]
- *   <heading>
- *   <description>
- *   TYPE · View run · N signals
+ *   ●  $35.27 ↑                                        Apr 27, 8:11 AM
+ *   │  <heading>
+ *   │  <description>
+ *   │  Type · View run · N signals
  *
- * The arrow on the price compares to the next-older entry's
- * priceAtTime — so reading top-down you see what direction the stock has
- * moved between thesis touches.
+ * Arrow on the price compares to the next-older entry's priceAtTime so
+ * reading top-down shows the direction the stock has moved between
+ * thesis touches. Null prices = no arrow (and shown as —).
  *
- * Designed to slot into the existing sheet without disrupting layout —
- * just append `<ThesisTimelineSection thesisId={id} />`. Skips itself if
- * thesisId isn't supplied (agent-run inline render before persistence).
+ * Skips itself if thesisId isn't supplied (agent-run inline render before
+ * persistence).
  */
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, DotIcon } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ThesisUpdate {
@@ -51,9 +49,17 @@ function fmtUsd(v: number | null | undefined): string {
   return `$${v.toFixed(2)}`;
 }
 
+function fmtDateTime(d: string): string {
+  return new Date(d).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function typeLabel(t: string): string {
-  // Lowercase except first letter — reads better as plain text than the
-  // SHOUTING-CASE the DB stores.
+  // Title-case: "SUPERSEDED" → "Superseded", "TRIGGER_FIRED" → "Trigger fired"
   return t.charAt(0) + t.slice(1).toLowerCase().replace(/_/g, " ");
 }
 
@@ -94,90 +100,83 @@ export function ThesisTimelineSection({ thesisId }: Props) {
       ) : updates.length === 0 ? (
         <p className="text-xs text-muted-foreground">No activity yet.</p>
       ) : (
-        <div className="space-y-4">
+        <div>
           {updates.map((u, idx) => {
-            // Compare to the next-older entry's price (we render newest-first,
-            // so "older" is the next index). Null on either side = no arrow.
+            // Compare to the next-older entry's price (we render
+            // newest-first, so older = idx + 1).
             const olderPrice = updates[idx + 1]?.priceAtTime ?? null;
             const delta =
               u.priceAtTime != null && olderPrice != null
                 ? u.priceAtTime - olderPrice
                 : null;
+            const isLast = idx === updates.length - 1;
 
             return (
-              <div key={u.id} className="space-y-1">
-                {/* ── Heading: price (left) + dot (right) ──────────────── */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium tabular-nums flex items-center gap-1">
-                    {fmtUsd(u.priceAtTime)}
-                    {delta != null && delta !== 0 ? (
-                      delta > 0 ? (
-                        <ArrowUp className="h-3.5 w-3.5 text-emerald-500" />
-                      ) : (
-                        <ArrowDown className="h-3.5 w-3.5 text-red-500" />
-                      )
-                    ) : null}
-                  </span>
-                  <div className="size-4 shrink-0 flex items-center justify-center text-muted-foreground/60">
-                    <DotIcon className="size-5" />
-                  </div>
+              <div key={u.id} className="flex gap-3">
+                {/* ── Rail (dot + line) ─────────────────────────────── */}
+                <div className="flex flex-col items-center shrink-0">
+                  {/* Tiny dot, vertically aligned with the price line */}
+                  <div className="size-1.5 rounded-full bg-muted-foreground/50 mt-1.5" />
+                  {!isLast ? (
+                    <div className="w-px flex-1 bg-border mt-1" />
+                  ) : null}
                 </div>
 
-                {/* ── Summary (heading) ─────────────────────────────────── */}
-                <p className="text-sm font-medium leading-snug">{u.summary}</p>
-
-                {/* ── Rationale (description) ───────────────────────────── */}
-                {u.rationale ? (
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {u.rationale}
-                  </p>
-                ) : null}
-
-                {/* ── Footer: TYPE · View run · N signals ─────────────── */}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                  <span>{typeLabel(u.type)}</span>
-                  {u.runId ? (
-                    <>
-                      <span className="opacity-40">·</span>
-                      <Link
-                        href={`/runs/${u.runId}`}
-                        className="hover:text-foreground underline-offset-4 hover:underline"
-                      >
-                        View run
-                      </Link>
-                    </>
-                  ) : null}
-                  {u.signalIds.length > 0 ? (
-                    <>
-                      <span className="opacity-40">·</span>
-                      <span className="tabular-nums">
-                        {u.signalIds.length} signal
-                        {u.signalIds.length === 1 ? "" : "s"}
-                      </span>
-                    </>
-                  ) : null}
-                  {u.positionAtTime ? (
-                    <>
-                      <span className="opacity-40">·</span>
-                      <span className="tabular-nums">
-                        {u.positionAtTime.qty} sh @{" "}
-                        {fmtUsd(u.positionAtTime.avgCost)}
-                      </span>
-                      {u.positionAtTime.unrealizedPnL != null ? (
-                        <span
-                          className={cn(
-                            "tabular-nums",
-                            u.positionAtTime.unrealizedPnL >= 0
-                              ? "text-emerald-500"
-                              : "text-red-500",
-                          )}
-                        >
-                          ({u.positionAtTime.unrealizedPnL >= 0 ? "+" : ""}
-                          {fmtUsd(u.positionAtTime.unrealizedPnL)})
-                        </span>
+                {/* ── Body ──────────────────────────────────────────── */}
+                <div className={cn("flex-1 min-w-0 space-y-1", !isLast && "pb-4")}>
+                  {/* Top row: Price (left) · Date (right) */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium tabular-nums flex items-center gap-1">
+                      {fmtUsd(u.priceAtTime)}
+                      {delta != null && delta !== 0 ? (
+                        delta > 0 ? (
+                          <ArrowUp className="h-3.5 w-3.5 text-emerald-500" />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5 text-red-500" />
+                        )
                       ) : null}
-                    </>
+                    </span>
+                    <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                      {fmtDateTime(u.timestamp)}
+                    </span>
+                  </div>
+
+                  {/* Summary (heading) */}
+                  <p className="text-sm font-medium leading-snug">
+                    {u.summary}
+                  </p>
+
+                  {/* Rationale (description) */}
+                  {u.rationale ? (
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {u.rationale}
+                    </p>
                   ) : null}
+
+                  {/* Footer: Type · View run · Signals */}
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                    <span>{typeLabel(u.type)}</span>
+                    {u.runId ? (
+                      <>
+                        <span className="opacity-40">·</span>
+                        <Link
+                          href={`/runs/${u.runId}`}
+                          className="hover:text-foreground underline-offset-4 hover:underline"
+                        >
+                          View run
+                        </Link>
+                      </>
+                    ) : null}
+                    {u.signalIds.length > 0 ? (
+                      <>
+                        <span className="opacity-40">·</span>
+                        <span className="tabular-nums">
+                          {u.signalIds.length} signal
+                          {u.signalIds.length === 1 ? "" : "s"}
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             );

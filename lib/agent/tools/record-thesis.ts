@@ -619,6 +619,9 @@ export const recordThesis = defineTool({
                 status: { from: "ACTIVE", to: "INVALIDATED" },
               },
               runId: ctx.runId,
+              // Same moment as the new thesis — capture current price so
+              // the parent's terminal-state row carries context.
+              priceAtTime: args.entry_price ?? null,
             });
           } else {
             await prisma.thesis.update({
@@ -634,6 +637,7 @@ export const recordThesis = defineTool({
                 status: { from: "ACTIVE", to: "SUPERSEDED" },
               },
               runId: ctx.runId,
+              priceAtTime: args.entry_price ?? null,
             });
           }
         } catch (parentErr) {
