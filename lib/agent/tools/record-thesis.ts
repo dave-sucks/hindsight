@@ -432,22 +432,49 @@ export const recordThesis = defineTool({
         nextReviewAt,
       };
 
-      // Auto-SUPERSEDE: find any existing ACTIVE thesis for this ticker+analyst.
-      // This fires even when parent_thesis_id wasn't passed — e.g. agent re-researches a holding.
+      // ── Same-direction guard ────────────────────────────────────────
+      // The durable model is ONE Thesis row per (analyst, ticker, direction)
+      // evolving over time via update_thesis. record_thesis is reserved for:
+      //   1. New coverage (no existing thesis on this ticker), OR
+      //   2. Direction flips (LONG → SHORT, PASS → LONG, etc.), OR
+      //   3. Replacing a previously INVALIDATED/CLOSED thesis with a
+      //      fundamentally new belief.
+      //
+      // If an ACTIVE same-direction thesis already exists, reject and tell
+      // the agent to use update_thesis instead. Without this guard, every
+      // morning run on a held name would auto-supersede yesterday's row and
+      // mint a fresh chain — exactly the chained-replacement pattern we're
+      // moving away from.
       let resolvedParentId = args.parent_thesis_id ?? null;
       if (!resolvedParentId && args.direction !== "PASS" && ctx.analystId) {
         try {
           const existingThesis = await prisma.thesis.findFirst({
             where: {
               ticker: args.ticker,
-              status: "ACTIVE",
+              status: { in: ["ACTIVE", "WATCHING"] },
               direction: { not: "PASS" },
               researchRun: { agentConfigId: ctx.analystId },
             },
             orderBy: { createdAt: "desc" },
-            select: { id: true },
+            select: { id: true, direction: true, status: true },
           });
           if (existingThesis) {
+            if (existingThesis.direction === args.direction) {
+              // Same-direction reject. The agent should be calling
+              // update_thesis here.
+              return {
+                summary: `Thesis rejected for ${args.ticker}: an active ${existingThesis.direction} thesis already exists.`,
+                data: {
+                  thesis_id: null,
+                  status: "FAILED" as const,
+                  existing_thesis_id: existingThesis.id,
+                  note: `An active ${existingThesis.direction} thesis already exists for ${args.ticker} (id ${existingThesis.id}). To refine it — change the target, tighten the stop, update the rationale — call update_thesis with thesis_id="${existingThesis.id}" and only the fields you're changing, plus a rationale string. Use record_thesis ONLY for new coverage or direction flips (e.g. LONG → SHORT). Re-running record_thesis on existing coverage chains a fresh thesis row and breaks the durable timeline.`,
+                },
+                sources: [],
+              };
+            }
+            // Direction flip — allow the chain. Parent gets INVALIDATED on
+            // PASS or SUPERSEDED otherwise (existing logic below).
             resolvedParentId = existingThesis.id;
           }
         } catch { /* non-fatal */ }

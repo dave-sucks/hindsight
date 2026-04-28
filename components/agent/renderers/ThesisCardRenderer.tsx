@@ -87,6 +87,10 @@ export function ThesisCardRenderer({ toolCallId, loading }: Props) {
       if (!display.ticker || !display.direction) return null;
 
       return {
+        // Persisted id from record_thesis result envelope. Drives the
+        // Activity timeline section inside ThesisSheet — when present,
+        // the sheet fetches /api/theses/:id/updates and renders the log.
+        thesis_id: resultData.thesis_id as string | undefined,
         ticker: display.ticker as string,
         direction: display.direction as "LONG" | "SHORT" | "PASS",
         confidence_score: (display.confidence_score as number) ?? (display.confidenceScore as number) ?? 0,

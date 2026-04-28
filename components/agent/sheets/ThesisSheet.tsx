@@ -30,6 +30,7 @@ import { StockLogo } from "@/components/StockLogo";
 import { TickBar, PriceGauge, type Tick } from "@/components/ui/gauge";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import type { SourceChipData } from "@/components/chat/SourceChip";
+import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
 
@@ -45,6 +46,12 @@ export type FundamentalsData = {
 };
 
 export type ThesisCardData = {
+  /**
+   * Persisted Thesis row id. Optional because agent runs render the card
+   * inline before the row commits. When present, the sheet shows the
+   * Activity timeline section by fetching ThesisUpdate rows.
+   */
+  thesis_id?: string;
   ticker: string;
   direction: "LONG" | "SHORT" | "PASS";
   confidence_score: number;
@@ -61,7 +68,7 @@ export type ThesisCardData = {
   company_name?: string | null;
   exchange?: string | null;
   fundamentals?: FundamentalsData | null;
-  status?: "ACTIVE" | "INVALIDATED" | "CLOSED" | "SUPERSEDED";
+  status?: "ACTIVE" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "WATCHING";
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -274,6 +281,8 @@ function FundamentalsContent({ fundamentals }: { fundamentals: FundamentalsData 
 // ─── ThesisSheetBody ──────────────────────────────────────────────────────────
 
 export interface ThesisSheetBodyProps {
+  /** Persisted Thesis id. When supplied, the Activity timeline renders. */
+  thesis_id?: string;
   ticker: string;
   direction: "LONG" | "SHORT" | "PASS";
   confidence_score: number;
@@ -292,6 +301,7 @@ export interface ThesisSheetBodyProps {
 }
 
 export function ThesisSheetBody({
+  thesis_id,
   ticker,
   direction,
   confidence_score,
@@ -414,6 +424,14 @@ export function ThesisSheetBody({
           ))}
         </div>
       )}
+
+      {/* ── Activity timeline ─────────────────────────────────── */}
+      {/* Renders only when we have a persisted thesis id. Agent-run inline
+          theses don't pass one — the row commits async, so we'd have
+          nothing to fetch. Once the row exists, every other surface
+          (run detail, trades page, stocks page) passes thesis_id and the
+          timeline appears. */}
+      {thesis_id ? <ThesisTimelineSection thesisId={thesis_id} /> : null}
     </div>
   );
 }
@@ -435,6 +453,7 @@ export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
           <SheetTitle className="sr-only">{displayName} Thesis</SheetTitle>
         </SheetHeader>
         <ThesisSheetBody
+          thesis_id={data.thesis_id}
           ticker={data.ticker}
           direction={data.direction}
           confidence_score={data.confidence_score}
