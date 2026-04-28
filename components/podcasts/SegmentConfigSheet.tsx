@@ -31,11 +31,35 @@ import {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  segment: SegmentSummary;
+  /**
+   * The segment to edit. Pass `null` when nothing is selected — the Sheet
+   * stays mounted (so its open transition fires correctly) but renders
+   * with an empty body. The user-facing flow is: parent sets segment +
+   * sets open=true together; we read both off props.
+   */
+  segment: SegmentSummary | null;
 }
 
 export function SegmentConfigSheet({ open, onOpenChange, segment }: Props) {
   const [, startTransition] = useTransition();
+
+  // Empty Sheet shell when no segment selected. Stays mounted from page
+  // load so the open transition animates when the user clicks Settings.
+  if (!segment) {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          side="right"
+          className="w-[420px] sm:max-w-[420px] flex flex-col p-0"
+        >
+          <SheetHeader className="shrink-0 px-3 pt-3">
+            <SheetTitle className="text-sm font-semibold">Configuration</SheetTitle>
+            <SheetDescription className="text-xs">No segment selected.</SheetDescription>
+          </SheetHeader>
+        </SheetContent>
+      </Sheet>
+    );
+  }
 
   const values: SegmentFormValues = {
     name: segment.name,

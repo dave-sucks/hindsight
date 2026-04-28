@@ -83,7 +83,8 @@ function SegmentCard({
   onOpenSettings,
 }: {
   segment: SegmentSummary;
-  onOpenSettings: (segment: SegmentSummary) => void;
+  /** Receives the segment id so the parent can resolve fresh data after refetch. */
+  onOpenSettings: (segmentId: string) => void;
 }) {
   const router = useRouter();
   const [isStarting, startStarting] = useTransition();
@@ -137,7 +138,7 @@ function SegmentCard({
                 <Play className="h-3.5 w-3.5" />
                 {isStarting ? "Starting…" : "Run segment"}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onOpenSettings(segment)}>
+              <DropdownMenuItem onSelect={() => onOpenSettings(segment.id)}>
                 <Settings2 className="h-3.5 w-3.5" />
                 Settings
               </DropdownMenuItem>
@@ -199,9 +200,18 @@ export default function PodcastDetailClient({
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [runAllPending, startRunAll] = useTransition();
   // The settings sheet is launched per-segment from a card's 3-dot menu.
-  // Holding the segment in state (not just an id) keeps the sheet's input
-  // shape simple — segments are already loaded in detail.
-  const [activeSegment, setActiveSegment] = useState<SegmentSummary | null>(null);
+  // We track the active segment's id (not the object) so a refetch that
+  // mutates detail.segments still resolves to the latest data via the
+  // useMemo below. The Sheet itself is always mounted — see its props
+  // at the bottom of this component.
+  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
+  const activeSegment = useMemo(
+    () =>
+      activeSegmentId
+        ? detail.segments.find((s) => s.id === activeSegmentId) ?? null
+        : null,
+    [activeSegmentId, detail.segments],
+  );
 
   const segmentCount = detail.segments.length;
   const transcriptCount = detail.segments.reduce(
@@ -336,7 +346,7 @@ export default function PodcastDetailClient({
                     <SegmentCard
                       key={s.id}
                       segment={s}
-                      onOpenSettings={setActiveSegment}
+                      onOpenSettings={setActiveSegmentId}
                     />
                   ))}
                 </div>
@@ -401,14 +411,17 @@ export default function PodcastDetailClient({
         detail={detail}
       />
 
-      {/* Per-segment settings sheet (card 3-dot menu) */}
-      {activeSegment && (
-        <SegmentConfigSheet
-          open={!!activeSegment}
-          onOpenChange={(open) => !open && setActiveSegment(null)}
-          segment={activeSegment}
-        />
-      )}
+      {/* Per-segment settings sheet (card 3-dot menu).
+          Always mounted so the Sheet's open animation fires correctly when
+          the user toggles `open` from false to true. When no segment is
+          selected the Sheet renders with an empty body but stays closed. */}
+      <SegmentConfigSheet
+        open={!!activeSegmentId}
+        onOpenChange={(open) => {
+          if (!open) setActiveSegmentId(null);
+        }}
+        segment={activeSegment}
+      />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-[420px]">
