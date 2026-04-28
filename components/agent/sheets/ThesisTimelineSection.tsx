@@ -1,32 +1,31 @@
 "use client";
 
 /**
- * ThesisTimelineSection — activity log block embedded inside ThesisSheet.
+ * ThesisTimelineSection — durable activity log embedded inside ThesisSheet.
  *
- * Lazy-fetches /api/theses/:id/updates when mounted. Renders the
- * timeline as a vertical rail (newest first) with diff lines, price /
- * position context at the time, and chips linking to signals + run.
+ * Lazy-fetches /api/theses/:id/updates when mounted. Renders the timeline
+ * newest-first as a flat list of CoT-style entries (no rail, no big icon
+ * column).
+ *
+ * Per-entry layout:
+ *   [price + arrow]                                           [tiny dot]
+ *   <heading>
+ *   <description>
+ *   TYPE · View run · N signals
+ *
+ * The arrow on the price compares to the next-older entry's
+ * priceAtTime — so reading top-down you see what direction the stock has
+ * moved between thesis touches.
  *
  * Designed to slot into the existing sheet without disrupting layout —
- * just append `<ThesisTimelineSection thesisId={id} />` after the
- * Signal types block. Skips itself if no thesisId is supplied (e.g. the
- * inline render of a thesis from an agent run before persistence).
+ * just append `<ThesisTimelineSection thesisId={id} />`. Skips itself if
+ * thesisId isn't supplied (agent-run inline render before persistence).
  */
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
+import { ArrowDown, ArrowUp, DotIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  CheckCircle2,
-  Clock,
-  Eye,
-  Pencil,
-  Plus,
-  Trash2,
-  XCircle,
-  Zap,
-} from "lucide-react";
 
 interface ThesisUpdate {
   id: string;
@@ -52,69 +51,10 @@ function fmtUsd(v: number | null | undefined): string {
   return `$${v.toFixed(2)}`;
 }
 
-function fmtDateTime(d: string): string {
-  return new Date(d).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function UpdateIcon({ type }: { type: string }) {
-  switch (type) {
-    case "CREATED":
-      return <Plus className="h-3.5 w-3.5" />;
-    case "UPDATED":
-      return <Pencil className="h-3.5 w-3.5" />;
-    case "TRIGGER_FIRED":
-      return <Zap className="h-3.5 w-3.5 text-amber-500" />;
-    case "REVIEWED":
-      return <Eye className="h-3.5 w-3.5 text-muted-foreground" />;
-    case "ACTED":
-      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />;
-    case "INVALIDATED":
-      return <XCircle className="h-3.5 w-3.5 text-red-500" />;
-    case "CLOSED":
-      return <CheckCircle2 className="h-3.5 w-3.5" />;
-    case "SUPERSEDED":
-      return <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />;
-    default:
-      return <Clock className="h-3.5 w-3.5" />;
-  }
-}
-
-function FieldChangeLine({
-  field,
-  change,
-}: {
-  field: string;
-  change: { from: unknown; to: unknown };
-}) {
-  const renderVal = (v: unknown): string => {
-    if (v == null) return "—";
-    if (typeof v === "number") return v.toString();
-    if (typeof v === "string") return v;
-    if (Array.isArray(v)) return `[${v.length}]`;
-    return "(object)";
-  };
-  const isArray = Array.isArray(change.from) || Array.isArray(change.to);
-  const label = field
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, (s) => s.toUpperCase());
-  if (isArray) {
-    return (
-      <div className="text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{label}:</span> updated
-      </div>
-    );
-  }
-  return (
-    <div className="text-xs text-muted-foreground tabular-nums">
-      <span className="font-medium text-foreground">{label}:</span>{" "}
-      {renderVal(change.from)} → {renderVal(change.to)}
-    </div>
-  );
+function typeLabel(t: string): string {
+  // Lowercase except first letter — reads better as plain text than the
+  // SHOUTING-CASE the DB stores.
+  return t.charAt(0) + t.slice(1).toLowerCase().replace(/_/g, " ");
 }
 
 interface Props {
@@ -154,95 +94,89 @@ export function ThesisTimelineSection({ thesisId }: Props) {
       ) : updates.length === 0 ? (
         <p className="text-xs text-muted-foreground">No activity yet.</p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {updates.map((u, idx) => {
-            const fieldChanges =
-              u.fieldChanges && typeof u.fieldChanges === "object"
-                ? u.fieldChanges
-                : {};
+            // Compare to the next-older entry's price (we render newest-first,
+            // so "older" is the next index). Null on either side = no arrow.
+            const olderPrice = updates[idx + 1]?.priceAtTime ?? null;
+            const delta =
+              u.priceAtTime != null && olderPrice != null
+                ? u.priceAtTime - olderPrice
+                : null;
+
             return (
-              <div key={u.id} className="flex gap-3">
-                {/* Rail */}
-                <div className="flex flex-col items-center">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full border bg-background">
-                    <UpdateIcon type={u.type} />
+              <div key={u.id} className="space-y-1">
+                {/* ── Heading: price (left) + dot (right) ──────────────── */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium tabular-nums flex items-center gap-1">
+                    {fmtUsd(u.priceAtTime)}
+                    {delta != null && delta !== 0 ? (
+                      delta > 0 ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-emerald-500" />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5 text-red-500" />
+                      )
+                    ) : null}
+                  </span>
+                  <div className="size-4 shrink-0 flex items-center justify-center text-muted-foreground/60">
+                    <DotIcon className="size-5" />
                   </div>
-                  {idx < updates.length - 1 ? (
-                    <div className="w-px flex-1 bg-border" />
-                  ) : null}
                 </div>
-                {/* Body */}
-                <div className="flex-1 pb-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="outline" className="font-normal">
-                      {u.type}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {fmtDateTime(u.timestamp)}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm font-medium leading-snug">
-                    {u.summary}
+
+                {/* ── Summary (heading) ─────────────────────────────────── */}
+                <p className="text-sm font-medium leading-snug">{u.summary}</p>
+
+                {/* ── Rationale (description) ───────────────────────────── */}
+                {u.rationale ? (
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {u.rationale}
                   </p>
-                  {u.rationale ? (
-                    <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
-                      {u.rationale}
-                    </p>
+                ) : null}
+
+                {/* ── Footer: TYPE · View run · N signals ─────────────── */}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                  <span>{typeLabel(u.type)}</span>
+                  {u.runId ? (
+                    <>
+                      <span className="opacity-40">·</span>
+                      <Link
+                        href={`/runs/${u.runId}`}
+                        className="hover:text-foreground underline-offset-4 hover:underline"
+                      >
+                        View run
+                      </Link>
+                    </>
                   ) : null}
-                  {Object.keys(fieldChanges).length > 0 ? (
-                    <div className="mt-2 space-y-0.5">
-                      {Object.entries(fieldChanges).map(([field, ch]) => (
-                        <FieldChangeLine
-                          key={field}
-                          field={field}
-                          change={ch}
-                        />
-                      ))}
-                    </div>
+                  {u.signalIds.length > 0 ? (
+                    <>
+                      <span className="opacity-40">·</span>
+                      <span className="tabular-nums">
+                        {u.signalIds.length} signal
+                        {u.signalIds.length === 1 ? "" : "s"}
+                      </span>
+                    </>
                   ) : null}
-                  {(u.priceAtTime != null || u.positionAtTime) ? (
-                    <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground tabular-nums">
-                      {u.priceAtTime != null ? (
-                        <span>Price {fmtUsd(u.priceAtTime)}</span>
-                      ) : null}
-                      {u.positionAtTime ? (
-                        <span>
-                          {u.positionAtTime.qty} sh @{" "}
-                          {fmtUsd(u.positionAtTime.avgCost)}
-                          {u.positionAtTime.unrealizedPnL != null ? (
-                            <span
-                              className={cn(
-                                u.positionAtTime.unrealizedPnL >= 0
-                                  ? "text-emerald-500"
-                                  : "text-red-500",
-                                "ml-1",
-                              )}
-                            >
-                              ({u.positionAtTime.unrealizedPnL >= 0 ? "+" : ""}
-                              {fmtUsd(u.positionAtTime.unrealizedPnL)})
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {u.runId || u.signalIds.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {u.runId ? (
-                        <Link
-                          href={`/runs/${u.runId}`}
-                          className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                  {u.positionAtTime ? (
+                    <>
+                      <span className="opacity-40">·</span>
+                      <span className="tabular-nums">
+                        {u.positionAtTime.qty} sh @{" "}
+                        {fmtUsd(u.positionAtTime.avgCost)}
+                      </span>
+                      {u.positionAtTime.unrealizedPnL != null ? (
+                        <span
+                          className={cn(
+                            "tabular-nums",
+                            u.positionAtTime.unrealizedPnL >= 0
+                              ? "text-emerald-500"
+                              : "text-red-500",
+                          )}
                         >
-                          run {u.runId.slice(-6)}
-                        </Link>
-                      ) : null}
-                      {u.signalIds.length > 0 ? (
-                        <span className="text-xs text-muted-foreground">
-                          · {u.signalIds.length} signal
-                          {u.signalIds.length === 1 ? "" : "s"}
+                          ({u.positionAtTime.unrealizedPnL >= 0 ? "+" : ""}
+                          {fmtUsd(u.positionAtTime.unrealizedPnL)})
                         </span>
                       ) : null}
-                    </div>
+                    </>
                   ) : null}
                 </div>
               </div>
