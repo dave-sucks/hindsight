@@ -57,15 +57,24 @@ Categories:
 
 ### Components
 
+All components below mirror the analyst surface 1:1. Podcast detail =
+analyst detail layout (3-col grid, header pattern, ChipTabs-style tabs,
+right rail, floating composer, config sheet). Segment detail uses the
+same scaffold. Settings sheets reuse the analyst form primitives
+(`Section`, `FieldGroup`, `RowLabel`, `EnumChipsCombobox`,
+`FreeTextChipsCombobox`, `GHOST_INPUT`) — those are exported from
+`AnalystConfigForm.tsx` so this surface stays byte-identical to the
+analyst surface in look and feel.
+
 | File | Notes |
 |------|-------|
 | `components/podcasts/PodcastsPageClient.tsx` | Top-level list grid + new-podcast empty state. |
-| `components/podcasts/PodcastBuilderClient.tsx` | Builder split layout (chat on left, suggested config on right). |
-| `components/podcasts/PodcastDetailClient.tsx` | Tabbed podcast detail. |
-| `components/podcasts/SegmentDetailClient.tsx` | Segment detail w/ Run button, run history, transcripts. |
-| `components/podcasts/SegmentMonitorEditor.tsx` | Add/remove monitors on a segment. Reuses Monitor model. |
-| `components/podcasts/SegmentTranscriptCard.tsx` | Renders a transcript with citations + (Phase 2) audio player. |
-| `components/podcasts/PodcastConfigPreview.tsx` | Right-side panel in builder showing suggested podcast + segments before confirm. |
+| `components/podcasts/PodcastDetailClient.tsx` | Mirror of `AnalystDetailClient`: 3-col grid, header with stats, tabs (Segments / Episodes / Settings), right-rail with quick-run + recent transcripts, floating composer, `PodcastConfigSheet`. |
+| `components/podcasts/PodcastConfigSheet.tsx` | Mirror of `AnalystConfigSheet` for podcast-level metadata (name, description, host style, cadence, voice). Reuses `Section` / `FieldGroup` / `RowLabel`. |
+| `components/podcasts/SegmentDetailClient.tsx` | Mirror of `AnalystDetailClient` for segments: same 3-col scaffold, breadcrumb + name + stats header, tabs (Snapshot / Transcripts / Runs), right-rail with run history + monitors, `SegmentConfigSheet`. |
+| `components/podcasts/SegmentConfigForm.tsx` | Segment analog of `AnalystConfigForm` with the same Brief / Monitors / Settings tab structure. Imports primitives directly from `AnalystConfigForm` so the visual language is identical. Monitors tab manages segment search-monitors inline. |
+| `components/podcasts/SegmentConfigSheet.tsx` | Mirror of `AnalystConfigSheet` — wraps `SegmentConfigForm` in a Sheet, pipes per-field saves to `updateSegment` / `addSegmentMonitor` / `removeSegmentMonitor`. |
+| `components/podcasts/PodcastConfigPreview.tsx` | Mirror of `AnalystConfigPanel`: same Silk intro + bordered shell + tabs (Brief / Segments / Settings) + bottom Confirm CTA. The right-side panel of `/podcasts/new`. |
 
 ### Phase 2/3/4 placeholders (NOT in this PR)
 
@@ -103,11 +112,13 @@ Categories:
 
 | File | Notes |
 |------|-------|
-| `components/agent/AgentChat.tsx` | **Extended.** Two new modes routed; podcast builder gets its own welcome + composer features. |
+| `components/agent/AgentChat.tsx` | **Extended.** Two new modes routed; podcast builder gets its own welcome + composer features; podcast-segment-run mode renders a single Thread with podcast-flavored welcome. |
 | `components/agent/ToolCallGroup.tsx` | Reused as-is. |
-| `components/agent/ToolCallRow.tsx` | Reused as-is. New tools render via `ToolUIRenderer`. |
+| `components/agent/ToolCallRow.tsx` | **Extended.** Added the `podcast-config-preview` case dispatching to `PodcastConfigPreviewRenderer`. |
 | `components/agent/renderers/ToolUIRenderer.tsx` | Reused as-is. |
-| `components/agent/renderers/AskQuestionRenderer.tsx` | Reused as-is. |
+| `components/agent/renderers/AskQuestionRenderer.tsx` | Reused as-is. Used by podcast builder via `ask_question`. |
+| `components/agent/renderers/PodcastConfigPreviewRenderer.tsx` | **PODCAST-NEW.** Inline summary card for `suggest_podcast_config` results + opens the side panel via `onPodcastConfigSuggested`. |
+| `components/analysts/AnalystConfigForm.tsx` | **Shared primitives now exported** (`Section`, `FieldGroup`, `RowLabel`, `EmptyHint`, `GHOST_INPUT`, `EnumChipsCombobox`, `FreeTextChipsCombobox`). Reused by `SegmentConfigForm`, `SegmentConfigSheet`, `PodcastConfigSheet`, and `PodcastConfigPreview` so podcast UI shares the analyst form's exact visual language. |
 | `components/Sidebar.tsx` | **Extended.** Added "Podcasts" entry to `MAIN_NAV`. |
 
 ### Database (existing tables, podcast adds 1 nullable FK)

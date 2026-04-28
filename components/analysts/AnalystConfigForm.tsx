@@ -672,8 +672,11 @@ function SettingsTab({
 }
 
 // ─── Shared building blocks ──────────────────────────────────────────────────
+// Exported so podcast / segment config forms can reuse the EXACT same visual
+// language. Don't fork these. If you need a new variant, add a prop here and
+// share it across analyst + podcast surfaces.
 
-function Section({
+export function Section({
   label,
   tooltip,
   children,
@@ -700,7 +703,7 @@ function Section({
   );
 }
 
-function FieldGroup({
+export function FieldGroup({
   label,
   tooltip,
   action,
@@ -729,7 +732,7 @@ function FieldGroup({
 
 // Single label component shared by Trading-rules rows and Universe field groups
 // so they read at the same size/weight.
-function RowLabel({ label, tooltip }: { label: string; tooltip?: React.ReactNode }) {
+export function RowLabel({ label, tooltip }: { label: string; tooltip?: React.ReactNode }) {
   return (
     <span className="text-sm text-muted-foreground flex items-center gap-1">
       {label}
@@ -748,10 +751,10 @@ function RowLabel({ label, tooltip }: { label: string; tooltip?: React.ReactNode
 // Ghost input override: no border/bg until hover/focus. The user explicitly
 // granted this exception — keep the className local so the shadcn Input
 // primitive itself stays untouched.
-const GHOST_INPUT =
+export const GHOST_INPUT =
   "border-transparent bg-transparent shadow-none dark:bg-transparent hover:bg-accent/50 hover:border-input focus-visible:bg-background focus-visible:border-ring";
 
-function EmptyHint({ children }: { children: React.ReactNode }) {
+export function EmptyHint({ children }: { children: React.ReactNode }) {
   return <p className="text-xs text-muted-foreground/60">{children}</p>;
 }
 
@@ -812,6 +815,8 @@ function EnumChipsCombobox({
     </Combobox>
   );
 }
+
+export { EnumChipsCombobox, FreeTextChipsCombobox };
 
 function FreeTextChipsCombobox({
   values,
