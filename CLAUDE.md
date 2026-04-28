@@ -448,6 +448,9 @@ it with a ticker chip as if it were a traded security.
 - Morning brief tool UI shows counts but not full briefing content
 - python-service/ directory still in repo (archived, not deployed)
 
+## Active multi-PR plans
+- **docs/THESIS_ARCHITECTURE_PLAN.md** — Thesis-driven analyst architecture. PR 1 merged (durable thesis state + activity log + tools). PR 2 (trigger evaluator + tactical mode) and PR 3 (housekeeping + discovery + watchlist collapse) not yet started. **A fresh session picking up PR 2 or PR 3 should read this doc top to bottom.**
+
 ## Key Files
 ### Agent System
 - lib/agent/tools/ — 19 individual tool files, each using defineTool()
