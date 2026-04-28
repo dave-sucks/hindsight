@@ -28,6 +28,12 @@ export interface PodcastListItem {
   createdAt: Date;
 }
 
+export interface SegmentMonitorView {
+  id: string;
+  name: string;
+  query: string;
+}
+
 export interface SegmentSummary {
   id: string;
   name: string;
@@ -42,7 +48,10 @@ export interface SegmentSummary {
   lastRunAt: Date | null;
   lastTranscriptTitle: string | null;
   transcriptCount: number;
-  monitorCount: number;
+  // Monitors are carried inline so the per-segment settings sheet can open
+  // without a second round-trip. The sheet only needs id/name/query —
+  // additional Monitor fields stay on the row but aren't surfaced here.
+  monitors: SegmentMonitorView[];
 }
 
 export interface PodcastDetail {
@@ -71,29 +80,10 @@ export interface SegmentRunRow {
   citationCount: number;
 }
 
-export interface SegmentDetail {
-  id: string;
-  podcastId: string;
-  podcastName: string;
-  name: string;
-  description: string | null;
-  segmentPrompt: string;
-  targetSeconds: number;
-  topics: string[];
-  sources: string[];
-  excludeTopics: string[];
-  enabled: boolean;
-  orderIndex: number;
-  monitors: Array<{
-    id: string;
-    name: string;
-    type: string;
-    method: string;
-    config: unknown;
-    enabled: boolean;
-  }>;
-  runs: SegmentRunRow[];
-}
+// Removed: SegmentDetail / getSegmentDetail.
+// Segments don't have a dedicated page — they live as rows on the podcast
+// detail page. The SegmentConfigSheet operates on SegmentSummary (carried
+// inline by getPodcastDetail) so editing is zero-fetch.
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -162,7 +152,10 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
       segments: {
         orderBy: { orderIndex: "asc" },
         include: {
-          monitors: { select: { id: true } },
+          monitors: {
+            select: { id: true, name: true, config: true },
+            orderBy: { createdAt: "asc" },
+          },
           transcripts: {
             orderBy: { createdAt: "desc" },
             select: { id: true, title: true, createdAt: true },
@@ -192,7 +185,10 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
     lastRunAt: s.runs[0]?.startedAt ?? null,
     lastTranscriptTitle: s.transcripts[0]?.title ?? null,
     transcriptCount: s.transcripts.length,
-    monitorCount: s.monitors.length,
+    monitors: s.monitors.map((m) => {
+      const cfg = (m.config as { query?: string } | null) ?? {};
+      return { id: m.id, name: m.name, query: cfg.query ?? "" };
+    }),
   }));
 
   return {
@@ -208,68 +204,6 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
     createdAt: podcast.createdAt,
     updatedAt: podcast.updatedAt,
     segments,
-  };
-}
-
-export async function getSegmentDetail(segmentId: string): Promise<SegmentDetail | null> {
-  const user = await requireUser();
-  const seg = await prisma.podcastSegment.findFirst({
-    where: { id: segmentId, userId: user.id },
-    include: {
-      podcast: { select: { id: true, name: true } },
-      monitors: {
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          name: true,
-          type: true,
-          method: true,
-          config: true,
-          enabled: true,
-        },
-      },
-      runs: {
-        orderBy: { startedAt: "desc" },
-        take: 25,
-        include: {
-          segmentTranscript: {
-            select: { id: true, title: true, durationSec: true, citations: true },
-          },
-        },
-      },
-    },
-  });
-  if (!seg) return null;
-
-  const runs: SegmentRunRow[] = seg.runs.map((r) => ({
-    id: r.id,
-    status: r.status,
-    startedAt: r.startedAt,
-    completedAt: r.completedAt,
-    transcriptId: r.segmentTranscript?.id ?? null,
-    transcriptTitle: r.segmentTranscript?.title ?? null,
-    durationSec: r.segmentTranscript?.durationSec ?? null,
-    citationCount:
-      r.segmentTranscript && Array.isArray(r.segmentTranscript.citations)
-        ? (r.segmentTranscript.citations as unknown[]).length
-        : 0,
-  }));
-
-  return {
-    id: seg.id,
-    podcastId: seg.podcastId,
-    podcastName: seg.podcast.name,
-    name: seg.name,
-    description: seg.description,
-    segmentPrompt: seg.segmentPrompt,
-    targetSeconds: seg.targetSeconds,
-    topics: seg.topics,
-    sources: seg.sources,
-    excludeTopics: seg.excludeTopics,
-    enabled: seg.enabled,
-    orderIndex: seg.orderIndex,
-    monitors: seg.monitors,
-    runs,
   };
 }
 

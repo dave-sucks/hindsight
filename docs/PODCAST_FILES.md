@@ -52,8 +52,7 @@ Categories:
 | `app/(root)/podcasts/page.tsx` | Podcast list page. |
 | `app/(root)/podcasts/new/page.tsx` | New-podcast builder route. |
 | `app/(root)/podcasts/new/client.tsx` | Builder client (mirrors `app/(root)/analysts/new/client.tsx`). |
-| `app/(root)/podcasts/[id]/page.tsx` | Podcast detail (Segments / Episodes / Settings tabs). |
-| `app/(root)/podcasts/[id]/segments/[segmentId]/page.tsx` | Segment detail (Runs / Transcripts / Monitors). |
+| `app/(root)/podcasts/[id]/page.tsx` | Podcast detail. Segments live as cards on this page (no separate segment route); the per-segment settings sheet handles all editing. |
 
 ### Components
 
@@ -71,9 +70,8 @@ analyst surface in look and feel.
 | `components/podcasts/PodcastsPageClient.tsx` | Top-level list grid + new-podcast empty state. |
 | `components/podcasts/PodcastDetailClient.tsx` | Mirror of `AnalystDetailClient`: 3-col grid, header with stats, tabs (Segments / Episodes / Settings), right-rail with quick-run + recent transcripts, floating composer, `PodcastConfigSheet`. |
 | `components/podcasts/PodcastConfigSheet.tsx` | Mirror of `AnalystConfigSheet` for podcast-level metadata (name, description, host style, cadence, voice). Reuses `Section` / `FieldGroup` / `RowLabel`. |
-| `components/podcasts/SegmentDetailClient.tsx` | Mirror of `AnalystDetailClient` for segments: same 3-col scaffold, breadcrumb + name + stats header, tabs (Snapshot / Transcripts / Runs), right-rail with run history + monitors, `SegmentConfigSheet`. |
 | `components/podcasts/SegmentConfigForm.tsx` | Segment analog of `AnalystConfigForm` with the same Brief / Monitors / Settings tab structure. Imports primitives directly from `AnalystConfigForm` so the visual language is identical. Monitors tab manages segment search-monitors inline. |
-| `components/podcasts/SegmentConfigSheet.tsx` | Mirror of `AnalystConfigSheet` — wraps `SegmentConfigForm` in a Sheet, pipes per-field saves to `updateSegment` / `addSegmentMonitor` / `removeSegmentMonitor`. |
+| `components/podcasts/SegmentConfigSheet.tsx` | Mirror of `AnalystConfigSheet` — wraps `SegmentConfigForm` in a Sheet, pipes per-field saves to `updateSegment` / `addSegmentMonitor` / `removeSegmentMonitor`. Takes a `SegmentSummary` (carried inline by `getPodcastDetail`) so opening it is zero-fetch. There is no per-segment page — the sheet IS the segment editor. |
 | `components/podcasts/PodcastConfigPreview.tsx` | Mirror of `AnalystConfigPanel`: same Silk intro + bordered shell + tabs (Brief / Segments / Settings) + bottom Confirm CTA. The right-side panel of `/podcasts/new`. |
 
 ### Phase 2/3/4 placeholders (NOT in this PR)

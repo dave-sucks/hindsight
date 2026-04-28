@@ -3,18 +3,23 @@
 /**
  * PodcastDetailClient — mirror of AnalystDetailClient.
  *
- * Same 3-col layout, same header style, same Tabs primitives, same
- * right-rail rhythm, same floating composer pattern, same config sheet
- * pattern. Different content because podcasts aren't trading analysts.
+ * Same 3-col layout, same header style, same Tabs primitives. Segments
+ * live as rows on this page using the analyst-card pattern: each segment
+ * is a Card with a 3-dot dropdown carrying Run / Settings actions. There
+ * is no per-segment page; the SegmentConfigSheet handles all editing.
+ *
+ * Transcripts are surfaced separately at the podcast level (Episodes
+ * tab — Phase 3 will consolidate them into listenable episodes).
  */
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Tabs,
   TabsList,
@@ -40,13 +45,11 @@ import {
   EllipsisVertical,
   FileText,
   Loader2,
-  Mic,
-  Pencil,
+  MoreHorizontal,
   Play,
   Settings2,
   Trash2,
 } from "lucide-react";
-import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { cn } from "@/lib/utils";
 import {
@@ -56,12 +59,13 @@ import {
   type SegmentSummary,
 } from "@/lib/actions/podcast.actions";
 import { PodcastConfigSheet } from "./PodcastConfigSheet";
+import { SegmentConfigSheet } from "./SegmentConfigSheet";
 
-function formatRelativeDays(date: Date | null): string {
+function formatRelative(date: Date | null): string {
   if (!date) return "Never run";
   const ms = Date.now() - new Date(date).getTime();
-  const days = Math.floor(ms / 86400000);
   const hours = Math.floor(ms / 3600000);
+  const days = Math.floor(ms / 86400000);
   if (hours < 1) return "Just now";
   if (hours < 24) return `${hours}h ago`;
   if (days === 1) return "Yesterday";
@@ -69,26 +73,23 @@ function formatRelativeDays(date: Date | null): string {
   return new Date(date).toLocaleDateString();
 }
 
-// ── Right-rail segment row ──────────────────────────────────────────────────
-// Matches the visual rhythm of the analyst page's TradeRow / WatchlistRow:
-// thin row, ticker-style logo on the left, name + meta in middle, action
-// on the right. No new Card wrappers — the rail container provides the
-// border, just like the trades list on the analyst page.
+// ── Segment card ────────────────────────────────────────────────────────────
+// Matches the analyst card visual rhythm from /components/analysts/AnalystsPageClient.tsx:
+// header row with badges + 3-dot dropdown, name, description, topics row,
+// bottom border-t section with last-run info.
 
-function SegmentRailRow({
-  podcastId,
+function SegmentCard({
   segment,
+  onOpenSettings,
 }: {
-  podcastId: string;
   segment: SegmentSummary;
+  onOpenSettings: (segment: SegmentSummary) => void;
 }) {
   const router = useRouter();
   const [isStarting, startStarting] = useTransition();
   const minutes = Math.round(segment.targetSeconds / 60);
 
-  const handleRun = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleRun = () => {
     startStarting(async () => {
       try {
         const { runId } = await runSegment(segment.id);
@@ -101,121 +102,91 @@ function SegmentRailRow({
   };
 
   return (
-    <Link
-      href={`/podcasts/${podcastId}/segments/${segment.id}`}
-      className="flex items-center gap-3 px-3 py-2.5 hover:bg-accent/50 transition-colors border-b last:border-0"
-    >
-      <div className="size-7 rounded-full bg-muted flex items-center justify-center shrink-0">
-        <Mic className="h-3.5 w-3.5 text-muted-foreground" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium truncate">{segment.name}</p>
-        <p className="text-[10px] text-muted-foreground truncate">
-          {segment.lastTranscriptTitle ?? `~${minutes}m · ${segment.transcriptCount} transcripts`}
-        </p>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
-          {formatRelativeDays(segment.lastRunAt)}
-        </span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={handleRun}
-          disabled={isStarting}
-          aria-label="Run segment"
-        >
-          {isStarting ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Play className="h-3.5 w-3.5" />
-          )}
-        </Button>
-      </div>
-    </Link>
-  );
-}
-
-// ── Segments tab body (full list) ──────────────────────────────────────────
-// Same visual language as the analyst page's positions list — full-width
-// rows separated by border-b, click-through to detail.
-
-function SegmentsList({
-  podcastId,
-  segments,
-}: {
-  podcastId: string;
-  segments: SegmentSummary[];
-}) {
-  if (segments.length === 0) {
-    return (
-      <div className="px-4 py-6">
-        <SkeletonCardStack
-          count={2}
-          title="No segments yet"
-          subtitle="Use the AI chat below to add a segment, or rebuild from the builder."
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full mx-auto px-4 py-6 space-y-2">
-      {segments.map((s) => (
-        <Link
-          key={s.id}
-          href={`/podcasts/${podcastId}/segments/${s.id}`}
-          className="block group"
-        >
-          <div className="flex items-start justify-between gap-3 rounded-md border p-3 hover:bg-accent/40 transition-colors">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-medium truncate">{s.name}</h3>
-                {!s.enabled && (
-                  <Badge variant="outline" className="text-[10px]">
-                    Disabled
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                {s.lastTranscriptTitle ?? s.description ?? "No runs yet"}
-              </p>
-              {s.topics.length > 0 && (
-                <p className="text-[10px] text-muted-foreground/80 mt-1 truncate">
-                  {s.topics.slice(0, 5).join(" · ")}
-                </p>
-              )}
-            </div>
-            <div className="text-right text-xs text-muted-foreground tabular-nums shrink-0">
-              <div>~{Math.round(s.targetSeconds / 60)}m</div>
-              <div className="text-[10px]">{formatRelativeDays(s.lastRunAt)}</div>
-              <div className="text-[10px] text-muted-foreground/70">
-                {s.transcriptCount} transcript{s.transcriptCount === 1 ? "" : "s"}
-              </div>
-            </div>
+    <Card className="gap-0 overflow-hidden shadow-none py-0">
+      {/* Section 1: header, name, description */}
+      <div className="p-3 flex flex-col gap-2 min-w-0">
+        {/* Row 1: badges left · 3-dot right */}
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
+              ~{minutes}m
+            </span>
+            {segment.monitors.length > 0 && (
+              <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
+                {segment.monitors.length} monitor{segment.monitors.length === 1 ? "" : "s"}
+              </span>
+            )}
+            {!segment.enabled && (
+              <Badge variant="outline" className="text-[10px]">
+                Disabled
+              </Badge>
+            )}
           </div>
-        </Link>
-      ))}
-    </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground shrink-0"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onSelect={handleRun} disabled={isStarting}>
+                <Play className="h-3.5 w-3.5" />
+                {isStarting ? "Starting…" : "Run segment"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onOpenSettings(segment)}>
+                <Settings2 className="h-3.5 w-3.5" />
+                Settings
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Row 2: name */}
+        <h2 className="text-sm font-medium text-foreground leading-tight truncate">
+          {segment.name}
+        </h2>
+
+        {/* Row 3: description / brief preview */}
+        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
+          {segment.description ?? segment.segmentPrompt ?? (
+            <span className="text-muted-foreground/60 not-italic">No brief set</span>
+          )}
+        </p>
+
+        {/* Row 4: topics (optional) */}
+        {segment.topics.length > 0 && (
+          <p className="text-[11px] text-muted-foreground/80 truncate">
+            {segment.topics.slice(0, 6).join(" · ")}
+          </p>
+        )}
+      </div>
+
+      {/* Section 2: footer — last run + transcript count */}
+      <div className="border-t p-3 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
+        <span>
+          {segment.lastTranscriptTitle ? (
+            <span className="font-medium text-foreground line-clamp-1">
+              {segment.lastTranscriptTitle}
+            </span>
+          ) : (
+            <span>No runs yet</span>
+          )}
+        </span>
+        <span className="flex items-center gap-2 shrink-0 ml-3">
+          <span>{segment.transcriptCount} transcript{segment.transcriptCount === 1 ? "" : "s"}</span>
+          <span>·</span>
+          <span>{formatRelative(segment.lastRunAt)}</span>
+        </span>
+      </div>
+    </Card>
   );
 }
 
-// ── Floating composer (redirects to editor on send) ────────────────────────
-
-function FloatingPodcastComposer({ podcastId }: { podcastId: string }) {
-  return (
-    <ChatEntryComposer
-      targetUrl={`/podcasts/${podcastId}/edit`}
-      queryParam="message"
-      features={{
-        placeholder: "Ask a question or suggest changes to the show…",
-        slashCommands: true,
-      }}
-    />
-  );
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main component ──────────────────────────────────────────────────────────
 
 export default function PodcastDetailClient({
   detail,
@@ -227,15 +198,19 @@ export default function PodcastDetailClient({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [runAllPending, startRunAll] = useTransition();
+  // The settings sheet is launched per-segment from a card's 3-dot menu.
+  // Holding the segment in state (not just an id) keeps the sheet's input
+  // shape simple — segments are already loaded in detail.
+  const [activeSegment, setActiveSegment] = useState<SegmentSummary | null>(null);
 
   const segmentCount = detail.segments.length;
   const transcriptCount = detail.segments.reduce(
     (s, seg) => s + seg.transcriptCount,
     0,
   );
-  const monitorCount = detail.segments.reduce(
-    (s, seg) => s + seg.monitorCount,
-    0,
+  const monitorCount = useMemo(
+    () => detail.segments.reduce((s, seg) => s + seg.monitors.length, 0),
+    [detail.segments],
   );
 
   async function handleDelete() {
@@ -270,7 +245,7 @@ export default function PodcastDetailClient({
   return (
     <>
       <div className="lg:grid lg:grid-cols-3 h-[calc(100dvh-3rem)] overflow-y-auto lg:overflow-hidden">
-        {/* ── Left: Podcast briefing area ──────────────────────────────── */}
+        {/* ── Left: main column ──────────────────────────────────────── */}
         <div className="lg:col-span-2 lg:h-full flex flex-col lg:min-h-0">
           {/* Header — mirrors AnalystDetailClient header */}
           <div className="flex items-start justify-between gap-4 p-4">
@@ -312,10 +287,6 @@ export default function PodcastDetailClient({
                   }
                 />
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => router.push(`/podcasts/${detail.id}/edit`)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                    Edit
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setConfigOpen(true)}>
                     <Settings2 className="h-3.5 w-3.5" />
                     Settings
@@ -341,18 +312,35 @@ export default function PodcastDetailClient({
             </div>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs — main column body */}
           <Tabs defaultValue={0} className="flex-1 lg:min-h-0 lg:overflow-y-auto">
             <div className="px-4">
               <TabsList>
                 <TabsTrigger value={0}>Segments</TabsTrigger>
                 <TabsTrigger value={1}>Episodes</TabsTrigger>
-                <TabsTrigger value={2}>Settings</TabsTrigger>
               </TabsList>
             </div>
 
             <TabsContent value={0}>
-              <SegmentsList podcastId={detail.id} segments={detail.segments} />
+              {detail.segments.length === 0 ? (
+                <div className="px-4 py-6">
+                  <SkeletonCardStack
+                    count={2}
+                    title="No segments yet"
+                    subtitle="Use the AI builder to add a segment, or rebuild this podcast from /podcasts/new."
+                  />
+                </div>
+              ) : (
+                <div className="w-full mx-auto px-4 py-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {detail.segments.map((s) => (
+                    <SegmentCard
+                      key={s.id}
+                      segment={s}
+                      onOpenSettings={setActiveSegment}
+                    />
+                  ))}
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value={1}>
@@ -360,45 +348,11 @@ export default function PodcastDetailClient({
                 <SkeletonCardStack
                   count={2}
                   title="Episodes are Phase 3"
-                  subtitle="Once segments produce transcripts you'll be able to assemble them into a listenable episode here."
+                  subtitle="Once segments produce transcripts you'll be able to assemble them into a listenable episode here, with the full transcript consolidated per episode."
                 />
               </div>
             </TabsContent>
-
-            <TabsContent value={2}>
-              <div className="w-full mx-auto px-4 py-6 space-y-3">
-                <div className="rounded-md border p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Settings2 className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="text-sm font-medium">Show settings</h3>
-                  </div>
-                  <dl className="text-sm grid grid-cols-[8rem_1fr] gap-y-2">
-                    <dt className="text-muted-foreground">Name</dt>
-                    <dd>{detail.name}</dd>
-                    <dt className="text-muted-foreground">Cadence</dt>
-                    <dd>{detail.cadence ?? "On demand"}</dd>
-                    <dt className="text-muted-foreground">Host style</dt>
-                    <dd>{detail.hostStyle ?? "Not set"}</dd>
-                    <dt className="text-muted-foreground">Voice</dt>
-                    <dd className="text-muted-foreground/70">Phase 2</dd>
-                  </dl>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3 -ml-2"
-                    onClick={() => setConfigOpen(true)}
-                  >
-                    Open full settings
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
           </Tabs>
-
-          {/* Floating composer */}
-          <div className="hidden lg:block px-4 pb-4 shrink-0">
-            <FloatingPodcastComposer podcastId={detail.id} />
-          </div>
         </div>
 
         {/* ── Right rail ──────────────────────────────────────────────── */}
@@ -407,10 +361,10 @@ export default function PodcastDetailClient({
             {/* Header strip — show meta */}
             <div className="px-3 py-3 border-b shrink-0">
               <div className="flex items-center gap-2 mb-1">
-                <Mic className="h-3.5 w-3.5 text-muted-foreground" />
+                <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                 <p className="text-xs font-medium">Show overview</p>
               </div>
-              <p className="text-[11px] text-muted-foreground line-clamp-2">
+              <p className="text-[11px] text-muted-foreground line-clamp-3">
                 {detail.description ?? "No description"}
               </p>
               <div className="flex items-center gap-2 mt-2 text-[10px] text-muted-foreground">
@@ -421,51 +375,40 @@ export default function PodcastDetailClient({
                   <span className="truncate">{detail.hostStyle}</span>
                 )}
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2 -ml-2"
+                onClick={() => setConfigOpen(true)}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                Show settings
+              </Button>
             </div>
 
-            {/* Segments quick-run list (matches the analyst page Trades sidebar pattern) */}
-            <Tabs defaultValue={0} className="flex-1 overflow-hidden">
-              <div className="px-3 pt-2 shrink-0">
-                <TabsList>
-                  <TabsTrigger value={0}>Segments</TabsTrigger>
-                  <TabsTrigger value={1}>Recent</TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent value={0} className="flex-1 overflow-y-auto flex flex-col">
-                {detail.segments.length === 0 ? (
-                  <div className="space-y-0 px-3 py-2">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="flex items-center gap-3 py-2.5">
-                        <div className="h-6 w-6 rounded-full bg-muted" />
-                        <div className="flex-1 space-y-1.5">
-                          <div className="h-2.5 w-16 rounded bg-muted" />
-                          <div className="h-2 w-24 rounded bg-muted/60" />
-                        </div>
-                        <div className="h-2.5 w-12 rounded bg-muted" />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  detail.segments.map((s) => (
-                    <SegmentRailRow
-                      key={s.id}
-                      podcastId={detail.id}
-                      segment={s}
-                    />
-                  ))
-                )}
-              </TabsContent>
-
-              <TabsContent value={1} className="flex-1 overflow-y-auto">
-                <RecentTranscriptsRail segments={detail.segments} />
-              </TabsContent>
-            </Tabs>
+            {/* Recent transcripts list */}
+            <div className="flex-1 overflow-y-auto">
+              <RecentTranscriptsRail segments={detail.segments} />
+            </div>
           </div>
         </div>
       </div>
 
-      <PodcastConfigSheet open={configOpen} onOpenChange={setConfigOpen} detail={detail} />
+      {/* Podcast-level settings sheet (header dropdown / right-rail button) */}
+      <PodcastConfigSheet
+        open={configOpen}
+        onOpenChange={setConfigOpen}
+        detail={detail}
+      />
+
+      {/* Per-segment settings sheet (card 3-dot menu) */}
+      {activeSegment && (
+        <SegmentConfigSheet
+          open={!!activeSegment}
+          onOpenChange={(open) => !open && setActiveSegment(null)}
+          segment={activeSegment}
+        />
+      )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-[420px]">
@@ -502,6 +445,10 @@ export default function PodcastDetailClient({
   );
 }
 
+// Suppress unused-Link warning — Link is exported for callers that may
+// surface a "Add segment" entry point in a follow-up.
+void Link;
+
 function RecentTranscriptsRail({ segments }: { segments: SegmentSummary[] }) {
   const recent = segments
     .filter((s) => s.lastTranscriptTitle && s.lastRunAt)
@@ -531,9 +478,11 @@ function RecentTranscriptsRail({ segments }: { segments: SegmentSummary[] }) {
             <FileText className="h-3.5 w-3.5 text-muted-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium truncate">{s.lastTranscriptTitle}</p>
+            <p className="text-xs font-medium truncate">
+              {s.lastTranscriptTitle}
+            </p>
             <p className="text-[10px] text-muted-foreground truncate">
-              {s.name} · {formatRelativeDays(s.lastRunAt)}
+              {s.name} · {formatRelative(s.lastRunAt)}
             </p>
           </div>
         </div>

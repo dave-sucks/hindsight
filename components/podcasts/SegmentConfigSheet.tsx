@@ -4,8 +4,8 @@
  * SegmentConfigSheet — segment analog of AnalystConfigSheet.
  *
  * Same Sheet wrapper, same width, same header copy, same per-field save
- * pattern. Pipes form changes straight into updateSegment / addSegmentMonitor /
- * removeSegmentMonitor server actions.
+ * pattern. Takes a SegmentSummary (already carried by PodcastDetail) so
+ * opening the sheet is zero-fetch.
  */
 
 import { useTransition } from "react";
@@ -25,42 +25,42 @@ import {
   updateSegment,
   addSegmentMonitor,
   removeSegmentMonitor,
-  type SegmentDetail,
+  type SegmentSummary,
 } from "@/lib/actions/podcast.actions";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  detail: SegmentDetail;
+  segment: SegmentSummary;
 }
 
-export function SegmentConfigSheet({ open, onOpenChange, detail }: Props) {
+export function SegmentConfigSheet({ open, onOpenChange, segment }: Props) {
   const [, startTransition] = useTransition();
 
   const values: SegmentFormValues = {
-    name: detail.name,
-    description: detail.description,
-    segmentPrompt: detail.segmentPrompt,
-    targetSeconds: detail.targetSeconds,
-    topics: detail.topics,
-    sources: detail.sources,
-    excludeTopics: detail.excludeTopics,
-    monitors: detail.monitors.map((m) => {
-      const cfg = (m.config as { query?: string } | null) ?? {};
-      return { id: m.id, name: m.name, query: cfg.query ?? "" };
-    }),
+    name: segment.name,
+    description: segment.description,
+    segmentPrompt: segment.segmentPrompt,
+    targetSeconds: segment.targetSeconds,
+    topics: segment.topics,
+    sources: segment.sources,
+    excludeTopics: segment.excludeTopics,
+    monitors: segment.monitors,
   };
 
   const handleChange: SegmentFormChangeHandler = (field, value) => {
     if (field === "monitors") return; // monitors mutate via addSegmentMonitor / removeSegmentMonitor
     startTransition(async () => {
       // updateSegment accepts a partial patch — pass a single-key object.
-      await updateSegment(detail.id, { [field]: value } as Parameters<typeof updateSegment>[1]);
+      await updateSegment(
+        segment.id,
+        { [field]: value } as Parameters<typeof updateSegment>[1],
+      );
     });
   };
 
   const handleAddMonitor = async (input: { name: string; query: string }) => {
-    await addSegmentMonitor(detail.id, input);
+    await addSegmentMonitor(segment.id, input);
   };
 
   const handleRemoveMonitor = async (monitorId: string) => {
@@ -74,7 +74,7 @@ export function SegmentConfigSheet({ open, onOpenChange, detail }: Props) {
         className="w-[420px] sm:max-w-[420px] flex flex-col p-0"
       >
         <SheetHeader className="shrink-0 px-3 pt-3">
-          <SheetTitle className="text-sm font-semibold">Configuration</SheetTitle>
+          <SheetTitle className="text-sm font-semibold">{segment.name}</SheetTitle>
           <SheetDescription className="text-xs">
             Edit settings directly or use the AI chat.
           </SheetDescription>
