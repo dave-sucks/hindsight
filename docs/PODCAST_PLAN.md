@@ -435,4 +435,5 @@ intelligence pipeline jobs, signal router, Alpaca, Position/Order/
 Trade/Thesis/AccuracyReport/AnalystBriefing, all existing analyst
 detail / runs feed UI.
 
-See `docs/PODCAST_FILES.md` for the file-level audit.
+See `docs/PODCAST_FILES.md` for the file-level audit and
+`docs/PODCAST_OPERATIONS.md` for the detach + fork playbooks.

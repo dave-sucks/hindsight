@@ -365,3 +365,11 @@ feature exists.
   expanding `MODES`), it moves to SHARED and gets a Notes line.
 - Whoever opens the fork PR uses this doc as the source of truth for
   what to copy and what to leave behind.
+
+## Operational playbooks
+
+For the two scenarios this PoC was designed to support — detaching
+the podcast feature from this repo, or forking into a podcast-only
+app — see **`docs/PODCAST_OPERATIONS.md`**. That doc is the
+step-by-step checklist; this doc is the file inventory the
+checklist points at.
