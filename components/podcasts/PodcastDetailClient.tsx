@@ -385,15 +385,6 @@ export default function PodcastDetailClient({
                   <span className="truncate">{detail.hostStyle}</span>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-2 -ml-2"
-                onClick={() => setConfigOpen(true)}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-                Show settings
-              </Button>
             </div>
 
             {/* Recent transcripts list */}

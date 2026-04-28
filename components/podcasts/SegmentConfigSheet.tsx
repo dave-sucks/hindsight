@@ -3,9 +3,10 @@
 /**
  * SegmentConfigSheet — segment analog of AnalystConfigSheet.
  *
- * Same Sheet wrapper, same width, same header copy, same per-field save
- * pattern. Takes a SegmentSummary (already carried by PodcastDetail) so
- * opening the sheet is zero-fetch.
+ * One Sheet return. Always mounted. The body contents are conditional
+ * on `segment` being non-null. Two-return shapes get unmounted and
+ * remounted by React when the prop transitions, which kills the open
+ * animation — that's exactly what was breaking the click-to-open flow.
  */
 
 import { useTransition } from "react";
@@ -31,48 +32,29 @@ import {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /**
-   * The segment to edit. Pass `null` when nothing is selected — the Sheet
-   * stays mounted (so its open transition fires correctly) but renders
-   * with an empty body. The user-facing flow is: parent sets segment +
-   * sets open=true together; we read both off props.
-   */
+  /** The segment to edit. `null` when nothing is selected — Sheet stays
+   *  mounted (one return, see file header) but body is empty. */
   segment: SegmentSummary | null;
 }
 
 export function SegmentConfigSheet({ open, onOpenChange, segment }: Props) {
   const [, startTransition] = useTransition();
 
-  // Empty Sheet shell when no segment selected. Stays mounted from page
-  // load so the open transition animates when the user clicks Settings.
-  if (!segment) {
-    return (
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent
-          side="right"
-          className="w-[420px] sm:max-w-[420px] flex flex-col p-0"
-        >
-          <SheetHeader className="shrink-0 px-3 pt-3">
-            <SheetTitle className="text-sm font-semibold">Configuration</SheetTitle>
-            <SheetDescription className="text-xs">No segment selected.</SheetDescription>
-          </SheetHeader>
-        </SheetContent>
-      </Sheet>
-    );
-  }
-
-  const values: SegmentFormValues = {
-    name: segment.name,
-    description: segment.description,
-    segmentPrompt: segment.segmentPrompt,
-    targetSeconds: segment.targetSeconds,
-    topics: segment.topics,
-    sources: segment.sources,
-    excludeTopics: segment.excludeTopics,
-    monitors: segment.monitors,
-  };
+  const values: SegmentFormValues | null = segment
+    ? {
+        name: segment.name,
+        description: segment.description,
+        segmentPrompt: segment.segmentPrompt,
+        targetSeconds: segment.targetSeconds,
+        topics: segment.topics,
+        sources: segment.sources,
+        excludeTopics: segment.excludeTopics,
+        monitors: segment.monitors,
+      }
+    : null;
 
   const handleChange: SegmentFormChangeHandler = (field, value) => {
+    if (!segment) return;
     if (field === "monitors") return; // monitors mutate via addSegmentMonitor / removeSegmentMonitor
     startTransition(async () => {
       // updateSegment accepts a partial patch — pass a single-key object.
@@ -84,10 +66,12 @@ export function SegmentConfigSheet({ open, onOpenChange, segment }: Props) {
   };
 
   const handleAddMonitor = async (input: { name: string; query: string }) => {
+    if (!segment) return;
     await addSegmentMonitor(segment.id, input);
   };
 
   const handleRemoveMonitor = async (monitorId: string) => {
+    if (!segment) return;
     await removeSegmentMonitor(monitorId);
   };
 
@@ -98,20 +82,24 @@ export function SegmentConfigSheet({ open, onOpenChange, segment }: Props) {
         className="w-[420px] sm:max-w-[420px] flex flex-col p-0"
       >
         <SheetHeader className="shrink-0 px-3 pt-3">
-          <SheetTitle className="text-sm font-semibold">{segment.name}</SheetTitle>
+          <SheetTitle className="text-sm font-semibold">
+            {segment?.name ?? "Configuration"}
+          </SheetTitle>
           <SheetDescription className="text-xs">
             Edit settings directly or use the AI chat.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 min-h-0">
-          <SegmentConfigForm
-            values={values}
-            onChange={handleChange}
-            onAddMonitor={handleAddMonitor}
-            onRemoveMonitor={handleRemoveMonitor}
-          />
-        </div>
+        {values && (
+          <div className="flex-1 min-h-0">
+            <SegmentConfigForm
+              values={values}
+              onChange={handleChange}
+              onAddMonitor={handleAddMonitor}
+              onRemoveMonitor={handleRemoveMonitor}
+            />
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );
