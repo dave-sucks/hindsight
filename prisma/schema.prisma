@@ -61,6 +61,7 @@ model ResearchRun {
   podcastSegmentId String?
   segment       PodcastSegment?   @relation("SegmentRuns", fields: [podcastSegmentId], references: [id], onDelete: SetNull)
   segmentTranscript SegmentTranscript?
+  segmentBriefing   PodcastSegmentBriefing? @relation("SegmentBriefing")
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
@@ -909,8 +910,32 @@ model PodcastSegment {
   runs            ResearchRun[]        @relation("SegmentRuns")
   transcripts     SegmentTranscript[]
   signalRoutes    PodcastSegmentSignalRoute[]
+  briefings       PodcastSegmentBriefing[]
 
   @@index([podcastId])
+  @@index([userId])
+}
+
+/// Post-run briefing for a podcast segment. Mirror of AnalystBriefing
+/// but simpler — segments don't have portfolio state, just a recap of
+/// what was covered + follow-ups for the next episode.
+///
+/// Written by lib/podcast/update-segment-briefing.ts after each
+/// successful segment run (called from complete_run's segment branch).
+/// Read by the route's podcast-segment-run handler into the system
+/// prompt so the agent has cross-episode continuity.
+model PodcastSegmentBriefing {
+  id          String         @id @default(cuid())
+  segmentId   String
+  segment     PodcastSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  runId       String         @unique
+  run         ResearchRun    @relation("SegmentBriefing", fields: [runId], references: [id], onDelete: Cascade)
+  userId      String
+  narrative   String         // 200-300 word recap of what this segment covered
+  followUps   Json           // [{ topic, why, priority: "HIGH"|"NORMAL" }]
+  generatedAt DateTime       @default(now())
+
+  @@index([segmentId, generatedAt])
   @@index([userId])
 }
 

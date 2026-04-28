@@ -259,12 +259,20 @@ export async function POST(
         return new Response("Podcast segment not found.", { status: 404 });
       }
 
-      // Last transcript title for continuity hint.
-      const lastTranscript = await prisma.segmentTranscript.findFirst({
-        where: { segmentId: segment.id },
-        orderBy: { createdAt: "desc" },
-        select: { title: true },
-      });
+      // Last transcript title + most-recent briefing for continuity.
+      // Mirror of how analyst runs load AnalystBriefing into buildRunInput.
+      const [lastTranscript, priorBriefing] = await Promise.all([
+        prisma.segmentTranscript.findFirst({
+          where: { segmentId: segment.id },
+          orderBy: { createdAt: "desc" },
+          select: { title: true },
+        }),
+        prisma.podcastSegmentBriefing.findFirst({
+          where: { segmentId: segment.id },
+          orderBy: { generatedAt: "desc" },
+          select: { narrative: true, followUps: true, generatedAt: true },
+        }),
+      ]);
 
       systemPrompt = buildPodcastSegmentRunPrompt({
         podcast: {
@@ -282,6 +290,19 @@ export async function POST(
           excludeTopics: segment.excludeTopics,
         },
         lastTranscriptTitle: lastTranscript?.title ?? null,
+        priorBriefing: priorBriefing
+          ? {
+              narrative: priorBriefing.narrative,
+              followUps: Array.isArray(priorBriefing.followUps)
+                ? (priorBriefing.followUps as Array<{
+                    topic: string;
+                    why: string;
+                    priority: "HIGH" | "NORMAL";
+                  }>)
+                : [],
+              generatedAt: priorBriefing.generatedAt,
+            }
+          : null,
       });
       // Segment runs don't carry an analystId.
       resolvedAnalystId = undefined;

@@ -56,6 +56,7 @@ ALTER TABLE "Monitor"     DROP CONSTRAINT IF EXISTS "Monitor_podcastSegmentId_fk
 
 -- ─── Drop new tables (CASCADE drops the FKs they participate in + their indexes)
 -- Order matters: child tables first.
+DROP TABLE IF EXISTS "PodcastSegmentBriefing"    CASCADE;
 DROP TABLE IF EXISTS "PodcastSegmentSignalRoute" CASCADE;
 DROP TABLE IF EXISTS "SegmentTranscript"         CASCADE;
 DROP TABLE IF EXISTS "Episode"                   CASCADE;

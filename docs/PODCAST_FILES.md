@@ -36,7 +36,8 @@ Categories:
 | `lib/agent/tools/write-segment-transcript.ts` | Stage 5 equivalent of `record_thesis` for podcast segments. Persists `SegmentTranscript`. |
 | `lib/agent/tools/suggest-podcast-config.ts` | Builder analog of `suggest_config`. Returns `{ podcast, segments[] }`. |
 | `lib/podcast/builder-prompt.ts` | System prompt for `podcast-builder` mode. |
-| `lib/podcast/segment-run-prompt.ts` | System prompt for `podcast-segment-run` mode. |
+| `lib/podcast/segment-run-prompt.ts` | System prompt for `podcast-segment-run` mode. Threads the most recent `PodcastSegmentBriefing` into the prompt for cross-episode continuity. |
+| `lib/podcast/update-segment-briefing.ts` | Mirror of `lib/agent/update-analyst-briefing.ts`. Reads a run's transcript + run events + 3 most-recent prior briefings, asks GPT-4o-mini for a 200-300 word recap + 0-5 follow-ups, persists as `PodcastSegmentBriefing`. Non-fatal — writes a fallback row on LLM failure. |
 
 ### Actions / API
 
@@ -251,6 +252,7 @@ These hold only podcast data. Always safe to drop on teardown.
 | `SegmentTranscript` | One per Run. Transcript text + citations + (Phase 2) audio + alignment. Unique on `runId`. |
 | `Episode` | Ordered list of `SegmentTranscript` ids assembled into a listenable episode. Phase 3. |
 | `PodcastSegmentSignalRoute` | Mirror of `AnalystSignalRoute`. The segment's intelligence inbox. Written by `signal-router.ts` for OWNER (signal from a segment-owned Monitor) and TOPIC_MATCH routing codes. Read by `read_signals` when `ToolContext.podcastSegmentId` is set. |
+| `PodcastSegmentBriefing` | Mirror of `AnalystBriefing`. Per-run recap of what the segment covered + open follow-ups. Written by `lib/podcast/update-segment-briefing.ts` (called from `complete_run`'s segment branch). The route loads the most recent briefing into the system prompt for cross-episode continuity. |
 
 ### Layer 2 — Tables SHARED with trading (interleaved data)
 
