@@ -25,6 +25,9 @@ import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
 import { suggestConfigTool } from "@/lib/agent/tools/suggest-config";
+import { suggestPodcastConfigTool } from "@/lib/agent/tools/suggest-podcast-config";
+import { PODCAST_BUILDER_SYSTEM_PROMPT } from "@/lib/podcast/builder-prompt";
+import { buildPodcastSegmentRunPrompt } from "@/lib/podcast/segment-run-prompt";
 
 // Vercel function timeout is set per-mode via route segment config.
 // For the dynamic catch-all, we use the research-run limit (longest).
@@ -87,7 +90,15 @@ export async function POST(
   const t0 = Date.now();
   const { mode } = await params;
 
-  if (!["research-run", "builder", "editor"].includes(mode)) {
+  if (
+    ![
+      "research-run",
+      "builder",
+      "editor",
+      "podcast-builder",
+      "podcast-segment-run",
+    ].includes(mode)
+  ) {
     return new Response(`Unknown mode: ${mode}`, { status: 400 });
   }
 
@@ -102,6 +113,10 @@ export async function POST(
 
   let runId: string | undefined;
   let resolvedAnalystId: string | undefined;
+  // Podcast feature — set when the route is handling a podcast-segment-run.
+  // Threaded into ToolContext so write_segment_transcript and the podcast
+  // branch of complete_run know which segment to attribute the run to.
+  let resolvedPodcastSegmentId: string | undefined;
 
   try {
     const body = await req.json();
@@ -210,6 +225,68 @@ export async function POST(
       }
       resolvedAnalystId = undefined;
 
+    } else if (agentMode === "podcast-builder") {
+      systemPrompt = PODCAST_BUILDER_SYSTEM_PROMPT;
+      resolvedAnalystId = undefined;
+
+    } else if (agentMode === "podcast-segment-run") {
+      // Resolve segment from runId or body. Mirrors the research-run flow,
+      // but uses podcastSegmentId instead of agentConfigId.
+      const bodySegmentId: string | undefined = body.podcastSegmentId;
+      resolvedPodcastSegmentId =
+        bodySegmentId ||
+        (runId
+          ? (
+              await prisma.researchRun.findFirst({
+                where: { id: runId },
+                select: { podcastSegmentId: true },
+              })
+            )?.podcastSegmentId ?? undefined
+          : undefined);
+
+      if (!resolvedPodcastSegmentId) {
+        return new Response(
+          "podcast-segment-run requires a podcastSegmentId (via body or via the run row).",
+          { status: 400 },
+        );
+      }
+
+      const segment = await prisma.podcastSegment.findFirst({
+        where: { id: resolvedPodcastSegmentId, userId: user.id },
+        include: { podcast: true },
+      });
+      if (!segment) {
+        return new Response("Podcast segment not found.", { status: 404 });
+      }
+
+      // Last transcript title for continuity hint.
+      const lastTranscript = await prisma.segmentTranscript.findFirst({
+        where: { segmentId: segment.id },
+        orderBy: { createdAt: "desc" },
+        select: { title: true },
+      });
+
+      systemPrompt = buildPodcastSegmentRunPrompt({
+        podcast: {
+          name: segment.podcast.name,
+          description: segment.podcast.description,
+          hostStyle: segment.podcast.hostStyle,
+          cadence: segment.podcast.cadence,
+        },
+        segment: {
+          name: segment.name,
+          description: segment.description,
+          segmentPrompt: segment.segmentPrompt,
+          targetSeconds: segment.targetSeconds,
+          topics: segment.topics,
+          sources: segment.sources,
+          excludeTopics: segment.excludeTopics,
+        },
+        lastTranscriptTitle: lastTranscript?.title ?? null,
+      });
+      // Segment runs don't carry an analystId.
+      resolvedAnalystId = undefined;
+
     } else {
       // editor
       systemPrompt = buildEditorSystemPrompt(currentConfig ?? {});
@@ -241,6 +318,7 @@ export async function POST(
       runId: runId || agentMode,
       userId: user.id,
       analystId: resolvedAnalystId,
+      podcastSegmentId: resolvedPodcastSegmentId,
       watchlist: (agentConfig.watchlist as string[]) ?? [],
       positionTickers,
       exclusionList: (agentConfig.exclusionList as string[]) ?? [],
@@ -265,9 +343,16 @@ export async function POST(
         )
       : allTools;
 
-    const tools = modeConfig.hasSuggestConfig
-      ? { ...filteredTools, suggest_config: suggestConfigTool }
-      : filteredTools;
+    // Layer in mode-specific "suggest" tools that aren't part of the
+    // createResearchTools registry (they're plain `tool()` calls, not
+    // defineTool factories — they don't need ToolContext).
+    const tools: Record<string, unknown> = { ...filteredTools };
+    if (modeConfig.hasSuggestConfig) {
+      tools.suggest_config = suggestConfigTool;
+    }
+    if (agentMode === "podcast-builder") {
+      tools.suggest_podcast_config = suggestPodcastConfigTool;
+    }
 
     // ── Stream ──────────────────────────────────────────────────────────────
 
@@ -338,7 +423,8 @@ export async function POST(
       ...(agentMode === "research-run" && { temperature: 0.2 }),
       system: systemPrompt,
       messages: modelMessages,
-      tools,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools: tools as any,
       stopWhen: stepCountIs(modeConfig.maxSteps),
 
       onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage }) {

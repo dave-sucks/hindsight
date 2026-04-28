@@ -32,6 +32,16 @@ export type ToolUICallbacks = {
   onApplyConfig?: (config: AgentConfigData) => void;
   isApplying?: boolean;
   applied?: boolean;
+  // ── Podcast feature ─────────────────────────────────────────────────────
+  /**
+   * Podcast builder: notify the parent (/podcasts/new client) that
+   * suggest_podcast_config was called with a proposed configuration.
+   * Mirrors onConfigSuggested. The payload type is `unknown` here to keep
+   * the assistant-ui layer free of a hard import on the agent tools file
+   * (which would create a layering cycle); the consumer casts it to
+   * SuggestedPodcastConfig from lib/agent/tools/suggest-podcast-config.ts.
+   */
+  onPodcastConfigSuggested?: (config: unknown) => void;
 };
 
 const ToolUICallbacksContext = createContext<ToolUICallbacks>({});
