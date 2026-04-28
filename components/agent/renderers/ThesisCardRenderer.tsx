@@ -90,7 +90,17 @@ export function ThesisCardRenderer({ toolCallId, loading }: Props) {
         // Persisted id from record_thesis result envelope. Drives the
         // Activity timeline section inside ThesisSheet — when present,
         // the sheet fetches /api/theses/:id/updates and renders the log.
-        thesis_id: resultData.thesis_id as string | undefined,
+        //
+        // Fallback to existing_thesis_id: when the same-direction guard
+        // rejects a record_thesis call, thesis_id is null but the result
+        // carries existing_thesis_id pointing at the active thesis the
+        // agent should have been updating. Surfacing it here means a
+        // user clicking the rejected card lands on the REAL thesis's
+        // timeline — they see "this is the thesis we already have" with
+        // its full history, not a stub with no Activity section.
+        thesis_id:
+          (resultData.thesis_id as string | undefined) ??
+          (resultData.existing_thesis_id as string | undefined),
         ticker: display.ticker as string,
         direction: display.direction as "LONG" | "SHORT" | "PASS",
         confidence_score: (display.confidence_score as number) ?? (display.confidenceScore as number) ?? 0,

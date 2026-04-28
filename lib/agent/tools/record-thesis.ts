@@ -445,7 +445,14 @@ export const recordThesis = defineTool({
       // morning run on a held name would auto-supersede yesterday's row and
       // mint a fresh chain — exactly the chained-replacement pattern we're
       // moving away from.
-      let resolvedParentId = args.parent_thesis_id ?? null;
+      // Normalize empty-string parent_thesis_id to null. The agent
+      // sometimes passes "" instead of omitting the field; without this,
+      // the eventual prisma.thesis.create() FK-violates because no row
+      // has id "". Pre-existing bug surfaced when MSFT theses started
+      // failing to save with `Foreign key constraint violated on
+      // Thesis_parentThesisId_fkey`.
+      const rawParentId = args.parent_thesis_id?.trim() ?? "";
+      let resolvedParentId: string | null = rawParentId.length > 0 ? rawParentId : null;
       if (!resolvedParentId && args.direction !== "PASS" && ctx.analystId) {
         try {
           const existingThesis = await prisma.thesis.findFirst({
@@ -467,8 +474,24 @@ export const recordThesis = defineTool({
                 data: {
                   thesis_id: null,
                   status: "FAILED" as const,
+                  // Renderer pivots to this id when thesis_id is null so
+                  // the user clicking the rejected card still lands on
+                  // the real thesis timeline — not a stub.
                   existing_thesis_id: existingThesis.id,
-                  note: `An active ${existingThesis.direction} thesis already exists for ${args.ticker} (id ${existingThesis.id}). To refine it — change the target, tighten the stop, update the rationale — call update_thesis with thesis_id="${existingThesis.id}" and only the fields you're changing, plus a rationale string. Use record_thesis ONLY for new coverage or direction flips (e.g. LONG → SHORT). Re-running record_thesis on existing coverage chains a fresh thesis row and breaks the durable timeline.`,
+                  ticker: args.ticker,
+                  note:
+                    `An active ${existingThesis.direction} thesis already exists for ${args.ticker} (id ${existingThesis.id}). ` +
+                    `RETRY with update_thesis. Minimum shape:\n` +
+                    `  update_thesis({\n` +
+                    `    thesis_id: "${existingThesis.id}",\n` +
+                    `    target_price: <new>,   // include only the fields you're changing\n` +
+                    `    stop_loss: <new>,\n` +
+                    `    confidence_score: <new>,\n` +
+                    `    reasoning_summary: "<refreshed prose>",\n` +
+                    `    rationale: "<one-line: why you're updating>",\n` +
+                    `    signal_ids: [<from today's read_signals>]\n` +
+                    `  })\n` +
+                    `If nothing actually changed, call update_thesis with thesis_id + rationale only — that writes a REVIEWED entry to the timeline. record_thesis is reserved for new coverage or direction flips (LONG → SHORT). Re-running record_thesis on existing coverage breaks the durable timeline.`,
                 },
                 sources: [],
               };
