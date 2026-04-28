@@ -62,10 +62,12 @@ ${lastTranscriptTitle ? `\nLast episode this segment covered: "${lastTranscriptT
 ═══════════════════════════════════════════════════════════════════════
 
 ### Stage 1 — Orient
-Call web_search once with a query rooted in your topic scope. Make the query concrete and time-bound (e.g. "indie game launches this week steam", "AI infrastructure funding rounds Q2 2026"). One query is enough to surface the day's stories — don't burn your search budget on a fishing expedition.
+Call **read_signals** ONCE with no arguments. This returns the signals routed to this segment today — material your monitors and the topic-match router already pre-fetched. If it returns ≥3 relevant signals, lead with those.
+
+If read_signals returns nothing or the routed material is thin, fall back to a single web_search call rooted in your topic scope. Make the query concrete and time-bound (e.g. "indie game launches this week steam", "AI infrastructure funding rounds Q2 2026"). One query is enough — don't burn the search budget on a fishing expedition.
 
 ### Stage 2 — Research
-Pull 1–3 specific articles via read_artifact (when web_search surfaces an artifact id) or follow up with one more targeted web_search call for the lead story. Stop pulling once you have enough material to write a confident segment. Don't research forever; this is a short script, not a dissertation.
+Pull 1–3 specific articles. For routed signals: call **read_artifact** with the signal's artifactId. For web_search hits: call read_artifact with the URL or follow up with one more targeted web_search. Stop pulling once you have enough material to write a confident segment. Don't research forever; this is a short script, not a dissertation.
 
 ### Stage 3 — Write
 Call write_segment_transcript exactly once. The plainText field is your final spoken script. Requirements:

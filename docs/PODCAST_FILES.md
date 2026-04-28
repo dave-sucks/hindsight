@@ -97,7 +97,10 @@ analyst surface in look and feel.
 | `lib/agent/tool-context.ts` | **Extended.** Added optional `podcastSegmentId` field. |
 | `lib/agent/tools/index.ts` | **Extended.** Added new tools to `createResearchTools()`. |
 | `lib/agent/tools/complete-run.ts` | **Extended.** Branches on `ctx.podcastSegmentId`: skips `updateAnalystBriefing` for segment runs. |
-| `lib/agent/tools/read-signals.ts` | **Excluded from podcast-segment-run allowlist (Phase 1).** Signals route to analysts (sectors/industries/themes), not segments — until a segment-aware signal router lands (Phase 4), the segment uses `web_search` for discovery. |
+| `lib/agent/tools/read-signals.ts` | **Extended.** Branches on `ctx.podcastSegmentId` to query `PodcastSegmentSignalRoute` (segment branch returns the same `SignalsToolData` shape as the analyst branch — buckets everything as discovery since segments don't have positions/watchlist). Re-enabled in `podcast-segment-run` allowlist. |
+| `lib/inngest/functions/signal-router.ts` | **Extended.** After the analyst-routing pass, runs a second pass that builds segment profiles from `PodcastSegment` rows and writes `PodcastSegmentSignalRoute` rows for OWNER (signal came from a segment-owned monitor) and TOPIC_MATCH (segment.topics overlap with signal.themes/sectors/industries). `excludeTopics` hard-rejects. Same Signal table feeds both passes. |
+| `lib/inngest/functions/domain-monitor.ts` | Reused as-is. Already filters by `type: "DOMAIN"` only — picks up segment-scoped Monitor rows automatically. |
+| `lib/inngest/functions/firm-market-sweep.ts` | Reused as-is. Already filters by `type: "SEARCH"` only — picks up segment-scoped Monitor rows automatically. |
 | `lib/agent/tools/read-artifact.ts` | Reused as-is. |
 | `lib/agent/tools/web-search.ts` | Reused as-is. |
 | `lib/agent/tools/discover-signals-for-fence.ts` | Reused. Builder uses it to validate proposed segment topics. |
@@ -247,6 +250,7 @@ These hold only podcast data. Always safe to drop on teardown.
 | `PodcastSegment` | Recurring beat inside a podcast. Has its own prompt, monitors, topic fence. |
 | `SegmentTranscript` | One per Run. Transcript text + citations + (Phase 2) audio + alignment. Unique on `runId`. |
 | `Episode` | Ordered list of `SegmentTranscript` ids assembled into a listenable episode. Phase 3. |
+| `PodcastSegmentSignalRoute` | Mirror of `AnalystSignalRoute`. The segment's intelligence inbox. Written by `signal-router.ts` for OWNER (signal from a segment-owned Monitor) and TOPIC_MATCH routing codes. Read by `read_signals` when `ToolContext.podcastSegmentId` is set. |
 
 ### Layer 2 — Tables SHARED with trading (interleaved data)
 

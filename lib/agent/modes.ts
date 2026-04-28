@@ -141,16 +141,16 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // record_thesis, etc.) are intentionally excluded — segments are
   // research+write, not trade.
   //
-  // read_signals is intentionally NOT in this allowlist for Phase 1: signals
-  // are routed against analyst universes (sectors/industries/themes), not
-  // podcast segment topics. Until a segment-aware signal router lands
-  // (Phase 4), the segment uses web_search as its discovery surface and
-  // read_artifact for any URLs it surfaces. See docs/PODCAST_PLAN.md.
+  // read_signals IS available for segments — signal-router routes signals
+  // to PodcastSegmentSignalRoute via OWNER (signal came from a segment-
+  // owned monitor) and TOPIC_MATCH (overlap with segment.topics). The
+  // tool branches on ToolContext.podcastSegmentId to read the right table.
   "podcast-segment-run": {
     model: "gpt-4o",
     provider: "openai",
     maxSteps: 40,
     toolAllowlist: [
+      "read_signals",
       "read_artifact",
       "web_search",
       "get_stock_data",

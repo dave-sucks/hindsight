@@ -797,10 +797,176 @@ export const signalRouter = inngest.createFunction(
       }
     })
 
+    // ── Step 4: Route the SAME signals to podcast segments ────────────────
+    // Mirror of the analyst-routing pass for podcast segments. Builds a
+    // segment profile (id, topics, excludeTopics) + a Set of monitor ids
+    // owned by each segment, then for each (segment, signal) pair emits
+    // routes via:
+    //   • OWNER          — signal came from one of this segment's monitors
+    //   • TOPIC_MATCH    — signal.themes/sectors/industries overlap segment.topics
+    // excludeTopics on the segment hard-rejects matches.
+    //
+    // Same Signal table, same monitor wiring, different routing vocabulary
+    // because segments don't have positions/watchlist/sectors. Writes to
+    // PodcastSegmentSignalRoute, not AnalystSignalRoute. read_signals reads
+    // off this table when ToolContext.podcastSegmentId is set.
+    //
+    // See docs/PODCAST_PLAN.md "Signal pipeline reaches segments".
+
+    const segmentRouteResult = await step.run("route-signals-to-segments", async () => {
+      // Build segment profiles + own-monitor map.
+      const segments = await prisma.podcastSegment.findMany({
+        where: { enabled: true },
+        select: {
+          id: true,
+          topics: true,
+          excludeTopics: true,
+          monitors: { select: { id: true } },
+        },
+      })
+      if (segments.length === 0) {
+        return { routesCreated: 0, segmentsActive: 0, reason: "no-enabled-segments" }
+      }
+
+      // monitorId → segmentId, for fast OWNER lookup.
+      const monitorToSegment = new Map<string, string>()
+      for (const s of segments) {
+        for (const m of s.monitors) monitorToSegment.set(m.id, s.id)
+      }
+
+      type SegmentCandidate = {
+        podcastSegmentId: string
+        signalId: string
+        relevanceScore: number
+        rawRelevanceScore: number
+        routeReason: string
+        routeReasonCode: "OWNER" | "TOPIC_MATCH"
+        matchedUniverse: { topics?: string[]; ownerMonitorId?: string }
+      }
+
+      const lc = (s: string) => s.toLowerCase().trim()
+      const candidatesBySegment: Record<string, SegmentCandidate[]> = {}
+      for (const s of segments) candidatesBySegment[s.id] = []
+
+      let droppedByExclude = 0
+      let droppedNoMatch = 0
+      let ownerMatches = 0
+      let topicMatches = 0
+
+      for (const signal of signals) {
+        const ownerSegmentId = signal.monitorId
+          ? monitorToSegment.get(signal.monitorId) ?? null
+          : null
+        // Loose token bag from the signal — themes + sectors + industries
+        // lowercased. Matches are substring/contains either direction so
+        // segment.topics like "AI" hit signals tagged "AI_INFRA", and
+        // "venture capital" hits a sector "Venture Capital".
+        const signalTokens = [
+          ...signal.themes,
+          ...signal.sectors,
+          ...signal.industries,
+        ].map(lc)
+
+        for (const seg of segments) {
+          // Hard reject if any exclude-topic appears anywhere in the signal.
+          const excludeHit = seg.excludeTopics.some((ex) => {
+            const exLc = lc(ex)
+            return signalTokens.some((t) => t.includes(exLc) || exLc.includes(t))
+          })
+          if (excludeHit) {
+            droppedByExclude++
+            continue
+          }
+
+          const isOwner = ownerSegmentId !== null && ownerSegmentId === seg.id
+
+          // Topic-match: count overlapping topics (loose contains).
+          const matchedTopics: string[] = []
+          for (const topic of seg.topics) {
+            const topicLc = lc(topic)
+            const hit = signalTokens.some(
+              (t) => t.includes(topicLc) || topicLc.includes(t),
+            )
+            if (hit) matchedTopics.push(topic)
+          }
+
+          if (!isOwner && matchedTopics.length === 0) {
+            droppedNoMatch++
+            continue
+          }
+
+          const rawScore = isOwner
+            ? 90
+            : Math.min(85, 40 + matchedTopics.length * 15)
+          const code: "OWNER" | "TOPIC_MATCH" = isOwner ? "OWNER" : "TOPIC_MATCH"
+          if (isOwner) ownerMatches++
+          else topicMatches++
+
+          candidatesBySegment[seg.id].push({
+            podcastSegmentId: seg.id,
+            signalId: signal.id,
+            relevanceScore: rawScore,
+            rawRelevanceScore: rawScore,
+            routeReason: [
+              `code:${code}`,
+              ...(isOwner ? [`owner_monitor:${signal.monitorId}`] : []),
+              ...(matchedTopics.length > 0
+                ? [`topics:${matchedTopics.join("|")}`]
+                : []),
+            ].join(", "),
+            routeReasonCode: code,
+            matchedUniverse: {
+              ...(matchedTopics.length > 0 ? { topics: matchedTopics } : {}),
+              ...(isOwner && signal.monitorId
+                ? { ownerMonitorId: signal.monitorId }
+                : {}),
+            },
+          })
+        }
+      }
+
+      // No discovery-reservation for segments yet — keep simple. Cap per
+      // segment at the same MAX_ROUTES_PER_ANALYST, sorted desc.
+      const finalSegmentRoutes: SegmentCandidate[] = []
+      for (const segId of Object.keys(candidatesBySegment)) {
+        const sorted = candidatesBySegment[segId]
+          .sort((a, b) => b.relevanceScore - a.relevanceScore)
+          .slice(0, MAX_ROUTES_PER_ANALYST)
+        finalSegmentRoutes.push(...sorted)
+      }
+
+      if (finalSegmentRoutes.length > 0) {
+        await prisma.podcastSegmentSignalRoute.createMany({
+          data: finalSegmentRoutes.map((r) => ({
+            podcastSegmentId: r.podcastSegmentId,
+            signalId: r.signalId,
+            relevanceScore: r.relevanceScore,
+            rawRelevanceScore: r.rawRelevanceScore,
+            routeReason: r.routeReason,
+            routeReasonCode: r.routeReasonCode,
+            tradingDay: today,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            matchedUniverse: r.matchedUniverse as any,
+          })),
+          skipDuplicates: true,
+        })
+      }
+
+      return {
+        routesCreated: finalSegmentRoutes.length,
+        segmentsActive: segments.length,
+        ownerMatches,
+        topicMatches,
+        droppedByExclude,
+        droppedNoMatch,
+      }
+    })
+
     return {
       signalsProcessed: signals.length,
       analystsActive: profiles.length,
       ...routeResult,
+      segments: segmentRouteResult,
     }
   }
 )
