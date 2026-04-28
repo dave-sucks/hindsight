@@ -102,8 +102,9 @@ export function PodcastConfigPreview({
           segmentPrompt: "Describe what this segment covers and the editorial angle.",
           targetSeconds: 180,
           topics: [],
-          sources: [],
           excludeTopics: [],
+          domainMonitors: [],
+          searchQueries: [],
         },
       ],
     });
@@ -263,6 +264,62 @@ export function PodcastConfigPreview({
                           onChange={(next) => updateSegment(i, { topics: next })}
                         />
                       </FieldGroup>
+
+                      {/* Monitors preview — read-only here. Same Monitor
+                          rows the analyst surface uses, persisted by
+                          createPodcastFromBuilder as type=DOMAIN +
+                          type=SEARCH scoped to the segment. */}
+                      <div className="pt-1 space-y-1">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Sources ({seg.domainMonitors.length})
+                        </p>
+                        {seg.domainMonitors.length === 0 ? (
+                          <p className="text-[11px] text-muted-foreground/60">
+                            None proposed.
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {seg.domainMonitors.map((m, mi) => (
+                              <span
+                                key={`${m.domain}-${mi}`}
+                                className="inline-flex items-center gap-1 text-[11px] rounded-md bg-muted px-1.5 py-0.5"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={`https://www.google.com/s2/favicons?domain=${m.domain}&sz=16`}
+                                  alt=""
+                                  width={10}
+                                  height={10}
+                                  className="size-2.5 rounded-sm"
+                                />
+                                {m.name || m.domain}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Search queries ({seg.searchQueries.length})
+                        </p>
+                        {seg.searchQueries.length === 0 ? (
+                          <p className="text-[11px] text-muted-foreground/60">
+                            None proposed.
+                          </p>
+                        ) : (
+                          <ul className="space-y-0.5">
+                            {seg.searchQueries.map((q, qi) => (
+                              <li
+                                key={qi}
+                                className="text-[11px] text-muted-foreground truncate"
+                              >
+                                · {q.query}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                     </div>
                   ))}
                   <Button

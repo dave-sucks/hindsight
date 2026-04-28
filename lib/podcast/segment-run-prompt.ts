@@ -25,7 +25,6 @@ export interface PodcastSegmentRunInput {
     segmentPrompt: string;
     targetSeconds: number;
     topics: string[];
-    sources: string[];
     excludeTopics: string[];
   };
   lastTranscriptTitle: string | null;
@@ -55,7 +54,6 @@ ${segment.segmentPrompt}
 
 Target length: ~${segment.targetSeconds} seconds (${targetWords} words at speaking pace).
 Topics in scope: ${segment.topics.length > 0 ? segment.topics.join(", ") : "(open — use editorial judgement)"}
-Preferred sources: ${segment.sources.length > 0 ? segment.sources.join(", ") : "(any reputable source)"}
 Topics to skip: ${segment.excludeTopics.length > 0 ? segment.excludeTopics.join(", ") : "(none)"}
 ${lastTranscriptTitle ? `\nLast episode this segment covered: "${lastTranscriptTitle}". Don't repeat it — pick a fresh angle or follow-up unless there's a major update.` : ""}
 

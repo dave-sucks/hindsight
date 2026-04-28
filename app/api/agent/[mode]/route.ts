@@ -279,7 +279,6 @@ export async function POST(
           segmentPrompt: segment.segmentPrompt,
           targetSeconds: segment.targetSeconds,
           topics: segment.topics,
-          sources: segment.sources,
           excludeTopics: segment.excludeTopics,
         },
         lastTranscriptTitle: lastTranscript?.title ?? null,

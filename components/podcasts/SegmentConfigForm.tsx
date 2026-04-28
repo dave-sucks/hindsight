@@ -1,22 +1,19 @@
 "use client";
 
 /**
- * SegmentConfigForm — the segment analog of AnalystConfigForm.
+ * SegmentConfigForm — segment analog of AnalystConfigForm.
  *
- * Same tabs (Brief / Monitors / Settings), same visual language, same
- * primitive building blocks. Only the field set differs because a segment
- * isn't a trading analyst.
- *
- * Reuses the exported helpers from AnalystConfigForm (Section,
- * FieldGroup, RowLabel, EmptyHint, GHOST_INPUT, EnumChipsCombobox,
- * FreeTextChipsCombobox) so the chrome stays byte-identical to the
- * analyst surface.
+ * Three tabs (Brief / Monitors / Settings), same primitives, same visual
+ * language. The Monitors tab mirrors AnalystConfigForm's Monitors tab
+ * byte-for-byte: a Sources section (domain monitors with favicon + name)
+ * and a Search Queries section (Sonar queries with Search icon). Both
+ * read from the same Monitor table the analyst surface uses, just split
+ * by Monitor.type. Adds the inline-add forms below each section because
+ * podcast segments don't have an AI chat editor yet.
  */
 
 import { useState } from "react";
-import { Search } from "lucide-react";
-
-import { cn } from "@/lib/utils";
+import { Search, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,10 +40,17 @@ import {
   GHOST_INPUT,
   FreeTextChipsCombobox,
 } from "@/components/analysts/AnalystConfigForm";
+import { cn } from "@/lib/utils";
 
 // ─── Form value shape ────────────────────────────────────────────────────────
 
-export type SegmentMonitorView = {
+export type SegmentDomainSource = {
+  id: string;
+  name: string;
+  domain: string;
+};
+
+export type SegmentSearchQuery = {
   id: string;
   name: string;
   query: string;
@@ -58,9 +62,9 @@ export type SegmentFormValues = {
   segmentPrompt: string;
   targetSeconds: number;
   topics: string[];
-  sources: string[];
   excludeTopics: string[];
-  monitors: SegmentMonitorView[];
+  domainMonitors: SegmentDomainSource[];
+  searchMonitors: SegmentSearchQuery[];
 };
 
 export type SegmentFormChangeHandler = <K extends keyof SegmentFormValues>(
@@ -71,8 +75,9 @@ export type SegmentFormChangeHandler = <K extends keyof SegmentFormValues>(
 interface Props {
   values: SegmentFormValues;
   onChange: SegmentFormChangeHandler;
-  /** Add a new search monitor (Sonar query). */
-  onAddMonitor?: (input: { name: string; query: string }) => Promise<void> | void;
+  /** Add a new monitor to the segment — type-aware. */
+  onAddDomainMonitor?: (input: { name: string; domain: string }) => Promise<void> | void;
+  onAddSearchMonitor?: (input: { name?: string; query: string }) => Promise<void> | void;
   onRemoveMonitor?: (monitorId: string) => Promise<void> | void;
   hideName?: boolean;
   defaultTab?: "brief" | "monitors" | "settings";
@@ -81,7 +86,8 @@ interface Props {
 export function SegmentConfigForm({
   values,
   onChange,
-  onAddMonitor,
+  onAddDomainMonitor,
+  onAddSearchMonitor,
   onRemoveMonitor,
   hideName = false,
   defaultTab = "brief",
@@ -107,7 +113,8 @@ export function SegmentConfigForm({
           <ScrollArea className="h-full">
             <MonitorsTab
               values={values}
-              onAddMonitor={onAddMonitor}
+              onAddDomainMonitor={onAddDomainMonitor}
+              onAddSearchMonitor={onAddSearchMonitor}
               onRemoveMonitor={onRemoveMonitor}
             />
           </ScrollArea>
@@ -173,8 +180,8 @@ function BriefTab({
   );
 }
 
-// Editorial brief — markdown editor with Edit/Cancel/Save action slot.
-// Mirrors AnalystConfigForm's StrategyField behavior 1:1.
+// Editorial brief — Edit/Cancel/Save markdown editor. Same shape as
+// AnalystConfigForm's StrategyField.
 function BriefField({
   value,
   onSave,
@@ -248,31 +255,181 @@ function BriefField({
 }
 
 // ─── Monitors tab ────────────────────────────────────────────────────────────
-// Mirror of AnalystConfigForm's Monitors tab structure: a Sources section
-// (omitted for podcasts in Phase 1 — domain monitors land in Phase 4) plus
-// a Search Queries section with the same row layout.
+// Mirror of AnalystConfigForm's Monitors tab. Two sections — Sources (DOMAIN
+// monitors, favicon + name) and Search Queries (SEARCH monitors, Search icon
+// + query). Read-only display rows match the analyst sheet exactly.
+//
+// Inline add forms live below each section because podcast segments don't
+// have an AI chat editor yet. When that ships, drop the inline forms and
+// route edits through the editor.
 
 function MonitorsTab({
   values,
-  onAddMonitor,
+  onAddDomainMonitor,
+  onAddSearchMonitor,
   onRemoveMonitor,
 }: {
   values: SegmentFormValues;
-  onAddMonitor?: (input: { name: string; query: string }) => Promise<void> | void;
+  onAddDomainMonitor?: (input: { name: string; domain: string }) => Promise<void> | void;
+  onAddSearchMonitor?: (input: { name?: string; query: string }) => Promise<void> | void;
   onRemoveMonitor?: (monitorId: string) => Promise<void> | void;
 }) {
+  const hasAny =
+    values.domainMonitors.length > 0 || values.searchMonitors.length > 0;
+
+  return (
+    <div className="flex flex-col">
+      <Section
+        label="Sources"
+        tooltip="Websites the intelligence pipeline crawls daily for this segment. Same Sonar + Firecrawl pipeline as analyst monitors."
+      >
+        {values.domainMonitors.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            {values.domainMonitors.map((s) => (
+              <div
+                key={s.id}
+                className="group/row flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`https://www.google.com/s2/favicons?domain=${s.domain}&sz=16`}
+                  alt=""
+                  width={14}
+                  height={14}
+                  className="size-3.5 rounded-sm shrink-0"
+                />
+                <span className="truncate flex-1">{s.name}</span>
+                {onRemoveMonitor && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveMonitor(s.id)}
+                    className="opacity-0 group-hover/row:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                    aria-label="Remove source"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyHint>None — add a domain below.</EmptyHint>
+        )}
+
+        {onAddDomainMonitor && <AddDomainForm onAdd={onAddDomainMonitor} />}
+      </Section>
+
+      <Section
+        label="Search Queries"
+        tooltip="Daily Sonar queries that surface new material for this segment. Same Monitor table the analyst surface uses."
+      >
+        <div className="flex flex-col gap-1">
+          {values.searchMonitors.length === 0 ? (
+            <EmptyHint>None — add a query below.</EmptyHint>
+          ) : (
+            values.searchMonitors.map((q) => (
+              <div
+                key={q.id}
+                className="group/row flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8"
+              >
+                <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="flex-1 truncate">{q.query || q.name}</span>
+                {onRemoveMonitor && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveMonitor(q.id)}
+                    className="opacity-0 group-hover/row:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                    aria-label="Remove query"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {onAddSearchMonitor && <AddSearchForm onAdd={onAddSearchMonitor} />}
+      </Section>
+
+      <p className="px-3 py-3 text-[11px] text-muted-foreground/60 leading-relaxed">
+        Plus any signal that hits this segment&apos;s topic fence is
+        considered during a run.
+      </p>
+
+      {!hasAny && (
+        <div className="text-xs text-muted-foreground/40 py-6 text-center">
+          No monitors yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddDomainForm({
+  onAdd,
+}: {
+  onAdd: (input: { name: string; domain: string }) => Promise<void> | void;
+}) {
   const [name, setName] = useState("");
+  const [domain, setDomain] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    const trimmedDomain = domain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    if (!trimmedDomain) return;
+    setBusy(true);
+    try {
+      await onAdd({ name: name.trim() || trimmedDomain, domain: trimmedDomain });
+      setName("");
+      setDomain("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end pt-2">
+      <Input
+        value={name}
+        placeholder="Source name (optional)"
+        className={cn(GHOST_INPUT, "text-xs h-8")}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <Input
+        value={domain}
+        placeholder="domain.com"
+        className={cn(GHOST_INPUT, "text-xs h-8")}
+        onChange={(e) => setDomain(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void submit();
+          }
+        }}
+      />
+      <Button size="sm" disabled={busy} onClick={submit}>
+        <Plus className="h-3 w-3" />
+        Add
+      </Button>
+    </div>
+  );
+}
+
+function AddSearchForm({
+  onAdd,
+}: {
+  onAdd: (input: { name?: string; query: string }) => Promise<void> | void;
+}) {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    const trimmedName = name.trim();
-    const trimmedQuery = query.trim();
-    if (!trimmedName || !trimmedQuery || !onAddMonitor) return;
+    const trimmed = query.trim();
+    if (!trimmed) return;
     setBusy(true);
     try {
-      await onAddMonitor({ name: trimmedName, query: trimmedQuery });
-      setName("");
+      await onAdd({ query: trimmed });
       setQuery("");
     } finally {
       setBusy(false);
@@ -280,80 +437,23 @@ function MonitorsTab({
   };
 
   return (
-    <div className="flex flex-col">
-      <Section
-        label="Search Queries"
-        tooltip="Each is a Perplexity Sonar query that runs as part of the segment's signal pipeline."
-      >
-        <div className="flex flex-col gap-1">
-          {values.monitors.length === 0 ? (
-            <EmptyHint>No monitors yet — add one below.</EmptyHint>
-          ) : (
-            values.monitors.map((m) => (
-              <Tooltip key={m.id}>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      className="group flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8 text-left"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onRemoveMonitor) void onRemoveMonitor(m.id);
-                      }}
-                    >
-                      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="flex-1 truncate">{m.name}</span>
-                      <span className="text-[10px] text-muted-foreground/60 opacity-0 group-hover:opacity-100">
-                        Remove
-                      </span>
-                    </button>
-                  }
-                />
-                <TooltipContent side="left" className="max-w-xs text-xs">
-                  {m.query}
-                </TooltipContent>
-              </Tooltip>
-            ))
-          )}
-        </div>
-
-        {onAddMonitor && (
-          <div className="grid grid-cols-[1fr_2fr_auto] gap-2 items-end pt-2">
-            <div className="flex flex-col gap-1">
-              <RowLabel label="Name" />
-              <Input
-                value={name}
-                placeholder="Indie game launches"
-                className={cn(GHOST_INPUT)}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <RowLabel label="Query" />
-              <Input
-                value={query}
-                placeholder="indie game releases this week steam"
-                className={cn(GHOST_INPUT)}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void submit();
-                  }
-                }}
-              />
-            </div>
-            <Button size="sm" disabled={busy} onClick={submit}>
-              Add
-            </Button>
-          </div>
-        )}
-      </Section>
-
-      <p className="px-3 py-3 text-[11px] text-muted-foreground/60 leading-relaxed">
-        Plus any signal that hits this segment&apos;s topic fence is
-        considered during a run.
-      </p>
+    <div className="grid grid-cols-[1fr_auto] gap-2 items-end pt-2">
+      <Input
+        value={query}
+        placeholder="Search query — e.g. indie game launches this week steam"
+        className={cn(GHOST_INPUT, "text-xs h-8")}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void submit();
+          }
+        }}
+      />
+      <Button size="sm" disabled={busy} onClick={submit}>
+        <Plus className="h-3 w-3" />
+        Add
+      </Button>
     </div>
   );
 }
@@ -401,17 +501,6 @@ function SettingsTab({
             values={values.topics}
             placeholder="Free text — e.g. AI, venture capital, open source"
             onChange={(next) => onChange("topics", next)}
-          />
-        </FieldGroup>
-
-        <FieldGroup
-          label="Preferred sources"
-          tooltip="Optional 2–4 domain hints the segment leans on (e.g. techcrunch.com)."
-        >
-          <FreeTextChipsCombobox
-            values={values.sources}
-            placeholder="Free text — e.g. techcrunch.com"
-            onChange={(next) => onChange("sources", next)}
           />
         </FieldGroup>
 

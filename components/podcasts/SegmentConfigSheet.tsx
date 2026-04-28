@@ -3,10 +3,13 @@
 /**
  * SegmentConfigSheet — segment analog of AnalystConfigSheet.
  *
- * One Sheet return. Always mounted. The body contents are conditional
- * on `segment` being non-null. Two-return shapes get unmounted and
- * remounted by React when the prop transitions, which kills the open
- * animation — that's exactly what was breaking the click-to-open flow.
+ * One Sheet return. Always mounted (so the open transition fires when
+ * `open` flips). Body content guarded on `segment` so a closed-Sheet
+ * mount isn't required to render an empty form.
+ *
+ * Reads SegmentSummary off props (carried inline by getPodcastDetail —
+ * no extra fetch). Domain monitors and search monitors live on the same
+ * Monitor table the analyst surface uses, just split by Monitor.type.
  */
 
 import { useTransition } from "react";
@@ -32,8 +35,6 @@ import {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** The segment to edit. `null` when nothing is selected — Sheet stays
-   *  mounted (one return, see file header) but body is empty. */
   segment: SegmentSummary | null;
 }
 
@@ -47,17 +48,24 @@ export function SegmentConfigSheet({ open, onOpenChange, segment }: Props) {
         segmentPrompt: segment.segmentPrompt,
         targetSeconds: segment.targetSeconds,
         topics: segment.topics,
-        sources: segment.sources,
         excludeTopics: segment.excludeTopics,
-        monitors: segment.monitors,
+        domainMonitors: segment.domainMonitors.map((d) => ({
+          id: d.id,
+          name: d.name,
+          domain: d.domain,
+        })),
+        searchMonitors: segment.searchMonitors.map((s) => ({
+          id: s.id,
+          name: s.name,
+          query: s.query,
+        })),
       }
     : null;
 
   const handleChange: SegmentFormChangeHandler = (field, value) => {
     if (!segment) return;
-    if (field === "monitors") return; // monitors mutate via addSegmentMonitor / removeSegmentMonitor
+    if (field === "domainMonitors" || field === "searchMonitors") return; // monitors mutate via add/remove
     startTransition(async () => {
-      // updateSegment accepts a partial patch — pass a single-key object.
       await updateSegment(
         segment.id,
         { [field]: value } as Parameters<typeof updateSegment>[1],
@@ -65,9 +73,14 @@ export function SegmentConfigSheet({ open, onOpenChange, segment }: Props) {
     });
   };
 
-  const handleAddMonitor = async (input: { name: string; query: string }) => {
+  const handleAddDomain = async (input: { name: string; domain: string }) => {
     if (!segment) return;
-    await addSegmentMonitor(segment.id, input);
+    await addSegmentMonitor(segment.id, { type: "DOMAIN", ...input });
+  };
+
+  const handleAddSearch = async (input: { name?: string; query: string }) => {
+    if (!segment) return;
+    await addSegmentMonitor(segment.id, { type: "SEARCH", ...input });
   };
 
   const handleRemoveMonitor = async (monitorId: string) => {
@@ -95,7 +108,8 @@ export function SegmentConfigSheet({ open, onOpenChange, segment }: Props) {
             <SegmentConfigForm
               values={values}
               onChange={handleChange}
-              onAddMonitor={handleAddMonitor}
+              onAddDomainMonitor={handleAddDomain}
+              onAddSearchMonitor={handleAddSearch}
               onRemoveMonitor={handleRemoveMonitor}
             />
           </div>

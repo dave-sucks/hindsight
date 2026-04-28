@@ -28,10 +28,22 @@ export interface PodcastListItem {
   createdAt: Date;
 }
 
-export interface SegmentMonitorView {
+// Domain + search monitor row shapes — mirror what AnalystConfigForm reads
+// off `domainMonitors` and `searchMonitors` from getAnalystDetail. Same Monitor
+// table, just split by Monitor.type for the UI.
+export interface SegmentDomainMonitorView {
+  id: string;
+  name: string;
+  domain: string;
+  category: string;
+  qualityScore: number;
+}
+
+export interface SegmentSearchMonitorView {
   id: string;
   name: string;
   query: string;
+  category: string;
 }
 
 export interface SegmentSummary {
@@ -41,17 +53,16 @@ export interface SegmentSummary {
   segmentPrompt: string;
   targetSeconds: number;
   topics: string[];
-  sources: string[];
   excludeTopics: string[];
   enabled: boolean;
   orderIndex: number;
   lastRunAt: Date | null;
   lastTranscriptTitle: string | null;
   transcriptCount: number;
-  // Monitors are carried inline so the per-segment settings sheet can open
-  // without a second round-trip. The sheet only needs id/name/query —
-  // additional Monitor fields stay on the row but aren't surfaced here.
-  monitors: SegmentMonitorView[];
+  // Monitors split by type, mirror analyst (domainMonitors / searchMonitors).
+  // Both are Monitor rows scoped to this segment via podcastSegmentId.
+  domainMonitors: SegmentDomainMonitorView[];
+  searchMonitors: SegmentSearchMonitorView[];
 }
 
 export interface PodcastDetail {
@@ -153,7 +164,7 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
         orderBy: { orderIndex: "asc" },
         include: {
           monitors: {
-            select: { id: true, name: true, config: true },
+            select: { id: true, name: true, type: true, config: true, category: true },
             orderBy: { createdAt: "asc" },
           },
           transcripts: {
@@ -171,25 +182,47 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
   });
   if (!podcast) return null;
 
-  const segments: SegmentSummary[] = podcast.segments.map((s) => ({
-    id: s.id,
-    name: s.name,
-    description: s.description,
-    segmentPrompt: s.segmentPrompt,
-    targetSeconds: s.targetSeconds,
-    topics: s.topics,
-    sources: s.sources,
-    excludeTopics: s.excludeTopics,
-    enabled: s.enabled,
-    orderIndex: s.orderIndex,
-    lastRunAt: s.runs[0]?.startedAt ?? null,
-    lastTranscriptTitle: s.transcripts[0]?.title ?? null,
-    transcriptCount: s.transcripts.length,
-    monitors: s.monitors.map((m) => {
-      const cfg = (m.config as { query?: string } | null) ?? {};
-      return { id: m.id, name: m.name, query: cfg.query ?? "" };
-    }),
-  }));
+  const segments: SegmentSummary[] = podcast.segments.map((s) => {
+    // Split Monitor rows by type — same shape AnalystConfigForm consumes
+    // off getAnalystDetail.{domainMonitors,searchMonitors}.
+    const domainMonitors: SegmentDomainMonitorView[] = [];
+    const searchMonitors: SegmentSearchMonitorView[] = [];
+    for (const m of s.monitors) {
+      const cfg = (m.config as Record<string, unknown> | null) ?? {};
+      if (m.type === "DOMAIN") {
+        domainMonitors.push({
+          id: m.id,
+          name: m.name,
+          domain: typeof cfg.domain === "string" ? cfg.domain : "",
+          category: m.category,
+          qualityScore: typeof cfg.qualityScore === "number" ? cfg.qualityScore : 3,
+        });
+      } else if (m.type === "SEARCH") {
+        searchMonitors.push({
+          id: m.id,
+          name: m.name,
+          query: typeof cfg.query === "string" ? cfg.query : "",
+          category: m.category,
+        });
+      }
+    }
+    return {
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      segmentPrompt: s.segmentPrompt,
+      targetSeconds: s.targetSeconds,
+      topics: s.topics,
+      excludeTopics: s.excludeTopics,
+      enabled: s.enabled,
+      orderIndex: s.orderIndex,
+      lastRunAt: s.runs[0]?.startedAt ?? null,
+      lastTranscriptTitle: s.transcripts[0]?.title ?? null,
+      transcriptCount: s.transcripts.length,
+      domainMonitors,
+      searchMonitors,
+    };
+  });
 
   return {
     id: podcast.id,
@@ -234,9 +267,13 @@ export async function createPodcastFromBuilder(
       },
     });
 
-    if (config.segments.length > 0) {
-      await tx.podcastSegment.createMany({
-        data: config.segments.map((s, i) => ({
+    // Create segments one-by-one so we can attach monitor rows by segment
+    // id. createMany doesn't return the inserted ids in Postgres without
+    // an extra round-trip, so the loop pays for itself.
+    for (let i = 0; i < config.segments.length; i++) {
+      const s = config.segments[i];
+      const segment = await tx.podcastSegment.create({
+        data: {
           podcastId: created.id,
           userId: user.id,
           name: s.name,
@@ -245,10 +282,60 @@ export async function createPodcastFromBuilder(
           targetSeconds: s.targetSeconds,
           orderIndex: i,
           topics: s.topics,
-          sources: s.sources,
           excludeTopics: s.excludeTopics,
-        })),
+          // `sources` column on PodcastSegment is dormant — domain hints
+          // belong on Monitor rows of type=DOMAIN. Empty array stays in DB
+          // for legacy column compatibility until a follow-up migration
+          // drops it.
+          sources: [],
+        },
       });
+
+      // Domain monitors — Monitor rows of type=DOMAIN, mirror of
+      // createAnalystFromBuilder's domain-monitor block.
+      for (const m of s.domainMonitors) {
+        const domain = m.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+        await tx.monitor.create({
+          data: {
+            name: m.name,
+            type: "DOMAIN",
+            method: "perplexity_sonar",
+            config: {
+              domain,
+              url: `https://${domain}`,
+              qualityScore: 3,
+              reason: m.reason,
+            } as object,
+            scope: "PODCAST_SEGMENT",
+            podcastSegmentId: segment.id,
+            enabled: true,
+            builtIn: false,
+            origin: "BUILDER",
+            class: "UNIVERSE",
+            category: "THEMATIC",
+          },
+        });
+      }
+
+      // Search-query monitors — Monitor rows of type=SEARCH, mirror of
+      // createAnalystFromBuilder's intelligenceQueries block.
+      for (const q of s.searchQueries) {
+        await tx.monitor.create({
+          data: {
+            name: q.query,
+            type: "SEARCH",
+            method: "perplexity_sonar",
+            config: { query: q.query, reason: q.reason } as object,
+            scope: "PODCAST_SEGMENT",
+            podcastSegmentId: segment.id,
+            enabled: true,
+            builtIn: false,
+            origin: "BUILDER",
+            class: "UNIVERSE",
+            category: "THEMATIC",
+          },
+        });
+      }
     }
 
     return created;
@@ -266,7 +353,6 @@ export interface SegmentPatch {
   segmentPrompt?: string;
   targetSeconds?: number;
   topics?: string[];
-  sources?: string[];
   excludeTopics?: string[];
   enabled?: boolean;
   orderIndex?: number;
@@ -303,13 +389,20 @@ export async function updatePodcastBasics(
 }
 
 // ── Monitors on a segment ──────────────────────────────────────────────────
-// Reuses the Monitor table — Phase 1 supports search-style monitors via
-// Sonar (the most useful for podcasts). Domain monitors and API monitors
-// can be added in Phase 4 once the segment-aware signal-router lands.
+// Reuses the Monitor table — same shape as analyst monitors. Two types:
+//   • DOMAIN: a website crawled by Sonar+Firecrawl (config.domain, qualityScore)
+//   • SEARCH: a Sonar query (config.query)
+// Mirrors createAnalystFromBuilder's monitor-row shape exactly so downstream
+// jobs (domain-monitor, search-query crons, signal-router) treat segment
+// monitors the same as analyst monitors once segment routing lands.
+
+type AddMonitorInput =
+  | { type: "DOMAIN"; name: string; domain: string; qualityScore?: number; reason?: string }
+  | { type: "SEARCH"; name?: string; query: string; reason?: string };
 
 export async function addSegmentMonitor(
   segmentId: string,
-  input: { name: string; query: string },
+  input: AddMonitorInput,
 ) {
   const user = await requireUser();
   const seg = await prisma.podcastSegment.findFirst({
@@ -318,20 +411,45 @@ export async function addSegmentMonitor(
   });
   if (!seg) throw new Error("Segment not found");
 
-  await prisma.monitor.create({
-    data: {
-      name: input.name,
-      type: "SEARCH",
-      method: "perplexity_sonar",
-      config: { query: input.query } as object,
-      scope: "PODCAST_SEGMENT",
-      podcastSegmentId: seg.id,
-      origin: "USER",
-      class: "UNIVERSE",
-      category: "THEMATIC",
-    },
-  });
-  revalidatePath(`/podcasts/${seg.podcastId}/segments/${seg.id}`);
+  if (input.type === "DOMAIN") {
+    const domain = input.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    await prisma.monitor.create({
+      data: {
+        name: input.name || domain,
+        type: "DOMAIN",
+        method: "perplexity_sonar",
+        config: {
+          domain,
+          url: `https://${domain}`,
+          qualityScore: Math.min(5, Math.max(1, Math.round(input.qualityScore ?? 3))),
+          ...(input.reason ? { reason: input.reason } : {}),
+        } as object,
+        scope: "PODCAST_SEGMENT",
+        podcastSegmentId: seg.id,
+        origin: "USER",
+        class: "UNIVERSE",
+        category: "THEMATIC",
+      },
+    });
+  } else {
+    await prisma.monitor.create({
+      data: {
+        name: input.name?.trim() || input.query,
+        type: "SEARCH",
+        method: "perplexity_sonar",
+        config: {
+          query: input.query,
+          ...(input.reason ? { reason: input.reason } : {}),
+        } as object,
+        scope: "PODCAST_SEGMENT",
+        podcastSegmentId: seg.id,
+        origin: "USER",
+        class: "UNIVERSE",
+        category: "THEMATIC",
+      },
+    });
+  }
+  revalidatePath(`/podcasts/${seg.podcastId}`);
 }
 
 export async function removeSegmentMonitor(monitorId: string) {
@@ -344,7 +462,7 @@ export async function removeSegmentMonitor(monitorId: string) {
     throw new Error("Monitor not found");
   }
   await prisma.monitor.delete({ where: { id: monitorId } });
-  revalidatePath(`/podcasts/${monitor.segment.podcastId}/segments/${monitor.segment.id}`);
+  revalidatePath(`/podcasts/${monitor.segment.podcastId}`);
 }
 
 // ── Delete ──────────────────────────────────────────────────────────────────
