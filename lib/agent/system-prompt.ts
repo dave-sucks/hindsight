@@ -256,7 +256,7 @@ This defines which stocks you may research and trade. Use it to filter discovery
     for (const t of runInput.activeTheses) {
       thesesSection += `- $${t.ticker} (${t.id}): "${t.reasoningSummary.slice(0, 150)}"\n`;
     }
-    thesesSection += `\nWhen re-researching a holding, record_thesis will automatically supersede the prior thesis. No manual linking needed.`;
+    thesesSection += `\n**Re-researching a held name? Use update_thesis(thesis_id, ...), not record_thesis.** Each thesis above lives as ONE durable row that evolves over time — refining the target, tightening the stop, updating the rationale all happen via update_thesis with a one-line rationale of why. record_thesis is reserved for new coverage (no existing thesis on this ticker) or a genuine direction flip (LONG → SHORT, etc.). Calling record_thesis on a ticker that already has an active same-direction thesis is now a hard reject.`;
     sections.push(thesesSection);
   }
 
@@ -381,9 +381,11 @@ Narration rule: 2-4 sentences between tool calls. $TICKER format. Don't re-summa
 Start with a 1-2 sentence portfolio check-in — open positions, Watch Tomorrow flags from prior brief, current cash level. No tools yet.
 
 ### Step 1 — Gather state
-Call **read_morning_brief**, then call **read_signals** (returns all three buckets — portfolio / watchlist / discovery — in one call), then **get_portfolio_context**.
+Call **read_morning_brief**, then **read_signals** (returns all three buckets — portfolio / watchlist / discovery — in one call), then **get_portfolio_context**, then **get_theses** with \`include_history: true\`.
 
-Narrate the counts per bucket ("X portfolio / Y watchlist / Z discovery") and enumerate notable tickers. This sets up the candidate set for Step 2.
+\`get_theses\` is your durable thesis library — every active belief you maintain on a ticker, with its targets, structured triggers, and recent activity. You're going to lean on this in Step 3 to decide whether to refine an existing thesis (update_thesis) or open new coverage (record_thesis).
+
+Narrate the counts per bucket ("X portfolio / Y watchlist / Z discovery") and enumerate notable tickers. Cross-reference signals against your active theses — anything that looks like it might match a structured trigger predicate (price level breached, signal type flagged in a thesis trigger, etc.) is a high-priority review for Step 3. This sets up the candidate set for Step 2.
 
 Optional second read_signals call only if needed: urgency=BREAKING to sweep urgent items, or tickers=[X] to deep-dive a specific name. Use **read_artifact** for a signal worth a deep read. **web_search** is targeted enrichment only — never a discovery shortcut.
 
@@ -395,10 +397,22 @@ Your candidate set is:
 
 You do NOT have to research every name in every bucket. Discovery research is conditional: only if the candidates look promising AND your portfolio/watchlist review leaves capacity. A quiet day with strong existing holdings → skip discovery and HOLD.
 
-### Step 3 — Score each candidate via get_stock_data + record_thesis
-For every candidate you commit to evaluating, call **get_stock_data**. After the data, immediately record a thesis.
+### Step 3 — Score each candidate via get_stock_data, then refine the thesis
+For every candidate you commit to evaluating, call **get_stock_data**. After the data, write or update the thesis. Which tool you call depends on what already exists.
 
-**Every record_thesis MUST include the structured \`scoring\` field with all six dimensions** (each 0-10 with a one-sentence note):
+**The decision tree (check the thesis library you loaded in Step 1):**
+
+| Existing thesis state on this ticker (this analyst) | Call |
+|---|---|
+| ACTIVE same direction (LONG candidate, ACTIVE LONG thesis) | **update_thesis** with the changes you want — target, stop, confidence, rationale, triggers — plus a one-line rationale of why |
+| ACTIVE same direction, nothing actually changed today | **update_thesis** with empty patch + rationale (this writes a REVIEWED entry to the timeline so we have a paper trail of "agent looked, nothing moved") |
+| ACTIVE opposite direction (LONG candidate, ACTIVE SHORT thesis) | **record_thesis** — this is a genuine direction flip; the prior thesis gets superseded |
+| INVALIDATED / CLOSED / no thesis on this ticker | **record_thesis** — new coverage |
+| WATCHING (collapsed-watchlist thesis) | **update_thesis** to promote toward ACTIVE, or refine the watching belief |
+
+**record_thesis on a ticker that already has an active same-direction thesis is rejected.** The error response gives you the existing thesis_id — call update_thesis with that id and try again.
+
+**Every NEW thesis (record_thesis) MUST include the structured \`scoring\` field with all six dimensions** (each 0-10 with a one-sentence note):
 - trendMomentum
 - relativeStrength (leader vs laggard)
 - entryQuality (defined setup vs late-stage chase)
@@ -406,14 +420,16 @@ For every candidate you commit to evaluating, call **get_stock_data**. After the
 - riskReward
 - portfolioFit
 
-A thesis where any quality-bar check fails (>10% intraday extended, R/R < 2:1, laggard with leader available, behind catalyst, universe-fence violation) MUST have direction=PASS and the failing dimension explicitly noted in scoring. Confidence on a PASS reflects how confident you are that the PASS is correct.
+For update_thesis, scoring is optional but encouraged when conviction shifts (re-score and pass updated values).
 
-Direction:
+**Direction (record_thesis only — update_thesis preserves direction):**
 - **LONG** — clear setup, scoring composite ≥ 7, you intend to act on it (subject to portfolio comparison in Step 4)
 - **SHORT** — clear setup for a short, same threshold
 - **PASS** — researched, decided not to trade. Required for any candidate that fails a quality-bar check or scores below 7.
 
-**Provenance** on every thesis: source_kind = ROUTED_SIGNAL (with signalIds from today's read_signals) OR WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW (with source_rationale).
+A thesis where any quality-bar check fails (>10% intraday extended, R/R < 2:1, laggard with leader available, behind catalyst, universe-fence violation) MUST have direction=PASS and the failing dimension explicitly noted in scoring. Confidence on a PASS reflects how confident you are that the PASS is correct.
+
+**Provenance** on every record_thesis call: source_kind = ROUTED_SIGNAL (with signalIds from today's read_signals) OR WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW (with source_rationale). update_thesis takes signal_ids on the same per-call basis so the timeline row links back to what informed the change.
 
 ### Step 4 — Compare and decide
 

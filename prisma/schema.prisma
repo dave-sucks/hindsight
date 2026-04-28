@@ -49,6 +49,7 @@ model ResearchRun {
   startedAt     DateTime     @default(now())
   completedAt   DateTime?
   theses        Thesis[]
+  thesisUpdates ThesisUpdate[]
   events        RunEvent[]
   messages      RunMessage[]
   decisions     TradeDecision[]
@@ -99,6 +100,7 @@ enum ThesisStatus {
   INVALIDATED
   CLOSED
   SUPERSEDED
+  WATCHING
 }
 
 model Thesis {
@@ -144,15 +146,48 @@ model Thesis {
   // Phase 1 — what should fire an intraday tactical re-evaluation of this
   // thesis. Shape: { events: ["EARNINGS_BEAT","GUIDANCE_CUT"],
   // priceTriggers: { stop: 145, target: 180 }, watchedTickers: ["NVDA"] }.
-  // Read by the tactical-trigger-evaluator (Phase 5) to decide whether a
-  // new signal warrants spawning an intraday run on this thesis's ticker.
+  // Kept for backwards-compat; superseded by the structured `triggers`
+  // column below. Will be removed once all consumers migrate.
   revalidationTriggers Json?
+
+  // ── Thesis Durable State (PR 1) ──────────────────────────────────────
+  // Promotes Thesis from a one-shot trade rationale to a durable coverage
+  // object. See migration 20260426000000_thesis_durable_state for the full
+  // rationale.
+  //
+  // horizon dictates exit policy:
+  //   CATALYST   = exit on event (good or bad), or 30d past catalystDate
+  //   TARGET     = exit at target/stop or thesis invalidation. Open-ended.
+  //   TRADE      = exit on stop/target/maxHoldDays. Bounded short-term.
+  //   COMPOUNDER = exit only when invalidation triggers fire. Years.
+  horizon              String?      // "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER"
+
+  coreBelief           String?      // The actual claim, separate from the trade rationale
+  keyAssumptions       String[]     @default([]) // Premises that must hold
+  invalidationConds    String[]     @default([]) // What would prove this wrong
+
+  targetSizePct        Float?       // % of portfolio at full position
+  scalingPlan          Json?        // [{pct, atPrice?, atSignal?, rationale}]
+
+  // Structured triggers — see lib/agent/triggers/types.ts for the full
+  // discriminated-union shape. Router evaluates predicates deterministically;
+  // LLM only runs after a trigger fires. Stored as Json so the union can
+  // grow without schema migrations.
+  triggers             Json         @default("[]")
+
+  catalystDate         DateTime?    // CATALYST horizon only
+  maxHoldDays          Int?         // TRADE horizon only
+  nextReviewAt         DateTime?    // When housekeeping should re-look
+
+  closedAt             DateTime?    // Mirrors invalidatedAt for CLOSED state
+  closeReason          String?
 
   // Relations
   researchRun      ResearchRun   @relation(fields: [researchRunId], references: [id])
   decisions        TradeDecision[]
   parentThesis     Thesis?       @relation("ThesisChain", fields: [parentThesisId], references: [id])
   childTheses      Thesis[]      @relation("ThesisChain")
+  updates          ThesisUpdate[]
 
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -161,6 +196,57 @@ model Thesis {
   @@index([userId])
   @@index([ticker])
   @@index([userId, ticker, status])
+  @@index([status, nextReviewAt])
+  @@index([ticker, status])
+}
+
+// ── Thesis activity log ─────────────────────────────────────────────────
+// One row per state change on a Thesis. Replaces the scattered history
+// across RunEvent.payload, parentThesisId chain walks, and Position events.
+// Renders as the timeline on /theses/[id].
+//
+// Captures CONTEXT AT THE TIME (priceAtTime, positionAtTime) so an entry
+// six months later still answers "what did we know when we made this call."
+model ThesisUpdate {
+  id              String       @id @default(cuid())
+  thesisId        String
+  timestamp       DateTime     @default(now())
+
+  // "CREATED" | "UPDATED" | "TRIGGER_FIRED" | "REVIEWED" | "ACTED"
+  //   | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "STATUS_CHANGED"
+  // Kept as String (not enum) so types extend without migrations.
+  type            String
+
+  // Diff payload: { fieldName: { from, to }, ... }. Empty {} for CREATED
+  // and for REVIEWED rows where the agent looked but changed nothing.
+  fieldChanges    Json         @default("{}")
+
+  // Snapshot of context at the moment of this update. priceAtTime is the
+  // latest quote we could resolve; positionAtTime is the analyst's actual
+  // position state ({qty, avgCost, unrealizedPnL}) or null. Both nullable
+  // because not every code path can resolve them.
+  priceAtTime     Float?
+  positionAtTime  Json?
+
+  // Narrative. summary feeds the timeline list view ("Increased target to
+  // $247.35 after Q2 beat"); rationale renders in the expanded entry.
+  summary         String
+  rationale       String?
+
+  // Links into the rest of the system. triggerId on TRIGGER_FIRED+ACTED.
+  // signalIds is whatever the agent cited. runId points at the ResearchRun
+  // (any mode); tradeId is set if the update produced a trade.
+  triggerId       String?
+  signalIds       String[]     @default([])
+  runId           String?
+  tradeId         String?
+
+  thesis          Thesis       @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  run             ResearchRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([thesisId, timestamp(sort: Desc)])
+  @@index([runId])
+  @@index([type, timestamp(sort: Desc)])
 }
 
 model AgentConfig {
