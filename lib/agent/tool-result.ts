@@ -31,7 +31,11 @@ export type ToolUI =
   // Mirrors ConfigPreviewRenderer's role: small in-chat summary card +
   // fires onPodcastConfigSuggested via ToolUICallbacks so the side panel
   // opens with the proposal. See docs/PODCAST_PLAN.md.
-  | "podcast-config-preview";
+  | "podcast-config-preview"
+  // Podcast feature — analog of thesis-card for the podcast segment run.
+  // Mirrors ThesisCardRenderer: clickable card inline in chat, opens a
+  // Sheet with the full transcript + citations. See docs/PODCAST_PLAN.md.
+  | "transcript-card";
 
 // ── Unified item model for ToolUIRenderer ────────────────────────────────────
 
@@ -166,6 +170,7 @@ function inferLegacyUI(toolName: string): ToolUI {
   if (toolName === "record_run_summary" || toolName === "summarize_run") return "run-summary";
   if (toolName === "suggest_config") return "config-preview";
   if (toolName === "suggest_podcast_config") return "podcast-config-preview";
+  if (toolName === "write_segment_transcript") return "transcript-card";
   if (toolName === "ask_question") return "ask-question";
   return "tool-ui";
 }
@@ -183,6 +188,8 @@ function remapLegacyUi(ui: string): ToolUI {
     case "run-summary":
     case "config-preview":
     case "ask-question":
+    case "podcast-config-preview":
+    case "transcript-card":
     case "tool-ui":
       return ui;
     default:

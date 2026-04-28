@@ -13,7 +13,6 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
-import type { ToolUIItem } from "@/lib/agent/tool-result";
 
 const citationSchema = z.object({
   claim: z
@@ -123,7 +122,11 @@ export const writeSegmentTranscript = defineTool({
   description:
     "STAGE 3. Write the final segment transcript and persist it. The plainText field is the spoken script; citations[] documents every factual claim. Call this exactly once per run, then call complete_run.",
   schema: transcriptSchema,
-  ui: "tool-ui" as const,
+  // Renders inline via TranscriptCardRenderer — clickable card opening a
+  // Sheet with the full transcript + citation chips. Mirror of how
+  // record_thesis renders inline as a ThesisCard. See
+  // components/domain/transcript-card.tsx.
+  ui: "transcript-card" as const,
 
   progressLabel: (args) => `Writing the script: ${args.title.slice(0, 60)}`,
 
@@ -199,32 +202,20 @@ export const writeSegmentTranscript = defineTool({
         );
       }
 
-      const previewLines = args.plainText
-        .split(/(?<=[.!?])\s+/)
-        .slice(0, 3)
-        .join(" ");
-
-      const items: ToolUIItem[] = [
-        {
-          kind: "generic" as const,
-          text: `${args.title} · ${wordCount} words · ~${durationSec}s · ${args.citations.length} citations`,
-        },
-        {
-          kind: "generic" as const,
-          text: previewLines.length > 0 ? `"${previewLines}"` : "(no preview)",
-        },
-      ];
-
+      // Return rich data so TranscriptCardRenderer can render the full
+      // card + citation Sheet inline. Mirror of how record_thesis returns
+      // its full thesis shape for the ThesisCardRenderer.
       return {
         summary: `Transcript saved: ${args.title} (${wordCount} words, ${args.citations.length} citations)`,
         data: {
           ok: true,
           transcriptId: transcript.id,
           title: args.title,
+          plainText: args.plainText,
           wordCount,
           durationSec,
           citationCount: args.citations.length,
-          items,
+          citations: args.citations,
         },
         sources: args.citations.slice(0, 6).map((c) => ({
           provider: hostnameOf(c.url),
@@ -240,7 +231,7 @@ export const writeSegmentTranscript = defineTool({
         summary: `Transcript save failed: ${msg}`,
         data: {
           ok: false,
-          items: [{ kind: "generic" as const, text: msg }],
+          error: msg,
         },
         sources: [],
       };

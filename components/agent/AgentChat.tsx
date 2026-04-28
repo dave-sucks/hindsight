@@ -33,6 +33,7 @@ import { Sparkles } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunSourcesPanel } from "@/components/research/run-sources-panel";
 import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
+import { TranscriptRow, type TranscriptRowData } from "@/components/ui/transcript-row";
 import type { RunSourceItem } from "@/lib/actions/run-sources.actions";
 import type { MorningBrief as IntelMorningBrief } from "@/components/intelligence/types";
 
@@ -113,6 +114,8 @@ interface AgentChatProps {
   brief?: IntelMorningBrief | null;
   sources?: RunSourceItem[];
   theses?: ThesisRowData[];
+  /** podcast-segment-run: the single transcript this run produced (mirror of theses for analyst runs). */
+  transcript?: TranscriptRowData | null;
 
   // builder / editor
   currentConfig?: Record<string, unknown>;
@@ -160,6 +163,7 @@ export function AgentChat({
   brief = null,
   sources = [],
   theses = [],
+  transcript = null,
   currentConfig,
   messages,
   composerSlot,
@@ -205,6 +209,7 @@ export function AgentChat({
         brief={brief}
         sources={sources}
         theses={theses}
+        transcript={transcript}
         currentConfig={currentConfig}
         composerSlot={composerSlot}
         initialPrompt={initialPrompt}
@@ -229,6 +234,7 @@ interface InnerProps {
   brief: IntelMorningBrief | null;
   sources: RunSourceItem[];
   theses: ThesisRowData[];
+  transcript: TranscriptRowData | null;
   currentConfig?: Record<string, unknown>;
   composerSlot?: ReactNode;
   initialPrompt?: string;
@@ -251,6 +257,7 @@ function AgentChatInner({
   brief,
   sources,
   theses,
+  transcript,
   currentConfig,
   composerSlot,
   initialPrompt,
@@ -448,20 +455,24 @@ function AgentChatInner({
     );
   }
 
-  // ── podcast-segment-run: single Thread, no tabs ──────────────────────────
-  // Same streaming surface as research-run, but no Sources/Theses tabs (a
-  // podcast segment run produces a transcript, not a thesis list). The
-  // useAutoSend above already kicks "Run" when autoStart is true.
+  // ── podcast-segment-run: tabbed layout (Chat | Transcript) ──────────────
+  // Mirror of the research-run tabbed layout, but Chat | Transcript instead
+  // of Chat | Sources | Theses. A segment run produces exactly ONE
+  // transcript (vs many theses for analyst runs), so the Transcript tab
+  // shows the full TranscriptCard with click-to-expand sheet.
   if (mode === "podcast-segment-run") {
     const isFollowupMode = !autoStart;
     return (
-      <div className="flex h-full flex-col">
-        {headerAction && (
-          <div className="shrink-0 px-4 pt-2 flex items-center justify-end">
-            {headerAction}
-          </div>
-        )}
-        <div className="flex-1 min-h-0 flex flex-col">
+      <Tabs defaultValue={0} className="flex h-full flex-col">
+        <div className="shrink-0 px-4 pt-2 flex items-center">
+          <TabsList>
+            <TabsTrigger value={0}>Chat</TabsTrigger>
+            <TabsTrigger value={1}>Transcript</TabsTrigger>
+          </TabsList>
+          {headerAction && <div className="ml-auto">{headerAction}</div>}
+        </div>
+
+        <TabsContent value={0} className="flex-1 min-h-0 flex flex-col">
           <Thread
             welcomeConfig={{
               title: analystName ?? "Segment Run",
@@ -472,8 +483,23 @@ function AgentChatInner({
             composerFeatures={PODCAST_SEGMENT_RUN_COMPOSER}
             composerSlot={composerSlot}
           />
-        </div>
-      </div>
+        </TabsContent>
+
+        <TabsContent value={1} className="flex-1 min-h-0 overflow-y-auto">
+          {transcript ? (
+            <div className="mx-auto w-full max-w-2xl px-4 py-6 space-y-2">
+              <TranscriptRow transcript={transcript} />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+              <p className="text-sm">No transcript yet</p>
+              <p className="text-xs mt-1">
+                The transcript appears here once the agent calls write_segment_transcript.
+              </p>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     );
   }
 
