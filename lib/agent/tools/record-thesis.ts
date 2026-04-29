@@ -10,7 +10,13 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import {
+  defaultTriggersForHorizon,
+  mergeTriggers,
+  type Horizon,
+} from "@/lib/agent/triggers/defaults";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 const thesisFields = z.object({
   ticker: z.string(),
@@ -425,7 +431,30 @@ export const recordThesis = defineTool({
         scalingPlan: args.scaling_plan
           ? (args.scaling_plan as object)
           : undefined,
-        triggers: (args.triggers ?? []) as object,
+        triggers: (() => {
+          // Merge agent-supplied triggers with horizon-keyed defaults so
+          // every thesis ships with the universal "stop / earnings / 8-K"
+          // baseline without the agent having to remember every time.
+          // Agent wins per (predicate, action) bucket; defaults fill gaps.
+          // See lib/agent/triggers/defaults.ts.
+          if (!args.horizon) {
+            return (args.triggers ?? []) as object[];
+          }
+          const defaults = defaultTriggersForHorizon(args.horizon as Horizon, {
+            entryPrice: args.entry_price ?? null,
+            targetPrice: args.target_price ?? null,
+            stopLoss: args.stop_loss ?? null,
+            maxHoldDays: args.max_hold_days ?? null,
+            catalystDate: args.catalyst_date
+              ? new Date(args.catalyst_date)
+              : null,
+          });
+          const merged = mergeTriggers(
+            defaults,
+            (args.triggers ?? []) as Trigger[],
+          );
+          return merged as object[];
+        })(),
         catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
         maxHoldDays:
           args.max_hold_days ?? (args.horizon === "TRADE" ? 14 : null),
