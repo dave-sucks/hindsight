@@ -4,22 +4,18 @@
  * AskQuestionRenderer — renders an ask_question tool call using the
  * Tool-UI Question Flow library (https://www.tool-ui.com/docs/question-flow).
  *
- * The tool emits a payload conforming to the library's
- * SerializableProgressiveMode schema. We parse it with the library's
- * own validator, then render <QuestionFlow> in progressive mode. When
- * the user clicks Next, we append their selection as a new user
- * message via the assistant-ui thread runtime — the agent sees it as
- * the reply and continues the interview.
+ * Two emit shapes from the tool, dispatched here:
  *
- * When the user has already answered (replay of historical runs), we
- * render the Receipt variant of QuestionFlow showing the finalized
- * choice rather than a live pill group.
+ *  - **Progressive** (single question) → one quick-reply card, no step label.
+ *  - **Upfront** (multi-step flow) → one card with "Step N of M" + progress
+ *    bar; user answers each step inline; on Complete, all answers come
+ *    back as one user message ("Q1: a, b. Q2: c.").
  *
- * RENDERING NOTE: this component renders QuestionFlow DIRECTLY — no
- * ToolProgress wrapper, no group header. The question itself is the
- * UI. A tool row header on top of a standalone question panel is a
- * double-header bug. If parsing fails we fall back to a bare text
- * line, not a progress row.
+ * After the user submits, we render the Receipt variant showing the
+ * finalized choice(s) so the conversation reads cleanly on replay.
+ *
+ * If parsing fails we fall back to a bare text line — never crash the
+ * thread on a malformed tool emission.
  */
 
 import { useMemo, useState } from "react";
@@ -27,7 +23,11 @@ import { useThreadRuntime } from "@assistant-ui/react";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { QuestionFlow } from "@/components/tool-ui/question-flow";
 import { safeParseSerializableQuestionFlow } from "@/components/tool-ui/question-flow/schema";
-import type { SerializableProgressiveMode } from "@/components/tool-ui/question-flow/schema";
+import type {
+  SerializableProgressiveMode,
+  SerializableUpfrontMode,
+  QuestionFlowSummaryItem,
+} from "@/components/tool-ui/question-flow/schema";
 
 interface Props {
   toolName: string;
@@ -38,7 +38,10 @@ interface Props {
 export function AskQuestionRenderer({ result }: Props) {
   const threadRuntime = useThreadRuntime();
   const [answered, setAnswered] = useState(false);
-  const [chosenLabels, setChosenLabels] = useState<string[] | null>(null);
+  const [receiptSummary, setReceiptSummary] = useState<{
+    title: string;
+    items: QuestionFlowSummaryItem[];
+  } | null>(null);
 
   // Validate the payload against the Question Flow library schema.
   const parsed = useMemo(
@@ -46,18 +49,64 @@ export function AskQuestionRenderer({ result }: Props) {
     [result.data],
   );
 
-  // If parsing fails, fall back to a single bare text line — never
-  // crash the thread on a malformed tool emission. We intentionally do
-  // not re-wrap in ToolProgress; a silent one-liner is less noisy than
-  // a second header stacked on top of the real question.
-  if (!parsed || !("options" in parsed)) {
+  if (!parsed) {
+    return <p className="text-sm text-muted-foreground">{result.summary}</p>;
+  }
+
+  // Receipt mode — show the finalized answers post-submit.
+  if (answered && receiptSummary) {
     return (
-      <p className="text-sm text-muted-foreground">{result.summary}</p>
+      <QuestionFlow
+        id={parsed.id}
+        choice={{
+          title: receiptSummary.title,
+          summary: receiptSummary.items,
+        }}
+      />
     );
   }
 
-  // At this point parsed is either Progressive or Upfront — ask_question
-  // only emits Progressive. Narrow the type.
+  // ── Upfront (multi-step) mode ─────────────────────────────────────────
+  if ("steps" in parsed && Array.isArray(parsed.steps)) {
+    const upfront = parsed as SerializableUpfrontMode;
+
+    const handleComplete = (answers: Record<string, string[]>) => {
+      if (answered) return;
+      const items: QuestionFlowSummaryItem[] = [];
+      const messageLines: string[] = [];
+      for (const step of upfront.steps) {
+        const ids = answers[step.id] ?? [];
+        const labels = ids
+          .map((id) => step.options.find((o) => o.id === id)?.label)
+          .filter((l): l is string => typeof l === "string");
+        if (labels.length === 0) continue;
+        const value = labels.join(", ");
+        items.push({ label: step.title, value });
+        messageLines.push(`${step.title} ${value}`);
+      }
+      if (items.length === 0) return;
+      setReceiptSummary({ title: "Your answers", items });
+      setAnswered(true);
+      threadRuntime.append({
+        role: "user",
+        content: [{ type: "text", text: messageLines.join("\n") }],
+      });
+    };
+
+    return (
+      <QuestionFlow
+        id={upfront.id}
+        steps={upfront.steps}
+        onComplete={handleComplete}
+      />
+    );
+  }
+
+  // ── Progressive (single-question) mode ────────────────────────────────
+  if (!("options" in parsed)) {
+    return <p className="text-sm text-muted-foreground">{result.summary}</p>;
+  }
+
   const progressive = parsed as SerializableProgressiveMode;
 
   const handleSelect = (optionIds: string[]) => {
@@ -66,30 +115,16 @@ export function AskQuestionRenderer({ result }: Props) {
       .map((id) => progressive.options.find((o) => o.id === id)?.label)
       .filter((l): l is string => typeof l === "string");
     if (labels.length === 0) return;
-    setChosenLabels(labels);
+    setReceiptSummary({
+      title: progressive.title,
+      items: [{ label: "Answer", value: labels.join(", ") }],
+    });
     setAnswered(true);
     threadRuntime.append({
       role: "user",
       content: [{ type: "text", text: labels.join(", ") }],
     });
   };
-
-  if (answered && chosenLabels) {
-    return (
-      <QuestionFlow
-        id={progressive.id}
-        choice={{
-          title: progressive.title,
-          summary: [
-            {
-              label: "Answer",
-              value: chosenLabels.join(", "),
-            },
-          ],
-        }}
-      />
-    );
-  }
 
   return (
     <QuestionFlow

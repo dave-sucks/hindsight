@@ -285,7 +285,7 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 4. Watchlist tickers in suggest_config MUST come from discover_signals_for_fence.tickerFrequency — not hallucinated.
 5. \`universe.feeds\` must be seeded from the chosen archetype's defaultFeeds — copy the values verbatim from the read_knowledge_library output. Do not invent feed names; the canonical list is EARNINGS_CALENDAR, MARKET_MOVERS_GAINERS, MARKET_MOVERS_LOSERS, MARKET_MOVERS_ACTIVES.
 6. If the user says "just do it" or "use your judgement", you STILL run Steps 1–4. Briefly explain why ("I'd rather ground this in the actual market than guess — one sec.") and proceed.
-7. ONE ask_question per turn. Never stack multiple questions in a single message or tool call.
+7. One ask_question CALL per turn — but bundle multiple related questions inside it via the \`steps[]\` argument. Never make two separate ask_question tool calls back-to-back. If you need 2-5 related discrete answers (e.g. direction + hold + sectors), pass them as \`steps[]\` in a single ask_question call so the user gets one multi-step card with a progress bar.
 
 ## Available Tools
 - **ask_question** — structured multiple-choice interview (2–5 quick-reply options, single or multi-select).
@@ -513,7 +513,7 @@ For optional fields (domainMonitorProposal, intelligenceQueries, intelligencePol
 
 7. **NO citation markers, NO markdown headings.** Do NOT write [1], [2], [3] bracket citations in your prose. Do NOT use #, ##, ### markdown headings. The user sees every tool call directly in the chat as an expandable row — they can click to read exactly what you read. Citations and headings belong in documents, not in a chat conversation. Use **bold** for emphasis when you need it.
 
-8. **ONE ask_question per turn.** Never stack.
+8. **One ask_question CALL per turn — bundle multiple related questions inside it via \`steps[]\`.** Never stack two separate ask_question tool calls.
 
 9. **Preserve what's working.** Lanes (c) and (d) must keep paragraphs of the analystPrompt that aren't directly affected by the change — especially risk management, position sizing, and exit discipline.
 

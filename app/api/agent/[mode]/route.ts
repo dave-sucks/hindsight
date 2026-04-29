@@ -9,7 +9,7 @@
  * System prompts live there too. The route just assembles and streams.
  */
 
-import { streamText, convertToModelMessages, stepCountIs } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, hasToolCall } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
@@ -529,7 +529,16 @@ export async function POST(
       messages: modelMessages,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: tools as any,
-      stopWhen: stepCountIs(modeConfig.maxSteps),
+      // Stop the run when:
+      //   • we hit the per-mode step ceiling, OR
+      //   • the agent calls ask_question (the user must answer before
+      //     the agent does anything else — without this stop the model
+      //     keeps narrating after the question, which lands as orphaned
+      //     prose under the QuestionFlow card and breaks the chat if
+      //     the user clicks an option mid-stream).
+      // ai SDK v6 accepts an array of StopConditions; first to fire
+      // wins. hasToolCall("ask_question") is the SDK helper.
+      stopWhen: [stepCountIs(modeConfig.maxSteps), hasToolCall("ask_question")],
 
       onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage }) {
         const now = Date.now();
