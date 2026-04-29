@@ -393,10 +393,18 @@ checklist points at.
 
 ## Known gaps for Session 1
 
-Concrete file-level checklist for the "build a podcast → run a segment
-→ see the transcript everywhere" loop, plus editor-mode parity with
-analysts. See `docs/PODCAST_PLAN.md` "Session 1 — Build experience
-completeness" for design discussion.
+**Mandate: reuse the existing analyst infra, components, tools, server
+actions everywhere. Every gap below has an analyst analog already in
+the codebase. The next session must mirror it 1:1 in shape and imports,
+only swapping the entity (analyst → podcast/segment) where the data
+model legitimately differs. NO parallel rebuilds.**
+
+End state — the user can: open a podcast → run a segment → see the
+transcript on every surface where it should be findable → refine the
+podcast/segments via chat editor → browse the routed signal inbox →
+merge transcripts into an Episode (text-only). See
+`docs/PODCAST_PLAN.md` "Session 1 — Build experience completeness"
+for the full design discussion.
 
 ### Transcript visibility
 
@@ -432,20 +440,65 @@ completeness" for design discussion.
 
 | File | Action |
 |------|--------|
-| `lib/actions/podcast.actions.ts` | **Add `getPodcastFindings(podcastId)`** — queries `PodcastSegmentSignalRoute` for all segments of the podcast, returns the same shape `getRunSourcesData` returns for analysts. |
-| `components/podcasts/PodcastFindingsTab.tsx` | **New component.** Mirror of `AnalystFindingsTab`. Renders signals via the same row component the analyst surface uses. |
+| `lib/actions/podcast.actions.ts` | **Add `getPodcastFindings(podcastId)`** — queries `PodcastSegmentSignalRoute` aggregated across all segments of the podcast, joins Signal + Artifact, returns the shape `AnalystFindingsTab` consumes. |
+| `components/podcasts/PodcastFindingsTab.tsx` | **New component.** Mirror of `AnalystFindingsTab`. Reuse the same signal-row component from `components/intelligence/signal-feed.tsx` (whatever AnalystFindingsTab uses). |
 | `components/podcasts/PodcastDetailClient.tsx` | **Add Findings tab** to the existing `Tabs` (Segments / Episodes / Findings). |
 
-### Defensive fixes already in this commit
+### Cross-segment continuity tool
 
-- `app/api/agent/[mode]/route.ts` — `podcastSegmentBriefing.findFirst` wrapped in try/catch so a missing-table scenario (migration lag during deploy) degrades to "no continuity" instead of crashing the run. Real fix is still: apply pending migrations before deploying agent code.
+Today the segment agent only sees its OWN prior briefing as context.
+It needs to see what OTHER segments of the same podcast covered in
+the last 2-3 days so a Politics segment doesn't double up on what
+Sports just mentioned, and follow-up arcs span the show.
+
+| File | Action |
+|------|--------|
+| `lib/agent/tools/read-past-transcripts.ts` | **New tool.** Args: `lookbackDays` (default 3). Resolve `podcastId` from `ctx.podcastSegmentId` → `PodcastSegment.podcastId`. Query `SegmentTranscript` rows for ALL segments under that podcastId where `createdAt >= now() - lookbackDays`, ordered desc, joined to PodcastSegment for `segment.name`. Return one item per past transcript: `{ title, segmentName, snippet (first ~400 chars of plainText), createdAt }`. UI: `tool-ui` with `data.items[]` of generic-kind rows. Use `defineTool()`. |
+| `lib/agent/tools/index.ts` | Register `read_past_transcripts` in `createResearchTools`. |
+| `lib/agent/modes.ts` | Add `read_past_transcripts` to `podcast-segment-run` allowlist. |
+| `lib/podcast/segment-run-prompt.ts` | Add a Stage 1.5 instruction immediately after `read_signals`: "Call `read_past_transcripts` ONCE to see what THIS PODCAST's segments covered the last 2–3 days. Don't repeat them. Build on follow-ups." |
+
+### Episode assembly (text-only)
+
+User can merge N transcripts into a viewable Episode. Episode model
+already exists in the schema; need actions + UI. No audio (Phase 2).
+
+| File | Action |
+|------|--------|
+| `lib/actions/podcast.actions.ts` | **Add `createEpisodeFromTranscripts(podcastId, transcriptIds[], title?)`** — creates Episode row with ordered `transcriptIds`, derives `title` from podcast name + date if not supplied, computes `durationSec` from sum of constituent transcripts, sets `status: "READY"` (text-only is "ready"; audio path uses ASSEMBLING). |
+| `lib/actions/podcast.actions.ts` | **Add `getEpisode(episodeId)`** — returns Episode + ordered SegmentTranscripts (full plainText + citations + segmentName). |
+| `lib/actions/podcast.actions.ts` | **Add `listEpisodesForPodcast(podcastId)`** — returns Episode list for the Episodes tab. |
+| `app/(root)/podcasts/[id]/episodes/[episodeId]/page.tsx` | **New page.** Loads episode + transcripts. Renders inline using `TickerMarkdown` per segment with section headers (segment name). Reuses `BriefDetailDialog` body layout pattern. |
+| `components/podcasts/PodcastDetailClient.tsx` | **Wire the Episodes tab.** Replace the Phase-3 placeholder with a real list of episodes. Each row links to the episode page. |
+| `components/podcasts/PodcastDetailClient.tsx` | **Add an "Assemble episode" CTA** on the Episodes tab. Opens a small Dialog: multi-select READY transcripts (checkbox list), reorder via up/down arrows, click Assemble → calls `createEpisodeFromTranscripts`, navigates to the new episode page. |
 
 ### Migration deploy reminder
 
-Two migrations from the post-Phase-1 commits need to be applied before the route works end-to-end:
+Two migrations from the post-Phase-1 commits need to be applied before
+the route works end-to-end:
 
 ```bash
 npx prisma migrate deploy
 ```
 
-Applies all pending migrations including `20260427120000_podcast_segment_signal_route` and `20260427130000_podcast_segment_briefing`. Run before each deploy that includes new schema changes.
+What they do:
+
+- **`20260427120000_podcast_segment_signal_route`** — adds
+  `PodcastSegmentSignalRoute` (mirror of `AnalystSignalRoute`). Required
+  for `signal-router` to write segment routes and for `read_signals`
+  to query them.
+- **`20260427130000_podcast_segment_briefing`** — adds
+  `PodcastSegmentBriefing` (mirror of `AnalystBriefing`). Required for
+  `complete_run` segment branch to write continuity briefs and the
+  route to read prior brief into the system prompt.
+
+Both additive only. Trading data untouched. See `docs/PODCAST_FILES.md`
+"Schema teardown" for the full audit and `prisma/migrations/_podcast_teardown.sql`
+for the rollback script.
+
+### Defensive fix already in `dcb0494`
+
+- `app/api/agent/[mode]/route.ts` — `podcastSegmentBriefing.findFirst`
+  wrapped in try/catch so a missing-table scenario (migration lag during
+  deploy) degrades to "no continuity" instead of crashing the run. Real
+  fix is still: apply pending migrations before deploying agent code.
