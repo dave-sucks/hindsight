@@ -786,6 +786,26 @@ export const signalRouter = inngest.createFunction(
         )
       }
 
+      // PR 2 — emit one `app/signal.routed` event per unique signal that
+      // got routed to at least one analyst. Trigger-evaluator consumes
+      // these and fires `app/thesis.trigger.fired` on signal-side
+      // predicate matches. One event per signal (not per route) — the
+      // consumer fans out across analysts internally.
+      const analystsBySignal: Record<string, string[]> = {}
+      const tickersBySignal: Record<string, string[]> = {}
+      for (const r of finalRoutes) {
+        if (!analystsBySignal[r.signalId]) analystsBySignal[r.signalId] = []
+        if (!analystsBySignal[r.signalId].includes(r.analystId)) {
+          analystsBySignal[r.signalId].push(r.analystId)
+        }
+      }
+      // Tickers per signal — pulled from the loaded `signals` array; cheap
+      // join keyed off id since signals is already in scope above.
+      const signalById = new Map(signals.map((s) => [s.id, s] as const))
+      for (const sid of Object.keys(analystsBySignal)) {
+        tickersBySignal[sid] = signalById.get(sid)?.tickers ?? []
+      }
+
       return {
         routesCreated: finalRoutes.length,
         droppedByNovelty,
@@ -794,8 +814,30 @@ export const signalRouter = inngest.createFunction(
         fastPathed,
         crossPosted,
         codeCounts,
+        analystsBySignal,
+        tickersBySignal,
       }
     })
+
+    // ── Step 3.5: Fan out `app/signal.routed` events ─────────────────────
+    // Trigger-evaluator (PR 2) consumes these. One event per signal; the
+    // consumer evaluates each routed analyst's theses internally. Called
+    // at function-handler level (not inside step.run) so each emit is
+    // its own deterministic step boundary — matches the eod-evaluation
+    // pattern.
+    const signalRoutedEntries = Object.entries(
+      routeResult.analystsBySignal ?? {},
+    )
+    for (const [signalId, analystIds] of signalRoutedEntries) {
+      await step.sendEvent(`signal-routed-${signalId}`, {
+        name: "app/signal.routed",
+        data: {
+          signalId,
+          analystIds,
+          tickers: routeResult.tickersBySignal?.[signalId] ?? [],
+        },
+      })
+    }
 
     // ── Step 4: Route the SAME signals to podcast segments ────────────────
     // Mirror of the analyst-routing pass for podcast segments. Builds a
