@@ -100,7 +100,7 @@ export const askQuestion = defineTool({
         .string()
         .optional()
         .describe(
-          "Single-question mode. Complete sentence ending in '?'. Mutually exclusive with `steps`.",
+          "Single-question mode. Complete sentence ending in '?'. Use this OR `steps`, not both — if both are provided, `steps` wins.",
         ),
       description: z
         .string()
@@ -112,7 +112,7 @@ export const askQuestion = defineTool({
         .max(5)
         .optional()
         .describe(
-          "Single-question mode: 2-5 options. Mutually exclusive with `steps`.",
+          "Single-question mode: 2-5 options. Use this OR `steps`, not both — if both are provided, `steps` wins.",
         ),
       selectionMode: z
         .enum(["single", "multi"])
@@ -127,7 +127,7 @@ export const askQuestion = defineTool({
         .max(5)
         .optional()
         .describe(
-          "Multi-step flow mode: 2-5 related questions rendered as one card. Mutually exclusive with `question`/`options`.",
+          "Multi-step flow mode: 2-5 related questions rendered as one card. PREFER this when you have ≥2 related questions for the user — it's a single card with progress bar. When provided, `question`/`options` are ignored.",
         ),
       purpose: z
         .string()
@@ -137,14 +137,12 @@ export const askQuestion = defineTool({
         ),
     })
     .refine(
-      (v) => {
-        const hasSingle = typeof v.question === "string" && Array.isArray(v.options);
-        const hasMulti = Array.isArray(v.steps);
-        return (hasSingle && !hasMulti) || (!hasSingle && hasMulti);
-      },
+      (v) =>
+        Array.isArray(v.steps) ||
+        (typeof v.question === "string" && Array.isArray(v.options)),
       {
         message:
-          "Provide EITHER (question + options) for a single question, OR (steps[]) for a multi-step flow — not both.",
+          "Provide either `steps[]` for a multi-step flow OR `question` + `options` for a single question.",
       },
     ),
   ui: "ask-question" as const,
