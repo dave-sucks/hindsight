@@ -210,9 +210,22 @@ export const morningResearch = inngest.createFunction(
           // — log a warning but treat as COMPLETE (record_run_summary should
           // explain why; if it didn't even fire, the downstream hasWork check
           // catches the failure).
-          const preRetryThesisCount = await prisma.thesis.count({
-            where: { researchRunId: run.id },
-          });
+          // Count theses TOUCHED in this run, not just newly-created Thesis
+          // rows. Held names that hit the same-direction guard go through
+          // update_thesis — which modifies an existing Thesis row but
+          // writes a ThesisUpdate(UPDATED|REVIEWED) entry with runId =
+          // this run. Counting Thesis inserts alone undercounts those
+          // legitimate touches and false-fails compliant runs.
+          //
+          // Source of truth: distinct thesisIds attached to ThesisUpdate
+          // rows whose runId is this run.
+          const preRetryThesisCount = (
+            await prisma.thesisUpdate.findMany({
+              where: { runId: run.id },
+              select: { thesisId: true },
+              distinct: ["thesisId"],
+            })
+          ).length;
           const stockDataTickers = new Set<string>();
           for (const s of steps) {
             for (const tc of s.toolCalls ?? []) {
@@ -241,7 +254,12 @@ export const morningResearch = inngest.createFunction(
                   {
                     role: "user",
                     content:
-                      "You researched tickers with get_stock_data but did not call record_thesis. The run will be marked FAILED unless you act NOW. Do the following, in order, as TOOL CALLS only — no narration, no markdown, no summary blocks: (1) Call record_thesis for EVERY ticker you researched this session (LONG / SHORT / PASS, each with source_kind and source_signal_ids if available). (2) Then call record_run_summary. (3) Then call complete_run. Emit tool calls only. Any text output beyond a short status sentence is a failure.",
+                      "You researched tickers with get_stock_data but did not record / update a thesis for each. The run will be marked FAILED unless you act NOW. " +
+                      "For EVERY ticker you researched this session, emit ONE tool call as follows — TOOL CALLS only, no narration, no markdown: " +
+                      "(a) If get_theses showed an ACTIVE same-direction thesis on this ticker (or a prior record_thesis call returned status='USE_UPDATE_THESIS' with an existing_thesis_id), call update_thesis(thesis_id=<that id>, ...patch fields..., rationale='<one line>'). " +
+                      "(b) Otherwise, call record_thesis(ticker, direction, ...) for new coverage. " +
+                      "When in doubt, prefer update_thesis with empty patch + a rationale (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
+                      "Then call record_run_summary. Then call complete_run. Any text output beyond a short status sentence is a failure.",
                   },
                 ],
                 tools,
@@ -324,15 +342,26 @@ export const morningResearch = inngest.createFunction(
           //   • research happened (get_stock_data called) but no theses
           //     were recorded (process violation; retry should have caught
           //     this, but if retry also failed, fail loudly)
-          const [thesisCount, decisionCount, runSummaryEvent] =
+          // Same source-of-truth as the retry gate: distinct thesisIds
+          // touched via ThesisUpdate.runId. Captures both record_thesis
+          // (writes a CREATED entry) and update_thesis (writes UPDATED /
+          // REVIEWED / TRIGGER_FIRED / etc.) so a run that legitimately
+          // updates 5 held theses isn't false-failed for "0 thesis rows
+          // inserted."
+          const [touchedTheses, decisionCount, runSummaryEvent] =
             await Promise.all([
-              prisma.thesis.count({ where: { researchRunId: run.id } }),
+              prisma.thesisUpdate.findMany({
+                where: { runId: run.id },
+                select: { thesisId: true },
+                distinct: ["thesisId"],
+              }),
               prisma.tradeDecision.count({ where: { runId: run.id } }),
               prisma.runEvent.findFirst({
                 where: { runId: run.id, type: "run_summary" },
                 select: { id: true },
               }),
             ]);
+          const thesisCount = touchedTheses.length;
           const ranSummary = runSummaryEvent !== null;
           const hadResearch = researchedCount > 0;
           const hasWork = thesisCount > 0 || decisionCount > 0 || ranSummary;
