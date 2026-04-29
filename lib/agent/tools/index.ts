@@ -24,6 +24,8 @@ import { readSignals } from "./read-signals";
 import { readArtifact } from "./read-artifact";
 import { webSearch } from "./web-search";
 import { recordThesis } from "./record-thesis";
+import { updateThesis } from "./update-thesis";
+import { getTheses } from "./get-theses";
 import { placeTrade } from "./place-trade";
 import { closePosition } from "./close-position";
 import { managePosition } from "./manage-position";
@@ -87,6 +89,8 @@ export function createResearchTools(ctx: ToolCtx) {
     read_artifact: readArtifact(newCtx),
     web_search: webSearch(newCtx),
     record_thesis: recordThesis(newCtx),
+    update_thesis: updateThesis(newCtx),
+    get_theses: getTheses(newCtx),
     place_trade: placeTrade(newCtx),
     close_position: closePosition(newCtx),
     manage_position: managePosition(newCtx),
@@ -126,6 +130,8 @@ export { readSignals } from "./read-signals";
 export { readArtifact } from "./read-artifact";
 export { webSearch } from "./web-search";
 export { recordThesis } from "./record-thesis";
+export { updateThesis } from "./update-thesis";
+export { getTheses } from "./get-theses";
 export { placeTrade } from "./place-trade";
 export { closePosition } from "./close-position";
 export { managePosition } from "./manage-position";

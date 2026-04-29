@@ -61,6 +61,7 @@ export { verdictLabel, hasFundamentalDetails };
 // ─── ThesisCard ───────────────────────────────────────────────────────────────
 
 export function ThesisCard({
+  thesis_id,
   ticker,
   direction,
   confidence_score,
@@ -166,6 +167,7 @@ export function ThesisCard({
           </SheetHeader>
 
           <ThesisSheetBody
+            thesis_id={thesis_id}
             ticker={ticker}
             direction={direction}
             confidence_score={confidence_score}
@@ -268,6 +270,7 @@ export function ThesisCard({
         </SheetHeader>
 
         <ThesisSheetBody
+          thesis_id={thesis_id}
           ticker={ticker}
           direction={direction}
           confidence_score={confidence_score}
