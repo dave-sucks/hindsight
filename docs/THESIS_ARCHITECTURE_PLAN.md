@@ -11,25 +11,53 @@
 
 ---
 
-## Status (as of 2026-04-28)
+## Status (as of 2026-04-29)
 
 | PR | Status | Notes |
 |---|---|---|
 | **PR 1 — Durable thesis state + activity log + tools** | ✅ Merged as #193 | `81e73ae` on main |
 | **Hotfix — Morning-run gate counts ThesisUpdate touches** | ✅ Merged as #196 | `43e6563` on main. Fixed false-failures from PR 1 where agent legitimately used update_thesis but the gate counted only Thesis row inserts. |
-| **Plan revision** (this doc) | In flight | This update — corrected framing of PR 3. |
-| PR 2 — Trigger evaluator + tactical mode | Not started | — |
-| PR 3 — Daily run gets smarter + weekly discovery + brief deletion + watchlist collapse | Not started | — |
+| **Plan revision** | ✅ Merged as #198 | `f8351f9` on main. Re-framed PR 3 from "replace the morning run" to "make the daily run smarter." |
+| **PR 2 — Trigger evaluator + tactical mode + defaults + UI** | 🟡 **OPEN as [#200](https://github.com/dave-sucks/hindsight/pull/200)** | Branch `claude/pensive-villani-14ad92`. **Not yet merged.** Scope grew during build: includes defaults module + record_thesis merge + backfill script + ThesisSheet triggers panel + admin test-fire endpoint, all of which were originally PR 3 items. PR 3's scope is correspondingly reduced. |
+| PR 3 — Daily run prompt rewrite + producer stamping + brief deletion + watchlist collapse + weekly discovery | Not started | — |
 
-PR 1 shipped the foundation. The DB has new Thesis fields, a
-`ThesisUpdate` table backfilled with one row per existing thesis, three
-new agent tools (`update_thesis`, `get_theses`, plus same-direction
-guard on `record_thesis`), and a Timeline section embedded in the
-existing ThesisSheet UI. The hotfix fixed an immediate compliance
-regression where the morning-run process gate didn't recognize
-`update_thesis` as a thesis touch.
+### What PR 2 (#200) actually contains
 
-PRs 2 and 3 build on that foundation.
+Beyond the trigger evaluator + tactical mode + brief addition originally scoped, PR 2 also ships:
+
+- **`lib/agent/triggers/defaults.ts`** — horizon-keyed default trigger templates (COMPOUNDER / TARGET / TRADE / CATALYST) auto-merged into `record_thesis` so every new thesis gets the baseline.
+- **`scripts/backfill-default-triggers.ts`** — one-shot, idempotent, applies defaults to every active thesis with empty `triggers[]`.
+- **Triggers + Schedule panel inside ThesisSheet** — UI that renders `Thesis.triggers` + `horizon` + `nextReviewAt` + `targetSizePct` + `maxHoldDays` so the rules are no longer invisible JSONB.
+- **`POST /api/admin/triggers/fire`** — env-gated test endpoint that synthetically emits `app/thesis.trigger.fired` so a tactical run can be demoed end-to-end without waiting for a real signal or 15-min cron tick. Wired to a "Test fire" button on each trigger row in the panel (also env-gated).
+
+These pieces let the user actually SEE and INTERACT with the trigger system after merge, instead of waiting for tomorrow's cron + an empty trigger array on every thesis.
+
+### What's needed to make PR 2 visible after merge
+
+1. **Merge #200.**
+2. **Deploy** (Vercel auto-deploys main).
+3. **Set env vars in Vercel** (or `.env.local` for local preview):
+   - `ENABLE_TRIGGER_TEST_FIRE=1` (server)
+   - `NEXT_PUBLIC_ENABLE_TRIGGER_TEST_FIRE=1` (client — exposes the "Test fire" button)
+4. **Run the backfill once** (uses DB so needs Prisma env access):
+   ```bash
+   DRY_RUN=1 npx tsx scripts/backfill-default-triggers.ts   # preview
+   npx tsx scripts/backfill-default-triggers.ts             # apply
+   ```
+5. **Open any active thesis sheet** → triggers panel renders. Click "Test fire" on any trigger row → tactical run spawns, redirected to `/runs/[id]` to watch it execute. Return to the thesis sheet → Activity timeline now shows the new `TRIGGER_FIRED` entry.
+
+Until those four steps happen, the UI is unchanged from today.
+
+### What PR 2 does NOT do (deferred to PR 3)
+
+- **Daily run prompt is unchanged.** The 8 AM cron uses the same system prompt as today. It will see trigger fires as HIGH/CRITICAL alerts in the brief, but the per-thesis decision logic from "How the daily run thinks per-thesis" below is **not implemented** — that's PR 3.
+- **`Signal.dataPayload` producer convention** isn't formalized. EARNINGS_BEAT/MISS, GUIDANCE_CHANGE, FILING predicates evaluate to `false` on real signals until firm-market-sweep / portfolio-watchlist-monitor / domain-monitor stamp the right fields. Test-fire button works regardless. Producer fix → PR 3.
+- **Watchlist collapse migration** (`AnalystWatchlistItem` → `Thesis.WATCHING`) — own concern, schema migration, deferred to PR 3.
+- **Weekly discovery cron** — own concern, deferred to PR 3.
+- **Brief deletion** — the redundancy (signals + brief + theses all citing the same content) is acknowledged. PR 3 deletes the AI-consumed brief and has the daily run read triggers + signals + theses directly.
+
+PR 1 + PR 2 (when merged) ship the foundation + the reactivity layer.
+PR 3 ships the daily-run intelligence + structural cleanup.
 
 ---
 
