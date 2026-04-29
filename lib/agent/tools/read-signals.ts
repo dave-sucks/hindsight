@@ -175,6 +175,12 @@ export const readSignals = defineTool({
       .describe(
         "How many trading days back to include. Default 0 (today only). Use sparingly — historical signals are noisy and pollute today's picture.",
       ),
+    triggerId: z
+      .string()
+      .optional()
+      .describe(
+        "TACTICAL FOLLOW-UP. When this trigger has fired in the past, return the signals that fed those past TRIGGER_FIRED ThesisUpdate rows so you can see how previous fires played out. Used by the tactical run to gather priors before deciding.",
+      ),
   }),
   ui: "tool-ui" as const,
 
@@ -198,7 +204,7 @@ export const readSignals = defineTool({
     return "Reading signals routed to this analyst";
   },
 
-  execute: async ({ tickers, themes, type, urgency, limit, lookbackDays = 0 }, ctx) => {
+  execute: async ({ tickers, themes, type, urgency, limit, lookbackDays = 0, triggerId }, ctx) => {
     // ── Podcast segment branch ───────────────────────────────────────────
     // When the run is a podcast-segment-run, ctx carries podcastSegmentId
     // (and analystId is undefined). Read the segment's routed signals from
@@ -232,6 +238,40 @@ export const readSignals = defineTool({
         } as SignalsToolData,
         sources: [],
       };
+    }
+
+    // PR 2 — tactical follow-up. When the agent passes a triggerId, we
+    // collect every signalId that was cited on a past TRIGGER_FIRED
+    // ThesisUpdate row tied to this trigger, then narrow the routed
+    // signals to that set. Lets the tactical agent see priors before
+    // deciding ("last two times this fired, the moves looked like X").
+    let priorTriggerSignalIds: string[] | null = null;
+    if (triggerId) {
+      const priorUpdates = await prisma.thesisUpdate.findMany({
+        where: { triggerId },
+        select: { signalIds: true },
+      });
+      const ids = new Set<string>();
+      for (const u of priorUpdates) {
+        for (const id of u.signalIds) ids.add(id);
+      }
+      priorTriggerSignalIds = Array.from(ids);
+      // Empty set is meaningful — "no prior fires of this trigger."
+      // Return an empty-bucketed result rather than running the full
+      // routed-pool query.
+      if (priorTriggerSignalIds.length === 0) {
+        return {
+          summary: "No prior fires of this trigger — no historical signals to surface.",
+          data: {
+            count: 0,
+            signals: [],
+            portfolioSignals: [],
+            watchlistSignals: [],
+            discoverySignals: [],
+          } as SignalsToolData,
+          sources: [],
+        };
+      }
     }
 
     const policy = ctx.intelligencePolicy;
@@ -271,10 +311,17 @@ export const readSignals = defineTool({
       where: {
         analystId: ctx.analystId,
         status: { in: ["PENDING", "READ"] },
-        OR: [
-          { tradingDay: tradingDayWindow },
-          { tradingDay: null, routedAt: { gte: windowStart } },
-        ],
+        // When triggerId is present, swap the time-window filter for an
+        // explicit signalId match — historical ThesisUpdate rows can
+        // reference signals from days/weeks ago.
+        ...(priorTriggerSignalIds
+          ? { signalId: { in: priorTriggerSignalIds } }
+          : {
+              OR: [
+                { tradingDay: tradingDayWindow },
+                { tradingDay: null, routedAt: { gte: windowStart } },
+              ],
+            }),
         signal: {
           ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
           ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
