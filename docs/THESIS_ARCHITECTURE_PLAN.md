@@ -86,10 +86,100 @@ Every thesis can carry a `triggers[]` array of structured predicates
 (PRICE_*, SIGNAL_TYPE, EARNINGS_*, FILING, TIME_*, AND/OR). The router
 evaluates these deterministically — no LLM in the matching loop.
 
-In PR 2 these power tactical runs (signal arrives → trigger matches →
-tactical run fires). The daily run also reads triggers — when a daily
-run starts, it checks "which of my theses had triggers fire since the
-last run?" and prioritizes those.
+### Where triggers come from in practice
+
+Three sources, in order of contribution:
+
+**1. Horizon-keyed defaults (PR 3, `lib/agent/triggers/defaults.ts`).**
+Every new thesis automatically gets a baseline trigger set keyed off
+its `horizon`. The agent doesn't have to remember to attach an
+"earnings drop" or "stop hit" trigger — it's there by virtue of
+horizon. Examples:
+
+```
+COMPOUNDER (long-term hold, e.g. MSFT cloud capex):
+  PRICE_BELOW $stop                        → EXIT      (hard stop)
+  PRICE_BELOW $entry * 0.92                → REVIEW    (8% drop = "something happened")
+  EARNINGS_BEAT                            → REVIEW    (re-score target)
+  EARNINGS_MISS minSurprisePct: 3          → REVIEW    (downside surprise)
+  GUIDANCE_CHANGE direction: DOWN          → REVIEW    (multiple compression risk)
+  FILING formType: 8-K                     → REVIEW    (something material)
+  TIME_ELAPSED days: 90                    → REVIEW    (quarterly hygiene)
+  nextReviewAt:                            +30 days
+
+TARGET (swing trade with $X target):
+  PRICE_BELOW $stop                        → EXIT
+  PRICE_ABOVE $target                      → EXIT (or REVIEW if conviction)
+  EARNINGS_BEAT / EARNINGS_MISS            → REVIEW
+  TIME_ELAPSED days: 30                    → REVIEW
+  nextReviewAt:                            +7 days
+
+TRADE (multi-day momentum):
+  PRICE_BELOW $stop                        → EXIT      (tight)
+  PRICE_ABOVE $target                      → EXIT
+  TIME_ELAPSED days: maxHoldDays           → REVIEW    (forced exit gate)
+  nextReviewAt:                            +1 day
+
+CATALYST (e.g. holding into FDA decision):
+  PRICE_BELOW $stop                        → EXIT
+  TIME (catalystDate within 3 days)        → REVIEW
+  TIME (now > catalystDate + 30)           → REVIEW    (catalyst slipped)
+  Any FILING                               → REVIEW
+  nextReviewAt:                            +1 day
+```
+
+The `record_thesis` tool merges defaults with anything the agent
+supplied — defaults fill gaps; agent-supplied triggers take precedence
+on the same `(kind, action)` key. PR 3 also backfills every existing
+ACTIVE thesis with empty `triggers[]`.
+
+**2. Thesis-specific triggers from `keyAssumptions` and `invalidationConds`.**
+When the agent mints the thesis, every assumption that could be
+falsified should map to a trigger that catches the falsification. e.g.
+for "MSFT cloud capex thesis," `keyAssumption: "Azure capex grows
+20%+ YoY"` → trigger `SIGNAL_TYPE: ANALYST_NOTE, sentiment: BEARISH,
+theme: AI_INFRASTRUCTURE → REVIEW`. The agent sets these inline at
+record_thesis time using its own judgment about what would
+invalidate the belief.
+
+**3. Refinement via `update_thesis` over time.**
+Triggers evolve as the position evolves. After an earnings beat, the
+agent raises the stop. Approaching target, it adds a trailing
+`PRICE_ABOVE` one rung above. As the thesis matures, it removes
+triggers that are no longer relevant. The triggers array is mutable
+state, not a one-time-at-creation thing.
+
+### Three evaluation paths, one pure function
+
+Triggers are evaluated by **one** pure function (`evaluateTrigger` in
+`lib/agent/triggers/evaluate.ts`) called from three different places.
+This is the dual-consumer point that came out of design review — get
+this right and the rest is plumbing.
+
+| Path | Cadence | Predicate kinds it cares about | Why this path exists |
+|---|---|---|---|
+| **Daily-run inline** | Once a day, during the run, against fresh `get_stock_data` output | All — the agent has thesis state + live quote + recent prices + analyst data already loaded | The daily run already has the data; predicates evaluate inline. No async infra needed. |
+| **Signal-router** | Whenever a `Signal` is created by the intelligence pipeline | Signal-side: `SIGNAL_TYPE`, `EARNINGS_BEAT/MISS`, `GUIDANCE_CHANGE`, `FILING` | Catches async events (earnings reports, 8-K filings, news drops) the moment they arrive. Daily run can't pre-anticipate event timing. |
+| **15-min price cron** | `*/15 9-16 * * 1-5` (US market hours, ET) | Price-side: `PRICE_ABOVE`, `PRICE_BELOW`, `PRICE_MOVE_PCT`, `VS_SMA`, `RSI` | The only path for **intraday price reactivity**. If NVDA drops 40% at 2pm, this fires the tactical run by 2:15pm — daily run wouldn't catch it until 8am the next morning. |
+
+What signals are FOR vs NOT FOR (resolves a confusion that surfaced
+during design review):
+
+- **Signals are FOR** async events that aren't in the price tape:
+  earnings reports, 8-K filings, guidance cuts, analyst notes, breaking
+  news, options flow anomalies. These genuinely arrive between runs and
+  can't be polled.
+- **Signals are NOT FOR** price/metric drift detection. The 15-min cron
+  pulls Finnhub `/quote` directly for active-thesis tickers and
+  evaluates price predicates. The signal pipeline isn't in the loop for
+  "stock dropped 40%" detection — that's polling work, not news work.
+- The daily run handles the long-horizon view: "is this thesis still
+  right given everything I see right now." Inline `evaluateTrigger`
+  calls against fresh tool data drive the per-thesis decision.
+
+The pure function doesn't care which path called it. It takes a
+`predicate` and an `EvaluationContext`, returns boolean. That's the
+PR 2 starting point.
 
 ### What "the brief" becomes
 
@@ -305,21 +395,56 @@ This is the actual reactivity unlock. Once shipped:
 
 #### New: `lib/agent/triggers/evaluate.ts`
 
-Pure function:
+The dual-consumer pure function. Called by signal-router, the 15-min
+price cron, AND (in PR 3) the daily run inline. Same signature, same
+behavior, different callers.
 
 ```ts
+import type { TriggerPredicate, Trigger } from "./types";
+
 export interface EvaluationContext {
-  signal?: SignalRow;        // present when called from signal-router
-  latestQuote?: { c: number; dp: number };
-  recentPrices?: Array<{ date: Date; close: number }>; // for windowed predicates
-  thesis: ThesisRow;
+  // Signal-driven path. Undefined on cron and daily-inline paths.
+  signal?: {
+    type: string;          // mirrors Signal.type
+    sentiment: string;
+    urgency: string;
+    tickers: string[];
+    // Earnings-shaped fields the producer stamps on EARNINGS signals.
+    // Absent → predicate returns false.
+    earningsSurprisePct?: number;
+    guidanceDirection?: "UP" | "DOWN";
+    filingFormType?: "10-K" | "10-Q" | "8-K" | "FORM_4";
+  };
+
+  // Cron path & daily-inline path. Optional on signal path.
+  latestQuote?: { price: number; changePct: number };
+
+  // Recent closes for windowed PRICE_MOVE_PCT. Sorted ascending by date.
+  recentPrices?: Array<{ date: Date; close: number }>;
+
+  // SMA precomputed by caller; we don't fetch candles here.
+  sma?: { 50?: number; 200?: number };
+
+  thesis: {
+    createdAt: Date;
+    nextReviewAt?: Date | null;
+  };
+
   now: Date;
 }
 
 export function evaluateTrigger(
   predicate: TriggerPredicate,
-  ctx: EvaluationContext
+  ctx: EvaluationContext,
 ): boolean;
+
+// Layered convenience — applies cooldown around the predicate.
+// Returns the reason so callers (and tests) can distinguish
+// "predicate false" from "predicate true but cooldown blocks fire."
+export function shouldFire(
+  trigger: Trigger,
+  ctx: EvaluationContext,
+): { fires: boolean; reason: "match" | "no-match" | "cooldown" };
 ```
 
 Implements every predicate kind in `lib/agent/triggers/types.ts`. AND/OR
@@ -331,10 +456,11 @@ TODO comment. Real RSI calculation needs careful candle handling and
 isn't worth blocking PR 2 on. Add in a follow-up.
 
 Unit tests: `lib/agent/triggers/evaluate.test.ts`. Cover every
-predicate kind with one match + one non-match case. Covers AND/OR.
-This is one of the few places in the codebase where unit tests pay
-their cost — the predicate logic is pure and the failure modes are
-silent (a bad evaluator just doesn't fire triggers).
+predicate kind with one match + one non-match case. Covers AND/OR
+composition and `shouldFire` cooldown. This is one of the few places
+in the codebase where unit tests pay their cost — the predicate logic
+is pure and the failure modes are silent (a bad evaluator just doesn't
+fire triggers).
 
 #### New: `lib/inngest/functions/trigger-evaluator.ts`
 
@@ -511,12 +637,33 @@ Validation in prod:
 - Deploy. Wait 1-2 days. Spot-check the `/intelligence` dashboard for "triggers hit" panel.
 - Verify tactical runs are firing and producing useful trades, not just noise.
 
-### Known unknowns / open decisions
+### Resolved decisions (locked in for PR 2)
 
-1. **Cooldown placement.** Today I have it on the trigger object. But the trigger is JSON inside the Thesis row — to update `lastFiredAt` we have to mutate the JSON and re-write the row. Alternative: separate `TriggerFiring` table with its own (triggerId, firedAt) rows. Easier to query, less hot-write contention. Probably worth doing as part of PR 2.
-2. **Latest quote source.** Finnhub `/quote` is the obvious choice (we already use it). Cache: 30s on the call, but 15-min cron means ~30 fetches per ticker per market day. Costs are fine; just confirm.
-3. **Signal-router event vs cron-only.** Initially I wanted the event path. But signals can route batched — easier to evaluate triggers in the SAME function that wrote the routes, before emitting events. Decide during implementation; either works.
-4. **Brief section ordering.** Today's brief is portfolio alerts → watchlist updates → new opportunities → risk flags. "Triggers hit" goes BEFORE all of those (highest priority). Confirm during implementation.
+1. **Cooldown placement → JSON on Thesis row (v1).** `lastFiredAt` lives
+   on the trigger object inside `Thesis.triggers` JSONB. Trigger-evaluator
+   does a transactional Prisma update to stamp it. Hot-write volume is
+   low (a few stamps per ticker per day at most). **No schema change in
+   PR 2.** A separate `TriggerFiring` table is a viable optimization if
+   contention shows up later — defer until measured.
+
+2. **Latest quote source → Finnhub `/quote`.** We already use it. Cron
+   batches one call per unique ticker per 15-min interval, capped at 200.
+   Cost is negligible; no caching needed beyond the existing 30s.
+
+3. **Cron emits event, doesn't evaluate inline in signal-router.** The
+   trigger-evaluator function is the single owner of the
+   `app/thesis.trigger.fired` event for both paths (signal-driven and
+   cron-driven). Signal-router emits `app/signal.routed` with the
+   created routes; trigger-evaluator consumes that. Keeps the matching
+   loop in one file.
+
+4. **Brief "Triggers hit today" placement → top of brief.** Highest
+   priority. Goes before portfolio alerts.
+
+### Known unknowns (still open)
+
+None for PR 2 as currently scoped. If something surfaces during
+implementation, document it here.
 
 ---
 
@@ -564,8 +711,16 @@ agent invocation. What changes:
 3. **Step 2 (research)**: per-thesis decision logic kicks in here.
    Walk every ACTIVE + WATCHING thesis, route through the four
    per-thesis questions (#1-#4 from "How the daily run thinks
-   per-thesis"). Most will REVIEWED-only; a few get full research +
-   update.
+   per-thesis"). For each thesis: load `get_stock_data`, then call
+   `evaluateTrigger` (the same pure function used by signal-router
+   and the price cron) against every trigger on the thesis using the
+   fresh quote/SMA/recentPrices data. Triggers that evaluate true
+   inline (without having fired async via cron or signal-router) are
+   surfaced to the agent as "current state matches: <trigger
+   rationale>" — this is the "every stock has metric/price gates the
+   daily run checks itself" surface from design review. Most theses
+   end up REVIEWED-only; ones with inline-true triggers OR
+   already-fired-since-last-run triggers get full research + update.
 4. **Step 3 (theses)**: unchanged in shape but now consistently
    uses update_thesis as default; record_thesis only for new coverage.
 5. **Step 4 (compare and decide)**: discovery decision is here. Apply
@@ -634,6 +789,41 @@ The Decision Framework / Compare-and-decide section (R/R, leader-first,
 etc.) stays as the gate logic for Step 3 and Step 4. Just gets reframed
 around "did the thesis library tell me to act?" rather than "what's
 the best of the 6 random tickers I researched?"
+
+#### New: `lib/agent/triggers/defaults.ts`
+
+Horizon-keyed default trigger templates. The "every position has a
+baseline" surface called out in "Where triggers come from in practice"
+above. Single export:
+
+```ts
+export function defaultTriggersForHorizon(
+  horizon: ThesisHorizon,
+  thesis: { entry: number; target?: number; stop?: number; maxHoldDays?: number; catalystDate?: Date | null },
+): Trigger[];
+```
+
+Returns the horizon-appropriate trigger array (the templates from
+"Where triggers come from in practice"). Pure function — no DB, no
+clock. The merge step lives in `record_thesis`.
+
+#### Modified: `lib/agent/tools/record-thesis.ts`
+
+Merge agent-supplied `triggers[]` with `defaultTriggersForHorizon`
+output. Rule: defaults fill gaps; agent-supplied wins on the same
+`(predicate.kind, action)` key. The merged array is what gets
+persisted on `Thesis.triggers`.
+
+This is the only change to a PR-1-merged file. Keeps the surface
+backward-compatible — agents that pass empty `triggers[]` get the
+baseline; agents that pass triggers get them merged in.
+
+#### New: backfill script `scripts/backfill-default-triggers.ts`
+
+One-shot Node script. Walks every ACTIVE + WATCHING thesis with empty
+`triggers[]`, applies `defaultTriggersForHorizon`, writes the result
+back via Prisma. Logs a per-thesis summary. Run once during PR 3
+deploy. Show output to user before running on prod.
 
 #### New: `lib/inngest/functions/discovery-run.ts`
 
