@@ -469,29 +469,38 @@ export const recordThesis = defineTool({
             if (existingThesis.direction === args.direction) {
               // Same-direction reject. The agent should be calling
               // update_thesis here.
+              // Status is USE_UPDATE_THESIS — not FAILED. The morning-run
+              // process gate counts ThesisUpdate touches via runId, so an
+              // update_thesis follow-up will satisfy the gate. Renderer
+              // pivots to existing_thesis_id when thesis_id is null so
+              // the rejected card still opens the real thesis timeline.
+              //
+              // The note is prescriptive and includes the exact next-tool
+              // call shape — past prompts have shown GPT-4o reads the
+              // rejection and gives up rather than retrying. Keep this
+              // imperative.
               return {
-                summary: `Thesis rejected for ${args.ticker}: an active ${existingThesis.direction} thesis already exists.`,
+                summary: `Use update_thesis for ${args.ticker} — an active ${existingThesis.direction} thesis already exists.`,
                 data: {
                   thesis_id: null,
-                  status: "FAILED" as const,
-                  // Renderer pivots to this id when thesis_id is null so
-                  // the user clicking the rejected card still lands on
-                  // the real thesis timeline — not a stub.
+                  status: "USE_UPDATE_THESIS" as const,
                   existing_thesis_id: existingThesis.id,
                   ticker: args.ticker,
                   note:
-                    `An active ${existingThesis.direction} thesis already exists for ${args.ticker} (id ${existingThesis.id}). ` +
-                    `RETRY with update_thesis. Minimum shape:\n` +
+                    `NOT a failure — this is a redirect. An active ${existingThesis.direction} thesis already exists for ${args.ticker} (id ${existingThesis.id}). ` +
+                    `YOUR NEXT TOOL CALL MUST BE update_thesis with this shape:\n` +
                     `  update_thesis({\n` +
                     `    thesis_id: "${existingThesis.id}",\n` +
-                    `    target_price: <new>,   // include only the fields you're changing\n` +
+                    `    rationale: "<one-line: why you're touching this thesis today>",\n` +
+                    `    // Plus any of these you actually want to change:\n` +
+                    `    target_price: <new>,\n` +
                     `    stop_loss: <new>,\n` +
                     `    confidence_score: <new>,\n` +
-                    `    reasoning_summary: "<refreshed prose>",\n` +
-                    `    rationale: "<one-line: why you're updating>",\n` +
-                    `    signal_ids: [<from today's read_signals>]\n` +
+                    `    reasoning_summary: "<refreshed>",\n` +
+                    `    signal_ids: [<from today's read_signals>],\n` +
                     `  })\n` +
-                    `If nothing actually changed, call update_thesis with thesis_id + rationale only — that writes a REVIEWED entry to the timeline. record_thesis is reserved for new coverage or direction flips (LONG → SHORT). Re-running record_thesis on existing coverage breaks the durable timeline.`,
+                    `If you reviewed and nothing actually changed, call update_thesis with ONLY thesis_id + rationale — that writes a REVIEWED entry and counts as the required thesis touch for this run. ` +
+                    `record_thesis is reserved for new coverage on a NEW ticker or direction flips (LONG ↔ SHORT). Do NOT retry record_thesis on ${args.ticker} — it will reject again.`,
                 },
                 sources: [],
               };
