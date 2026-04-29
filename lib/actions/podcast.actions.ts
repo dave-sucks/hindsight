@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { SuggestedPodcastConfig } from "@/lib/agent/tools/suggest-podcast-config";
+import type { TranscriptCardData } from "@/components/agent/sheets/TranscriptSheet";
 
 // ── Shared types ────────────────────────────────────────────────────────────
 
@@ -59,6 +60,10 @@ export interface SegmentSummary {
   lastRunAt: Date | null;
   lastTranscriptTitle: string | null;
   transcriptCount: number;
+  /** Most-recent transcript carried inline so the segment card can open it
+   *  without an extra fetch. Mirrors the analyst pattern of returning
+   *  ThesisRowData inline on AgentConfig detail. Null when no runs yet. */
+  latestTranscript: TranscriptCardData | null;
   // Monitors split by type, mirror analyst (domainMonitors / searchMonitors).
   // Both are Monitor rows scoped to this segment via podcastSegmentId.
   domainMonitors: SegmentDomainMonitorView[];
@@ -169,7 +174,16 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
           },
           transcripts: {
             orderBy: { createdAt: "desc" },
-            select: { id: true, title: true, createdAt: true },
+            select: {
+              id: true,
+              title: true,
+              createdAt: true,
+              plainText: true,
+              citations: true,
+              durationSec: true,
+              audioUrl: true,
+              status: true,
+            },
           },
           runs: {
             orderBy: { startedAt: "desc" },
@@ -206,6 +220,22 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
         });
       }
     }
+    const t0 = s.transcripts[0];
+    const latestTranscript: TranscriptCardData | null = t0
+      ? {
+          transcriptId: t0.id,
+          title: t0.title,
+          plainText: t0.plainText,
+          citations: Array.isArray(t0.citations)
+            ? (t0.citations as TranscriptCardData["citations"])
+            : [],
+          durationSec: t0.durationSec ?? null,
+          audioUrl: t0.audioUrl ?? null,
+          status: t0.status,
+          segmentName: s.name,
+          podcastName: podcast.name,
+        }
+      : null;
     return {
       id: s.id,
       name: s.name,
@@ -217,8 +247,9 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
       enabled: s.enabled,
       orderIndex: s.orderIndex,
       lastRunAt: s.runs[0]?.startedAt ?? null,
-      lastTranscriptTitle: s.transcripts[0]?.title ?? null,
+      lastTranscriptTitle: t0?.title ?? null,
       transcriptCount: s.transcripts.length,
+      latestTranscript,
       domainMonitors,
       searchMonitors,
     };
@@ -476,6 +507,360 @@ export async function deletePodcast(podcastId: string) {
   if (!p) throw new Error("Podcast not found");
   await prisma.podcast.delete({ where: { id: p.id } });
   revalidatePath("/podcasts");
+}
+
+// ── Episodes (text-only assembly) ──────────────────────────────────────────
+
+export interface EpisodeListItem {
+  id: string;
+  title: string;
+  description: string | null;
+  status: "DRAFT" | "ASSEMBLING" | "READY" | "FAILED";
+  durationSec: number | null;
+  publishedAt: Date | null;
+  transcriptCount: number;
+  createdAt: Date;
+}
+
+export interface EpisodeTranscriptItem {
+  id: string;
+  title: string;
+  segmentName: string;
+  plainText: string;
+  citations: Array<{
+    claim: string;
+    url: string;
+    quote?: string;
+    startChar: number;
+    endChar: number;
+  }>;
+  durationSec: number | null;
+}
+
+export interface EpisodeDetail {
+  id: string;
+  podcastId: string;
+  podcastName: string;
+  title: string;
+  description: string | null;
+  status: "DRAFT" | "ASSEMBLING" | "READY" | "FAILED";
+  durationSec: number | null;
+  publishedAt: Date | null;
+  createdAt: Date;
+  transcripts: EpisodeTranscriptItem[];
+}
+
+export async function listEpisodesForPodcast(
+  podcastId: string,
+): Promise<EpisodeListItem[]> {
+  const user = await requireUser();
+  const podcast = await prisma.podcast.findFirst({
+    where: { id: podcastId, userId: user.id },
+    select: { id: true },
+  });
+  if (!podcast) return [];
+
+  const episodes = await prisma.episode.findMany({
+    where: { podcastId, userId: user.id },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      durationSec: true,
+      publishedAt: true,
+      transcriptIds: true,
+      createdAt: true,
+    },
+  });
+  return episodes.map((e) => ({
+    id: e.id,
+    title: e.title,
+    description: e.description,
+    status: e.status as EpisodeListItem["status"],
+    durationSec: e.durationSec,
+    publishedAt: e.publishedAt,
+    transcriptCount: e.transcriptIds.length,
+    createdAt: e.createdAt,
+  }));
+}
+
+export async function getEpisode(episodeId: string): Promise<EpisodeDetail | null> {
+  const user = await requireUser();
+  const episode = await prisma.episode.findFirst({
+    where: { id: episodeId, userId: user.id },
+    include: { podcast: { select: { name: true } } },
+  });
+  if (!episode) return null;
+
+  // The Episode stores transcript ids in publish order on `transcriptIds`.
+  // Load them in one query, then re-sort to match that order.
+  const ids = episode.transcriptIds;
+  const rows =
+    ids.length === 0
+      ? []
+      : await prisma.segmentTranscript.findMany({
+          where: { id: { in: ids }, userId: user.id },
+          select: {
+            id: true,
+            title: true,
+            plainText: true,
+            citations: true,
+            durationSec: true,
+            segment: { select: { name: true } },
+          },
+        });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const ordered: EpisodeTranscriptItem[] = ids
+    .map((id) => byId.get(id))
+    .filter((r): r is NonNullable<typeof r> => r !== undefined)
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      segmentName: r.segment.name,
+      plainText: r.plainText,
+      citations: Array.isArray(r.citations)
+        ? (r.citations as EpisodeTranscriptItem["citations"])
+        : [],
+      durationSec: r.durationSec,
+    }));
+
+  return {
+    id: episode.id,
+    podcastId: episode.podcastId,
+    podcastName: episode.podcast.name,
+    title: episode.title,
+    description: episode.description,
+    status: episode.status as EpisodeDetail["status"],
+    durationSec: episode.durationSec,
+    publishedAt: episode.publishedAt,
+    createdAt: episode.createdAt,
+    transcripts: ordered,
+  };
+}
+
+export async function createEpisodeFromTranscripts(
+  podcastId: string,
+  transcriptIds: string[],
+  title?: string,
+): Promise<{ id: string }> {
+  const user = await requireUser();
+  if (transcriptIds.length === 0) {
+    throw new Error("Pick at least one transcript to assemble.");
+  }
+
+  // Ownership + scope check: every transcript must belong to a segment of
+  // this podcast and to this user. Anything else is a 403 path.
+  const podcast = await prisma.podcast.findFirst({
+    where: { id: podcastId, userId: user.id },
+    select: { id: true, name: true },
+  });
+  if (!podcast) throw new Error("Podcast not found");
+
+  const transcripts = await prisma.segmentTranscript.findMany({
+    where: {
+      id: { in: transcriptIds },
+      userId: user.id,
+      segment: { podcastId },
+    },
+    select: { id: true, durationSec: true, status: true },
+  });
+  if (transcripts.length !== transcriptIds.length) {
+    throw new Error(
+      "Some transcripts couldn't be assembled (missing, wrong podcast, or not owned).",
+    );
+  }
+
+  // Sum durations; null fields contribute nothing rather than NaN-poisoning
+  // the total.
+  const totalDuration = transcripts.reduce(
+    (acc, t) => acc + (t.durationSec ?? 0),
+    0,
+  );
+
+  const derivedTitle =
+    title?.trim() ||
+    `${podcast.name} — ${new Date().toISOString().slice(0, 10)}`;
+
+  const episode = await prisma.episode.create({
+    data: {
+      podcastId,
+      userId: user.id,
+      title: derivedTitle,
+      transcriptIds,
+      durationSec: totalDuration > 0 ? totalDuration : null,
+      // Text-only assembly is "READY" — it's directly viewable. The audio
+      // path uses ASSEMBLING during ffmpeg concat (Phase 2/3).
+      status: "READY",
+    },
+    select: { id: true },
+  });
+
+  revalidatePath(`/podcasts/${podcastId}`);
+  return { id: episode.id };
+}
+
+// ── Editor: apply suggest_podcast_config to existing podcast ───────────────
+
+/**
+ * updatePodcastFromEditor — applies a SuggestedPodcastConfig to an existing
+ * Podcast. Mirror of updateAnalystFromBuilder for analysts.
+ *
+ * Contract: the proposal represents the FULL desired state. Segments are
+ * matched by name (case-insensitive); existing-name segments get updated,
+ * new-name segments get created, and existing segments missing from the
+ * proposal get deleted (cascade-removes their monitors + transcripts).
+ *
+ * The editor system prompt enforces "preserve segments not asked to be
+ * removed" so renames-with-content-moves should be rare. If the user
+ * really wants to rename, they can do it via the segment settings sheet
+ * which keeps the row id stable.
+ */
+export async function updatePodcastFromEditor(
+  podcastId: string,
+  config: SuggestedPodcastConfig,
+): Promise<void> {
+  const user = await requireUser();
+
+  const existing = await prisma.podcast.findFirst({
+    where: { id: podcastId, userId: user.id },
+    include: {
+      segments: {
+        select: {
+          id: true,
+          name: true,
+          orderIndex: true,
+          monitors: { select: { id: true, origin: true } },
+        },
+      },
+    },
+  });
+  if (!existing) throw new Error("Podcast not found");
+
+  await prisma.$transaction(async (tx) => {
+    // ── 1. Update podcast metadata ──────────────────────────────────────
+    await tx.podcast.update({
+      where: { id: existing.id },
+      data: {
+        name: config.podcast.name,
+        description: config.podcast.description,
+        hostStyle: config.podcast.hostStyle ?? null,
+        cadence: config.podcast.cadence ?? null,
+      },
+    });
+
+    // ── 2. Reconcile segments by name (case-insensitive) ───────────────
+    const norm = (s: string) => s.trim().toLowerCase();
+    const proposedNames = new Set(config.segments.map((s) => norm(s.name)));
+    const existingByName = new Map(existing.segments.map((s) => [norm(s.name), s]));
+
+    // Delete segments present in current but missing from proposal.
+    // Cascade removes their Monitor rows and SegmentTranscript rows
+    // via the FK onDelete behavior.
+    const toDelete = existing.segments.filter((s) => !proposedNames.has(norm(s.name)));
+    if (toDelete.length > 0) {
+      await tx.podcastSegment.deleteMany({
+        where: { id: { in: toDelete.map((s) => s.id) } },
+      });
+    }
+
+    // Update or create per proposal segment, in proposal order.
+    for (let i = 0; i < config.segments.length; i++) {
+      const s = config.segments[i];
+      const match = existingByName.get(norm(s.name));
+
+      let segmentId: string;
+      if (match) {
+        // Update existing — preserve orderIndex from proposal order, update
+        // fields, then wipe + rebuild BUILDER-origin monitors. USER-origin
+        // monitors (added manually via the segment settings sheet) are
+        // preserved across editor passes.
+        await tx.podcastSegment.update({
+          where: { id: match.id },
+          data: {
+            name: s.name,
+            description: s.description ?? null,
+            segmentPrompt: s.segmentPrompt,
+            targetSeconds: s.targetSeconds,
+            topics: s.topics,
+            excludeTopics: s.excludeTopics,
+            orderIndex: i,
+          },
+        });
+        segmentId = match.id;
+        await tx.monitor.deleteMany({
+          where: {
+            podcastSegmentId: segmentId,
+            origin: "BUILDER",
+          },
+        });
+      } else {
+        // Create new segment.
+        const created = await tx.podcastSegment.create({
+          data: {
+            podcastId: existing.id,
+            userId: user.id,
+            name: s.name,
+            description: s.description ?? null,
+            segmentPrompt: s.segmentPrompt,
+            targetSeconds: s.targetSeconds,
+            orderIndex: i,
+            topics: s.topics,
+            excludeTopics: s.excludeTopics,
+            sources: [],
+          },
+        });
+        segmentId = created.id;
+      }
+
+      // Recreate domain + search monitors as BUILDER-origin rows. Mirror of
+      // createPodcastFromBuilder's monitor block. USER-origin monitors live
+      // alongside, untouched.
+      for (const m of s.domainMonitors) {
+        const domain = m.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+        await tx.monitor.create({
+          data: {
+            name: m.name,
+            type: "DOMAIN",
+            method: "perplexity_sonar",
+            config: {
+              domain,
+              url: `https://${domain}`,
+              qualityScore: 3,
+              reason: m.reason,
+            } as object,
+            scope: "PODCAST_SEGMENT",
+            podcastSegmentId: segmentId,
+            enabled: true,
+            builtIn: false,
+            origin: "BUILDER",
+            class: "UNIVERSE",
+            category: "THEMATIC",
+          },
+        });
+      }
+      for (const q of s.searchQueries) {
+        await tx.monitor.create({
+          data: {
+            name: q.query,
+            type: "SEARCH",
+            method: "perplexity_sonar",
+            config: { query: q.query, reason: q.reason } as object,
+            scope: "PODCAST_SEGMENT",
+            podcastSegmentId: segmentId,
+            enabled: true,
+            builtIn: false,
+            origin: "BUILDER",
+            class: "UNIVERSE",
+            category: "THEMATIC",
+          },
+        });
+      }
+    }
+  });
+
+  revalidatePath(`/podcasts/${podcastId}`);
 }
 
 // ── Run kick ────────────────────────────────────────────────────────────────

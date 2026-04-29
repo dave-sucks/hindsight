@@ -46,21 +46,26 @@ import {
   FileText,
   Loader2,
   MoreHorizontal,
+  Pencil,
   Play,
   Settings2,
   Trash2,
 } from "lucide-react";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
-import { RunResearchButton } from "@/components/RunResearchButton";
 import { cn } from "@/lib/utils";
 import {
   deletePodcast,
   runSegment,
+  type EpisodeListItem,
   type PodcastDetail,
   type SegmentSummary,
 } from "@/lib/actions/podcast.actions";
 import { PodcastConfigSheet } from "./PodcastConfigSheet";
 import { SegmentConfigSheet } from "./SegmentConfigSheet";
+import { PodcastFindingsTab } from "./PodcastFindingsTab";
+import { AssembleEpisodeDialog } from "./AssembleEpisodeDialog";
+import { TranscriptDialog } from "@/components/agent/sheets/TranscriptSheet";
+import { TranscriptRow, type TranscriptRowData } from "@/components/ui/transcript-row";
 
 function formatRelative(date: Date | null): string {
   if (!date) return "Never run";
@@ -88,7 +93,12 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
   // flips false→true. Same shape the shadcn Sheet docs recommend:
   // https://ui.shadcn.com/docs/components/radix/sheet
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Latest-transcript dialog — opened from the 3-dot menu when there is one,
+  // and from clicking the footer "last transcript" line. Reuses TranscriptDialog
+  // which is the same Dialog primitive surface as BriefDetailDialog.
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
   const minutes = Math.round(segment.targetSeconds / 60);
+  const latest = segment.latestTranscript;
 
   const handleRun = () => {
     startStarting(async () => {
@@ -137,11 +147,17 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
             >
               <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem onClick={handleRun} disabled={isStarting}>
                 <Play className="h-3.5 w-3.5" />
                 {isStarting ? "Starting…" : "Run segment"}
               </DropdownMenuItem>
+              {latest && (
+                <DropdownMenuItem onClick={() => setTranscriptOpen(true)}>
+                  <FileText className="h-3.5 w-3.5" />
+                  View latest transcript
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
                 <Settings2 className="h-3.5 w-3.5" />
                 Settings
@@ -170,13 +186,19 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
         )}
       </div>
 
-      {/* Section 2: footer — last run + transcript count */}
+      {/* Section 2: footer — last run + transcript count.
+          Clicking the title (when there is a latest transcript) opens the
+          TranscriptDialog. Whole footer stays read-only otherwise. */}
       <div className="border-t p-3 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
-        <span>
-          {segment.lastTranscriptTitle ? (
-            <span className="font-medium text-foreground line-clamp-1">
+        <span className="min-w-0 flex-1">
+          {latest ? (
+            <button
+              type="button"
+              onClick={() => setTranscriptOpen(true)}
+              className="font-medium text-foreground line-clamp-1 hover:underline text-left"
+            >
               {segment.lastTranscriptTitle}
-            </span>
+            </button>
           ) : (
             <span>No runs yet</span>
           )}
@@ -197,6 +219,13 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
       onOpenChange={setSettingsOpen}
       segment={segment}
     />
+
+    {/* Latest transcript Dialog — same Dialog surface as BriefDetailDialog. */}
+    <TranscriptDialog
+      open={transcriptOpen}
+      onOpenChange={setTranscriptOpen}
+      data={latest}
+    />
     </>
   );
 }
@@ -205,13 +234,16 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
 
 export default function PodcastDetailClient({
   detail,
+  episodes = [],
 }: {
   detail: PodcastDetail;
+  episodes?: EpisodeListItem[];
 }) {
   const router = useRouter();
   const [configOpen, setConfigOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [assembleOpen, setAssembleOpen] = useState(false);
   const [runAllPending, startRunAll] = useTransition();
   // Per-segment settings sheets live inside each SegmentCard with their
   // own local state — that's the canonical shadcn Sheet pattern (Sheet
@@ -305,6 +337,12 @@ export default function PodcastDetailClient({
                   }
                 />
                 <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={() => router.push(`/podcasts/${detail.id}/edit`)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit with AI
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setConfigOpen(true)}>
                     <Settings2 className="h-3.5 w-3.5" />
                     Settings
@@ -336,6 +374,7 @@ export default function PodcastDetailClient({
               <TabsList>
                 <TabsTrigger value={0}>Segments</TabsTrigger>
                 <TabsTrigger value={1}>Episodes</TabsTrigger>
+                <TabsTrigger value={2}>Findings</TabsTrigger>
               </TabsList>
             </div>
 
@@ -358,12 +397,22 @@ export default function PodcastDetailClient({
             </TabsContent>
 
             <TabsContent value={1}>
+              <EpisodesTab
+                episodes={episodes}
+                podcastId={detail.id}
+                hasReadyTranscripts={detail.segments.some(
+                  (s) =>
+                    s.latestTranscript &&
+                    (s.latestTranscript.status === "READY" ||
+                      s.latestTranscript.status === "AUDIO_READY"),
+                )}
+                onAssemble={() => setAssembleOpen(true)}
+              />
+            </TabsContent>
+
+            <TabsContent value={2}>
               <div className="px-4 py-6">
-                <SkeletonCardStack
-                  count={2}
-                  title="Episodes are Phase 3"
-                  subtitle="Once segments produce transcripts you'll be able to assemble them into a listenable episode here, with the full transcript consolidated per episode."
-                />
+                <PodcastFindingsTab podcastId={detail.id} />
               </div>
             </TabsContent>
           </Tabs>
@@ -406,6 +455,13 @@ export default function PodcastDetailClient({
         detail={detail}
       />
 
+      {/* Assemble-episode dialog — opened from the Episodes tab CTA. */}
+      <AssembleEpisodeDialog
+        podcast={detail}
+        open={assembleOpen}
+        onOpenChange={setAssembleOpen}
+      />
+
       {/* Per-segment settings sheets live inside each SegmentCard, not here. */}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -443,13 +499,83 @@ export default function PodcastDetailClient({
   );
 }
 
-// Suppress unused-Link warning — Link is exported for callers that may
-// surface a "Add segment" entry point in a follow-up.
-void Link;
+function formatDurationShort(sec: number | null): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
+
+function EpisodesTab({
+  episodes,
+  podcastId,
+  hasReadyTranscripts,
+  onAssemble,
+}: {
+  episodes: EpisodeListItem[];
+  podcastId: string;
+  hasReadyTranscripts: boolean;
+  onAssemble: () => void;
+}) {
+  return (
+    <div className="px-4 py-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {episodes.length === 0
+            ? "No episodes assembled yet."
+            : `${episodes.length} episode${episodes.length === 1 ? "" : "s"} assembled.`}
+        </p>
+        <Button
+          size="sm"
+          onClick={onAssemble}
+          disabled={!hasReadyTranscripts}
+          title={hasReadyTranscripts ? undefined : "Run a segment to produce a ready transcript first."}
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Assemble episode
+        </Button>
+      </div>
+
+      {episodes.length === 0 ? (
+        <SkeletonCardStack
+          count={2}
+          title="Text-only assembly"
+          subtitle="Pick ready transcripts, set the order, and assemble into one viewable episode. Audio assembly is Phase 2."
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {episodes.map((e) => (
+            <Link key={e.id} href={`/podcasts/${podcastId}/episodes/${e.id}`} className="block">
+              <Card className="p-4 hover:border-foreground/25 transition-colors">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant={e.status === "READY" ? "secondary" : "outline"}>
+                    {e.status}
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                    {new Date(e.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <h3 className="text-sm font-medium leading-tight line-clamp-2 mb-1">
+                  {e.title}
+                </h3>
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
+                  <span>{e.transcriptCount} segment{e.transcriptCount === 1 ? "" : "s"}</span>
+                  <span>·</span>
+                  <span>{formatDurationShort(e.durationSec)}</span>
+                </div>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function RecentTranscriptsRail({ segments }: { segments: SegmentSummary[] }) {
   const recent = segments
-    .filter((s) => s.lastTranscriptTitle && s.lastRunAt)
+    .filter((s) => s.latestTranscript && s.lastRunAt)
     .sort(
       (a, b) =>
         new Date(b.lastRunAt!).getTime() - new Date(a.lastRunAt!).getTime(),
@@ -467,24 +593,13 @@ function RecentTranscriptsRail({ segments }: { segments: SegmentSummary[] }) {
 
   return (
     <div className="flex flex-col">
-      {recent.map((s) => (
-        <div
-          key={s.id}
-          className="flex items-center gap-3 px-3 py-2.5 border-b last:border-0"
-        >
-          <div className="size-7 rounded-full bg-muted flex items-center justify-center shrink-0">
-            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium truncate">
-              {s.lastTranscriptTitle}
-            </p>
-            <p className="text-[10px] text-muted-foreground truncate">
-              {s.name} · {formatRelative(s.lastRunAt)}
-            </p>
-          </div>
-        </div>
-      ))}
+      {recent.map((s) => {
+        const data: TranscriptRowData = {
+          ...(s.latestTranscript as TranscriptRowData),
+          id: s.latestTranscript?.transcriptId ?? null,
+        };
+        return <TranscriptRow key={s.id} transcript={data} />;
+      })}
     </div>
   );
 }

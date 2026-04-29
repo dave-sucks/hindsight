@@ -1,25 +1,26 @@
 "use client";
 
 /**
- * TranscriptSheet — segment analog of ThesisSheet.
+ * Transcript detail surface — segment analog of ThesisSheet, but rendered
+ * in a Dialog so it matches the brief / signal detail UX
+ * (BriefDetailDialog, FindingDetailDialog).
  *
- * Same exports shape:
- *   - TranscriptSheetBody: raw content (no Sheet wrapper). Used by TranscriptCard.
- *   - TranscriptSheet: controlled Sheet wrapping the body — used when opening
- *     programmatically without a card trigger.
+ * Exports:
+ *   - TranscriptSheetBody: raw content (no wrapper). Reused by TranscriptCard.
+ *   - TranscriptDialog: controlled Dialog wrapping the body — used when
+ *     opening programmatically without a card trigger.
+ *   - formatDuration: shared duration formatter (also used by TranscriptRow).
  *
- * The transcript is the segment-run output (mirror of Thesis for analysts).
- * Body shows the spoken script + citation chips inline so each cited claim
- * is clickable to its source.
+ * Body shows the spoken script + inline citation chips.
  */
 
 import { Badge } from "@/components/ui/badge";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Mic, Clock, FileText, ExternalLink } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -203,29 +204,26 @@ export function TranscriptSheetBody({
   );
 }
 
-// ─── Controlled Sheet wrapper ─────────────────────────────────────────────────
+// ─── Controlled Dialog wrapper ────────────────────────────────────────────────
 
-interface TranscriptSheetProps {
+interface TranscriptDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   data: TranscriptCardData | null;
 }
 
-export function TranscriptSheet({ open, onOpenChange, data }: TranscriptSheetProps) {
+export function TranscriptDialog({ open, onOpenChange, data }: TranscriptDialogProps) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="w-full sm:max-w-xl overflow-y-auto p-0"
-      >
-        <SheetHeader className="pb-0">
-          <SheetTitle className="sr-only">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl p-0 max-h-[85vh] overflow-y-auto">
+        <DialogHeader className="p-0">
+          <DialogTitle className="sr-only">
             {data?.title ?? "Transcript"}
-          </SheetTitle>
-        </SheetHeader>
+          </DialogTitle>
+        </DialogHeader>
         {data && <TranscriptSheetBody {...data} />}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 

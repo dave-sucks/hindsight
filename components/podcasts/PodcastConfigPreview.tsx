@@ -50,6 +50,9 @@ interface Props {
   onConfigChange: (next: SuggestedPodcastConfig) => void;
   onConfirm: () => void;
   isCreating: boolean;
+  /** Override CTA labels for the editor flow ("Apply changes" / "Applying…"). */
+  confirmLabel?: string;
+  confirmingLabel?: string;
 }
 
 export function PodcastConfigPreview({
@@ -57,6 +60,8 @@ export function PodcastConfigPreview({
   onConfigChange,
   onConfirm,
   isCreating,
+  confirmLabel = "Create podcast",
+  confirmingLabel = "Creating…",
 }: Props) {
   const [silkActive, setSilkActive] = useState(true);
   useEffect(() => {
@@ -390,7 +395,7 @@ export function PodcastConfigPreview({
           className="w-full"
         >
           <Check className="h-4 w-4 mr-2" />
-          {isCreating ? "Creating…" : "Create podcast"}
+          {isCreating ? confirmingLabel : confirmLabel}
         </Button>
       </div>
     </div>

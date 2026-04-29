@@ -28,8 +28,10 @@ export type AgentMode =
   // Podcast feature (PoC) — see docs/PODCAST_PLAN.md.
   // podcast-builder: chat to create a Podcast + child Segments.
   // podcast-segment-run: run a single Segment to produce a SegmentTranscript.
+  // podcast-editor: refine an existing Podcast + Segments via chat.
   | "podcast-builder"
-  | "podcast-segment-run";
+  | "podcast-segment-run"
+  | "podcast-editor";
 
 // ── Mode config ──────────────────────────────────────────────────────────────
 
@@ -129,6 +131,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     maxSteps: 25,
     toolAllowlist: [
       "ask_question",
+      "read_knowledge_library",
       "web_search",
       "discover_signals_for_fence",
       "suggest_podcast_config",
@@ -151,6 +154,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     maxSteps: 40,
     toolAllowlist: [
       "read_signals",
+      "read_past_transcripts",
       "read_artifact",
       "web_search",
       "get_stock_data",
@@ -159,6 +163,23 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     ] as const,
     hasSuggestConfig: false,
     maxDuration: 240,
+  },
+  // podcast-editor: refine an existing Podcast + Segments via chat.
+  // Same suggest_podcast_config tool the builder uses; the action layer
+  // diffs against current state rather than creating a new Podcast.
+  "podcast-editor": {
+    model: "gpt-4o",
+    provider: "openai",
+    maxSteps: 25,
+    toolAllowlist: [
+      "ask_question",
+      "read_knowledge_library",
+      "web_search",
+      "discover_signals_for_fence",
+      "suggest_podcast_config",
+    ] as const,
+    hasSuggestConfig: false,
+    maxDuration: 180,
   },
 };
 

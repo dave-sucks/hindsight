@@ -73,14 +73,43 @@ export async function GET(req: NextRequest) {
   const industries = parseCsv(req.nextUrl.searchParams.get("industry"));
   const filterAnalystIds = parseCsv(req.nextUrl.searchParams.get("analystId"));
   const routeCodes = parseCsv(routeReasonCode);
+  // Podcast feature — `podcastId=` filters to signals routed to ANY segment
+  // of the named podcast via PodcastSegmentSignalRoute. Mirror of analystId
+  // routing: same Signal table, different routing junction. Mutually exclusive
+  // in practice (a signal can have both kinds of routes; the filter just
+  // determines which we INTERSECT against). Ownership check: we resolve the
+  // podcast's segment ids only if the podcast belongs to this user.
+  const podcastIdRaw = req.nextUrl.searchParams.get("podcastId");
+  let podcastSegmentIds: string[] | null = null;
+  if (podcastIdRaw) {
+    const podcast = await prisma.podcast.findFirst({
+      where: { id: podcastIdRaw, userId: user.id },
+      select: { segments: { select: { id: true } } },
+    });
+    podcastSegmentIds = podcast?.segments.map((s) => s.id) ?? [];
+  }
 
   // Route filter is now OPT-IN. We only attach a `routes: { some: … }` clause
   // if the caller actually filtered by analyst or route-reason. With no such
   // filter, every signal is visible — routing is metadata, not a visibility
   // gate.
+  //
+  // Podcast filter takes precedence — if podcastId is set, we filter via the
+  // podcast-segment route junction table instead.
   const hasRouteFilter = filterAnalystIds !== null || routeCodes !== null;
   let routeFilterClause: object = {};
-  if (hasRouteFilter) {
+  if (podcastSegmentIds !== null) {
+    if (podcastSegmentIds.length === 0) {
+      // Podcast exists with no segments, OR podcast doesn't belong to user.
+      // Either way: empty result is the right answer.
+      return NextResponse.json([]);
+    }
+    routeFilterClause = {
+      segmentRoutes: {
+        some: { podcastSegmentId: { in: podcastSegmentIds } },
+      },
+    };
+  } else if (hasRouteFilter) {
     const routeReasonWhere = routeCodes
       ? routeCodes.length === 1
         ? { routeReasonCode: routeCodes[0] }

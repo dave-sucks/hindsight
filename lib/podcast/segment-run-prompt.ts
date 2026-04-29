@@ -96,8 +96,23 @@ Call **read_signals** ONCE with no arguments. This returns the signals routed to
 
 If read_signals returns nothing or the routed material is thin, fall back to a single web_search call rooted in your topic scope. Make the query concrete and time-bound (e.g. "indie game launches this week steam", "AI infrastructure funding rounds Q2 2026"). One query is enough — don't burn the search budget on a fishing expedition.
 
+### Stage 1.5 — See what the show already covered
+Call **read_past_transcripts** ONCE (default lookback 3 days) right after read_signals. This returns recent transcripts from EVERY segment of THIS podcast — not just yours. Use it to:
+- Avoid double-covering a story another segment just ran (the listener already heard it).
+- Pick up follow-up arcs ("the FDA decision the news segment teased on Monday lands today").
+- Match the show's voice — read a snippet of recent transcripts to stay consistent.
+
+Skip nothing. If 0 transcripts come back, the show is new — pick fresh material with confidence. If a story you'd lead with already aired, pivot to the next-strongest item or take a different angle on it.
+
 ### Stage 2 — Research
-Pull 1–3 specific articles. For routed signals: call **read_artifact** with the signal's artifactId. For web_search hits: call read_artifact with the URL or follow up with one more targeted web_search. Stop pulling once you have enough material to write a confident segment. Don't research forever; this is a short script, not a dissertation.
+Triage the signals you got back from Stage 1 with the segment's editorial brief in mind. Pick the 1–3 stories that are the strongest fit — not the most signals, the strongest. Strongest means: in scope, fresh, defensible (multiple credible sources or a primary document), and matches the show's perspective.
+
+For each picked story:
+- Call **read_artifact** with the signal's artifactId to get the full extracted article.
+- If you need a second angle, call **web_search** ONCE with a specific follow-up query (not a fishing expedition).
+- If a claim involves a public company and you want a price/recent-news cross-check, call **get_stock_data** ONCE.
+
+Stop pulling material as soon as you have enough to write a confident, citation-rich segment. This is a short script, not a dissertation. The trap is researching forever and never writing — don't fall in.
 
 ### Stage 3 — Write
 Call write_segment_transcript exactly once. The plainText field is your final spoken script. Requirements:

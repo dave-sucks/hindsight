@@ -22,19 +22,22 @@ import {
   sourceIndex,
   getSignalType,
   signalIndex,
+  getPodcastFormat,
+  podcastFormatIndex,
 } from "@/lib/agent/knowledge";
 
 export const readKnowledgeLibrary = defineTool({
   description:
-    "Read an entry from the Hindsight knowledge library — curated strategy archetypes, vetted research sources, and the signal-type taxonomy. " +
-    "Call with {topic:'archetype'|'source'|'signal'} and optionally an id. Without an id you get the index; with an id you get the full entry. " +
-    "Use this BEFORE calling suggest_config so your proposed config is grounded in a real archetype's prompt skeleton, signal set, and source list.",
+    "Read an entry from the Hindsight knowledge library — curated strategy archetypes (trading), vetted research sources, the signal-type taxonomy, AND podcast format archetypes (craft library for the podcast builder/editor). " +
+    "Call with {topic:'archetype'|'source'|'signal'|'podcast-format'} and optionally an id. Without an id you get the index; with an id you get the full entry. " +
+    "Trading builders/editors: use this BEFORE suggest_config to ground in a real archetype. " +
+    "Podcast builders/editors: use this with topic:'podcast-format' BEFORE suggest_podcast_config to pick a structural format (Daily News Brief, Weekly Roundup, Interview Show, Essay & Analysis, Recap & Reaction, Daily Tracker, Explainer Deep Dive) and adapt it to the user's pitch.",
   schema: z.object({
-    topic: z.enum(["archetype", "source", "signal"]).describe(
-      "Which catalog to query: 'archetype' for trading styles, 'source' for research sources, 'signal' for signal types.",
+    topic: z.enum(["archetype", "source", "signal", "podcast-format"]).describe(
+      "Which catalog to query: 'archetype' for trading styles, 'source' for research sources, 'signal' for signal types, 'podcast-format' for podcast structural formats.",
     ),
     id: z.string().optional().describe(
-      "The entry ID (e.g. 'EARNINGS_DRIFT', 'SEC_EDGAR', 'INSIDER_BUYING'). Leave empty to list the index.",
+      "The entry ID (e.g. 'EARNINGS_DRIFT', 'SEC_EDGAR', 'INSIDER_BUYING', 'DAILY_NEWS_BRIEF'). Leave empty to list the index.",
     ),
   }),
   ui: "tool-ui" as const,
@@ -57,6 +60,11 @@ export const readKnowledgeLibrary = defineTool({
       return args.id
         ? `Reading the ${humanize(args.id)} signal type`
         : "Looking at the signal types we track";
+    }
+    if (args.topic === "podcast-format") {
+      return args.id
+        ? `Reading the ${humanize(args.id)} podcast format`
+        : "Looking at podcast format archetypes";
     }
     // topic === "source"
     return args.id
@@ -167,6 +175,47 @@ export const readKnowledgeLibrary = defineTool({
       };
     }
 
+    if (topic === "podcast-format") {
+      if (!id) {
+        const index = podcastFormatIndex();
+        return {
+          summary: `${index.length} podcast formats: ${previewNames(index.map((f) => f.name))}`,
+          data: {
+            topic: "podcast-format" as const,
+            mode: "index" as const,
+            count: index.length,
+            index,
+          },
+          sources: [],
+        };
+      }
+      const entry = getPodcastFormat(id);
+      if (!entry) {
+        return {
+          summary: `Unknown podcast format: ${id}`,
+          data: {
+            topic: "podcast-format" as const,
+            mode: "entry" as const,
+            found: false,
+            id,
+            hint: `Available formats: ${podcastFormatIndex().map((f) => f.name).join(", ")}`,
+          },
+          sources: [],
+        };
+      }
+      return {
+        summary: `Loaded the ${entry.name} podcast format`,
+        data: {
+          topic: "podcast-format" as const,
+          mode: "entry" as const,
+          found: true,
+          entry,
+          content: formatPodcastFormatMarkdown(entry),
+        },
+        sources: [],
+      };
+    }
+
     // topic === "signal"
     if (!id) {
       const index = signalIndex();
@@ -214,6 +263,7 @@ export const readKnowledgeLibrary = defineTool({
 type ArchetypeEntry = ReturnType<typeof getArchetype>;
 type SourceEntryType = ReturnType<typeof getSource>;
 type SignalEntry = ReturnType<typeof getSignalType>;
+type PodcastFormatEntry = ReturnType<typeof getPodcastFormat>;
 
 function humanizeToken(s: string): string {
   return s
@@ -323,6 +373,47 @@ function formatSourceMarkdown(entry: NonNullable<SourceEntryType>): string {
       lines.push(`${label}: ${String(v)}`);
     }
   }
+  return lines.join("\n").trim();
+}
+
+function formatPodcastFormatMarkdown(entry: NonNullable<PodcastFormatEntry>): string {
+  const lines: string[] = [];
+  lines.push(entry.name);
+  lines.push(entry.tagline);
+  lines.push("");
+  lines.push(
+    `Episode length: ~${Math.round(entry.recommendedEpisodeSeconds / 60)} min · ${entry.recommendedSegmentCount} segments · cadence ${entry.defaultCadence}`,
+  );
+  lines.push("");
+  lines.push("When this format fits:");
+  lines.push(entry.description);
+  lines.push("");
+  lines.push("Segment templates (adapt the prompt to the user's specific topic — do NOT copy verbatim):");
+  for (const seg of entry.segmentTemplates) {
+    lines.push(`  • ${seg.name} (~${Math.round(seg.targetSeconds / 60)} min)`);
+    lines.push(`    ${seg.segmentPrompt}`);
+    if (seg.monitorHints.length) {
+      lines.push(`    Monitor pattern hints:`);
+      seg.monitorHints.forEach((h) => lines.push(`      - ${h}`));
+    }
+  }
+  lines.push("");
+  lines.push("Host style hints:");
+  entry.hostStyleHints.forEach((h) => lines.push(`  • ${h}`));
+  lines.push("");
+  lines.push("Sourcing playbook (how to translate user's topic + outlets into Monitor rows):");
+  lines.push(entry.sourcingPlaybook);
+  lines.push("");
+  lines.push("Elicitation questions to ask via ask_question BEFORE suggest_podcast_config:");
+  entry.elicitationQuestions.forEach((q, i) => {
+    lines.push(`  ${i + 1}. ${q.question}${q.multiSelect ? "  [multi-select]" : ""}`);
+    q.options.forEach((opt) => {
+      lines.push(`     - ${opt.label}${opt.description ? ` — ${opt.description}` : ""}`);
+    });
+  });
+  lines.push("");
+  lines.push("Watch out for:");
+  entry.watchOutFor.forEach((w) => lines.push(`  • ${w}`));
   return lines.join("\n").trim();
 }
 
