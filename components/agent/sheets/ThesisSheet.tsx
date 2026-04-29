@@ -31,6 +31,7 @@ import { TickBar, PriceGauge, type Tick } from "@/components/ui/gauge";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
+import { ThesisTriggersSection } from "@/components/agent/sheets/ThesisTriggersSection";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
 
@@ -424,6 +425,13 @@ export function ThesisSheetBody({
           ))}
         </div>
       )}
+
+      {/* ── Triggers + Schedule ───────────────────────────────── */}
+      {/* Same gating as the timeline below — only shows once the row
+          is persisted. Renders the structured trigger predicates, the
+          horizon, nextReviewAt, scaling plan, etc. so you can see at
+          a glance what events would warrant a re-evaluation. */}
+      {thesis_id ? <ThesisTriggersSection thesisId={thesis_id} /> : null}
 
       {/* ── Activity timeline ─────────────────────────────────── */}
       {/* Renders only when we have a persisted thesis id. Agent-run inline
