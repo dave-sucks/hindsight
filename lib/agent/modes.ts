@@ -25,6 +25,10 @@ export type AgentMode =
   | "research-run"
   | "builder"
   | "editor"
+  // PR 2 — event-driven tactical run when a thesis trigger fires
+  // (signal-side or price-cron). Single ticker, single decision,
+  // small step budget. Spawned by lib/inngest/functions/tactical-run.ts.
+  | "tactical"
   // Podcast feature (PoC) — see docs/PODCAST_PLAN.md.
   // podcast-builder: chat to create a Podcast + child Segments.
   // podcast-segment-run: run a single Segment to produce a SegmentTranscript.
@@ -119,6 +123,37 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     ] as const,
     hasSuggestConfig: true,
     maxDuration: 150,
+  },
+  // ── Tactical (PR 2) ─────────────────────────────────────────────────────
+  // Event-driven, single-thesis, single-decision. Spawned by tactical-run
+  // when a trigger fires. record_thesis is intentionally NOT in the
+  // allowlist — tactical never mints new theses; it acts on / updates an
+  // existing one. update_thesis IS the close-out call (always written).
+  "tactical": {
+    model: "gpt-4o",
+    provider: "openai",
+    maxSteps: 15,
+    toolAllowlist: [
+      // Read-only intel for validation
+      "get_stock_data",
+      "get_earnings_data",
+      "get_market_context",
+      "get_sec_filings",
+      "get_options_flow",
+      "web_search",
+      "read_artifact",
+      "get_theses",
+      // Action
+      "place_trade",
+      "close_position",
+      "manage_position",
+      // Thesis (REQUIRED close-out)
+      "update_thesis",
+      // Finalize
+      "complete_run",
+    ] as const,
+    hasSuggestConfig: false,
+    maxDuration: 240,
   },
   // ── Podcast feature (PoC) ───────────────────────────────────────────────
   // podcast-builder: structured interview to create a Podcast + Segments.
