@@ -1,53 +1,70 @@
 # Thesis-Driven Analyst Architecture — Plan
 
-> Master plan for the three-PR overhaul that turns Hindsight from a
-> daily-research-run model into a durable thesis library with reactive
-> updates and a clean separation of housekeeping vs tactical vs
-> discovery work.
+> Master plan for the three-PR overhaul that turns Hindsight's morning
+> research run from a re-derive-everything-daily model into a
+> thesis-driven portfolio review backed by durable state, with
+> event-driven tactical runs supplementing it and a separate weekly
+> discovery cadence.
 >
 > Audience: future sessions (Claude or human) picking up PR 2 or PR 3.
 > This is self-contained — read just this doc and you can execute.
 
 ---
 
-## Status (as of 2026-04-27)
+## Status (as of 2026-04-28)
 
-| PR | Status | Branch / commit |
+| PR | Status | Notes |
 |---|---|---|
-| **PR 1 — Durable thesis state + activity log + tools** | ✅ **Merged** as #193 | `81e73ae` on main |
+| **PR 1 — Durable thesis state + activity log + tools** | ✅ Merged as #193 | `81e73ae` on main |
+| **Hotfix — Morning-run gate counts ThesisUpdate touches** | ✅ Merged as #196 | `43e6563` on main. Fixed false-failures from PR 1 where agent legitimately used update_thesis but the gate counted only Thesis row inserts. |
+| **Plan revision** (this doc) | In flight | This update — corrected framing of PR 3. |
 | PR 2 — Trigger evaluator + tactical mode | Not started | — |
-| PR 3 — Housekeeping + discovery + brief deletion + watchlist collapse | Not started | — |
+| PR 3 — Daily run gets smarter + weekly discovery + brief deletion + watchlist collapse | Not started | — |
 
 PR 1 shipped the foundation. The DB has new Thesis fields, a
 `ThesisUpdate` table backfilled with one row per existing thesis, three
 new agent tools (`update_thesis`, `get_theses`, plus same-direction
 guard on `record_thesis`), and a Timeline section embedded in the
-existing ThesisSheet UI.
+existing ThesisSheet UI. The hotfix fixed an immediate compliance
+regression where the morning-run process gate didn't recognize
+`update_thesis` as a thesis touch.
 
-Everything in PRs 2 and 3 builds on that foundation.
+PRs 2 and 3 build on that foundation.
 
 ---
 
 ## Strategy in one page
 
-We're moving from:
+The framing here was wrong in the first version of this doc. The
+correct framing:
 
-> "Daily research run that re-discovers, re-researches, and re-writes
-> theses every morning"
+> **The daily portfolio management run STAYS. It is the primary engine.**
+>
+> What changes is how it thinks. With durable thesis state (PR 1), the
+> daily run can decide per-thesis whether to act, update, review-only,
+> or leave alone — instead of re-deriving every thesis from scratch
+> every morning.
+>
+> Tactical runs are an **event-driven supplement** that catches mid-day
+> signals between morning runs. They don't replace the daily run.
+>
+> Discovery has TWO cadences: a dedicated weekly cron AND opportunistic
+> use within the daily run when conditions warrant. Discovery is
+> **conditional in the daily run** — sometimes the right call is "skip
+> discovery, focus on book management."
+>
+> The morning brief generator goes away in PR 3. Not because we're
+> removing capability, but because the agent now reads durable state
+> directly (theses, triggers, today's signals) instead of consuming a
+> synthesized blob.
 
-to:
+### Three execution paths (one agent, one persona)
 
-> "Durable thesis library that the analyst maintains as a coverage
-> commitment. Most days nothing changes. Signals trigger small focused
-> decisions. New names enter slowly via a separate weekly cadence."
-
-### Three operating modes (one agent, three contexts)
-
-| Mode | Cadence | Scope | Goal | Step budget |
+| Path | Cadence | Scope | Goal | Step budget |
 |---|---|---|---|---|
-| **Tactical** | Event-driven (trigger fires) | One ticker, one signal, one thesis | Act / update thesis / pass | ~15 |
-| **Housekeeping** | Daily (replaces today's morning cron) | All ACTIVE + WATCHING theses | Walk the book; update where warranted; queue tactical actions | ~25 |
-| **Discovery** | Weekly | Universe-fenced signals not matching any active thesis | Mint new WATCHING theses; rare ACTIVE entries on high conviction | ~25 |
+| **Daily portfolio review** | Daily (existing morning cron, smarter) | All ACTIVE + WATCHING theses + portfolio + watchlist signals + (conditional) discovery candidates | Walk the book per-thesis. Update where warranted. Trade. Discover when conditions allow. | ~50 |
+| **Tactical** | Event-driven (trigger fires) | One ticker, one signal, one thesis | Validate the trigger fired correctly. Act / update / pass. | ~15 |
+| **Discovery** | Weekly cron (separate path) | Universe-fenced signals not cited by any active thesis | Mint new WATCHING theses; rare ACTIVE entries on high conviction | ~25 |
 
 ### The thesis as durable state
 
@@ -57,19 +74,147 @@ which writes a `ThesisUpdate` log row — not a new Thesis row. The
 chain pattern (parentThesisId) is reserved for genuine direction flips
 or explicit replacements after invalidation.
 
+The Thesis row carries the metadata that makes the daily run smart:
+`horizon`, `nextReviewAt`, `triggers[]`, `targetSizePct`,
+`scalingPlan`, `maxHoldDays`, `catalystDate`, `expiresAt`. The agent
+reads these and acts. See "How the daily run thinks per-thesis"
+below.
+
 ### Triggers as machine-evaluable predicates
 
 Every thesis can carry a `triggers[]` array of structured predicates
 (PRICE_*, SIGNAL_TYPE, EARNINGS_*, FILING, TIME_*, AND/OR). The router
-evaluates these deterministically — no LLM in the matching loop. The
-LLM only runs after a trigger fires (tactical mode).
+evaluates these deterministically — no LLM in the matching loop.
+
+In PR 2 these power tactical runs (signal arrives → trigger matches →
+tactical run fires). The daily run also reads triggers — when a daily
+run starts, it checks "which of my theses had triggers fire since the
+last run?" and prioritizes those.
 
 ### What "the brief" becomes
 
-In PR 3 the AI-consumed morning brief goes away. The same agent reads
+In PR 3 the AI-consumed morning brief goes away. The agent reads
 signals, thesis library, and triggers directly. The brief generator
-either deletes or repurposes to a daily journal artifact for a human
-dashboard.
+gets repurposed (or deleted) — see PR 3 plan below.
+
+---
+
+## How the daily run thinks per-thesis
+
+This is the part that was missing from the first version of this doc.
+A fresh session needs to understand the per-thesis decision logic the
+daily run will execute, because that's where most of PR 3's value lives.
+
+For every ACTIVE thesis, the daily run asks four questions in order:
+
+### 1. Did anything fire since the last run?
+
+Sources:
+- Triggers that fired (PR 2's evaluator already stamped the matches).
+- New signals on this ticker since last run.
+- Price moves past key levels (entry, target, stop, scalingPlan rungs).
+
+If yes → **prioritize this thesis for real review.** Pull fresh stock
+data, walk the trigger / signal / price-move evidence, decide what to
+do.
+
+### 2. Is review due even without a trigger?
+
+Sources:
+- `thesis.nextReviewAt <= now`
+- For COMPOUNDER: `now - thesis.updatedAt >= 30 days`
+- For TARGET: `now - thesis.updatedAt >= 7 days` (or position-size shift > 20%)
+- For TRADE: `position.openedAt + maxHoldDays >= now` (approaching forced review)
+- For CATALYST: `thesis.catalystDate within 3 days` OR `now > catalystDate + 30 days`
+
+If yes → **scheduled review.** Same workflow as #1 but the prompt
+emphasizes "is the thesis still right?" rather than "what just changed?"
+
+### 3. Otherwise: REVIEWED, no fields touched
+
+If neither #1 nor #2 fires, the agent calls `update_thesis(thesis_id,
+rationale="Reviewed; nothing changed")` with an empty patch. This
+writes one REVIEWED row to the timeline — the audit trail of "agent
+looked, nothing to change" — and the daily run moves on.
+
+This is the "leave thesis static for days at a time" behavior. A
+COMPOUNDER thesis like "MSFT cloud capex" might log REVIEWED entries
+for 29 straight days then get a real touch on day 30. No tokens
+wasted regenerating the thesis from scratch every morning.
+
+### 4. Position-management decisions per thesis
+
+For ACTIVE theses with an open position, the daily run also evaluates:
+
+- **Hold longer?** TRADE horizon past `maxHoldDays` → review the exit.
+  COMPOUNDER never auto-exits on time.
+- **Add to position?** Compare current position size as % of portfolio
+  vs `targetSizePct`. If under target AND a `scalingPlan` rung's
+  conditions met (price below trigger, signal arrived, etc.) AND
+  conviction unchanged → scale in. ADD-action triggers codify the same
+  logic for cases where the agent should fire deterministically.
+- **Trim?** If conviction has dropped (recent confidence_score lower
+  than entry), or invalidation conditions partially met → trim toward
+  smaller position.
+- **Close?** If invalidation conditions clearly fired (now in
+  `invalidationConds`) → close_position + update_thesis(change_status:
+  "INVALIDATED"). If target hit → close_position + update_thesis
+  (change_status: "CLOSED").
+
+### 5. Discovery decision (per run, not per thesis)
+
+After walking every active thesis, the daily run decides whether to
+do discovery this morning. Gates:
+
+- Is a portfolio slot available? (Below `maxOpenPositions`.)
+- Did today's signals surface candidates outside existing coverage that
+  pass the universe fence with anything resembling conviction?
+- Is the regime hostile? (SPY breaking 200d, VIX > 30 — operator-set
+  thresholds, exposed via intelligencePolicy.)
+
+If any of these answer "no" or "hostile" → **skip discovery this run.**
+The weekly discovery cron is the safety net for genuinely-new coverage
+scanning. The daily run is allowed to skip.
+
+If all green → research the top 2-3 candidates, score, mint new
+theses (record_thesis with WATCHING or ACTIVE).
+
+### 6. Watchlist (WATCHING-status thesis) review
+
+For every WATCHING thesis the daily run also asks:
+
+- Did a promotion trigger fire today? (e.g. trigger says "breakout
+  confirmed → ACTIVE.") → Promote: `update_thesis(change_status:
+  "ACTIVE")` + place_trade.
+- `expiresAt` past with no signal activity? → Invalidate
+  (auto-prune stale watches).
+- `nextReviewAt` past? → Re-evaluate; either keep watching with
+  refined triggers, or invalidate.
+- Otherwise → REVIEWED.
+
+### 7. Run summary
+
+After the per-thesis loop + discovery decision:
+`record_run_summary` with primary_decision, ranked picks (every
+researched/touched ticker), structured rationale. Then `complete_run`.
+
+This is unchanged from today's morning run in shape — but the inputs
+are radically different. The summary now reflects "I looked at 8
+active theses, touched 3 with real updates, kept 5 static, decided to
+skip discovery, made 1 trade" instead of "I researched 6 random
+tickers and minted 6 fresh thesis rows."
+
+---
+
+### How the user's specific concerns are addressed
+
+| Concern | Where it's handled |
+|---|---|
+| "Leave thesis static for days at a time" | Question #3: REVIEWED entries when neither #1 nor #2 fires. |
+| "Ignore discovery for the time being" | Question #5: discovery gates allow the daily run to skip. Plus weekly cron as backup. |
+| "Know when to review and update a watchlist thesis" | Question #6: nextReviewAt + expiresAt + promotion triggers. |
+| "Know how long it should be holding something" | Question #4 hold-longer check. Horizon-aware: TRADE has maxHoldDays, COMPOUNDER never time-exits, etc. |
+| "Know when to review and when to add more" | Question #4 add-to-position check. targetSizePct vs current position; scalingPlan rungs; ADD triggers. |
 
 ---
 
@@ -301,7 +446,7 @@ Note: `record_thesis` is intentionally NOT in the tactical allowlist.
 Tactical mode never mints new theses. If the agent decides the thesis
 is broken, it calls `update_thesis(change_status: "INVALIDATED")` and
 the position-close happens via `close_position`. New coverage on a
-new ticker happens in housekeeping or discovery.
+new ticker happens in the daily run or weekly discovery.
 
 #### Modified: `app/api/agent/[mode]/route.ts`
 
@@ -375,106 +520,153 @@ Validation in prod:
 
 ---
 
-## PR 3 — Housekeeping + discovery + brief deletion + watchlist collapse
+## PR 3 — Daily run gets smarter + weekly discovery cron + brief deletion + watchlist collapse
 
 **Estimated scope:** ~2 days.
-**Depends on:** PR 2 (or at least PR 1 + PR 2 staged together — PR 3 references trigger evaluator).
-**Touches:** the morning run, watchlist data, the brief.
+**Depends on:** PR 2 (the daily run uses the trigger evaluator's
+"triggers hit since last run" surface to prioritize work).
+**Touches:** the existing morning-research function, watchlist data,
+the brief generator, and various UI surfaces that render watchlist.
 
 ### Goal
 
-Move from the current "morning research run does everything" model to:
+The daily portfolio management run (today's `morning-research.ts`)
+**stays.** It's the primary engine. PR 3 evolves it in three ways:
 
-- **Housekeeping** as the daily cadence — walk the book, validate
-  theses against today's events, queue tactical actions for execution.
-  No new coverage. No discovery.
-- **Discovery** as a separate weekly cron. Mint new WATCHING theses.
-  Optionally open small ACTIVE positions on highest-conviction picks.
-- **Brief** deleted as AI input. The agent reads signals + theses
-  directly. A daily journal artifact for the human dashboard takes
-  over the brief's user-facing role.
-- **Watchlist** collapses into `Thesis.status = WATCHING`. Same
-  primitive, simpler model.
+1. **Make it thesis-driven** with the per-thesis decision logic
+   described in "How the daily run thinks per-thesis" above. Same cron,
+   same step budget — radically different inputs and outputs.
+2. **Add a separate weekly discovery cron** as a backstop for
+   genuinely-new coverage. The daily run can also do discovery when
+   conditions warrant; the weekly cron is the "make sure we don't go
+   weeks without scanning" safety net.
+3. **Delete the AI-consumed brief.** The agent reads durable state
+   directly (theses, triggers, today's signals). The brief generator
+   gets repurposed to write a human-facing daily journal artifact.
+
+Plus: collapse watchlist into `Thesis.status='WATCHING'`. Single
+durable primitive instead of two.
 
 ### File-by-file plan
 
-#### New: `lib/inngest/functions/housekeeping-run.ts`
+#### Modified: `lib/inngest/functions/morning-research.ts`
 
-Replaces `morning-research.ts`. Same cron schedule (8am ET weekdays,
-per-analyst). Flow:
+The function stays. Same cron, same per-analyst dispatch, same
+agent invocation. What changes:
 
-1. Load analyst config (universe, intelligence policy).
-2. Load active + watching theses with recent ThesisUpdate rows.
-3. Load today's signals routed to this analyst.
-4. Load today's "thesis triggers hit" pre-computed by PR 2.
-5. Load portfolio + price data for covered tickers.
-6. Create ResearchRun(mode='HOUSEKEEPING'). Spawn agent with housekeeping prompt.
-7. Agent walks each thesis, decides per-thesis: update / no-change-but-review / queue-tactical-action.
-8. On completion, write a daily journal artifact (replaces brief).
+1. **Inputs**: load `get_theses(include_history: true)`, today's
+   pre-computed trigger matches (from PR 2's evaluator), today's
+   signals routed to this analyst, portfolio state. The brief load
+   goes away (see brief deletion below).
+2. **Step 1 of the system prompt** (Stage 1) gets expanded to include
+   the trigger-matches view and the thesis library. The "load brief"
+   reference is removed.
+3. **Step 2 (research)**: per-thesis decision logic kicks in here.
+   Walk every ACTIVE + WATCHING thesis, route through the four
+   per-thesis questions (#1-#4 from "How the daily run thinks
+   per-thesis"). Most will REVIEWED-only; a few get full research +
+   update.
+4. **Step 3 (theses)**: unchanged in shape but now consistently
+   uses update_thesis as default; record_thesis only for new coverage.
+5. **Step 4 (compare and decide)**: discovery decision is here. Apply
+   the gates (slot available? candidates exist? regime ok?). If yes,
+   research 2-3 candidates. If no, skip with a note in the run summary.
+6. **Steps 5-6 (execute, record)**: unchanged.
+
+This is the BIG file. Most of the change is in the system prompt
+(`lib/agent/system-prompt.ts`) since the function's structure already
+supports the new flow.
+
+#### Modified: `lib/agent/system-prompt.ts`
+
+Substantial rewrite of the Workflow section to encode the per-thesis
+decision logic. The skeleton:
+
+```
+## Workflow
+
+### Step 1 — Gather state
+- read_signals (today only)
+- get_portfolio_context
+- get_theses(include_history: true)
+- (NEW) read the pre-computed "Triggers hit since last run" list
+  injected into the prompt — this is your priority queue for Step 2
+
+### Step 2 — Per-thesis review
+For every ACTIVE + WATCHING thesis, decide one of:
+  A. **Trigger fired or signal arrived** → research + update_thesis
+     with the specific changes. (Priority bucket from Step 1.)
+  B. **Review due** (nextReviewAt past, holding-duration limit, etc.)
+     → research + update_thesis with the changes you decide.
+  C. **Nothing changed** → update_thesis with empty patch + rationale
+     ("Reviewed; no triggers, thesis intact"). Writes REVIEWED row.
+
+Priority order: A → B → C. Budget your steps accordingly. Most theses
+go through C.
+
+### Step 3 — Position management
+For every open position whose thesis you reviewed in Step 2:
+  - Holding duration check (TRADE past maxHoldDays → review exit)
+  - Add-to-position check (under target, scalingPlan rung met,
+    ADD trigger fired → place_trade or manage_position)
+  - Trim check (conviction down → manage_position partial close)
+  - Close check (invalidation conditions met → close_position)
+
+### Step 4 — Discovery (CONDITIONAL)
+Apply the gates:
+  - Are slots available?
+  - Did today's discoverySignals surface candidates with conviction?
+  - Is the regime hostile (SPY breaking 200d, VIX > 30)?
+If any "no" → skip discovery. Note in the run summary.
+If all clear → research top 2-3 candidates, score, mint via record_thesis
+(status=ACTIVE if conviction high enough to trade, WATCHING otherwise).
+
+### Step 5 — Execute
+Trades, manages, closes from Steps 3 and 4. (Already happens inline.)
+
+### Step 6 — Record
+record_run_summary with primary_decision, ranked_picks (theses touched +
+discovery candidates considered), structured rationale.
+complete_run.
+```
+
+The Decision Framework / Compare-and-decide section (R/R, leader-first,
+etc.) stays as the gate logic for Step 3 and Step 4. Just gets reframed
+around "did the thesis library tell me to act?" rather than "what's
+the best of the 6 random tickers I researched?"
 
 #### New: `lib/inngest/functions/discovery-run.ts`
 
-Weekly cron. Schedule: `0 9 * * 0` (Sunday 9am ET).
+Weekly cron. Schedule: `0 9 * * 0` (Sunday 9am ET — operator
+preference; ask before committing).
+
 Per analyst:
 
 1. Load universe (sectors, industries, themes, exclusion).
-2. Load week's signals NOT already cited by any active thesis (universe-fenced).
+2. Load past 7 days of signals NOT cited by any active thesis (universe-fenced).
 3. Load existing thesis tickers (so we don't re-cover names already covered).
 4. Create ResearchRun(mode='DISCOVERY'). Spawn agent with discovery prompt.
-5. Agent reviews candidates, creates new WATCHING theses (via record_thesis), occasionally promotes highest-conviction picks to ACTIVE with a place_trade.
+5. Agent reviews candidates, creates new WATCHING theses (via record_thesis
+   with explicit `status: "WATCHING"`), occasionally promotes
+   highest-conviction picks to ACTIVE with a place_trade.
 
-#### New: `lib/agent/system-prompts/housekeeping.ts`
-
-```
-You are <analyst.name>. Daily housekeeping run. Your job is to walk
-your thesis library, validate each thesis against today's events,
-and decide per-thesis: update, review-only, or queue a tactical action.
-
-YOU DO NOT MINT NEW THESES. Discovery is a separate run.
-YOU DO NOT TRADE DIRECTLY (except for tactical actions queued by
-triggers that already fired).
-
-INPUT:
-  Active + Watching theses (with last 3 ThesisUpdate rows each).
-  Today's signals routed to you.
-  Today's pre-computed trigger matches (from the router).
-  Portfolio state.
-  Recent prices for covered tickers.
-
-WORKFLOW:
-  1. Triggers first. For every trigger that fired today, you should
-     ALREADY have a tactical run that handled it (or it's queued).
-     Confirm and move on.
-  2. Walk every ACTIVE thesis. For each:
-     - Read the thesis state.
-     - Read today's signals on this ticker.
-     - Decide: did anything change? If yes → update_thesis with the
-       changes. If no → update_thesis with empty patch + rationale =
-       REVIEWED row.
-  3. Walk every WATCHING thesis. Same flow but the question is "is
-     this still worth watching, and are we close to promoting?"
-  4. Watchlist hygiene: any WATCHING thesis whose nextReviewAt is
-     long past + no signal activity → consider invalidating.
-  5. Position management: if any thesis is invalidated, close its
-     position. If any holding has been near target/stop, manage_position.
-
-OUTPUT:
-  - One update_thesis call per touched thesis.
-  - Optional close_position / manage_position.
-  - One record_run_summary at the end with the day's journal.
-  - complete_run.
-
-TOOLS: <allowlist below>
-```
+This is the BACKSTOP. The daily run also does discovery when conditions
+warrant. The weekly cron exists so we don't accidentally go a month
+without scanning if the daily run keeps deciding "no slots / hostile
+regime / weak candidates."
 
 #### New: `lib/agent/system-prompts/discovery.ts`
+
+Weekly discovery prompt. Different from the daily-run prompt because
+the scope is narrower (no portfolio management, just net-new coverage).
 
 ```
 You are <analyst.name>. Weekly discovery run. Your job is to find new
 names worth covering — names within your universe that aren't already
 in your thesis library.
 
-YOU DO NOT TOUCH EXISTING THESES. Housekeeping is a separate run.
+YOU DO NOT TOUCH EXISTING THESES. The daily portfolio review handles
+those.
 
 INPUT:
   Universe (sectors, industries, themes, market cap range).
@@ -497,7 +689,7 @@ WORKFLOW:
 
 CONSTRAINTS:
   - Cap at 5 new theses per discovery run. Quality over quantity.
-  - No updates to existing theses (housekeeping does that).
+  - No updates to existing theses (the daily run does that).
   - 25 step budget.
 
 TOOLS: <allowlist below>
@@ -505,26 +697,20 @@ TOOLS: <allowlist below>
 
 #### Modified: `lib/agent/modes.ts`
 
-Add `"housekeeping"` and `"discovery"` modes:
+Add a `"discovery"` mode entry:
 
 ```ts
-"housekeeping": {
-  // toolAllowlist: read intel + update_thesis + manage_position +
-  //   close_position + manage_watchlist (still here for now — see PR 3 watchlist collapse note) +
-  //   record_run_summary + complete_run.
-  //   NO record_thesis. NO place_trade.
-  maxSteps: 25,
-  ...
-}
-
 "discovery": {
   // toolAllowlist: read intel + record_thesis + place_trade +
   //   record_run_summary + complete_run.
-  //   NO update_thesis. NO close_position.
+  //   NO update_thesis. NO close_position. NO manage_position.
   maxSteps: 25,
   ...
 }
 ```
+
+The existing `"research-run"` mode (used by the daily run) stays —
+it's the smarter daily portfolio review now. Tactical mode comes from PR 2.
 
 #### Modified: `lib/inngest/functions/morning-brief-generator.ts`
 
@@ -534,14 +720,14 @@ Two paths to choose from during implementation:
 read it. The AI no longer needs it. The /intelligence dashboard can
 render the same data live without a generated artifact.
 
-**B. Repurpose it as the daily journal.** After housekeeping completes,
-write the journal with: market context, theses touched today, decisions
-made, watch-tomorrow flags. This is for the human dashboard, NOT
-consumed by any AI.
+**B. Repurpose it as the daily journal.** After the daily run completes,
+write the journal artifact with: market context, theses touched today,
+decisions made, watch-tomorrow flags. This is for the human dashboard,
+NOT consumed by any AI.
 
-I'd lean toward B — it gives the human something to scan each
-morning ("here's what your analysts decided overnight"). Lower stakes
-than generating an AI input.
+Recommend B — gives the human something to scan each morning ("here's
+what your analysts decided overnight"). Lower stakes than generating an
+AI input. The brief generator becomes a post-run summarizer.
 
 In either case: `read_morning_brief` tool gets DELETED. The agent no
 longer has it.
@@ -556,8 +742,8 @@ Rewrite to use `Thesis` with `status='WATCHING'` instead of
 `AnalystWatchlistItem`. ADD = create a WATCHING thesis. REMOVE = mark
 INVALIDATED with the reason. UPDATE = update_thesis.
 
-Or: deprecate `manage_watchlist` and have housekeeping/discovery use
-`record_thesis` (with status=WATCHING) and `update_thesis` directly.
+Or: deprecate `manage_watchlist` and have the daily run / discovery use
+`record_thesis(status: "WATCHING")` and `update_thesis` directly.
 Cleaner, but requires more prompt rework. Decide during implementation.
 
 #### New migration: `prisma/migrations/{date}_watchlist_to_thesis_collapse/`
@@ -568,6 +754,10 @@ Cleaner, but requires more prompt rework. Decide during implementation.
 -- Keep AnalystWatchlistItem rows intact (don't drop the table) — mark
 -- a `migratedAt` timestamp so we can trace the conversion.
 ALTER TABLE "AnalystWatchlistItem" ADD COLUMN "migratedAt" TIMESTAMP(3);
+
+-- Relax Thesis.researchRunId to nullable so migration-minted WATCHING
+-- theses don't need a synthetic ResearchRun.
+ALTER TABLE "Thesis" ALTER COLUMN "researchRunId" DROP NOT NULL;
 
 -- For each ACTIVE AnalystWatchlistItem with no existing WATCHING thesis
 -- on (analyst, symbol), insert a Thesis row with status=WATCHING.
@@ -584,58 +774,63 @@ WHERE w.status = 'ACTIVE' AND NOT EXISTS (
     )
 );
 
--- ResearchRunId for the new theses: use a synthetic "MIGRATION" run
--- per analyst, OR set researchRunId to null if the column allows.
--- Likely need to relax the FK: ALTER COLUMN researchRunId DROP NOT NULL.
-
 UPDATE "AnalystWatchlistItem" SET "migratedAt" = NOW() WHERE "status" = 'ACTIVE';
 ```
 
-This is the trickiest piece of PR 3. The `Thesis.researchRunId` is
-NOT NULL today — collapsing watchlist requires either:
-(a) relaxing the FK to allow null, OR
-(b) creating synthetic ResearchRun rows for migration purposes.
+The `Thesis.researchRunId` is NOT NULL today. Two ways forward:
 
-I'd go with (a). Relax `researchRunId` to nullable and update the few
-places that assume it's set.
+(a) **Relax the FK to allow null** (recommended). The few places that
+assume it's set should already null-check. Update them as needed.
+
+(b) **Create synthetic ResearchRun rows for migration**. Heavier.
+
+Going with (a) above.
 
 #### Modified: UI — watchlist tiles → WATCHING-thesis rendering
 
 Find every place that renders `AnalystWatchlistItem` (dashboard,
 intelligence page, analyst detail). Replace with WATCHING-status
 thesis rendering. Most should re-use existing thesis-row /
-thesis-card components.
+thesis-card components, possibly with a status-aware visual difference
+(badge, lighter color).
 
 #### Modified: `app/api/inngest/route.ts`
 
-- Register `housekeepingRun` and `discoveryRun`.
-- Deregister `morningResearch`.
+- Register `discoveryRun` (new weekly cron).
+- `morningResearch` stays — it's the daily run.
 
 ### Test plan
 
-- Manually trigger housekeeping and confirm it walks every active
-  thesis, writes one ThesisUpdate per, doesn't mint new ones.
-- Manually trigger discovery and confirm it produces new WATCHING
-  theses (no updates to existing).
+- Manually trigger one analyst's daily run after the prompt rewrite.
+  Confirm: agent calls `get_theses` in Step 1; for held names it goes
+  through update_thesis (with full updates OR REVIEWED-only); discovery
+  decision is logged in the run summary; no `read_morning_brief` call.
+- Manually trigger discovery cron for one analyst. Confirm it produces
+  new WATCHING theses, no updates to existing theses.
 - After watchlist migration, confirm the dashboard renders the
-  collapsed theses correctly.
-- Confirm read_morning_brief is gone and the agent doesn't try to
-  call it (system prompts have been updated).
+  collapsed theses correctly. Confirm `expiresAt` carryover preserved.
+- Confirm `read_morning_brief` is deleted and the agent doesn't try
+  to call it.
 
 ### Known unknowns / open decisions
 
 1. **Discovery cron day.** Sunday 9am ET is one option. Friday after
    close is another. Operator preference; ask before committing.
-2. **Brief: delete vs repurpose.** Lean toward repurpose (option B
-   above), but confirm with user.
+2. **Brief: delete vs repurpose.** Recommended B (repurpose as
+   journal). Confirm with user.
 3. **Watchlist UI vs thesis UI.** Do WATCHING theses get their own
    visual treatment (lighter color, "Watching" badge) or do they look
-   identical to ACTIVE theses with just a status difference? Probably
-   need at least the badge — operators want to see at a glance.
+   identical to ACTIVE theses with just a status difference? At least
+   the badge — operators want to see at a glance.
 4. **Manage_watchlist tool.** Keep as a thin wrapper that delegates
    to record_thesis/update_thesis, OR delete and have the agent call
    the underlying tools directly? Cleaner is delete; safer (less
    prompt rework) is keep-as-wrapper.
+5. **What happens to `mode='HOUSEKEEPING'`?** The original PR 1 plan
+   added a HOUSEKEEPING mode value. With the corrected framing, we
+   keep `mode='MORNING_PLAN'` for the daily run (just smarter inputs)
+   and add `mode='DISCOVERY'` for the weekly cron. Tactical comes
+   from PR 2 as `mode='INTRADAY_TACTICAL'` (already in the schema).
 
 ---
 
@@ -698,10 +893,23 @@ CLAUDE.md rule. Honor it.
 
 ## Quick-start for a fresh session picking up PR 3
 
-1. Read this doc top to bottom.
-2. Read PR 2's merged work — particularly the trigger evaluator, since housekeeping uses it.
-3. Decide watchlist collapse strategy (option A vs B above) and confirm with user.
-4. Write the migration SQL but DON'T APPLY IT. Show the user, get approval.
-5. Build housekeeping prompt + run + mode wiring. Validate against a single analyst before unblocking the cron.
-6. Build discovery the same way.
-7. Brief deletion / repurpose last. It's the user-facing change with the highest "I miss it" risk if cut wrong.
+1. Read this doc top to bottom — especially "How the daily run thinks
+   per-thesis." That's the heart of PR 3.
+2. Read PR 2's merged work — particularly the trigger evaluator + the
+   "triggers hit since last run" surface, since the daily run uses it.
+3. Confirm with user: discovery cron day, brief delete vs repurpose,
+   manage_watchlist keep vs drop.
+4. **Start with the system prompt rewrite** in `lib/agent/system-prompt.ts`.
+   That's where most of the user-visible behavior change lives. Validate
+   against a single analyst manually before unblocking the cron.
+5. Add the discovery cron + system prompt + mode wiring next.
+6. Watchlist collapse migration LAST — show the SQL to the user, get
+   approval, apply via MCP only after confirmation.
+7. Brief deletion / repurpose at the end. It's the user-facing change
+   with the highest "I miss it" risk if cut wrong.
+
+**Important reframing reminder:** PR 3 does NOT delete the morning run.
+It evolves it. The function name `morning-research` may stay, the cron
+may stay, the mode value (`MORNING_PLAN`) may stay. What changes is
+how the agent thinks per-thesis, which is mostly a prompt change with
+a few input changes. Don't over-rewrite.
