@@ -1,0 +1,407 @@
+// ── Trigger Evaluator ─────────────────────────────────────────────────────
+// Two paths sharing one consumer (the pure `evaluateTrigger` function in
+// lib/agent/triggers/evaluate.ts):
+//
+//   1. Signal-driven  — consumes `app/signal.routed`, evaluates each
+//                       active+watching thesis on the signal's tickers
+//                       against the signal's signal-side predicates.
+//   2. Cron-driven    — every 15 min during US market hours, walks every
+//                       ACTIVE thesis with non-empty triggers[], pulls
+//                       latest Finnhub quote, evaluates price-side
+//                       predicates.
+//
+// Both paths emit `app/thesis.trigger.fired` on match. The `lastFiredAt`
+// cooldown stamp prevents same-trigger re-fires within cooldownDays.
+//
+// PR 2 boundary notes:
+// - PRICE_MOVE_PCT and VS_SMA evaluate to false on the cron path because
+//   we don't fetch candles or precompute SMA per cron tick — that's a real
+//   tradeoff, documented in the doc. Daily run inline (PR 3) catches
+//   cumulative-drift / SMA-cross with the candle data get_stock_data
+//   already pulls.
+// - RSI is stubbed in evaluate.ts; same reasoning.
+// - Cooldown lives on the trigger object inside Thesis.triggers JSONB.
+//   No schema change in PR 2. A separate TriggerFiring table is a
+//   follow-up if hot-write contention shows up.
+
+import { inngest } from "@/lib/inngest/client";
+import { prisma } from "@/lib/prisma";
+import { finnhub } from "@/lib/agent/research-helpers";
+import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
+import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
+import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Parse Thesis.triggers JSONB and validate against the Zod schema. On
+ * invalid data, returns [] and logs — bad rows shouldn't crash the cron.
+ */
+function parseTriggers(raw: unknown, thesisId: string): Trigger[] {
+  if (raw == null) return [];
+  const result = triggersArraySchema.safeParse(raw);
+  if (!result.success) {
+    console.warn(
+      `[trigger-evaluator] thesis=${thesisId} triggers JSON failed Zod validation`,
+      result.error.flatten(),
+    );
+    return [];
+  }
+  // Stable cuid is required at runtime; thesis tools enforce id presence.
+  // Filter out any rows missing id rather than crashing.
+  return result.data.filter((t): t is Trigger => typeof t.id === "string");
+}
+
+/** Predicate kinds that can be evaluated without a Signal. */
+function isPriceSidePredicate(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+    case "PRICE_BELOW":
+    case "PRICE_MOVE_PCT":
+    case "VS_SMA":
+    case "RSI":
+    case "TIME_ELAPSED":
+    case "REVIEW_DATE_HIT":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.every(isPriceSidePredicate);
+    default:
+      return false;
+  }
+}
+
+/** Predicate kinds that require a Signal in the context. */
+function isSignalSidePredicate(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "SIGNAL_TYPE":
+    case "EARNINGS_BEAT":
+    case "EARNINGS_MISS":
+    case "GUIDANCE_CHANGE":
+    case "FILING":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.some(isSignalSidePredicate);
+    default:
+      return false;
+  }
+}
+
+interface FiringEvent {
+  thesisId: string;
+  triggerId: string;
+  signalId?: string;
+  analystId: string;
+  ticker: string;
+  action: Trigger["action"];
+  predicateKind: TriggerPredicate["kind"];
+}
+
+/**
+ * For one thesis × triggers[] × context, return all triggers that fire +
+ * the updated triggers array with lastFiredAt stamped on the firing ones.
+ * Pure read of `now`/`ctx` — no side effects.
+ */
+function evaluateThesisTriggers(args: {
+  thesisId: string;
+  triggers: Trigger[];
+  ctx: EvaluationContext;
+  predicateFilter?: (p: TriggerPredicate) => boolean;
+}): { fires: Trigger[]; updatedTriggers: Trigger[] } {
+  const fires: Trigger[] = [];
+  const updatedTriggers = args.triggers.map((t) => {
+    if (args.predicateFilter && !args.predicateFilter(t.predicate)) return t;
+    const result = shouldFire(t, args.ctx);
+    if (!result.fires) return t;
+    fires.push(t);
+    return {
+      ...t,
+      lastFiredAt: args.ctx.now.toISOString(),
+    };
+  });
+  return { fires, updatedTriggers };
+}
+
+/**
+ * Persist updated triggers JSON for a thesis in a single transaction.
+ * Re-reads the row inside the tx so concurrent stamps don't trample each
+ * other on non-overlapping triggers (e.g. signal-driven and cron firing
+ * on the same thesis at the same time).
+ */
+async function stampLastFiredAt(args: {
+  thesisId: string;
+  firedTriggerIds: string[];
+  now: Date;
+}): Promise<void> {
+  if (args.firedTriggerIds.length === 0) return;
+  await prisma.$transaction(async (tx) => {
+    const row = await tx.thesis.findUnique({
+      where: { id: args.thesisId },
+      select: { triggers: true },
+    });
+    if (!row) return;
+    const current = parseTriggers(row.triggers, args.thesisId);
+    const stampSet = new Set(args.firedTriggerIds);
+    const next = current.map((t) =>
+      stampSet.has(t.id) ? { ...t, lastFiredAt: args.now.toISOString() } : t,
+    );
+    await tx.thesis.update({
+      where: { id: args.thesisId },
+      data: { triggers: next as unknown as object[] },
+    });
+  });
+}
+
+// ── Inngest function ────────────────────────────────────────────────────
+
+export const triggerEvaluator = inngest.createFunction(
+  {
+    id: "trigger-evaluator",
+    name: "Trigger Evaluator",
+    concurrency: { limit: 2 },
+    retries: 1,
+  },
+  [
+    { event: "app/signal.routed" },
+    { cron: "TZ=America/New_York */15 9-16 * * 1-5" },
+  ],
+  async ({ event, step }) => {
+    const isSignalDriven = event?.name === "app/signal.routed";
+    const now = new Date();
+
+    // ── Signal-driven path ────────────────────────────────────────────
+    if (isSignalDriven) {
+      type Payload = { signalId: string; analystIds: string[]; tickers: string[] };
+      const payload = (event?.data ?? {}) as Partial<Payload>;
+      if (!payload.signalId || !payload.analystIds || payload.analystIds.length === 0) {
+        return { skipped: "missing-payload", path: "signal-driven" };
+      }
+
+      const fires = await step.run("evaluate-signal", async () => {
+        const signal = await prisma.signal.findUnique({
+          where: { id: payload.signalId },
+          select: {
+            id: true,
+            type: true,
+            sentiment: true,
+            urgency: true,
+            tickers: true,
+            dataPayload: true,
+          },
+        });
+        if (!signal) return [] as FiringEvent[];
+
+        // Load active+watching theses across the routed analysts that
+        // cover any of the signal's tickers.
+        const theses = await prisma.thesis.findMany({
+          where: {
+            researchRun: { agentConfigId: { in: payload.analystIds } },
+            status: { in: ["ACTIVE", "WATCHING"] },
+            ticker: { in: signal.tickers },
+            triggers: { not: [] },
+          },
+          select: {
+            id: true,
+            ticker: true,
+            triggers: true,
+            createdAt: true,
+            nextReviewAt: true,
+            researchRun: { select: { agentConfigId: true } },
+          },
+        });
+
+        // Pull earnings / filing detail off Signal.dataPayload if the
+        // producer stamped it. Producers may keep these in a {beat,
+        // surprise, guidance, formType} shape on dataPayload — best-effort.
+        const dp = (signal.dataPayload ?? {}) as Record<string, unknown>;
+        const ctxSignal = {
+          type: signal.type,
+          sentiment: signal.sentiment,
+          urgency: signal.urgency,
+          tickers: signal.tickers,
+          earningsSurprisePct: typeof dp.surprisePct === "number" ? dp.surprisePct : undefined,
+          guidanceDirection:
+            dp.guidanceDirection === "UP" || dp.guidanceDirection === "DOWN"
+              ? (dp.guidanceDirection as "UP" | "DOWN")
+              : undefined,
+          filingFormType:
+            typeof dp.formType === "string" &&
+            ["10-K", "10-Q", "8-K", "FORM_4"].includes(dp.formType)
+              ? (dp.formType as "10-K" | "10-Q" | "8-K" | "FORM_4")
+              : undefined,
+        };
+
+        const events: FiringEvent[] = [];
+        for (const thesis of theses) {
+          // Skip theses whose research run isn't tied to an agent config —
+          // tactical-run can't dispatch without an analyst owner.
+          const analystId = thesis.researchRun.agentConfigId;
+          if (!analystId) continue;
+
+          const triggers = parseTriggers(thesis.triggers, thesis.id);
+          if (triggers.length === 0) continue;
+
+          const ctx: EvaluationContext = {
+            signal: ctxSignal,
+            thesis: {
+              createdAt: thesis.createdAt,
+              nextReviewAt: thesis.nextReviewAt,
+            },
+            now,
+          };
+
+          const { fires } = evaluateThesisTriggers({
+            thesisId: thesis.id,
+            triggers,
+            ctx,
+            predicateFilter: isSignalSidePredicate,
+          });
+
+          if (fires.length === 0) continue;
+          await stampLastFiredAt({
+            thesisId: thesis.id,
+            firedTriggerIds: fires.map((t) => t.id),
+            now,
+          });
+          for (const t of fires) {
+            events.push({
+              thesisId: thesis.id,
+              triggerId: t.id,
+              signalId: signal.id,
+              analystId,
+              ticker: thesis.ticker,
+              action: t.action,
+              predicateKind: t.predicate.kind,
+            });
+          }
+        }
+        return events;
+      });
+
+      // Fan out one event per firing.
+      for (const f of fires) {
+        await step.sendEvent(`fired-${f.thesisId}-${f.triggerId}`, {
+          name: "app/thesis.trigger.fired",
+          data: f,
+        });
+      }
+
+      return {
+        path: "signal-driven",
+        signalId: payload.signalId,
+        firings: fires.length,
+      };
+    }
+
+    // ── Cron path (intraday price reactivity) ──────────────────────────
+    const cronFires = await step.run("evaluate-cron", async () => {
+      // ACTIVE only — WATCHING theses don't have positions at risk, so
+      // we skip them on the cron tick to keep the loop bounded. They
+      // still get evaluated by signal-router on the signal-driven path
+      // and by the daily run inline.
+      const theses = await prisma.thesis.findMany({
+        where: {
+          status: "ACTIVE",
+          triggers: { not: [] },
+        },
+        select: {
+          id: true,
+          ticker: true,
+          triggers: true,
+          createdAt: true,
+          nextReviewAt: true,
+          researchRun: { select: { agentConfigId: true } },
+        },
+      });
+      if (theses.length === 0) return [] as FiringEvent[];
+
+      // Cap unique tickers per tick to bound Finnhub calls. 200 mirrors
+      // the signal-router cap. Theses past the cap defer to the next tick.
+      const uniqueTickers = Array.from(new Set(theses.map((t) => t.ticker))).slice(0, 200);
+      const quoteResults = await Promise.all(
+        uniqueTickers.map(async (ticker) => {
+          const r = await finnhub(`/quote?symbol=${ticker}`, 1);
+          const q = r.data as Record<string, number> | null;
+          if (!q || typeof q.c !== "number" || q.c <= 0) {
+            return [ticker, null] as const;
+          }
+          return [ticker, { price: q.c, changePct: q.dp ?? 0 }] as const;
+        }),
+      );
+      const quoteByTicker = new Map(quoteResults);
+
+      const events: FiringEvent[] = [];
+      for (const thesis of theses) {
+        // Skip theses whose research run isn't tied to an agent config —
+        // tactical-run can't dispatch without an analyst owner.
+        const analystId = thesis.researchRun.agentConfigId;
+        if (!analystId) continue;
+
+        const triggers = parseTriggers(thesis.triggers, thesis.id);
+        if (triggers.length === 0) continue;
+        const latestQuote = quoteByTicker.get(thesis.ticker) ?? undefined;
+
+        const ctx: EvaluationContext = {
+          // No signal on this path. PRICE_MOVE_PCT / VS_SMA / RSI return
+          // false because we don't pass recentPrices / sma here — see
+          // the file-header note for the rationale.
+          latestQuote: latestQuote ?? undefined,
+          thesis: {
+            createdAt: thesis.createdAt,
+            nextReviewAt: thesis.nextReviewAt,
+          },
+          now,
+        };
+
+        const { fires } = evaluateThesisTriggers({
+          thesisId: thesis.id,
+          triggers,
+          ctx,
+          predicateFilter: isPriceSidePredicate,
+        });
+
+        if (fires.length === 0) continue;
+        await stampLastFiredAt({
+          thesisId: thesis.id,
+          firedTriggerIds: fires.map((t) => t.id),
+          now,
+        });
+        for (const t of fires) {
+          events.push({
+            thesisId: thesis.id,
+            triggerId: t.id,
+            analystId,
+            ticker: thesis.ticker,
+            action: t.action,
+            predicateKind: t.predicate.kind,
+          });
+        }
+      }
+      return events;
+    });
+
+    for (const f of cronFires) {
+      await step.sendEvent(`fired-${f.thesisId}-${f.triggerId}`, {
+        name: "app/thesis.trigger.fired",
+        data: f,
+      });
+    }
+
+    return {
+      path: "cron",
+      firings: cronFires.length,
+    };
+  },
+);
+
+// Re-exports for tests that want to exercise the predicate filters
+// directly without standing up Inngest.
+export const __test__ = {
+  isPriceSidePredicate,
+  isSignalSidePredicate,
+  parseTriggers,
+  evaluateThesisTriggers,
+  evaluateTrigger,
+};

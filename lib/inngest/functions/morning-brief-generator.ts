@@ -10,6 +10,8 @@ import { generateObject } from "ai"
 import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 import { etTradingDayDate } from "@/lib/market-hours"
+import { triggersArraySchema } from "@/lib/agent/triggers/schema"
+import type { TriggerPredicate } from "@/lib/agent/triggers/types"
 
 // ── Brief schema ────────────────────────────────────────────────────────────
 
@@ -87,13 +89,104 @@ type BriefSignal = {
   sources: string[]
 }
 
+// PR 2 — "Triggers hit today" deterministic projection.
+// Walks every ACTIVE + WATCHING thesis owned by this analyst and pulls out
+// the triggers whose lastFiredAt is within today (ET). These are the
+// already-evaluated, pre-vetted matches the trigger-evaluator stamped
+// during this morning's signal-router pass. The brief surfaces them as
+// HIGH/CRITICAL portfolioAlerts so the daily run sees them without
+// having to re-evaluate.
+type TriggerFire = {
+  thesisId: string
+  ticker: string
+  triggerId: string
+  action: string
+  predicateKind: string
+  predicateSummary: string
+  rationale: string
+  firedAtIso: string
+}
+
+function describePredicate(p: TriggerPredicate): string {
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+      return `price > $${p.level}`
+    case "PRICE_BELOW":
+      return `price < $${p.level}`
+    case "PRICE_MOVE_PCT":
+      return `${p.direction === "UP" ? "+" : "-"}${p.pct}% over ${p.window}`
+    case "VS_SMA":
+      return `price ${p.direction.toLowerCase()} ${p.period}-day SMA`
+    case "RSI":
+      return `RSI ${p.direction.toLowerCase()} ${p.threshold}`
+    case "SIGNAL_TYPE":
+      return `${p.signalType}${p.sentiment ? `/${p.sentiment}` : ""}${p.minUrgency ? ` (≥${p.minUrgency})` : ""}`
+    case "EARNINGS_BEAT":
+      return `earnings beat${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`
+    case "EARNINGS_MISS":
+      return `earnings miss${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`
+    case "GUIDANCE_CHANGE":
+      return `guidance ${p.direction}`
+    case "FILING":
+      return `${p.formType} filed`
+    case "TIME_ELAPSED":
+      return `${p.days} days elapsed`
+    case "REVIEW_DATE_HIT":
+      return `review date hit`
+    case "AND":
+      return `(${p.predicates.map(describePredicate).join(" AND ")})`
+    case "OR":
+      return `(${p.predicates.map(describePredicate).join(" OR ")})`
+  }
+}
+
+async function loadTriggerFiresToday(
+  analystId: string,
+  todayStart: Date,
+): Promise<TriggerFire[]> {
+  // Pull every active/watching thesis owned by this analyst.
+  const theses = await prisma.thesis.findMany({
+    where: {
+      researchRun: { agentConfigId: analystId },
+      status: { in: ["ACTIVE", "WATCHING"] },
+      // Cheap pre-filter: no triggers → can't have fires.
+      triggers: { not: [] },
+    },
+    select: { id: true, ticker: true, triggers: true },
+  })
+
+  const fires: TriggerFire[] = []
+  for (const thesis of theses) {
+    const parsed = triggersArraySchema.safeParse(thesis.triggers)
+    if (!parsed.success) continue
+    for (const t of parsed.data) {
+      if (typeof t.id !== "string") continue
+      if (!t.lastFiredAt) continue
+      const firedAt = new Date(t.lastFiredAt)
+      if (Number.isNaN(firedAt.getTime())) continue
+      if (firedAt < todayStart) continue
+      fires.push({
+        thesisId: thesis.id,
+        ticker: thesis.ticker,
+        triggerId: t.id,
+        action: t.action,
+        predicateKind: t.predicate.kind,
+        predicateSummary: describePredicate(t.predicate),
+        rationale: t.rationale,
+        firedAtIso: firedAt.toISOString(),
+      })
+    }
+  }
+  return fires
+}
+
 async function buildBriefContext(analystId: string) {
   // Phase 1 — explicit today-scoping via the denormalized tradingDay field on
   // AnalystSignalRoute. Backfilled for legacy rows; populated at write time
   // by signal-router going forward. The OR fallback to routedAt covers the
   // narrow window where a route from before backfill might still leak through.
   const today = etTradingDayDate()
-  const [analyst, signals, positions, watchlistItems] = await Promise.all([
+  const [analyst, signals, positions, watchlistItems, triggerFires] = await Promise.all([
     prisma.agentConfig.findUniqueOrThrow({
       where: { id: analystId },
     }),
@@ -125,6 +218,7 @@ async function buildBriefContext(analystId: string) {
       where: { analystId, status: "ACTIVE" },
       select: { symbol: true, reason: true, priority: true },
     }),
+    loadTriggerFiresToday(analystId, today),
   ])
 
   const positionTickers = positions.map((p) => p.symbol)
@@ -223,6 +317,7 @@ async function buildBriefContext(analystId: string) {
     discoverySignals: discoveryBucket,
     allowedSignalIds,
     holdingsAttention: policy.holdingsAttention ?? 0,
+    triggerFires,
   }
 }
 
@@ -444,10 +539,22 @@ export const morningBriefGenerator = inngest.createFunction(
           const positionCount = context.positionTickers.length
           const watchlistCount = context.watchlistTickers.length
 
+          // PR 2 — pre-vetted trigger fires block. Highest priority above
+          // every other section. Trigger-evaluator already stamped these
+          // during the 7:30am signal-router pass; the brief just surfaces
+          // them so the daily run sees the priority queue without
+          // re-evaluating.
+          const triggerFiresBlock = context.triggerFires.length > 0
+            ? `\n\nTHESIS_TRIGGERS_HIT_TODAY (HIGHEST PRIORITY — ${context.triggerFires.length} fires):
+Each entry below is a pre-evaluated structured trigger that fired against this analyst's thesis library. The router already validated the predicate match — you do NOT need to re-evaluate. SURFACE EVERY FIRE as a portfolioAlerts entry with urgency=HIGH minimum (or CRITICAL when the trigger action is EXIT). Reference the predicateSummary in the alert text and include the firing thesis's ticker. These are the day's must-look-at items.
+
+${JSON.stringify(context.triggerFires, null, 2)}\n`
+            : ""
+
           const { object: rawBrief } = await generateObject({
             model: openai("gpt-4o"),
             schema: morningBriefSchema,
-            prompt: `You are the morning intelligence briefer for "${context.analystName}".
+            prompt: `You are the morning intelligence briefer for "${context.analystName}".${triggerFiresBlock}
 
 ANALYST MANDATE:
 ${context.analystPrompt}

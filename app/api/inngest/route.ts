@@ -13,6 +13,8 @@ import { firmMarketSweep } from "@/lib/inngest/functions/firm-market-sweep";
 import { portfolioWatchlistMonitor } from "@/lib/inngest/functions/portfolio-watchlist-monitor";
 import { domainMonitor } from "@/lib/inngest/functions/domain-monitor";
 import { signalRouter } from "@/lib/inngest/functions/signal-router";
+import { triggerEvaluator } from "@/lib/inngest/functions/trigger-evaluator";
+import { tacticalRun } from "@/lib/inngest/functions/tactical-run";
 import { morningBriefGenerator } from "@/lib/inngest/functions/morning-brief-generator";
 import { backfillSignalFingerprint } from "@/lib/inngest/functions/backfill-signal-fingerprint";
 import { pipelineCleanup } from "@/lib/inngest/functions/pipeline-cleanup";
@@ -38,6 +40,15 @@ export const { GET, POST, PUT } = serve({
     portfolioWatchlistMonitor,
     domainMonitor,
     signalRouter,
+    // PR 2 — consumes `app/signal.routed` from signalRouter and runs a
+    // 15-min cron during US market hours. Emits `app/thesis.trigger.fired`
+    // on match.
+    triggerEvaluator,
+    // PR 2 — consumes `app/thesis.trigger.fired`. Spawns a focused agent
+    // run scoped to one (thesis, trigger, signal?) tuple. The actual
+    // tactical agent runs INSIDE the function (mode='INTRADAY_TACTICAL'
+    // on ResearchRun). 240s maxDuration covers the agent + bookkeeping.
+    tacticalRun,
     morningBriefGenerator,
     // One-shot Session 2 backfill (event-triggered, idempotent)
     backfillSignalFingerprint,
