@@ -37,8 +37,9 @@ interface SegmentFields {
   segmentPrompt: string;
   targetSeconds: number;
   topics: string[];
-  sources: string[];
   excludeTopics: string[];
+  domainMonitors: Array<{ name: string; domain: string; reason: string }>;
+  searchQueries: Array<{ query: string; reason: string }>;
 }
 
 interface PodcastConfigShape {

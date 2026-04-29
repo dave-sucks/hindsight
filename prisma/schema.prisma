@@ -62,6 +62,7 @@ model ResearchRun {
   podcastSegmentId String?
   segment       PodcastSegment?   @relation("SegmentRuns", fields: [podcastSegmentId], references: [id], onDelete: SetNull)
   segmentTranscript SegmentTranscript?
+  segmentBriefing   PodcastSegmentBriefing? @relation("SegmentBriefing")
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
@@ -447,6 +448,9 @@ model Signal {
 
   expiresAt      DateTime?
   routes         AnalystSignalRoute[]
+  // Podcast feature — segment routes share the same Signal table.
+  // See docs/PODCAST_PLAN.md.
+  segmentRoutes  PodcastSegmentSignalRoute[] @relation("SegmentSignalRoute")
 
   // Phase 1 — today-only filtering. The market trading day this signal
   // belongs to (ET timezone). All consumers (router, brief, read_signals)
@@ -545,6 +549,41 @@ model AnalystSignalRoute {
   @@index([signalId])
   // Phase 1 — today-only filtering hot path.
   @@index([analystId, tradingDay])
+}
+
+/// Signal routed to a specific PodcastSegment — the segment's intelligence inbox.
+/// Mirror of AnalystSignalRoute. Same shape, same indexes, same uniqueness
+/// constraint. The signal-router builds rows of both types from a single pass.
+/// read_signals branches on ToolContext.podcastSegmentId vs analystId.
+///
+/// See docs/PODCAST_PLAN.md "Signal pipeline reaches segments" for the design.
+model PodcastSegmentSignalRoute {
+  id                String         @id @default(cuid())
+  podcastSegmentId  String
+  segment           PodcastSegment @relation(fields: [podcastSegmentId], references: [id], onDelete: Cascade)
+  signalId          String
+  signal            Signal         @relation("SegmentSignalRoute", fields: [signalId], references: [id], onDelete: Cascade)
+  relevanceScore    Int
+  rawRelevanceScore Int?
+  noveltyScore      Int?
+  routeReason       String         // legacy free-form, e.g. "owner:abc", "topic_match:AI"
+  // Routing codes for podcast segments — different vocabulary than analyst
+  // because segments don't have positions/watchlist.
+  //   OWNER             — signal came from this segment's own monitor
+  //   TOPIC_MATCH       — overlap between signal.themes/sectors and segment.topics
+  //   AGGREGATE_MATCH   — signal is a firm aggregate the segment subscribes to (Phase 4)
+  routeReasonCode   String?
+  matchedUniverse   Json?
+  status            String         @default("PENDING")
+  tradingDay        DateTime?      @db.Date
+  routedAt          DateTime       @default(now())
+
+  @@unique([podcastSegmentId, signalId])
+  @@index([podcastSegmentId, status])
+  @@index([podcastSegmentId, routedAt])
+  @@index([podcastSegmentId, routeReasonCode, routedAt(sort: Desc)])
+  @@index([signalId])
+  @@index([podcastSegmentId, tradingDay])
 }
 
 /// Pre-run intelligence summary generated per analyst each morning.
@@ -956,8 +995,33 @@ model PodcastSegment {
   monitors        Monitor[]            @relation("SegmentMonitors")
   runs            ResearchRun[]        @relation("SegmentRuns")
   transcripts     SegmentTranscript[]
+  signalRoutes    PodcastSegmentSignalRoute[]
+  briefings       PodcastSegmentBriefing[]
 
   @@index([podcastId])
+  @@index([userId])
+}
+
+/// Post-run briefing for a podcast segment. Mirror of AnalystBriefing
+/// but simpler — segments don't have portfolio state, just a recap of
+/// what was covered + follow-ups for the next episode.
+///
+/// Written by lib/podcast/update-segment-briefing.ts after each
+/// successful segment run (called from complete_run's segment branch).
+/// Read by the route's podcast-segment-run handler into the system
+/// prompt so the agent has cross-episode continuity.
+model PodcastSegmentBriefing {
+  id          String         @id @default(cuid())
+  segmentId   String
+  segment     PodcastSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  runId       String         @unique
+  run         ResearchRun    @relation("SegmentBriefing", fields: [runId], references: [id], onDelete: Cascade)
+  userId      String
+  narrative   String         // 200-300 word recap of what this segment covered
+  followUps   Json           // [{ topic, why, priority: "HIGH"|"NORMAL" }]
+  generatedAt DateTime       @default(now())
+
+  @@index([segmentId, generatedAt])
   @@index([userId])
 }
 

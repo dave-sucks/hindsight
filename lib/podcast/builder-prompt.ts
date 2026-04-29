@@ -53,7 +53,9 @@ With every required field filled. Propose 3–5 Segments, each with:
 - A 2–4 sentence segmentPrompt — what this segment covers, the editorial angle, what to skip. Specific. Adapt to the user's tone.
 - targetSeconds that sums roughly to the episode length (rough — host transitions add a minute).
 - topics[] — 3–6 specific topic tags for the universe fence.
-- sources[] — 2–4 domain hints (e.g. ["techcrunch.com", "theverge.com"]) when you can pick high-signal sources for the genre.
+- excludeTopics[] — topics to skip even if in scope.
+- **domainMonitors** — 2–6 specific websites the segment leans on. Each is { name, domain, reason } where domain is a bare hostname (e.g. "techcrunch.com", "theverge.com"). Pick high-signal sources that match the segment's brief. These persist as Monitor rows of type=DOMAIN — the same monitor infrastructure analyst surfaces use.
+- **searchQueries** — 2–5 daily Sonar queries that surface NEW material for this segment. Each is { query, reason }. Time-qualified, topic-scoped. GOOD: "indie game launches this week steam", "AI infrastructure funding rounds Q2 2026". BAD: per-known-thing tracking, generic noise. These persist as Monitor rows of type=SEARCH.
 
 Podcast-level fields:
 - name + description that match the user's pitch (don't get cute — the name they suggested is usually right).

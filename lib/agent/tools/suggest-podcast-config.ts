@@ -1,21 +1,54 @@
 /**
  * suggest_podcast_config — the podcast-builder analog of suggest_config.
  *
- * Returns the proposed Podcast + Segments[] for the side panel to
- * preview and confirm. The tool itself does NOT persist anything;
- * persistence happens via lib/actions/podcast.actions.ts when the
- * user clicks Create in the panel.
+ * Returns the proposed Podcast + Segments[] for the side panel to preview
+ * and confirm. Each segment carries its own monitor proposals (domain +
+ * search) — same shape as suggest_config's domainMonitorProposal +
+ * intelligenceQueries. createPodcastFromBuilder persists those as
+ * Monitor rows scoped to the segment via podcastSegmentId.
  *
- * Renders via ui: "podcast-config-preview" which is a thin specialty
- * renderer (mirror of ConfigPreviewRenderer) — it fires
- * onPodcastConfigSuggested via the ToolUICallbacks context so the
- * parent /podcasts/new client opens the side panel with the proposal.
+ * Renders via ui: "podcast-config-preview" which fires
+ * onPodcastConfigSuggested through ToolUICallbacks so the side panel
+ * opens with the proposal.
  *
  * See docs/PODCAST_PLAN.md.
  */
 
 import { tool } from "ai";
 import { z } from "zod";
+
+// Domain-monitor proposal — mirror of suggest_config's domainMonitorProposal
+// shape, simplified for podcasts (no qualityScore / category enums; we
+// default sensibly on the persistence side).
+const segmentDomainMonitorSchema = z.object({
+  name: z
+    .string()
+    .min(2)
+    .describe("Source name, e.g. 'TechCrunch' or 'The Verge'."),
+  domain: z
+    .string()
+    .min(3)
+    .describe(
+      "Bare domain — e.g. 'techcrunch.com'. No protocol, no path.",
+    ),
+  reason: z
+    .string()
+    .describe("Why this source matters for this segment's editorial brief."),
+});
+
+// Search-query proposal — mirror of intelligenceQueries shape.
+// Discovery-flavored: surface NEW material, not per-known-thing tracking.
+const segmentSearchQuerySchema = z.object({
+  query: z
+    .string()
+    .min(4)
+    .describe(
+      "A discovery query the pipeline runs daily via Perplexity Sonar to surface new material for this segment. Time-qualified, topic-scoped. Examples: 'indie game launches this week steam', 'AI infrastructure funding rounds Q2 2026'.",
+    ),
+  reason: z
+    .string()
+    .describe("Why this query matters for the segment's editorial scope."),
+});
 
 const segmentSchema = z.object({
   name: z
@@ -50,17 +83,25 @@ const segmentSchema = z.object({
     .describe(
       "3–6 specific topic tags forming the universe fence (e.g. ['AI', 'venture capital', 'open source']).",
     ),
-  sources: z
-    .array(z.string())
-    .default([])
-    .describe(
-      "Optional 2–4 preferred domains the segment leans on (e.g. ['techcrunch.com', 'theverge.com']).",
-    ),
   excludeTopics: z
     .array(z.string())
     .default([])
     .describe(
       "Topics to skip even if in scope (e.g. ['crypto', 'rumor', 'leak']).",
+    ),
+  domainMonitors: z
+    .array(segmentDomainMonitorSchema)
+    .min(2)
+    .max(6)
+    .describe(
+      "2–6 sites the intelligence pipeline crawls daily for this segment. These get persisted as Monitor rows of type=DOMAIN scoped to the segment, exactly like analyst domain monitors.",
+    ),
+  searchQueries: z
+    .array(segmentSearchQuerySchema)
+    .min(2)
+    .max(5)
+    .describe(
+      "2–5 daily Sonar queries that find new material for this segment. Persisted as Monitor rows of type=SEARCH scoped to the segment.",
     ),
 });
 
@@ -94,7 +135,7 @@ const podcastConfigSchema = z.object({
     .min(1)
     .max(8)
     .describe(
-      "3–5 segments is the sweet spot. Each is a recurring beat in every episode.",
+      "3–5 segments is the sweet spot. Each is a recurring beat in every episode and ships with its own monitors.",
     ),
 });
 
@@ -102,12 +143,11 @@ export type SuggestedPodcastConfig = z.infer<typeof podcastConfigSchema>;
 
 export const suggestPodcastConfigTool = tool({
   description:
-    "Propose a complete podcast configuration: the Podcast (name, description, host style, cadence) plus 3–5 starter Segments with their own prompt, target length, topics, and source hints. Call this exactly once when you have enough information from the interview.",
+    "Propose a complete podcast configuration: the Podcast (name, description, host style, cadence) plus 3–5 starter Segments. Each segment carries its editorial brief, target length, topic fence, and its own monitor set (domain monitors + search queries) — same monitor infrastructure analysts use. Call this exactly once when you have enough information from the interview.",
   inputSchema: podcastConfigSchema,
   execute: async (config) => {
-    // Echo back the structured config for the client-side renderer + side panel.
-    // No persistence here — the user confirms via createPodcastFromBuilder
-    // in the side panel.
+    // Echo back for the client-side renderer + side panel. No persistence
+    // here — the user confirms via createPodcastFromBuilder.
     return config;
   },
 });

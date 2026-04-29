@@ -7,6 +7,7 @@ import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 import { getRunSourcesData } from "@/lib/actions/run-sources.actions";
 import type { UIMessage } from "ai";
+import type { TranscriptRowData } from "@/components/ui/transcript-row";
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,9 @@ export default async function RunPage({
       segment: {
         select: { id: true, name: true, podcast: { select: { name: true } } },
       },
+      // The single transcript a segment run produces (mirror of theses
+      // for analyst runs) — fed into AgentChat as the Transcript tab.
+      segmentTranscript: true,
       messages: {
         where: { role: "thread" },
         orderBy: { createdAt: "desc" },
@@ -99,6 +103,28 @@ export default async function RunPage({
     startedAt: run.startedAt,
   }).catch(() => ({ brief: null, sources: [], theses: [] }));
 
+  // Build the Transcript tab payload for podcast segment runs.
+  const transcriptForChat: TranscriptRowData | null =
+    isPodcastSegmentRun && run.segmentTranscript
+      ? {
+          id: run.segmentTranscript.id,
+          transcriptId: run.segmentTranscript.id,
+          title: run.segmentTranscript.title,
+          plainText: run.segmentTranscript.plainText,
+          durationSec: run.segmentTranscript.durationSec,
+          wordCount: run.segmentTranscript.plainText
+            .split(/\s+/)
+            .filter(Boolean).length,
+          citations: Array.isArray(run.segmentTranscript.citations)
+            ? (run.segmentTranscript.citations as TranscriptRowData["citations"])
+            : [],
+          segmentName: run.segment?.name ?? null,
+          podcastName: run.segment?.podcast?.name ?? null,
+          audioUrl: run.segmentTranscript.audioUrl,
+          status: run.segmentTranscript.status as TranscriptRowData["status"],
+        }
+      : null;
+
   return (
     <div className="flex flex-col h-[calc(100dvh-3rem)] overflow-hidden">
       <div className="flex-1 min-h-0">
@@ -113,6 +139,7 @@ export default async function RunPage({
             brief={isPodcastSegmentRun ? null : brief}
             sources={isPodcastSegmentRun ? [] : sources}
             theses={isPodcastSegmentRun ? [] : theses}
+            transcript={transcriptForChat}
             headerAction={
               <HowItWorksSheet flow="agent">
                 <ScanSearch className="h-4 w-4" />

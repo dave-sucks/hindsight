@@ -199,9 +199,30 @@ export const readSignals = defineTool({
   },
 
   execute: async ({ tickers, themes, type, urgency, limit, lookbackDays = 0 }, ctx) => {
+    // ── Podcast segment branch ───────────────────────────────────────────
+    // When the run is a podcast-segment-run, ctx carries podcastSegmentId
+    // (and analystId is undefined). Read the segment's routed signals from
+    // PodcastSegmentSignalRoute. Same Signal table, different routing
+    // table, different routing codes (OWNER / TOPIC_MATCH).
+    //
+    // We map onto the same SignalItem shape so downstream renderers and
+    // the agent's text view stay identical — and bucket everything as
+    // "discovery" since segments don't have positions/watchlist.
+    if (ctx.podcastSegmentId) {
+      return readSignalsForSegment({
+        segmentId: ctx.podcastSegmentId,
+        tickers,
+        themes,
+        type,
+        urgency,
+        limit,
+        lookbackDays,
+      });
+    }
+
     if (!ctx.analystId) {
       return {
-        summary: "No analyst context — cannot read signals.",
+        summary: "No analyst or segment context — cannot read signals.",
         data: {
           count: 0,
           signals: [],
@@ -534,3 +555,107 @@ export const readSignals = defineTool({
     };
   },
 });
+
+// ── Podcast segment branch ────────────────────────────────────────────────
+// Mirrors the analyst path but reads from PodcastSegmentSignalRoute. Same
+// SignalItem shape so renderers and the agent's text view are identical.
+// Buckets everything as "discovery" — segments don't have
+// positions/watchlist concepts.
+async function readSignalsForSegment(args: {
+  segmentId: string;
+  tickers?: string[];
+  themes?: string[];
+  type?: string;
+  urgency?: "LOW" | "MEDIUM" | "HIGH" | "BREAKING";
+  limit?: number;
+  lookbackDays?: number;
+}) {
+  const { segmentId, tickers, themes, type, urgency, limit, lookbackDays = 0 } = args;
+
+  const HARD_LIMIT = 75;
+  const callerLimit = typeof limit === "number" && limit > 0 ? limit : 50;
+  const effectiveLimit = Math.min(callerLimit, HARD_LIMIT);
+
+  const urgencyOrder = ["LOW", "MEDIUM", "HIGH", "BREAKING"];
+  const minIdx = urgency ? urgencyOrder.indexOf(urgency) : 0;
+  const validUrgencies = urgencyOrder.slice(minIdx);
+
+  const today = etTradingDayDate();
+  const windowStart = new Date(today);
+  windowStart.setUTCDate(windowStart.getUTCDate() - lookbackDays);
+  const tradingDayWindow = { gte: windowStart, lte: today };
+
+  const routes = await prisma.podcastSegmentSignalRoute.findMany({
+    where: {
+      podcastSegmentId: segmentId,
+      status: { in: ["PENDING", "READ"] },
+      OR: [
+        { tradingDay: tradingDayWindow },
+        { tradingDay: null, routedAt: { gte: windowStart } },
+      ],
+      signal: {
+        ...(tickers && tickers.length > 0 ? { tickers: { hasSome: tickers } } : {}),
+        ...(themes && themes.length > 0 ? { themes: { hasSome: themes } } : {}),
+        ...(type ? { type } : {}),
+        urgency: { in: validUrgencies },
+        deletedAt: null,
+      },
+    },
+    include: { signal: { include: { artifact: true } } },
+    orderBy: { relevanceScore: "desc" },
+    take: effectiveLimit,
+  });
+
+  if (routes.length > 0) {
+    await prisma.podcastSegmentSignalRoute.updateMany({
+      where: { id: { in: routes.map((r) => r.id) } },
+      data: { status: "READ" },
+    });
+  }
+
+  const mapped: SignalItem[] = routes.map((r) => {
+    const code = (r.routeReasonCode ?? undefined) as RouteReasonCode | undefined;
+    const mu = (r.matchedUniverse as MatchedUniverse | null) ?? null;
+    return {
+      signalId: r.signal.id,
+      type: r.signal.type,
+      headline: r.signal.headline,
+      summary: r.signal.summary ?? "",
+      tickers: r.signal.tickers,
+      themes: r.signal.themes,
+      sentiment: r.signal.sentiment ?? "NEUTRAL",
+      urgency: r.signal.urgency ?? "MEDIUM",
+      freshness: r.signal.freshness ?? undefined,
+      sources: toSourceRefs(r.signal.sourceNames, r.signal.sourceUrls),
+      relevanceScore: r.relevanceScore,
+      routeReason: r.routeReason ?? undefined,
+      artifactId: r.signal.artifactId,
+      routeReasonCode: code,
+      matchedUniverse: mu,
+      crossAnalystSource: null,
+    };
+  });
+
+  // Segments don't have positions or watchlists — everything routes as
+  // "discovery" for the bucketed return shape so downstream consumers
+  // (renderer, system prompt) keep the same contract.
+  return {
+    summary:
+      mapped.length === 0
+        ? "No routed signals for this segment today."
+        : `${mapped.length} signal${mapped.length === 1 ? "" : "s"} routed to this segment.`,
+    data: {
+      count: mapped.length,
+      signals: mapped,
+      portfolioSignals: [] as SignalItem[],
+      watchlistSignals: [] as SignalItem[],
+      discoverySignals: mapped,
+      tickers: mapped.map((s) => ({
+        ticker: s.tickers[0] ?? "TOPIC",
+        tag: s.urgency,
+        summary: s.headline,
+      })),
+    } as SignalsToolData & { tickers: { ticker: string; tag: string; summary: string }[] },
+    sources: sourceRefsToToolSources(mapped.flatMap((s) => s.sources)),
+  };
+}

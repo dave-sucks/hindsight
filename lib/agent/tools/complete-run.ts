@@ -10,6 +10,7 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
 
 export const completeRun = defineTool({
   description:
@@ -47,9 +48,11 @@ export const completeRun = defineTool({
       }
 
       // ── Podcast-segment-run branch ───────────────────────────────────────
-      // For podcast segment runs the briefing concept doesn't apply (Phase 1).
-      // Skip the analyst-briefing block entirely, write a podcast-flavored
-      // run-complete event with a transcript link, and return.
+      // Skip the analyst-briefing block (analystId is undefined). Instead
+      // call updateSegmentBriefing to write a PodcastSegmentBriefing row —
+      // same role as AnalystBriefing for analyst runs, simpler shape
+      // (no portfolio state). The next run loads the most recent briefing
+      // for cross-episode continuity.
       if (ctx.podcastSegmentId) {
         const transcript = await prisma.segmentTranscript.findUnique({
           where: { runId: ctx.runId },
@@ -60,6 +63,35 @@ export const completeRun = defineTool({
             citations: true,
           },
         });
+
+        // Write segment briefing (non-fatal). Mirror of updateAnalystBriefing.
+        let briefingStatus: "success" | "failed" | "skipped" = "skipped";
+        let briefingError: string | null = null;
+        try {
+          await updateSegmentBriefing({
+            segmentId: ctx.podcastSegmentId,
+            runId: ctx.runId,
+            userId: ctx.userId,
+          });
+          const written = await prisma.podcastSegmentBriefing.findUnique({
+            where: { runId: ctx.runId },
+            select: { id: true },
+          });
+          briefingStatus = written ? "success" : "failed";
+          if (!written) {
+            briefingError =
+              "updateSegmentBriefing returned without throwing but no row was persisted.";
+          }
+        } catch (briefErr) {
+          briefingStatus = "failed";
+          briefingError =
+            briefErr instanceof Error ? briefErr.message : String(briefErr);
+          console.error(
+            `[tool] complete_run: segment briefing THREW for run=${ctx.runId}:`,
+            briefingError,
+          );
+        }
+
         try {
           await prisma.runEvent.create({
             data: {
@@ -73,10 +105,12 @@ export const completeRun = defineTool({
                     Array.isArray(transcript.citations)
                       ? (transcript.citations as unknown[]).length
                       : 0
-                  } citations`
+                  } citations · briefing ${briefingStatus}`
                 : "Run finished without writing a transcript.",
               payload: {
                 transcriptId: transcript?.id ?? null,
+                briefingStatus,
+                ...(briefingError ? { briefingError } : {}),
               } as object,
             },
           });
@@ -88,17 +122,19 @@ export const completeRun = defineTool({
         }
         return {
           summary: transcript
-            ? `Segment complete: ${transcript.title}.`
+            ? `Segment complete: ${transcript.title}. Briefing ${briefingStatus}.`
             : "Segment run complete (no transcript saved).",
           data: {
             ok: true,
             podcastSegmentId: ctx.podcastSegmentId,
             transcriptId: transcript?.id ?? null,
+            briefing: briefingStatus,
+            briefingError,
             items: [
               {
                 kind: "generic" as const,
                 text: transcript
-                  ? `Transcript ready · ~${transcript.durationSec ?? "?"}s`
+                  ? `Transcript ready · ~${transcript.durationSec ?? "?"}s · briefing ${briefingStatus}`
                   : "No transcript was written for this run.",
               },
             ],

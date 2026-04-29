@@ -259,12 +259,35 @@ export async function POST(
         return new Response("Podcast segment not found.", { status: 404 });
       }
 
-      // Last transcript title for continuity hint.
+      // Last transcript title + most-recent briefing for continuity.
+      // Mirror of how analyst runs load AnalystBriefing into buildRunInput.
+      // Briefing fetch is wrapped in try/catch so a missing table (migration
+      // lag during deploy) degrades to "no continuity" instead of crashing
+      // the run. Segment table is required — if that's missing we have
+      // bigger problems and the segment lookup above will already have
+      // failed.
       const lastTranscript = await prisma.segmentTranscript.findFirst({
         where: { segmentId: segment.id },
         orderBy: { createdAt: "desc" },
         select: { title: true },
       });
+      let priorBriefing: {
+        narrative: string;
+        followUps: unknown;
+        generatedAt: Date;
+      } | null = null;
+      try {
+        priorBriefing = await prisma.podcastSegmentBriefing.findFirst({
+          where: { segmentId: segment.id },
+          orderBy: { generatedAt: "desc" },
+          select: { narrative: true, followUps: true, generatedAt: true },
+        });
+      } catch (briefErr) {
+        console.warn(
+          `[agent/podcast-segment-run] briefing lookup failed (likely migration lag) — continuing without continuity context:`,
+          briefErr instanceof Error ? briefErr.message : briefErr,
+        );
+      }
 
       systemPrompt = buildPodcastSegmentRunPrompt({
         podcast: {
@@ -279,10 +302,22 @@ export async function POST(
           segmentPrompt: segment.segmentPrompt,
           targetSeconds: segment.targetSeconds,
           topics: segment.topics,
-          sources: segment.sources,
           excludeTopics: segment.excludeTopics,
         },
         lastTranscriptTitle: lastTranscript?.title ?? null,
+        priorBriefing: priorBriefing
+          ? {
+              narrative: priorBriefing.narrative,
+              followUps: Array.isArray(priorBriefing.followUps)
+                ? (priorBriefing.followUps as Array<{
+                    topic: string;
+                    why: string;
+                    priority: "HIGH" | "NORMAL";
+                  }>)
+                : [],
+              generatedAt: priorBriefing.generatedAt,
+            }
+          : null,
       });
       // Segment runs don't carry an analystId.
       resolvedAnalystId = undefined;

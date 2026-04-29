@@ -36,7 +36,8 @@ Categories:
 | `lib/agent/tools/write-segment-transcript.ts` | Stage 5 equivalent of `record_thesis` for podcast segments. Persists `SegmentTranscript`. |
 | `lib/agent/tools/suggest-podcast-config.ts` | Builder analog of `suggest_config`. Returns `{ podcast, segments[] }`. |
 | `lib/podcast/builder-prompt.ts` | System prompt for `podcast-builder` mode. |
-| `lib/podcast/segment-run-prompt.ts` | System prompt for `podcast-segment-run` mode. |
+| `lib/podcast/segment-run-prompt.ts` | System prompt for `podcast-segment-run` mode. Threads the most recent `PodcastSegmentBriefing` into the prompt for cross-episode continuity. |
+| `lib/podcast/update-segment-briefing.ts` | Mirror of `lib/agent/update-analyst-briefing.ts`. Reads a run's transcript + run events + 3 most-recent prior briefings, asks GPT-4o-mini for a 200-300 word recap + 0-5 follow-ups, persists as `PodcastSegmentBriefing`. Non-fatal — writes a fallback row on LLM failure. |
 
 ### Actions / API
 
@@ -52,20 +53,27 @@ Categories:
 | `app/(root)/podcasts/page.tsx` | Podcast list page. |
 | `app/(root)/podcasts/new/page.tsx` | New-podcast builder route. |
 | `app/(root)/podcasts/new/client.tsx` | Builder client (mirrors `app/(root)/analysts/new/client.tsx`). |
-| `app/(root)/podcasts/[id]/page.tsx` | Podcast detail (Segments / Episodes / Settings tabs). |
-| `app/(root)/podcasts/[id]/segments/[segmentId]/page.tsx` | Segment detail (Runs / Transcripts / Monitors). |
+| `app/(root)/podcasts/[id]/page.tsx` | Podcast detail. Segments live as cards on this page (no separate segment route); the per-segment settings sheet handles all editing. |
 
 ### Components
+
+All components below mirror the analyst surface 1:1. Podcast detail =
+analyst detail layout (3-col grid, header pattern, ChipTabs-style tabs,
+right rail, floating composer, config sheet). Segment detail uses the
+same scaffold. Settings sheets reuse the analyst form primitives
+(`Section`, `FieldGroup`, `RowLabel`, `EnumChipsCombobox`,
+`FreeTextChipsCombobox`, `GHOST_INPUT`) — those are exported from
+`AnalystConfigForm.tsx` so this surface stays byte-identical to the
+analyst surface in look and feel.
 
 | File | Notes |
 |------|-------|
 | `components/podcasts/PodcastsPageClient.tsx` | Top-level list grid + new-podcast empty state. |
-| `components/podcasts/PodcastBuilderClient.tsx` | Builder split layout (chat on left, suggested config on right). |
-| `components/podcasts/PodcastDetailClient.tsx` | Tabbed podcast detail. |
-| `components/podcasts/SegmentDetailClient.tsx` | Segment detail w/ Run button, run history, transcripts. |
-| `components/podcasts/SegmentMonitorEditor.tsx` | Add/remove monitors on a segment. Reuses Monitor model. |
-| `components/podcasts/SegmentTranscriptCard.tsx` | Renders a transcript with citations + (Phase 2) audio player. |
-| `components/podcasts/PodcastConfigPreview.tsx` | Right-side panel in builder showing suggested podcast + segments before confirm. |
+| `components/podcasts/PodcastDetailClient.tsx` | Mirror of `AnalystDetailClient`: 3-col grid, header with stats, tabs (Segments / Episodes / Settings), right-rail with quick-run + recent transcripts, floating composer, `PodcastConfigSheet`. |
+| `components/podcasts/PodcastConfigSheet.tsx` | Mirror of `AnalystConfigSheet` for podcast-level metadata (name, description, host style, cadence, voice). Reuses `Section` / `FieldGroup` / `RowLabel`. |
+| `components/podcasts/SegmentConfigForm.tsx` | Segment analog of `AnalystConfigForm` with the same Brief / Monitors / Settings tab structure. Imports primitives directly from `AnalystConfigForm` so the visual language is identical. Monitors tab manages segment search-monitors inline. |
+| `components/podcasts/SegmentConfigSheet.tsx` | Mirror of `AnalystConfigSheet` — wraps `SegmentConfigForm` in a Sheet, pipes per-field saves to `updateSegment` / `addSegmentMonitor` / `removeSegmentMonitor`. Takes a `SegmentSummary` (carried inline by `getPodcastDetail`) so opening it is zero-fetch. There is no per-segment page — the sheet IS the segment editor. |
+| `components/podcasts/PodcastConfigPreview.tsx` | Mirror of `AnalystConfigPanel`: same Silk intro + bordered shell + tabs (Brief / Segments / Settings) + bottom Confirm CTA. The right-side panel of `/podcasts/new`. |
 
 ### Phase 2/3/4 placeholders (NOT in this PR)
 
@@ -90,7 +98,10 @@ Categories:
 | `lib/agent/tool-context.ts` | **Extended.** Added optional `podcastSegmentId` field. |
 | `lib/agent/tools/index.ts` | **Extended.** Added new tools to `createResearchTools()`. |
 | `lib/agent/tools/complete-run.ts` | **Extended.** Branches on `ctx.podcastSegmentId`: skips `updateAnalystBriefing` for segment runs. |
-| `lib/agent/tools/read-signals.ts` | **Excluded from podcast-segment-run allowlist (Phase 1).** Signals route to analysts (sectors/industries/themes), not segments — until a segment-aware signal router lands (Phase 4), the segment uses `web_search` for discovery. |
+| `lib/agent/tools/read-signals.ts` | **Extended.** Branches on `ctx.podcastSegmentId` to query `PodcastSegmentSignalRoute` (segment branch returns the same `SignalsToolData` shape as the analyst branch — buckets everything as discovery since segments don't have positions/watchlist). Re-enabled in `podcast-segment-run` allowlist. |
+| `lib/inngest/functions/signal-router.ts` | **Extended.** After the analyst-routing pass, runs a second pass that builds segment profiles from `PodcastSegment` rows and writes `PodcastSegmentSignalRoute` rows for OWNER (signal came from a segment-owned monitor) and TOPIC_MATCH (segment.topics overlap with signal.themes/sectors/industries). `excludeTopics` hard-rejects. Same Signal table feeds both passes. |
+| `lib/inngest/functions/domain-monitor.ts` | Reused as-is. Already filters by `type: "DOMAIN"` only — picks up segment-scoped Monitor rows automatically. |
+| `lib/inngest/functions/firm-market-sweep.ts` | Reused as-is. Already filters by `type: "SEARCH"` only — picks up segment-scoped Monitor rows automatically. |
 | `lib/agent/tools/read-artifact.ts` | Reused as-is. |
 | `lib/agent/tools/web-search.ts` | Reused as-is. |
 | `lib/agent/tools/discover-signals-for-fence.ts` | Reused. Builder uses it to validate proposed segment topics. |
@@ -103,11 +114,13 @@ Categories:
 
 | File | Notes |
 |------|-------|
-| `components/agent/AgentChat.tsx` | **Extended.** Two new modes routed; podcast builder gets its own welcome + composer features. |
+| `components/agent/AgentChat.tsx` | **Extended.** Two new modes routed; podcast builder gets its own welcome + composer features; podcast-segment-run mode renders a single Thread with podcast-flavored welcome. |
 | `components/agent/ToolCallGroup.tsx` | Reused as-is. |
-| `components/agent/ToolCallRow.tsx` | Reused as-is. New tools render via `ToolUIRenderer`. |
+| `components/agent/ToolCallRow.tsx` | **Extended.** Added the `podcast-config-preview` case dispatching to `PodcastConfigPreviewRenderer`. |
 | `components/agent/renderers/ToolUIRenderer.tsx` | Reused as-is. |
-| `components/agent/renderers/AskQuestionRenderer.tsx` | Reused as-is. |
+| `components/agent/renderers/AskQuestionRenderer.tsx` | Reused as-is. Used by podcast builder via `ask_question`. |
+| `components/agent/renderers/PodcastConfigPreviewRenderer.tsx` | **PODCAST-NEW.** Inline summary card for `suggest_podcast_config` results + opens the side panel via `onPodcastConfigSuggested`. |
+| `components/analysts/AnalystConfigForm.tsx` | **Shared primitives now exported** (`Section`, `FieldGroup`, `RowLabel`, `EmptyHint`, `GHOST_INPUT`, `EnumChipsCombobox`, `FreeTextChipsCombobox`). Reused by `SegmentConfigForm`, `SegmentConfigSheet`, `PodcastConfigSheet`, and `PodcastConfigPreview` so podcast UI shares the analyst form's exact visual language. |
 | `components/Sidebar.tsx` | **Extended.** Added "Podcasts" entry to `MAIN_NAV`. |
 
 ### Database (existing tables, podcast adds 1 nullable FK)
@@ -238,6 +251,8 @@ These hold only podcast data. Always safe to drop on teardown.
 | `PodcastSegment` | Recurring beat inside a podcast. Has its own prompt, monitors, topic fence. |
 | `SegmentTranscript` | One per Run. Transcript text + citations + (Phase 2) audio + alignment. Unique on `runId`. |
 | `Episode` | Ordered list of `SegmentTranscript` ids assembled into a listenable episode. Phase 3. |
+| `PodcastSegmentSignalRoute` | Mirror of `AnalystSignalRoute`. The segment's intelligence inbox. Written by `signal-router.ts` for OWNER (signal from a segment-owned Monitor) and TOPIC_MATCH routing codes. Read by `read_signals` when `ToolContext.podcastSegmentId` is set. |
+| `PodcastSegmentBriefing` | Mirror of `AnalystBriefing`. Per-run recap of what the segment covered + open follow-ups. Written by `lib/podcast/update-segment-briefing.ts` (called from `complete_run`'s segment branch). The route loads the most recent briefing into the system prompt for cross-episode continuity. |
 
 ### Layer 2 — Tables SHARED with trading (interleaved data)
 
@@ -373,3 +388,117 @@ the podcast feature from this repo, or forking into a podcast-only
 app — see **`docs/PODCAST_OPERATIONS.md`**. That doc is the
 step-by-step checklist; this doc is the file inventory the
 checklist points at.
+
+---
+
+## Known gaps for Session 1
+
+**Mandate: reuse the existing analyst infra, components, tools, server
+actions everywhere. Every gap below has an analyst analog already in
+the codebase. The next session must mirror it 1:1 in shape and imports,
+only swapping the entity (analyst → podcast/segment) where the data
+model legitimately differs. NO parallel rebuilds.**
+
+End state — the user can: open a podcast → run a segment → see the
+transcript on every surface where it should be findable → refine the
+podcast/segments via chat editor → browse the routed signal inbox →
+merge transcripts into an Episode (text-only). See
+`docs/PODCAST_PLAN.md` "Session 1 — Build experience completeness"
+for the full design discussion.
+
+### Transcript visibility
+
+| File | Action |
+|------|--------|
+| `lib/actions/podcast.actions.ts` | **Extend `SegmentSummary` + `getPodcastDetail`** to include each segment's most-recent transcript as a `TranscriptRowData`-compatible shape (id, title, plainText, citations, durationSec). |
+| `components/podcasts/PodcastDetailClient.tsx` | **Make segment cards open the latest transcript.** Either click-through to the latest TranscriptCard sheet, or "View latest transcript" entry in the 3-dot menu. |
+| `components/podcasts/PodcastDetailClient.tsx` | **Replace `RecentTranscriptsRail` static rows with `TranscriptRow`** so the right-rail entries open the same sheet. |
+
+### Editor mode (analyst-parity)
+
+| File | Action |
+|------|--------|
+| `lib/agent/modes.ts` | **Add `podcast-editor` mode** with allowlist mirroring `editor`: ask_question, web_search, read_knowledge_library, suggest_podcast_config. `hasSuggestConfig: false` (use the podcast-specific tool). |
+| `lib/podcast/editor-prompt.ts` | **New file.** `buildPodcastEditorSystemPrompt(currentPodcast, currentSegments)` — mirror of `buildEditorSystemPrompt`. Inject current shape into prompt for refine-by-chat. |
+| `app/(root)/podcasts/[id]/edit/page.tsx` | **New page.** Mirror of `/analysts/[id]/edit/page.tsx`. Loads podcast + segments, passes to AgentChat with `mode="podcast-editor"`. |
+| `app/(root)/podcasts/[id]/edit/client.tsx` | **New client.** Split layout (chat + side panel) mirroring `/analysts/[id]/edit`'s client. Reuse `PodcastConfigPreview` as the side panel. |
+| `lib/actions/podcast.actions.ts` | **Add `updatePodcastFromEditor`** action. Diffs edited shape against current, persists podcast meta + segment add/remove/update + Monitor row reconciliation. Pattern mirrors `updateAnalystFromBuilder`. |
+| `app/api/agent/[mode]/route.ts` | **Add `podcast-editor` branch.** Loads current podcast + segments shape, builds system prompt with `buildPodcastEditorSystemPrompt`. |
+| `components/podcasts/PodcastDetailClient.tsx` | **Wire the 3-dot Edit menu entry** to `router.push(`/podcasts/${id}/edit`)`. (Header dropdown already has it stubbed; ensure it goes here.) |
+| `components/agent/AgentChat.tsx` | **Extend** mode handling for `podcast-editor` — reuse the builder welcome/composer pattern, route `onPodcastConfigSuggested` to the editor's update flow instead of create. |
+
+### Knowledge library
+
+| File | Action |
+|------|--------|
+| `lib/agent/knowledge/podcast-formats.ts` | **New file.** Mirror of `strategy-archetypes.ts`. Format archetypes ("5-min daily news brief", "30-min interview", "10-min essay", "weekly culture roundup", etc.). Each entry: id, name, tagline, description, recommendedSegmentCount, recommendedEpisodeSeconds, segmentTemplates, defaultMonitorPatterns, hostStyleHints. |
+| `lib/agent/tools/read-knowledge-library.ts` | **Extend.** Add `topic: "podcast-format"` branch that reads `podcast-formats.ts` index + per-id detail. Same three-beat usage pattern. |
+| `lib/agent/modes.ts` | **Add `read_knowledge_library`** to `podcast-builder` and `podcast-editor` allowlists. |
+| `lib/podcast/builder-prompt.ts` | **Update prompt.** Require three-beat playbook selection (browse → ask_question → deep-read → adapt) before `suggest_podcast_config`. Cite specific format archetype in the proposal. |
+
+### Findings / signal inbox
+
+| File | Action |
+|------|--------|
+| `lib/actions/podcast.actions.ts` | **Add `getPodcastFindings(podcastId)`** — queries `PodcastSegmentSignalRoute` aggregated across all segments of the podcast, joins Signal + Artifact, returns the shape `AnalystFindingsTab` consumes. |
+| `components/podcasts/PodcastFindingsTab.tsx` | **New component.** Mirror of `AnalystFindingsTab`. Reuse the same signal-row component from `components/intelligence/signal-feed.tsx` (whatever AnalystFindingsTab uses). |
+| `components/podcasts/PodcastDetailClient.tsx` | **Add Findings tab** to the existing `Tabs` (Segments / Episodes / Findings). |
+
+### Cross-segment continuity tool
+
+Today the segment agent only sees its OWN prior briefing as context.
+It needs to see what OTHER segments of the same podcast covered in
+the last 2-3 days so a Politics segment doesn't double up on what
+Sports just mentioned, and follow-up arcs span the show.
+
+| File | Action |
+|------|--------|
+| `lib/agent/tools/read-past-transcripts.ts` | **New tool.** Args: `lookbackDays` (default 3). Resolve `podcastId` from `ctx.podcastSegmentId` → `PodcastSegment.podcastId`. Query `SegmentTranscript` rows for ALL segments under that podcastId where `createdAt >= now() - lookbackDays`, ordered desc, joined to PodcastSegment for `segment.name`. Return one item per past transcript: `{ title, segmentName, snippet (first ~400 chars of plainText), createdAt }`. UI: `tool-ui` with `data.items[]` of generic-kind rows. Use `defineTool()`. |
+| `lib/agent/tools/index.ts` | Register `read_past_transcripts` in `createResearchTools`. |
+| `lib/agent/modes.ts` | Add `read_past_transcripts` to `podcast-segment-run` allowlist. |
+| `lib/podcast/segment-run-prompt.ts` | Add a Stage 1.5 instruction immediately after `read_signals`: "Call `read_past_transcripts` ONCE to see what THIS PODCAST's segments covered the last 2–3 days. Don't repeat them. Build on follow-ups." |
+
+### Episode assembly (text-only)
+
+User can merge N transcripts into a viewable Episode. Episode model
+already exists in the schema; need actions + UI. No audio (Phase 2).
+
+| File | Action |
+|------|--------|
+| `lib/actions/podcast.actions.ts` | **Add `createEpisodeFromTranscripts(podcastId, transcriptIds[], title?)`** — creates Episode row with ordered `transcriptIds`, derives `title` from podcast name + date if not supplied, computes `durationSec` from sum of constituent transcripts, sets `status: "READY"` (text-only is "ready"; audio path uses ASSEMBLING). |
+| `lib/actions/podcast.actions.ts` | **Add `getEpisode(episodeId)`** — returns Episode + ordered SegmentTranscripts (full plainText + citations + segmentName). |
+| `lib/actions/podcast.actions.ts` | **Add `listEpisodesForPodcast(podcastId)`** — returns Episode list for the Episodes tab. |
+| `app/(root)/podcasts/[id]/episodes/[episodeId]/page.tsx` | **New page.** Loads episode + transcripts. Renders inline using `TickerMarkdown` per segment with section headers (segment name). Reuses `BriefDetailDialog` body layout pattern. |
+| `components/podcasts/PodcastDetailClient.tsx` | **Wire the Episodes tab.** Replace the Phase-3 placeholder with a real list of episodes. Each row links to the episode page. |
+| `components/podcasts/PodcastDetailClient.tsx` | **Add an "Assemble episode" CTA** on the Episodes tab. Opens a small Dialog: multi-select READY transcripts (checkbox list), reorder via up/down arrows, click Assemble → calls `createEpisodeFromTranscripts`, navigates to the new episode page. |
+
+### Migration deploy reminder
+
+Two migrations from the post-Phase-1 commits need to be applied before
+the route works end-to-end:
+
+```bash
+npx prisma migrate deploy
+```
+
+What they do:
+
+- **`20260427120000_podcast_segment_signal_route`** — adds
+  `PodcastSegmentSignalRoute` (mirror of `AnalystSignalRoute`). Required
+  for `signal-router` to write segment routes and for `read_signals`
+  to query them.
+- **`20260427130000_podcast_segment_briefing`** — adds
+  `PodcastSegmentBriefing` (mirror of `AnalystBriefing`). Required for
+  `complete_run` segment branch to write continuity briefs and the
+  route to read prior brief into the system prompt.
+
+Both additive only. Trading data untouched. See `docs/PODCAST_FILES.md`
+"Schema teardown" for the full audit and `prisma/migrations/_podcast_teardown.sql`
+for the rollback script.
+
+### Defensive fix already in `dcb0494`
+
+- `app/api/agent/[mode]/route.ts` — `podcastSegmentBriefing.findFirst`
+  wrapped in try/catch so a missing-table scenario (migration lag during
+  deploy) degrades to "no continuity" instead of crashing the run. Real
+  fix is still: apply pending migrations before deploying agent code.
