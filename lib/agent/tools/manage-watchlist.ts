@@ -10,6 +10,178 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { isExcluded } from "@/lib/agent/universe";
 import { revalidatePath } from "next/cache";
+import {
+  defaultTriggersForHorizon,
+  type Horizon,
+} from "@/lib/agent/triggers/defaults";
+import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+
+/**
+ * Sync a manage_watchlist ADD with the durable Thesis store.
+ *
+ * Two stores still exist transitionally — `AnalystWatchlistItem` (the
+ * legacy carrier) and `Thesis` (the durable model PR 1+2 built around).
+ * Until PR 3's schema collapse migration drops the watchlist table, every
+ * watchlist ADD must also produce a `WATCHING` Thesis on the same ticker.
+ * Without this sync, the trigger evaluator, morning-brief generator,
+ * tactical-run, and `get_theses` are blind to watchlist names — they all
+ * filter on `Thesis.status IN (ACTIVE, WATCHING)` and yesterday's audit
+ * showed zero WATCHING rows existed in production.
+ *
+ * Idempotent: if an ACTIVE/WATCHING thesis already exists on this
+ * (analyst, ticker), this is a no-op. The agent should be calling
+ * record_thesis to refresh that thesis; manage_watchlist's job is just
+ * to backstop the case where the agent skips straight to the watchlist
+ * tool.
+ */
+async function ensureWatchingThesisForWatchlistAdd(params: {
+  analystId: string;
+  userId: string;
+  runId: string | null;
+  ticker: string;
+  reason: string;
+  thesisDirection: "LONG" | "SHORT" | "PASS" | null;
+  targetPrice: number | null;
+  stopPrice: number | null;
+  conviction: number | null;
+  catalyst: string | null;
+}): Promise<void> {
+  const existing = await prisma.thesis.findFirst({
+    where: {
+      ticker: params.ticker,
+      status: { in: ["ACTIVE", "WATCHING"] },
+      researchRun: { agentConfigId: params.analystId },
+    },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  if (!params.runId) {
+    // Without a runId we can't satisfy the Thesis FK to ResearchRun.
+    // The current call sites always run inside a research run, so this
+    // path is a defensive no-op.
+    console.warn(
+      `[manage_watchlist] cannot mint WATCHING thesis for $${params.ticker} — no runId in context`,
+    );
+    return;
+  }
+
+  // Direction default: a watchlist entry without an explicit directional
+  // view is treated as LONG-bias ("we're watching for an entry"). This
+  // matches the long-biased archetypes seeded today; the agent can flip
+  // it via update_thesis the next time it researches the ticker.
+  const direction: "LONG" | "SHORT" | "PASS" = params.thesisDirection ?? "LONG";
+
+  // Horizon default: TRADE is the safe baseline because it requires the
+  // fewest assumptions (tight stop, max hold gate). When the watchlist
+  // entry mentions a named catalyst, prefer CATALYST so the catalyst
+  // filing/earnings triggers attach. Promotion to ACTIVE in record_thesis
+  // / place_trade can re-pick if needed.
+  const horizon: Horizon = params.catalyst ? "CATALYST" : "TRADE";
+
+  const triggers = defaultTriggersForHorizon(horizon, {
+    entryPrice: params.targetPrice ?? null,
+    targetPrice: params.targetPrice ?? null,
+    stopLoss: params.stopPrice ?? null,
+    maxHoldDays: horizon === "TRADE" ? 14 : null,
+    catalystDate: null,
+  });
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const reviewDays = horizon === "CATALYST" || horizon === "TRADE" ? 1 : 7;
+  const nextReviewAt = new Date(Date.now() + reviewDays * dayMs);
+
+  try {
+    const thesis = await prisma.thesis.create({
+      data: {
+        researchRunId: params.runId,
+        userId: params.userId,
+        ticker: params.ticker,
+        source: "AGENT",
+        direction,
+        confidenceScore: params.conviction ?? 50,
+        reasoningSummary: params.reason,
+        thesisBullets: [],
+        riskFlags: [],
+        signalTypes: [],
+        sourcesUsed: [],
+        modelUsed: "manage_watchlist",
+        status: "WATCHING",
+        sourceKind: "WATCHLIST_REVIEW",
+        sourceRationale:
+          params.reason?.slice(0, 500) ?? "Added via manage_watchlist",
+        targetPrice: params.targetPrice,
+        stopLoss: params.stopPrice,
+        horizon,
+        // CATALYST and TRADE are both swing-shaped at the holdDuration
+        // level. Kept explicit (not a literal "SWING") so a future
+        // horizon default doesn't silently misclassify.
+        holdDuration: "SWING",
+        triggers: triggers as object[],
+        nextReviewAt,
+        maxHoldDays: horizon === "TRADE" ? 14 : null,
+      },
+    });
+    void writeThesisUpdate({
+      thesisId: thesis.id,
+      type: "CREATED",
+      summary: `WATCHING thesis on ${params.ticker} (auto-created from manage_watchlist)`,
+      rationale: params.reason,
+      runId: params.runId,
+      priceAtTime: params.targetPrice ?? null,
+    });
+  } catch (err) {
+    console.warn(
+      `[manage_watchlist] WATCHING thesis upsert failed for $${params.ticker}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
+ * Mirror of REMOVE: when a watchlist item is removed, supersede the
+ * matching WATCHING thesis. ACTIVE theses are LEFT ALONE — those are
+ * tied to held positions and live their own lifecycle (close_position,
+ * update_thesis change_status). Removing from the watchlist must not
+ * silently kill an active trade thesis.
+ */
+async function supersedeWatchingThesisForWatchlistRemove(params: {
+  analystId: string;
+  runId: string | null;
+  ticker: string;
+  reason: string;
+}): Promise<void> {
+  const watchingThesis = await prisma.thesis.findFirst({
+    where: {
+      ticker: params.ticker,
+      status: "WATCHING",
+      researchRun: { agentConfigId: params.analystId },
+    },
+    select: { id: true },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!watchingThesis) return;
+
+  try {
+    await prisma.thesis.update({
+      where: { id: watchingThesis.id },
+      data: { status: "SUPERSEDED" },
+    });
+    void writeThesisUpdate({
+      thesisId: watchingThesis.id,
+      type: "SUPERSEDED",
+      summary: `Removed from watchlist`,
+      rationale: params.reason,
+      fieldChanges: { status: { from: "WATCHING", to: "SUPERSEDED" } },
+      runId: params.runId,
+    });
+  } catch (err) {
+    console.warn(
+      `[manage_watchlist] WATCHING thesis supersede failed for $${params.ticker}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
 
 export const manageWatchlist = defineTool({
   description:
@@ -213,6 +385,20 @@ export const manageWatchlist = defineTool({
           },
         });
 
+        // Sync to durable thesis store. See helper for rationale.
+        await ensureWatchingThesisForWatchlistAdd({
+          analystId: ctx.analystId,
+          userId: ctx.userId,
+          runId: ctx.runId ?? null,
+          ticker,
+          reason: args.reason,
+          thesisDirection: args.thesis_direction ?? null,
+          targetPrice: args.target_price ?? null,
+          stopPrice: args.stop_price ?? null,
+          conviction: args.conviction ?? null,
+          catalyst: args.catalyst ?? null,
+        });
+
         const activeItems = await prisma.analystWatchlistItem.findMany({
           where: { analystId: ctx.analystId, status: "ACTIVE" },
           select: { symbol: true },
@@ -302,6 +488,15 @@ export const manageWatchlist = defineTool({
         await prisma.analystWatchlistItem.update({
           where: { id: item.id },
           data: { status: "REMOVED", removedAt: new Date(), removeReason: args.reason },
+        });
+
+        // Mirror to durable thesis store. ACTIVE theses are left alone —
+        // those belong to held positions and have their own lifecycle.
+        await supersedeWatchingThesisForWatchlistRemove({
+          analystId: ctx.analystId,
+          runId: ctx.runId ?? null,
+          ticker,
+          reason: args.reason,
         });
 
         const activeItems = await prisma.analystWatchlistItem.findMany({
