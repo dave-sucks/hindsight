@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Favicon } from "@/components/intelligence/signal-feed";
 import { TRADE_STATUS_DISPLAY } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
+import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ function posBg(ts: TradeStatus): string {
 
 export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const pos = t.position;
   const isPass = t.direction === "PASS";
   const isBull = t.direction === "LONG";
@@ -237,6 +239,13 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
               {t.analystName}
             </a>
           )}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setSheetOpen(true); }}
+            className="inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            Details
+          </button>
           {t.runId && (
             <a href={`/runs/${t.runId}`} className="inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               View run
@@ -244,6 +253,21 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           )}
         </div>
       </div>
+
+      <ThesisSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        thesis_id={t.id}
+        ticker={t.ticker}
+        direction={(t.direction === "LONG" || t.direction === "SHORT" || t.direction === "PASS") ? t.direction : "PASS"}
+        confidence_score={t.confidenceScore}
+        reasoning_summary={t.reasoningSummary}
+        entry_price={t.entryPrice}
+        target_price={t.targetPrice}
+        stop_loss={t.stopLoss}
+        hold_duration={t.holdDuration}
+        company_name={t.companyName}
+      />
     </div>
   );
 }
