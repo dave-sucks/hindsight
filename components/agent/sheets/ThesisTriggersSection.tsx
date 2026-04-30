@@ -12,16 +12,13 @@
  * info popovers on /intelligence.
  */
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoRow } from "@/components/ui/info-row";
-import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -274,19 +271,19 @@ function ActionIcon({
   }
 }
 
-function actionDotClass(action: string): string {
+function actionTintClass(action: string): string {
   switch (action) {
     case "EXIT":
-      return "bg-red-500";
+      return "bg-red-500/10 text-red-500";
     case "ADD":
-      return "bg-emerald-500";
+      return "bg-emerald-500/10 text-emerald-500";
     case "TRIM":
-      return "bg-amber-500";
+      return "bg-amber-500/10 text-amber-500";
     case "MOVE_STOP":
-      return "bg-blue-500";
+      return "bg-blue-500/10 text-blue-500";
     case "REVIEW":
     default:
-      return "bg-muted-foreground/60";
+      return "bg-muted text-muted-foreground";
   }
 }
 
@@ -334,14 +331,16 @@ function fmtFiredAt(iso?: string): string {
   });
 }
 
-// ── Trigger pill (ButtonGroup + Popover) ────────────────────────────────
-// Structure:
-//   [ icon · Type label ] | [ value ]
+// ── Trigger pill — 3 cells separated by real borders ───────────────────
+// Structure (left → right):
+//   [ action ] │ [ icon · Type label ] │ [ value ]
 //
-// Both halves use the same `secondary` ButtonGroupText background — the
-// ButtonGroupSeparator is a clean full-height divider, no floating bar
-// effect. Type label uses medium weight, value uses regular. Action
-// (EXIT / REVIEW / ADD / etc.) lives only in the popover.
+// All three cells share one outer outline border. The internal dividers
+// are real `border-r` on the first two cells — NOT a floating separator
+// component. Pill is sized like a small button (h-7) with outline
+// aesthetic. Action gets a tinted background colored by the action kind
+// (red for EXIT, emerald for ADD, etc.) so the visual signal is in the
+// pill itself.
 
 function TriggerPill({
   trigger,
@@ -356,100 +355,104 @@ function TriggerPill({
   return (
     <Popover>
       <PopoverTrigger
-        render={<ButtonGroup className="cursor-pointer" />}
+        render={
+          <div
+            role="button"
+            tabIndex={0}
+            className="inline-flex h-7 cursor-pointer items-stretch overflow-hidden rounded-md border border-border bg-background text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        }
       >
-        <Badge
-          variant="secondary"
-          className="rounded-r-none gap-1.5 font-medium"
+        {/* Cell 1 — action signal: tinted bg + icon */}
+        <div
+          className={cn(
+            "flex items-center justify-center border-r border-border px-2",
+            actionTintClass(trigger.action),
+          )}
         >
+          <ActionIcon action={trigger.action} className="size-3.5" />
+        </div>
+
+        {/* Cell 2 — type icon + label */}
+        <div className="flex items-center gap-1.5 px-2.5 font-medium">
           <PredicateIcon
             kind={trigger.predicate.kind}
             className="size-3 text-muted-foreground"
           />
-          {predicateTypeLabel(trigger.predicate)}
-        </Badge>
+          <span>{predicateTypeLabel(trigger.predicate)}</span>
+        </div>
+
+        {/* Cell 3 — value */}
         {value ? (
-          <>
-            <ButtonGroupSeparator />
-            <Badge
-              variant="secondary"
-              className="rounded-l-none font-normal text-muted-foreground tabular-nums"
-            >
-              {value}
-            </Badge>
-          </>
+          <div className="flex items-center border-l border-border px-2.5 font-normal text-muted-foreground tabular-nums">
+            {value}
+          </div>
         ) : null}
       </PopoverTrigger>
-      <PopoverContent side="left" align="start" className="w-72 space-y-3">
-        {/* Header — type label + value, just like the pill */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-sm">
+
+      <PopoverContent side="left" align="start" className="w-72 p-0">
+        {/* Header bar — same 3-cell shape as the pill, scaled up */}
+        <div className="flex items-stretch border-b border-border">
+          <div
+            className={cn(
+              "flex items-center gap-1.5 border-r border-border px-3 py-2 text-xs font-medium",
+              actionTintClass(trigger.action),
+            )}
+          >
+            <ActionIcon action={trigger.action} className="size-3.5" />
+            {actionLabel(trigger.action)}
+          </div>
+          <div className="flex flex-1 items-center gap-1.5 px-3 py-2 text-sm font-medium">
             <PredicateIcon
               kind={trigger.predicate.kind}
-              className="size-4 text-muted-foreground"
+              className="size-3.5 text-muted-foreground"
             />
-            <span className="font-medium">
+            <span className="truncate">
               {predicateTypeLabel(trigger.predicate)}
             </span>
             {value ? (
-              <span className="text-muted-foreground tabular-nums ml-auto">
+              <span className="ml-auto text-muted-foreground tabular-nums">
                 {value}
               </span>
             ) : null}
           </div>
+        </div>
+
+        <div className="space-y-3 p-3">
           <p className="text-xs text-muted-foreground leading-relaxed">
             {predicateDescription(trigger.predicate)}
           </p>
-        </div>
 
-        {/* Action row — what happens when this fires */}
-        <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-2">
-          <span
-            className={cn(
-              "size-1.5 rounded-full shrink-0",
-              actionDotClass(trigger.action),
-            )}
-          />
-          <ActionIcon
-            action={trigger.action}
-            className="size-3.5 text-muted-foreground"
-          />
-          <span className="text-xs font-medium">
-            {actionLabel(trigger.action)}
-          </span>
-        </div>
-
-        {trigger.rationale ? (
-          <p className="text-xs leading-relaxed">{trigger.rationale}</p>
-        ) : null}
-
-        <Separator />
-
-        <div className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-xs">
-          <span className="text-muted-foreground">Last fired</span>
-          <span className="text-foreground tabular-nums text-right">
-            {fmtFiredAt(trigger.lastFiredAt)}
-          </span>
-          {trigger.cooldownDays ? (
-            <>
-              <span className="text-muted-foreground">Cooldown</span>
-              <span className="text-foreground tabular-nums text-right">
-                {trigger.cooldownDays}d
-              </span>
-            </>
+          {trigger.rationale ? (
+            <p className="text-xs leading-relaxed">{trigger.rationale}</p>
           ) : null}
-        </div>
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onTestFire}
-          disabled={firing}
-          className="w-full"
-        >
-          <Zap className="size-3" />
-          {firing ? "Firing…" : "Test fire"}
-        </Button>
+          <div className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-xs">
+            <span className="text-muted-foreground">Last fired</span>
+            <span className="text-foreground tabular-nums text-right">
+              {fmtFiredAt(trigger.lastFiredAt)}
+            </span>
+            {trigger.cooldownDays ? (
+              <>
+                <span className="text-muted-foreground">Cooldown</span>
+                <span className="text-foreground tabular-nums text-right">
+                  {trigger.cooldownDays}d
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onTestFire}
+            disabled={firing}
+            className="w-full"
+          >
+            <Zap className="size-3" />
+            {firing ? "Firing…" : "Test fire"}
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );
