@@ -3,16 +3,15 @@
 /**
  * TranscriptCard — segment analog of ThesisCard.
  *
- * Clickable card surface that opens a Sheet with the full transcript
- * (TranscriptSheetBody). Same ergonomics as ThesisCard:
+ * Clickable card surface that opens a Dialog (matching BriefDetailDialog /
+ * FindingDetailDialog) with the full transcript via TranscriptSheetBody.
  *   - Top header with podcast/segment context + duration + citation count
  *   - Truncated preview of the spoken script
- *   - Click anywhere → Sheet slides in with full content
+ *   - Click anywhere → Dialog opens with full content
  *
  * Used by:
  *   - TranscriptCardRenderer (chat output of write_segment_transcript)
- *   - TranscriptRow (run-page Transcript tab)
- *   - PodcastDetailClient right rail (recent transcripts)
+ *   - TranscriptRow (run-page Transcript tab, podcast detail right rail)
  */
 
 import type { ComponentProps } from "react";
@@ -20,12 +19,12 @@ import type { ComponentProps } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Mic, Clock, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -126,15 +125,12 @@ export function TranscriptCard({
   );
 
   return (
-    <Sheet>
-      <SheetTrigger render={customTrigger ?? cardContent} />
-      <SheetContent
-        side="right"
-        className="w-full sm:max-w-xl overflow-y-auto p-0"
-      >
-        <SheetHeader className="pb-0">
-          <SheetTitle className="sr-only">{title}</SheetTitle>
-        </SheetHeader>
+    <Dialog>
+      <DialogTrigger render={customTrigger ?? cardContent} />
+      <DialogContent className="sm:max-w-3xl p-0 max-h-[85vh] overflow-y-auto">
+        <DialogHeader className="p-0">
+          <DialogTitle className="sr-only">{title}</DialogTitle>
+        </DialogHeader>
         <TranscriptSheetBody
           title={title}
           plainText={plainText}
@@ -146,7 +142,7 @@ export function TranscriptCard({
           audioUrl={audioUrl}
           status={status}
         />
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

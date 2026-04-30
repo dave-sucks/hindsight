@@ -44,6 +44,14 @@ export {
   type SignalCategory,
 } from "./signal-type-catalog";
 
+export {
+  PODCAST_FORMATS,
+  getPodcastFormat,
+  podcastFormatIndex,
+  type PodcastFormat,
+  type SegmentTemplate,
+} from "./podcast-formats";
+
 import { archetypeIndex } from "./strategy-archetypes";
 import { sourceIndex } from "./source-catalog";
 import { signalIndex } from "./signal-type-catalog";

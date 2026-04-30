@@ -345,20 +345,26 @@ Follow-up commits (`e3fe63a`, `3d3f11e`, `6e76a30`):
 
 **No audio. No episode assembly. No editor mode. Open gaps tracked in Session 1 below.**
 
-### Session 1 — Build experience completeness (next PR)
+### Session 1 — Build experience completeness (SHIPPED)
 
-End state — the user can: open a podcast, run a segment, see the
-transcript everywhere it should be findable, refine the podcast/
-segments via chat editor, browse the routed signal inbox, AND merge
-transcripts into an Episode (text-only — audio is Phase 2).
+End state delivered: the user can build a podcast on any topic, run a
+segment, see the transcript on every surface where it should be
+findable, refine the podcast / segments via chat editor, browse the
+routed signal inbox, and merge transcripts into an Episode (text-only
+— audio is Phase 2).
 
-**Mandate for the next session: reuse the existing analyst infra +
-patterns + components everywhere. Do not rebuild what already exists.
-The previous sessions repeatedly built fake parallel versions of
-existing infra; that pattern is forbidden. Every gap below has an
-analog already implemented for analysts — match it 1:1 in shape and
-imports, only swap the entity (analyst → podcast/segment) where the
-data model legitimately differs.**
+The full file-level inventory of what shipped lives in
+`docs/PODCAST_FILES.md` "Session 1 — what shipped". Use that as the
+source of truth on a fork. The breakdown below is the design discussion
+that drove the build.
+
+**Mandate that drove this session (kept here for the fork's record):
+reuse the existing analyst infra + patterns + components everywhere.
+Do not rebuild what already exists. Earlier sessions had repeatedly
+built fake parallel versions of existing infra; that pattern was
+forbidden. Every gap below had an analog already implemented for
+analysts — matched 1:1 in shape and imports, only swapping the entity
+(analyst → podcast/segment) where the data model legitimately differs.**
 
 #### A. Run-time pipeline — already shipped, document it works
 
@@ -600,20 +606,40 @@ chosen are listed here so the eventual app split has a clear record.
 
 **Reused:** ResearchRun, RunEvent, RunMessage, Monitor, Signal,
 Artifact, AgentChat (mode-driven), `/api/agent/[mode]` route,
-ToolCallGroup, ToolCallRow, ToolUIRenderer, all renderers, all
-read-side intelligence tools, `complete_run`, `define-tool`
-factory, `tool-result` envelope, Sidebar shell.
+`/api/intelligence/signals` route, ToolCallGroup, ToolCallRow,
+ToolUIRenderer, AskQuestionRenderer, all read-side intelligence tools,
+`complete_run`, `define-tool` factory, `tool-result` envelope,
+`signal-router` (with a podcast-routing pass appended), `domain-monitor`
++ `firm-market-sweep` crons, `RunResearchButton`, `SignalRow` +
+`FindingDetailDialog` + `SignalFilters`, `TickerMarkdown`, Sidebar
+shell, AnalystConfigForm primitives.
 
-**New (this PR):** Podcast/PodcastSegment/SegmentTranscript/Episode
-models, two modes, two tools (`write_segment_transcript`,
-`suggest_podcast_config`), `lib/actions/podcast.actions.ts`,
-`lib/podcast/builder-prompt.ts` and `segment-run-prompt.ts`, four
-pages and their client components, one sidebar nav entry.
+**New (cumulative across PR #194 + post-merge follow-ups + Session 1):**
+Six podcast-owned tables (Podcast, PodcastSegment, SegmentTranscript,
+Episode, PodcastSegmentSignalRoute, PodcastSegmentBriefing), three
+agent modes (`podcast-builder`, `podcast-segment-run`, `podcast-editor`),
+four podcast-specific tools (`write_segment_transcript`,
+`suggest_podcast_config`, `read_past_transcripts`, plus the
+`podcast-format` branch of `read_knowledge_library`), the podcast
+craft library (`lib/agent/knowledge/podcast-formats.ts`),
+`lib/actions/podcast.actions.ts`, `lib/podcast/builder-prompt.ts` /
+`segment-run-prompt.ts` / `editor-prompt.ts` /
+`update-segment-briefing.ts`, the transcript pipeline
+(`TranscriptCardRenderer` + `TranscriptCard` + `TranscriptSheet` /
+`TranscriptDialog` + `TranscriptRow`), the podcast surfaces in
+`components/podcasts/` (`PodcastsPageClient`, `PodcastDetailClient`,
+`PodcastConfigSheet`, `SegmentConfigForm`, `SegmentConfigSheet`,
+`PodcastConfigPreview`, `PodcastEditClient`, `PodcastFindingsTab`,
+`AssembleEpisodeDialog`), the `PodcastConfigPreviewRenderer`, six
+pages under `app/(root)/podcasts/`, one route under
+`app/api/podcasts/run-segment`, one sidebar nav entry. Two FK columns
+added to existing tables (`ResearchRun.podcastSegmentId`,
+`Monitor.podcastSegmentId`).
 
 **Untouched:** trading tools, trading pages, trading actions,
-intelligence pipeline jobs, signal router, Alpaca, Position/Order/
-Trade/Thesis/AccuracyReport/AnalystBriefing, all existing analyst
-detail / runs feed UI.
+intelligence pipeline jobs proper (signal-router was extended, not
+rewritten), Alpaca, Position/Order/Trade/Thesis/AccuracyReport/
+AnalystBriefing, all existing analyst detail / runs feed UI.
 
 See `docs/PODCAST_FILES.md` for the file-level audit and
 `docs/PODCAST_OPERATIONS.md` for the detach + fork playbooks.

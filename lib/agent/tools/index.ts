@@ -38,6 +38,7 @@ import { askQuestion } from "./ask-question";
 import { discoverSignalsForFence } from "./discover-signals-for-fence";
 import { readAnalystInboxStats } from "./read-analyst-inbox-stats";
 import { writeSegmentTranscript } from "./write-segment-transcript";
+import { readPastTranscripts } from "./read-past-transcripts";
 
 interface ToolCtx {
   runId: string;
@@ -104,6 +105,7 @@ export function createResearchTools(ctx: ToolCtx) {
     read_analyst_inbox_stats: readAnalystInboxStats(newCtx),
     // Podcast feature — see docs/PODCAST_PLAN.md.
     write_segment_transcript: writeSegmentTranscript(newCtx),
+    read_past_transcripts: readPastTranscripts(newCtx),
   };
 
   // Backward-compat aliases for old persisted RunMessages
@@ -144,5 +146,6 @@ export { askQuestion } from "./ask-question";
 export { discoverSignalsForFence } from "./discover-signals-for-fence";
 export { readAnalystInboxStats } from "./read-analyst-inbox-stats";
 export { writeSegmentTranscript } from "./write-segment-transcript";
+export { readPastTranscripts } from "./read-past-transcripts";
 export { suggestPodcastConfigTool } from "./suggest-podcast-config";
 export type { SuggestedPodcastConfig } from "./suggest-podcast-config";

@@ -79,6 +79,11 @@ const PODCAST_BUILDER_WELCOME: WelcomeConfig = {
   ),
 };
 
+const PODCAST_EDITOR_WELCOME: WelcomeConfig = {
+  title: "Edit your podcast",
+  subtitle: "Ask questions about the show or suggest changes.",
+};
+
 const BUILDER_COMPOSER: HindsightComposerFeatures = {
   tickerSearch: true,
   placeholder: "Describe your ideal trading analyst…",
@@ -91,6 +96,10 @@ const EDITOR_COMPOSER: HindsightComposerFeatures = {
 
 const PODCAST_BUILDER_COMPOSER: HindsightComposerFeatures = {
   placeholder: "What's the show about? How long are episodes? Daily or weekly?",
+};
+
+const PODCAST_EDITOR_COMPOSER: HindsightComposerFeatures = {
+  placeholder: "Ask a question or suggest a change to the show…",
 };
 
 // podcast-segment-run welcome — shown briefly before the agent kicks off.
@@ -109,6 +118,8 @@ interface AgentChatProps {
   runId?: string;
   analystId?: string;
   analystName?: string;
+  /** podcast-editor — id of the podcast being edited (passed on body). */
+  podcastId?: string;
   autoStart?: boolean;
   headerAction?: ReactNode;
   brief?: IntelMorningBrief | null;
@@ -158,6 +169,7 @@ export function AgentChat({
   runId,
   analystId,
   analystName,
+  podcastId,
   autoStart,
   headerAction,
   brief = null,
@@ -194,6 +206,7 @@ export function AgentChat({
   const body: Record<string, unknown> = {};
   if (runId) body.runId = runId;
   if (analystId) body.analystId = analystId;
+  if (podcastId) body.podcastId = podcastId;
   if (currentConfig) body.currentConfig = currentConfig;
   // Only send override when it differs from the mode default
   if (selectedModel !== defaultModel) body.modelOverride = selectedModel;
@@ -382,7 +395,9 @@ function AgentChatInner({
       onConfirmConfig: handleConfirmConfig,
       onConfigSuggested: onConfigSuggested ? handleConfigSuggested : undefined,
       onPodcastConfigSuggested:
-        mode === "podcast-builder" ? onPodcastConfigSuggested : undefined,
+        mode === "podcast-builder" || mode === "podcast-editor"
+          ? onPodcastConfigSuggested
+          : undefined,
       isCreating: isMutating,
       confirmLabel: mode === "builder" ? "Create Analyst" : "Apply Changes",
       confirmingLabel: mode === "builder" ? "Creating..." : "Applying...",
@@ -503,20 +518,24 @@ function AgentChatInner({
     );
   }
 
-  // ── builder / editor / podcast-builder: config chat ───────────────────────
+  // ── builder / editor / podcast-builder / podcast-editor: config chat ──────
 
   const welcomeConfig =
     mode === "builder"
       ? BUILDER_WELCOME
       : mode === "podcast-builder"
         ? PODCAST_BUILDER_WELCOME
-        : EDITOR_WELCOME;
+        : mode === "podcast-editor"
+          ? PODCAST_EDITOR_WELCOME
+          : EDITOR_WELCOME;
   const composerFeatures =
     mode === "builder"
       ? BUILDER_COMPOSER
       : mode === "podcast-builder"
         ? PODCAST_BUILDER_COMPOSER
-        : EDITOR_COMPOSER;
+        : mode === "podcast-editor"
+          ? PODCAST_EDITOR_COMPOSER
+          : EDITOR_COMPOSER;
 
   return (
     <ToolUICallbacksProvider value={callbacks}>

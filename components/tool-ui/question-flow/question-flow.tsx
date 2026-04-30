@@ -480,9 +480,14 @@ function StepContent({
     resolvedStepKey,
   );
 
+  // Single-question calls have no totalSteps and shouldn't carry a step
+  // label at all — "Step 1" alone reads as a half-rendered multi-step card
+  // and confuses the user. Multi-step (Upfront) flows keep the full
+  // "Step N of M" + progress bar.
+  const showStepHeader = Boolean(totalSteps);
   const stepLabel = totalSteps
     ? `Step ${step} of ${totalSteps}`
-    : `Step ${step}`;
+    : null;
 
   return (
     <div
@@ -502,17 +507,19 @@ function StepContent({
           "bg-card flex w-full flex-col gap-4 rounded-2xl border p-5 shadow-xs",
         )}
       >
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-col gap-2">
-            <span
-              className="text-muted-foreground text-xs font-medium uppercase tracking-wide"
-              aria-label={stepLabel}
-            >
-              {stepLabel}
-            </span>
-            {totalSteps && <ProgressBar current={step} total={totalSteps} />}
+        {showStepHeader && (
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2">
+              <span
+                className="text-muted-foreground text-xs font-medium uppercase tracking-wide"
+                aria-label={stepLabel ?? undefined}
+              >
+                {stepLabel}
+              </span>
+              {totalSteps && <ProgressBar current={step} total={totalSteps} />}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="relative mt-1">
           {exitingStepData && (

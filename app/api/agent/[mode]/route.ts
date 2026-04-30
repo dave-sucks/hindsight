@@ -9,7 +9,7 @@
  * System prompts live there too. The route just assembles and streams.
  */
 
-import { streamText, convertToModelMessages, stepCountIs } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, hasToolCall } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
@@ -28,6 +28,11 @@ import { suggestConfigTool } from "@/lib/agent/tools/suggest-config";
 import { suggestPodcastConfigTool } from "@/lib/agent/tools/suggest-podcast-config";
 import { PODCAST_BUILDER_SYSTEM_PROMPT } from "@/lib/podcast/builder-prompt";
 import { buildPodcastSegmentRunPrompt } from "@/lib/podcast/segment-run-prompt";
+import {
+  buildPodcastEditorSystemPrompt,
+  type EditorCurrentPodcast,
+  type EditorCurrentSegment,
+} from "@/lib/podcast/editor-prompt";
 
 // Vercel function timeout is set per-mode via route segment config.
 // For the dynamic catch-all, we use the research-run limit (longest).
@@ -97,6 +102,7 @@ export async function POST(
       "editor",
       "podcast-builder",
       "podcast-segment-run",
+      "podcast-editor",
     ].includes(mode)
   ) {
     return new Response(`Unknown mode: ${mode}`, { status: 400 });
@@ -227,6 +233,69 @@ export async function POST(
 
     } else if (agentMode === "podcast-builder") {
       systemPrompt = PODCAST_BUILDER_SYSTEM_PROMPT;
+      resolvedAnalystId = undefined;
+
+    } else if (agentMode === "podcast-editor") {
+      // The edit page passes the podcast id on body.podcastId AND a
+      // currentConfig blob mirroring the builder shape. We re-load the
+      // canonical state from the DB so the prompt sees authoritative
+      // segments + monitors, not a stale client snapshot.
+      const podcastId: string | undefined = body.podcastId;
+      if (!podcastId) {
+        return new Response(
+          "podcast-editor requires a podcastId on the request body.",
+          { status: 400 },
+        );
+      }
+      const podcast = await prisma.podcast.findFirst({
+        where: { id: podcastId, userId: user.id },
+        include: {
+          segments: {
+            orderBy: { orderIndex: "asc" },
+            include: {
+              monitors: {
+                select: { id: true, name: true, type: true, config: true },
+                orderBy: { createdAt: "asc" },
+              },
+            },
+          },
+        },
+      });
+      if (!podcast) {
+        return new Response("Podcast not found.", { status: 404 });
+      }
+      const editorPodcast: EditorCurrentPodcast = {
+        id: podcast.id,
+        name: podcast.name,
+        description: podcast.description,
+        hostStyle: podcast.hostStyle,
+        cadence: podcast.cadence,
+      };
+      const editorSegments: EditorCurrentSegment[] = podcast.segments.map((s) => {
+        const domainMonitors: Array<{ name: string; domain: string }> = [];
+        const searchMonitors: Array<{ name: string; query: string }> = [];
+        for (const m of s.monitors) {
+          const cfg = (m.config as Record<string, unknown> | null) ?? {};
+          if (m.type === "DOMAIN" && typeof cfg.domain === "string") {
+            domainMonitors.push({ name: m.name, domain: cfg.domain });
+          } else if (m.type === "SEARCH" && typeof cfg.query === "string") {
+            searchMonitors.push({ name: m.name, query: cfg.query });
+          }
+        }
+        return {
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          segmentPrompt: s.segmentPrompt,
+          targetSeconds: s.targetSeconds,
+          topics: s.topics,
+          excludeTopics: s.excludeTopics,
+          enabled: s.enabled,
+          domainMonitors,
+          searchMonitors,
+        };
+      });
+      systemPrompt = buildPodcastEditorSystemPrompt(editorPodcast, editorSegments);
       resolvedAnalystId = undefined;
 
     } else if (agentMode === "podcast-segment-run") {
@@ -385,7 +454,7 @@ export async function POST(
     if (modeConfig.hasSuggestConfig) {
       tools.suggest_config = suggestConfigTool;
     }
-    if (agentMode === "podcast-builder") {
+    if (agentMode === "podcast-builder" || agentMode === "podcast-editor") {
       tools.suggest_podcast_config = suggestPodcastConfigTool;
     }
 
@@ -460,7 +529,16 @@ export async function POST(
       messages: modelMessages,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: tools as any,
-      stopWhen: stepCountIs(modeConfig.maxSteps),
+      // Stop the run when:
+      //   • we hit the per-mode step ceiling, OR
+      //   • the agent calls ask_question (the user must answer before
+      //     the agent does anything else — without this stop the model
+      //     keeps narrating after the question, which lands as orphaned
+      //     prose under the QuestionFlow card and breaks the chat if
+      //     the user clicks an option mid-stream).
+      // ai SDK v6 accepts an array of StopConditions; first to fire
+      // wins. hasToolCall("ask_question") is the SDK helper.
+      stopWhen: [stepCountIs(modeConfig.maxSteps), hasToolCall("ask_question")],
 
       onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage }) {
         const now = Date.now();

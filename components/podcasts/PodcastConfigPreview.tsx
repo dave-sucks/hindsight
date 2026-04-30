@@ -1,17 +1,30 @@
 "use client";
 
 /**
- * PodcastConfigPreview — mirror of AnalystConfigPanel for the podcast builder.
+ * PodcastConfigPreview — right-side panel for the podcast builder + editor.
  *
- * Same Silk intro + outer rounded-xl + bordered shell + per-tab content
- * + bottom confirm CTA. Reuses Section / FieldGroup / RowLabel /
- * FreeTextChipsCombobox / GHOST_INPUT primitives so the form chrome is
- * byte-identical to the analyst surface.
+ * Mirror of AnalystConfigPanel. Same outer chrome (Silk header + name +
+ * footer Confirm) and the same form-primitive vocabulary
+ * (Section / FieldGroup / RowLabel / GHOST_INPUT). Three tabs:
+ *
+ *   • Brief — podcast-level description + host style.
+ *   • Segments — one collapsible row per segment. Expanded = the SAME
+ *     SegmentConfigForm used in the per-segment Settings sheet on the
+ *     podcast detail page (Overview + Settings tabs, real Sources +
+ *     Search Queries list rendering with favicon / search-icon rows).
+ *     The proposal lives in memory here; mutations update the
+ *     SuggestedPodcastConfig in place. The same callbacks shape that
+ *     SegmentConfigSheet uses with server actions.
+ *   • Settings — cadence + voice.
+ *
+ * Result: ONE component renders segment editing in both surfaces. No
+ * custom chip/bullet rendering anymore — the analyst monitor visual
+ * language is the only design that exists.
  */
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { Check, Plus, X } from "lucide-react";
+import { Check, ChevronDown, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,26 +43,38 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   Section,
   FieldGroup,
   RowLabel,
   GHOST_INPUT,
-  FreeTextChipsCombobox,
 } from "@/components/analysts/AnalystConfigForm";
+import {
+  SegmentConfigForm,
+  type SegmentFormValues,
+  type SegmentFormChangeHandler,
+} from "@/components/podcasts/SegmentConfigForm";
 import { cn } from "@/lib/utils";
 import type { SuggestedPodcastConfig } from "@/lib/agent/tools/suggest-podcast-config";
 
 const Silk = dynamic(() => import("@/components/Silk"), { ssr: false });
 
-type Segment = SuggestedPodcastConfig["segments"][number];
+type ProposalSegment = SuggestedPodcastConfig["segments"][number];
 
 interface Props {
   config: SuggestedPodcastConfig;
   onConfigChange: (next: SuggestedPodcastConfig) => void;
   onConfirm: () => void;
   isCreating: boolean;
+  /** Override CTA labels for the editor flow ("Apply changes" / "Applying…"). */
+  confirmLabel?: string;
+  confirmingLabel?: string;
 }
 
 export function PodcastConfigPreview({
@@ -57,6 +82,8 @@ export function PodcastConfigPreview({
   onConfigChange,
   onConfirm,
   isCreating,
+  confirmLabel = "Create podcast",
+  confirmingLabel = "Creating…",
 }: Props) {
   const [silkActive, setSilkActive] = useState(true);
   useEffect(() => {
@@ -77,7 +104,7 @@ export function PodcastConfigPreview({
     });
   };
 
-  const updateSegment = (index: number, patch: Partial<Segment>) => {
+  const updateSegment = (index: number, patch: Partial<ProposalSegment>) => {
     onConfigChange({
       ...config,
       segments: config.segments.map((s, i) => (i === index ? { ...s, ...patch } : s)),
@@ -99,7 +126,8 @@ export function PodcastConfigPreview({
         {
           name: "New Segment",
           description: "",
-          segmentPrompt: "Describe what this segment covers and the editorial angle.",
+          segmentPrompt:
+            "Describe what this segment covers and the editorial angle.",
           targetSeconds: 180,
           topics: [],
           excludeTopics: [],
@@ -204,129 +232,23 @@ export function PodcastConfigPreview({
                   label="Segments"
                   tooltip="Recurring beats inside every episode. Each runs as its own agent and produces its own transcript."
                 >
-                  {config.segments.map((seg, i) => (
-                    <div
-                      key={i}
-                      className="rounded-md border p-3 space-y-2 mb-2 bg-background/40"
-                    >
-                      <div className="flex items-start gap-2">
-                        <Input
-                          value={seg.name}
-                          onChange={(e) => updateSegment(i, { name: e.target.value })}
-                          className="font-medium flex-1"
-                          placeholder="Segment name"
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => removeSegment(i)}
-                          aria-label="Remove segment"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                      <FieldGroup label="Editorial brief">
-                        <Textarea
-                          value={seg.segmentPrompt}
-                          onChange={(e) =>
-                            updateSegment(i, { segmentPrompt: e.target.value })
-                          }
-                          rows={3}
-                          className="text-xs resize-y"
-                        />
-                      </FieldGroup>
-                      <div className="grid grid-cols-2 gap-3">
-                        <FieldGroup label="Target seconds">
-                          <Input
-                            type="number"
-                            value={seg.targetSeconds}
-                            min={30}
-                            max={1800}
-                            step={30}
-                            className={cn(GHOST_INPUT, "text-right tabular-nums")}
-                            onChange={(e) =>
-                              updateSegment(i, {
-                                targetSeconds: Math.max(30, Number(e.target.value) || 30),
-                              })
-                            }
-                          />
-                        </FieldGroup>
-                        <div className="flex items-end">
-                          <span className="text-[10px] text-muted-foreground tabular-nums">
-                            ~{Math.round(seg.targetSeconds / 60)} min
-                          </span>
-                        </div>
-                      </div>
-                      <FieldGroup label="Topics">
-                        <FreeTextChipsCombobox
-                          values={seg.topics}
-                          placeholder="Add a topic"
-                          onChange={(next) => updateSegment(i, { topics: next })}
-                        />
-                      </FieldGroup>
-
-                      {/* Monitors preview — read-only here. Same Monitor
-                          rows the analyst surface uses, persisted by
-                          createPodcastFromBuilder as type=DOMAIN +
-                          type=SEARCH scoped to the segment. */}
-                      <div className="pt-1 space-y-1">
-                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          Sources ({seg.domainMonitors.length})
-                        </p>
-                        {seg.domainMonitors.length === 0 ? (
-                          <p className="text-[11px] text-muted-foreground/60">
-                            None proposed.
-                          </p>
-                        ) : (
-                          <div className="flex flex-wrap gap-1">
-                            {seg.domainMonitors.map((m, mi) => (
-                              <span
-                                key={`${m.domain}-${mi}`}
-                                className="inline-flex items-center gap-1 text-[11px] rounded-md bg-muted px-1.5 py-0.5"
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={`https://www.google.com/s2/favicons?domain=${m.domain}&sz=16`}
-                                  alt=""
-                                  width={10}
-                                  height={10}
-                                  className="size-2.5 rounded-sm"
-                                />
-                                {m.name || m.domain}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          Search queries ({seg.searchQueries.length})
-                        </p>
-                        {seg.searchQueries.length === 0 ? (
-                          <p className="text-[11px] text-muted-foreground/60">
-                            None proposed.
-                          </p>
-                        ) : (
-                          <ul className="space-y-0.5">
-                            {seg.searchQueries.map((q, qi) => (
-                              <li
-                                key={qi}
-                                className="text-[11px] text-muted-foreground truncate"
-                              >
-                                · {q.query}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                  <div className="flex flex-col gap-2">
+                    {config.segments.map((seg, i) => (
+                      <SegmentRow
+                        key={i}
+                        index={i}
+                        segment={seg}
+                        onUpdate={(patch) => updateSegment(i, patch)}
+                        onRemove={() => removeSegment(i)}
+                        defaultOpen={i === 0}
+                      />
+                    ))}
+                  </div>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={addSegment}
-                    className="w-full"
+                    className="w-full mt-3"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Add segment
@@ -390,9 +312,168 @@ export function PodcastConfigPreview({
           className="w-full"
         >
           <Check className="h-4 w-4 mr-2" />
-          {isCreating ? "Creating…" : "Create podcast"}
+          {isCreating ? confirmingLabel : confirmLabel}
         </Button>
       </div>
     </div>
+  );
+}
+
+// ─── Segment row ─────────────────────────────────────────────────────────────
+//
+// A collapsible card per segment. The header shows segment name + a duration
+// chip and a remove button. Expanded content is the canonical
+// SegmentConfigForm — same component the per-segment Settings sheet uses on
+// /podcasts/[id]. Monitor add/remove in this surface mutates the proposal in
+// place (no DB yet — that happens on Confirm). Field edits flow through the
+// same SegmentFormChangeHandler shape SegmentConfigSheet uses for server
+// actions.
+
+function SegmentRow({
+  index,
+  segment,
+  onUpdate,
+  onRemove,
+  defaultOpen,
+}: {
+  index: number;
+  segment: ProposalSegment;
+  onUpdate: (patch: Partial<ProposalSegment>) => void;
+  onRemove: () => void;
+  defaultOpen?: boolean;
+}) {
+  const minutes = Math.round((segment.targetSeconds || 0) / 60);
+
+  // Adapt the proposal segment → SegmentFormValues. The proposal stores
+  // monitors as { name, domain, reason } / { query, reason }. The form
+  // expects { id, name, domain } / { id, name, query }. We use the array
+  // index as a stable id within this proposal — sufficient for the in-
+  // memory edit experience; real ids land on Confirm when the action
+  // creates Monitor rows.
+  const values: SegmentFormValues = {
+    name: segment.name,
+    description: segment.description ?? null,
+    segmentPrompt: segment.segmentPrompt,
+    targetSeconds: segment.targetSeconds,
+    topics: segment.topics ?? [],
+    excludeTopics: segment.excludeTopics ?? [],
+    domainMonitors: (segment.domainMonitors ?? []).map((m, mi) => ({
+      id: `domain-${mi}`,
+      name: m.name,
+      domain: m.domain,
+    })),
+    searchMonitors: (segment.searchQueries ?? []).map((q, qi) => ({
+      id: `search-${qi}`,
+      name: q.query,
+      query: q.query,
+    })),
+  };
+
+  const handleChange: SegmentFormChangeHandler = (field, value) => {
+    switch (field) {
+      case "name":
+        onUpdate({ name: value as string });
+        return;
+      case "description":
+        onUpdate({ description: (value as string | null) ?? "" });
+        return;
+      case "segmentPrompt":
+        onUpdate({ segmentPrompt: value as string });
+        return;
+      case "targetSeconds":
+        onUpdate({ targetSeconds: value as number });
+        return;
+      case "topics":
+        onUpdate({ topics: value as string[] });
+        return;
+      case "excludeTopics":
+        onUpdate({ excludeTopics: value as string[] });
+        return;
+      // Monitor mutations land via the dedicated add/remove callbacks below,
+      // not through onChange.
+      case "domainMonitors":
+      case "searchMonitors":
+        return;
+    }
+  };
+
+  const handleAddDomain = ({ name, domain }: { name: string; domain: string }) => {
+    onUpdate({
+      domainMonitors: [
+        ...(segment.domainMonitors ?? []),
+        { name: name || domain, domain, reason: "" },
+      ],
+    });
+  };
+
+  const handleAddSearch = ({ query }: { name?: string; query: string }) => {
+    onUpdate({
+      searchQueries: [...(segment.searchQueries ?? []), { query, reason: "" }],
+    });
+  };
+
+  const handleRemoveMonitor = (monitorId: string) => {
+    if (monitorId.startsWith("domain-")) {
+      const idx = Number(monitorId.slice("domain-".length));
+      onUpdate({
+        domainMonitors: (segment.domainMonitors ?? []).filter((_, i) => i !== idx),
+      });
+      return;
+    }
+    if (monitorId.startsWith("search-")) {
+      const idx = Number(monitorId.slice("search-".length));
+      onUpdate({
+        searchQueries: (segment.searchQueries ?? []).filter((_, i) => i !== idx),
+      });
+      return;
+    }
+  };
+
+  return (
+    <Collapsible defaultOpen={defaultOpen} className="rounded-md border bg-background/40">
+      <CollapsibleTrigger
+        render={
+          <div className="flex items-center gap-2 w-full px-3 py-2 cursor-pointer hover:bg-accent/30 group">
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
+            <span className="text-sm font-medium flex-1 truncate text-left">
+              {segment.name || `Segment ${index + 1}`}
+            </span>
+            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+              ~{minutes}m
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove();
+              }}
+              className="text-muted-foreground hover:text-destructive transition-colors p-1 -mr-1"
+              aria-label="Remove segment"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        }
+      />
+      <CollapsibleContent>
+        <div className="border-t">
+          {/* Fixed-height container so the inner Tabs + ScrollArea behave
+              like the per-segment Sheet does (and like the analyst form
+              behaves inside the analyst sheet). 480px feels right for the
+              right-rail panel — large enough to skim Sources + Queries
+              without expanding the whole panel. */}
+          <div className="h-[480px]">
+            <SegmentConfigForm
+              values={values}
+              onChange={handleChange}
+              onAddDomainMonitor={handleAddDomain}
+              onAddSearchMonitor={handleAddSearch}
+              onRemoveMonitor={handleRemoveMonitor}
+              hideName
+            />
+          </div>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
