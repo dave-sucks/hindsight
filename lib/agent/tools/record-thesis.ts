@@ -139,15 +139,21 @@ const thesisFields = z.object({
       "Required composite scoring: trendStrength (0-3) + relativeStrength (0-3) + entryQuality (0-2) + catalystFreshness (0-2) = composite /10. Composite ≥ 7 is required for ADD/ROTATE eligibility. Below 7 must be PASS or WATCH. R/R and portfolio fit are separate quality-bar gates, NOT scoring components — apply them in the workflow."
     ),
 
-  // ── Thesis Durable State (PR 1) ────────────────────────────────────────
-  // Optional today; will become required as PR 2 (tactical mode) and PR 3
-  // (housekeeping) come online and start consuming these fields. Existing
-  // call paths keep working without them.
+  // ── Thesis Durable State (PR 1 + cleanup PR) ──────────────────────────
+  // REQUIRED on every thesis. Drives the auto-default trigger merge + the
+  // housekeeping nextReviewAt cadence + the tactical agent's exit policy.
+  // Without horizon, the thesis is "naked" — no triggers, no review schedule,
+  // no way for the trigger evaluator to do its job. We're not letting that
+  // ship anymore.
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
-    .optional()
     .describe(
-      "Exit policy for this thesis. CATALYST = exit on the catalyst event (good or bad), or 30d past catalyst_date. TARGET = exit at target/stop or thesis invalidation; open-ended. TRADE = stop/target/max_hold_days, short bounded. COMPOUNDER = exit only when invalidation conditions fire; never on price alone. Pick the kind that matches your reasoning, not just the holding period.",
+      "REQUIRED. Exit policy + trigger template for this thesis. Pick the kind that matches your reasoning, not just the holding period:\n" +
+        "  • CATALYST — trade is built around a binary event (FDA decision, M&A close, court ruling, named earnings catalyst). Hold until the event resolves; ignore inter-event price drift.\n" +
+        "  • TARGET — swing trade with a defined upside number from setup/fundamentals. Weeks-to-months. Exit at target, stop, or invalidation.\n" +
+        "  • TRADE — momentum/pattern setup with a tight stop. Days-to-weeks. max_hold_days required (default 14).\n" +
+        "  • COMPOUNDER — long-term hold based on durable business quality. Months-to-years. Quarterly hygiene only; never time-exits on price alone.\n" +
+        "If you can't pick one, you don't have a thesis — write PASS instead.",
     ),
   core_belief: z
     .string()
@@ -274,6 +280,52 @@ export const recordThesis = defineTool({
           },
           sources: [],
         };
+      }
+
+      // No-PASS-on-held gate. PASS = "researched, decided not to trade."
+      // It is INCOMPATIBLE with an open position — minting PASS on a held
+      // ticker is exactly the bug that left CAPR/ON/etc with zombie
+      // PASS-ACTIVE rows blocking the trigger evaluator from doing its
+      // job (cleanup applied 2026-04-29). If the agent's conviction has
+      // dropped below trade-worthy on a name it currently holds, the
+      // right tool is update_thesis (lower confidence + tighten stop) or
+      // close_position + update_thesis(change_status: "INVALIDATED"),
+      // not record_thesis(direction: "PASS").
+      if (args.direction === "PASS" && ctx.analystId) {
+        try {
+          const heldPosition = await prisma.position.findFirst({
+            where: {
+              analystId: ctx.analystId,
+              symbol: args.ticker,
+              status: "OPEN",
+            },
+            select: { id: true, direction: true, quantity: true },
+          });
+          if (heldPosition) {
+            console.warn(
+              `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — PASS thesis on held position (${heldPosition.direction} ${heldPosition.quantity} sh).`
+            );
+            return {
+              summary: `PASS thesis rejected for ${args.ticker}: position is currently OPEN.`,
+              data: {
+                thesis_id: null,
+                status: "FAILED" as const,
+                note:
+                  `You currently hold ${heldPosition.direction} ${heldPosition.quantity} shares of ${args.ticker}. PASS is for tickers you researched and decided NOT to trade — it is incompatible with holding the name. ` +
+                  `If your conviction on this position has dropped, the correct tools are:\n` +
+                  `  • update_thesis(thesis_id, confidence_score: <lower>, stop_loss: <tighter>, rationale: "<why>") — keep the position but reflect lower conviction, OR\n` +
+                  `  • close_position(...) followed by update_thesis(thesis_id, change_status: "INVALIDATED", rationale: "<why>") — exit the position and mark the thesis broken.\n` +
+                  `Find the active LONG/SHORT thesis_id via get_theses(tickers: ["${args.ticker}"]) and call update_thesis. Do NOT retry record_thesis on ${args.ticker} with direction PASS — it will reject again.`,
+              },
+              sources: [],
+            };
+          }
+        } catch (posErr) {
+          console.warn(
+            `[record-thesis] no-PASS-on-held check failed (non-fatal):`,
+            posErr instanceof Error ? posErr.message : posErr
+          );
+        }
       }
 
       // Researched-before-thesis gate. Every record_thesis call MUST have
