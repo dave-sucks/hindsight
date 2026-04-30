@@ -12,6 +12,12 @@ import { TRADE_STATUS_DISPLAY } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 
+// 2026-04-29: removed inline expand-on-click and analyst-link button.
+// The Details button opens the full ThesisSheet which has more
+// detailed thesis info than the inline expansion ever did, and the
+// analyst link clutters the row footer for a single-user app where
+// the user already knows their analysts.
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type SourceItem = { type: string; provider: string; title: string; url?: string | null };
@@ -101,7 +107,6 @@ function posBg(ts: TradeStatus): string {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
-  const [expanded, setExpanded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const pos = t.position;
   const isPass = t.direction === "PASS";
@@ -183,7 +188,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
       )}
 
       {/* ── 3. Analysis + Summary ── */}
-      <div className="px-4 py-3" onClick={() => setExpanded(!expanded)}>
+      <div className="px-4 py-3">
         {/* Analysis line */}
         <div className="flex items-center gap-1.5 mb-1.5 flex-wrap text-sm">
           {isPass
@@ -209,7 +214,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
             <span className="text-muted-foreground tabular-nums">at {$(t.entryPrice)}</span>
           )}
         </div>
-        <p className={cn("text-sm text-muted-foreground leading-relaxed", !expanded && "line-clamp-3")}>
+        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
           {t.reasoningSummary}
         </p>
       </div>
@@ -234,11 +239,6 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           </span>
         )}
         <div className="flex items-center gap-1 ml-auto">
-          {t.analystName && t.analystId && (
-            <a href={`/analysts/${t.analystId}`} className="hidden sm:inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-              {t.analystName}
-            </a>
-          )}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setSheetOpen(true); }}
