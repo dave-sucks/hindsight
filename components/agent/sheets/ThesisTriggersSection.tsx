@@ -391,6 +391,7 @@ export function ThesisTriggersSection({ thesisId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [firing, setFiring] = useState<string | null>(null);
   const [fireError, setFireError] = useState<string | null>(null);
+  const [fireQueued, setFireQueued] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -410,6 +411,7 @@ export function ThesisTriggersSection({ thesisId }: Props) {
 
   async function testFire(triggerId: string) {
     setFireError(null);
+    setFireQueued(null);
     setFiring(triggerId);
     try {
       const r = await fetch(`/api/admin/triggers/fire`, {
@@ -426,14 +428,12 @@ export function ThesisTriggersSection({ thesisId }: Props) {
       const out = (await r.json()) as {
         runId?: string | null;
         queued?: boolean;
-        message?: string;
       };
       if (out.runId) {
         router.push(`/runs/${out.runId}`);
       } else if (out.queued) {
-        setFireError(
-          out.message ??
-            "Trigger event dispatched. The tactical run will appear in your runs list shortly.",
+        setFireQueued(
+          "Trigger fired. The tactical run is queued — it will appear in your runs list in a few seconds.",
         );
       }
     } catch (e) {
@@ -502,6 +502,18 @@ export function ThesisTriggersSection({ thesisId }: Props) {
         )}
         {fireError ? (
           <p className="text-xs text-red-500">Test fire failed: {fireError}</p>
+        ) : null}
+        {fireQueued ? (
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{fireQueued}</span>
+            <button
+              type="button"
+              onClick={() => router.push("/runs")}
+              className="shrink-0 text-foreground underline-offset-2 hover:underline"
+            >
+              Open runs →
+            </button>
+          </div>
         ) : null}
       </div>
 

@@ -120,9 +120,11 @@ export async function POST(req: NextRequest) {
   // Poll briefly for tactical-run.create-run to land. We avoid creating
   // a placeholder ResearchRun because the runs/[id] page would auto-fire
   // a parallel research-run agent on it (the bug seen on 2026-04-29).
-  // Up to ~8s of polling at 250ms intervals — Inngest typically lands
-  // the row in <1s; the upper bound covers cold-start cases.
-  const POLL_MAX_MS = 8000;
+  // Up to 15s of polling at 250ms intervals — Inngest typically lands
+  // the row in <2s when warm, but Vercel cold-start + Inngest cold-start
+  // can stack to 8-12s. 15s covers the worst case while still keeping
+  // the request under the Vercel 30s API route limit.
+  const POLL_MAX_MS = 15000;
   const POLL_INTERVAL_MS = 250;
   const pollUntil = Date.now() + POLL_MAX_MS;
   let runId: string | null = null;
