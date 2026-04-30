@@ -153,9 +153,20 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                     </p>
                   ) : null}
 
-                  {/* Footer: Type · View run · Signals */}
+                  {/* Footer: Type · TriggerId chip · View run · Signals */}
                   <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                     <span>{typeLabel(u.type)}</span>
+                    {u.type === "TRIGGER_FIRED" && u.triggerId ? (
+                      <>
+                        <span className="opacity-40">·</span>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-1.5 py-0.5 font-mono tabular-nums"
+                          title={`triggerId ${u.triggerId}`}
+                        >
+                          trigger {u.triggerId.slice(-6)}
+                        </span>
+                      </>
+                    ) : null}
                     {u.runId ? (
                       <>
                         <span className="opacity-40">·</span>
