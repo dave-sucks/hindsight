@@ -220,6 +220,8 @@ export async function POST(
             performance: null,
             recentClosedTrades: [],
             priorityReviews: null,
+            triggersFiredSinceLastRun: [],
+            triggersMatchingNow: [],
             intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
           });
 

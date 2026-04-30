@@ -240,6 +240,36 @@ This defines which stocks you may research and trade. Use it to filter discovery
     sections.push(reviewSection);
   }
 
+  // ── Section 3.6: Triggers Fired Since Last Run ───────────────────────
+  // Pre-vetted by trigger-evaluator + price-cron. Already validated
+  // against signal/quote data — agent doesn't re-evaluate, just acts.
+  if (runInput.triggersFiredSinceLastRun.length > 0) {
+    let firedSection = `## 🔔 Triggers Fired Since Your Last Run\nThe trigger evaluator caught these between your last successful run and now. Each one already validated its predicate against real data — your job is to decide what to do, not whether it really fired. **Every thesis listed here is a MUST-research in Stage 2** regardless of nextReviewAt.\n\n`;
+    for (const f of runInput.triggersFiredSinceLastRun) {
+      const hoursAgo = Math.round(
+        (Date.now() - new Date(f.firedAt).getTime()) / (1000 * 60 * 60),
+      );
+      firedSection += `- **$${f.ticker}** — ${f.action} — ${f.predicateSummary} (${hoursAgo}h ago)\n`;
+      if (f.rationale) firedSection += `  "${f.rationale.slice(0, 200)}"\n`;
+      firedSection += `  thesis_id: \`${f.thesisId}\`\n`;
+    }
+    sections.push(firedSection);
+  }
+
+  // ── Section 3.65: Triggers Matching Right Now (live re-eval) ─────────
+  // Server-side evaluation against fresh quotes at run start. Catches
+  // matches the cron may not have delivered yet. Same shape as Fired —
+  // priority research targets.
+  if (runInput.triggersMatchingNow.length > 0) {
+    let liveSection = `## 📡 Triggers Matching Now (live evaluation)\nServer-side evaluation against fresh quotes at run start. These predicates evaluate to TRUE right now even though the cron hasn't necessarily delivered the fire event yet. **Treat the same as fired triggers above** — MUST-research in Stage 2.\n\n`;
+    for (const m of runInput.triggersMatchingNow) {
+      liveSection += `- **$${m.ticker}** — ${m.action} — ${m.predicateSummary} (${m.matchDetail})\n`;
+      if (m.rationale) liveSection += `  "${m.rationale.slice(0, 200)}"\n`;
+      liveSection += `  thesis_id: \`${m.thesisId}\`\n`;
+    }
+    sections.push(liveSection);
+  }
+
   // ── Section 3.75: Active Theses ───────────────────────────────────────
   if (runInput.activeTheses && runInput.activeTheses.length > 0) {
     let thesesSection = `## Active Theses\nThese are your current ACTIVE theses. When you record a new thesis for any of these tickers, the old one is automatically superseded — you do not need to pass parent_thesis_id.\n\n`;
