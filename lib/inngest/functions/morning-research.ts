@@ -366,14 +366,25 @@ export const morningResearch = inngest.createFunction(
           const hadResearch = researchedCount > 0;
           const hasWork = thesisCount > 0 || decisionCount > 0 || ranSummary;
 
-          // Process-violation override: if research was done but theses lag
-          // behind researched-ticker count, that's still FAILED even if
-          // record_run_summary fired (the run has a process integrity gap).
-          const processViolationFinal =
-            hadResearch && thesisCount < researchedCount;
-
-          const finalStatus =
-            processViolationFinal ? "FAILED" : hasWork ? "COMPLETE" : "FAILED";
+          // Process-violation override removed 2026-04-30 (PR 3 follow-up).
+          // The old gate fired when stockDataTickers > distinctThesisTouches,
+          // which made sense in PR 2's "research every candidate, mint a
+          // thesis per ticker" world. PR 3 has the agent doing peer/sector
+          // comparison get_stock_data calls without 1:1 thesis touches —
+          // that's the new pattern. The gate false-failed legitimate runs
+          // (Earnings Drift Trader + Catalyst Event Raider on 2026-04-30
+          // both had record_run_summary fired but were marked FAILED).
+          //
+          // The retry path above (lines 240-300) still exists and still
+          // fires when researchedCount > thesisCount, giving the agent a
+          // chance to write missed theses. But we no longer override the
+          // final status to FAILED if record_run_summary did fire — the
+          // run completed its decision contract.
+          const finalStatus = hasWork ? "COMPLETE" : "FAILED";
+          // Keep processViolationFinal for the failure-message branch
+          // below so the operator still sees diagnostic info on real
+          // failures (where record_run_summary didn't fire).
+          const processViolationFinal = false;
           // Atomic: only transition RUNNING → terminal. No-op if complete_run
           // already marked it COMPLETE.
           const beltResult = await prisma.researchRun.updateMany({
