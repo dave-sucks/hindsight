@@ -221,6 +221,20 @@ const thesisFields = z.object({
     .describe(
       "When housekeeping should re-look at this thesis even with no trigger fire. Default derived from horizon: CATALYST = 1 day, TRADE = 1 day, TARGET = 7 days, COMPOUNDER = 30 days.",
     ),
+  // Explicit status arg. Daily watchlist-review and weekly discovery both
+  // need to write WATCHING; trade-eligible coverage stays ACTIVE. When
+  // omitted the effective status is derived from source_kind:
+  // WATCHLIST_REVIEW → WATCHING, everything else → ACTIVE. Direction is
+  // independent — a WATCHING thesis can be LONG/SHORT (directional view
+  // we're tracking) or PASS (we looked, decided no, want to keep eyes on
+  // it for change-of-mind). The agent should pass status explicitly when
+  // intent matters; the default keeps existing call sites working.
+  status: z
+    .enum(["ACTIVE", "WATCHING"])
+    .optional()
+    .describe(
+      "Coverage status. ACTIVE = trade-eligible coverage (the agent intends to act now or imminently). WATCHING = on-the-radar coverage (watchlist review, discovery candidate, named-but-not-yet-actionable). Default is derived from source_kind — WATCHLIST_REVIEW → WATCHING, else ACTIVE — pass explicitly when the intent differs.",
+    ),
 });
 
 const thesisSchema = thesisFields.superRefine((val, ctx) => {
@@ -527,18 +541,28 @@ export const recordThesis = defineTool({
       };
 
       // ── Same-direction guard ────────────────────────────────────────
-      // The durable model is ONE Thesis row per (analyst, ticker, direction)
-      // evolving over time via update_thesis. record_thesis is reserved for:
+      // The durable model is ONE Thesis row per (analyst, ticker) evolving
+      // over time via update_thesis. record_thesis is reserved for:
       //   1. New coverage (no existing thesis on this ticker), OR
       //   2. Direction flips (LONG → SHORT, PASS → LONG, etc.), OR
       //   3. Replacing a previously INVALIDATED/CLOSED thesis with a
       //      fundamentally new belief.
       //
-      // If an ACTIVE same-direction thesis already exists, reject and tell
-      // the agent to use update_thesis instead. Without this guard, every
-      // morning run on a held name would auto-supersede yesterday's row and
-      // mint a fresh chain — exactly the chained-replacement pattern we're
-      // moving away from.
+      // If an ACTIVE/WATCHING same-direction thesis already exists, reject
+      // and tell the agent to use update_thesis instead. Without this guard,
+      // every morning run on a held or watched name would auto-supersede
+      // yesterday's row and mint a fresh chain — exactly the chained-
+      // replacement pattern we're moving away from.
+      //
+      // PASS is included in the search (was excluded prior to 2026-04-30):
+      // a fresh PASS on a ticker that already has a PASS thesis should
+      // redirect to update_thesis (writes a REVIEWED entry — the analyst
+      // looked again and the conclusion is unchanged). Without this, every
+      // morning's watchlist-review run minted a new ACTIVE+PASS row,
+      // chaining forever. PASS-on-LONG / PASS-on-SHORT etc. still take the
+      // direction-flip branch below (parent gets INVALIDATED, new PASS
+      // thesis lands).
+      //
       // Normalize empty-string parent_thesis_id to null. The agent
       // sometimes passes "" instead of omitting the field; without this,
       // the eventual prisma.thesis.create() FK-violates because no row
@@ -547,13 +571,12 @@ export const recordThesis = defineTool({
       // Thesis_parentThesisId_fkey`.
       const rawParentId = args.parent_thesis_id?.trim() ?? "";
       let resolvedParentId: string | null = rawParentId.length > 0 ? rawParentId : null;
-      if (!resolvedParentId && args.direction !== "PASS" && ctx.analystId) {
+      if (!resolvedParentId && ctx.analystId) {
         try {
           const existingThesis = await prisma.thesis.findFirst({
             where: {
               ticker: args.ticker,
               status: { in: ["ACTIVE", "WATCHING"] },
-              direction: { not: "PASS" },
               researchRun: { agentConfigId: ctx.analystId },
             },
             orderBy: { createdAt: "desc" },
@@ -606,10 +629,20 @@ export const recordThesis = defineTool({
         } catch { /* non-fatal */ }
       }
 
+      // Effective status: explicit `status` arg wins; otherwise derive
+      // from source_kind. WATCHLIST_REVIEW (and the watchlist-collapse
+      // call sites that follow) → WATCHING; everything else → ACTIVE.
+      // This is the producer fix that makes the WATCHING enum value
+      // (consumed by trigger-evaluator, morning-brief-generator,
+      // tactical-run, get-theses, update-thesis) actually populated.
+      const effectiveStatus: "ACTIVE" | "WATCHING" =
+        args.status ??
+        (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
+
       let thesis;
       try {
         thesis = await prisma.thesis.create({
-          data: { ...coreData, status: "ACTIVE", parentThesisId: resolvedParentId },
+          data: { ...coreData, status: effectiveStatus, parentThesisId: resolvedParentId },
         });
       } catch (v2Err: unknown) {
         const errMsg = v2Err instanceof Error ? v2Err.message : String(v2Err);
@@ -669,7 +702,9 @@ export const recordThesis = defineTool({
           void _cdate;
           void _maxhold;
           void _review;
-          thesis = await prisma.thesis.create({ data: fallbackData });
+          thesis = await prisma.thesis.create({
+            data: { ...fallbackData, status: effectiveStatus },
+          });
           resolvedParentId = null;
         } else {
           // Any other error is a real failure — log with full context and throw.
@@ -827,10 +862,10 @@ export const recordThesis = defineTool({
       }
 
       return {
-        summary: `Thesis recorded: ${args.direction} ${args.ticker} (confidence: ${args.confidence_score})`,
+        summary: `Thesis recorded: ${args.direction} ${args.ticker} (${effectiveStatus.toLowerCase()}, confidence: ${args.confidence_score})`,
         data: {
           thesis_id: thesis.id,
-          status: "ACTIVE" as const,
+          status: effectiveStatus,
         },
         sources: [],
       };
