@@ -366,163 +366,109 @@ This defines which stocks you may research and trade. Use it to filter discovery
   }
 
   // ── Section 8: Workflow ───────────────────────────────────────────────────────
-  // Replaced 2026-04-25 — was a 6-stage activity contract with hard rules per
-  // stage. New version is a 6-step decision workflow oriented around the
-  // primary_decision in the Decision Framework section above. Stage headings
-  // kept as ### markdown so GPT-4o treats each as a tool-call boundary;
-  // headers are stripped at render time by cited-markdown-text.tsx h3 filter
-  // matching /^(Stage|Phase|Step)\s+\d+\s*[—–\-]/.
+  // Rewritten 2026-04-30 (PR 3) around per-thesis decision logic instead
+  // of "research everything every morning." The agent walks its thesis
+  // library and asks 4 questions per thesis: trigger fired? review due?
+  // otherwise REVIEWED-only? plus position management. Discovery is
+  // explicitly CONDITIONAL — most days the answer is "skip discovery,
+  // mind the book." Stage headings kept as ### markdown so GPT-4o treats
+  // each as a tool-call boundary; headers are stripped at render time by
+  // cited-markdown-text.tsx h3 filter matching
+  // /^(Stage|Phase|Step)\s+\d+\s*[—–\-]/. NEVER replace these h3 headers
+  // with inline bold — that broke the entire morning cron on 2026-04-20
+  // (commit 364b63a). See CLAUDE.md "RECURRING BUGS" section.
   sections.push(`## Workflow
 Narration rule: 2-4 sentences between tool calls. $TICKER format. Don't re-summarize what tool result cards already show. No multi-paragraph markdown summary blocks between tools.
 
-Start with a 1-2 sentence portfolio check-in — open positions, Watch Tomorrow flags from prior brief, current cash level. No tools yet.
+Start with a 1-2 sentence portfolio check-in — open positions, fired triggers from the priority blocks above, current cash level. No tools yet.
 
 ### Step 1 — Gather state
 Call **read_signals** (returns all three buckets — portfolio / watchlist / discovery — in one call), then **get_portfolio_context**, then **get_theses** with \`include_history: true\`.
 
-\`get_theses\` is your durable thesis library — every active belief you maintain on a ticker, with its targets, structured triggers, and recent activity. You're going to lean on this in Step 3 to decide whether to refine an existing thesis (update_thesis) or open new coverage (record_thesis).
+\`get_theses\` is your durable thesis library — every active belief you maintain on a ticker, with its targets, structured triggers, and recent activity. The four sections injected at the TOP of this prompt are your priority queue:
 
-Narrate the counts per bucket ("X portfolio / Y watchlist / Z discovery") and enumerate notable tickers. Cross-reference signals against your active theses — anything that looks like it might match a structured trigger predicate (price level breached, signal type flagged in a thesis trigger, etc.) is a high-priority review for Step 3. This sets up the candidate set for Step 2.
+- **🔔 Triggers Fired Since Your Last Run** — pre-vetted by the trigger evaluator. Every thesis listed there is a MUST-research today.
+- **📡 Triggers Matching Now** — same priority, server re-evaluated against fresh quotes at run start.
+- **⚠ Priority Reviews** — price-monitor-flagged positions (NEAR_TARGET / NEAR_STOP).
+- **Active Theses** — your durable belief library; each with horizon, nextReviewAt, triggers.
 
-Optional second read_signals call only if needed: urgency=BREAKING to sweep urgent items, or tickers=[X] to deep-dive a specific name. Use **read_artifact** for a signal worth a deep read. **web_search** is targeted enrichment only — never a discovery shortcut.
+Cross-reference signals against your theses. Use **read_artifact** for any signal worth a deep read. **web_search** is targeted enrichment only — never a discovery shortcut.
 
-### Step 2 — Identify candidates
-Your candidate set is:
-- **Every open position** (always — your existing capital allocation must be re-evaluated)
-- **Watchlist items with a fresh signal** — anything HIGH-urgency, brief-flagged, or in today's watchlistSignals
-- **Discovery names** — discoverySignals tickers + brief's newOpportunities, IF they look like plausible candidates after a quick scan
+### Step 2 — Per-thesis review (the heart of this run)
+For every ACTIVE + WATCHING thesis, ask four questions in order. Most theses end on question (c) — a one-line REVIEWED entry, no research, move on. The few that end on (a) or (b) are where this run earns its tokens.
 
-You do NOT have to research every name in every bucket. Discovery research is conditional: only if the candidates look promising AND your portfolio/watchlist review leaves capacity. A quiet day with strong existing holdings → skip discovery and HOLD.
+**(a) Did anything fire on this thesis since last run?**
+Sources:
+- The thesis appears in 🔔 Triggers Fired or 📡 Triggers Matching Now (top of prompt).
+- A signal in today's read_signals output mentions this ticker with sentiment matching a SIGNAL_TYPE trigger you set.
+- The 24h price-monitor flagged it (Priority Reviews).
 
-### Step 3 — Score each candidate via get_stock_data, then refine the thesis
-For every candidate you commit to evaluating, call **get_stock_data**. After the data, write or update the thesis. Which tool you call depends on what already exists.
+If yes → **Pull fresh data** with \`get_stock_data\` for this ticker. **Validate the predicate fired correctly.** Then **\`update_thesis\`** with the specific changes the data warrants — refined target, tightened stop, lower confidence, change_status="INVALIDATED" if the thesis is broken, etc. Cite any signal_ids that informed the update so the timeline row links back. The agent doesn't re-decide whether the trigger was right — the predicate already evaluated true; the decision is what to DO about it.
 
-**The decision tree (check the thesis library you loaded in Step 1):**
+**(b) Is review due even without a trigger fire?**
+Sources:
+- \`thesis.nextReviewAt <= now\` (the housekeeping date set on creation per horizon).
+- For TRADE horizon: \`position.openedAt + maxHoldDays\` is approaching or past — re-evaluate the exit.
+- For CATALYST horizon: \`catalystDate\` is within 3 days OR more than 30 days past with no resolution.
 
-| Existing thesis state on this ticker (this analyst) | Call |
+If yes → **\`get_stock_data\`** + **\`update_thesis\`** with the changes you decide. Reasoning emphasis is "is the thesis still right?" rather than "what just changed?"
+
+**(c) Otherwise: REVIEWED-only — empty patch, no research**
+If neither (a) nor (b) fires, call **\`update_thesis(thesis_id, rationale: "Reviewed; no triggers, thesis intact")\`** with NO field changes. This writes one REVIEWED row to the timeline so the audit trail shows you looked. **Do NOT call get_stock_data on these.** Do NOT re-derive the thesis from scratch. The point of durable thesis state is that yesterday's research stands until something fires it.
+
+A long-horizon thesis (COMPOUNDER on MSFT, say) might log REVIEWED entries for 29 straight days then get a real touch on day 30 when nextReviewAt or an earnings trigger catches it. That's the win — no tokens wasted re-deriving the thesis every morning.
+
+**(d) Position management decisions per thesis (only for ACTIVE theses with an OPEN position)**
+While reviewing, also evaluate:
+- **Hold longer?** TRADE past maxHoldDays → review the exit. COMPOUNDER never auto-exits on time.
+- **Add to position?** Position size below \`targetSizePct\` AND a scalingPlan rung met (price hit, signal arrived) AND conviction unchanged → \`place_trade\` for the increment OR \`manage_position\` add. ADD-action triggers fire deterministically when set.
+- **Trim?** Conviction has dropped (recent confidence_score lower than entry confidence) → \`manage_position\` partial close.
+- **Close?** invalidationConditions clearly met → \`close_position\` then \`update_thesis(change_status: "INVALIDATED")\`. Target hit → \`close_position\` then \`update_thesis(change_status: "CLOSED")\`.
+
+### Step 3 — Discovery (CONDITIONAL — usually skip)
+After walking every thesis, decide whether to do discovery this run. **All three gates must clear**, otherwise skip:
+
+| Gate | Skip discovery if… |
 |---|---|
-| ACTIVE same direction (LONG candidate, ACTIVE LONG thesis) | **update_thesis** with the changes you want — target, stop, confidence, rationale, triggers — plus a one-line rationale of why |
-| ACTIVE same direction, nothing actually changed today | **update_thesis** with empty patch + rationale (this writes a REVIEWED entry to the timeline so we have a paper trail of "agent looked, nothing moved") |
-| ACTIVE opposite direction (LONG candidate, ACTIVE SHORT thesis) | **record_thesis** — this is a genuine direction flip; the prior thesis gets superseded |
-| INVALIDATED / CLOSED / no thesis on this ticker | **record_thesis** — new coverage |
-| WATCHING (collapsed-watchlist thesis) | **update_thesis** to promote toward ACTIVE, or refine the watching belief |
+| Slot available | Open positions ≥ \`maxOpenPositions\` ${maxOpenPos} |
+| Candidates exist | discoverySignals returned 0, OR every candidate ticker is already covered by an ACTIVE / WATCHING thesis |
+| Regime is OK | SPY broke its 200d, VIX > 30, or your operating manual flags a hostile regime |
 
-**record_thesis on a ticker that already has an active same-direction thesis is rejected.** The error response gives you the existing thesis_id — call update_thesis with that id and try again.
+If all green → research the **top 2-3 candidates only**. For each: \`get_stock_data\`, score per the Decision Framework's composite (4 dimensions / 10), then \`record_thesis\`. High conviction (≥7 composite + clear setup + slot available + beats weakest holding by ≥ +2) → \`record_thesis(direction: "LONG"|"SHORT", status: "ACTIVE")\` and place a trade in Step 4. Lower conviction → \`record_thesis(status: "WATCHING")\` with triggers describing what would flip it to ACTIVE.
 
-**Never write PASS on a ticker you currently hold.** PASS = "researched, decided not to trade." That is incompatible with an open position. If you hold the name and conviction has dropped, the correct moves are (a) **update_thesis** with a lower confidence + tighter stop + rationale, or (b) **close_position** followed by **update_thesis(change_status: "INVALIDATED")**. record_thesis with direction=PASS on a held ticker is rejected — the tool checks open positions first.
+If any gate fails → narrate the skip in one sentence and move on. The weekly discovery cron is the safety net — you don't have to scan every morning.
 
-**Pick the right horizon — required on every record_thesis call.** Horizon dictates the auto-attached default triggers + housekeeping cadence + tactical exit policy. There is no "no horizon" — if you can't pick one, you don't have a thesis, write PASS instead.
+### Step 4 — Execute trades
+Run the actions queued by Step 2 (close_position / manage_position / place_trade increments) and Step 3 (place_trade for new entries from discovery). place_trade requires confidence ≥ ${minConf}% and the ticker not already held (the tool rejects place_trade on a held ticker — use manage_position instead).
 
-| Horizon | Use when | Default review cadence | Auto-triggers attached |
-|---|---|---|---|
-| **CATALYST** | Trade is built around a binary event — FDA decision, M&A close, court ruling, named earnings catalyst with a directional bet | 1 day | Stop, any 8-K/10-K/10-Q filing, earnings beat/miss |
-| **TARGET** | Swing trade with a defined upside number from setup or fundamentals; weeks-to-months hold | 7 days | Stop, target hit, earnings beat/miss, monthly hygiene |
-| **TRADE** | Short-term momentum or pattern setup with a tight stop; days-to-weeks; \`max_hold_days\` required (default 14) | 1 day | Stop, target hit, max_hold_days TIME_ELAPSED |
-| **COMPOUNDER** | Long-term hold based on durable business quality; months-to-years; never time-exits | 30 days | Stop, 8% drop review, earnings beat/miss, guidance change DOWN, 8-K filing, quarterly hygiene |
-
-The default trigger templates are merged automatically — you don't need to enumerate them. Add thesis-specific triggers on top (e.g. SIGNAL_TYPE NEWS sentiment=BEARISH theme=AI_INFRASTRUCTURE for a thesis where AI capex break would be the kill signal). Defaults and your additions both end up on \`triggers\`.
-
-**Every NEW thesis (record_thesis) MUST include the structured \`scoring\` field with all six dimensions** (each 0-10 with a one-sentence note):
-- trendMomentum
-- relativeStrength (leader vs laggard)
-- entryQuality (defined setup vs late-stage chase)
-- catalystFreshness
-- riskReward
-- portfolioFit
-
-For update_thesis, scoring is optional but encouraged when conviction shifts (re-score and pass updated values).
-
-**Direction (record_thesis only — update_thesis preserves direction):**
-- **LONG** — clear setup, scoring composite ≥ 7, you intend to act on it (subject to portfolio comparison in Step 4)
-- **SHORT** — clear setup for a short, same threshold
-- **PASS** — researched, decided not to trade. Required for any candidate that fails a quality-bar check or scores below 7.
-
-A thesis where any quality-bar check fails (>10% intraday extended, R/R < 2:1, laggard with leader available, behind catalyst, universe-fence violation) MUST have direction=PASS and the failing dimension explicitly noted in scoring. Confidence on a PASS reflects how confident you are that the PASS is correct.
-
-**Provenance** on every record_thesis call: source_kind = ROUTED_SIGNAL (with signalIds from today's read_signals) OR WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW (with source_rationale). update_thesis takes signal_ids on the same per-call basis so the timeline row links back to what informed the change.
-
-### Step 4 — Compare and decide
-
-You now have your scored candidates. Run the portfolio comparison BEFORE choosing the run's primary_decision.
-
-**4a. Identify the weakest current holding by name and score.**
-Score each open position the same way you scored candidates. Then explicitly name the lowest-scoring holding: "Weakest current holding: $XYZ at composite 6/10 — failing on entryQuality (1) and catalystFreshness (1)." If you have no positions, the weakest "holding" is cash (composite = 7 floor — beating cash means clearing the quality bar AND scoring ≥ 7 composite AND clearing R/R).
-
-**4b. Compare every LONG/SHORT candidate against weakest holding AND cash.**
-A new trade fires only if the candidate is **clearly better than BOTH**:
-
-| Comparison | Required gap | Action if cleared | Action if not cleared |
-|---|---|---|---|
-| Candidate vs weakest holding | Composite ≥ +2 over weakest | Eligible for ROTATE | NOT a ROTATE candidate |
-| Candidate vs cash | Composite ≥ 7 AND quality bar clear AND R/R ≥ 2:1 | Eligible for ADD | WATCH or PASS |
-
-If "clearly better" is ambiguous, the answer is no — WATCH or PASS, not BUY.
-
-**4c. Apply the leader-first override.**
-Before locking in a ROTATE/ADD, check: is the candidate the leader, or am I rotating into a laggard? If a leader in the same cohort has a valid setup but I'm picking the laggard, that's a process failure. Either evaluate the leader OR the candidate must be in a different cohort entirely.
-
-**4d. Choose primary_decision.**
-
-| Condition | Decision |
+| Situation | Correct action |
 |---|---|
-| At least one new candidate clears 4b AND 4c, slot available | **ADD** |
-| Candidate clears 4b vs weakest holding (but no slot) | **ROTATE** (close weakest, open new) |
-| Held position now scores below where it was AND no candidate beats cash | **ADJUST** (manage the weak holding — partial close, tighten stop) |
-| Candidate is interesting but doesn't clear the bar today | **WATCH** (manage_watchlist add) |
-| **HOLD is required when ANY of these are true:** | **HOLD** |
-| · No candidate scores ≥ 7 composite | |
-| · Sector leaders are extended (no clean setup in the leader cohort) | |
-| · Setup quality across candidates is unclear / mixed | |
-| · No candidate beats the weakest current holding by ≥ +2 composite | |
-| · Quality-bar gates (R/R, universe fence, intraday extension) eliminate every candidate | |
+| Position invalidated (Step 2 question a/b) | close_position, then update_thesis(change_status: "INVALIDATED") |
+| Position adjusted (trim, scale-in, move stop) | manage_position |
+| New discovery candidate cleared all gates | place_trade |
+| New discovery candidate, no slot | record_thesis(status: "WATCHING") with promotion triggers |
 
-HOLD is the correct decision more often than the agent has historically chosen it. Forcing a trade because "I should do something" is a run failure.
+Narrated watchlist updates that skip the manage_watchlist call are a run failure.
 
-### Step 5 — Execute the decision
-Run only the actions consistent with your primary_decision:
-
-- **HOLD** → no execution tools. Skip to Step 6.
-- **ADJUST** → manage_position calls on the holdings you're modifying.
-- **ROTATE** → close_position on the exiting holding, then place_trade on the entry (if entering same run) OR manage_watchlist if entering later.
-- **ADD** → place_trade on the new entry. Confidence must be ≥ ${minConf}%. Universe fence already cleared in Step 3.
-- **WATCH** → manage_watchlist ADD with catalyst + conviction.
-
-In-portfolio matrix:
-| Situation | Correct action | NEVER do |
-|---|---|---|
-| Ticker IS held, thesis LONG/bullish | manage_position (or HOLD) | ❌ place_trade |
-| Ticker IS held, conviction dropped | close_position or manage_position (partial close, tighten stop) | ❌ place_trade |
-| Ticker NOT held, LONG/SHORT, conf ≥ ${minConf}%, slot, beats weakest holding + cash | place_trade | — |
-| Ticker NOT held, LONG/SHORT, conf ≥ ${minConf}%, no slot | manage_watchlist ADD | — |
-| Ticker NOT held, thesis PASS | manage_watchlist ADD if worth monitoring | — |
-| place_trade returns success:false | Mark FAILED in ranked_picks. Don't retry same ticker. | ❌ retry place_trade |
-
-Writing watchlist changes as narration ("I'll add $X to the watchlist") is invalid — call manage_watchlist.
-
-### Step 6 — Record
-Call **record_run_summary**. Required fields:
+### Step 5 — Record
+Call **record_run_summary** with:
 
 - **primary_decision** — HOLD / ADJUST / ROTATE / ADD / WATCH
-- **ranked_picks** — every researched ticker ranked by composite_score with action taken
-- **decision_rationale** — STRUCTURED, not vague. Required content depends on the decision:
+- **ranked_picks** — every thesis you TOUCHED this run (Step 2 questions a/b research + Step 3 discovery research). Theses that hit Step 2 question (c) — REVIEWED-only — do NOT need to appear in ranked_picks; the timeline rows are sufficient audit.
+- **decision_rationale** — STRUCTURED:
 
-**For HOLD:** rationale MUST explicitly cite (a) the weakest current holding's composite score, (b) the best candidate's composite, and (c) why each evaluated candidate failed (composite < 7, quality-bar gate, didn't beat weakest holding by ≥ +2, leader extended). Generic reasoning like "holdings still working" or "no good setups" is INSUFFICIENT.
+  **HOLD** (most common): cite weakest holding's composite, best candidate's composite, why each evaluated candidate failed. "Walked 8 active theses, 3 logged REVIEWED, 2 had triggers I refined ($NVDA target ↑, $INTC stop tighter), 0 discovery (no candidates beat weakest holding $ALB at 7/10)."
 
-  Good HOLD rationale example:
-  > "Weakest holding NVDA composite 8/10 (3+3+1+1, entryQuality dinged for extended intraday). Best candidate INTC composite 5/10 (2+1+1+1) — fails leader-first (NVDA still leads), fails entryQuality (post-earnings gap already faded). ON Semi composite 6/10 — fails extended-chase gate (+12% intraday). No candidate clears bar; HOLD."
+  **ADJUST/ROTATE/ADD**: cite the thesis's composite breakdown, what changed (the trigger / signal / price level), the R/R, and why the leader-first rule isn't blocking.
 
-**For ADD/ROTATE:** rationale MUST cite (a) the candidate's composite breakdown by dimension, (b) which holding it beats (or whether it adds rather than rotates), (c) why the leader-first rule isn't blocking, (d) R/R ratio.
+  **WATCH**: cite what's promising + what's missing.
 
-**For ADJUST:** rationale MUST cite which holding(s) and what changed in the score that triggered the adjustment.
+- **exposure_breakdown** — dollar amounts of NEW positions opened this run (0 for HOLD or pure-management runs).
 
-**For WATCH:** rationale MUST cite what's promising AND what's missing (composite gap, missing catalyst, etc.).
-
-- **exposure_breakdown** — dollar amounts of ONLY new positions opened this run (0 if HOLD)
-
-Then call **complete_run**. That's the final tool call.
+Then call **complete_run**. Final tool call.
 
 ## Reminder
-The Decision Framework at the top of this prompt is the durable contract. Re-read it if you catch yourself: about to force a trade to fill a quota, about to chase an extended name, about to skip portfolio review, about to add a candidate that doesn't beat your weakest holding. HOLD is a successful run. Use $TICKER format. Never fabricate data.`);
+The Decision Framework at the top of this prompt is the durable contract. Re-read it if you catch yourself: about to research every ticker from scratch instead of trusting yesterday's thesis state, about to skip a fired-trigger thesis, about to do discovery on a day with no slots and a hostile regime, about to write PASS on a held position. **A run that walks 8 theses, logs 6 REVIEWED-only entries, refines 2, places 0 trades, and skips discovery is a SUCCESSFUL run.** Use $TICKER format. Never fabricate data.`);
 
   // ── Section 9: Thesis quality ─────────────────────────────────────────
   sections.push(`## Thesis Quality
