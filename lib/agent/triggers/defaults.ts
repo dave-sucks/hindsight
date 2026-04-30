@@ -48,6 +48,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}. If we hit it the thesis is broken; close and write up the lessons.`,
+      // No cooldown on EXIT triggers — terminal action, must always fire.
     });
   }
 
@@ -58,6 +59,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_BELOW", level: reviewLevel },
       action: "REVIEW",
       rationale: `8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.`,
+      cooldownDays: 1,
     });
   }
 
@@ -67,24 +69,28 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "EARNINGS_BEAT" },
       action: "REVIEW",
       rationale: `Earnings beat — re-score target. Beats often expand the multiple; consider scaling into the next rung.`,
+      cooldownDays: 7,
     },
     {
       id: createId(),
       predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
       action: "REVIEW",
       rationale: `Earnings miss ≥ 3% — downside surprise tests the core belief. Validate or step back.`,
+      cooldownDays: 7,
     },
     {
       id: createId(),
       predicate: { kind: "GUIDANCE_CHANGE", direction: "DOWN" },
       action: "REVIEW",
       rationale: `Guidance cut compresses the multiple. For a long-horizon hold this is the single biggest non-price signal.`,
+      cooldownDays: 7,
     },
     {
       id: createId(),
       predicate: { kind: "FILING", formType: "8-K" },
       action: "REVIEW",
       rationale: `8-K filed — material event. Read the filing and update the thesis if anything changed.`,
+      cooldownDays: 1,
     },
     {
       id: createId(),
@@ -106,6 +112,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}.`,
+      // No cooldown on EXIT — terminal.
     });
   }
   if (thesis.targetPrice != null) {
@@ -114,6 +121,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
       action: "REVIEW",
       rationale: `Target $${thesis.targetPrice} hit. Decide: close at target or trail higher with confidence intact.`,
+      cooldownDays: 1,
     });
   }
   out.push(
@@ -122,12 +130,14 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "EARNINGS_BEAT" },
       action: "REVIEW",
       rationale: `Beat — possibly a reason to extend the target.`,
+      cooldownDays: 7,
     },
     {
       id: createId(),
       predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
       action: "REVIEW",
       rationale: `Miss ≥ 3% — re-evaluate target.`,
+      cooldownDays: 7,
     },
     {
       id: createId(),
@@ -148,6 +158,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
       action: "EXIT",
       rationale: `Tight stop at $${thesis.stopLoss}. Trade-horizon — get out fast on invalidation.`,
+      // No cooldown on EXIT — terminal.
     });
   }
   if (thesis.targetPrice != null) {
@@ -156,6 +167,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
       action: "EXIT",
       rationale: `Target $${thesis.targetPrice} hit. Trade plan executed; close.`,
+      // No cooldown on EXIT — terminal.
     });
   }
   const maxDays = thesis.maxHoldDays ?? 14;
@@ -164,6 +176,8 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
     predicate: { kind: "TIME_ELAPSED", days: maxDays },
     action: "REVIEW",
     rationale: `Max hold ${maxDays} days reached — TRADE horizons must close out by this point.`,
+    // No cooldown — TIME_ELAPSED only fires once anyway (after the
+    // window is reached); cooldown is irrelevant.
   });
   return out;
 }
@@ -176,6 +190,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}.`,
+      // No cooldown on EXIT — terminal.
     });
   }
   // Any FILING is interesting on a catalyst trade — frequently the
@@ -193,18 +208,21 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
       },
       action: "REVIEW",
       rationale: `Any material filing on a catalyst-horizon thesis warrants a look — the filing might BE the catalyst.`,
+      cooldownDays: 1,
     },
     {
       id: createId(),
       predicate: { kind: "EARNINGS_BEAT" },
       action: "REVIEW",
       rationale: `Beat — possibly the catalyst.`,
+      cooldownDays: 7,
     },
     {
       id: createId(),
       predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
       action: "REVIEW",
       rationale: `Miss ≥ 3% — possibly the inverse catalyst.`,
+      cooldownDays: 7,
     },
   );
   return out;
