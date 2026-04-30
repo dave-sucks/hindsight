@@ -34,7 +34,12 @@ const thesisFields = z.object({
   entry_price: z.number().optional().describe("Current price for entry. REQUIRED for LONG/SHORT — use the price from get_stock_data. Also include for PASS to enable shadow tracking."),
   target_price: z.number().optional().describe("Price target. REQUIRED for LONG/SHORT."),
   stop_loss: z.number().optional().describe("Stop-loss price. REQUIRED for LONG/SHORT."),
-  hold_duration: z.enum(["DAY", "SWING", "POSITION"]),
+  hold_duration: z
+    .enum(["DAY", "SWING", "POSITION"])
+    .optional()
+    .describe(
+      "Optional. If omitted, derived from horizon (TRADE→SWING, TARGET→SWING, CATALYST→SWING, COMPOUNDER→POSITION). Pick from DAY / SWING / POSITION only — do NOT pass horizon values like 'TRADE' here, that field is `horizon`.",
+    ),
   signal_types: z.array(z.string()).describe("Signal types: MOMENTUM, EARNINGS_BEAT, BREAKOUT, etc."),
   sources_used: z
     .array(z.object({ provider: z.string(), title: z.string(), url: z.string().optional() }))
@@ -465,7 +470,15 @@ export const recordThesis = defineTool({
         entryPrice: args.entry_price ?? null,
         targetPrice: args.target_price ?? null,
         stopLoss: args.stop_loss ?? null,
-        holdDuration: args.hold_duration,
+        // Derive hold_duration from horizon when the agent didn't provide
+        // one (or passed a horizon value like "TRADE" by mistake — schema
+        // already rejects those, but the fallback runs anyway).
+        // Mapping: COMPOUNDER → POSITION, everything else → SWING.
+        // DAY is intentionally never auto-picked; agents that want DAY
+        // must pass it explicitly.
+        holdDuration:
+          args.hold_duration ??
+          (args.horizon === "COMPOUNDER" ? "POSITION" : "SWING"),
         signalTypes: args.signal_types,
         sourcesUsed: args.sources_used ?? [],
         sourceSignalIds,

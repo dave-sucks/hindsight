@@ -100,33 +100,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Pre-create ResearchRun so the UI has somewhere to navigate
-  // immediately. The tactical-run Inngest consumer will create another
-  // ResearchRun when it processes the event — both are fine; the second
-  // is the canonical one, the first is a placeholder for navigation
-  // that ends up FAILED if the operator never returns to it (or fine
-  // either way, cosmetic only).
-  const placeholderRun = await prisma.researchRun.create({
-    data: {
-      userId: user.id,
-      agentConfigId: analystId,
-      source: "AGENT",
-      status: "RUNNING",
-      mode: "INTRADAY_TACTICAL",
-      parameters: {
-        triggeredBy: "test-fire",
-        thesisId: thesis.id,
-        triggerId: trigger.id,
-        ticker: thesis.ticker,
-        action: trigger.action,
-        predicateKind: trigger.predicate.kind,
-        agentMode: true,
-      } as object,
-    },
-    select: { id: true },
-  });
-
-  // Emit the same event shape that trigger-evaluator emits.
+  // Emit the same event shape that trigger-evaluator emits. The
+  // tactical-run Inngest consumer creates the canonical ResearchRun
+  // when it processes this event.
+  const dispatchedAt = new Date();
   const send = await inngest.send({
     name: "app/thesis.trigger.fired",
     data: {
@@ -140,8 +117,56 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Poll briefly for tactical-run.create-run to land. We avoid creating
+  // a placeholder ResearchRun because the runs/[id] page would auto-fire
+  // a parallel research-run agent on it (the bug seen on 2026-04-29).
+  // Up to ~8s of polling at 250ms intervals — Inngest typically lands
+  // the row in <1s; the upper bound covers cold-start cases.
+  const POLL_MAX_MS = 8000;
+  const POLL_INTERVAL_MS = 250;
+  const pollUntil = Date.now() + POLL_MAX_MS;
+  let runId: string | null = null;
+  while (Date.now() < pollUntil) {
+    const realRun = await prisma.researchRun.findFirst({
+      where: {
+        userId: user.id,
+        agentConfigId: analystId,
+        mode: "INTRADAY_TACTICAL",
+        startedAt: { gte: dispatchedAt },
+        // Match on the triggerId stamped into parameters by tactical-run.
+        parameters: {
+          path: ["triggerId"],
+          equals: trigger.id,
+        },
+      },
+      orderBy: { startedAt: "desc" },
+      select: { id: true },
+    });
+    if (realRun) {
+      runId = realRun.id;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
+
+  if (!runId) {
+    // Inngest didn't land in time. Still return success — the run will
+    // eventually appear in /runs. The UI shows a "queued" state instead
+    // of redirecting.
+    return NextResponse.json(
+      {
+        runId: null,
+        queued: true,
+        eventIds: send.ids,
+        message:
+          "Trigger event dispatched. The tactical run is queued — it will appear shortly in your runs list.",
+      },
+      { status: 202 },
+    );
+  }
+
   return NextResponse.json({
-    runId: placeholderRun.id,
+    runId,
     eventIds: send.ids,
   });
 }

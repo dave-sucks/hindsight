@@ -417,13 +417,24 @@ export function ThesisTriggersSection({ thesisId }: Props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ thesisId, triggerId }),
       });
-      if (!r.ok) {
+      // 202 = event dispatched but tactical-run hasn't landed in time.
+      // Treat as success — the run will appear in /runs shortly.
+      if (!r.ok && r.status !== 202) {
         const body = await r.text();
         throw new Error(`HTTP ${r.status}: ${body.slice(0, 200)}`);
       }
-      const out = (await r.json()) as { runId?: string };
+      const out = (await r.json()) as {
+        runId?: string | null;
+        queued?: boolean;
+        message?: string;
+      };
       if (out.runId) {
         router.push(`/runs/${out.runId}`);
+      } else if (out.queued) {
+        setFireError(
+          out.message ??
+            "Trigger event dispatched. The tactical run will appear in your runs list shortly.",
+        );
       }
     } catch (e) {
       setFireError(e instanceof Error ? e.message : String(e));
