@@ -40,19 +40,12 @@ const bodySchema = z.object({
   triggerId: z.string().min(1),
 });
 
-const ENABLED = process.env.ENABLE_TRIGGER_TEST_FIRE === "1";
+// 2026-04-29: env-var gating removed. The route is auth-scoped (user
+// must own the thesis) and synthetic firing is harmless to operations
+// — the tactical run produces a real ResearchRun the user can audit.
+// Single-user paper-trading app; no need for a multi-tenant kill switch.
 
 export async function POST(req: NextRequest) {
-  if (!ENABLED) {
-    return NextResponse.json(
-      {
-        error:
-          "Trigger test-fire disabled. Set ENABLE_TRIGGER_TEST_FIRE=1 in env.",
-      },
-      { status: 403 },
-    );
-  }
-
   const supabase = await createClient();
   const {
     data: { user },

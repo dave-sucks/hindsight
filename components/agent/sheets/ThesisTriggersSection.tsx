@@ -33,8 +33,9 @@ import { InfoRow } from "@/components/ui/info-row";
 import { Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-const TEST_FIRE_ENABLED =
-  process.env.NEXT_PUBLIC_ENABLE_TRIGGER_TEST_FIRE === "1";
+// 2026-04-29: env-var gating removed. Single-user app; the route is
+// auth-scoped and synthetic firing is harmless (creates a real auditable
+// ResearchRun). Always show the button.
 
 interface TriggerPredicate {
   kind: string;
@@ -258,17 +259,15 @@ export function ThesisTriggersSection({ thesisId }: Props) {
                       {describePredicate(t.predicate)}
                     </span>
                   </div>
-                  {TEST_FIRE_ENABLED ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => testFire(t.id)}
-                      disabled={firing === t.id}
-                    >
-                      <Zap className="size-3" />
-                      {firing === t.id ? "Firing…" : "Test fire"}
-                    </Button>
-                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => testFire(t.id)}
+                    disabled={firing === t.id}
+                  >
+                    <Zap className="size-3" />
+                    {firing === t.id ? "Firing…" : "Test fire"}
+                  </Button>
                 </div>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   {t.rationale}
