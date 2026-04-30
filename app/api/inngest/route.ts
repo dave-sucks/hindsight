@@ -15,6 +15,7 @@ import { domainMonitor } from "@/lib/inngest/functions/domain-monitor";
 import { signalRouter } from "@/lib/inngest/functions/signal-router";
 import { triggerEvaluator } from "@/lib/inngest/functions/trigger-evaluator";
 import { tacticalRun } from "@/lib/inngest/functions/tactical-run";
+import { discoveryRun } from "@/lib/inngest/functions/discovery-run";
 import { backfillSignalFingerprint } from "@/lib/inngest/functions/backfill-signal-fingerprint";
 import { pipelineCleanup } from "@/lib/inngest/functions/pipeline-cleanup";
 
@@ -48,6 +49,11 @@ export const { GET, POST, PUT } = serve({
     // tactical agent runs INSIDE the function (mode='INTRADAY_TACTICAL'
     // on ResearchRun). 240s maxDuration covers the agent + bookkeeping.
     tacticalRun,
+    // PR 3 — weekly discovery cron, Sundays 9am ET. Spawns a focused
+    // agent run per analyst that scans the past week of signals for
+    // net-new ticker coverage and mints WATCHING theses. Does NOT
+    // touch existing theses (the daily run handles those).
+    discoveryRun,
     // 2026-04-30: morningBriefGenerator removed. The agent reads durable
     // state (theses, triggers fired since last run, today's signals)
     // directly via tools — no need for a synthesized AI digest.

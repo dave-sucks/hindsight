@@ -29,6 +29,11 @@ export type AgentMode =
   // (signal-side or price-cron). Single ticker, single decision,
   // small step budget. Spawned by lib/inngest/functions/tactical-run.ts.
   | "tactical"
+  // PR 3 — weekly discovery run (Sundays 9am ET). Finds net-new
+  // ticker coverage worth WATCHING. Spawned by
+  // lib/inngest/functions/discovery-run.ts. Mints WATCHING theses;
+  // does NOT touch existing ones (daily run handles those).
+  | "discovery"
   // Podcast feature (PoC) — see docs/PODCAST_PLAN.md.
   // podcast-builder: chat to create a Podcast + child Segments.
   // podcast-segment-run: run a single Segment to produce a SegmentTranscript.
@@ -125,6 +130,38 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     ] as const,
     hasSuggestConfig: true,
     maxDuration: 150,
+  },
+  // ── Discovery (PR 3) ─────────────────────────────────────────────────────
+  // Weekly cron, finds NEW coverage candidates. NEVER touches existing
+  // theses (no update_thesis, no close_position, no manage_position).
+  // record_thesis IS allowed — that's the primary output. place_trade
+  // allowed for high-conviction starters. manage_watchlist allowed for
+  // adds.
+  "discovery": {
+    model: "gpt-4o",
+    provider: "openai",
+    maxSteps: 25,
+    toolAllowlist: [
+      // Read-only intel
+      "read_signals",
+      "read_artifact",
+      "get_stock_data",
+      "get_earnings_data",
+      "get_market_context",
+      "get_sec_filings",
+      "web_search",
+      "get_theses",
+      // Mint new coverage
+      "record_thesis",
+      // Optional starter trade for high-conviction picks
+      "place_trade",
+      "manage_watchlist",
+      // Finalize
+      "record_run_summary",
+      "complete_run",
+    ] as const,
+    hasSuggestConfig: false,
+    maxDuration: 240,
   },
   // ── Tactical (PR 2) ─────────────────────────────────────────────────────
   // Event-driven, single-thesis, single-decision. Spawned by tactical-run
