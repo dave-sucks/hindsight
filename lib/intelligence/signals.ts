@@ -17,6 +17,7 @@ import {
   normalizeIndustries,
   normalizeThemes,
 } from "@/lib/universe/canonical";
+import { extractDataPayload } from "@/lib/intelligence/data-payload-extractor";
 
 // ── Batch Management ─────────────────────────────────────────────────────────
 
@@ -159,10 +160,23 @@ export async function createSignalsFromSonar(
             : [forced, ...item.tickers])
         : item.tickers;
 
+      // Heuristic dataPayload extraction — pulls surprisePct, guidance
+      // direction, filing form types out of the headline+summary so the
+      // trigger evaluator can fire EARNINGS_BEAT/MISS/GUIDANCE_CHANGE/
+      // FILING predicates against real signals. Also upgrades the
+      // SignalType (NEWS → EARNINGS / FILING) when extraction succeeds,
+      // since the predicates gate on signal.type.
+      const extracted = extractDataPayload({
+        type: signalType,
+        headline: item.headline,
+        summary: item.summary,
+        sentiment: item.sentiment,
+      });
+
       const id = await createSignal({
         batchId,
         monitorId: provenance?.monitorId,
-        type: signalType,
+        type: extracted.type,
         headline: item.headline,
         summary: item.summary,
         tickers: mergedTickers,
@@ -178,6 +192,7 @@ export async function createSignalsFromSonar(
         searchTool: provenance?.searchTool,
         searchQuery: provenance?.searchQuery,
         searchContext: provenance?.searchContext,
+        dataPayload: extracted.dataPayload,
       });
       ids.push(id);
     } catch (error) {
