@@ -22,6 +22,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import {
   Activity,
   AlertTriangle,
@@ -82,7 +83,11 @@ interface TriggersResponse {
   triggers: Trigger[];
 }
 
-// ── Predicate helpers — split into icon + compact value ────────────────
+// ── Predicate helpers ──────────────────────────────────────────────────
+// Each trigger has ONE type icon + a human-readable type label + a value.
+// Type label is what the predicate IS ("Price below", "Earnings miss",
+// "Filing"). Value is the parameter ("$88", "≥3%", "8-K"). Uppercase
+// PREDICATE_KINDS never reach the user.
 
 function PredicateIcon({
   kind,
@@ -91,7 +96,7 @@ function PredicateIcon({
   kind: string;
   className?: string;
 }) {
-  const cls = className ?? "size-3";
+  const cls = className ?? "size-3.5";
   switch (kind) {
     case "PRICE_BELOW":
       return <ArrowDown className={cls} />;
@@ -125,43 +130,78 @@ function PredicateIcon({
   }
 }
 
-/** Compact value string for the right side of the pill — no leading "kind". */
+/** Human-readable type label — the LEFT side of the pill. Sentence case, no SCREAMING_CASE. */
+function predicateTypeLabel(p: TriggerPredicate): string {
+  switch (p.kind) {
+    case "PRICE_BELOW":
+      return "Price below";
+    case "PRICE_ABOVE":
+      return "Price above";
+    case "PRICE_MOVE_PCT":
+      return `Price move ${p.window ?? ""}`.trim();
+    case "VS_SMA":
+      return `${p.period}-day SMA`;
+    case "RSI":
+      return "RSI";
+    case "SIGNAL_TYPE":
+      return p.signalType
+        ? `${p.signalType[0]}${p.signalType.slice(1).toLowerCase()}`
+        : "Signal";
+    case "EARNINGS_BEAT":
+      return "Earnings beat";
+    case "EARNINGS_MISS":
+      return "Earnings miss";
+    case "GUIDANCE_CHANGE":
+      return "Guidance";
+    case "FILING":
+      return "Filing";
+    case "TIME_ELAPSED":
+      return "Time elapsed";
+    case "REVIEW_DATE_HIT":
+      return "Review due";
+    case "AND":
+      return "All of";
+    case "OR":
+      return "Any of";
+    default:
+      return p.kind;
+  }
+}
+
+/** The value/parameter — RIGHT side of the pill. Light font. */
 function predicateValue(p: TriggerPredicate): string {
   switch (p.kind) {
     case "PRICE_BELOW":
-      return `$${p.level}`;
     case "PRICE_ABOVE":
       return `$${p.level}`;
     case "PRICE_MOVE_PCT":
-      return `${p.direction === "UP" ? "+" : "−"}${p.pct}% / ${p.window}`;
+      return `${p.direction === "UP" ? "+" : "−"}${p.pct}%`;
     case "VS_SMA":
-      return `${p.direction?.toLowerCase()} ${p.period}d SMA`;
+      return p.direction?.toLowerCase() ?? "";
     case "RSI":
-      return `RSI ${p.direction?.toLowerCase()} ${p.threshold}`;
+      return `${p.direction?.toLowerCase()} ${p.threshold}`;
     case "SIGNAL_TYPE": {
-      const parts = [p.signalType];
+      const parts: string[] = [];
       if (p.sentiment) parts.push(p.sentiment.toLowerCase());
       if (p.minUrgency) parts.push(`≥${p.minUrgency.toLowerCase()}`);
-      return parts.filter(Boolean).join(" · ");
+      return parts.join(" · ") || "any";
     }
     case "EARNINGS_BEAT":
-      return p.minSurprisePct ? `Beat ≥${p.minSurprisePct}%` : "Beat";
     case "EARNINGS_MISS":
-      return p.minSurprisePct ? `Miss ≥${p.minSurprisePct}%` : "Miss";
+      return p.minSurprisePct ? `≥${p.minSurprisePct}%` : "any";
     case "GUIDANCE_CHANGE":
-      return `Guidance ${p.direction?.toLowerCase()}`;
+      return p.direction?.toLowerCase() ?? "";
     case "FILING":
-      return p.formType ?? "Filing";
+      return p.formType ?? "";
     case "TIME_ELAPSED":
-      return `${p.days}d elapsed`;
+      return `${p.days}d`;
     case "REVIEW_DATE_HIT":
-      return "Review date";
+      return "—";
     case "AND":
-      return `${(p.predicates ?? []).length} all`;
     case "OR":
-      return `${(p.predicates ?? []).length} any`;
+      return `${(p.predicates ?? []).length}`;
     default:
-      return p.kind.toLowerCase();
+      return "";
   }
 }
 
@@ -206,6 +246,10 @@ function predicateDescription(p: TriggerPredicate): string {
 }
 
 // ── Action helpers ──────────────────────────────────────────────────────
+// Action is what the trigger DOES when it fires — EXIT, REVIEW, ADD,
+// TRIM, MOVE_STOP. It does NOT belong on the pill (pill describes the
+// WHEN, not the WHAT). Action surfaces in the popover only. The dot
+// color in the popover header carries the visual signal.
 
 function ActionIcon({
   action,
@@ -214,7 +258,7 @@ function ActionIcon({
   action: string;
   className?: string;
 }) {
-  const cls = className ?? "size-3";
+  const cls = className ?? "size-3.5";
   switch (action) {
     case "EXIT":
       return <DoorOpen className={cls} />;
@@ -230,20 +274,35 @@ function ActionIcon({
   }
 }
 
-function actionVariant(
-  action: string,
-): "negative" | "positive" | "secondary" | "outline" {
+function actionDotClass(action: string): string {
   switch (action) {
     case "EXIT":
-      return "negative";
+      return "bg-red-500";
     case "ADD":
-      return "positive";
+      return "bg-emerald-500";
     case "TRIM":
+      return "bg-amber-500";
     case "MOVE_STOP":
-      return "secondary";
+      return "bg-blue-500";
     case "REVIEW":
     default:
-      return "outline";
+      return "bg-muted-foreground/60";
+  }
+}
+
+function actionLabel(action: string): string {
+  switch (action) {
+    case "EXIT":
+      return "Exit position";
+    case "ADD":
+      return "Scale in";
+    case "TRIM":
+      return "Trim position";
+    case "MOVE_STOP":
+      return "Move stop";
+    case "REVIEW":
+    default:
+      return "Review";
   }
 }
 
@@ -276,6 +335,13 @@ function fmtFiredAt(iso?: string): string {
 }
 
 // ── Trigger pill (ButtonGroup + Popover) ────────────────────────────────
+// Structure:
+//   [ icon · Type label ] | [ value ]
+//
+// Both halves use the same `secondary` ButtonGroupText background — the
+// ButtonGroupSeparator is a clean full-height divider, no floating bar
+// effect. Type label uses medium weight, value uses regular. Action
+// (EXIT / REVIEW / ADD / etc.) lives only in the popover.
 
 function TriggerPill({
   trigger,
@@ -286,44 +352,72 @@ function TriggerPill({
   firing: boolean;
   onTestFire: () => void;
 }) {
-  const variant = actionVariant(trigger.action);
+  const value = predicateValue(trigger.predicate);
   return (
     <Popover>
       <PopoverTrigger
-        render={
-          <ButtonGroup className="cursor-pointer transition-opacity hover:opacity-80" />
-        }
+        render={<ButtonGroup className="cursor-pointer" />}
       >
         <Badge
-          variant={variant}
-          className="rounded-r-none gap-1 font-medium"
+          variant="secondary"
+          className="rounded-r-none gap-1.5 font-medium"
         >
-          <ActionIcon action={trigger.action} />
-          {trigger.action}
+          <PredicateIcon
+            kind={trigger.predicate.kind}
+            className="size-3 text-muted-foreground"
+          />
+          {predicateTypeLabel(trigger.predicate)}
         </Badge>
-        <ButtonGroupSeparator />
-        <Badge
-          variant="outline"
-          className="rounded-l-none gap-1 font-normal text-muted-foreground tabular-nums"
-        >
-          <PredicateIcon kind={trigger.predicate.kind} />
-          {predicateValue(trigger.predicate)}
-        </Badge>
+        {value ? (
+          <>
+            <ButtonGroupSeparator />
+            <Badge
+              variant="secondary"
+              className="rounded-l-none font-normal text-muted-foreground tabular-nums"
+            >
+              {value}
+            </Badge>
+          </>
+        ) : null}
       </PopoverTrigger>
-      <PopoverContent side="left" align="start" className="w-80 space-y-3">
-        <div className="flex items-center gap-2">
-          <Badge variant={variant} className="gap-1 font-medium">
-            <ActionIcon action={trigger.action} />
-            {trigger.action}
-          </Badge>
-          <span className="text-sm font-medium tabular-nums truncate">
-            {predicateValue(trigger.predicate)}
-          </span>
+      <PopoverContent side="left" align="start" className="w-72 space-y-3">
+        {/* Header — type label + value, just like the pill */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-sm">
+            <PredicateIcon
+              kind={trigger.predicate.kind}
+              className="size-4 text-muted-foreground"
+            />
+            <span className="font-medium">
+              {predicateTypeLabel(trigger.predicate)}
+            </span>
+            {value ? (
+              <span className="text-muted-foreground tabular-nums ml-auto">
+                {value}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {predicateDescription(trigger.predicate)}
+          </p>
         </div>
 
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          {predicateDescription(trigger.predicate)}
-        </p>
+        {/* Action row — what happens when this fires */}
+        <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-2">
+          <span
+            className={cn(
+              "size-1.5 rounded-full shrink-0",
+              actionDotClass(trigger.action),
+            )}
+          />
+          <ActionIcon
+            action={trigger.action}
+            className="size-3.5 text-muted-foreground"
+          />
+          <span className="text-xs font-medium">
+            {actionLabel(trigger.action)}
+          </span>
+        </div>
 
         {trigger.rationale ? (
           <p className="text-xs leading-relaxed">{trigger.rationale}</p>
@@ -331,15 +425,15 @@ function TriggerPill({
 
         <Separator />
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+        <div className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-xs">
           <span className="text-muted-foreground">Last fired</span>
-          <span className="text-foreground tabular-nums">
+          <span className="text-foreground tabular-nums text-right">
             {fmtFiredAt(trigger.lastFiredAt)}
           </span>
           {trigger.cooldownDays ? (
             <>
               <span className="text-muted-foreground">Cooldown</span>
-              <span className="text-foreground tabular-nums">
+              <span className="text-foreground tabular-nums text-right">
                 {trigger.cooldownDays}d
               </span>
             </>
