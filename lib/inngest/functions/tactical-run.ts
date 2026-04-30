@@ -224,6 +224,30 @@ export const tacticalRun = inngest.createFunction(
       });
     });
 
+    // ── Write TRIGGER_FIRED audit row ─────────────────────────────────
+    // Marks the moment the predicate matched, regardless of what the
+    // agent decides next. The agent's update_thesis at the end writes
+    // a separate UPDATED/REVIEWED row for the response. Two rows per
+    // tactical fire — one for "predicate matched," one for "agent
+    // responded." Without this, RunInput.triggersFiredSinceLastRun
+    // returns empty even when triggers genuinely fired.
+    await step.run("write-trigger-fired", async () => {
+      const summary = signal
+        ? `${trigger.action} trigger matched: ${fired.predicateKind} on ${signal.type} signal "${signal.headline.slice(0, 100)}"`
+        : `${trigger.action} trigger matched: ${fired.predicateKind} (price/time)`;
+      await prisma.thesisUpdate.create({
+        data: {
+          thesisId: thesis.id,
+          type: "TRIGGER_FIRED",
+          summary,
+          rationale: trigger.rationale,
+          triggerId: trigger.id,
+          signalIds: signal ? [signal.id] : [],
+          runId: run.id,
+        },
+      });
+    });
+
     // ── Run the agent ─────────────────────────────────────────────────
     const outcome = await step.run("agent-run", async () => {
       const t0 = Date.now();
@@ -300,8 +324,14 @@ export const tacticalRun = inngest.createFunction(
 
         // Verify update_thesis was actually called for this thesis (the
         // close-out contract). If not, mark FAILED so the operator sees it.
+        // Excludes the TRIGGER_FIRED row WE wrote in write-trigger-fired —
+        // we're checking for the AGENT's response, not our audit row.
         const update = await prisma.thesisUpdate.findFirst({
-          where: { runId: run.id, thesisId: thesis.id },
+          where: {
+            runId: run.id,
+            thesisId: thesis.id,
+            type: { not: "TRIGGER_FIRED" },
+          },
           select: { id: true },
         });
         const closedOut = update !== null;
