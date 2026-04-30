@@ -191,7 +191,7 @@ export async function POST(
 
       if (runInput) {
         console.log(
-          `[agent/${agentMode}] positions=${runInput.portfolio.positions.length} watchlist=${runInput.watchlist.length} hasBrief=${!!runInput.priorBrief}`,
+          `[agent/${agentMode}] positions=${runInput.portfolio.positions.length} watchlist=${runInput.watchlist.length} theses=${runInput.activeTheses.length}`,
         );
       }
 
@@ -217,10 +217,11 @@ export async function POST(
             portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
             watchlist: [],
             activeTheses: [],
-            priorBrief: null,
             performance: null,
             recentClosedTrades: [],
             priorityReviews: null,
+            triggersFiredSinceLastRun: [],
+            triggersMatchingNow: [],
             intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
           });
 

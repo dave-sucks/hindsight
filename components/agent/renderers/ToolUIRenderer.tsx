@@ -137,7 +137,6 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
  * progressLabel. Keep these short; the per-tool progressLabel is preferred.
  */
 const TOOL_LABELS: Record<string, string> = {
-  read_morning_brief: "Morning brief",
   read_signals: "Signals",
   read_artifact: "Reading article",
   web_search: "Web search",

@@ -261,8 +261,8 @@ export const TEAMS: Team[] = [
     model: "GPT-4o",
     schedule: "8:00 AM ET weekdays + on demand",
     substeps: [
-      { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references prior brief's watch-tomorrow triggers and priority reviews. Plain text — no tools." },
-      { title: "Stage 1 — Orient", summary: "read_morning_brief, read_signals (returns three buckets: portfolio / watchlist / discovery, each with signalId for provenance), read_artifact on any signal worth a deep read. web_search only for niche verification within budget." },
+      { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references priority reviews flagged by the price monitor. Plain text — no tools." },
+      { title: "Stage 1 — Orient", summary: "read_signals (returns three buckets: portfolio / watchlist / discovery, each with signalId for provenance), get_theses(include_history: true) for the durable thesis library, read_artifact on any signal worth a deep read. web_search only for niche verification within budget." },
       { title: "Stage 2 — Research", summary: "get_portfolio_context first (live P&L, days held, distance from peak, original thesis). Then get_stock_data on every holding, every priority review, watchlist HIGH/flagged items, and ≥2 discovery candidates not already in portfolio or watchlist." },
       { title: "Stage 3 — Theses", summary: "record_thesis for every researched ticker (LONG / SHORT / PASS). source_kind is mandatory; source_signal_ids required for ROUTED_SIGNAL, source_rationale required otherwise. Prior theses on the same ticker auto-supersede. Signal IDs flip their AnalystSignalRoute status to ACTED_ON in the same transaction." },
       { title: "Stage 4 — Act", summary: "Per-position discipline: close_position or manage_position (partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop, add_to_position) for every existing holding, or explicit 'hold unchanged' narration. Then place_trade for new entries. Then manage_watchlist for adds/removes." },
@@ -271,7 +271,6 @@ export const TEAMS: Team[] = [
     ],
     tools: [
       // Intelligence (Stage 1)
-      { name: "read_morning_brief", provider: "internal", summary: "Pre-generated intelligence brief with market context, alerts, and opportunities — grounded to today's routes only." },
       { name: "read_signals", provider: "internal", summary: "Routed signals in three buckets: portfolioSignals, watchlistSignals, discoverySignals. Every signal carries signalId for thesis provenance. Reading flips route status PENDING → READ." },
       { name: "read_artifact", provider: "internal", summary: "Full extracted article content (clean markdown from Firecrawl) behind a signal. Agent passes artifactId from the signal record." },
       { name: "web_search", provider: "perplexity", summary: "Live Perplexity Sonar search for breaking news or niche topics. Respects intelligencePolicy.allowLiveSearch and liveSearchBudget.",
@@ -457,13 +456,6 @@ export interface RegistryTool {
 
 export const TOOL_REGISTRY: RegistryTool[] = [
   // ── Intelligence (Stage 1 — read pre-gathered data) ──────────────────
-  {
-    name: "read_morning_brief",
-    category: "intelligence",
-    summary: "Today's pre-generated intelligence brief — market context, portfolio alerts, watchlist updates, new opportunities, attention priority, risk flags. Grounded to today's routes only.",
-    providers: ["internal"],
-    agents: ["agent"],
-  },
   {
     name: "read_signals",
     category: "intelligence",

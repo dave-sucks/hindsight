@@ -86,15 +86,6 @@ export interface RunInput {
     runId: string;
     status: string;
   }>;
-  priorBrief: {
-    date: string;
-    narrative: string;
-    strategyNotes: string | null;
-    marketPosture: string | null;
-    watchTomorrow: Array<{ symbol: string; trigger: string; suggestedAction: string; priority?: string }> | null;
-    unresolvedItems: Array<{ item: string; impact: string; affectedPositions?: string[] }> | null;
-    selfCorrections: Array<{ observation: string; adjustment: string }> | null;
-  } | null;
   performance: {
     winRate: number | null;
     totalTrades: number;
@@ -124,6 +115,37 @@ export interface RunInput {
     targetOrStop: number | null;
     reason: string;
   }> | null;
+  // PR 3 — triggers that fired since the prior successful run for this
+  // analyst (signal-driven via trigger-evaluator + price-cron via the
+  // 15-min cron). The agent uses this as the priority queue for Step 2:
+  // any thesis listed here is a MUST-research today. Empty array means
+  // nothing fired since last run; the agent walks theses on schedule
+  // (nextReviewAt) instead.
+  triggersFiredSinceLastRun: Array<{
+    thesisId: string;
+    ticker: string;
+    triggerId: string;
+    action: string;
+    predicateSummary: string;
+    rationale: string;
+    firedAt: string;
+  }>;
+  // PR 3 — server-side evaluation of price-side predicates against fresh
+  // quotes RIGHT NOW. Independent of trigger-evaluator's async delivery
+  // path — we re-evaluate at run start so the agent sees current state
+  // matches even if the cron hasn't picked them up yet (e.g. a price
+  // crossed the level since the last cron tick). Only price/SMA/time
+  // predicates are evaluated (signal-side ones require a signal payload
+  // to match against — handled via triggersFiredSinceLastRun).
+  triggersMatchingNow: Array<{
+    thesisId: string;
+    ticker: string;
+    triggerId: string;
+    action: string;
+    predicateSummary: string;
+    rationale: string;
+    matchDetail: string;
+  }>;
   intelligencePolicy: IntelligencePolicy;
 }
 
@@ -315,39 +337,9 @@ export async function buildRunInput(
       : 999,
   }));
 
-  // 6. Prior brief
-  let latestBriefing: {
-    narrative: string; strategyNotes: string | null; marketPosture: string | null;
-    watchTomorrow: unknown; unresolvedItems: unknown; selfCorrections: unknown;
-    createdAt: Date;
-  } | null = null;
-  try {
-    latestBriefing = await prisma.analystBriefing.findFirst({
-      where: { analystId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        narrative: true, strategyNotes: true, marketPosture: true,
-        watchTomorrow: true, unresolvedItems: true, selfCorrections: true,
-        createdAt: true,
-      },
-    });
-  } catch (err) {
-    console.error("[buildRunInput] FAILED brief:", err);
-  }
-
-  const priorBrief = latestBriefing
-    ? {
-        date: latestBriefing.createdAt.toISOString().slice(0, 10),
-        narrative: latestBriefing.narrative,
-        strategyNotes: latestBriefing.strategyNotes,
-        marketPosture: latestBriefing.marketPosture ?? null,
-        watchTomorrow: (latestBriefing.watchTomorrow as Array<{ symbol: string; trigger: string; suggestedAction: string; priority?: string }>) ?? null,
-        unresolvedItems: (latestBriefing.unresolvedItems as Array<{ item: string; impact: string; affectedPositions?: string[] }>) ?? null,
-        selfCorrections: (latestBriefing.selfCorrections as Array<{ observation: string; adjustment: string }>) ?? null,
-      }
-    : null;
-
-  // 7. Performance — load rich calibration data from the latest AccuracyReport
+  // 6. Performance — load rich calibration data from the latest AccuracyReport
+  // (Prior brief removed 2026-04-30 — agent reads durable thesis state +
+  // triggers fired since last run instead of a synthesized AnalystBriefing.)
   let latestAccuracy: {
     winRate: number | null; tradesAnalyzed: number | null;
     narrativeSummary: string | null;
@@ -519,14 +511,99 @@ export async function buildRunInput(
     }
   }
 
-  // 10. Intelligence policy
+  // ─────────────────────────────────────────────────────────────────────
+  // 10. Triggers fired since prior successful run.
+  //
+  // Source: ThesisUpdate(type='TRIGGER_FIRED') rows whose timestamp is
+  // after the previous successful run's startedAt for this analyst.
+  // First-ever run for an analyst → use 7d ago as the lookback window
+  // so we still surface recent fires (the cron may have run before the
+  // first daily run on a freshly-enabled analyst).
+  // ─────────────────────────────────────────────────────────────────────
+  let triggersFiredSinceLastRun: RunInput["triggersFiredSinceLastRun"] = [];
+  try {
+    const priorRun = await prisma.researchRun.findFirst({
+      where: {
+        agentConfigId: analystId,
+        status: "COMPLETE",
+        mode: "MORNING_PLAN",
+      },
+      orderBy: { startedAt: "desc" },
+      select: { startedAt: true },
+    });
+    const since = priorRun?.startedAt ?? new Date(Date.now() - 7 * 86_400_000);
+
+    const fires = await prisma.thesisUpdate.findMany({
+      where: {
+        timestamp: { gte: since },
+        type: "TRIGGER_FIRED",
+        thesis: { researchRun: { agentConfigId: analystId } },
+      },
+      orderBy: { timestamp: "desc" },
+      take: 100,
+      select: {
+        thesisId: true,
+        triggerId: true,
+        timestamp: true,
+        summary: true,
+        rationale: true,
+        thesis: { select: { ticker: true, triggers: true } },
+      },
+    });
+
+    triggersFiredSinceLastRun = fires.map((f) => {
+      // Pull the trigger's predicate description out of the stored JSON.
+      // Falls back to a generic label if the trigger has been deleted.
+      const triggers = Array.isArray(f.thesis.triggers)
+        ? (f.thesis.triggers as unknown[])
+        : [];
+      const t = triggers.find(
+        (x): x is { id: string; action: string; predicate: { kind: string } } =>
+          typeof x === "object" &&
+          x != null &&
+          "id" in (x as object) &&
+          (x as { id: unknown }).id === f.triggerId,
+      );
+      return {
+        thesisId: f.thesisId,
+        ticker: f.thesis.ticker,
+        triggerId: f.triggerId ?? "",
+        action: t?.action ?? "REVIEW",
+        predicateSummary: t?.predicate.kind ?? "(predicate removed)",
+        rationale: f.rationale ?? f.summary ?? "",
+        firedAt: f.timestamp.toISOString(),
+      };
+    });
+  } catch (err) {
+    console.error("[buildRunInput] FAILED triggersFiredSinceLastRun:", err);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 11. Triggers matching RIGHT NOW (server-side evaluation against fresh
+  // quotes). Picks up price-side predicate matches independent of the
+  // 15-min cron's delivery cycle.
+  // ─────────────────────────────────────────────────────────────────────
+  let triggersMatchingNow: RunInput["triggersMatchingNow"] = [];
+  try {
+    const { evaluateLiveTriggerMatches } = await import(
+      "@/lib/agent/triggers/live-evaluate"
+    );
+    triggersMatchingNow = await evaluateLiveTriggerMatches({
+      analystId,
+      alpacaCreds,
+    });
+  } catch (err) {
+    console.error("[buildRunInput] FAILED triggersMatchingNow:", err);
+  }
+
+  // 12. Intelligence policy
   const intelligencePolicy = parseIntelligencePolicy(
     (config as Record<string, unknown>).intelligencePolicy
   );
 
   // ── Structured load summary ────────────────────────────────────────
   console.log(
-    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} priorityReviews=${priorityReviews?.length ?? 0} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
+    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} triggersFired=${triggersFiredSinceLastRun.length} triggersLive=${triggersMatchingNow.length} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} priorityReviews=${priorityReviews?.length ?? 0} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
   );
 
   return {
@@ -572,10 +649,11 @@ export async function buildRunInput(
       runId: t.researchRunId,
       status: t.status,
     })),
-    priorBrief,
     performance,
     recentClosedTrades,
     priorityReviews,
+    triggersFiredSinceLastRun,
+    triggersMatchingNow,
     intelligencePolicy,
   };
 }

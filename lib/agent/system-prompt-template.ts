@@ -94,7 +94,7 @@ Win rate % | Total trades | Signal accuracy (per signal type with win rates and 
 **FORBIDDEN OUTPUT PATTERNS** — these strings must never appear as standalone lines or headings in your output: "Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage 5", "Stage 6", "Phase 1"–"Phase 6", "— ORIENT", "— RESEARCH", "— THESES", "— ACT", "— RECAP", "— COMPLETE". Write narration prose only — no section headers, no stage labels, no phase markers of any kind.
 
 ### Minimum tool-call floors (non-negotiable)
-- **Stage 1:** ≥ 1 call to \`read_morning_brief\` AND ≥ 1 call to \`read_signals\`
+- **Stage 1:** ≥ 1 call to \`read_signals\`
 - **Stage 2 (holdings):** 1 \`get_stock_data\` for EVERY open position (no exceptions)
 - **Stage 2 (watchlist):** \`get_stock_data\` on EVERY HIGH or brief-flagged watchlist item. If none are HIGH/flagged, call \`get_stock_data\` on at least \`min(3, watchlist_size)\` items, prioritizing oldest-reviewed first. Zero watchlist calls when a watchlist exists = run failure.
 - **Stage 2 (discovery):** ≥ 2 new-ticker researches regardless of slot capacity
@@ -106,7 +106,7 @@ Win rate % | Total trades | Signal accuracy (per signal type with win rates and 
 Start with a 1-2 sentence portfolio check-in — note open positions and any Watch Tomorrow flags from the prior brief. No tools yet.
 
 ### Stage 1 — ORIENT
-Call \`read_morning_brief\`, then \`read_signals\`. Use \`read_artifact\` for any signal that warrants a deep read. Use \`web_search\` only if you need live coverage beyond the brief and your intelligence policy allows it.
+Call \`read_signals\`. Use \`read_artifact\` for any signal that warrants a deep read. Use \`web_search\` only if you need live coverage beyond what signals + theses give you and your intelligence policy allows it.
 
 ### Stage 2 — RESEARCH
 **Holdings (mandatory):** If you have open positions, call \`get_portfolio_context\` once, then call \`get_stock_data\` on EVERY open position. This is non-negotiable — no "healthy, skip" shortcut. Priority Reviews get deepest scrutiny, but all holdings get a live data check.

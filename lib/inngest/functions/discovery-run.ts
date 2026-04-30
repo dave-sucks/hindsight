@@ -1,0 +1,203 @@
+// ── Discovery Run ──────────────────────────────────────────────────────
+// Weekly cron — Sundays 9 AM ET. Per-analyst spawn of a focused
+// discovery agent that finds net-new ticker coverage worth WATCHING.
+//
+// Why a separate cron from the daily run: the daily run is allowed
+// to skip discovery (slots full, hostile regime, no candidates). The
+// weekly cron is the safety net so we never go weeks without
+// scanning the universe.
+//
+// Why Sunday 9 AM ET: markets are closed (no race against opening
+// price moves), the prior week's signals have all landed, and the
+// new WATCHING theses are ready in time for Monday morning's daily
+// run to pick them up via the per-thesis review loop.
+
+import { inngest } from "@/lib/inngest/client";
+import { prisma } from "@/lib/prisma";
+import { generateText, stepCountIs } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { createResearchTools } from "@/lib/agent/tools";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { buildDiscoverySystemPrompt } from "@/lib/agent/system-prompts/discovery";
+import { MODES } from "@/lib/agent/modes";
+
+export const discoveryRun = inngest.createFunction(
+  {
+    id: "discovery-run",
+    name: "Weekly Discovery Run",
+    concurrency: { limit: 1 },
+    retries: 1,
+  },
+  [
+    // 9 AM ET Sundays. Inngest auto-handles EDT/EST.
+    { cron: "TZ=America/New_York 0 9 * * 0" },
+    // Manual fire — useful for one-off testing.
+    { event: "app/discovery.run.manual" },
+  ],
+  async ({ event, step }) => {
+    const targetConfigId =
+      (event as { data?: { agentConfigId?: string } })?.data?.agentConfigId ??
+      null;
+
+    const configs = await step.run("load-agent-configs", async () => {
+      return prisma.agentConfig.findMany({
+        where: {
+          enabled: true,
+          ...(targetConfigId ? { id: targetConfigId } : {}),
+        },
+      });
+    });
+
+    if (configs.length === 0) {
+      return { ran: 0, reason: "no-enabled-configs" };
+    }
+
+    let totalNewTheses = 0;
+
+    for (const config of configs) {
+      const result = await step.run(`discovery-${config.id}`, async () => {
+        const t0 = Date.now();
+
+        // Load the analyst's existing thesis tickers (active + watching)
+        // so the discovery prompt knows what NOT to re-cover.
+        const existingTheses = await prisma.thesis.findMany({
+          where: {
+            researchRun: { agentConfigId: config.id },
+            status: { in: ["ACTIVE", "WATCHING"] },
+          },
+          select: { ticker: true },
+          distinct: ["ticker"],
+        });
+        const existingTickers = existingTheses.map(
+          (t: { ticker: string }) => t.ticker,
+        );
+
+        const run = await prisma.researchRun.create({
+          data: {
+            userId: config.userId,
+            agentConfigId: config.id,
+            source: "AGENT",
+            status: "RUNNING",
+            mode: "DISCOVERY",
+            parameters: {
+              triggeredBy: targetConfigId
+                ? "discovery-manual"
+                : "discovery-cron",
+              agentMode: true,
+              analystName: config.name,
+              existingTickerCount: existingTickers.length,
+            } as object,
+          },
+        });
+
+        console.log(
+          `[discovery-run] Starting for ${config.name} (config=${config.id}, run=${run.id}, existing=${existingTickers.length})`,
+        );
+
+        const alpacaCreds =
+          (await resolveAlpacaCredentials(config.userId)) ?? undefined;
+
+        const allTools = createResearchTools({
+          runId: run.id,
+          userId: config.userId,
+          analystId: config.id,
+          watchlist: config.watchlist ?? [],
+          exclusionList: config.exclusionList ?? [],
+          sectors: config.sectors ?? [],
+          maxPositionSize: Number(config.maxPositionSize),
+          maxOpenPositions: config.maxOpenPositions,
+          minConfidence: config.minConfidence,
+          alpacaCreds,
+        });
+
+        const allowlist = MODES["discovery"].toolAllowlist;
+        const tools = allowlist
+          ? Object.fromEntries(
+              allowlist
+                .map(
+                  (name) =>
+                    [name, allTools[name as keyof typeof allTools]] as const,
+                )
+                .filter(([, v]) => v != null),
+            )
+          : allTools;
+
+        const systemPrompt = buildDiscoverySystemPrompt({
+          config: {
+            name: config.name,
+            analystPrompt: config.analystPrompt ?? undefined,
+            sectors: config.sectors,
+            industries: config.industries,
+            themes: config.themes,
+            exclusionList: config.exclusionList,
+          },
+          existingTickers,
+        });
+
+        try {
+          const { steps } = await generateText({
+            model: openai(MODES["discovery"].model),
+            system: systemPrompt,
+            prompt:
+              "Begin your weekly discovery scan. Walk read_signals, score the top 2-3 fresh candidates, mint up to 5 new theses. Skip tickers already in your library.",
+            tools,
+            providerOptions: { openai: { strictJsonSchema: true } },
+            stopWhen: stepCountIs(MODES["discovery"].maxSteps),
+            abortSignal: AbortSignal.timeout(
+              (MODES["discovery"].maxDuration - 30) * 1000,
+            ),
+          });
+
+          const toolCalls = steps.reduce(
+            (sum, s) => sum + (s.toolCalls?.length ?? 0),
+            0,
+          );
+          const elapsed = Date.now() - t0;
+
+          // Count new theses minted by this run.
+          const newTheses = await prisma.thesis.count({
+            where: { researchRunId: run.id },
+          });
+
+          // The run is COMPLETE if record_run_summary fired (via
+          // RunEvent type='run_summary'). Discovery may legitimately
+          // mint 0 theses if no candidates clear the bar — the
+          // record_run_summary call is the success signal.
+          const summaryEvent = await prisma.runEvent.findFirst({
+            where: { runId: run.id, type: "run_summary" },
+            select: { id: true },
+          });
+          const ranSummary = summaryEvent !== null;
+
+          await prisma.researchRun.updateMany({
+            where: { id: run.id, status: "RUNNING" },
+            data: {
+              status: ranSummary ? "COMPLETE" : "FAILED",
+              completedAt: new Date(),
+            },
+          });
+
+          console.log(
+            `[discovery-run] ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms, ${newTheses} new theses, ranSummary=${ranSummary}`,
+          );
+
+          return { newTheses, steps: steps.length, toolCalls, elapsed };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "unknown";
+          console.error(`[discovery-run] ${config.name} FAILED: ${msg}`);
+          await prisma.researchRun.updateMany({
+            where: { id: run.id, status: "RUNNING" },
+            data: { status: "FAILED", completedAt: new Date() },
+          });
+          return { error: msg };
+        }
+      });
+
+      if (result && typeof result === "object" && "newTheses" in result) {
+        totalNewTheses += (result as { newTheses: number }).newTheses;
+      }
+    }
+
+    return { ran: configs.length, totalNewTheses };
+  },
+);

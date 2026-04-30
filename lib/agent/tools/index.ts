@@ -19,7 +19,6 @@ import { getEarningsCalendar } from "./get-earnings-calendar";
 import { getMarketMovers } from "./get-market-movers";
 import { getOptionsFlow } from "./get-options-flow";
 import { getSecFilings } from "./get-sec-filings";
-import { readMorningBrief } from "./read-morning-brief";
 import { readSignals } from "./read-signals";
 import { readArtifact } from "./read-artifact";
 import { webSearch } from "./web-search";
@@ -85,7 +84,6 @@ export function createResearchTools(ctx: ToolCtx) {
     get_market_movers: getMarketMovers(newCtx),
     get_options_flow: getOptionsFlow(newCtx),
     get_sec_filings: getSecFilings(newCtx),
-    read_morning_brief: readMorningBrief(newCtx),
     read_signals: readSignals(newCtx),
     read_artifact: readArtifact(newCtx),
     web_search: webSearch(newCtx),
@@ -127,7 +125,6 @@ export { getEarningsCalendar } from "./get-earnings-calendar";
 export { getMarketMovers } from "./get-market-movers";
 export { getOptionsFlow } from "./get-options-flow";
 export { getSecFilings } from "./get-sec-filings";
-export { readMorningBrief } from "./read-morning-brief";
 export { readSignals } from "./read-signals";
 export { readArtifact } from "./read-artifact";
 export { webSearch } from "./web-search";
