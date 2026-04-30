@@ -5,6 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { encryptAndPack, unpackAndDecrypt } from "@/lib/crypto";
 import { getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import { revalidatePath } from "next/cache";
+import {
+  verifyElevenLabsKey,
+  listVoices,
+  type ElevenLabsVoice,
+} from "@/lib/podcast/elevenlabs";
 
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 
@@ -192,6 +197,148 @@ export async function reverifyApiKey(
     }
   } catch (err) {
     return { success: false, verified: false, error: err instanceof Error ? err.message : "Verification failed" };
+  }
+}
+
+// ─── Resolve credentials for a user ──────────────────────────────────────────
+// Used by agent routes and crons to get Alpaca creds.
+// Returns null if no user key found (callers fall back to env vars).
+
+// ─── ElevenLabs API key ───────────────────────────────────────────────────────
+// ElevenLabs uses a single API key (no secret). We store encryptedSecret as an
+// encrypted empty string to satisfy the non-nullable DB column.
+
+export async function getElevenLabsKeyStatus(): Promise<ApiKeyStatus> {
+  const userId = await getServerUserId();
+  const row = await prisma.userApiKey.findUnique({
+    where: { userId_provider: { userId, provider: "ELEVENLABS" } },
+    select: {
+      provider: true,
+      keyHint: true,
+      verified: true,
+      verifiedAt: true,
+      paperMode: true,
+      label: true,
+    },
+  });
+
+  if (!row) {
+    return {
+      hasKey: false,
+      provider: "ELEVENLABS",
+      keyHint: null,
+      verified: false,
+      verifiedAt: null,
+      paperMode: false,
+      label: null,
+    };
+  }
+
+  return {
+    hasKey: true,
+    provider: row.provider,
+    keyHint: row.keyHint,
+    verified: row.verified,
+    verifiedAt: row.verifiedAt?.toISOString() ?? null,
+    paperMode: row.paperMode,
+    label: row.label,
+  };
+}
+
+export async function saveElevenLabsKey(
+  apiKey: string,
+): Promise<{ success: boolean; verified: boolean; error?: string }> {
+  try {
+    const userId = await getServerUserId();
+    const encryptedKey = encryptAndPack(apiKey);
+    const encryptedSecret = encryptAndPack(""); // no secret for ElevenLabs
+    const keyHint = `...${apiKey.slice(-4)}`;
+
+    const verified = await verifyElevenLabsKey(apiKey);
+    const verifiedAt = verified ? new Date() : null;
+
+    await prisma.userApiKey.upsert({
+      where: { userId_provider: { userId, provider: "ELEVENLABS" } },
+      create: {
+        userId,
+        provider: "ELEVENLABS",
+        encryptedKey,
+        encryptedSecret,
+        keyHint,
+        paperMode: false,
+        verified,
+        verifiedAt,
+      },
+      update: {
+        encryptedKey,
+        encryptedSecret,
+        keyHint,
+        verified,
+        verifiedAt,
+      },
+    });
+
+    revalidatePath("/settings");
+    return { success: true, verified };
+  } catch (err) {
+    console.error("[api-keys] saveElevenLabsKey error:", err);
+    return {
+      success: false,
+      verified: false,
+      error: err instanceof Error ? err.message : "Failed to save API key",
+    };
+  }
+}
+
+export async function deleteElevenLabsKey(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const userId = await getServerUserId();
+    await prisma.userApiKey.delete({
+      where: { userId_provider: { userId, provider: "ELEVENLABS" } },
+    });
+    revalidatePath("/settings");
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete API key",
+    };
+  }
+}
+
+/** Resolve ElevenLabs API key for use in Inngest jobs (no user session). */
+export async function resolveElevenLabsKey(
+  userId: string,
+): Promise<string | null> {
+  const row = await prisma.userApiKey.findUnique({
+    where: { userId_provider: { userId, provider: "ELEVENLABS" } },
+    select: { encryptedKey: true },
+  });
+  if (!row) return null;
+  try {
+    return unpackAndDecrypt(row.encryptedKey);
+  } catch (err) {
+    console.error("[api-keys] Failed to decrypt ElevenLabs key for user", userId, err);
+    return null;
+  }
+}
+
+/**
+ * Fetch ElevenLabs voice list for the current user.
+ * Returns empty array when no key is saved or the API call fails.
+ */
+export async function getElevenLabsVoices(): Promise<ElevenLabsVoice[]> {
+  try {
+    const userId = await getServerUserId();
+    const apiKey = await resolveElevenLabsKey(userId);
+    if (!apiKey) return [];
+    return await listVoices(apiKey);
+  } catch (err) {
+    console.error("[api-keys] getElevenLabsVoices error:", err);
+    return [];
   }
 }
 

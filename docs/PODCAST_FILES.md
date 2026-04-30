@@ -52,7 +52,7 @@ Sorting: four categories, in this order.
 
 | File | Notes |
 |------|-------|
-| `lib/actions/podcast.actions.ts` | All podcast/segment/episode/transcript CRUD + run-kicking. Exports `getPodcastList`, `getPodcastDetail` (with `latestTranscript` carried inline per segment — Session 1), `getSegmentTranscript`, `createPodcastFromBuilder`, `updateSegment`, `updatePodcastBasics`, `addSegmentMonitor`, `removeSegmentMonitor`, `deletePodcast`, `runSegment` (creates a `ResearchRun` tied to a segment — server action, not an API route), `updatePodcastFromEditor` (Session 1, mirror of `updateAnalystFromBuilder`), `createEpisodeFromTranscripts` / `getEpisode` / `listEpisodesForPodcast` (Session 1). |
+| `lib/actions/podcast.actions.ts` | All podcast/segment/episode/transcript CRUD + run-kicking. Exports `getPodcastList`, `getPodcastDetail` (with `latestTranscript` carried inline per segment — Session 1), `getSegmentTranscript`, `createPodcastFromBuilder`, `updateSegment`, `updatePodcastBasics` (now accepts `voiceId` — Session 2), `updatePodcastVoice` (Session 2), `addSegmentMonitor`, `removeSegmentMonitor`, `deletePodcast`, `runSegment` (creates a `ResearchRun` tied to a segment — server action, not an API route), `updatePodcastFromEditor` (Session 1), `createEpisodeFromTranscripts` / `getEpisode` (now includes `audioUrl` — Session 2) / `listEpisodesForPodcast` (Session 1), `triggerEpisodeAudio` (Session 2 — validates ownership, sets ASSEMBLING, dispatches Inngest event). |
 
 ### Pages
 
@@ -63,7 +63,7 @@ Sorting: four categories, in this order.
 | `app/(root)/podcasts/new/client.tsx` | Builder client (mirrors `app/(root)/analysts/new/client.tsx`). |
 | `app/(root)/podcasts/[id]/page.tsx` | Podcast detail. Segments live as cards on this page (no separate segment route); the per-segment settings sheet handles all editing. Session 1 also loads `episodes` server-side and passes them into `PodcastDetailClient`. |
 | `app/(root)/podcasts/[id]/edit/page.tsx` | Podcast editor route (Session 1). Mirror of `/analysts/[id]/edit/page.tsx`. Server-loads the podcast detail and renders `PodcastEditClient`. |
-| `app/(root)/podcasts/[id]/episodes/[episodeId]/page.tsx` | Episode detail page (Session 1). Server-renders the assembled episode using `TickerMarkdown` per segment + per-transcript citations list. Reuses the `BriefDetailDialog` body layout pattern (header strip → scrollable body → per-segment sections). Text-only — audio is Phase 2/3. |
+| `app/(root)/podcasts/[id]/episodes/[episodeId]/page.tsx` | Episode detail page (Session 1). **Session 2:** Added `<audio controls>` player (shown when `episode.audioUrl` is set), "Generate audio" button (shows cost estimate, explicit click required), and ASSEMBLING status. Server-computes char count for cost display; renders `GenerateAudioButton` client component. |
 
 ### Components — Podcast surfaces
 
@@ -80,7 +80,7 @@ analyst surface in look and feel.
 |------|-------|
 | `components/podcasts/PodcastsPageClient.tsx` | Top-level list grid + new-podcast empty state. |
 | `components/podcasts/PodcastDetailClient.tsx` | Mirror of `AnalystDetailClient`: 3-col grid, header with stats, tabs (Segments / Episodes / Findings), right-rail with quick-run + recent transcripts, floating composer, `PodcastConfigSheet`. Session 1 added: Episodes tab list + Assemble CTA, Findings tab, "Edit with AI" 3-dot entry routing to `/podcasts/[id]/edit`, segment cards opening latest transcript via `TranscriptDialog`, right-rail `TranscriptRow` rows. |
-| `components/podcasts/PodcastConfigSheet.tsx` | Mirror of `AnalystConfigSheet` for podcast-level metadata (name, description, host style, cadence, voice). Reuses `Section` / `FieldGroup` / `RowLabel`. |
+| `components/podcasts/PodcastConfigSheet.tsx` | Mirror of `AnalystConfigSheet` for podcast-level metadata (name, description, host style, cadence, voice). Reuses `Section` / `FieldGroup` / `RowLabel`. **Session 2:** Voice section now has a live `Select` populated from `getElevenLabsVoices()` — fetched once on sheet open, cached in component state. Falls back to "add ElevenLabs key in Settings" hint when no key is configured. |
 | `components/podcasts/SegmentConfigForm.tsx` | Segment analog of `AnalystConfigForm` with the same Brief / Monitors / Settings tab structure. Imports primitives directly from `AnalystConfigForm` so the visual language is identical. Monitors tab manages segment search-monitors inline. |
 | `components/podcasts/SegmentConfigSheet.tsx` | Mirror of `AnalystConfigSheet` — wraps `SegmentConfigForm` in a Sheet, pipes per-field saves to `updateSegment` / `addSegmentMonitor` / `removeSegmentMonitor`. Takes a `SegmentSummary` (carried inline by `getPodcastDetail`) so opening it is zero-fetch. There is no per-segment page — the sheet IS the segment editor. |
 | `components/podcasts/PodcastConfigPreview.tsx` | Mirror of `AnalystConfigPanel`: same Silk intro + bordered shell + tabs (Brief / Segments / Settings) + bottom Confirm CTA. Used by both `/podcasts/new` (builder) and `/podcasts/[id]/edit` (editor) — Session 1 added `confirmLabel` / `confirmingLabel` props so the editor can render "Apply changes" instead of "Create podcast". |
@@ -105,13 +105,21 @@ the podcast app.
 | `components/agent/renderers/PodcastConfigPreviewRenderer.tsx` | Renderer registered against `ui: "podcast-config-preview"`. Inline summary card for `suggest_podcast_config` results that fires `onPodcastConfigSuggested` through `ToolUICallbacks` so the right-side `PodcastConfigPreview` panel opens. Mirror of `ConfigPreviewRenderer` for analysts. Shipped in PR #194. |
 | `components/ui/transcript-row.tsx` | Compact list row for the run-page Transcript tab and the podcast detail right-rail recent-transcripts list. Click → opens the `TranscriptDialog` via `customTrigger`. Mirror of `ThesisRow`. Shipped in commit `6e76a30`. |
 
-### Phase 2/3/4 placeholders (NOT in this PR)
+### Audio pipeline (Session 2)
+
+| File | Notes |
+|------|-------|
+| `lib/podcast/elevenlabs.ts` | ElevenLabs TTS client. `listVoices(apiKey)`, `verifyElevenLabsKey(apiKey)`, `chunkText(text)`, `generateEpisodeAudio(text, voiceId, apiKey)` → `{ audioBuffer, combinedAlignment, durationSec }`. Uses `with-timestamps` endpoint so alignment marks are stored for Session 4 karaoke. `estimateCost(charCount)` at $0.30/1k chars surfaces the cost on the generate button before the user clicks. |
+| `lib/supabase/service.ts` | Supabase service-role client (`createServiceClient()`) for server-side storage uploads from Inngest. Uses `SUPABASE_SERVICE_ROLE_KEY` env var. NEVER expose to browser. |
+| `components/settings/ElevenLabsKeyForm.tsx` | Settings form for ElevenLabs API key. Mirror of `AlpacaKeyForm` — single field (no secret), Save & Verify calls `saveElevenLabsKey`. Uses `UserApiKey` table with `provider="ELEVENLABS"`. |
+| `lib/inngest/functions/episode-tts.ts` | Inngest function triggered by `podcast/episode.tts.requested`. Steps: load episode + transcripts → call ElevenLabs TTS (chunked) → upload MP3 to Supabase Storage (`podcast-audio` bucket, path `{userId}/episodes/{episodeId}.mp3`) → update Episode (audioUrl=signed URL, durationSec, combinedAlignment, status=READY). On error: sets status=FAILED and re-throws for Inngest retry (retries: 2). |
+| `app/(root)/podcasts/[id]/episodes/[episodeId]/GenerateAudioButton.tsx` | Client component rendered on the episode page. Shows estimated cost inline on the button. On click calls `triggerEpisodeAudio` server action → shows toast → router.refresh() to reflect ASSEMBLING state. |
+
+### Phase 3/4 placeholders (NOT yet shipped)
 
 | File | Phase | Notes |
 |------|-------|-------|
-| `lib/podcast/elevenlabs.ts` | 2 | TTS client + Storage upload. |
-| `lib/podcast/episode-assembly.ts` | 3 | ffmpeg concat. |
-| `app/(root)/podcasts/[id]/episodes/[episodeId]/page.tsx` | 3 | Karaoke player. |
+| `lib/podcast/episode-assembly.ts` | 3 | ffmpeg concat for true multi-file episode assembly. |
 | `lib/podcast/cover-art.ts` | 4 | Cover art upload helpers. |
 
 ---
@@ -178,7 +186,9 @@ the podcast app.
 | File | Notes |
 |------|-------|
 | `lib/supabase/server.ts` / `client.ts` | Reused as-is. |
+| `lib/supabase/service.ts` | **NEW (Session 2).** Service-role client for Inngest audio uploads. See PODCAST-NEW above. |
 | `lib/prisma.ts` | Reused as-is. |
+| `lib/actions/api-keys.actions.ts` | **Extended (Session 2).** Added `getElevenLabsKeyStatus`, `saveElevenLabsKey`, `deleteElevenLabsKey`, `resolveElevenLabsKey` (called from Inngest), `getElevenLabsVoices` (called from PodcastConfigSheet). Uses the existing `UserApiKey` table with `provider="ELEVENLABS"`. Moved from TRADING-ONLY to SHARED. |
 
 ---
 
@@ -237,7 +247,7 @@ codebase without leaving dead imports.
 - `lib/actions/analyst.actions.ts`
 - `lib/actions/portfolio.actions.ts`
 - `lib/actions/closeTrade.actions.ts`
-- `lib/actions/api-keys.actions.ts` (Alpaca creds — could be repurposed for ElevenLabs in Phase 2)
+- `lib/actions/api-keys.actions.ts` — **moved to SHARED (Session 2)**: extended with ElevenLabs key functions
 - `lib/actions/watchlist.actions.ts`
 - `lib/alpaca.ts`
 - `lib/trade-exit.ts`

@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
-import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
+import { getApiKeyStatus, getElevenLabsKeyStatus } from "@/lib/actions/api-keys.actions";
 import { AlpacaKeyForm } from "@/components/settings/AlpacaKeyForm";
+import { ElevenLabsKeyForm } from "@/components/settings/ElevenLabsKeyForm";
 import { ModelPreferenceForm } from "@/components/settings/ModelPreferenceForm";
 
 export default async function SettingsPage() {
@@ -12,6 +13,7 @@ export default async function SettingsPage() {
   } = await supabase.auth.getUser();
 
   const alpacaStatus = await getApiKeyStatus("ALPACA");
+  const elevenLabsStatus = await getElevenLabsKeyStatus();
   const displayName = user?.user_metadata?.full_name ?? user?.email ?? "—";
 
   return (
@@ -58,6 +60,7 @@ export default async function SettingsPage() {
           API Keys
         </p>
         <AlpacaKeyForm initial={alpacaStatus} />
+        <ElevenLabsKeyForm initial={elevenLabsStatus} />
       </div>
     </div>
   );

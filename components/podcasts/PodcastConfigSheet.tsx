@@ -7,9 +7,12 @@
  * (name, description, host style, cadence, voice). Reuses the same
  * Section/FieldGroup/RowLabel primitives so the visual language is
  * identical across the analyst surface and the podcast surface.
+ *
+ * Session 2: Voice section now renders a real ElevenLabs voice picker.
+ * Voices are fetched once on sheet open and cached in component state.
  */
 
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   Sheet,
   SheetContent,
@@ -32,13 +35,14 @@ import {
   Section,
   FieldGroup,
   RowLabel,
-  GHOST_INPUT,
 } from "@/components/analysts/AnalystConfigForm";
-import { cn } from "@/lib/utils";
 import {
   updatePodcastBasics,
+  updatePodcastVoice,
   type PodcastDetail,
 } from "@/lib/actions/podcast.actions";
+import { getElevenLabsVoices } from "@/lib/actions/api-keys.actions";
+import type { ElevenLabsVoice } from "@/lib/podcast/elevenlabs";
 
 interface Props {
   open: boolean;
@@ -48,10 +52,20 @@ interface Props {
 
 export function PodcastConfigSheet({ open, onOpenChange, detail }: Props) {
   const [, startTransition] = useTransition();
+  const [voices, setVoices] = useState<ElevenLabsVoice[]>([]);
+  const [voicesLoaded, setVoicesLoaded] = useState(false);
 
-  const save = (
-    patch: Parameters<typeof updatePodcastBasics>[1],
-  ) => {
+  // Fetch voices once when the sheet first opens. Cached in component state
+  // so navigating away and back doesn't re-fetch.
+  useEffect(() => {
+    if (!open || voicesLoaded) return;
+    getElevenLabsVoices().then((v) => {
+      setVoices(v);
+      setVoicesLoaded(true);
+    });
+  }, [open, voicesLoaded]);
+
+  const save = (patch: Parameters<typeof updatePodcastBasics>[1]) => {
     startTransition(async () => {
       await updatePodcastBasics(detail.id, patch);
     });
@@ -66,7 +80,7 @@ export function PodcastConfigSheet({ open, onOpenChange, detail }: Props) {
         <SheetHeader className="shrink-0 px-3 pt-3">
           <SheetTitle className="text-sm font-semibold">Configuration</SheetTitle>
           <SheetDescription className="text-xs">
-            Show-level settings. Per-segment editing is on the segment page.
+            Show-level settings. Per-segment editing is on the segment card.
           </SheetDescription>
         </SheetHeader>
 
@@ -144,16 +158,45 @@ export function PodcastConfigSheet({ open, onOpenChange, detail }: Props) {
 
               <Section
                 label="Voice"
-                tooltip="ElevenLabs voice for audio synthesis. Wired up in Phase 2."
+                tooltip="ElevenLabs voice used for audio synthesis. Add your ElevenLabs API key in Settings to see available voices."
               >
-                <FieldGroup label="Voice ID">
-                  <Input
-                    defaultValue={detail.voiceId ?? ""}
-                    placeholder="Phase 2 — ElevenLabs voice id"
-                    className={cn(GHOST_INPUT)}
-                    disabled
-                  />
-                </FieldGroup>
+                <div className="grid grid-cols-[1fr_auto] items-center gap-y-1 [&>*:nth-child(even)]:justify-self-end">
+                  <RowLabel label="Voice" />
+                  {voices.length === 0 ? (
+                    <span className="text-xs text-muted-foreground">
+                      {voicesLoaded
+                        ? "No voices — add ElevenLabs key in Settings"
+                        : open
+                          ? "Loading…"
+                          : "—"}
+                    </span>
+                  ) : (
+                    <Select
+                      value={detail.voiceId ?? ""}
+                      onValueChange={(val) => {
+                        startTransition(async () => {
+                          await updatePodcastVoice(detail.id, val || null);
+                        });
+                      }}
+                    >
+                      <SelectTrigger size="sm" variant="ghost" className="max-w-[180px]">
+                        <SelectValue placeholder="Pick a voice" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {voices.map((v) => (
+                          <SelectItem key={v.voice_id} value={v.voice_id}>
+                            {v.name}
+                            {v.category ? (
+                              <span className="text-muted-foreground ml-1 text-xs">
+                                {v.category}
+                              </span>
+                            ) : null}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
               </Section>
             </ScrollArea>
           </TooltipProvider>

@@ -13,6 +13,8 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { SuggestedPodcastConfig } from "@/lib/agent/tools/suggest-podcast-config";
 import type { TranscriptCardData } from "@/components/agent/sheets/TranscriptSheet";
+import { inngest } from "@/lib/inngest/client";
+import { estimateCost } from "@/lib/podcast/elevenlabs";
 
 // ── Shared types ────────────────────────────────────────────────────────────
 
@@ -407,7 +409,13 @@ export async function updateSegment(segmentId: string, patch: SegmentPatch) {
 
 export async function updatePodcastBasics(
   podcastId: string,
-  patch: { name?: string; description?: string | null; hostStyle?: string | null; cadence?: string | null },
+  patch: {
+    name?: string;
+    description?: string | null;
+    hostStyle?: string | null;
+    cadence?: string | null;
+    voiceId?: string | null;
+  },
 ) {
   const user = await requireUser();
   const p = await prisma.podcast.findFirst({
@@ -417,6 +425,13 @@ export async function updatePodcastBasics(
   if (!p) throw new Error("Podcast not found");
   await prisma.podcast.update({ where: { id: p.id }, data: patch });
   revalidatePath(`/podcasts/${podcastId}`);
+}
+
+export async function updatePodcastVoice(
+  podcastId: string,
+  voiceId: string | null,
+) {
+  return updatePodcastBasics(podcastId, { voiceId });
 }
 
 // ── Monitors on a segment ──────────────────────────────────────────────────
@@ -544,6 +559,7 @@ export interface EpisodeDetail {
   title: string;
   description: string | null;
   status: "DRAFT" | "ASSEMBLING" | "READY" | "FAILED";
+  audioUrl: string | null;
   durationSec: number | null;
   publishedAt: Date | null;
   createdAt: Date;
@@ -633,6 +649,7 @@ export async function getEpisode(episodeId: string): Promise<EpisodeDetail | nul
     title: episode.title,
     description: episode.description,
     status: episode.status as EpisodeDetail["status"],
+    audioUrl: episode.audioUrl,
     durationSec: episode.durationSec,
     publishedAt: episode.publishedAt,
     createdAt: episode.createdAt,
@@ -897,4 +914,88 @@ export async function runSegment(segmentId: string): Promise<{ runId: string }> 
     },
   });
   return { runId: run.id };
+}
+
+// ── Audio generation trigger ────────────────────────────────────────────────
+
+export interface TriggerAudioResult {
+  ok: true;
+  charCount: number;
+  estimatedCostUsd: number;
+}
+
+/**
+ * Queue ElevenLabs TTS generation for an episode.
+ *
+ * Validates ownership, checks the podcast has a voiceId, computes char count
+ * for cost display, transitions status to ASSEMBLING, and dispatches the
+ * `podcast/episode.tts.requested` Inngest event. The Inngest job does the
+ * actual TTS work so this action returns fast.
+ *
+ * Called from the GenerateAudioButton on the episode page. Idempotent guard:
+ * returns an error if the episode is already ASSEMBLING.
+ */
+export async function triggerEpisodeAudio(
+  episodeId: string,
+): Promise<TriggerAudioResult | { ok: false; error: string }> {
+  const user = await requireUser();
+
+  const episode = await prisma.episode.findFirst({
+    where: { id: episodeId, userId: user.id },
+    include: {
+      podcast: { select: { voiceId: true } },
+    },
+  });
+  if (!episode) return { ok: false, error: "Episode not found" };
+  if (episode.status === "ASSEMBLING") {
+    return { ok: false, error: "Audio generation is already in progress" };
+  }
+  if (!episode.podcast.voiceId) {
+    return {
+      ok: false,
+      error: "Pick a voice for this podcast before generating audio",
+    };
+  }
+
+  // Load transcripts in publish order to compute character count
+  const ids = episode.transcriptIds;
+  const rows =
+    ids.length === 0
+      ? []
+      : await prisma.segmentTranscript.findMany({
+          where: { id: { in: ids }, userId: user.id },
+          select: { id: true, plainText: true },
+        });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const fullText = ids
+    .map((id) => byId.get(id)?.plainText ?? "")
+    .join("\n\n");
+
+  const charCount = fullText.length;
+  if (charCount === 0) {
+    return { ok: false, error: "Episode has no transcript text to synthesize" };
+  }
+
+  // Transition to ASSEMBLING before dispatching so the UI can reflect it
+  await prisma.episode.update({
+    where: { id: episodeId },
+    data: { status: "ASSEMBLING" },
+  });
+  revalidatePath(`/podcasts/${episode.podcastId}/episodes/${episodeId}`);
+
+  await inngest.send({
+    name: "podcast/episode.tts.requested",
+    data: {
+      episodeId,
+      userId: user.id,
+      podcastId: episode.podcastId,
+      voiceId: episode.podcast.voiceId,
+    },
+  });
+
+  return {
+    ok: true,
+    charCount,
+    estimatedCostUsd: estimateCost(charCount),
+  };
 }

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TickerMarkdown } from "@/components/ui/ticker-markdown";
 import { getEpisode } from "@/lib/actions/podcast.actions";
+import { GenerateAudioButton } from "./GenerateAudioButton";
 
 type Params = { id: string; episodeId: string };
 
@@ -15,6 +16,15 @@ function formatDuration(sec: number | null): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
+
+function statusVariant(
+  status: string,
+): "secondary" | "outline" | "default" | "destructive" {
+  if (status === "READY") return "secondary";
+  if (status === "ASSEMBLING") return "default";
+  if (status === "FAILED") return "destructive";
+  return "outline";
 }
 
 export default async function EpisodePage({
@@ -30,6 +40,15 @@ export default async function EpisodePage({
     (acc, t) => acc + t.citations.length,
     0,
   );
+
+  // Char count for cost estimate — computed server-side so the button can
+  // show the estimate without an extra client fetch.
+  const charCount = episode.transcripts
+    .map((t) => t.plainText)
+    .join("\n\n").length;
+
+  const hasAudio = !!episode.audioUrl;
+  const isAssembling = episode.status === "ASSEMBLING";
 
   return (
     <div className="h-[calc(100dvh-3rem)] overflow-y-auto">
@@ -50,12 +69,29 @@ export default async function EpisodePage({
             <Mic className="h-3 w-3" />
             <span>{episode.podcastName}</span>
             <span>·</span>
-            <Badge variant={episode.status === "READY" ? "secondary" : "outline"}>
-              {episode.status}
+            <Badge variant={statusVariant(episode.status)}>
+              {isAssembling ? "Generating audio…" : episode.status}
             </Badge>
           </div>
 
-          <h1 className="text-2xl font-semibold leading-tight">{episode.title}</h1>
+          <div className="flex items-start justify-between gap-4">
+            <h1 className="text-2xl font-semibold leading-tight">
+              {episode.title}
+            </h1>
+
+            {/* Generate / re-generate audio */}
+            {!hasAudio && !isAssembling && (
+              <GenerateAudioButton
+                episodeId={episodeId}
+                charCount={charCount}
+              />
+            )}
+            {isAssembling && (
+              <span className="text-xs text-muted-foreground shrink-0 pt-1">
+                Audio generating…
+              </span>
+            )}
+          </div>
 
           <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
             <span className="flex items-center gap-1">
@@ -76,6 +112,33 @@ export default async function EpisodePage({
             <span>{new Date(episode.createdAt).toLocaleDateString()}</span>
           </div>
         </div>
+
+        {/* Audio player */}
+        {hasAudio && (
+          <div className="rounded-md border bg-card p-4 space-y-2">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium flex items-center gap-1.5">
+              <Mic className="h-3 w-3" />
+              Audio
+            </p>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <audio
+              controls
+              src={episode.audioUrl!}
+              className="w-full h-10"
+              preload="metadata"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {formatDuration(episode.durationSec)}
+              </span>
+              <GenerateAudioButton
+                episodeId={episodeId}
+                charCount={charCount}
+                variant="regenerate"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Body — one section per transcript, in publish order */}
         {episode.transcripts.length === 0 ? (
