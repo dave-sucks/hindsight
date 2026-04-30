@@ -279,43 +279,10 @@ This defines which stocks you may research and trade. Use it to filter discovery
     sections.push(watchSection);
   }
 
-  // ── Section 5: Prior Brief ───────────────────────────────────────────
-  if (runInput.priorBrief) {
-    const brief = runInput.priorBrief;
-    let briefSection = `## Prior Brief (${brief.date})\n`;
-
-    if (brief.marketPosture) {
-      briefSection += `Market Posture: ${brief.marketPosture}\n`;
-    }
-
-    if (brief.watchTomorrow?.length) {
-      briefSection += `\nWatch Tomorrow:\n`;
-      for (const w of brief.watchTomorrow) {
-        briefSection += `- $${w.symbol}: ${w.trigger} → ${w.suggestedAction}${w.priority === "HIGH" ? " [HIGH]" : ""}\n`;
-      }
-    }
-
-    if (brief.unresolvedItems?.length) {
-      briefSection += `\nUnresolved Items:\n`;
-      for (const u of brief.unresolvedItems) {
-        briefSection += `- ${u.item} — Impact: ${u.impact}${u.affectedPositions?.length ? ` — Affects: ${u.affectedPositions.map((s) => "$" + s).join(", ")}` : ""}\n`;
-      }
-    }
-
-    if (brief.selfCorrections?.length) {
-      briefSection += `\nSelf-Corrections:\n`;
-      for (const s of brief.selfCorrections) {
-        briefSection += `- Observation: ${s.observation} → Adjustment: ${s.adjustment}\n`;
-      }
-    }
-
-    if (brief.strategyNotes) {
-      briefSection += `\nStrategy Notes: ${brief.strategyNotes.slice(0, 300)}`;
-    }
-
-    briefSection += `\n\nNarrative (summary): ${brief.narrative.slice(0, 400)}`;
-    sections.push(briefSection);
-  }
+  // Section 5 — Prior Brief — REMOVED 2026-04-30. The agent reads
+  // durable thesis state (get_theses with include_history) + triggers
+  // fired since last run + today's read_signals output directly. The
+  // prior synthesized AnalystBriefing narrative is no longer injected.
 
   // ── Section 6: Performance & Calibration ─────────────────────────────
   if (runInput.performance) {
@@ -381,7 +348,7 @@ Narration rule: 2-4 sentences between tool calls. $TICKER format. Don't re-summa
 Start with a 1-2 sentence portfolio check-in — open positions, Watch Tomorrow flags from prior brief, current cash level. No tools yet.
 
 ### Step 1 — Gather state
-Call **read_morning_brief**, then **read_signals** (returns all three buckets — portfolio / watchlist / discovery — in one call), then **get_portfolio_context**, then **get_theses** with \`include_history: true\`.
+Call **read_signals** (returns all three buckets — portfolio / watchlist / discovery — in one call), then **get_portfolio_context**, then **get_theses** with \`include_history: true\`.
 
 \`get_theses\` is your durable thesis library — every active belief you maintain on a ticker, with its targets, structured triggers, and recent activity. You're going to lean on this in Step 3 to decide whether to refine an existing thesis (update_thesis) or open new coverage (record_thesis).
 

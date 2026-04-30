@@ -86,15 +86,6 @@ export interface RunInput {
     runId: string;
     status: string;
   }>;
-  priorBrief: {
-    date: string;
-    narrative: string;
-    strategyNotes: string | null;
-    marketPosture: string | null;
-    watchTomorrow: Array<{ symbol: string; trigger: string; suggestedAction: string; priority?: string }> | null;
-    unresolvedItems: Array<{ item: string; impact: string; affectedPositions?: string[] }> | null;
-    selfCorrections: Array<{ observation: string; adjustment: string }> | null;
-  } | null;
   performance: {
     winRate: number | null;
     totalTrades: number;
@@ -315,39 +306,9 @@ export async function buildRunInput(
       : 999,
   }));
 
-  // 6. Prior brief
-  let latestBriefing: {
-    narrative: string; strategyNotes: string | null; marketPosture: string | null;
-    watchTomorrow: unknown; unresolvedItems: unknown; selfCorrections: unknown;
-    createdAt: Date;
-  } | null = null;
-  try {
-    latestBriefing = await prisma.analystBriefing.findFirst({
-      where: { analystId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        narrative: true, strategyNotes: true, marketPosture: true,
-        watchTomorrow: true, unresolvedItems: true, selfCorrections: true,
-        createdAt: true,
-      },
-    });
-  } catch (err) {
-    console.error("[buildRunInput] FAILED brief:", err);
-  }
-
-  const priorBrief = latestBriefing
-    ? {
-        date: latestBriefing.createdAt.toISOString().slice(0, 10),
-        narrative: latestBriefing.narrative,
-        strategyNotes: latestBriefing.strategyNotes,
-        marketPosture: latestBriefing.marketPosture ?? null,
-        watchTomorrow: (latestBriefing.watchTomorrow as Array<{ symbol: string; trigger: string; suggestedAction: string; priority?: string }>) ?? null,
-        unresolvedItems: (latestBriefing.unresolvedItems as Array<{ item: string; impact: string; affectedPositions?: string[] }>) ?? null,
-        selfCorrections: (latestBriefing.selfCorrections as Array<{ observation: string; adjustment: string }>) ?? null,
-      }
-    : null;
-
-  // 7. Performance — load rich calibration data from the latest AccuracyReport
+  // 6. Performance — load rich calibration data from the latest AccuracyReport
+  // (Prior brief removed 2026-04-30 — agent reads durable thesis state +
+  // triggers fired since last run instead of a synthesized AnalystBriefing.)
   let latestAccuracy: {
     winRate: number | null; tradesAnalyzed: number | null;
     narrativeSummary: string | null;
@@ -526,7 +487,7 @@ export async function buildRunInput(
 
   // ── Structured load summary ────────────────────────────────────────
   console.log(
-    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasBrief=${!!priorBrief} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} priorityReviews=${priorityReviews?.length ?? 0} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
+    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} priorityReviews=${priorityReviews?.length ?? 0} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
   );
 
   return {
@@ -572,7 +533,6 @@ export async function buildRunInput(
       runId: t.researchRunId,
       status: t.status,
     })),
-    priorBrief,
     performance,
     recentClosedTrades,
     priorityReviews,

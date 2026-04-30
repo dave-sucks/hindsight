@@ -235,36 +235,6 @@ export interface SecFilingsData {
   count: number;
 }
 
-/** read_morning_brief → data */
-export interface MorningBriefToolData {
-  available: boolean;
-  date?: string;
-  marketContext?: string;
-  attentionPriority?: string[];
-  riskFlags?: string[];
-  signalCount?: number;
-  generatedAt?: string;
-  // Raw DB arrays preserved for agent deep-dives
-  portfolioAlerts?: {
-    ticker: string;
-    alert: string;
-    urgency: string;
-    signalIds: string[];
-  }[];
-  watchlistUpdates?: {
-    ticker: string;
-    update: string;
-    recommendation: string;
-    signalIds: string[];
-  }[];
-  newOpportunities?: {
-    headline: string;
-    tickers: string[];
-    thesisSeed: string;
-    signalIds: string[];
-  }[];
-}
-
 /** read_signals → data */
 export interface SignalsToolData {
   count: number;
