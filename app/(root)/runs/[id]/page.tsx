@@ -94,6 +94,16 @@ export default async function RunPage({
   const isLive = run.status === "RUNNING";
   const hasReplay = persistedMessages !== null;
 
+  // Tactical runs (mode=INTRADAY_TACTICAL) execute server-side via the
+  // Inngest tactical-run consumer — NOT via /api/agent/research-run. We
+  // must NOT autostart the AgentChat for them, otherwise the page kicks
+  // off a parallel full research-run on what is supposed to be a focused
+  // tactical run, producing the runaway-morning-research bug seen on
+  // 2026-04-29 test-fires. This `isTacticalMode` guard suppresses the
+  // autostart for those runs; the events written by the Inngest consumer
+  // still render via the existing event/replay path.
+  const isTacticalMode = run.mode === "INTRADAY_TACTICAL";
+
   // Load Sources + Theses tab data from the DB.
   // Wrapped in try/catch so a DB error (e.g. pending migration) never
   // crashes the whole page — tabs just render empty.
@@ -134,7 +144,7 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive}
+            autoStart={isLive && !isTacticalMode}
             messages={persistedMessages ?? undefined}
             brief={isPodcastSegmentRun ? null : brief}
             sources={isPodcastSegmentRun ? [] : sources}

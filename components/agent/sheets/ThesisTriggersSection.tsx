@@ -4,37 +4,33 @@
  * ThesisTriggersSection — renders the structured triggers + scheduling
  * metadata for a thesis. Sits above ThesisTimelineSection in the sheet.
  *
- * Layout:
+ * Each trigger renders as a compact ButtonGroup split-pill:
+ *   [ Action icon + label ] | [ predicate icon + value ]
  *
- *   Triggers
- *   ─────────────────────────────────────────
- *     EXIT     PRICE_BELOW $122        Hard stop. Get out fast.
- *                                       last fired never
- *     REVIEW   EARNINGS_MISS ≥3%       Downside surprise tests core belief.
- *                                       last fired Mar 18 · cooldown 7d
- *     ...
- *
- *   Schedule
- *     Horizon          COMPOUNDER
- *     Next review      Apr 28, 2026 (in 6 days)
- *     Target size      5% of portfolio
- *     Max hold         — (open-ended)
- *
- * If the test-fire feature is enabled (NEXT_PUBLIC_ENABLE_TRIGGER_TEST_FIRE),
- * each trigger row gets a "Test fire" button that synthetically emits
- * `app/thesis.trigger.fired` so a tactical run spawns immediately —
- * lets you demo the end-to-end without waiting for a real signal.
+ * Hover (or click) opens a Popover with the rationale, last-fired
+ * metadata, and the Test fire button — same pattern as the Monitor
+ * info popovers on /intelligence.
  */
-
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoRow } from "@/components/ui/info-row";
-import { Zap } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { InboxUnreadIcon } from "@hugeicons/core-free-icons";
+import {
+  DoorOpen,
+  Eye,
+  Minus,
+  Plus,
+  Shield,
+  Zap,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
-
-const TEST_FIRE_ENABLED =
-  process.env.NEXT_PUBLIC_ENABLE_TRIGGER_TEST_FIRE === "1";
 
 interface TriggerPredicate {
   kind: string;
@@ -74,60 +70,161 @@ interface TriggersResponse {
   triggers: Trigger[];
 }
 
-function describePredicate(p: TriggerPredicate): string {
+// ── Predicate helpers ──────────────────────────────────────────────────
+// Single sentence per predicate — the right cell is just plain readable
+// text in foreground. No SCREAMING_CASE reaches the user.
+
+/** The full readable sentence for a predicate, e.g. "Price below $88". */
+function predicateSentence(p: TriggerPredicate): string {
   switch (p.kind) {
-    case "PRICE_ABOVE":
-      return `price > $${p.level}`;
     case "PRICE_BELOW":
-      return `price < $${p.level}`;
+      return `Price below $${p.level}`;
+    case "PRICE_ABOVE":
+      return `Price above $${p.level}`;
     case "PRICE_MOVE_PCT":
-      return `${p.direction === "UP" ? "+" : "-"}${p.pct}% over ${p.window}`;
+      return `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% over ${p.window}`;
     case "VS_SMA":
-      return `${p.direction?.toLowerCase()} ${p.period}-day SMA`;
+      return `Price ${p.direction?.toLowerCase()} ${p.period}-day SMA`;
     case "RSI":
       return `RSI ${p.direction?.toLowerCase()} ${p.threshold}`;
     case "SIGNAL_TYPE": {
-      const parts = [p.signalType];
-      if (p.sentiment) parts.push(p.sentiment);
-      if (p.minUrgency) parts.push(`≥${p.minUrgency}`);
-      return parts.join(" · ");
+      const parts: string[] = [];
+      if (p.sentiment) parts.push(p.sentiment.toLowerCase());
+      const kind = p.signalType
+        ? p.signalType.toLowerCase().replace(/_/g, " ")
+        : "signal";
+      parts.push(kind);
+      let s = parts.join(" ");
+      if (p.minUrgency) s += ` ≥${p.minUrgency.toLowerCase()} urgency`;
+      return s.charAt(0).toUpperCase() + s.slice(1);
     }
     case "EARNINGS_BEAT":
-      return p.minSurprisePct ? `earnings beat ≥ ${p.minSurprisePct}%` : "earnings beat";
+      return p.minSurprisePct
+        ? `Earnings beat ≥${p.minSurprisePct}%`
+        : "Any earnings beat";
     case "EARNINGS_MISS":
-      return p.minSurprisePct ? `earnings miss ≥ ${p.minSurprisePct}%` : "earnings miss";
+      return p.minSurprisePct
+        ? `Earnings miss ≥${p.minSurprisePct}%`
+        : "Any earnings miss";
     case "GUIDANCE_CHANGE":
-      return `guidance ${p.direction}`;
+      return `Guidance ${p.direction?.toLowerCase()}`;
     case "FILING":
       return `${p.formType} filed`;
     case "TIME_ELAPSED":
       return `${p.days} days elapsed`;
     case "REVIEW_DATE_HIT":
-      return `review date hit`;
+      return "Review date hit";
     case "AND":
-      return `(${(p.predicates ?? []).map(describePredicate).join(" AND ")})`;
+      return `All of ${(p.predicates ?? []).length} conditions`;
     case "OR":
-      return `(${(p.predicates ?? []).map(describePredicate).join(" OR ")})`;
+      return `Any of ${(p.predicates ?? []).length} conditions`;
     default:
       return p.kind;
   }
 }
 
-function actionVariant(action: string): "negative" | "positive" | "secondary" | "outline" {
-  switch (action) {
-    case "EXIT":
-      return "negative";
-    case "ADD":
-      return "positive";
-    case "TRIM":
-      return "secondary";
-    case "MOVE_STOP":
-      return "outline";
-    case "REVIEW":
+/** Long-form description for the hover popover. */
+function predicateDescription(p: TriggerPredicate): string {
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+      return `Fires when last quote crosses above $${p.level}.`;
+    case "PRICE_BELOW":
+      return `Fires when last quote crosses below $${p.level}.`;
+    case "PRICE_MOVE_PCT":
+      return `Fires when price moves ${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}.`;
+    case "VS_SMA":
+      return `Fires when price moves ${p.direction?.toLowerCase()} the ${p.period}-day SMA.`;
+    case "RSI":
+      return `Fires when RSI moves ${p.direction?.toLowerCase()} ${p.threshold}.`;
+    case "SIGNAL_TYPE":
+      return `Fires on a ${p.signalType} signal${p.sentiment ? ` with ${p.sentiment.toLowerCase()} sentiment` : ""}${p.minUrgency ? ` at urgency ≥ ${p.minUrgency.toLowerCase()}` : ""}.`;
+    case "EARNINGS_BEAT":
+      return p.minSurprisePct
+        ? `Fires on an earnings beat of at least ${p.minSurprisePct}%.`
+        : "Fires on any earnings beat.";
+    case "EARNINGS_MISS":
+      return p.minSurprisePct
+        ? `Fires on an earnings miss of at least ${p.minSurprisePct}%.`
+        : "Fires on any earnings miss.";
+    case "GUIDANCE_CHANGE":
+      return `Fires when company issues ${p.direction?.toLowerCase()} guidance revision.`;
+    case "FILING":
+      return `Fires when a ${p.formType} is filed.`;
+    case "TIME_ELAPSED":
+      return `Fires once ${p.days} days have passed since the thesis was created.`;
+    case "REVIEW_DATE_HIT":
+      return "Fires when the thesis's nextReviewAt date is reached.";
+    case "AND":
+      return `Composite: ALL of ${(p.predicates ?? []).length} sub-predicates must be true.`;
+    case "OR":
+      return `Composite: ANY of ${(p.predicates ?? []).length} sub-predicates triggers.`;
     default:
-      return "outline";
+      return p.kind;
   }
 }
+
+// ── Action helpers ──────────────────────────────────────────────────────
+// Action is what the trigger DOES when it fires — EXIT, REVIEW, ADD,
+// TRIM, MOVE_STOP. It does NOT belong on the pill (pill describes the
+// WHEN, not the WHAT). Action surfaces in the popover only. The dot
+// color in the popover header carries the visual signal.
+
+function ActionIcon({
+  action,
+  className,
+}: {
+  action: string;
+  className?: string;
+}) {
+  const cls = className ?? "size-3.5";
+  switch (action) {
+    case "EXIT":
+      return <DoorOpen className={cls} />;
+    case "ADD":
+      return <Plus className={cls} />;
+    case "TRIM":
+      return <Minus className={cls} />;
+    case "MOVE_STOP":
+      return <Shield className={cls} />;
+    case "REVIEW":
+    default:
+      return <Eye className={cls} />;
+  }
+}
+
+function actionTintClass(action: string): string {
+  switch (action) {
+    case "EXIT":
+      return "bg-red-500/10 text-red-500";
+    case "ADD":
+      return "bg-emerald-500/10 text-emerald-500";
+    case "TRIM":
+      return "bg-amber-500/10 text-amber-500";
+    case "MOVE_STOP":
+      return "bg-blue-500/10 text-blue-500";
+    case "REVIEW":
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+function actionLabel(action: string): string {
+  switch (action) {
+    case "EXIT":
+      return "Exit position";
+    case "ADD":
+      return "Scale in";
+    case "TRIM":
+      return "Trim position";
+    case "MOVE_STOP":
+      return "Move stop";
+    case "REVIEW":
+    default:
+      return "Review";
+  }
+}
+
+// ── Date formatters ─────────────────────────────────────────────────────
 
 function fmtRelativeOrDate(iso: string | null): string {
   if (!iso) return "—";
@@ -145,7 +242,7 @@ function fmtRelativeOrDate(iso: string | null): string {
 }
 
 function fmtFiredAt(iso?: string): string {
-  if (!iso) return "never";
+  if (!iso) return "Never";
   const date = new Date(iso);
   return date.toLocaleString("en-US", {
     month: "short",
@@ -154,6 +251,135 @@ function fmtFiredAt(iso?: string): string {
     minute: "2-digit",
   });
 }
+
+// ── Trigger pill — 2 cells separated by a real border ─────────────────
+// Structure:  [ action icon ] │ [ predicate sentence ]
+//
+// One outer rounded outline. The divider is `border-r` on cell 1 — real
+// border, no floating separator. Cell 2 is plain foreground text reading
+// like a sentence ("Price below $88"). Action color comes from the
+// tinted background on cell 1.
+
+function TriggerPill({
+  trigger,
+  firing,
+  onTestFire,
+}: {
+  trigger: Trigger;
+  firing: boolean;
+  onTestFire: () => void;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <div
+            role="button"
+            tabIndex={0}
+            className="inline-flex h-8 cursor-pointer items-stretch overflow-hidden rounded-md border border-border bg-background text-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        }
+      >
+        {/* Cell 1 — action icon, tinted bg, real right border as divider */}
+        <div
+          className={cn(
+            "flex items-center justify-center border-r border-border px-2",
+            actionTintClass(trigger.action),
+          )}
+        >
+          <ActionIcon action={trigger.action} className="size-4" />
+        </div>
+
+        {/* Cell 2 — readable sentence in foreground */}
+        <div className="flex items-center px-3 text-foreground">
+          {predicateSentence(trigger.predicate)}
+        </div>
+      </PopoverTrigger>
+
+      <TriggerPopoverContent
+        trigger={trigger}
+        firing={firing}
+        onTestFire={onTestFire}
+      />
+    </Popover>
+  );
+}
+
+function TriggerPopoverContent({
+  trigger,
+  firing,
+  onTestFire,
+}: {
+  trigger: Trigger;
+  firing: boolean;
+  onTestFire: () => void;
+}) {
+  return (
+    <PopoverContent side="left" align="start" className="w-72 p-0">
+      {/* Header — same shape as the pill, scaled up */}
+      <div className="flex items-stretch border-b border-border">
+        <div
+          className={cn(
+            "flex items-center justify-center border-r border-border px-3",
+            actionTintClass(trigger.action),
+          )}
+        >
+          <ActionIcon action={trigger.action} className="size-4" />
+        </div>
+        <div className="flex flex-1 items-center px-3 py-2 text-sm font-medium">
+          {predicateSentence(trigger.predicate)}
+        </div>
+      </div>
+
+      <div className="space-y-3 p-3 text-xs">
+        <div className="space-y-1">
+          <p className="text-muted-foreground">
+            {predicateDescription(trigger.predicate)}
+          </p>
+          {trigger.rationale ? (
+            <p className="text-foreground leading-relaxed">
+              {trigger.rationale}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex items-center justify-between text-muted-foreground border-t border-border pt-3">
+          <span>Action</span>
+          <span className="text-foreground">
+            {actionLabel(trigger.action)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-muted-foreground">
+          <span>Last fired</span>
+          <span className="text-foreground tabular-nums">
+            {fmtFiredAt(trigger.lastFiredAt)}
+          </span>
+        </div>
+        {trigger.cooldownDays ? (
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span>Cooldown</span>
+            <span className="text-foreground tabular-nums">
+              {trigger.cooldownDays}d
+            </span>
+          </div>
+        ) : null}
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onTestFire}
+          disabled={firing}
+          className="w-full"
+        >
+          <Zap className="size-3" />
+          {firing ? "Firing…" : "Test fire"}
+        </Button>
+      </div>
+    </PopoverContent>
+  );
+}
+
+// ── Main section ────────────────────────────────────────────────────────
 
 interface Props {
   thesisId: string;
@@ -165,6 +391,7 @@ export function ThesisTriggersSection({ thesisId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [firing, setFiring] = useState<string | null>(null);
   const [fireError, setFireError] = useState<string | null>(null);
+  const [fireQueued, setFireQueued] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +411,7 @@ export function ThesisTriggersSection({ thesisId }: Props) {
 
   async function testFire(triggerId: string) {
     setFireError(null);
+    setFireQueued(null);
     setFiring(triggerId);
     try {
       const r = await fetch(`/api/admin/triggers/fire`, {
@@ -191,13 +419,22 @@ export function ThesisTriggersSection({ thesisId }: Props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ thesisId, triggerId }),
       });
-      if (!r.ok) {
+      // 202 = event dispatched but tactical-run hasn't landed in time.
+      // Treat as success — the run will appear in /runs shortly.
+      if (!r.ok && r.status !== 202) {
         const body = await r.text();
         throw new Error(`HTTP ${r.status}: ${body.slice(0, 200)}`);
       }
-      const out = (await r.json()) as { runId?: string };
+      const out = (await r.json()) as {
+        runId?: string | null;
+        queued?: boolean;
+      };
       if (out.runId) {
         router.push(`/runs/${out.runId}`);
+      } else if (out.queued) {
+        setFireQueued(
+          "Trigger fired. The tactical run is queued — it will appear in your runs list in a few seconds.",
+        );
       }
     } catch (e) {
       setFireError(e instanceof Error ? e.message : String(e));
@@ -209,7 +446,9 @@ export function ThesisTriggersSection({ thesisId }: Props) {
   if (error) {
     return (
       <div className="space-y-2">
-        <p className="text-sm font-medium">Triggers</p>
+        <SectionHeader icon={<HugeiconsIcon icon={InboxUnreadIcon} className="size-4 text-foreground" />}>
+          Triggers
+        </SectionHeader>
         <p className="text-xs text-muted-foreground">
           Couldn&apos;t load triggers: {error}
         </p>
@@ -220,7 +459,9 @@ export function ThesisTriggersSection({ thesisId }: Props) {
   if (data == null) {
     return (
       <div className="space-y-2">
-        <p className="text-sm font-medium">Triggers</p>
+        <SectionHeader icon={<HugeiconsIcon icon={InboxUnreadIcon} className="size-4 text-foreground" />}>
+          Triggers
+        </SectionHeader>
         <p className="text-xs text-muted-foreground">Loading…</p>
       </div>
     );
@@ -235,65 +476,50 @@ export function ThesisTriggersSection({ thesisId }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="space-y-2">
-        <p className="text-sm font-medium">Triggers</p>
+      <div className="space-y-2.5">
+        <SectionHeader
+          icon={<HugeiconsIcon icon={InboxUnreadIcon} className="size-4 text-foreground" />}
+          count={data.triggers.length}
+        >
+          Triggers
+        </SectionHeader>
         {data.triggers.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No triggers attached. Run the backfill or set a horizon when minting
-            this thesis to auto-attach the baseline.
+            No triggers attached. Set a horizon when minting this thesis to
+            auto-attach the baseline.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="flex flex-wrap gap-1.5">
             {data.triggers.map((t) => (
-              <div
+              <TriggerPill
                 key={t.id}
-                className="rounded-md border p-3 space-y-2"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant={actionVariant(t.action)} className="font-normal">
-                      {t.action}
-                    </Badge>
-                    <span className="text-sm font-medium tabular-nums">
-                      {describePredicate(t.predicate)}
-                    </span>
-                  </div>
-                  {TEST_FIRE_ENABLED ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => testFire(t.id)}
-                      disabled={firing === t.id}
-                    >
-                      <Zap className="size-3" />
-                      {firing === t.id ? "Firing…" : "Test fire"}
-                    </Button>
-                  ) : null}
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {t.rationale}
-                </p>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                  <span>last fired {fmtFiredAt(t.lastFiredAt)}</span>
-                  {t.cooldownDays ? (
-                    <>
-                      <span className="opacity-40">·</span>
-                      <span>cooldown {t.cooldownDays}d</span>
-                    </>
-                  ) : null}
-                </div>
-              </div>
+                trigger={t}
+                firing={firing === t.id}
+                onTestFire={() => testFire(t.id)}
+              />
             ))}
           </div>
         )}
         {fireError ? (
           <p className="text-xs text-red-500">Test fire failed: {fireError}</p>
         ) : null}
+        {fireQueued ? (
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{fireQueued}</span>
+            <button
+              type="button"
+              onClick={() => router.push("/runs")}
+              className="shrink-0 text-foreground underline-offset-2 hover:underline"
+            >
+              Open runs →
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {hasSchedule ? (
         <div className="space-y-2">
-          <p className="text-sm font-medium">Schedule</p>
+          <SectionHeader>Schedule</SectionHeader>
           <div className="flex flex-col gap-1">
             {data.horizon ? (
               <InfoRow label="Horizon" value={data.horizon} />
@@ -329,6 +555,30 @@ export function ThesisTriggersSection({ thesisId }: Props) {
             ) : null}
           </div>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ── Section header ─────────────────────────────────────────────────────
+
+function SectionHeader({
+  icon,
+  count,
+  children,
+}: {
+  icon?: React.ReactNode;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {icon}
+      <p className="text-sm font-medium">{children}</p>
+      {count != null ? (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {count}
+        </span>
       ) : null}
     </div>
   );

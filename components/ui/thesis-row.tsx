@@ -10,6 +10,13 @@ import { cn } from "@/lib/utils";
 import { Favicon } from "@/components/intelligence/signal-feed";
 import { TRADE_STATUS_DISPLAY } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
+import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
+
+// 2026-04-29: removed inline expand-on-click and analyst-link button.
+// The Details button opens the full ThesisSheet which has more
+// detailed thesis info than the inline expansion ever did, and the
+// analyst link clutters the row footer for a single-user app where
+// the user already knows their analysts.
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,7 +107,7 @@ function posBg(ts: TradeStatus): string {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const pos = t.position;
   const isPass = t.direction === "PASS";
   const isBull = t.direction === "LONG";
@@ -181,7 +188,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
       )}
 
       {/* ── 3. Analysis + Summary ── */}
-      <div className="px-4 py-3" onClick={() => setExpanded(!expanded)}>
+      <div className="px-4 py-3">
         {/* Analysis line */}
         <div className="flex items-center gap-1.5 mb-1.5 flex-wrap text-sm">
           {isPass
@@ -207,7 +214,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
             <span className="text-muted-foreground tabular-nums">at {$(t.entryPrice)}</span>
           )}
         </div>
-        <p className={cn("text-sm text-muted-foreground leading-relaxed", !expanded && "line-clamp-3")}>
+        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
           {t.reasoningSummary}
         </p>
       </div>
@@ -232,11 +239,13 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           </span>
         )}
         <div className="flex items-center gap-1 ml-auto">
-          {t.analystName && t.analystId && (
-            <a href={`/analysts/${t.analystId}`} className="hidden sm:inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-              {t.analystName}
-            </a>
-          )}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setSheetOpen(true); }}
+            className="inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            Details
+          </button>
           {t.runId && (
             <a href={`/runs/${t.runId}`} className="inline-flex items-center h-7 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               View run
@@ -244,6 +253,21 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           )}
         </div>
       </div>
+
+      <ThesisSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        thesis_id={t.id}
+        ticker={t.ticker}
+        direction={(t.direction === "LONG" || t.direction === "SHORT" || t.direction === "PASS") ? t.direction : "PASS"}
+        confidence_score={t.confidenceScore}
+        reasoning_summary={t.reasoningSummary}
+        entry_price={t.entryPrice}
+        target_price={t.targetPrice}
+        stop_loss={t.stopLoss}
+        hold_duration={t.holdDuration}
+        company_name={t.companyName}
+      />
     </div>
   );
 }
