@@ -502,9 +502,47 @@ Applies all pending migrations, including the two from this session
 `20260427130000_podcast_segment_briefing`). See PODCAST_FILES.md
 "Schema teardown" for the full migration audit.
 
-### Session 2 — Phase 2: Audio (ElevenLabs)
+### Session 2 — Audio (ElevenLabs TTS) — SHIPPED
 
-[Same scope as previously documented — TTS integration, audio player on TranscriptCard, voice picker, ElevenLabs creds in UserApiKey.]
+End state delivered: the user can pick a voice on the podcast config sheet,
+click "Generate audio" on any episode page (which shows the estimated cost
+before they click), and land an MP3 on the episode page to press play.
+
+Audio is episode-level (one file per episode, covering all segments in
+order). There is no per-segment audio file. One voice per podcast.
+
+#### New files (PODCAST-NEW)
+
+| File | Notes |
+|------|-------|
+| `lib/podcast/elevenlabs.ts` | ElevenLabs client — voice list, TTS with timestamps (alignment marks for Session 4 karaoke), text chunking at ~5 000 chars per request, `generateEpisodeAudio` wraps chunked calls and returns `{ audioBuffer, combinedAlignment, durationSec }`. Cost estimate at $0.30/1 k chars. |
+| `lib/supabase/service.ts` | Service-role Supabase client for Inngest storage uploads (no user session available). Bucket: `podcast-audio`. Path: `{userId}/episodes/{episodeId}.mp3`. Signed URL (7 days) stored as `Episode.audioUrl`. |
+| `components/settings/ElevenLabsKeyForm.tsx` | Mirror of `AlpacaKeyForm`. Single API key field (ElevenLabs has no secret). Provider: `"ELEVENLABS"`. Save & Verify calls ElevenLabs `/user` endpoint. |
+| `lib/inngest/functions/episode-tts.ts` | Inngest function `episode-tts`. Event: `podcast/episode.tts.requested`. Steps: load → TTS → Storage upload → update Episode. On error: sets status=FAILED and re-throws for retry (retries: 2). |
+| `app/(root)/podcasts/[id]/episodes/[episodeId]/GenerateAudioButton.tsx` | Client component. Shows `~$X.XX` cost on button face. On click: `triggerEpisodeAudio` → toast → `router.refresh()`. Re-generate variant shown below the audio player. |
+
+#### SHARED files extended
+
+| File | What Session 2 added |
+|------|---------------------|
+| `lib/actions/api-keys.actions.ts` | `getElevenLabsKeyStatus`, `saveElevenLabsKey`, `deleteElevenLabsKey`, `resolveElevenLabsKey` (for Inngest), `getElevenLabsVoices` (for voice picker). Moved from TRADING-ONLY to SHARED. |
+| `lib/actions/podcast.actions.ts` | `updatePodcastVoice`, `voiceId` param on `updatePodcastBasics`, `audioUrl` on `EpisodeDetail` + `getEpisode`, `triggerEpisodeAudio`. |
+| `components/podcasts/PodcastConfigSheet.tsx` | Voice section: live `Select` from `getElevenLabsVoices()`, fetched once on sheet open and cached in component state. |
+| `app/(root)/podcasts/[id]/episodes/[episodeId]/page.tsx` | `<audio controls>` player, `GenerateAudioButton` with char count, ASSEMBLING status label. |
+| `app/(root)/settings/page.tsx` | `ElevenLabsKeyForm` added under API Keys section alongside `AlpacaKeyForm`. |
+| `app/api/inngest/route.ts` | `episodeTts` registered. |
+
+#### Infrastructure prerequisites (required before first audio generation)
+
+- Create `podcast-audio` bucket in Supabase Storage (private, no public access).
+- Set `SUPABASE_SERVICE_ROLE_KEY` env var in Vercel (the service client needs it).
+- ElevenLabs API key in Settings → API Keys before using the voice picker or generating audio.
+
+#### Out of scope (Session 2 → later)
+
+- Karaoke player using `combinedAlignment` — Session 4.
+- Per-podcast cron auto-generate — Session 5.
+- RSS feed, cover art — Session 5.
 
 ### Session 3 — Iterate on script + voice quality
 
