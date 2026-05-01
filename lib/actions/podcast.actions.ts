@@ -955,6 +955,8 @@ export async function runSegmentViaInngest(segmentId: string): Promise<{ runId: 
     data: { segmentId: seg.id, runId: run.id, userId: user.id },
   });
 
+  revalidatePath(`/podcasts/${seg.podcastId}`);
+
   return { runId: run.id };
 }
 
