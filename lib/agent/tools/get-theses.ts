@@ -89,7 +89,7 @@ export const getTheses = defineTool({
   description:
     "Read this analyst's durable thesis library. Default returns ACTIVE + WATCHING theses (the live coverage book). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis).",
   schema,
-  ui: "tool-ui" as const,
+  ui: "thesis-card" as const,
 
   progressLabel: (args) => {
     if (args.tickers && args.tickers.length === 1) {
@@ -229,19 +229,31 @@ export const getTheses = defineTool({
       };
     });
 
-    // Build the unified items[] list for the generic Tool UI. Each thesis
-    // is one ticker-kind row; the renderer doesn't need to know about
-    // history.
-    const items = enriched.map((t) => ({
-      kind: "ticker" as const,
+    // Build ThesisCardData[] for the renderer — one card per thesis the
+    // agent read. Same shape as record_thesis / update_thesis returns so
+    // ThesisCardRenderer can fold them into the "Read theses" carousel.
+    const cards = enriched.map((t) => ({
+      thesis_id: t.id,
       ticker: t.ticker,
-      tag:
-        t.status === "WATCHING"
-          ? "Watching"
-          : t.direction === "PASS"
-            ? "Pass"
-            : t.direction,
-      text: t.coreBelief || t.reasoningSummary || `${t.direction} ${t.ticker}`,
+      direction: t.direction as "LONG" | "SHORT" | "PASS",
+      confidence_score: t.confidenceScore,
+      reasoning_summary: t.reasoningSummary,
+      thesis_bullets: t.thesisBullets ?? [],
+      risk_flags: t.riskFlags ?? [],
+      entry_price: t.entryPrice ?? null,
+      target_price: t.targetPrice ?? null,
+      stop_loss: t.stopLoss ?? null,
+      hold_duration: undefined,
+      signal_types: [],
+      company_name: null,
+      exchange: null,
+      fundamentals: null,
+      status: t.status as
+        | "ACTIVE"
+        | "WATCHING"
+        | "INVALIDATED"
+        | "CLOSED"
+        | "SUPERSEDED",
     }));
 
     const activeCount = enriched.filter((t) => t.status === "ACTIVE").length;
@@ -260,7 +272,9 @@ export const getTheses = defineTool({
         active: activeCount,
         watching: watchingCount,
         theses: enriched,
-        items,
+        // ThesisCardData[] for ThesisCardRenderer — drives the
+        // "Read theses" carousel in the chat.
+        cards,
       },
       sources: [],
     };
