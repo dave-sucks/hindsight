@@ -159,7 +159,7 @@ export const updateThesis = defineTool({
   description:
     "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief).",
   schema: updateSchema,
-  ui: "tool-ui" as const,
+  ui: "thesis-card" as const,
 
   progressLabel: (args) => {
     if (args.change_status === "INVALIDATED") return `Invalidating thesis ${args.thesis_id.slice(-8)}`;
@@ -317,7 +317,12 @@ export const updateThesis = defineTool({
       });
       return {
         summary: `Reviewed ${existing.ticker} thesis: no changes.`,
-        data: { ok: true, thesis_id: existing.id, type: "REVIEWED" as const },
+        data: {
+          ok: true,
+          thesis_id: existing.id,
+          type: "REVIEWED" as const,
+          card: thesisToCardData(existing),
+        },
         sources: [],
       };
     }
@@ -420,11 +425,59 @@ export const updateThesis = defineTool({
         thesis_id: existing.id,
         type: updateType,
         changed_fields: Object.keys(fieldChanges),
+        // Post-update thesis snapshot for the chat renderer. Merges the
+        // pre-update record with the patch we just applied — no extra DB
+        // read. Drives the "Wrote / edited theses" carousel.
+        card: thesisToCardData({ ...existing, ...patch }),
       },
       sources: [],
     };
   },
 });
+
+/**
+ * Map a Thesis row (from prisma) to the ThesisCardData shape consumed by
+ * ThesisCardRenderer. Same shape that record_thesis returns.
+ */
+function thesisToCardData(t: Record<string, unknown>): {
+  thesis_id: string;
+  ticker: string;
+  direction: "LONG" | "SHORT" | "PASS";
+  confidence_score: number;
+  reasoning_summary: string;
+  thesis_bullets: string[];
+  risk_flags: string[];
+  entry_price: number | null;
+  target_price: number | null;
+  stop_loss: number | null;
+  hold_duration?: string;
+  signal_types: string[];
+  status: "ACTIVE" | "WATCHING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED";
+} {
+  return {
+    thesis_id: t.id as string,
+    ticker: t.ticker as string,
+    direction: t.direction as "LONG" | "SHORT" | "PASS",
+    confidence_score: (t.confidenceScore as number) ?? 0,
+    reasoning_summary: (t.reasoningSummary as string) ?? "",
+    thesis_bullets: (t.thesisBullets as string[]) ?? [],
+    risk_flags: (t.riskFlags as string[]) ?? [],
+    entry_price:
+      typeof t.entryPrice === "number" ? (t.entryPrice as number) : null,
+    target_price:
+      typeof t.targetPrice === "number" ? (t.targetPrice as number) : null,
+    stop_loss:
+      typeof t.stopLoss === "number" ? (t.stopLoss as number) : null,
+    hold_duration: (t.holdDuration as string) ?? undefined,
+    signal_types: (t.signalTypes as string[]) ?? [],
+    status: (t.status as
+      | "ACTIVE"
+      | "WATCHING"
+      | "INVALIDATED"
+      | "CLOSED"
+      | "SUPERSEDED") ?? "ACTIVE",
+  };
+}
 
 function fmtNum(v: unknown): string {
   if (typeof v === "number") return v.toFixed(2);
