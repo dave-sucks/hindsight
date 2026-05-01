@@ -57,6 +57,7 @@ import { cn } from "@/lib/utils";
 import {
   deletePodcast,
   runSegment,
+  runSegmentViaInngest,
   type EpisodeListItem,
   type PodcastDetail,
   type SegmentSummary,
@@ -300,20 +301,11 @@ export default function PodcastDetailClient({
         return;
       }
       try {
-        const runIds: string[] = [];
-        for (const s of enabled) {
-          const { runId } = await runSegment(s.id);
-          runIds.push(runId);
-        }
-        // Navigate to the first run so AgentThread can drive it.
-        // Remaining runs need manual navigation to execute — each run
-        // requires an AgentThread on /runs/[id] to stream the agent.
-        router.push(`/runs/${runIds[0]}`);
-        if (runIds.length > 1) {
-          toast.info(
-            `${runIds.length} runs created. Open the remaining ${runIds.length - 1} segment${runIds.length - 1 === 1 ? "" : "s"} individually to start them.`,
-          );
-        }
+        await Promise.all(enabled.map((s) => runSegmentViaInngest(s.id)));
+        toast.success(
+          `${enabled.length} segment${enabled.length === 1 ? "" : "s"} queued — running in the background.`,
+        );
+        router.refresh();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Some runs failed to start");
       }
