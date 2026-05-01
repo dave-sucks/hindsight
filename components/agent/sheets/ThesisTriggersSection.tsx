@@ -58,7 +58,34 @@ interface Trigger {
   lastFiredAt?: string;
 }
 
-interface TriggersResponse {
+export interface ThesisStatePosition {
+  quantity: number;
+  avgCost: number;
+  openedAt: string;
+  currentPrice: number | null;
+  marketValue: number | null;
+  unrealizedPnl: number | null;
+  unrealizedPnlPct: number | null;
+  daysHeld: number;
+}
+
+export interface ThesisStateRecentFire {
+  id: string;
+  timestamp: string;
+  summary: string;
+  rationale: string | null;
+  triggerId: string | null;
+  runId: string | null;
+}
+
+export interface TriggersResponse {
+  thesisId: string;
+  ticker: string;
+  status: string;
+  closedAt: string | null;
+  closeReason: string | null;
+  invalidatedAt: string | null;
+  invalidReason: string | null;
   horizon: string | null;
   entryPrice: number | null;
   targetPrice: number | null;
@@ -68,6 +95,8 @@ interface TriggersResponse {
   maxHoldDays: number | null;
   nextReviewAt: string | null;
   triggers: Trigger[];
+  position: ThesisStatePosition | null;
+  recentFire: ThesisStateRecentFire | null;
 }
 
 // ── Predicate helpers ──────────────────────────────────────────────────
@@ -383,23 +412,29 @@ function TriggerPopoverContent({
 
 interface Props {
   thesisId: string;
+  /** Pre-fetched response. When omitted, the section fetches itself. */
+  data?: TriggersResponse | null;
 }
 
-export function ThesisTriggersSection({ thesisId }: Props) {
+export function ThesisTriggersSection({ thesisId, data: dataProp }: Props) {
   const router = useRouter();
-  const [data, setData] = useState<TriggersResponse | null>(null);
+  const [internalData, setInternalData] = useState<TriggersResponse | null>(
+    null,
+  );
+  const data = dataProp !== undefined ? dataProp : internalData;
   const [error, setError] = useState<string | null>(null);
   const [firing, setFiring] = useState<string | null>(null);
   const [fireError, setFireError] = useState<string | null>(null);
   const [fireQueued, setFireQueued] = useState<string | null>(null);
 
   useEffect(() => {
+    if (dataProp !== undefined) return;
     let cancelled = false;
     fetch(`/api/theses/${thesisId}/triggers`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const json = (await r.json()) as TriggersResponse;
-        if (!cancelled) setData(json);
+        if (!cancelled) setInternalData(json);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -407,7 +442,7 @@ export function ThesisTriggersSection({ thesisId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [thesisId]);
+  }, [thesisId, dataProp]);
 
   async function testFire(triggerId: string) {
     setFireError(null);

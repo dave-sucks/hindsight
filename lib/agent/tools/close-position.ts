@@ -32,8 +32,19 @@ export const closePosition = defineTool({
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
     try {
+      // Scope strictly by analystId when available. Without this filter,
+      // a single user with multiple analysts holding the same ticker would
+      // return whichever Position prisma picks first — i.e., one analyst
+      // could close another analyst's position. Captured the 2026-04-30
+      // EDT/EVT NVDA cross-contamination pattern. Falls back to user-only
+      // scope only when ctx.analystId is missing (legacy/manual paths).
       const position = await prisma.position.findFirst({
-        where: { userId: ctx.userId, symbol: ticker, status: "OPEN" },
+        where: {
+          userId: ctx.userId,
+          symbol: ticker,
+          status: "OPEN",
+          ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
+        },
         include: { analyst: { select: { name: true } } },
       });
 
@@ -140,7 +151,12 @@ export const closePosition = defineTool({
             },
           });
           // Audit row for the timeline + tactical-run close-out gate.
-          void writeThesisUpdate({
+          // MUST be awaited — the tactical-run gate queries ThesisUpdate
+          // immediately after generateText returns. With void/fire-and-forget,
+          // the write may not have committed yet and the gate sees no row,
+          // marking a clean stop-hit close as FAILED. Captured the
+          // 2026-04-30 EDT NVDA tactical false-fail pattern.
+          await writeThesisUpdate({
             thesisId: activeThesis.id,
             type: "CLOSED",
             summary: `Closed ${ticker} position (${args.reason}) — ${result.outcome ?? "RESULT"}`,

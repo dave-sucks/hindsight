@@ -1,0 +1,172 @@
+"use client";
+
+/**
+ * ReadThesesTable — render get_theses results in the same row table
+ * shape as DecisionSummaryCard (the run summary table). Status-led
+ * (Holding / Watching / Closed / Invalidated) instead of action-led
+ * (Hold / Sold / Watch / Pass), because get_theses is a READ — the
+ * "what's it doing right now" question, not "what did the agent do."
+ *
+ * Row layout matches DecisionSummaryCard exactly: logo, ticker chip,
+ * status badge with dot, summary text right-aligned. The hover card
+ * promotes the same data into a wider preview.
+ */
+
+import type { ComponentProps } from "react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { StockLogo } from "@/components/StockLogo";
+import type { ThesisCardData } from "@/components/domain/thesis-card";
+
+// ─── Status → display ─────────────────────────────────────────────────────────
+
+type StatusDisplay = {
+  label: string;
+  dotClass: string;
+  tooltip: string;
+};
+
+const STATUS_DISPLAY: Record<NonNullable<ThesisCardData["status"]>, StatusDisplay> = {
+  ACTIVE: {
+    label: "Holding",
+    dotClass: "bg-positive",
+    tooltip: "Open position — thesis is active in the book",
+  },
+  WATCHING: {
+    label: "Watching",
+    dotClass: "bg-blue-500",
+    tooltip: "On the watchlist — promotion triggers govern entry",
+  },
+  CLOSED: {
+    label: "Closed",
+    dotClass: "bg-muted-foreground/60",
+    tooltip: "Position exited — thesis terminal",
+  },
+  INVALIDATED: {
+    label: "Invalidated",
+    dotClass: "bg-negative",
+    tooltip: "Thesis broken — exited or never entered",
+  },
+  SUPERSEDED: {
+    label: "Superseded",
+    dotClass: "bg-muted-foreground/40",
+    tooltip: "Replaced by a newer thesis on the same ticker",
+  },
+};
+
+function getStatus(status: ThesisCardData["status"]): StatusDisplay {
+  return STATUS_DISPLAY[status ?? "ACTIVE"] ?? STATUS_DISPLAY.ACTIVE;
+}
+
+// ─── Row ─────────────────────────────────────────────────────────────────────
+
+function ThesisReadRow({
+  thesis,
+  onClick,
+}: {
+  thesis: ThesisCardData;
+  onClick: () => void;
+}) {
+  const status = getStatus(thesis.status);
+  const summary = thesis.reasoning_summary?.trim() || "—";
+
+  return (
+    <HoverCard>
+      <HoverCardTrigger
+        render={
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={onClick}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }}
+            className="flex items-center gap-1.5 rounded-md p-2 hover:bg-muted/70 transition-colors cursor-pointer"
+          />
+        }
+      >
+        <StockLogo ticker={thesis.ticker} size="sm" />
+        <span className="text-sm font-semibold font-brand shrink-0 mr-1">
+          {thesis.ticker}
+        </span>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Badge variant="secondary" className="gap-1.5 font-normal">
+                  <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", status.dotClass)} />
+                  {status.label}
+                </Badge>
+              }
+            />
+            <TooltipContent>{status.tooltip}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <span className="flex-1 min-w-0 text-right text-xs text-muted-foreground truncate">
+          {summary}
+        </span>
+      </HoverCardTrigger>
+      <HoverCardContent side="top" align="start" className="w-72">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <StockLogo ticker={thesis.ticker} size="md" />
+            <div className="text-base font-semibold font-brand">{thesis.ticker}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="gap-1.5 font-normal">
+              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", status.dotClass)} />
+              {status.label}
+            </Badge>
+            {thesis.direction && thesis.direction !== "PASS" ? (
+              <span className="text-xs text-muted-foreground">{thesis.direction}</span>
+            ) : null}
+          </div>
+          <p className="text-sm text-muted-foreground">{summary}</p>
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+// ─── ReadThesesTable ─────────────────────────────────────────────────────────
+
+export type ReadThesesTableProps = ComponentProps<typeof Card> & {
+  theses: ThesisCardData[];
+  onRowClick: (thesis: ThesisCardData) => void;
+};
+
+export function ReadThesesTable({
+  theses,
+  onRowClick,
+  className,
+  ...cardProps
+}: ReadThesesTableProps) {
+  return (
+    <div className={cn("not-prose w-full", className)}>
+      <Card className="p-1 gap-1" {...cardProps}>
+        {theses.map((t) => (
+          <ThesisReadRow
+            key={t.thesis_id ?? `${t.ticker}-${t.direction}`}
+            thesis={t}
+            onClick={() => onRowClick(t)}
+          />
+        ))}
+      </Card>
+    </div>
+  );
+}

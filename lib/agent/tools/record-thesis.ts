@@ -723,7 +723,7 @@ export const recordThesis = defineTool({
         args.direction === "PASS"
           ? `Passed on ${args.ticker}`
           : `${args.direction} thesis on ${args.ticker} at confidence ${args.confidence_score}`;
-      void writeThesisUpdate({
+      await writeThesisUpdate({
         thesisId: thesis.id,
         type: "CREATED",
         summary: createdSummary,
@@ -748,7 +748,7 @@ export const recordThesis = defineTool({
                 invalidReason,
               },
             });
-            void writeThesisUpdate({
+            await writeThesisUpdate({
               thesisId: resolvedParentId,
               type: "INVALIDATED",
               summary: `Invalidated by PASS thesis on ${args.ticker}`,
@@ -766,7 +766,7 @@ export const recordThesis = defineTool({
               where: { id: resolvedParentId },
               data: { status: "SUPERSEDED" },
             });
-            void writeThesisUpdate({
+            await writeThesisUpdate({
               thesisId: resolvedParentId,
               type: "SUPERSEDED",
               summary: `Replaced by newer ${args.direction} thesis on ${args.ticker}`,
