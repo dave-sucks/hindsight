@@ -58,11 +58,24 @@ export interface RunSummaryInputManagementAction {
   newTrailPct: number | null;
 }
 
+export interface RunSummaryInputThesisUpdate {
+  type: string;
+  thesis: { ticker: string } | null;
+}
+
 export interface RunSummaryInput {
   status: string;
   theses: RunSummaryInputTheses[];
   decisions: RunSummaryInputTradeDecision[];
   managementActions: RunSummaryInputManagementAction[];
+  /**
+   * ThesisUpdate audit rows written during this run. Tactical runs
+   * frequently end with zero TradeDecisions but one or more UPDATED /
+   * REVIEWED / INVALIDATED rows — those runs are NOT failures, they're
+   * the design. The feed surfaces them as "Updated NVDA",
+   * "Reviewed N theses", "Invalidated NVDA", etc.
+   */
+  thesisUpdates?: RunSummaryInputThesisUpdate[];
 }
 
 // ── Output shape ────────────────────────────────────────────────────────────
@@ -124,6 +137,18 @@ export interface RunSummary {
     watched: string[];                // WATCH
     unwatched: string[];              // REMOVE_WATCH
     passed: string[];                 // PASS — kept for counts, never shown
+    /**
+     * Thesis-level audit activity from this run, derived from
+     * ThesisUpdate rows. These surface in the feed when no capital action
+     * happened — e.g. a tactical run that refined targets, or a daily
+     * walk that REVIEWED-only across the book. Tickers in `updated` /
+     * `invalidated` / `reviewed` are normalized; CLOSED rows are
+     * intentionally omitted because TradeDecision.EXIT already covers
+     * them and rendering both would double-count.
+     */
+    updated: string[];                // ThesisUpdate(UPDATED)
+    invalidated: string[];            // ThesisUpdate(INVALIDATED)
+    reviewed: string[];               // ThesisUpdate(REVIEWED)
   };
   counts: {
     researched: number;
@@ -152,8 +177,28 @@ export interface RunSummary {
 
 export function buildRunSummary(run: RunSummaryInput): RunSummary {
   const researched = run.theses.length;
+  // ThesisUpdate audit rows from this run that represent agent activity
+  // (UPDATED / REVIEWED / INVALIDATED / CLOSED / STATUS_CHANGED). The
+  // TRIGGER_FIRED rows are written by the system when a predicate matches,
+  // not by the agent — exclude them so the cards reflect agent decisions.
+  const updates = (run.thesisUpdates ?? []).filter(
+    (u) => u.type !== "TRIGGER_FIRED" && u.type !== "CREATED",
+  );
+  const hasAuditActivity = updates.length > 0;
+  const hasManagement = run.managementActions.length > 0;
+  // A run is FAILED only if status='FAILED' OR it produced no work at all.
+  // "No work" now correctly considers ThesisUpdate rows (the new model's
+  // unit of audit) and management actions, not just decisions and theses.
+  // Without this, every tactical run that ends with one update_thesis call
+  // and zero new Theses / TradeDecisions reads as "Failed — no analysis"
+  // in the feed. Same fix as the morning-research coverage gate, applied
+  // to the read side.
   const isFailed =
-    run.status === "FAILED" || (researched === 0 && run.decisions.length === 0);
+    run.status === "FAILED" ||
+    (researched === 0 &&
+      run.decisions.length === 0 &&
+      !hasAuditActivity &&
+      !hasManagement);
 
   const actions: RunSummary["actions"] = {
     bought: [],
@@ -167,6 +212,9 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
     watched: [],
     unwatched: [],
     passed: [],
+    updated: [],
+    invalidated: [],
+    reviewed: [],
   };
 
   const badges = new Map<string, { color: ActionColor; partial: boolean }>();
@@ -291,8 +339,46 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
   const managedSet = new Set(managedBucket.keys());
   actions.held = actions.held.filter((t) => !managedSet.has(t));
 
+  // ── Pass 3: ThesisUpdate audit rows ───────────────────────────────────
+  // Surface UPDATED / INVALIDATED / REVIEWED activity. Tickers already
+  // covered by a TradeDecision (bought/sold/added/trimmed) are skipped —
+  // we don't want "Sold ASML · Invalidated ASML" double-billing the same
+  // event. Same skip for tickers already in management buckets.
+  const decisionTickers = new Set([
+    ...actions.bought.map((t) => t.toUpperCase()),
+    ...actions.added.map((t) => t.toUpperCase()),
+    ...actions.sold.map((s) => s.ticker.toUpperCase()),
+    ...actions.trimmed.map((s) => s.ticker.toUpperCase()),
+    ...actions.targetsAdjusted.map((t) => t.toUpperCase()),
+    ...actions.stopsToBreakeven.map((t) => t.toUpperCase()),
+    ...actions.trailingStops.map((t) => t.toUpperCase()),
+  ]);
+  for (const u of updates) {
+    if (!u.thesis?.ticker) continue;
+    const ticker = u.thesis.ticker.toUpperCase();
+    if (decisionTickers.has(ticker)) continue;
+    if (u.type === "INVALIDATED") {
+      actions.invalidated.push(ticker);
+      setBadge(ticker, "red", false, 95);
+    } else if (u.type === "UPDATED" || u.type === "STATUS_CHANGED") {
+      actions.updated.push(ticker);
+      setBadge(ticker, "muted", false, 60);
+    } else if (u.type === "REVIEWED") {
+      actions.reviewed.push(ticker);
+    }
+  }
+  actions.updated = dedupe(actions.updated);
+  actions.invalidated = dedupe(actions.invalidated);
+  actions.reviewed = dedupe(actions.reviewed);
+
   // ── Fallback: legacy runs with no TradeDecisions ──────────────────────
-  const isLegacy = run.decisions.length === 0 && researched > 0;
+  // Tactical / housekeeping runs (post-PR3) often have 0 TradeDecisions
+  // and 0 new Thesis rows — they only write ThesisUpdate audit rows.
+  // Those are NOT legacy and shouldn't get the thesis-derived hold list
+  // bolted on. Only mark legacy when there are theses but no decisions
+  // AND no audit activity (a true pre-decision-pipeline run).
+  const isLegacy =
+    run.decisions.length === 0 && researched > 0 && !hasAuditActivity;
   if (isLegacy) {
     for (const t of run.theses) {
       if (t.direction === "PASS") {
@@ -417,6 +503,24 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
     });
   }
 
+  // ── Thesis-audit verbs (post-PR3 model). These cover the tactical
+  // case (refined target → "Updated NVDA") and the housekeeping case
+  // (stop hit → "Invalidated ASML") without a TradeDecision.
+  if (summary.actions.invalidated.length > 0) {
+    segments.push({
+      color: "red",
+      partial: false,
+      text: `Invalidated ${summary.actions.invalidated.join(", ")}`,
+    });
+  }
+  if (summary.actions.updated.length > 0) {
+    segments.push({
+      color: "muted",
+      partial: false,
+      text: `Updated ${summary.actions.updated.join(", ")}`,
+    });
+  }
+
   // Plain Held — tickers with a HOLD decision AND no management action.
   if (summary.actions.held.length > 0) {
     const hadAnythingElse = segments.length > 0;
@@ -446,6 +550,21 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
         });
       }
       return segments;
+    }
+    // REVIEWED-only run — daily walker confirmed the book intact. Surface
+    // the count so the card reads "Reviewed 5 theses" instead of "No
+    // actions taken." Counts the unique tickers reviewed with no other
+    // touch this run; CLOSED rows are excluded by construction.
+    if (summary.actions.reviewed.length > 0) {
+      const n = summary.actions.reviewed.length;
+      const noun = n === 1 ? "thesis" : "theses";
+      return [
+        {
+          color: "muted",
+          partial: false,
+          text: `Reviewed ${n} ${noun}`,
+        },
+      ];
     }
     return [{ color: "muted", partial: false, text: "No actions taken" }];
   }

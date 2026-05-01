@@ -300,11 +300,12 @@ export const tacticalRun = inngest.createFunction(
         recentUpdates: thesis.updates,
       });
 
+      const userPrompt = `A trigger you set on your $${thesis.ticker} thesis just fired. Validate, decide, act if warranted, then close out via update_thesis.`;
       try {
-        const { steps } = await generateText({
+        const { steps, response } = await generateText({
           model: openai(MODES["tactical"].model),
           system: systemPrompt,
-          prompt: `A trigger you set on your $${thesis.ticker} thesis just fired. Validate, decide, act if warranted, then close out via update_thesis.`,
+          prompt: userPrompt,
           tools,
           providerOptions: { openai: { strictJsonSchema: true } },
           stopWhen: stepCountIs(MODES["tactical"].maxSteps),
@@ -321,6 +322,47 @@ export const tacticalRun = inngest.createFunction(
         console.log(
           `[tactical-run] thesis=${thesis.id} trigger=${trigger.id} ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`,
         );
+
+        // Persist conversation messages so /runs/[id] can replay the
+        // chat. Without this, every tactical run shows "No replay data
+        // available" — exactly the morning-research persistence block,
+        // copied for consistency.
+        try {
+          const userMessage = {
+            role: "user",
+            content: [{ type: "text", text: userPrompt }],
+          };
+          let responseMessages = response?.messages;
+          if (
+            !responseMessages ||
+            !Array.isArray(responseMessages) ||
+            responseMessages.length === 0
+          ) {
+            responseMessages = steps.flatMap((s) => {
+              const stepMsgs = (
+                s as unknown as { response?: { messages?: unknown[] } }
+              ).response?.messages;
+              return Array.isArray(stepMsgs) ? stepMsgs : [];
+            }) as typeof responseMessages;
+          }
+          const allMessages = [userMessage, ...responseMessages];
+          const json = JSON.stringify(allMessages);
+          await prisma.$transaction(async (tx) => {
+            await tx.runMessage.deleteMany({ where: { runId: run.id } });
+            await tx.runMessage.create({
+              data: {
+                runId: run.id,
+                role: "thread",
+                content: json,
+              },
+            });
+          });
+        } catch (msgErr) {
+          console.error(
+            `[tactical-run] failed to persist messages for run=${run.id}:`,
+            msgErr instanceof Error ? msgErr.message : msgErr,
+          );
+        }
 
         // Verify update_thesis was actually called for this thesis (the
         // close-out contract). If not, mark FAILED so the operator sees it.

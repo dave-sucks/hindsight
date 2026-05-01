@@ -123,6 +123,17 @@ export default async function RunsPage() {
           },
         },
       },
+      // ThesisUpdate audit rows tied to this run. Without these, tactical
+      // runs (which write update_thesis but no TradeDecision) get
+      // false-flagged as "Failed — no analysis" by the summary builder.
+      // Same tickerset surfaces "Updated NVDA", "Reviewed 5 theses",
+      // etc. on the card instead of an empty action line.
+      thesisUpdates: {
+        select: {
+          type: true,
+          thesis: { select: { ticker: true } },
+        },
+      },
     },
     orderBy: { startedAt: "desc" },
     take: 100,
@@ -181,11 +192,18 @@ export default async function RunsPage() {
           const summary = buildRunSummary(run);
           const segments = buildActionSegments(summary);
 
-          // Logo stack tickers — action tickers first, then researched fill.
+          // Logo stack tickers — action tickers first, then researched fill,
+          // then audit-only tickers (tactical runs that only update_thesis
+          // touched these — they wouldn't appear otherwise).
           const actionTickers = [...summary.tickerBadges.keys()];
           const thesisTickers = run.theses.map((t) => t.ticker.toUpperCase());
+          const auditTickers = [
+            ...summary.actions.invalidated,
+            ...summary.actions.updated,
+            ...summary.actions.reviewed,
+          ];
           const orderedTickers = [
-            ...new Set([...actionTickers, ...thesisTickers]),
+            ...new Set([...actionTickers, ...thesisTickers, ...auditTickers]),
           ];
 
           const duration = run.completedAt
