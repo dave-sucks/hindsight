@@ -66,6 +66,9 @@ export interface SegmentSummary {
    *  without an extra fetch. Mirrors the analyst pattern of returning
    *  ThesisRowData inline on AgentConfig detail. Null when no runs yet. */
   latestTranscript: TranscriptCardData | null;
+  /** ID of the currently-RUNNING run, if any. Used by the segment card to
+   *  show a "View run" link so the user can navigate to the live run page. */
+  activeRunId: string | null;
   // Monitors split by type, mirror analyst (domainMonitors / searchMonitors).
   // Both are Monitor rows scoped to this segment via podcastSegmentId.
   domainMonitors: SegmentDomainMonitorView[];
@@ -252,6 +255,7 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
       lastTranscriptTitle: t0?.title ?? null,
       transcriptCount: s.transcripts.length,
       latestTranscript,
+      activeRunId: s.runs[0]?.status === "RUNNING" ? s.runs[0].id : null,
       domainMonitors,
       searchMonitors,
     };
