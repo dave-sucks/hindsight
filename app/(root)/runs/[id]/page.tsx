@@ -103,6 +103,9 @@ export default async function RunPage({
   // autostart for those runs; the events written by the Inngest consumer
   // still render via the existing event/replay path.
   const isTacticalMode = run.mode === "INTRADAY_TACTICAL";
+  // Inngest-backed segment runs (source=AGENT) execute server-side — don't
+  // auto-start AgentThread or it would launch a second competing agent.
+  const isInngestSegmentRun = isPodcastSegmentRun && run.source === "AGENT";
 
   // Load Sources + Theses tab data from the DB.
   // Wrapped in try/catch so a DB error (e.g. pending migration) never
@@ -144,7 +147,7 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive && !isTacticalMode}
+            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun}
             messages={persistedMessages ?? undefined}
             brief={isPodcastSegmentRun ? null : brief}
             sources={isPodcastSegmentRun ? [] : sources}

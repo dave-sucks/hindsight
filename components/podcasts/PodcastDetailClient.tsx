@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   EllipsisVertical,
+  ExternalLink,
   FileText,
   Loader2,
   MoreHorizontal,
@@ -56,6 +57,7 @@ import { cn } from "@/lib/utils";
 import {
   deletePodcast,
   runSegment,
+  runSegmentViaInngest,
   type EpisodeListItem,
   type PodcastDetail,
   type SegmentSummary,
@@ -148,10 +150,17 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
               <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={handleRun} disabled={isStarting}>
-                <Play className="h-3.5 w-3.5" />
-                {isStarting ? "Starting…" : "Run segment"}
-              </DropdownMenuItem>
+              {segment.activeRunId ? (
+                <DropdownMenuItem onClick={() => router.push(`/runs/${segment.activeRunId}`)}>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  View live run
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={handleRun} disabled={isStarting}>
+                  <Play className="h-3.5 w-3.5" />
+                  {isStarting ? "Starting…" : "Run segment"}
+                </DropdownMenuItem>
+              )}
               {latest && (
                 <DropdownMenuItem onClick={() => setTranscriptOpen(true)}>
                   <FileText className="h-3.5 w-3.5" />
@@ -188,10 +197,19 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
 
       {/* Section 2: footer — last run + transcript count.
           Clicking the title (when there is a latest transcript) opens the
-          TranscriptDialog. Whole footer stays read-only otherwise. */}
+          TranscriptDialog. Shows a live-run link when a run is active. */}
       <div className="border-t p-3 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
         <span className="min-w-0 flex-1">
-          {latest ? (
+          {segment.activeRunId ? (
+            <button
+              type="button"
+              onClick={() => router.push(`/runs/${segment.activeRunId}`)}
+              className="font-medium text-foreground line-clamp-1 hover:underline text-left flex items-center gap-1.5"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+              Running now — tap to open
+            </button>
+          ) : latest ? (
             <button
               type="button"
               onClick={() => setTranscriptOpen(true)}
@@ -283,20 +301,11 @@ export default function PodcastDetailClient({
         return;
       }
       try {
-        const runIds: string[] = [];
-        for (const s of enabled) {
-          const { runId } = await runSegment(s.id);
-          runIds.push(runId);
-        }
-        // Navigate to the first run so AgentThread can drive it.
-        // Remaining runs need manual navigation to execute — each run
-        // requires an AgentThread on /runs/[id] to stream the agent.
-        router.push(`/runs/${runIds[0]}`);
-        if (runIds.length > 1) {
-          toast.info(
-            `${runIds.length} runs created. Open the remaining ${runIds.length - 1} segment${runIds.length - 1 === 1 ? "" : "s"} individually to start them.`,
-          );
-        }
+        await Promise.all(enabled.map((s) => runSegmentViaInngest(s.id)));
+        toast.success(
+          `${enabled.length} segment${enabled.length === 1 ? "" : "s"} queued — running in the background.`,
+        );
+        router.refresh();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Some runs failed to start");
       }

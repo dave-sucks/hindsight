@@ -605,68 +605,78 @@ export async function POST(
           `[agent/${agentMode}] ✅ onFinish elapsed=${elapsed}ms reason=${finishReason} tokens=${usage?.totalTokens ?? "?"}`,
         );
 
-        // Only persist messages and handle run lifecycle for research-run
-        if (agentMode !== "research-run" || !runId) {
+        // Builder/editor modes don't have a ResearchRun to persist.
+        if ((agentMode !== "research-run" && agentMode !== "podcast-segment-run") || !runId) {
           resolveOnFinish!();
           return;
         }
 
         try {
-          // Ensure stuck RUNNING runs get a terminal status
-          const [thesisCount, tradeCount] = await Promise.all([
-            prisma.thesis.count({ where: { researchRunId: runId } }),
-            prisma.tradeDecision.count({ where: { runId } }),
-          ]);
-          const hasWork = thesisCount > 0 || tradeCount > 0;
-          const finalStatus = hasWork ? "COMPLETE" : "FAILED";
-          const stuckResult = await prisma.researchRun.updateMany({
-            where: { id: runId, status: "RUNNING" },
-            data: { status: finalStatus, completedAt: new Date() },
-          });
-          if (stuckResult.count > 0) {
-            console.warn(
-              `[agent/${agentMode}] ⚠️ Run ${runId} was RUNNING after finish. Marked ${finalStatus}.`,
-            );
-          }
-
-          // Persist toolStats into ResearchRun.parameters (merge — don't
-          // clobber the config snapshot). Thin-run warning only.
-          try {
-            const totalToolCalls = Object.values(toolStats).reduce((s, b) => s + b.count, 0);
-            const durationMs = Date.now() - t0;
-            if (finalStatus === "COMPLETE" && (totalToolCalls < 5 || durationMs < 60_000)) {
+          if (agentMode === "research-run") {
+            // Ensure stuck RUNNING runs get a terminal status
+            const [thesisCount, tradeCount] = await Promise.all([
+              prisma.thesis.count({ where: { researchRunId: runId } }),
+              prisma.tradeDecision.count({ where: { runId } }),
+            ]);
+            const hasWork = thesisCount > 0 || tradeCount > 0;
+            const finalStatus = hasWork ? "COMPLETE" : "FAILED";
+            const stuckResult = await prisma.researchRun.updateMany({
+              where: { id: runId, status: "RUNNING" },
+              data: { status: finalStatus, completedAt: new Date() },
+            });
+            if (stuckResult.count > 0) {
               console.warn(
-                `[agent/${agentMode}] ⚠️ THIN RUN runId=${runId} tool_calls=${totalToolCalls} duration_ms=${durationMs}`,
+                `[agent/${agentMode}] ⚠️ Run ${runId} was RUNNING after finish. Marked ${finalStatus}.`,
               );
             }
-            const existing = await prisma.researchRun.findFirst({
-              where: { id: runId },
-              select: { parameters: true },
+
+            // Persist toolStats into ResearchRun.parameters (merge — don't
+            // clobber the config snapshot). Thin-run warning only.
+            try {
+              const totalToolCalls = Object.values(toolStats).reduce((s, b) => s + b.count, 0);
+              const durationMs = Date.now() - t0;
+              if (finalStatus === "COMPLETE" && (totalToolCalls < 5 || durationMs < 60_000)) {
+                console.warn(
+                  `[agent/${agentMode}] ⚠️ THIN RUN runId=${runId} tool_calls=${totalToolCalls} duration_ms=${durationMs}`,
+                );
+              }
+              const existing = await prisma.researchRun.findFirst({
+                where: { id: runId },
+                select: { parameters: true },
+              });
+              const existingParams =
+                existing?.parameters && typeof existing.parameters === "object"
+                  ? (existing.parameters as Record<string, unknown>)
+                  : {};
+              await prisma.researchRun.update({
+                where: { id: runId },
+                data: {
+                  parameters: {
+                    ...existingParams,
+                    toolStats: {
+                      totalToolCalls,
+                      durationMs,
+                      byTool: toolStats,
+                      failedToolCalls,
+                    },
+                  } as object,
+                },
+              });
+            } catch (err) {
+              console.error(`[agent/${agentMode}] Failed to persist toolStats:`, err);
+            }
+          } else {
+            // podcast-segment-run: safety guard — mark RUNNING → COMPLETE if the
+            // save_podcast_segment_transcript tool didn't already do so.
+            await prisma.researchRun.updateMany({
+              where: { id: runId, status: "RUNNING" },
+              data: { status: "COMPLETE", completedAt: new Date() },
             });
-            const existingParams =
-              existing?.parameters && typeof existing.parameters === "object"
-                ? (existing.parameters as Record<string, unknown>)
-                : {};
-            await prisma.researchRun.update({
-              where: { id: runId },
-              data: {
-                parameters: {
-                  ...existingParams,
-                  toolStats: {
-                    totalToolCalls,
-                    durationMs,
-                    byTool: toolStats,
-                    failedToolCalls,
-                  },
-                } as object,
-              },
-            });
-          } catch (err) {
-            console.error(`[agent/${agentMode}] Failed to persist toolStats:`, err);
           }
 
-          // Persist messages — defensive: response.messages may be undefined
-          // if the stream ended abnormally or the SDK version changed.
+          // Persist messages — shared for research-run and podcast-segment-run.
+          // Defensive: response.messages may be undefined if the stream ended
+          // abnormally or the SDK version changed.
           const responseMessages = response?.messages ?? [];
           const inputMessages = messages ?? [];
           const allMessages = [...inputMessages, ...responseMessages];
@@ -690,22 +700,24 @@ export async function POST(
             console.warn(`[agent/${agentMode}] ⚠️ No messages to persist for run ${runId} (input=${inputMessages.length}, response=${responseMessages.length})`);
           }
 
-          // Generate briefing if complete_run didn't
-          const updatedRun = await prisma.researchRun.findFirst({
-            where: { id: runId },
-            select: { status: true },
-          });
-          if (updatedRun?.status === "COMPLETE") {
-            const existingBriefing = await prisma.analystBriefing.findFirst({
-              where: { runId },
-              select: { id: true },
+          if (agentMode === "research-run") {
+            // Generate briefing if complete_run didn't
+            const updatedRun = await prisma.researchRun.findFirst({
+              where: { id: runId },
+              select: { status: true },
             });
-            if (!existingBriefing && resolvedAnalystId) {
-              try {
-                await updateAnalystBriefing({ analystId: resolvedAnalystId, runId, userId: user.id });
-                console.log(`[agent/${agentMode}] ✅ Briefing written for run ${runId}`);
-              } catch (err) {
-                console.error(`[agent/${agentMode}] Briefing failed:`, err);
+            if (updatedRun?.status === "COMPLETE") {
+              const existingBriefing = await prisma.analystBriefing.findFirst({
+                where: { runId },
+                select: { id: true },
+              });
+              if (!existingBriefing && resolvedAnalystId) {
+                try {
+                  await updateAnalystBriefing({ analystId: resolvedAnalystId, runId, userId: user.id });
+                  console.log(`[agent/${agentMode}] ✅ Briefing written for run ${runId}`);
+                } catch (err) {
+                  console.error(`[agent/${agentMode}] Briefing failed:`, err);
+                }
               }
             }
           }
@@ -715,11 +727,10 @@ export async function POST(
       },
     });
 
-    if (agentMode === "research-run") {
+    if (agentMode === "research-run" || agentMode === "podcast-segment-run") {
       // Wait for BOTH the response stream AND the onFinish async work (message
-      // persistence, briefing generation). result.response alone may resolve
-      // before onFinish completes its DB writes, causing Vercel to kill the
-      // function and lose the persisted messages.
+      // persistence). result.response alone may resolve before onFinish completes
+      // its DB writes, causing Vercel to kill the function and lose messages.
       waitUntil(
         Promise.all([
           Promise.resolve(result.response),
@@ -733,7 +744,7 @@ export async function POST(
     const elapsed = Date.now() - t0;
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[agent/${agentMode}] ❌ UNHANDLED ERROR elapsed=${elapsed}ms: ${msg}`);
-    if (agentMode === "research-run") {
+    if (agentMode === "research-run" || agentMode === "podcast-segment-run") {
       waitUntil(markRunFailed(runId, `Route error: ${msg}`));
     }
     return new Response(`Agent error: ${msg}`, { status: 500 });

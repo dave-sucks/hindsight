@@ -66,6 +66,9 @@ export interface SegmentSummary {
    *  without an extra fetch. Mirrors the analyst pattern of returning
    *  ThesisRowData inline on AgentConfig detail. Null when no runs yet. */
   latestTranscript: TranscriptCardData | null;
+  /** ID of the currently-RUNNING run, if any. Used by the segment card to
+   *  show a "View run" link so the user can navigate to the live run page. */
+  activeRunId: string | null;
   // Monitors split by type, mirror analyst (domainMonitors / searchMonitors).
   // Both are Monitor rows scoped to this segment via podcastSegmentId.
   domainMonitors: SegmentDomainMonitorView[];
@@ -252,6 +255,7 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
       lastTranscriptTitle: t0?.title ?? null,
       transcriptCount: s.transcripts.length,
       latestTranscript,
+      activeRunId: s.runs[0]?.status === "RUNNING" ? s.runs[0].id : null,
       domainMonitors,
       searchMonitors,
     };
@@ -913,6 +917,44 @@ export async function runSegment(segmentId: string): Promise<{ runId: string }> 
       podcastSegmentId: seg.id,
     },
   });
+  return { runId: run.id };
+}
+
+/**
+ * Fire an Inngest-backed segment run — used by "Run all" so all segments
+ * execute server-side in parallel without requiring browser navigation.
+ * Sets source=AGENT so the run page knows not to auto-start AgentThread.
+ */
+export async function runSegmentViaInngest(segmentId: string): Promise<{ runId: string }> {
+  const user = await requireUser();
+  const seg = await prisma.podcastSegment.findFirst({
+    where: { id: segmentId, userId: user.id },
+    select: { id: true, podcastId: true },
+  });
+  if (!seg) throw new Error("Segment not found");
+
+  const existing = await prisma.researchRun.findFirst({
+    where: { podcastSegmentId: seg.id, status: "RUNNING" },
+    select: { id: true },
+  });
+  if (existing) throw new Error("This segment already has a run in progress.");
+
+  const run = await prisma.researchRun.create({
+    data: {
+      userId: user.id,
+      source: "AGENT",
+      status: "RUNNING",
+      mode: "PODCAST_SEGMENT",
+      parameters: { agentMode: false } as object,
+      podcastSegmentId: seg.id,
+    },
+  });
+
+  await inngest.send({
+    name: "podcast/segment.run.requested",
+    data: { segmentId: seg.id, runId: run.id, userId: user.id },
+  });
+
   return { runId: run.id };
 }
 

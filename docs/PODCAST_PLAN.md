@@ -544,6 +544,26 @@ order). There is no per-segment audio file. One voice per podcast.
 - Per-podcast cron auto-generate — Session 5.
 - RSS feed, cover art — Session 5.
 
+#### Post-merge hotfixes (PR #206 — after PR #204 squash-merge)
+
+PR #204 was squash-merged before these commits landed on the branch. PR #206
+cherry-picked them onto a fresh branch. All items below are now in main.
+
+**Problem:** "Run all" started runs in the DB but no agent executed them.
+The original implementation navigated to the first run's page (which kicks
+AgentThread) but left the other runs as permanent RUNNING zombies — because
+AgentThread only executes in the browser for the run page you're currently
+viewing. The fix: execute all segment runs server-side via Inngest.
+
+| File | What shipped |
+|------|-------------|
+| `lib/inngest/functions/podcast-segment-run.ts` | **New Inngest function.** Triggered by `podcast/segment.run.requested`. Runs `generateText` server-side (same pattern as `morning-research.ts`), persists RunMessages, marks RUNNING→COMPLETE. No browser required — all segments execute in parallel. |
+| `app/api/inngest/route.ts` | `podcastSegmentRun` registered. |
+| `lib/actions/podcast.actions.ts` | Added `runSegmentViaInngest(segmentId)` — creates `ResearchRun` with `source: "AGENT"`, fires the Inngest event. `SegmentSummary` extended with `activeRunId: string \| null` (no extra query). |
+| `components/podcasts/PodcastDetailClient.tsx` | `handleRunAll` now calls `runSegmentViaInngest` for each enabled segment via `Promise.all` + `router.refresh()` — no navigation. Segment cards show "View live run" dropdown entry and amber "Running now" footer button when `activeRunId` is set. |
+| `app/api/agent/[mode]/route.ts` | `onFinish` restructured to handle `podcast-segment-run` — message persistence + RUNNING→COMPLETE guard + `waitUntil` + `markRunFailed`. Previously the handler bailed out for all non-`research-run` modes, causing completed Inngest segment runs to show "No replay data available" and stay stuck in RUNNING. |
+| `app/(root)/runs/[id]/page.tsx` | Added `isInngestSegmentRun` guard that suppresses `autoStart` when `source === "AGENT"` — prevents AgentThread from firing a competing browser-side agent while Inngest is already running the segment. |
+
 ### Session 3 — Iterate on script + voice quality
 
 Tuning session. No scope until Session 2's first segment audio lands.

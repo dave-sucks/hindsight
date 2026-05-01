@@ -19,6 +19,7 @@ import { discoveryRun } from "@/lib/inngest/functions/discovery-run";
 import { backfillSignalFingerprint } from "@/lib/inngest/functions/backfill-signal-fingerprint";
 import { pipelineCleanup } from "@/lib/inngest/functions/pipeline-cleanup";
 import { episodeTts } from "@/lib/inngest/functions/episode-tts";
+import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
 
 // morning-research runs a full agent (generateText with 30 tool steps)
 // inside a single step.run — needs extended timeout to avoid Vercel killing it
@@ -64,5 +65,7 @@ export const { GET, POST, PUT } = serve({
     pipelineCleanup,
     // Podcast Phase 2 — ElevenLabs TTS audio generation
     episodeTts,
+    // Podcast — server-side segment run (used by "Run all")
+    podcastSegmentRun,
   ],
 });
