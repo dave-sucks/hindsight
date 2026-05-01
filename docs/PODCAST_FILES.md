@@ -52,7 +52,7 @@ Sorting: four categories, in this order.
 
 | File | Notes |
 |------|-------|
-| `lib/actions/podcast.actions.ts` | All podcast/segment/episode/transcript CRUD + run-kicking. Exports `getPodcastList`, `getPodcastDetail` (with `latestTranscript` carried inline per segment — Session 1), `getSegmentTranscript`, `createPodcastFromBuilder`, `updateSegment`, `updatePodcastBasics` (now accepts `voiceId` — Session 2), `updatePodcastVoice` (Session 2), `addSegmentMonitor`, `removeSegmentMonitor`, `deletePodcast`, `runSegment` (creates a `ResearchRun` tied to a segment — server action, not an API route), `updatePodcastFromEditor` (Session 1), `createEpisodeFromTranscripts` / `getEpisode` (now includes `audioUrl` — Session 2) / `listEpisodesForPodcast` (Session 1), `triggerEpisodeAudio` (Session 2 — validates ownership, sets ASSEMBLING, dispatches Inngest event). |
+| `lib/actions/podcast.actions.ts` | All podcast/segment/episode/transcript CRUD + run-kicking. Exports `getPodcastList`, `getPodcastDetail` (with `latestTranscript` carried inline per segment — Session 1), `getSegmentTranscript`, `createPodcastFromBuilder`, `updateSegment`, `updatePodcastBasics` (now accepts `voiceId` — Session 2), `updatePodcastVoice` (Session 2), `addSegmentMonitor`, `removeSegmentMonitor`, `deletePodcast`, `runSegment` (creates a `ResearchRun` tied to a segment — server action, not an API route), `updatePodcastFromEditor` (Session 1), `createEpisodeFromTranscripts` / `getEpisode` (now includes `audioUrl` — Session 2) / `listEpisodesForPodcast` (Session 1), `triggerEpisodeAudio` (Session 2 — validates ownership, sets ASSEMBLING, dispatches Inngest event). **Hotfix:** `runSegmentViaInngest(segmentId)` — creates `ResearchRun` with `source: "AGENT"`, fires `podcast/segment.run.requested` Inngest event, returns `{ runId }`. `SegmentSummary` extended with `activeRunId: string \| null` (populated from `runs[0]` — no extra query). |
 
 ### Pages
 
@@ -79,7 +79,7 @@ analyst surface in look and feel.
 | File | Notes |
 |------|-------|
 | `components/podcasts/PodcastsPageClient.tsx` | Top-level list grid + new-podcast empty state. |
-| `components/podcasts/PodcastDetailClient.tsx` | Mirror of `AnalystDetailClient`: 3-col grid, header with stats, tabs (Segments / Episodes / Findings), right-rail with quick-run + recent transcripts, floating composer, `PodcastConfigSheet`. Session 1 added: Episodes tab list + Assemble CTA, Findings tab, "Edit with AI" 3-dot entry routing to `/podcasts/[id]/edit`, segment cards opening latest transcript via `TranscriptDialog`, right-rail `TranscriptRow` rows. |
+| `components/podcasts/PodcastDetailClient.tsx` | Mirror of `AnalystDetailClient`: 3-col grid, header with stats, tabs (Segments / Episodes / Findings), right-rail with quick-run + recent transcripts, floating composer, `PodcastConfigSheet`. Session 1 added: Episodes tab list + Assemble CTA, Findings tab, "Edit with AI" 3-dot entry routing to `/podcasts/[id]/edit`, segment cards opening latest transcript via `TranscriptDialog`, right-rail `TranscriptRow` rows. **Hotfix:** "Run all" now calls `runSegmentViaInngest` for all enabled segments via `Promise.all` + `router.refresh()` — no navigation, all segments execute in parallel via Inngest. Segment cards show a "View live run" dropdown entry (ExternalLink icon) and an amber "Running now — tap to open" footer button when `activeRunId` is set. |
 | `components/podcasts/PodcastConfigSheet.tsx` | Mirror of `AnalystConfigSheet` for podcast-level metadata (name, description, host style, cadence, voice). Reuses `Section` / `FieldGroup` / `RowLabel`. **Session 2:** Voice section now has a live `Select` populated from `getElevenLabsVoices()` — fetched once on sheet open, cached in component state. Falls back to "add ElevenLabs key in Settings" hint when no key is configured. |
 | `components/podcasts/SegmentConfigForm.tsx` | Segment analog of `AnalystConfigForm` with the same Brief / Monitors / Settings tab structure. Imports primitives directly from `AnalystConfigForm` so the visual language is identical. Monitors tab manages segment search-monitors inline. |
 | `components/podcasts/SegmentConfigSheet.tsx` | Mirror of `AnalystConfigSheet` — wraps `SegmentConfigForm` in a Sheet, pipes per-field saves to `updateSegment` / `addSegmentMonitor` / `removeSegmentMonitor`. Takes a `SegmentSummary` (carried inline by `getPodcastDetail`) so opening it is zero-fetch. There is no per-segment page — the sheet IS the segment editor. |
@@ -114,6 +114,7 @@ the podcast app.
 | `components/settings/ElevenLabsKeyForm.tsx` | Settings form for ElevenLabs API key. Mirror of `AlpacaKeyForm` — single field (no secret), Save & Verify calls `saveElevenLabsKey`. Uses `UserApiKey` table with `provider="ELEVENLABS"`. |
 | `lib/inngest/functions/episode-tts.ts` | Inngest function triggered by `podcast/episode.tts.requested`. Steps: load episode + transcripts → call ElevenLabs TTS (chunked) → upload MP3 to Supabase Storage (`podcast-audio` bucket, path `{userId}/episodes/{episodeId}.mp3`) → update Episode (audioUrl=signed URL, durationSec, combinedAlignment, status=READY). On error: sets status=FAILED and re-throws for Inngest retry (retries: 2). |
 | `app/(root)/podcasts/[id]/episodes/[episodeId]/GenerateAudioButton.tsx` | Client component rendered on the episode page. Shows estimated cost inline on the button. On click calls `triggerEpisodeAudio` server action → shows toast → router.refresh() to reflect ASSEMBLING state. |
+| `lib/inngest/functions/podcast-segment-run.ts` | **Hotfix (PR #206).** Inngest function triggered by `podcast/segment.run.requested`. Loads segment + podcast, builds system prompt via `buildPodcastSegmentRunPrompt`, filters tools to the `podcast-segment-run` allowlist, runs `generateText` (AbortSignal 3.5 min — leaves buffer before Inngest step limit), persists RunMessages, safety-guards RUNNING→COMPLETE. Enables "Run all" to fire all segments in parallel server-side with no browser navigation required. `retries: 1`. Pattern mirrors `morning-research.ts` exactly. |
 
 ### Phase 3/4 placeholders (NOT yet shipped)
 
@@ -148,7 +149,7 @@ the podcast app.
 | `lib/agent/tools/get-stock-data.ts` | Reused — segments may want stock context for finance shows. |
 | `lib/agent/tools/ask-question.ts` | Reused — builder + editor use it. |
 | `lib/agent/tools/suggest-config.ts` | **Untouched.** Trading-builder only. Podcast builder + editor use `suggest_podcast_config`. |
-| `app/api/agent/[mode]/route.ts` | **Extended.** Handles `podcast-builder`, `podcast-segment-run`, and `podcast-editor` modes — system prompt selection, run loading by `podcastSegmentId`, podcast loading by `podcastId` for editor, defensive briefing fetch (try/catch around `podcastSegmentBriefing.findFirst` so a migration-lag scenario degrades to "no continuity" instead of crashing the run). Layers `suggest_podcast_config` into the tools map for both builder and editor (Session 1). |
+| `app/api/agent/[mode]/route.ts` | **Extended.** Handles `podcast-builder`, `podcast-segment-run`, and `podcast-editor` modes — system prompt selection, run loading by `podcastSegmentId`, podcast loading by `podcastId` for editor, defensive briefing fetch (try/catch around `podcastSegmentBriefing.findFirst` so a migration-lag scenario degrades to "no continuity" instead of crashing the run). Layers `suggest_podcast_config` into the tools map for both builder and editor (Session 1). **Hotfix:** `onFinish` restructured to handle `podcast-segment-run` alongside `research-run`: message persistence (RunMessages), RUNNING→COMPLETE safety guard, `waitUntil`, and `markRunFailed` error handler all extended. Previously the handler bailed out for all non-`research-run` modes, leaving Inngest-executed segment runs with no persisted messages and stuck in RUNNING status. |
 | `app/api/intelligence/signals/route.ts` | **Extended (Session 1).** Accepts `podcastId=` query param. When set, scopes the signals query through `Signal.segmentRoutes` against this podcast's segment ids (after ownership check). Mirror of the existing `analystId=` filter, just routes through `PodcastSegmentSignalRoute` instead of `AnalystSignalRoute`. Used by `PodcastFindingsTab`. |
 
 ### Chat / UI
@@ -190,6 +191,13 @@ the podcast app.
 | `lib/prisma.ts` | Reused as-is. |
 | `lib/actions/api-keys.actions.ts` | **Extended (Session 2).** Added `getElevenLabsKeyStatus`, `saveElevenLabsKey`, `deleteElevenLabsKey`, `resolveElevenLabsKey` (called from Inngest), `getElevenLabsVoices` (called from PodcastConfigSheet). Uses the existing `UserApiKey` table with `provider="ELEVENLABS"`. Moved from TRADING-ONLY to SHARED. |
 
+### API routes
+
+| File | Notes |
+|------|-------|
+| `app/api/inngest/route.ts` | **Extended.** `episodeTts` registered (Session 2). **Hotfix:** `podcastSegmentRun` registered (PR #206). All Inngest function handlers must appear in this list to receive events — missed registrations cause silent event drops. |
+| `app/(root)/runs/[id]/page.tsx` | **Shared.** Actively used for podcast segment runs — loads `segment`, `segmentTranscript`, and `segment.podcast` relations alongside the run, and builds the Transcript tab payload from `segmentTranscript`. **Hotfix:** Added `isInngestSegmentRun` guard (`source === "AGENT" && podcastSegmentId != null`) that suppresses `autoStart`, preventing AgentThread from firing a competing browser-side agent while Inngest is already executing the segment server-side. (Moved from TRADING-ONLY.) |
+
 ---
 
 ## TRADING-ONLY (untouched, but listed for fork-day)
@@ -229,7 +237,8 @@ codebase without leaving dead imports.
 ### Trading pages and components
 
 - `app/(root)/analysts/**`
-- `app/(root)/runs/**` *(could be reused for podcast runs in Phase 4 with a header branch — for PoC we link directly to `/runs/[id]` but the page is currently trading-flavored)*
+- `app/(root)/runs/page.tsx` and `app/(root)/runs/` feed components *(trading-flavored runs index; podcast segment runs surface through `/podcasts/[id]` instead)*
+  - **`app/(root)/runs/[id]/page.tsx` is SHARED — see above.** The run detail page is actively used for podcast segment runs.
 - `app/(root)/trades/**`
 - `app/(root)/performance/**`
 - `app/(root)/intelligence/**` *(intelligence dashboard — trading lens; podcast would want its own)*
