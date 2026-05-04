@@ -25,24 +25,7 @@ import {
   hasFundamentalDetails,
 } from "@/components/agent/sheets/ThesisSheet";
 import type { FundamentalsData, ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
-
-// ─── Status display (matches ThesisSheet StatusPill + ReadThesesTable) ────────
-// Single secondary variant for every status — neutral background, the dot
-// carries lifecycle color. Same shape used in ThesisMiniCard and
-// ReadThesesTable so the pill reads identically across the chat.
-
-type ThesisStatus = NonNullable<ThesisCardData["status"]>;
-
-const STATUS_DISPLAY: Record<
-  ThesisStatus,
-  { label: string; dotClass: string }
-> = {
-  ACTIVE: { label: "Holding", dotClass: "bg-positive" },
-  WATCHING: { label: "Watching", dotClass: "bg-blue-500" },
-  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground/60" },
-  INVALIDATED: { label: "Invalidated", dotClass: "bg-negative" },
-  SUPERSEDED: { label: "Superseded", dotClass: "bg-muted-foreground/40" },
-};
+import { THESIS_STATUS_DISPLAY } from "@/lib/thesis-status";
 
 // Types are defined in ThesisSheet.tsx (the more primitive file) and re-exported
 // here so existing consumers importing from thesis-card don't need to change.
@@ -108,7 +91,7 @@ export function ThesisCard({
       : null;
 
   const displayName = company_name ?? ticker;
-  const statusDisplay = STATUS_DISPLAY[status ?? "ACTIVE"];
+  const statusDisplay = THESIS_STATUS_DISPLAY[status ?? "ACTIVE"];
 
   // ── Shared header for ALL states ──────────────────────────────
   const header = (

@@ -33,6 +33,10 @@ import {
   ThesisTriggersSection,
   type TriggersResponse,
 } from "@/components/agent/sheets/ThesisTriggersSection";
+import {
+  THESIS_STATUS_DISPLAY,
+  type ThesisStatus,
+} from "@/lib/thesis-status";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -105,121 +109,44 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 // ── StatusPill ──
-// Lifecycle-led: the durable answer to "what is this thesis right now?"
-// Left cell = STATUS (Holding / Watching / Closed / Invalidated). Right
-// cell varies by status — live P&L for Holdings, confidence% for
-// Watching, terminal reason for Closed/Invalidated. Status comes from the
-// caller's known thesis row on first paint (no flicker); the API fetch
-// only refines it (live PnL%, terminal reason text).
-
-type LiveStatus = "ACTIVE" | "WATCHING" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
+// One render path. Single Badge with status dot + label, optional PnL%
+// right cell for Holding only. No fallbacks, no per-status switches —
+// the lookup table in lib/thesis-status.ts is the single source of truth.
 
 function StatusPill({
-  liveStatus,
+  status,
   position,
-  closeReason,
-  invalidReason,
 }: {
-  liveStatus: LiveStatus | null;
+  status: ThesisStatus;
   position: TriggersResponse["position"];
-  closeReason: string | null;
-  invalidReason: string | null;
 }) {
-  // Don't paint until status is resolved — avoids the Holding→Watching
-  // flicker when ThesisCardData arrives without status (older persisted
-  // RunMessages, or any path that doesn't carry the field). The pill is
-  // a small surface; its absence for a frame is preferable to a wrong
-  // initial value.
-  if (liveStatus == null) return null;
+  const display = THESIS_STATUS_DISPLAY[status];
+  const pnl = status === "ACTIVE" ? position?.unrealizedPnlPct : null;
 
-  // Same secondary variant for every status — neutral background, the
-  // colored dot does the lifecycle work. Mirrors ReadThesesTable.
-  let leftLabel: string;
-  let dotClass: string;
-
-  switch (liveStatus) {
-    case "ACTIVE":
-      leftLabel = "Holding";
-      dotClass = "bg-positive";
-      break;
-    case "WATCHING":
-      leftLabel = "Watching";
-      dotClass = "bg-blue-500";
-      break;
-    case "CLOSED":
-      leftLabel = "Closed";
-      dotClass = "bg-muted-foreground/60";
-      break;
-    case "INVALIDATED":
-      leftLabel = "Invalidated";
-      dotClass = "bg-negative";
-      break;
-    case "SUPERSEDED":
-      leftLabel = "Superseded";
-      dotClass = "bg-muted-foreground/40";
-      break;
-  }
-
-  // Right cell only renders for statuses with actionable run-context info:
-  // live PnL% for Holding, terminal reason text for Closed/Invalidated.
-  // Watching has no right cell — confidence is metadata at thesis creation,
-  // not a run-context signal. Direction + confidence still appear inside
-  // the body (Bullish/Bearish view + bullets).
-  let rightNode: React.ReactNode = null;
-  if (liveStatus === "ACTIVE" && position?.unrealizedPnlPct != null) {
-    const pct = position.unrealizedPnlPct;
-    const sign = pct >= 0 ? "+" : "";
-    rightNode = (
-      <span
-        className={cn(
-          "tabular-nums",
-          pct >= 0 ? "text-positive" : "text-negative",
-        )}
-      >
-        {sign}
-        {pct.toFixed(2)}%
-      </span>
-    );
-  } else if (liveStatus === "CLOSED" && closeReason) {
-    rightNode = (
-      <span className="truncate max-w-[14rem]" title={closeReason}>
-        {closeReason.slice(0, 40)}
-      </span>
-    );
-  } else if (liveStatus === "INVALIDATED" && invalidReason) {
-    rightNode = (
-      <span className="truncate max-w-[14rem]" title={invalidReason}>
-        {invalidReason.slice(0, 40)}
-      </span>
-    );
-  }
-
-  // Single-cell variant when there's no right node — keeps the pill narrow
-  // and the visual density matches ReadThesesTable / ThesisMiniCard.
-  if (rightNode == null) {
+  if (pnl != null) {
+    const sign = pnl >= 0 ? "+" : "";
     return (
-      <div>
-        <Badge variant="secondary" className="gap-1.5 font-normal">
-          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
-          {leftLabel}
+      <ButtonGroup className="cursor-default">
+        <Badge variant="secondary" className="rounded-r-none gap-1.5 font-normal">
+          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
+          {display.label}
         </Badge>
-      </div>
+        <ButtonGroupSeparator />
+        <Badge variant="secondary" className="rounded-l-none font-normal">
+          <span className={cn("tabular-nums", pnl >= 0 ? "text-positive" : "text-negative")}>
+            {sign}
+            {pnl.toFixed(2)}%
+          </span>
+        </Badge>
+      </ButtonGroup>
     );
   }
 
   return (
-    <div>
-      <ButtonGroup className="cursor-default">
-        <Badge variant="secondary" className="rounded-r-none gap-1.5 font-normal">
-          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
-          {leftLabel}
-        </Badge>
-        <ButtonGroupSeparator />
-        <Badge variant="secondary" className="rounded-l-none font-normal">
-          {rightNode}
-        </Badge>
-      </ButtonGroup>
-    </div>
+    <Badge variant="secondary" className="gap-1.5 font-normal">
+      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
+      {display.label}
+    </Badge>
   );
 }
 
@@ -578,28 +505,16 @@ export function ThesisSheetBody({
     };
   }, [thesis_id]);
 
-  // Initial value comes from the row that opened the sheet — no flicker.
-  // The API fetch refines it with live PnL and terminal reasons. Null
-  // until either source resolves; StatusPill renders nothing in that
-  // window so we never paint a wrong-default like Holding green.
-  const liveStatus = (state?.status ?? status ?? null) as LiveStatus | null;
+  // Status comes from the row that opened the sheet; the API fetch
+  // refines it (live PnL, terminal reasons). If neither has a value the
+  // pill simply doesn't render — no defensive default.
+  const liveStatus = (state?.status ?? status) as ThesisStatus | undefined;
   const position = state?.position ?? null;
   const recentFire = state?.recentFire ?? null;
 
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
-      {/* ── Status pill ButtonGroup (replaces Strong Buy/% verdict) ── */}
-      {/* Status is the durable lifecycle state (Holding / Watching /
-          Closed / Invalidated). The right cell is the verdict at a
-          glance — for Holding it's live PnL%, for Watching it's the
-          confidence-derived label, for Closed/Invalidated it's the
-          terminal reason. Conviction% moves to a secondary stat below. */}
-      <StatusPill
-        liveStatus={liveStatus}
-        position={position}
-        closeReason={state?.closeReason ?? null}
-        invalidReason={state?.invalidReason ?? null}
-      />
+      {liveStatus ? <StatusPill status={liveStatus} position={position} /> : null}
 
       {/* ── Stock identity ───────────────────────────────────── */}
       <div className="flex items-center gap-3">

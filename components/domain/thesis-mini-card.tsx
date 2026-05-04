@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import { ThesisCard, type ThesisCardData } from "@/components/domain/thesis-card";
+import { THESIS_STATUS_DISPLAY } from "@/lib/thesis-status";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -39,20 +40,6 @@ function fmtPct(n: number): string {
   const sign = n >= 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
 }
-
-// ── Status display (matches ThesisCard + ThesisSheet + ReadThesesTable) ─────
-// Single secondary variant — neutral background, colored dot only.
-
-const STATUS_DISPLAY: Record<
-  NonNullable<ThesisCardData["status"]>,
-  { label: string; dotClass: string }
-> = {
-  ACTIVE: { label: "Holding", dotClass: "bg-positive" },
-  WATCHING: { label: "Watching", dotClass: "bg-blue-500" },
-  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground/60" },
-  INVALIDATED: { label: "Invalidated", dotClass: "bg-negative" },
-  SUPERSEDED: { label: "Superseded", dotClass: "bg-muted-foreground/40" },
-};
 
 // ── Row ─────────────────────────────────────────────────────────────────────
 
@@ -90,7 +77,7 @@ function PriceRow({
 // ── Card ────────────────────────────────────────────────────────────────────
 
 export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
-  const statusDisplay = STATUS_DISPLAY[thesis.status ?? "ACTIVE"];
+  const statusDisplay = THESIS_STATUS_DISPLAY[thesis.status ?? "ACTIVE"];
   const targetDelta = pctDelta(thesis.entry_price, thesis.target_price);
   const stopDelta = pctDelta(thesis.entry_price, thesis.stop_loss);
 
