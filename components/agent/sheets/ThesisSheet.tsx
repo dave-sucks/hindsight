@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
-import { PnlBadge } from "@/components/ui/pnl-badge";
+import { PriceChange } from "@/components/ui/price-change";
 import { InfoRow } from "@/components/ui/info-row";
 import {
   Sheet,
@@ -151,68 +151,37 @@ function StatusPill({
 }
 
 // ── PositionRow ──
-// Mirrors the dashboard ThesisRow's "position row" pattern: shares @
-// cost, market value, live P&L. Renders only when status='ACTIVE' and
-// an open Position is matched on (analyst, ticker).
+// Same shape as the trades detail page header row:
+//   [glowing dot] Holding {N} shares · avg entry ${avgCost}        +$X ↗ N%
+// Single line, muted background, glowing positive dot. Stop / target /
+// days held live further down in the sheet — this row is the "what do I
+// own and what's it doing right now" summary, nothing else.
 
 function PositionRow({
   position,
-  stopLoss,
-  targetPrice,
 }: {
   position: NonNullable<TriggersResponse["position"]>;
-  stopLoss: number | null;
-  targetPrice: number | null;
 }) {
-  const $ = (n: number) => `$${n.toFixed(2)}`;
-  const $k = (n: number) =>
-    `$${n.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-
   return (
-    <div className="rounded-lg border bg-positive/10 px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground shrink-0">
-          <span className="h-1.5 w-1.5 rounded-full bg-positive" />
-          OPEN
+    <div className="rounded-lg border bg-muted/40 px-3 py-2.5 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="relative flex h-2.5 w-2.5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
         </span>
-        <span className="text-sm">
-          {position.quantity} shares @{" "}
-          <span className="tabular-nums font-medium">
-            {$(position.avgCost)}
-          </span>
-          {targetPrice != null && targetPrice > 0 ? (
-            <>
-              , targeting{" "}
-              <span className="tabular-nums font-medium">
-                {$(targetPrice)}
-              </span>
-            </>
-          ) : null}
+        <span className="text-sm tabular-nums truncate">
+          Holding {position.quantity.toFixed(1)} shares · avg entry{" "}
+          <span className="font-medium">${position.avgCost.toFixed(2)}</span>
         </span>
-        <div className="flex items-center gap-2 ml-auto">
-          {position.marketValue != null ? (
-            <span className="text-sm tabular-nums font-medium">
-              {$k(position.marketValue)}
-            </span>
-          ) : null}
-          {position.unrealizedPnlPct != null ? (
-            <PnlBadge value={position.unrealizedPnlPct} />
-          ) : null}
-        </div>
       </div>
-      {stopLoss != null && stopLoss > 0 ? (
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Stop at <span className="tabular-nums">{$(stopLoss)}</span> ·{" "}
-          {position.daysHeld}d held
-        </p>
-      ) : (
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {position.daysHeld}d held
-        </p>
-      )}
+      {position.unrealizedPnl != null ? (
+        <PriceChange
+          dollarChange={position.unrealizedPnl}
+          percentChange={position.unrealizedPnlPct}
+          size="sm"
+          className="shrink-0"
+        />
+      ) : null}
     </div>
   );
 }
@@ -532,7 +501,7 @@ export function ThesisSheetBody({
       {/* Mirrors the dashboard ThesisRow position pattern: shares @
           cost, market value, live P&L. Stop line below when set. */}
       {position && liveStatus === "ACTIVE" ? (
-        <PositionRow position={position} stopLoss={stop_loss ?? null} targetPrice={target_price ?? null} />
+        <PositionRow position={position} />
       ) : null}
 
       {/* ── Trigger fired banner ─────────────────────────────── */}
