@@ -47,6 +47,44 @@ function findTriggerById(triggersJson: unknown, id: string): Trigger | null {
   return found as Trigger;
 }
 
+/**
+ * Human-readable one-liner for a trigger's predicate. Used in the kickoff
+ * chat message so the run replay shows WHY the run fired. Mirrors the
+ * format the TRIGGER_FIRED audit row uses.
+ */
+function describeTriggerPredicate(trigger: Trigger): string {
+  const p = trigger.predicate;
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+      return `price above $${p.level}`;
+    case "PRICE_BELOW":
+      return `price below $${p.level}`;
+    case "PRICE_MOVE_PCT":
+      return `${p.direction === "UP" ? "+" : "-"}${p.pct}% over ${p.window}`;
+    case "VS_SMA":
+      return `price ${p.direction.toLowerCase()} ${p.period}d SMA`;
+    case "RSI":
+      return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
+    case "SIGNAL_TYPE":
+      return `${p.signalType} signal${p.sentiment ? ` (${p.sentiment.toLowerCase()})` : ""}`;
+    case "EARNINGS_BEAT":
+      return `earnings beat${p.minSurprisePct ? ` ≥${p.minSurprisePct}%` : ""}`;
+    case "EARNINGS_MISS":
+      return `earnings miss${p.minSurprisePct ? ` ≥${p.minSurprisePct}%` : ""}`;
+    case "GUIDANCE_CHANGE":
+      return `guidance ${p.direction.toLowerCase()}`;
+    case "FILING":
+      return `${p.formType} filing`;
+    case "TIME_ELAPSED":
+      return `${p.days}d elapsed`;
+    case "REVIEW_DATE_HIT":
+      return `review date hit`;
+    case "AND":
+    case "OR":
+      return `${p.predicates.length} compound conditions (${p.kind})`;
+  }
+}
+
 // ── Inngest function ───────────────────────────────────────────────────
 
 export const tacticalRun = inngest.createFunction(
@@ -300,7 +338,21 @@ export const tacticalRun = inngest.createFunction(
         recentUpdates: thesis.updates,
       });
 
-      const userPrompt = `A trigger you set on your $${thesis.ticker} thesis just fired. Validate, decide, act if warranted, then close out via update_thesis.`;
+      // Build the kickoff message so the chat replay shows WHY this run
+      // fired without the user having to dig. Predicate text mirrors the
+      // TRIGGER_FIRED audit row format, kept short on purpose — the agent
+      // gets the full predicate via the system prompt.
+      // Casts mirror the existing pattern in this file — ctx is loaded
+      // via step.run which Inngest types as unknown; the rest of the
+      // function already accesses these as direct fields.
+      const triggerTyped = trigger as Trigger;
+      const predicateText = describeTriggerPredicate(triggerTyped);
+      const signalSuffix = signal
+        ? ` Signal: ${(signal as { type: string }).type} — "${(signal as { headline: string }).headline.slice(0, 120)}"`
+        : "";
+      const userPrompt =
+        `Tactical run on $${(thesis as { ticker: string }).ticker}. Trigger fired: ${triggerTyped.action} · ${predicateText}.${signalSuffix} ` +
+        `Validate, decide, act if warranted, then close out via update_thesis.`;
       try {
         const { steps, response } = await generateText({
           model: openai(MODES["tactical"].model),

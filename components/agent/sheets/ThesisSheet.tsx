@@ -76,23 +76,6 @@ export type ThesisCardData = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Derive a human-friendly verdict from direction + confidence */
-export function verdictLabel(
-  direction: "LONG" | "SHORT" | "PASS",
-  confidence: number,
-): { label: string; variant: "positive" | "negative" | "secondary" } {
-  if (direction === "PASS") return { label: "Pass", variant: "secondary" };
-  if (direction === "LONG") {
-    if (confidence >= 80) return { label: "Strong Buy", variant: "positive" };
-    if (confidence >= 60) return { label: "Buy", variant: "positive" };
-    return { label: "Lean Buy", variant: "positive" };
-  }
-  // SHORT
-  if (confidence >= 80) return { label: "Strong Sell", variant: "negative" };
-  if (confidence >= 60) return { label: "Sell", variant: "negative" };
-  return { label: "Lean Sell", variant: "negative" };
-}
-
 function fmtCompact(n: number): string {
   if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
   if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
@@ -122,26 +105,23 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 // ── StatusPill ──
-// Replaces the old verdict ButtonGroup (Strong Buy / 90%). Lifecycle-
-// status-led: the durable answer to "what is this thesis right now?"
-// Left cell = STATUS (Holding / Watching / Closed / Invalidated).
-// Right cell = a quick verdict that varies by status (live P&L for
-// holdings, confidence-derived label for watches, reason for terminal
-// states). Falls back to the old verdict when no live state has loaded
-// yet so first paint isn't blank.
+// Lifecycle-led: the durable answer to "what is this thesis right now?"
+// Left cell = STATUS (Holding / Watching / Closed / Invalidated). Right
+// cell varies by status — live P&L for Holdings, confidence% for
+// Watching, terminal reason for Closed/Invalidated. Status comes from the
+// caller's known thesis row on first paint (no flicker); the API fetch
+// only refines it (live PnL%, terminal reason text).
 
 type LiveStatus = "ACTIVE" | "WATCHING" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
 
 function StatusPill({
   liveStatus,
-  fallbackDirection,
   fallbackConfidence,
   position,
   closeReason,
   invalidReason,
 }: {
-  liveStatus: LiveStatus | null;
-  fallbackDirection: "LONG" | "SHORT" | "PASS";
+  liveStatus: LiveStatus;
   fallbackConfidence: number;
   position: TriggersResponse["position"];
   closeReason: string | null;
@@ -179,20 +159,6 @@ function StatusPill({
       dotClass = "bg-muted-foreground/40";
       variant = "secondary";
       break;
-    default: {
-      // Pre-load fallback: derive from the original verdict shape so
-      // first paint isn't blank. Loses Holding/Watching distinction;
-      // recovers as soon as the fetch lands.
-      const verdict = verdictLabel(fallbackDirection, fallbackConfidence);
-      leftLabel = verdict.label;
-      dotClass =
-        verdict.variant === "positive"
-          ? "bg-positive"
-          : verdict.variant === "negative"
-            ? "bg-negative"
-            : "bg-muted-foreground/40";
-      variant = verdict.variant;
-    }
   }
 
   // Right cell content varies by status.
@@ -547,6 +513,10 @@ export interface ThesisSheetBodyProps {
   company_name?: string | null;
   exchange?: string | null;
   fundamentals?: FundamentalsData | null;
+  /** Lifecycle status from the row that opened the sheet. Used as the
+   *  initial StatusPill value so first paint matches the durable state
+   *  with no flicker. The triggers API fetch refines position/PnL data. */
+  status?: "ACTIVE" | "WATCHING" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
 }
 
 export function ThesisSheetBody({
@@ -565,6 +535,7 @@ export function ThesisSheetBody({
   company_name,
   exchange,
   fundamentals,
+  status,
 }: ThesisSheetBodyProps) {
   const isPass = direction === "PASS";
   const displayName = company_name ?? ticker;
@@ -597,13 +568,9 @@ export function ThesisSheetBody({
     };
   }, [thesis_id]);
 
-  const liveStatus = (state?.status ?? null) as
-    | "ACTIVE"
-    | "WATCHING"
-    | "CLOSED"
-    | "INVALIDATED"
-    | "SUPERSEDED"
-    | null;
+  // Initial value comes from the row that opened the sheet — no flicker.
+  // The API fetch refines it with live PnL and terminal reasons.
+  const liveStatus = (state?.status ?? status ?? "ACTIVE") as LiveStatus;
   const position = state?.position ?? null;
   const recentFire = state?.recentFire ?? null;
 
@@ -617,7 +584,6 @@ export function ThesisSheetBody({
           terminal reason. Conviction% moves to a secondary stat below. */}
       <StatusPill
         liveStatus={liveStatus}
-        fallbackDirection={direction}
         fallbackConfidence={confidence_score}
         position={position}
         closeReason={state?.closeReason ?? null}
@@ -763,6 +729,7 @@ export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
           company_name={data.company_name}
           exchange={data.exchange}
           fundamentals={data.fundamentals}
+          status={data.status}
         />
       </SheetContent>
     </Sheet>

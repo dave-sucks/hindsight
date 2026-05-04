@@ -75,6 +75,9 @@ export default async function RunsPage() {
   const runs = await prisma.researchRun.findMany({
     where: { userId },
     include: {
+      // mode + parameters drive the run-card title and tactical context.
+      // mode is on the schema (MORNING_PLAN / INTRADAY_TACTICAL / EOD_REFLECTIVE);
+      // parameters carries the trigger fire info for tactical runs.
       agentConfig: { select: { id: true, name: true } },
       // Podcast feature — render segment runs with "Podcast · Segment" name
       // instead of falling back to "Manual Research". See docs/PODCAST_PLAN.md.
@@ -124,11 +127,13 @@ export default async function RunsPage() {
         },
       },
       // ThesisUpdate audit rows tied to this run. Drives the new-model
-      // action segments (Updated / Invalidated / Reviewed / Watching) and
-      // the triggered count in the stats row.
+      // action segments (Updated / Invalidated / Reviewed / Watching).
+      // `summary` is read for tactical runs to surface the trigger-fired
+      // line in the card subtitle ("REVIEW trigger matched: PRICE_BELOW").
       thesisUpdates: {
         select: {
           type: true,
+          summary: true,
           thesis: { select: { ticker: true, status: true } },
         },
       },
@@ -190,6 +195,31 @@ export default async function RunsPage() {
           const summary = buildRunSummary(run);
           const segments = buildActionSegments(summary);
 
+          // Mode-led title — schema-backed (no heuristics). Defaults to
+          // "Run by" for unknown modes and manual runs.
+          const isTactical = run.mode === "INTRADAY_TACTICAL";
+          const titlePrefix = isPodcastSegmentRun
+            ? null
+            : run.mode === "INTRADAY_TACTICAL"
+              ? "Tactical run by"
+              : run.mode === "EOD_REFLECTIVE"
+                ? "EOD recap by"
+                : run.mode === "MORNING_PLAN"
+                  ? "Morning review by"
+                  : "Run by";
+
+          // For tactical runs the action line IS the trigger that fired —
+          // pulled directly from the TRIGGER_FIRED audit row's summary.
+          // Falls back to action segments if for some reason the row's
+          // missing (older runs pre-PR 200).
+          const triggerFiredRow = run.thesisUpdates?.find(
+            (u) => u.type === "TRIGGER_FIRED",
+          );
+          const tacticalSubtitle =
+            isTactical && triggerFiredRow?.thesis?.ticker
+              ? `$${triggerFiredRow.thesis.ticker} ${triggerFiredRow.summary ?? "trigger fired"}`
+              : null;
+
           // Logo stack tickers — action tickers first, then researched fill,
           // then audit-only tickers (tactical runs that only update_thesis
           // touched these — they wouldn't appear otherwise).
@@ -232,20 +262,24 @@ export default async function RunsPage() {
           return (
             <Link key={run.id} href={`/runs/${run.id}`} className="block">
               <Card className="p-0 gap-0 py-0 shadow-none hover:bg-accent/50 transition-colors overflow-hidden">
-                {/* Section 1: header + action line */}
-                <div className="p-3 flex flex-col gap-2 min-w-0">
-                  {/* Row 1: status · analyst · time | logo stack */}
+                <div className="p-3 flex flex-col gap-1 min-w-0">
+                  {/* Row 1: title · logo stack */}
                   <div className="flex items-center justify-between gap-3 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                       {statusDotClass && (
                         <div className={`h-2 w-2 rounded-full shrink-0 ${statusDotClass}`} />
                       )}
                       <span className="text-sm font-medium text-foreground truncate">
-                        {analystName}
-                      </span>
-                      <span className="text-xs font-mono text-muted-foreground tabular-nums shrink-0">
-                        {formatRelativeTime(run.startedAt)}
-                        {duration != null && ` · ${duration}s`}
+                        {titlePrefix ? (
+                          <>
+                            <span className="text-muted-foreground font-normal">
+                              {titlePrefix}
+                            </span>{" "}
+                            {analystName}
+                          </>
+                        ) : (
+                          analystName
+                        )}
                       </span>
                     </div>
 
@@ -272,27 +306,53 @@ export default async function RunsPage() {
                     )}
                   </div>
 
-                  {/* Row 2: action line */}
-                  {isPodcastSegmentRun ? (
-                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
-                      {run.segmentTranscript?.title ??
-                        (run.status === "RUNNING"
-                          ? "Researching segment…"
-                          : "No transcript saved")}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
-                      {segments.map((seg, i) => (
-                        <span key={i}>
-                          {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
-                          <span>{seg.text}</span>
+                  {/* Row 2: action line + duration · realized P&L (if any) */}
+                  <div className="flex items-baseline justify-between gap-3 min-w-0">
+                    {isPodcastSegmentRun ? (
+                      <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
+                        {run.segmentTranscript?.title ??
+                          (run.status === "RUNNING"
+                            ? "Researching segment…"
+                            : "No transcript saved")}
+                      </p>
+                    ) : tacticalSubtitle ? (
+                      <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
+                        {tacticalSubtitle}
+                        <span className="text-muted-foreground/70">
+                          {" · "}
+                          {formatRelativeTime(run.startedAt)}
+                          {duration != null && ` · ${duration}s`}
                         </span>
-                      ))}
-                    </p>
-                  )}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
+                        {segments.map((seg, i) => (
+                          <span key={i}>
+                            {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
+                            <span>{seg.text}</span>
+                          </span>
+                        ))}
+                        <span className="text-muted-foreground/70">
+                          {" · "}
+                          {formatRelativeTime(run.startedAt)}
+                          {duration != null && ` · ${duration}s`}
+                        </span>
+                      </p>
+                    )}
+                    {pnlLabel && (
+                      <span
+                        className={cn(
+                          "text-xs font-medium tabular-nums shrink-0",
+                          pnl! >= 0 ? "text-emerald-500" : "text-red-500",
+                        )}
+                      >
+                        {pnlLabel}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                {/* Section 2 (podcast): transcript stats row */}
+                {/* Podcast transcript stats row stays — distinct surface */}
                 {isPodcastSegmentRun && run.segmentTranscript && (
                   <div className="flex items-center justify-between p-3 border-t text-xs font-mono tabular-nums">
                     <span className="font-medium text-foreground">
@@ -307,35 +367,6 @@ export default async function RunsPage() {
                         : 0}{" "}
                       citations
                     </span>
-                  </div>
-                )}
-
-                {/* Section 2 (analyst): stats row — full-width border */}
-                {!isPodcastSegmentRun && summary.counts.walked > 0 && (
-                  <div className="flex items-center justify-between p-3 border-t text-xs font-mono tabular-nums">
-                    <span>
-                      <span className="font-medium text-foreground">
-                        {summary.counts.walked} walked
-                      </span>
-                      <span className="text-muted-foreground">
-                        {summary.counts.triggered > 0 &&
-                          ` · ${summary.counts.triggered} triggered`}
-                        {summary.counts.traded > 0 &&
-                          ` · ${summary.counts.traded} ${
-                            summary.counts.traded === 1 ? "trade" : "trades"
-                          }`}
-                      </span>
-                    </span>
-                    {pnlLabel && (
-                      <span
-                        className={cn(
-                          "font-medium",
-                          pnl! >= 0 ? "text-emerald-500" : "text-red-500",
-                        )}
-                      >
-                        {pnlLabel}
-                      </span>
-                    )}
                   </div>
                 )}
               </Card>

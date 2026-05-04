@@ -239,16 +239,18 @@ export const morningResearch = inngest.createFunction(
           const researchedCount = stockDataTickers.size;
           const processViolation =
             researchedCount > 0 && preRetryThesisCount < researchedCount;
-          // Coverage violation: every thesis in runInput.activeTheses was
-          // explicitly shown to the agent in the prompt's Active Theses
-          // table. Step 2's contract requires one tool call per thesis
-          // (typically update_thesis with empty patch → REVIEWED row).
-          // If the agent ends without that coverage, we retry with the
-          // same nudge as the process-violation path. Without this gate,
-          // an agent that ends Step 1 with narration like "all theses look
-          // fine, nothing changed" produces 0 audit rows and the run looks
-          // empty even though it should have N REVIEWED rows. Captured the
-          // 2026-05-01 EVT failure mode.
+          // Coverage violation: every thesis in runInput.activeTheses (now
+          // ACTIVE + WATCHING) was explicitly shown to the agent in the
+          // prompt's Live Theses table. Step 2's contract requires one tool
+          // call per thesis (typically update_thesis with empty patch →
+          // REVIEWED row). If the agent ends without that coverage, we retry
+          // with the same nudge as the process-violation path. Without this
+          // gate, an agent that ends Step 1 with narration like "all theses
+          // look fine, nothing changed" produces 0 audit rows and the run
+          // looks empty even though it should have N REVIEWED rows. Pre-fix
+          // the gate scoped only to ACTIVE; an all-watchlist analyst had
+          // expectedCoverage=0 and the gate never fired. Captured 2026-05-01
+          // EVT and 2026-05-04 Earnings Drift Trader failure modes.
           const expectedCoverage = runInput.activeTheses?.length ?? 0;
           const coverageViolation =
             expectedCoverage > 0 && preRetryThesisCount < expectedCoverage;
