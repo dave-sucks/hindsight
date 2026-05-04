@@ -123,15 +123,13 @@ export default async function RunsPage() {
           },
         },
       },
-      // ThesisUpdate audit rows tied to this run. Without these, tactical
-      // runs (which write update_thesis but no TradeDecision) get
-      // false-flagged as "Failed — no analysis" by the summary builder.
-      // Same tickerset surfaces "Updated NVDA", "Reviewed 5 theses",
-      // etc. on the card instead of an empty action line.
+      // ThesisUpdate audit rows tied to this run. Drives the new-model
+      // action segments (Updated / Invalidated / Reviewed / Watching) and
+      // the triggered count in the stats row.
       thesisUpdates: {
         select: {
           type: true,
-          thesis: { select: { ticker: true } },
+          thesis: { select: { ticker: true, status: true } },
         },
       },
     },
@@ -313,19 +311,19 @@ export default async function RunsPage() {
                 )}
 
                 {/* Section 2 (analyst): stats row — full-width border */}
-                {!isPodcastSegmentRun && summary.counts.researched > 0 && (
+                {!isPodcastSegmentRun && summary.counts.walked > 0 && (
                   <div className="flex items-center justify-between p-3 border-t text-xs font-mono tabular-nums">
                     <span>
                       <span className="font-medium text-foreground">
-                        {summary.counts.researched} researched
+                        {summary.counts.walked} walked
                       </span>
                       <span className="text-muted-foreground">
-                        {summary.counts.new > 0 && ` · ${summary.counts.new} new`}
-                        {summary.counts.closed > 0 && ` · ${summary.counts.closed} closed`}
-                        {summary.counts.held > 0 && ` · ${summary.counts.held} held`}
-                        {summary.counts.passed > 0 && ` · ${summary.counts.passed} passed`}
-                        {summary.counts.watchlist > 0 &&
-                          ` · ${summary.counts.watchlist} watchlist`}
+                        {summary.counts.triggered > 0 &&
+                          ` · ${summary.counts.triggered} triggered`}
+                        {summary.counts.traded > 0 &&
+                          ` · ${summary.counts.traded} ${
+                            summary.counts.traded === 1 ? "trade" : "trades"
+                          }`}
                       </span>
                     </span>
                     {pnlLabel && (
