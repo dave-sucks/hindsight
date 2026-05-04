@@ -116,13 +116,11 @@ type LiveStatus = "ACTIVE" | "WATCHING" | "CLOSED" | "INVALIDATED" | "SUPERSEDED
 
 function StatusPill({
   liveStatus,
-  fallbackConfidence,
   position,
   closeReason,
   invalidReason,
 }: {
   liveStatus: LiveStatus;
-  fallbackConfidence: number;
   position: TriggersResponse["position"];
   closeReason: string | null;
   invalidReason: string | null;
@@ -161,8 +159,12 @@ function StatusPill({
       break;
   }
 
-  // Right cell content varies by status.
-  let rightNode: React.ReactNode;
+  // Right cell only renders for statuses with actionable run-context info:
+  // live PnL% for Holding, terminal reason text for Closed/Invalidated.
+  // Watching has no right cell — confidence is metadata at thesis creation,
+  // not a run-context signal. Direction + confidence still appear inside
+  // the body (Bullish/Bearish view + bullets).
+  let rightNode: React.ReactNode = null;
   if (liveStatus === "ACTIVE" && position?.unrealizedPnlPct != null) {
     const pct = position.unrealizedPnlPct;
     const sign = pct >= 0 ? "+" : "";
@@ -177,8 +179,6 @@ function StatusPill({
         {pct.toFixed(2)}%
       </span>
     );
-  } else if (liveStatus === "WATCHING") {
-    rightNode = <span className="tabular-nums">{fallbackConfidence}%</span>;
   } else if (liveStatus === "CLOSED" && closeReason) {
     rightNode = (
       <span className="truncate max-w-[14rem]" title={closeReason}>
@@ -191,9 +191,18 @@ function StatusPill({
         {invalidReason.slice(0, 40)}
       </span>
     );
-  } else {
-    rightNode = (
-      <span className="tabular-nums">{fallbackConfidence}%</span>
+  }
+
+  // Single-cell variant when there's no right node — keeps the pill narrow
+  // and the visual density matches ReadThesesTable / ThesisMiniCard.
+  if (rightNode == null) {
+    return (
+      <div>
+        <Badge variant={variant} className="gap-1.5 font-normal">
+          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
+          {leftLabel}
+        </Badge>
+      </div>
     );
   }
 
@@ -584,7 +593,6 @@ export function ThesisSheetBody({
           terminal reason. Conviction% moves to a secondary stat below. */}
       <StatusPill
         liveStatus={liveStatus}
-        fallbackConfidence={confidence_score}
         position={position}
         closeReason={state?.closeReason ?? null}
         invalidReason={state?.invalidReason ?? null}

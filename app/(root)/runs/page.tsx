@@ -262,6 +262,7 @@ export default async function RunsPage() {
           return (
             <Link key={run.id} href={`/runs/${run.id}`} className="block">
               <Card className="p-0 gap-0 py-0 shadow-none hover:bg-accent/50 transition-colors overflow-hidden">
+                {/* Section 1: title (line 1) + action line (line 2) */}
                 <div className="p-3 flex flex-col gap-1 min-w-0">
                   {/* Row 1: title · logo stack */}
                   <div className="flex items-center justify-between gap-3 min-w-0">
@@ -270,16 +271,7 @@ export default async function RunsPage() {
                         <div className={`h-2 w-2 rounded-full shrink-0 ${statusDotClass}`} />
                       )}
                       <span className="text-sm font-medium text-foreground truncate">
-                        {titlePrefix ? (
-                          <>
-                            <span className="text-muted-foreground font-normal">
-                              {titlePrefix}
-                            </span>{" "}
-                            {analystName}
-                          </>
-                        ) : (
-                          analystName
-                        )}
+                        {titlePrefix ? `${titlePrefix} ${analystName}` : analystName}
                       </span>
                     </div>
 
@@ -306,7 +298,7 @@ export default async function RunsPage() {
                     )}
                   </div>
 
-                  {/* Row 2: action line + duration · realized P&L (if any) */}
+                  {/* Row 2: action line · realized P&L (if any) */}
                   <div className="flex items-baseline justify-between gap-3 min-w-0">
                     {isPodcastSegmentRun ? (
                       <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
@@ -318,11 +310,6 @@ export default async function RunsPage() {
                     ) : tacticalSubtitle ? (
                       <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
                         {tacticalSubtitle}
-                        <span className="text-muted-foreground/70">
-                          {" · "}
-                          {formatRelativeTime(run.startedAt)}
-                          {duration != null && ` · ${duration}s`}
-                        </span>
                       </p>
                     ) : (
                       <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
@@ -332,11 +319,6 @@ export default async function RunsPage() {
                             <span>{seg.text}</span>
                           </span>
                         ))}
-                        <span className="text-muted-foreground/70">
-                          {" · "}
-                          {formatRelativeTime(run.startedAt)}
-                          {duration != null && ` · ${duration}s`}
-                        </span>
                       </p>
                     )}
                     {pnlLabel && (
@@ -351,6 +333,19 @@ export default async function RunsPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Section 2: timestamp + duration, separated by full-width border */}
+                {!isPodcastSegmentRun && (
+                  <div className="flex items-center gap-2 px-3 py-2 border-t text-xs font-mono tabular-nums text-muted-foreground">
+                    <span>{formatRelativeTime(run.startedAt)}</span>
+                    {duration != null && (
+                      <>
+                        <span className="opacity-40">·</span>
+                        <span>{duration}s</span>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {/* Podcast transcript stats row stays — distinct surface */}
                 {isPodcastSegmentRun && run.segmentTranscript && (
