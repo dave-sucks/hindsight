@@ -10,9 +10,12 @@
  *    programmatically without the card trigger.
  */
 
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
+import { PnlBadge } from "@/components/ui/pnl-badge";
 import { InfoRow } from "@/components/ui/info-row";
 import {
   Sheet,
@@ -20,18 +23,17 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
 import { StockLogo } from "@/components/StockLogo";
 import { TickBar, PriceGauge, type Tick } from "@/components/ui/gauge";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { Bell } from "lucide-react";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
-import { ThesisTriggersSection } from "@/components/agent/sheets/ThesisTriggersSection";
+import {
+  ThesisTriggersSection,
+  type TriggersResponse,
+} from "@/components/agent/sheets/ThesisTriggersSection";
+import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
 
@@ -118,6 +120,252 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+// ── StatusPill ──
+// Replaces the old verdict ButtonGroup (Strong Buy / 90%). Lifecycle-
+// status-led: the durable answer to "what is this thesis right now?"
+// Left cell = STATUS (Holding / Watching / Closed / Invalidated).
+// Right cell = a quick verdict that varies by status (live P&L for
+// holdings, confidence-derived label for watches, reason for terminal
+// states). Falls back to the old verdict when no live state has loaded
+// yet so first paint isn't blank.
+
+type LiveStatus = "ACTIVE" | "WATCHING" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
+
+function StatusPill({
+  liveStatus,
+  fallbackDirection,
+  fallbackConfidence,
+  position,
+  closeReason,
+  invalidReason,
+}: {
+  liveStatus: LiveStatus | null;
+  fallbackDirection: "LONG" | "SHORT" | "PASS";
+  fallbackConfidence: number;
+  position: TriggersResponse["position"];
+  closeReason: string | null;
+  invalidReason: string | null;
+}) {
+  // Bucket the status into a (label, dot color, tint) triple.
+  type Variant = "positive" | "negative" | "secondary";
+  let leftLabel: string;
+  let dotClass: string;
+  let variant: Variant;
+
+  switch (liveStatus) {
+    case "ACTIVE":
+      leftLabel = "Holding";
+      dotClass = "bg-positive";
+      variant = "positive";
+      break;
+    case "WATCHING":
+      leftLabel = "Watching";
+      dotClass = "bg-blue-500";
+      variant = "secondary";
+      break;
+    case "CLOSED":
+      leftLabel = "Closed";
+      dotClass = "bg-muted-foreground/60";
+      variant = "secondary";
+      break;
+    case "INVALIDATED":
+      leftLabel = "Invalidated";
+      dotClass = "bg-negative";
+      variant = "negative";
+      break;
+    case "SUPERSEDED":
+      leftLabel = "Superseded";
+      dotClass = "bg-muted-foreground/40";
+      variant = "secondary";
+      break;
+    default: {
+      // Pre-load fallback: derive from the original verdict shape so
+      // first paint isn't blank. Loses Holding/Watching distinction;
+      // recovers as soon as the fetch lands.
+      const verdict = verdictLabel(fallbackDirection, fallbackConfidence);
+      leftLabel = verdict.label;
+      dotClass =
+        verdict.variant === "positive"
+          ? "bg-positive"
+          : verdict.variant === "negative"
+            ? "bg-negative"
+            : "bg-muted-foreground/40";
+      variant = verdict.variant;
+    }
+  }
+
+  // Right cell content varies by status.
+  let rightNode: React.ReactNode;
+  if (liveStatus === "ACTIVE" && position?.unrealizedPnlPct != null) {
+    const pct = position.unrealizedPnlPct;
+    const sign = pct >= 0 ? "+" : "";
+    rightNode = (
+      <span
+        className={cn(
+          "tabular-nums",
+          pct >= 0 ? "text-positive" : "text-negative",
+        )}
+      >
+        {sign}
+        {pct.toFixed(2)}%
+      </span>
+    );
+  } else if (liveStatus === "WATCHING") {
+    rightNode = <span className="tabular-nums">{fallbackConfidence}%</span>;
+  } else if (liveStatus === "CLOSED" && closeReason) {
+    rightNode = (
+      <span className="truncate max-w-[14rem]" title={closeReason}>
+        {closeReason.slice(0, 40)}
+      </span>
+    );
+  } else if (liveStatus === "INVALIDATED" && invalidReason) {
+    rightNode = (
+      <span className="truncate max-w-[14rem]" title={invalidReason}>
+        {invalidReason.slice(0, 40)}
+      </span>
+    );
+  } else {
+    rightNode = (
+      <span className="tabular-nums">{fallbackConfidence}%</span>
+    );
+  }
+
+  return (
+    <div>
+      <ButtonGroup className="cursor-default">
+        <Badge variant={variant} className="rounded-r-none gap-1.5 font-normal">
+          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
+          {leftLabel}
+        </Badge>
+        <ButtonGroupSeparator />
+        <Badge variant={variant} className="rounded-l-none font-normal">
+          {rightNode}
+        </Badge>
+      </ButtonGroup>
+    </div>
+  );
+}
+
+// ── PositionRow ──
+// Mirrors the dashboard ThesisRow's "position row" pattern: shares @
+// cost, market value, live P&L. Renders only when status='ACTIVE' and
+// an open Position is matched on (analyst, ticker).
+
+function PositionRow({
+  position,
+  stopLoss,
+  targetPrice,
+}: {
+  position: NonNullable<TriggersResponse["position"]>;
+  stopLoss: number | null;
+  targetPrice: number | null;
+}) {
+  const $ = (n: number) => `$${n.toFixed(2)}`;
+  const $k = (n: number) =>
+    `$${n.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+  return (
+    <div className="rounded-lg border bg-positive/10 px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground shrink-0">
+          <span className="h-1.5 w-1.5 rounded-full bg-positive" />
+          OPEN
+        </span>
+        <span className="text-sm">
+          {position.quantity} shares @{" "}
+          <span className="tabular-nums font-medium">
+            {$(position.avgCost)}
+          </span>
+          {targetPrice != null && targetPrice > 0 ? (
+            <>
+              , targeting{" "}
+              <span className="tabular-nums font-medium">
+                {$(targetPrice)}
+              </span>
+            </>
+          ) : null}
+        </span>
+        <div className="flex items-center gap-2 ml-auto">
+          {position.marketValue != null ? (
+            <span className="text-sm tabular-nums font-medium">
+              {$k(position.marketValue)}
+            </span>
+          ) : null}
+          {position.unrealizedPnlPct != null ? (
+            <PnlBadge value={position.unrealizedPnlPct} />
+          ) : null}
+        </div>
+      </div>
+      {stopLoss != null && stopLoss > 0 ? (
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Stop at <span className="tabular-nums">{$(stopLoss)}</span> ·{" "}
+          {position.daysHeld}d held
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {position.daysHeld}d held
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── TriggerFiredBanner ──
+// Surfaces the most-recent TRIGGER_FIRED audit row from the past 7d.
+// One liner: predicate that fired + relative time + link to the run
+// the agent took action in. The full detail lives in the Activity
+// timeline below.
+
+function TriggerFiredBanner({
+  fire,
+}: {
+  fire: NonNullable<TriggersResponse["recentFire"]>;
+}) {
+  const router = useRouter();
+  const ago = relativeTime(fire.timestamp);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (fire.runId) router.push(`/runs/${fire.runId}`);
+      }}
+      className={cn(
+        "w-full text-left rounded-lg border border-amber-500/40 bg-amber-500/10",
+        "px-3 py-2 flex items-start gap-2.5 transition-colors",
+        fire.runId ? "hover:bg-amber-500/15 cursor-pointer" : "cursor-default",
+      )}
+    >
+      <Bell className="size-4 text-amber-500 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium">Trigger fired</span>
+          <span className="text-xs text-muted-foreground">{ago}</span>
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
+          {fire.summary}
+        </p>
+        {fire.runId ? (
+          <p className="text-[11px] text-amber-500 mt-1">View run →</p>
+        ) : null}
+      </div>
+    </button>
+  );
+}
+
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(ms / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return `${days}d ago`;
+}
 
 function BulletSection({
   title,
@@ -320,8 +568,6 @@ export function ThesisSheetBody({
 }: ThesisSheetBodyProps) {
   const isPass = direction === "PASS";
   const displayName = company_name ?? ticker;
-  const verdict = verdictLabel(direction, confidence_score);
-  const DirIcon = direction === "LONG" ? TrendingUp : TrendingDown;
   const summaryText = isPass ? (pass_reason ?? reasoning_summary) : reasoning_summary;
 
   const hasEntry = entry_price != null;
@@ -329,30 +575,54 @@ export function ThesisSheetBody({
   const hasStop = stop_loss != null;
   const showLevels = !isPass && hasEntry && (hasTarget || hasStop);
 
+  // Fetch durable thesis state once when we have an id. Drives the
+  // status pill, position row, and trigger-fired banner. The triggers
+  // + schedule section reuses this same data via prop drilling so we
+  // don't double-fetch.
+  const [state, setState] = useState<TriggersResponse | null>(null);
+  useEffect(() => {
+    if (!thesis_id) return;
+    let cancelled = false;
+    fetch(`/api/theses/${thesis_id}/triggers`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const json = (await r.json()) as TriggersResponse;
+        if (!cancelled) setState(json);
+      })
+      .catch(() => {
+        /* non-fatal — header gracefully degrades */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [thesis_id]);
+
+  const liveStatus = (state?.status ?? null) as
+    | "ACTIVE"
+    | "WATCHING"
+    | "CLOSED"
+    | "INVALIDATED"
+    | "SUPERSEDED"
+    | null;
+  const position = state?.position ?? null;
+  const recentFire = state?.recentFire ?? null;
+
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
-      {/* ── Verdict ButtonGroup ──────────────────────────────── */}
-      <div>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <ButtonGroup className="cursor-default">
-                <Badge variant={verdict.variant} className="rounded-r-none">
-                  {!isPass && <DirIcon className="h-3 w-3" />}
-                  {verdict.label}
-                </Badge>
-                <ButtonGroupSeparator />
-                <Badge variant={verdict.variant} className="rounded-l-none tabular-nums">
-                  {confidence_score}%
-                </Badge>
-              </ButtonGroup>
-            }
-          />
-          <TooltipContent side="bottom" className="text-xs max-w-xs">
-            Confidence score — signal quality, data consistency, and directional conviction
-          </TooltipContent>
-        </Tooltip>
-      </div>
+      {/* ── Status pill ButtonGroup (replaces Strong Buy/% verdict) ── */}
+      {/* Status is the durable lifecycle state (Holding / Watching /
+          Closed / Invalidated). The right cell is the verdict at a
+          glance — for Holding it's live PnL%, for Watching it's the
+          confidence-derived label, for Closed/Invalidated it's the
+          terminal reason. Conviction% moves to a secondary stat below. */}
+      <StatusPill
+        liveStatus={liveStatus}
+        fallbackDirection={direction}
+        fallbackConfidence={confidence_score}
+        position={position}
+        closeReason={state?.closeReason ?? null}
+        invalidReason={state?.invalidReason ?? null}
+      />
 
       {/* ── Stock identity ───────────────────────────────────── */}
       <div className="flex items-center gap-3">
@@ -365,6 +635,19 @@ export function ThesisSheetBody({
           </p>
         </div>
       </div>
+
+      {/* ── Position row (only when ACTIVE + open Position exists) ── */}
+      {/* Mirrors the dashboard ThesisRow position pattern: shares @
+          cost, market value, live P&L. Stop line below when set. */}
+      {position && liveStatus === "ACTIVE" ? (
+        <PositionRow position={position} stopLoss={stop_loss ?? null} targetPrice={target_price ?? null} />
+      ) : null}
+
+      {/* ── Trigger fired banner ─────────────────────────────── */}
+      {/* Surfaces the most-recent TRIGGER_FIRED audit row from the past
+          7 days. Crystal clear what happened + when + a link to the
+          run the agent took action in. */}
+      {recentFire ? <TriggerFiredBanner fire={recentFire} /> : null}
 
       {/* ── Summary ───────────────────────────────────────────── */}
       {summaryText && (
@@ -430,8 +713,11 @@ export function ThesisSheetBody({
       {/* Same gating as the timeline below — only shows once the row
           is persisted. Renders the structured trigger predicates, the
           horizon, nextReviewAt, scaling plan, etc. so you can see at
-          a glance what events would warrant a re-evaluation. */}
-      {thesis_id ? <ThesisTriggersSection thesisId={thesis_id} /> : null}
+          a glance what events would warrant a re-evaluation. Reuses
+          the same data we fetched above for the status header. */}
+      {thesis_id ? (
+        <ThesisTriggersSection thesisId={thesis_id} data={state} />
+      ) : null}
 
       {/* ── Activity timeline ─────────────────────────────────── */}
       {/* Renders only when we have a persisted thesis id. Agent-run inline

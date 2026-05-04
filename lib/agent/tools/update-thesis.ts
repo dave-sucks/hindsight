@@ -305,7 +305,11 @@ export const updateThesis = defineTool({
     // here on this date" without polluting the diff log.
     const patchKeyCount = Object.keys(patch).length;
     if (patchKeyCount === 0) {
-      void writeThesisUpdate({
+      // Awaited (was void). Both the morning-research coverage gate and
+      // the tactical-run close-out gate query ThesisUpdate immediately
+      // after the agent finishes — fire-and-forget races caused false
+      // FAILED on legitimate REVIEWED-only runs.
+      await writeThesisUpdate({
         thesisId: existing.id,
         type: "REVIEWED",
         summary: `Reviewed ${existing.ticker} thesis — no changes`,
@@ -405,7 +409,11 @@ export const updateThesis = defineTool({
         ? `Updated ${existing.ticker}: ${summaryParts.join(", ")}`
         : `Updated ${existing.ticker} thesis`;
 
-    void writeThesisUpdate({
+    // Awaited (was void). The tactical-run close-out gate and the
+    // morning-research coverage gate both query ThesisUpdate the moment
+    // the agent finishes; fire-and-forget races dropped the row past
+    // the gate's read horizon and false-failed legitimate runs.
+    await writeThesisUpdate({
       thesisId: existing.id,
       type: updateType,
       summary,

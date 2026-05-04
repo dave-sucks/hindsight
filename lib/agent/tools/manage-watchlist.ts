@@ -122,7 +122,7 @@ async function ensureWatchingThesisForWatchlistAdd(params: {
         maxHoldDays: horizon === "TRADE" ? 14 : null,
       },
     });
-    void writeThesisUpdate({
+    await writeThesisUpdate({
       thesisId: thesis.id,
       type: "CREATED",
       summary: `WATCHING thesis on ${params.ticker} (auto-created from manage_watchlist)`,
@@ -167,7 +167,7 @@ async function supersedeWatchingThesisForWatchlistRemove(params: {
       where: { id: watchingThesis.id },
       data: { status: "SUPERSEDED" },
     });
-    void writeThesisUpdate({
+    await writeThesisUpdate({
       thesisId: watchingThesis.id,
       type: "SUPERSEDED",
       summary: `Removed from watchlist`,

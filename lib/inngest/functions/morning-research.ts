@@ -239,9 +239,22 @@ export const morningResearch = inngest.createFunction(
           const researchedCount = stockDataTickers.size;
           const processViolation =
             researchedCount > 0 && preRetryThesisCount < researchedCount;
-          if (processViolation && response?.messages) {
+          // Coverage violation: every thesis in runInput.activeTheses was
+          // explicitly shown to the agent in the prompt's Active Theses
+          // table. Step 2's contract requires one tool call per thesis
+          // (typically update_thesis with empty patch → REVIEWED row).
+          // If the agent ends without that coverage, we retry with the
+          // same nudge as the process-violation path. Without this gate,
+          // an agent that ends Step 1 with narration like "all theses look
+          // fine, nothing changed" produces 0 audit rows and the run looks
+          // empty even though it should have N REVIEWED rows. Captured the
+          // 2026-05-01 EVT failure mode.
+          const expectedCoverage = runInput.activeTheses?.length ?? 0;
+          const coverageViolation =
+            expectedCoverage > 0 && preRetryThesisCount < expectedCoverage;
+          if ((processViolation || coverageViolation) && response?.messages) {
             console.warn(
-              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers but only recorded ${preRetryThesisCount} theses — process violation, attempting record_thesis retry`
+              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers, expected coverage ${expectedCoverage} active theses, only ${preRetryThesisCount} touched — attempting retry (process=${processViolation}, coverage=${coverageViolation})`
             );
             try {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any

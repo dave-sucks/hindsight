@@ -19,11 +19,15 @@
  * appears in both. The chat is a log of what happened.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useMessage } from "@assistant-ui/react";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { ThesisCarousel } from "@/components/domain/thesis-carousel";
+import { ReadThesesTable } from "@/components/domain/read-theses-table";
+import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { MessageSearch01Icon } from "@hugeicons/core-free-icons";
 import type { ThesisCardData } from "@/components/domain/thesis-card";
 
 interface Props {
@@ -38,6 +42,7 @@ const WRITE_TOOLS = new Set(["record_thesis", "show_thesis", "update_thesis"]);
 
 export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
   const content = useMessage((m) => m.content);
+  const [openThesis, setOpenThesis] = useState<ThesisCardData | null>(null);
 
   // Split tool-call parts in this message into Read / Write buckets.
   const { readParts, writeParts } = useMemo(() => {
@@ -55,7 +60,7 @@ export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
 
   // Each call instance renders only when it's the first call of its kind
   // in the message. Subsequent calls of the same kind collapse into the
-  // already-rendered carousel.
+  // already-rendered surface (table for reads, carousel for writes).
   const myParts = isRead ? readParts : writeParts;
   const myIndex = myParts.findIndex((p) => p.toolCallId === toolCallId);
   if (myIndex > 0) return null;
@@ -66,21 +71,43 @@ export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
     (p) => (p.result ?? p.output) !== undefined,
   ).length;
   const allLoading = readyCount === 0 && loading;
+
+  if (isRead) {
+    if (allLoading) {
+      return <ReadThesesTableSkeleton />;
+    }
+    const theses = collectReadTheses(readParts);
+    if (theses.length === 0) return null;
+    const noun = theses.length === 1 ? "thesis" : "theses";
+    return (
+      <>
+        <div className="my-3 space-y-1">
+          <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
+            <span>{`Reading ${theses.length} ${noun}`}</span>
+          </div>
+          <ReadThesesTable theses={theses} onRowClick={setOpenThesis} />
+        </div>
+        {openThesis ? (
+          <ThesisSheet
+            open={openThesis !== null}
+            onOpenChange={(o) => {
+              if (!o) setOpenThesis(null);
+            }}
+            {...openThesis}
+          />
+        ) : null}
+      </>
+    );
+  }
+
   if (allLoading) {
     return <ThesisCarouselSkeleton count={Math.max(myParts.length, 1)} />;
   }
 
-  const theses = isRead
-    ? collectReadTheses(readParts)
-    : collectWriteTheses(writeParts);
-
+  const theses = collectWriteTheses(writeParts);
   if (theses.length === 0) return null;
-
-  const heading = isRead
-    ? `Read ${theses.length} thes${theses.length === 1 ? "is" : "es"}`
-    : isWrite
-      ? buildWriteHeading(writeParts, theses.length)
-      : null;
+  const heading = isWrite ? buildWriteHeading(writeParts, theses.length) : null;
 
   return (
     <div className="my-2 space-y-1.5">
@@ -90,6 +117,30 @@ export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
         </p>
       ) : null}
       <ThesisCarousel theses={theses} />
+    </div>
+  );
+}
+
+// ── Read-table skeleton ──────────────────────────────────────────────────────
+
+function ReadThesesTableSkeleton() {
+  return (
+    <div className="my-3 space-y-1">
+      <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+        <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
+        <span>Reading theses…</span>
+      </div>
+      <div className="rounded-xl border bg-card p-1 space-y-1">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-2 p-2">
+            <Skeleton className="h-5 w-5 rounded-full" />
+            <Skeleton className="h-4 w-12" />
+            <Skeleton className="h-5 w-20 rounded-full" />
+            <div className="flex-1" />
+            <Skeleton className="h-3 w-40" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

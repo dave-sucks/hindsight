@@ -123,6 +123,15 @@ export default async function RunsPage() {
           },
         },
       },
+      // ThesisUpdate audit rows tied to this run. Drives the new-model
+      // action segments (Updated / Invalidated / Reviewed / Watching) and
+      // the triggered count in the stats row.
+      thesisUpdates: {
+        select: {
+          type: true,
+          thesis: { select: { ticker: true, status: true } },
+        },
+      },
     },
     orderBy: { startedAt: "desc" },
     take: 100,
@@ -181,11 +190,18 @@ export default async function RunsPage() {
           const summary = buildRunSummary(run);
           const segments = buildActionSegments(summary);
 
-          // Logo stack tickers — action tickers first, then researched fill.
+          // Logo stack tickers — action tickers first, then researched fill,
+          // then audit-only tickers (tactical runs that only update_thesis
+          // touched these — they wouldn't appear otherwise).
           const actionTickers = [...summary.tickerBadges.keys()];
           const thesisTickers = run.theses.map((t) => t.ticker.toUpperCase());
+          const auditTickers = [
+            ...summary.actions.invalidated,
+            ...summary.actions.updated,
+            ...summary.actions.reviewed,
+          ];
           const orderedTickers = [
-            ...new Set([...actionTickers, ...thesisTickers]),
+            ...new Set([...actionTickers, ...thesisTickers, ...auditTickers]),
           ];
 
           const duration = run.completedAt
@@ -295,19 +311,19 @@ export default async function RunsPage() {
                 )}
 
                 {/* Section 2 (analyst): stats row — full-width border */}
-                {!isPodcastSegmentRun && summary.counts.researched > 0 && (
+                {!isPodcastSegmentRun && summary.counts.walked > 0 && (
                   <div className="flex items-center justify-between p-3 border-t text-xs font-mono tabular-nums">
                     <span>
                       <span className="font-medium text-foreground">
-                        {summary.counts.researched} researched
+                        {summary.counts.walked} walked
                       </span>
                       <span className="text-muted-foreground">
-                        {summary.counts.new > 0 && ` · ${summary.counts.new} new`}
-                        {summary.counts.closed > 0 && ` · ${summary.counts.closed} closed`}
-                        {summary.counts.held > 0 && ` · ${summary.counts.held} held`}
-                        {summary.counts.passed > 0 && ` · ${summary.counts.passed} passed`}
-                        {summary.counts.watchlist > 0 &&
-                          ` · ${summary.counts.watchlist} watchlist`}
+                        {summary.counts.triggered > 0 &&
+                          ` · ${summary.counts.triggered} triggered`}
+                        {summary.counts.traded > 0 &&
+                          ` · ${summary.counts.traded} ${
+                            summary.counts.traded === 1 ? "trade" : "trades"
+                          }`}
                       </span>
                     </span>
                     {pnlLabel && (

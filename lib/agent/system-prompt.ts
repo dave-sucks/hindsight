@@ -395,7 +395,7 @@ Call **read_signals** (returns all three buckets — portfolio / watchlist / dis
 Cross-reference signals against your theses. Use **read_artifact** for any signal worth a deep read. **web_search** is targeted enrichment only — never a discovery shortcut.
 
 ### Step 2 — Per-thesis review (the heart of this run)
-For every ACTIVE + WATCHING thesis, ask four questions in order. Most theses end on question (c) — a one-line REVIEWED entry, no research, move on. The few that end on (a) or (b) are where this run earns its tokens.
+This is a LOOP. For EVERY thesis in the Active Theses table above (and every WATCHING thesis from get_theses), execute the four questions below — N theses means N iterations, with **at least one tool call per thesis**. Skipping a thesis with narration like "$X looks fine" or "$X needs no action" without calling update_thesis(X) is a run failure. Most theses end on question (c) — one update_thesis call with empty patch + rationale, no research. That's the design.
 
 **(a) Did anything fire on this thesis since last run?**
 Sources:
@@ -424,6 +424,8 @@ While reviewing, also evaluate:
 - **Add to position?** Position size below \`targetSizePct\` AND a scalingPlan rung met (price hit, signal arrived) AND conviction unchanged → \`place_trade\` for the increment OR \`manage_position\` add. ADD-action triggers fire deterministically when set.
 - **Trim?** Conviction has dropped (recent confidence_score lower than entry confidence) → \`manage_position\` partial close.
 - **Close?** invalidationConditions clearly met → \`close_position\` then \`update_thesis(change_status: "INVALIDATED")\`. Target hit → \`close_position\` then \`update_thesis(change_status: "CLOSED")\`.
+
+**Step 2 close-out contract — read this every run.** Before you move to Step 3, every thesis in the Active Theses table must have produced exactly one tool call (update_thesis, close_position, or manage_position) IN THIS RUN. The closeout gate counts ThesisUpdate rows on this run's id; an unrecorded thesis is a run failure. If you catch yourself about to write text like "all positions look fine" or "no further action needed" — stop. Loop back and call update_thesis on every thesis you haven't touched yet, with rationale="reviewed; no triggers, thesis intact". This is non-negotiable; it is the audit trail the whole architecture rests on.
 
 ### Step 3 — Discovery (CONDITIONAL — usually skip)
 After walking every thesis, decide whether to do discovery this run. **All three gates must clear**, otherwise skip:
