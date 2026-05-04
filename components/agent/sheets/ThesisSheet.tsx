@@ -120,42 +120,43 @@ function StatusPill({
   closeReason,
   invalidReason,
 }: {
-  liveStatus: LiveStatus;
+  liveStatus: LiveStatus | null;
   position: TriggersResponse["position"];
   closeReason: string | null;
   invalidReason: string | null;
 }) {
-  // Bucket the status into a (label, dot color, tint) triple.
-  type Variant = "positive" | "negative" | "secondary";
+  // Don't paint until status is resolved — avoids the Holding→Watching
+  // flicker when ThesisCardData arrives without status (older persisted
+  // RunMessages, or any path that doesn't carry the field). The pill is
+  // a small surface; its absence for a frame is preferable to a wrong
+  // initial value.
+  if (liveStatus == null) return null;
+
+  // Same secondary variant for every status — neutral background, the
+  // colored dot does the lifecycle work. Mirrors ReadThesesTable.
   let leftLabel: string;
   let dotClass: string;
-  let variant: Variant;
 
   switch (liveStatus) {
     case "ACTIVE":
       leftLabel = "Holding";
       dotClass = "bg-positive";
-      variant = "positive";
       break;
     case "WATCHING":
       leftLabel = "Watching";
       dotClass = "bg-blue-500";
-      variant = "secondary";
       break;
     case "CLOSED":
       leftLabel = "Closed";
       dotClass = "bg-muted-foreground/60";
-      variant = "secondary";
       break;
     case "INVALIDATED":
       leftLabel = "Invalidated";
       dotClass = "bg-negative";
-      variant = "negative";
       break;
     case "SUPERSEDED":
       leftLabel = "Superseded";
       dotClass = "bg-muted-foreground/40";
-      variant = "secondary";
       break;
   }
 
@@ -198,7 +199,7 @@ function StatusPill({
   if (rightNode == null) {
     return (
       <div>
-        <Badge variant={variant} className="gap-1.5 font-normal">
+        <Badge variant="secondary" className="gap-1.5 font-normal">
           <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
           {leftLabel}
         </Badge>
@@ -209,12 +210,12 @@ function StatusPill({
   return (
     <div>
       <ButtonGroup className="cursor-default">
-        <Badge variant={variant} className="rounded-r-none gap-1.5 font-normal">
+        <Badge variant="secondary" className="rounded-r-none gap-1.5 font-normal">
           <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
           {leftLabel}
         </Badge>
         <ButtonGroupSeparator />
-        <Badge variant={variant} className="rounded-l-none font-normal">
+        <Badge variant="secondary" className="rounded-l-none font-normal">
           {rightNode}
         </Badge>
       </ButtonGroup>
@@ -578,8 +579,10 @@ export function ThesisSheetBody({
   }, [thesis_id]);
 
   // Initial value comes from the row that opened the sheet — no flicker.
-  // The API fetch refines it with live PnL and terminal reasons.
-  const liveStatus = (state?.status ?? status ?? "ACTIVE") as LiveStatus;
+  // The API fetch refines it with live PnL and terminal reasons. Null
+  // until either source resolves; StatusPill renders nothing in that
+  // window so we never paint a wrong-default like Holding green.
+  const liveStatus = (state?.status ?? status ?? null) as LiveStatus | null;
   const position = state?.position ?? null;
   const recentFire = state?.recentFire ?? null;
 

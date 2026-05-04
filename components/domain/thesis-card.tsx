@@ -27,18 +27,21 @@ import {
 import type { FundamentalsData, ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 
 // ─── Status display (matches ThesisSheet StatusPill + ReadThesesTable) ────────
+// Single secondary variant for every status — neutral background, the dot
+// carries lifecycle color. Same shape used in ThesisMiniCard and
+// ReadThesesTable so the pill reads identically across the chat.
 
 type ThesisStatus = NonNullable<ThesisCardData["status"]>;
 
 const STATUS_DISPLAY: Record<
   ThesisStatus,
-  { label: string; dotClass: string; variant: "positive" | "negative" | "secondary" }
+  { label: string; dotClass: string }
 > = {
-  ACTIVE: { label: "Holding", dotClass: "bg-positive", variant: "positive" },
-  WATCHING: { label: "Watching", dotClass: "bg-blue-500", variant: "secondary" },
-  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground/60", variant: "secondary" },
-  INVALIDATED: { label: "Invalidated", dotClass: "bg-negative", variant: "negative" },
-  SUPERSEDED: { label: "Superseded", dotClass: "bg-muted-foreground/40", variant: "secondary" },
+  ACTIVE: { label: "Holding", dotClass: "bg-positive" },
+  WATCHING: { label: "Watching", dotClass: "bg-blue-500" },
+  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground/60" },
+  INVALIDATED: { label: "Invalidated", dotClass: "bg-negative" },
+  SUPERSEDED: { label: "Superseded", dotClass: "bg-muted-foreground/40" },
 };
 
 // Types are defined in ThesisSheet.tsx (the more primitive file) and re-exported
@@ -126,7 +129,7 @@ export function ThesisCard({
         </Tooltip>
       </div>
       {/* Right: lifecycle status pill — matches ThesisSheet + ReadThesesTable */}
-      <Badge variant={statusDisplay.variant} className="gap-1.5 font-normal">
+      <Badge variant="secondary" className="gap-1.5 font-normal">
         <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDisplay.dotClass)} />
         {statusDisplay.label}
       </Badge>

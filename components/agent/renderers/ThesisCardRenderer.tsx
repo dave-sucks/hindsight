@@ -27,7 +27,7 @@ import { ReadThesesTable } from "@/components/domain/read-theses-table";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { MessageSearch01Icon } from "@hugeicons/core-free-icons";
+import { MessageSearch01Icon, QuillWrite01Icon } from "@hugeicons/core-free-icons";
 import type { ThesisCardData } from "@/components/domain/thesis-card";
 
 interface Props {
@@ -110,11 +110,12 @@ export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
   const heading = isWrite ? buildWriteHeading(writeParts, theses.length) : null;
 
   return (
-    <div className="my-2 space-y-1.5">
+    <div className="my-3 space-y-1">
       {heading ? (
-        <p className="text-xs font-medium text-muted-foreground px-1">
-          {heading}
-        </p>
+        <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+          <HugeiconsIcon icon={QuillWrite01Icon} className="size-3.5 shrink-0" />
+          <span>{heading}</span>
+        </div>
       ) : null}
       <ThesisCarousel theses={theses} />
     </div>

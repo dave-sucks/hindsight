@@ -41,16 +41,17 @@ function fmtPct(n: number): string {
 }
 
 // ── Status display (matches ThesisCard + ThesisSheet + ReadThesesTable) ─────
+// Single secondary variant — neutral background, colored dot only.
 
 const STATUS_DISPLAY: Record<
   NonNullable<ThesisCardData["status"]>,
-  { label: string; dotClass: string; variant: "positive" | "negative" | "secondary" }
+  { label: string; dotClass: string }
 > = {
-  ACTIVE: { label: "Holding", dotClass: "bg-positive", variant: "positive" },
-  WATCHING: { label: "Watching", dotClass: "bg-blue-500", variant: "secondary" },
-  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground/60", variant: "secondary" },
-  INVALIDATED: { label: "Invalidated", dotClass: "bg-negative", variant: "negative" },
-  SUPERSEDED: { label: "Superseded", dotClass: "bg-muted-foreground/40", variant: "secondary" },
+  ACTIVE: { label: "Holding", dotClass: "bg-positive" },
+  WATCHING: { label: "Watching", dotClass: "bg-blue-500" },
+  CLOSED: { label: "Closed", dotClass: "bg-muted-foreground/60" },
+  INVALIDATED: { label: "Invalidated", dotClass: "bg-negative" },
+  SUPERSEDED: { label: "Superseded", dotClass: "bg-muted-foreground/40" },
 };
 
 // ── Row ─────────────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
             {thesis.company_name ?? thesis.ticker}
           </span>
           <Badge
-            variant={statusDisplay.variant}
+            variant="secondary"
             className="ml-auto font-normal shrink-0 gap-1.5"
           >
             <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDisplay.dotClass)} />
