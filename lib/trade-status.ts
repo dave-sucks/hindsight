@@ -52,11 +52,12 @@ export const TRADE_STATUS_DISPLAY: Record<TradeStatus, TradeStatusDisplay> = {
   },
   OPEN: {
     label: "Holding",
-    // Green + pulse — same dot used by the trade detail page header and
-    // the thesis sheet's status pill, so "Holding" reads identically
-    // wherever it appears (dashboard rows, trades table, trade detail,
-    // thesis sheet, read-theses table, carousel cards).
-    dotClass: "bg-positive animate-pulse",
+    // Blue pulse — the canonical "live, open" indicator. Reserved for
+    // active positions; green is for CLOSED_WIN (terminal profit) and
+    // red is for CLOSED_LOSS / INVALIDATED. Same dot used by the trade
+    // detail header, the thesis sheet, the carousel cards, the
+    // read-theses table.
+    dotClass: "bg-blue-500 animate-pulse",
     timeLabel: (c) => (c.filledAt ? `Filled ${fmt(c.filledAt)}` : `Opened ${fmt(c.placedAt)}`),
   },
   CLOSED_WIN: {

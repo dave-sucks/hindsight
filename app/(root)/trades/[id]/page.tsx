@@ -75,7 +75,7 @@ function getStatusDisplay(
     }
     return {
       label: 'Holding',
-      dotClass: 'bg-positive animate-pulse',
+      dotClass: 'bg-blue-500 animate-pulse',
       tooltip: 'Order filled — paper shares held in your Alpaca account.',
     };
   }

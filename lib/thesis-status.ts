@@ -25,15 +25,17 @@ export interface ThesisStatusDisplay {
 export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = {
   ACTIVE: {
     label: "Holding",
-    // Same dotClass as TRADE_STATUS_DISPLAY.OPEN so a held thesis and
-    // an open trade read identically. Single source of "this is a live
-    // holding" visual across the app.
-    dotClass: "bg-positive animate-pulse",
+    // Blue pulse = live/open position. Mirrors TRADE_STATUS_DISPLAY.OPEN
+    // so a held thesis and an open trade read identically.
+    dotClass: "bg-blue-500 animate-pulse",
     tooltip: "Open position — thesis is active in the book",
   },
   WATCHING: {
     label: "Watching",
-    dotClass: "bg-blue-500",
+    // Gray = passive monitoring. Distinct from blue (live) and from the
+    // terminal grays used by Closed/Superseded — slightly brighter to
+    // signal "still being watched, not archived."
+    dotClass: "bg-muted-foreground",
     tooltip: "On the watchlist — promotion triggers govern entry",
   },
   CLOSED: {
