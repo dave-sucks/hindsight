@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   WorkflowStepCard,
-  FlowConnector,
+  AnalystsCard,
   TeamSheetContent,
   ToolsRegistrySheetContent,
   SidebarOpenIcon,
@@ -28,6 +28,9 @@ import {
 import {
   TEAMS,
   TOOL_REGISTRY,
+  PHASE_LABELS,
+  PHASE_ORDER,
+  getTeam,
   exportWorkflowAsMarkdown,
   type Team,
 } from "@/lib/agent/workflow-registry";
@@ -59,53 +62,52 @@ type SheetTarget = Team | "tools-registry" | null;
 export default function AgentWorkflowPage() {
   const [activeSheet, setActiveSheet] = useState<SheetTarget>(null);
 
-  // Editor is on-demand (not part of the daily loop). Rendered as a
-  // separate row below the main flow so the loop connectors stay clean.
-  const loopTeams = TEAMS.filter((t) => t.id !== "editor");
-  const editorTeam = TEAMS.find((t) => t.id === "editor");
+  const builderTeam = getTeam("builder");
+  const editorTeam = getTeam("editor");
 
   return (
-    <div className="p-6 space-y-4 max-w-xl mx-auto">
+    <div className="p-6 space-y-6 max-w-xl mx-auto">
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold">How Hindsight Works</h1>
           <CopyMarkdownButton />
         </div>
         <p className="text-sm text-muted-foreground">
-          5 teams run in a daily loop. Open any step to see its workflow and tools.
+          The lifecycle, end to end. Open any card to see its workflow and tools.
         </p>
       </div>
 
       <Separator />
 
-      {/* Team steps */}
-      <div>
-        {loopTeams.map((team, i) => (
-          <div key={team.id}>
-            <WorkflowStepCard
-              team={team}
-              onOpenSheet={() => setActiveSheet(team)}
-            />
-            {i < loopTeams.length - 1 && <FlowConnector />}
-          </div>
-        ))}
-      </div>
+      {/* Phase-grouped cards */}
+      {PHASE_ORDER.map((phase, phaseIdx) => {
+        const phaseTeams = TEAMS.filter((t) => t.phase === phase);
+        if (phaseTeams.length === 0) return null;
 
-      {/* Editor — on-demand, not in the daily loop */}
-      {editorTeam && (
-        <>
-          <Separator />
-          <div className="space-y-1">
+        return (
+          <div key={phase} className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              On demand
+              {phaseIdx + 1}. {PHASE_LABELS[phase]}
             </p>
-            <WorkflowStepCard
-              team={editorTeam}
-              onOpenSheet={() => setActiveSheet(editorTeam)}
-            />
+            <div className="space-y-2">
+              {phase === "build" ? (
+                <AnalystsCard
+                  onOpenBuilder={() => setActiveSheet(builderTeam)}
+                  onOpenEditor={() => setActiveSheet(editorTeam)}
+                />
+              ) : (
+                phaseTeams.map((team) => (
+                  <WorkflowStepCard
+                    key={team.id}
+                    team={team}
+                    onOpenSheet={() => setActiveSheet(team)}
+                  />
+                ))
+              )}
+            </div>
           </div>
-        </>
-      )}
+        );
+      })}
 
       <Separator />
 

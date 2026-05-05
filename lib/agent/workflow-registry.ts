@@ -22,7 +22,24 @@ import {
   Clock,
   Wrench,
   LineChart,
+  Zap,
+  Bell,
 } from "lucide-react";
+
+// ── Phases ─────────────────────────────────────────────────────────────────
+// Cards on /agent-workflow group under one of these four phase labels.
+// Pure layout grouping — domain logic doesn't depend on phase.
+
+export type Phase = "build" | "signals" | "run" | "track";
+
+export const PHASE_LABELS: Record<Phase, string> = {
+  build:   "Build your analysts",
+  signals: "Gather signals",
+  run:     "Run your analysts",
+  track:   "Learn & track",
+};
+
+export const PHASE_ORDER: Phase[] = ["build", "signals", "run", "track"];
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -64,13 +81,18 @@ export type TeamId =
   | "builder"
   | "editor"
   | "intelligence"
+  | "triggers"
+  | "discovery"
   | "agent"
+  | "tactical"
   | "briefing"
   | "evaluation";
 
 export interface Team {
   id: TeamId;
   title: string;
+  /** Which phase column this team renders under on /agent-workflow */
+  phase: Phase;
   /** 1-2 sentences — shown on workflow page rows */
   summary: string;
   /** 3-5 sentences — shown in the sheet */
@@ -80,6 +102,13 @@ export interface Team {
   model?: string;
   /** When this team runs */
   schedule: string;
+  /**
+   * If this team is directly triggered by another team's output (event, not
+   * shared data), set the upstream team id. Renders an arrow chip on the
+   * card. Only direct 1:1 trigger relationships — shared data dependencies
+   * are not represented here.
+   */
+  triggeredBy?: TeamId;
   substeps: SubStep[];
   tools: ToolEntry[];
   /** If this team has a system prompt, lazy-load it */
@@ -136,31 +165,31 @@ export const TEAMS: Team[] = [
   {
     id: "builder",
     title: "Analyst Builder",
+    phase: "build",
     summary:
       "Creates new analyst personas through a structured interview. Grounds every proposal in the knowledge library and real signal discovery before writing the config.",
     description:
-      "You describe the edge you want to hunt in conversation. The builder (GPT-4o, 25-step budget) runs a structured interview with ask_question — opening the conversation, narrowing with two or three follow-ups, then grounding in the knowledge library (strategy archetypes / playbooks, vetted sources, signal taxonomy). Before it writes anything, it validates the proposed universe against reality by calling discover_signals_for_fence and pulling real market context. It then emits a complete analyst config through suggest_config — name, 3-5 paragraph analystPrompt adapted from a playbook skeleton, universe (sectors + industries + themes + marketCap), direction bias, hold durations, confidence threshold, position sizing, watchlist seeded from the fence discovery (never hallucinated), exclusion list, intelligence policy (attention weights + live search budget), plus 4-6 proposed domain monitors and 3-5 intelligence queries. The config appears as a side-panel diff for review; builder validation rejects contradictions like watchlist tickers outside the market-cap fence before you ever see them.",
+      "GPT-4o, 25-step structured interview. Asks via ask_question for the edge, direction bias, hold duration, themes, and risk appetite. Browses the knowledge library and runs the three-beat playbook selection (browse the archetype index → present top 2-4 via ask_question → deep-read the chosen one) to ground the strategy in a vetted skeleton. Validates the proposed universe against today's signal pipeline before writing — discover_signals_for_fence must return non-zero signals, and watchlist tickers must come from its tickerFrequency output (never invented). Emits suggest_config as a side-panel diff with the full analyst: 3-5 paragraph analystPrompt adapted from the chosen playbook skeleton, universe (sectors + industries + themes + marketCap + feeds), trading rules, intelligence policy, watchlist, plus 4-6 domain monitors and 3-5 discovery queries (never per-ticker — those are auto-handled).",
     icon: Sparkles,
     model: "GPT-4o",
     schedule: "On demand",
     substeps: [
-      { title: "Opening question", summary: "ask_question with 2-5 quick-reply options — what edge are you hunting? (earnings surprises, momentum, value, catalyst, thematic)" },
-      { title: "Narrow the strategy", summary: "2-3 follow-up questions via ask_question: direction bias, hold duration, risk appetite, themes if thematic." },
-      { title: "Ground in the knowledge library", summary: "Browses strategy archetypes (playbooks), offers 3-4 as quick replies, then deep-reads the chosen skeleton plus signal taxonomy and source catalog." },
-      { title: "Validate with real data", summary: "get_market_context for regime, discover_signals_for_fence to confirm the proposed universe actually produces signals. 0 hits = widen the fence." },
-      { title: "Propose monitors", summary: "Selects 4-6 real domains from the source catalog and drafts 3-5 discovery queries (no per-ticker feeds)." },
-      { title: "Emit config", summary: "suggest_config returns the full analyst as a side-panel diff. Watchlist seeded from fence discovery, never hallucinated. Validation blocks cap/watchlist contradictions before display." },
+      { title: "Opening question", summary: "First tool call is always ask_question. 2-5 quick-reply options on the edge: earnings, momentum, value, catalyst, thematic." },
+      { title: "Narrow with quick replies", summary: "2-3 follow-ups via ask_question (one call per turn — multiple related questions go inside one call via steps[]). Pins direction, hold duration, themes, risk appetite." },
+      { title: "Three-beat playbook selection", summary: "Browse the archetype index → present top 2-4 as ask_question options → deep-read the chosen one. Plus topic:\"signal\" for the vetted signal taxonomy and topic:\"source\" for the domain catalog." },
+      { title: "Validate against today's tape", summary: "get_market_context for regime + discover_signals_for_fence with the proposed universe. 0 signals = widen. Watchlist tickers come ONLY from tickerFrequency output." },
+      { title: "Emit suggest_config", summary: "Full analyst as a side-panel diff: analystPrompt adapted from the skeleton, universe (sectors + industries + themes + marketCap + feeds), trading rules, intelligence policy, watchlist, 4-6 domain monitors, 3-5 discovery queries." },
     ],
     tools: [
-      { name: "ask_question", provider: "internal", summary: "Structured interview with 2-5 quick-reply options. Mandatory before suggest_config." },
-      { name: "read_knowledge_library", provider: "internal", summary: "Browses strategy archetypes (playbooks), vetted research sources, and signal-type taxonomy." },
-      { name: "discover_signals_for_fence", provider: "internal", summary: "Runs a live query against real signals matching the proposed universe (sectors + industries + themes + tickers). Returns frequency-ranked tickers for watchlist seeding." },
+      { name: "ask_question", provider: "internal", summary: "Structured interview with 2-5 quick-reply options. One call per turn — bundle related questions inside via steps[]." },
+      { name: "read_knowledge_library", provider: "internal", summary: "Strategy archetypes (playbooks) + vetted source catalog + signal-type taxonomy. Topics: archetype | signal | source." },
+      { name: "discover_signals_for_fence", provider: "internal", summary: "Validates a proposed universe against the past 30 days of routed signals. Returns frequency-ranked tickers — the only legal source for watchlist seeding." },
       TOOL_GET_MARKET_CONTEXT,
       TOOL_GET_STOCK_DATA,
       TOOL_GET_EARNINGS_DATA,
       TOOL_GET_SEC_FILINGS,
-      { name: "web_search", provider: "perplexity", summary: "Live Sonar search for verification questions during the interview." },
-      { name: "suggest_config", provider: "internal", summary: "Emits the complete analyst config for side-panel review. Validated: watchlist must fit inside the market-cap fence; industries auto-filled from sectors if missing." },
+      { name: "web_search", provider: "perplexity", summary: "Live Sonar search for verification within the interview." },
+      { name: "suggest_config", provider: "internal", summary: "Emits the complete analyst config as a side-panel diff. Validated: watchlist must fit inside the marketCap fence; industries auto-filled from sectors if missing; sentinel marketCap bounds stripped." },
     ],
     getPrompt: () => import("@/lib/agent/builder-prompt-template").then((m) => m.BUILDER_PROMPT_TEMPLATE),
     promptSource: "lib/agent/modes.ts → BUILDER_SYSTEM_PROMPT",
@@ -170,31 +199,32 @@ export const TEAMS: Team[] = [
   {
     id: "editor",
     title: "Analyst Editor",
+    phase: "build",
     summary:
       "Edits existing analysts via a 4-lane flow. Classifies the request first, keeps the analyst prompt frozen for pure numeric tweaks, and grounds fence changes in real inbox data.",
     description:
-      "The editor (GPT-4o, 20-step budget) is not a second builder. The first thing it does — silently — is classify the request into one of four lanes and behave differently for each. Lane (a) Q&A only: answers from currentConfig, no suggest_config. Lane (b) numeric-only tweaks (minConfidence, maxPositionSize, maxOpenPositions, holdDurations, marketCapMin/Max, directionBias, intelligencePolicy): the analystPrompt stays FROZEN character-for-character. Lane (c) fence change (sectors / industries / themes / watchlist / exclusionList): starts with read_analyst_inbox_stats to ground in 30 days of real routing data, validates the new fence with discover_signals_for_fence (must produce routes), consults the current playbook skeleton, then weaves ONE short fence-change paragraph into the existing analystPrompt — the rest stays intact. Lane (d) archetype/strategy shift: full three-beat playbook selection (browse → ask_question → deep-read), full analystPrompt rewrite grounded in the new skeleton while preserving risk/exit discipline that was working. Throughout: one ask_question per turn, no markdown headings, no citation markers, sectors + industries always proposed together.",
+      "GPT-4o, 20-step session. Not a second builder. The first thing it does — silently — is classify the request into one of four lanes and behaves differently for each.\n\n• Lane (a) Q&A — answers from currentConfig, no suggest_config call.\n• Lane (b) numeric-only tweak (minConfidence, position sizing, holdDurations, intelligencePolicy) — analystPrompt stays FROZEN character-for-character.\n• Lane (c) fence change (sectors / industries / themes / watchlist / exclusions) — read_analyst_inbox_stats grounds in 30 days of real routing, discover_signals_for_fence validates the new fence (must produce routes), then ONE short paragraph is woven into the analystPrompt — the rest stays intact. Existing watchlist tickers are preserved + extended, never silently dropped.\n• Lane (d) archetype shift — full three-beat playbook selection, full analystPrompt rewrite grounded in the new skeleton, preserving risk/exit discipline that was working.\n\nSectors + industries are always proposed together. One ask_question per turn.",
     icon: Wrench,
     model: "GPT-4o",
     schedule: "On demand",
     substeps: [
-      { title: "Classify the request", summary: "Silent lane decision: (a) Q&A, (b) numeric tweak, (c) fence change, (d) archetype shift. Determines whether analystPrompt is frozen or rewritten." },
-      { title: "Ground in real experience", summary: "Lanes (c) and (d): read_analyst_inbox_stats pulls 30 days of routing data — top tickers hit, dead themes, hot unwatched tickers, signal-type distribution." },
-      { title: "Pin down ambiguity", summary: "One ask_question per turn with 2-5 options. 'More aggressive' resolves to one of: minConfidence, maxPositionSize, maxOpenPositions, signal type." },
-      { title: "Validate fence changes", summary: "discover_signals_for_fence with the PROPOSED fence. 0 signals = push back with evidence before suggesting." },
-      { title: "Consult playbooks", summary: "Lane (c): reread current archetype skeleton. Lane (d): three-beat selection — browse → ask_question → deep-read." },
-      { title: "Emit suggest_config", summary: "Lane (b): analystPrompt unchanged. Lane (c): one fence paragraph woven in. Lane (d): analystPrompt rewritten from the new skeleton. Sectors + industries always together." },
+      { title: "Classify the request", summary: "Silent lane decision: (a) Q&A, (b) numeric tweak, (c) fence change, (d) archetype shift. Determines whether analystPrompt is frozen, partially edited, or rewritten." },
+      { title: "Ground in real experience", summary: "Lanes (c) and (d): read_analyst_inbox_stats pulls 30 days of routing — top tickers, dead themes, hot unwatched tickers, signal-type distribution." },
+      { title: "Pin down ambiguity", summary: "One ask_question per turn with 2-5 options. \"Make more aggressive\" resolves to ONE of: minConfidence, position size, maxOpenPositions, signal type." },
+      { title: "Validate fence changes", summary: "discover_signals_for_fence with the PROPOSED fence. 0 signals = push back with evidence. Watchlist preserved + extended; new tickers come only from inboxStats or tickerFrequency, never invented." },
+      { title: "Consult playbooks", summary: "Lane (c): re-read current archetype skeleton for consistency. Lane (d): three-beat selection (browse → ask_question → deep-read)." },
+      { title: "Emit suggest_config", summary: "Lane (b): analystPrompt unchanged. Lane (c): one fence paragraph woven in, rest preserved. Lane (d): analystPrompt rewritten from the new skeleton. Sectors + industries always together." },
     ],
     tools: [
-      { name: "ask_question", provider: "internal", summary: "Structured interview with 2-5 quick-reply options. One per turn." },
+      { name: "ask_question", provider: "internal", summary: "Structured interview with 2-5 quick-reply options. One call per turn — bundle related questions inside via steps[]." },
       { name: "read_analyst_inbox_stats", provider: "internal", summary: "30-day rollup of this analyst's routing: top tickers, sectors, themes, dead themes, signal distribution, hot unwatched tickers. Mandatory for fence/archetype changes." },
-      { name: "read_knowledge_library", provider: "internal", summary: "Strategy archetypes, vetted sources, signal-type taxonomy." },
-      { name: "discover_signals_for_fence", provider: "internal", summary: "Validates the proposed fence against real signals. No routes = fence too narrow." },
+      { name: "read_knowledge_library", provider: "internal", summary: "Strategy archetypes (playbooks) + vetted source catalog + signal-type taxonomy. Topics: archetype | signal | source." },
+      { name: "discover_signals_for_fence", provider: "internal", summary: "Validates a proposed fence against the past 30 days of routed signals. 0 signals = fence too narrow. Returns frequency-ranked tickers for watchlist additions." },
       TOOL_GET_MARKET_CONTEXT,
       TOOL_GET_STOCK_DATA,
       TOOL_GET_EARNINGS_DATA,
-      { name: "web_search", provider: "perplexity", summary: "Live Sonar search for verification questions." },
-      { name: "suggest_config", provider: "internal", summary: "Emits the updated analyst as a side-panel diff. Lane-aware: numeric-only never touches analystPrompt; fence changes preserve the rest of the document." },
+      { name: "web_search", provider: "perplexity", summary: "Live Sonar search for verification beyond the inbox." },
+      { name: "suggest_config", provider: "internal", summary: "Emits the updated analyst as a side-panel diff. Lane-aware: numeric-only never touches analystPrompt; fence changes preserve the rest of the document; archetype shifts rewrite from skeleton." },
     ],
     getPrompt: () => import("@/lib/agent/builder-prompt-template").then((m) => m.BUILDER_PROMPT_TEMPLATE),
     promptSource: "lib/agent/modes.ts → EDITOR_SYSTEM_PROMPT",
@@ -204,8 +234,9 @@ export const TEAMS: Team[] = [
   {
     id: "intelligence",
     title: "Intelligence Pipeline",
+    phase: "signals",
     summary:
-      "Five background jobs run every weekday morning. Gathers market news, email newsletters, and tracked sources; routes findings to each analyst's universe; writes grounded morning briefs.",
+      "Background jobs run every weekday morning. Sweep the market, monitor portfolio + watchlist tickers, check tracked sources, and route every finding to each analyst's universe.",
     description:
       "Before analysts wake up, 5 background jobs gather market intelligence. Search monitors run custom queries via Perplexity Sonar. Portfolio/watchlist monitors check every open position and watchlist item (per-ticker searches with forced ticker injection). Domain monitors check tracked websites and extract full articles via Firecrawl. Inbound newsletters arrive via Resend and are extracted into signals by GPT-4o-mini. The signal router evaluates each signal against every analyst's universe fence (sectors + industries + themes + market-cap, plus hard watchlist/position bypass) and tags each route with a reason code: POSITION, WATCHLIST, DIRECT_TICKER, SECTOR_MATCH, INDUSTRY_MATCH, THEME_MATCH, DISCOVERY, or CROSS_ANALYST. Relevance is scored (position +50, watchlist +45, industry +22, sector +20, theme +18, breaking +15, high +10) then multiplied by a 7-day novelty score so stale names get crushed (HIGH/BREAKING urgency gets a carve-out). A per-analyst cap reserves 20% of slots for DISCOVERY so new names can't be squeezed out. Finally, GPT-4o synthesizes each analyst's routed findings into a structured morning brief — grounded to today's routes only (signalIds are validated against the day's pool; holdings-attention forces one alert per open position; at least one real discovery is required when the bucket is non-empty).",
     icon: Radar,
@@ -249,12 +280,74 @@ export const TEAMS: Team[] = [
     ],
   },
 
-  // ─── 3. Research Agent ─────────────────────────────────────────────────
+  // ─── 2b. Trigger Evaluator ─────────────────────────────────────────────
+  {
+    id: "triggers",
+    title: "Trigger Evaluator",
+    phase: "signals",
+    summary:
+      "Walks every active thesis's structured predicates against fresh prices and just-arrived signals. Fires thesis.trigger.fired when one hits — that's what wakes a tactical run.",
+    description:
+      "Two paths feed the evaluator. (1) The signal-driven path consumes app/signal.routed events from the signal router and evaluates signal-side predicates (SIGNAL_TYPE, EARNINGS_BEAT/MISS, GUIDANCE_CHANGE, FILING). (2) The cron-driven path runs every 15 minutes during US market hours, batch-fetches Finnhub quotes, and evaluates price/time-side predicates (PRICE_BELOW/ABOVE, PRICE_MOVE_PCT, VS_SMA, TIME_ELAPSED). All predicate logic lives in evaluateTrigger — one pure function used by both paths and the daily run inline. Cooldowns prevent the same predicate from firing repeatedly (EXIT triggers skip cooldown — terminal actions must always fire). On a match: stamp lastFiredAt on the trigger, write a TRIGGER_FIRED row to ThesisUpdate, emit app/thesis.trigger.fired which wakes the tactical run.",
+    icon: Bell,
+    schedule: "Every 15m, 9–4 ET + on signal.routed",
+    substeps: [
+      { title: "Signal-driven evaluation", summary: "Consumes app/signal.routed. For each (analyst × ticker × thesis × trigger), evaluates signal-side predicates against the routed signal." },
+      { title: "Cron-driven evaluation", time: "Every 15m, 9–4 ET", summary: "Walks all ACTIVE theses with non-empty triggers. Batches Finnhub /quote for unique tickers (≤200). Evaluates price/time-side predicates." },
+      { title: "Cooldown gate", summary: "Per-trigger cooldownDays prevents the same predicate from firing twice in the window. EXIT triggers skip cooldown — terminal actions must always fire." },
+      { title: "Audit + emit", summary: "Stamps lastFiredAt on the trigger, writes ThesisUpdate(type=TRIGGER_FIRED) with thesisId / triggerId / signalIds, emits app/thesis.trigger.fired." },
+    ],
+    tools: [
+      { name: "evaluateTrigger", provider: "internal", summary: "Pure function. One predicate + one EvaluationContext → boolean. AND/OR recurse. Same function used by signal-router, the 15-min cron, and the daily run inline." },
+      { name: "Finnhub /quote", provider: "finnhub", summary: "Cron-path price fetch — one call per unique ticker per 15-min interval, capped at 200." },
+      { name: "ThesisUpdate writer", provider: "internal", summary: "Writes a TRIGGER_FIRED audit row before emitting the event so the daily run's 'triggers fired since last run' surface is populated." },
+    ],
+    promptSource: "lib/agent/triggers/evaluate.ts",
+  },
+
+  // ─── 3a. Discovery Run ─────────────────────────────────────────────────
+  {
+    id: "discovery",
+    title: "Discovery Run",
+    phase: "run",
+    summary:
+      "Per analyst: scans the past week's discovery signals, scores the top 2-3 candidates, mints up to 5 new WATCHING theses. The cadence safety net for new coverage.",
+    description:
+      "Spawns a focused agent (25-step budget) per enabled analyst. Loads the analyst's existing thesis tickers (ACTIVE + WATCHING) so the prompt explicitly says don't re-cover. Reads the past 7 days of routed discoverySignals — only universe-fenced names not already in the library. Scores 2-3 most promising candidates with the same composite framework as the daily run (composite ≥ 7 required). Mints WATCHING theses for mid conviction (7-7.9), or ACTIVE + a starter trade for high conviction (≥ 8 with fresh catalyst). Caps at 5 per run. Writes record_run_summary, complete_run, and the briefing agent runs inline. Cannot touch existing theses — update_thesis and close_position are not in the discovery allowlist.",
+    icon: Search,
+    model: "GPT-4o",
+    schedule: "Sundays 9 AM ET + on demand",
+    substeps: [
+      { title: "Step 1 — Scan", summary: "read_signals filtered to the discoverySignals bucket. Cross off anything already covered by an active or watching thesis." },
+      { title: "Step 2 — Score", summary: "get_stock_data on top 2-3 candidates. Composite score (trendStrength / relativeStrength / entryQuality / catalystFreshness). ≥ 7 required to mint." },
+      { title: "Step 3 — Mint", summary: "record_thesis with status=WATCHING (default) or status=ACTIVE + place_trade (high conviction only). Default triggers attach by horizon." },
+      { title: "Step 4 — Recap", summary: "record_run_summary then complete_run. Briefing agent fires inline." },
+    ],
+    tools: [
+      { name: "read_signals", provider: "internal", summary: "Routed signals — discovery bucket only. Universe-fenced." },
+      { name: "read_artifact", provider: "internal", summary: "Full extracted article behind a candidate signal." },
+      TOOL_GET_MARKET_CONTEXT,
+      TOOL_GET_STOCK_DATA,
+      TOOL_GET_EARNINGS_DATA,
+      TOOL_GET_SEC_FILINGS,
+      { name: "web_search", provider: "perplexity", summary: "Live Sonar search — sparingly, for niche verification." },
+      { name: "get_theses", provider: "internal", summary: "Read the analyst's existing thesis library to confirm a candidate isn't already covered." },
+      { name: "record_thesis", provider: "internal", summary: "Mint a new thesis. Default status=WATCHING; ACTIVE only for high-conviction starters that warrant an immediate place_trade." },
+      { name: "place_trade", provider: "alpaca", summary: "Optional starter trade for high-conviction (composite ≥ 8) ACTIVE picks." },
+      { name: "manage_watchlist", provider: "internal", summary: "Adds for candidates worth tracking but not minting a full thesis." },
+      { name: "record_run_summary", provider: "internal", summary: "Per-candidate ranked-picks recap." },
+      { name: "complete_run", provider: "internal", summary: "Marks the run COMPLETE and fires the briefing agent inline." },
+    ],
+    promptSource: "lib/agent/system-prompts/discovery.ts",
+  },
+
+  // ─── 3. Daily Run (Research Agent) ─────────────────────────────────────
   {
     id: "agent",
-    title: "Research Agent",
+    title: "Daily Run",
+    phase: "run",
     summary:
-      "Runs structured research sessions in six stages: orient, research, theses, act, recap, complete. Reads intelligence, validates with live data, writes theses with signal provenance, manages positions, and executes paper trades.",
+      "Per-analyst portfolio review. Walks every active and watching thesis. Decides per-thesis: trigger fired or review due → research + update_thesis; nothing changed → REVIEWED-only audit row. Trades when conviction is there.",
     description:
       "Each analyst runs as a GPT-4o agent (temperature 0.2, 50-step budget). Before the first tool call, the system loads full context into the prompt: identity + operating manual (the analyst's 3-5 paragraph playbook), trading rules (direction bias, hold durations, minConfidence, maxPositionSize, maxOpenPositions, exclusions), the universe fence (sectors + industries + themes + marketCap), intelligence policy (attention weights + live-search budget), the current portfolio with live P&L and thesis summaries, priority reviews flagged by the price monitor (NEAR_TARGET / NEAR_STOP — must-research), active LONG/SHORT theses, the watchlist with priorities, yesterday's briefing (watch-tomorrow, unresolved items, self-corrections), performance stats (win rate, signal-type accuracy, calibration), and recent closed trades. The agent then follows a strict 6-stage flow with tool-call floors at each stage boundary; stage headers in the prompt (### Stage N — NAME) are structural, not decorative. Every record_thesis must declare source_kind (ROUTED_SIGNAL, WEB_SEARCH, WATCHLIST_REVIEW, POSITION_REVIEW) and pass source_signal_ids when citing signals — this is what powers signal→thesis→monitor traceability. complete_run is blocked until a thesis exists for every researched ticker.",
     icon: Bot,
@@ -314,12 +407,50 @@ export const TEAMS: Team[] = [
     promptSource: "lib/agent/system-prompt-template.ts",
   },
 
+  // ─── 3c. Tactical Run ──────────────────────────────────────────────────
+  {
+    id: "tactical",
+    title: "Tactical Run",
+    phase: "run",
+    triggeredBy: "triggers",
+    summary:
+      "Single-thesis, single-decision focused run. ~15 steps. Validates the trigger that fired, acts (trade or update), writes update_thesis as the close-out.",
+    description:
+      "Spawns when the Trigger Evaluator emits app/thesis.trigger.fired. The agent loads the firing thesis (with triggers, recent ThesisUpdate rows, position state), the firing signal (if signal-driven), and a fresh price snapshot. The decision tree: (1) does the signal/price actually validate the predicate, or did it match by accident? (2) if validation holds, do the declared action (or override with reasoning); (3) if validation fails, pass and write a REVIEWED row noting the false-fire. Outputs: at most one trade (place_trade / manage_position / close_position), and always one update_thesis as the close-out. record_thesis is intentionally NOT in the allowlist — tactical never mints new theses.",
+    icon: Zap,
+    model: "GPT-4o",
+    schedule: "Event-driven",
+    substeps: [
+      { title: "Validate", summary: "Read the trigger predicate. Pull fresh stock data. Decide: is the signal/price still actionable?" },
+      { title: "Act (optional)", summary: "Up to one position action — place_trade / manage_position / close_position." },
+      { title: "Close out", summary: "update_thesis with the decision. UPDATED if fields changed, REVIEWED if not, CLOSED if invalidated." },
+      { title: "Complete", summary: "complete_run fires the briefing agent inline." },
+    ],
+    tools: [
+      TOOL_GET_STOCK_DATA,
+      TOOL_GET_EARNINGS_DATA,
+      TOOL_GET_MARKET_CONTEXT,
+      TOOL_GET_SEC_FILINGS,
+      { name: "get_options_flow", provider: "fmp", summary: "Put/call ratio, unusual contracts. Validation tool when the trigger is options-related." },
+      { name: "web_search", provider: "perplexity", summary: "Live Sonar search — only when the trigger references something the firing signal doesn't fully explain." },
+      { name: "read_artifact", provider: "internal", summary: "Full extracted article behind the firing signal." },
+      { name: "get_theses", provider: "internal", summary: "Pulls the firing thesis with its full update history." },
+      { name: "place_trade", provider: "alpaca", summary: "Open a position when the trigger says ADD or the agent overrides toward entry." },
+      { name: "close_position", provider: "alpaca", summary: "Full exit when the trigger fires EXIT (stop hit, target hit, invalidation)." },
+      { name: "manage_position", provider: "alpaca", summary: "Partial close, target/stop adjust, trail, or scale-in." },
+      { name: "update_thesis", provider: "internal", summary: "REQUIRED close-out call. UPDATED / REVIEWED / CLOSED depending on the decision. record_thesis is not in this allowlist." },
+      { name: "complete_run", provider: "internal", summary: "Marks COMPLETE and fires the briefing agent inline." },
+    ],
+    promptSource: "lib/agent/system-prompts/intraday-tactical.ts",
+  },
+
   // ─── 4. Briefing Agent ─────────────────────────────────────────────────
   {
     id: "briefing",
     title: "Briefing Agent",
+    phase: "track",
     summary:
-      "When the research agent calls complete_run, a GPT-4o reviewer generates a standup memo inline — the analyst's memory for the next run.",
+      "When any agent run completes, GPT-4o reviews the transcript + portfolio and writes the standup memo that feeds into the next run's prompt.",
     description:
       "Called directly by the complete_run tool at the end of every research session. When the research agent finishes its work and calls complete_run, that tool marks the run COMPLETE and then immediately calls the briefing agent inline — no events, no queues. A GPT-4o agent reads the full conversation transcript, portfolio state, and trade outcomes. It writes a structured standup: narrative (400-600 words), strategy notes, market posture, watch-tomorrow items, unresolved items, self-corrections, and 0-5 dynamic search monitors. The standup feeds into the next session's system prompt. The analyst references watch-tomorrow items in their portfolio check-in before Stage 1. Dynamic monitors are picked up by the next morning's intelligence sweep automatically.",
     icon: RotateCcw,
@@ -351,8 +482,9 @@ export const TEAMS: Team[] = [
   {
     id: "evaluation",
     title: "Evaluation & Tracking",
+    phase: "track",
     summary:
-      "Background jobs that monitor positions hourly, evaluate closed trades, walk the signal→thesis→monitor chain for ROI, snapshot EOD prices, and score accuracy weekly. /intelligence (Health tab) surfaces pipeline drift.",
+      "Watches positions hourly. Evaluates each closed trade and credits the source monitor (win/loss). Snapshots EOD prices. Scores weekly accuracy. /intelligence (Health) surfaces pipeline drift.",
     description:
       "Five background jobs track analyst performance and pipeline health. The price monitor checks all open positions hourly via Alpaca and flags positions near target (80%) or stop-loss. When a position closes, the trade evaluator does two things: (1) GPT-4o reviews the trade and writes a lesson, and (2) it walks the provenance chain — Thesis.sourceSignalIds → Signal → Monitor — and credits each source Monitor's tradesSourced / winsSourced / lossesSourced counters, then recomputes successScore = (wins − losses) / trades. This is what turns the intelligence pipeline into a self-improving system: monitors that keep producing losing theses drift toward negative ROI, and the /intelligence (Health tab) page surfaces it. The EOD snapshot at 5 PM captures closing prices. The Sunday scorer calculates win rate, confidence calibration, and per-sector performance, all injected into the next run's prompt. The Health page layers observability on top: dead crons, signal funnel (routed → read → cited), ticker concentration, novelty histogram, and monitor ROI.",
     icon: BarChart3,
@@ -461,14 +593,21 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "intelligence",
     summary: "Signals routed to this analyst by the signal router. Returns three buckets — portfolioSignals, watchlistSignals, discoverySignals — each with signalId for thesis provenance. Reading flips route status PENDING → READ.",
     providers: ["internal"],
-    agents: ["agent"],
+    agents: ["agent", "discovery"],
   },
   {
     name: "read_artifact",
     category: "intelligence",
     summary: "Full extracted article content behind a signal — clean markdown from Firecrawl.",
     providers: ["internal"],
-    agents: ["agent"],
+    agents: ["agent", "tactical", "discovery"],
+  },
+  {
+    name: "get_theses",
+    category: "intelligence",
+    summary: "Read this analyst's durable thesis library. Default returns ACTIVE + WATCHING (the live coverage book). Filter by ticker / id / status / horizon. include_history=true returns the recent activity log per thesis — used in tactical mode (one ticker, full history) and the daily-run per-thesis review loop.",
+    providers: ["internal"],
+    agents: ["agent", "tactical", "discovery"],
   },
   {
     name: "read_analyst_inbox_stats",
@@ -496,7 +635,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "intelligence",
     summary: "Live Perplexity Sonar search for breaking news or niche topics. Agent mode respects intelligencePolicy.liveSearchBudget per run.",
     providers: ["perplexity"],
-    agents: ["builder", "editor", "agent"],
+    agents: ["builder", "editor", "agent", "tactical", "discovery"],
     resources: [{ source: "perplexity", title: "Sonar web search", description: "Real-time web search with recency filtering.", type: "api", endpointOrPath: "searchSignals(query, { recency })", exampleOutput: "5 results · sentiment: bullish · urgency: MEDIUM", notes: ["Agent per-run budget from intelligencePolicy"] }],
   },
   // ── Research (Stage 2 — live market data) ────────────────────────────
@@ -505,7 +644,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "research",
     summary: "SPY, VIX, 11 sector ETFs, macro events, earnings density, and regime classification.",
     providers: ["finnhub", "fmp"],
-    agents: ["builder", "editor", "agent"],
+    agents: ["builder", "editor", "agent", "tactical", "discovery"],
     resources: TOOL_GET_MARKET_CONTEXT.resources,
   },
   {
@@ -520,23 +659,43 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "research",
     summary: "Quote, company profile, financials, technicals, analyst consensus, price targets, and news for one ticker.",
     providers: ["finnhub", "fmp"],
-    agents: ["builder", "editor", "agent"],
+    agents: ["builder", "editor", "agent", "tactical", "discovery"],
     resources: TOOL_GET_STOCK_DATA.resources,
   },
   {
     name: "get_earnings_data",
     category: "research",
-    summary: "Next report date, EPS estimates, and beat rate track record. Called only when earnings are within 2 weeks.",
+    summary: "Per-ticker earnings detail — next report date, EPS estimates, beat rate track record. Called only when earnings are within ~2 weeks. Use get_earnings_calendar for the firm-wide calendar.",
     providers: ["finnhub"],
-    agents: ["builder", "editor", "agent"],
+    agents: ["builder", "editor", "agent", "tactical", "discovery"],
     resources: TOOL_GET_EARNINGS_DATA.resources,
+  },
+  {
+    name: "get_earnings_calendar",
+    category: "research",
+    summary: "Firm-wide earnings calendar for the next N days. scope:\"universe\" fences to watchlist + open positions; scope:\"all\" returns the full firehose. Pull-tool counterpart to the EARNINGS_CALENDAR feed subscription. Per-ticker history → get_earnings_data instead.",
+    providers: ["finnhub"],
+    agents: ["agent"],
+    resources: [{ source: "finnhub", title: "Firm earnings calendar", description: "Next N days of upcoming earnings, with ticker / report date / BMO|AMC / EPS estimate.", type: "api", endpointOrPath: "/calendar/earnings?from={today}&to={+Nd}", exampleOutput: "NVDA 2026-05-21 AMC · est $0.84 · …", notes: ["Default 7d window", "scope:\"universe\" intersects with watchlist + open positions"] }],
+  },
+  {
+    name: "get_market_movers",
+    category: "research",
+    summary: "Today's market movers — gainers, losers, or most-active. scope:\"universe\" fences to watchlist + positions; scope:\"all\" returns the full top-list. Pull-tool counterpart to the MARKET_MOVERS_* feed subscriptions.",
+    providers: ["fmp"],
+    agents: ["agent"],
+    resources: [
+      { source: "fmp", title: "Gainers", description: "Top stocks by % gain today.", type: "api", endpointOrPath: "/stock_market/gainers" },
+      { source: "fmp", title: "Losers", description: "Top stocks by % loss today.", type: "api", endpointOrPath: "/stock_market/losers" },
+      { source: "fmp", title: "Most active", description: "Top stocks by volume today.", type: "api", endpointOrPath: "/stock_market/actives" },
+    ],
   },
   {
     name: "get_options_flow",
     category: "research",
     summary: "Put/call ratio, unusual contracts, and institutional positioning. Called only when unusual activity flagged.",
     providers: ["fmp"],
-    agents: ["agent"],
+    agents: ["agent", "tactical"],
     resources: [{ source: "fmp", title: "Options chain analysis", description: "P/C ratio, unusual volume/OI contracts, premium flags.", type: "api", endpointOrPath: "/options/chain/{ticker}", exampleOutput: "P/C 0.65 (bullish) · 3 unusual contracts", notes: ["Flags vol/OI ≥ 5x or premium ≥ $500K"] }],
   },
   {
@@ -544,7 +703,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "research",
     summary: "Recent SEC filings — 10-K, 10-Q, 8-K, Form 4. Called only when insider filing or material 8-K flagged.",
     providers: ["sec"],
-    agents: ["builder", "agent"],
+    agents: ["builder", "agent", "tactical", "discovery"],
     resources: TOOL_GET_SEC_FILINGS.resources,
   },
   // ── Action (write/execute) ────────────────────────────────────────────
@@ -558,16 +717,23 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "record_thesis",
     category: "action",
-    summary: "Records a LONG/SHORT/PASS verdict with confidence, entry/target/stop, bullets, risk flags. Requires source_kind (ROUTED_SIGNAL | WEB_SEARCH | WATCHLIST_REVIEW | POSITION_REVIEW); ROUTED_SIGNAL requires source_signal_ids validated against today's route pool. Cited routes flip to ACTED_ON.",
+    summary: "Mints a NEW thesis (LONG/SHORT). Use this only for fundamentally new coverage or a direction flip. For refinements to an existing thesis (raise target, tighten stop, mark invalidated) use update_thesis instead. Requires source_kind; ROUTED_SIGNAL requires source_signal_ids validated against today's route pool.",
     providers: ["internal"],
-    agents: ["agent"],
+    agents: ["agent", "discovery"],
+  },
+  {
+    name: "update_thesis",
+    category: "action",
+    summary: "Update an existing thesis durably. Pass thesis_id + the fields changing + a rationale. Every call writes one ThesisUpdate audit row (UPDATED, REVIEWED, INVALIDATED, or CLOSED). The single most-used new tool — every daily-run REVIEWED entry and every tactical close-out is one of these.",
+    providers: ["internal"],
+    agents: ["agent", "tactical"],
   },
   {
     name: "place_trade",
     category: "action",
-    summary: "Places a paper market order on Alpaca. Waits for fill and records position + trade decision in DB. Requires thesis_id from record_thesis. Enforces minConfidence, maxPositionSize, maxOpenPositions.",
+    summary: "Places a paper market order on Alpaca. Waits for fill and records position + trade decision in DB. Requires thesis_id. Enforces minConfidence, maxPositionSize, maxOpenPositions.",
     providers: ["alpaca", "internal"],
-    agents: ["agent"],
+    agents: ["agent", "tactical", "discovery"],
     resources: [
       { source: "alpaca", title: "Submit order", description: "Market buy/sell at current price.", type: "api", endpointOrPath: "placeMarketOrder({ symbol, qty, side })", exampleOutput: "BUY 74 shares NVDA @ $134.23" },
       { source: "alpaca", title: "Confirm fill", description: "Waits up to 5s for fill confirmation.", type: "api", endpointOrPath: "getOrder(orderId)", exampleOutput: "FILLED · Avg $134.23" },
@@ -579,7 +745,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "action",
     summary: "Closes an existing open position fully via Alpaca. Records outcome with exit reason and realized P&L. Use manage_position for partial exits or target/stop changes.",
     providers: ["alpaca", "internal"],
-    agents: ["agent"],
+    agents: ["agent", "tactical"],
     resources: [
       { source: "alpaca", title: "Sell all shares", description: "Closes the full position.", type: "api", endpointOrPath: "closeOpenPosition(symbol)", exampleOutput: "Closed 50 AAPL @ $192.40 · +$710 (+7.9%)" },
       { source: "internal", title: "Record outcome", description: "Marks position closed with P&L and reason.", type: "db", endpointOrPath: "prisma.tradeDecision.create({ SELL })", exampleOutput: "EXIT: TARGET · WIN · +$710" },
@@ -590,14 +756,14 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "action",
     summary: "Nuanced position management: partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop, add_to_position. Every action audit-logged with a required reason.",
     providers: ["alpaca", "internal"],
-    agents: ["agent"],
+    agents: ["agent", "tactical"],
   },
   {
     name: "manage_watchlist",
     category: "action",
     summary: "Adds, updates, or removes watchlist items with priority, catalyst notes, and conviction level. Narrated watchlist updates without a tool call are a run failure.",
     providers: ["internal"],
-    agents: ["agent"],
+    agents: ["agent", "discovery"],
   },
   {
     name: "suggest_config",
@@ -610,15 +776,15 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "record_run_summary",
     category: "system",
-    summary: "Structured per-ticker recap: ranked picks with actual actions taken, and portfolio exposure breakdown.",
+    summary: "Structured per-ticker recap: ranked picks with actual actions taken, and portfolio exposure breakdown. Tactical mode does NOT call this — its close-out is update_thesis.",
     providers: ["internal"],
-    agents: ["agent"],
+    agents: ["agent", "discovery"],
   },
   {
     name: "complete_run",
     category: "system",
-    summary: "No-args. Marks the run COMPLETE in DB and triggers the briefing agent inline. Blocked until every researched ticker has a thesis. Always the final tool call.",
+    summary: "No-args. Marks the run COMPLETE in DB and triggers the briefing agent inline. Always the final tool call.",
     providers: ["internal"],
-    agents: ["agent"],
+    agents: ["agent", "tactical", "discovery"],
   },
 ];

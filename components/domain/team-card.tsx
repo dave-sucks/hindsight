@@ -19,10 +19,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Zap, Globe, Database, Cpu, Copy, Check } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowTurnForwardIcon } from "@hugeicons/core-free-icons";
 import { Markdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/chat/SourceChip";
 import type { Team, ToolEntry, SubStep, Resource, ResourceType, RegistryTool, ToolCategory, TeamId } from "@/lib/agent/workflow-registry";
-import { TOOL_REGISTRY } from "@/lib/agent/workflow-registry";
+import { TOOL_REGISTRY, getTeam } from "@/lib/agent/workflow-registry";
 
 // ── Team label map ─────────────────────────────────────────────────────────
 
@@ -527,11 +529,12 @@ export function WorkflowStepCard({
   team: Team;
   onOpenSheet: () => void;
 }) {
+  const triggerSource = team.triggeredBy ? getTeam(team.triggeredBy) : null;
   return (
     <Card className="p-0 overflow-hidden">
       <div className="flex items-start gap-3 px-4 py-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{team.title}</span>
             {team.model && (
               <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
@@ -541,6 +544,12 @@ export function WorkflowStepCard({
           <p className="text-xs text-muted-foreground leading-relaxed mt-1">
             {team.summary}
           </p>
+          {triggerSource && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+              <HugeiconsIcon icon={ArrowTurnForwardIcon} className="size-3.5 shrink-0" />
+              <span>Triggered by {triggerSource.title}</span>
+            </div>
+          )}
         </div>
         <TooltipProvider>
           <Tooltip>
@@ -558,6 +567,42 @@ export function WorkflowStepCard({
             <TooltipContent side="left">View details</TooltipContent>
           </Tooltip>
         </TooltipProvider>
+      </div>
+    </Card>
+  );
+}
+
+// ── Analysts card (phase 1: dual-button card for Builder + Editor) ────────
+// Special-case card that replaces two separate WorkflowStepCard instances
+// (builder + editor) on the /agent-workflow page. Both buttons are
+// surfaced inline; each opens the existing TeamSheetContent for its team.
+
+export function AnalystsCard({
+  onOpenBuilder,
+  onOpenEditor,
+}: {
+  onOpenBuilder: () => void;
+  onOpenEditor: () => void;
+}) {
+  return (
+    <Card className="p-0 overflow-hidden">
+      <div className="px-4 py-3 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium">Analysts</span>
+          <Badge variant="secondary" className="text-[10px]">GPT-4o</Badge>
+          <Badge variant="outline" className="text-[10px]">On demand</Badge>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Create new analyst personas through a structured interview, or refine an existing one via a 4-lane edit flow.
+        </p>
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={onOpenBuilder}>
+            Builder
+          </Button>
+          <Button variant="outline" size="sm" onClick={onOpenEditor}>
+            Editor
+          </Button>
+        </div>
       </div>
     </Card>
   );
