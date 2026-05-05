@@ -292,19 +292,17 @@ export const TEAMS: Team[] = [
     summary:
       "Walks every active thesis's structured predicates against fresh prices and just-arrived signals. Fires thesis.trigger.fired when one hits — that's what wakes a tactical run.",
     description:
-      "Two paths feed the evaluator. (1) The signal-driven path consumes app/signal.routed events from the signal router and evaluates signal-side predicates (SIGNAL_TYPE, EARNINGS_BEAT/MISS, GUIDANCE_CHANGE, FILING). (2) The cron-driven path runs every 15 minutes during US market hours, batch-fetches Finnhub quotes, and evaluates price/time-side predicates (PRICE_BELOW/ABOVE, PRICE_MOVE_PCT, VS_SMA, TIME_ELAPSED). All predicate logic lives in evaluateTrigger — one pure function used by both paths and the daily run inline. Cooldowns prevent the same predicate from firing repeatedly (EXIT triggers skip cooldown — terminal actions must always fire). On a match: stamp lastFiredAt on the trigger, write a TRIGGER_FIRED row to ThesisUpdate, emit app/thesis.trigger.fired which wakes the tactical run.",
+      "The Trigger Evaluator is the reactivity layer between your portfolio and the rest of the world. Every active thesis can carry structured trigger predicates — price levels, technical levels, earnings outcomes, filing types, time elapsed. The evaluator's job is to check those predicates against reality and fire an event when one matches.\n\nTwo paths feed it. The signal-driven path consumes routed signals as they land — earnings beats, guidance changes, 8-K filings — and matches them to signal-side predicates. The cron path runs every 15 minutes during market hours, batch-fetches fresh prices, and matches them to price/time-side predicates. A cooldown gate prevents the same predicate from firing repeatedly. When something fires, it stamps an audit row and emits the event the Tactical Run consumes.",
     icon: Bell,
-    schedule: "Every 15m, 9–4 ET + on signal.routed",
+    schedule: "Every 15m, market hours",
     substeps: [
       { title: "Signal-driven evaluation", summary: "Consumes app/signal.routed. For each (analyst × ticker × thesis × trigger), evaluates signal-side predicates against the routed signal." },
-      { title: "Cron-driven evaluation", time: "Every 15m, 9–4 ET", summary: "Walks all ACTIVE theses with non-empty triggers. Batches Finnhub /quote for unique tickers (≤200). Evaluates price/time-side predicates." },
+      { title: "Cron-driven evaluation", summary: "Walks all ACTIVE theses with non-empty triggers. Batches Finnhub /quote for unique tickers (≤200). Evaluates price/time-side predicates." },
       { title: "Cooldown gate", summary: "Per-trigger cooldownDays prevents the same predicate from firing twice in the window. EXIT triggers skip cooldown — terminal actions must always fire." },
       { title: "Audit + emit", summary: "Stamps lastFiredAt on the trigger, writes ThesisUpdate(type=TRIGGER_FIRED) with thesisId / triggerId / signalIds, emits app/thesis.trigger.fired." },
     ],
     tools: [
-      { name: "evaluateTrigger", provider: "internal", summary: "Pure function. One predicate + one EvaluationContext → boolean. AND/OR recurse. Same function used by signal-router, the 15-min cron, and the daily run inline." },
       { name: "Finnhub /quote", provider: "finnhub", summary: "Cron-path price fetch — one call per unique ticker per 15-min interval, capped at 200." },
-      { name: "ThesisUpdate writer", provider: "internal", summary: "Writes a TRIGGER_FIRED audit row before emitting the event so the daily run's 'triggers fired since last run' surface is populated." },
     ],
     promptSource: "lib/agent/triggers/evaluate.ts",
   },
@@ -317,15 +315,15 @@ export const TEAMS: Team[] = [
     summary:
       "Per analyst: scans the past week's discovery signals, scores the top 2-3 candidates, mints up to 5 new WATCHING theses. The cadence safety net for new coverage.",
     description:
-      "Spawns a focused agent (25-step budget) per enabled analyst. Loads the analyst's existing thesis tickers (ACTIVE + WATCHING) so the prompt explicitly says don't re-cover. Reads the past 7 days of routed discoverySignals — only universe-fenced names not already in the library. Scores 2-3 most promising candidates with the same composite framework as the daily run (composite ≥ 7 required). Mints WATCHING theses for mid conviction (7-7.9), or ACTIVE + a starter trade for high conviction (≥ 8 with fresh catalyst). Caps at 5 per run. Writes record_run_summary, complete_run, and the briefing agent runs inline. Cannot touch existing theses — update_thesis and close_position are not in the discovery allowlist.",
+      "Discovery Run is how new tickers enter your analyst's coverage. Once a week, every analyst spawns a focused agent that scans the past seven days of signals on names not already in the library, picks the most promising candidates, and mints WATCHING theses with the triggers and rationale that would later promote them to ACTIVE.\n\nIt cannot touch existing coverage — only Daily and Tactical runs can update or close theses. If conviction on a candidate is high enough at discovery time, it can place a starter trade and mint as ACTIVE; otherwise everything goes onto the watchlist for the daily run to evaluate later.",
     icon: Search,
     model: "GPT-4o",
     schedule: "Sundays 9 AM ET + on demand",
     substeps: [
-      { title: "Step 1 — Scan", summary: "read_signals filtered to the discoverySignals bucket. Cross off anything already covered by an active or watching thesis." },
-      { title: "Step 2 — Score", summary: "get_stock_data on top 2-3 candidates. Composite score (trendStrength / relativeStrength / entryQuality / catalystFreshness). ≥ 7 required to mint." },
-      { title: "Step 3 — Mint", summary: "record_thesis with status=WATCHING (default) or status=ACTIVE + place_trade (high conviction only). Default triggers attach by horizon." },
-      { title: "Step 4 — Recap", summary: "record_run_summary then complete_run. Briefing agent fires inline." },
+      { title: "Scan", summary: "read_signals filtered to the discoverySignals bucket. Cross off anything already covered by an active or watching thesis." },
+      { title: "Score", summary: "get_stock_data on top 2-3 candidates. Composite score (trendStrength / relativeStrength / entryQuality / catalystFreshness). ≥ 7 required to mint." },
+      { title: "Mint", summary: "record_thesis with status=WATCHING (default) or status=ACTIVE + place_trade (high conviction only). Default triggers attach by horizon." },
+      { title: "Recap", summary: "record_run_summary then complete_run. Briefing agent fires inline." },
     ],
     tools: [
       { name: "read_signals", provider: "internal", summary: "Routed signals — discovery bucket only. Universe-fenced." },
