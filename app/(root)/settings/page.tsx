@@ -1,9 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
-import { getApiKeyStatus, getElevenLabsKeyStatus } from "@/lib/actions/api-keys.actions";
+import { Badge } from "@/components/ui/badge";
+import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
 import { AlpacaKeyForm } from "@/components/settings/AlpacaKeyForm";
-import { ElevenLabsKeyForm } from "@/components/settings/ElevenLabsKeyForm";
 import { ModelPreferenceForm } from "@/components/settings/ModelPreferenceForm";
 
 export default async function SettingsPage() {
@@ -13,7 +13,7 @@ export default async function SettingsPage() {
   } = await supabase.auth.getUser();
 
   const alpacaStatus = await getApiKeyStatus("ALPACA");
-  const elevenLabsStatus = await getElevenLabsKeyStatus();
+  const elevenLabsConfigured = !!process.env.ELEVENLABS_API_KEY;
   const displayName = user?.user_metadata?.full_name ?? user?.email ?? "—";
 
   return (
@@ -60,7 +60,26 @@ export default async function SettingsPage() {
           API Keys
         </p>
         <AlpacaKeyForm initial={alpacaStatus} />
-        <ElevenLabsKeyForm initial={elevenLabsStatus} />
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-xs font-bold">
+                  11
+                </div>
+                <div>
+                  <p className="text-sm font-medium">ElevenLabs TTS</p>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    ELEVENLABS_API_KEY
+                  </p>
+                </div>
+              </div>
+              <Badge variant={elevenLabsConfigured ? "default" : "outline"}>
+                {elevenLabsConfigured ? "Configured" : "Not set"}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
