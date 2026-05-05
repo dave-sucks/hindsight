@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import { ThesisCard, type ThesisCardData } from "@/components/domain/thesis-card";
+import { THESIS_STATUS_DISPLAY } from "@/lib/thesis-status";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -38,16 +39,6 @@ function pctDelta(from: number | null | undefined, to: number | null | undefined
 function fmtPct(n: number): string {
   const sign = n >= 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
-}
-
-function directionLabel(dir: string, confidence: number): { label: string; cls: string } {
-  if (dir === "PASS") return { label: "Pass", cls: "bg-muted text-muted-foreground" };
-  if (dir === "SHORT") {
-    if (confidence >= 75) return { label: "Strong Sell", cls: "bg-negative/15 text-negative" };
-    return { label: "Sell", cls: "bg-negative/15 text-negative" };
-  }
-  if (confidence >= 75) return { label: "Strong Buy", cls: "bg-positive/15 text-positive" };
-  return { label: "Buy", cls: "bg-positive/15 text-positive" };
 }
 
 // ── Row ─────────────────────────────────────────────────────────────────────
@@ -86,14 +77,14 @@ function PriceRow({
 // ── Card ────────────────────────────────────────────────────────────────────
 
 export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
-  const dir = directionLabel(thesis.direction, thesis.confidence_score);
+  const statusDisplay = THESIS_STATUS_DISPLAY[thesis.status ?? "ACTIVE"];
   const targetDelta = pctDelta(thesis.entry_price, thesis.target_price);
   const stopDelta = pctDelta(thesis.entry_price, thesis.stop_loss);
 
   const miniCard = (
     <Card className="p-3 gap-2 cursor-pointer hover:bg-accent/40 transition-colors h-full text-left">
       <>
-        {/* ── Header: logo + name + direction badge ───────────────── */}
+        {/* ── Header: logo + name + status pill ───────────────────── */}
         <div className="flex items-center gap-2">
           <StockLogo ticker={thesis.ticker} size="sm" />
           <span className="text-sm font-semibold truncate">
@@ -101,9 +92,10 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
           </span>
           <Badge
             variant="secondary"
-            className={cn("ml-auto font-normal shrink-0", dir.cls)}
+            className="ml-auto font-normal shrink-0 gap-1.5"
           >
-            {dir.label}
+            <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDisplay.dotClass)} />
+            {statusDisplay.label}
           </Badge>
         </div>
 

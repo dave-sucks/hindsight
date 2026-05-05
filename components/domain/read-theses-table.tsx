@@ -29,46 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import type { ThesisCardData } from "@/components/domain/thesis-card";
-
-// ─── Status → display ─────────────────────────────────────────────────────────
-
-type StatusDisplay = {
-  label: string;
-  dotClass: string;
-  tooltip: string;
-};
-
-const STATUS_DISPLAY: Record<NonNullable<ThesisCardData["status"]>, StatusDisplay> = {
-  ACTIVE: {
-    label: "Holding",
-    dotClass: "bg-positive",
-    tooltip: "Open position — thesis is active in the book",
-  },
-  WATCHING: {
-    label: "Watching",
-    dotClass: "bg-blue-500",
-    tooltip: "On the watchlist — promotion triggers govern entry",
-  },
-  CLOSED: {
-    label: "Closed",
-    dotClass: "bg-muted-foreground/60",
-    tooltip: "Position exited — thesis terminal",
-  },
-  INVALIDATED: {
-    label: "Invalidated",
-    dotClass: "bg-negative",
-    tooltip: "Thesis broken — exited or never entered",
-  },
-  SUPERSEDED: {
-    label: "Superseded",
-    dotClass: "bg-muted-foreground/40",
-    tooltip: "Replaced by a newer thesis on the same ticker",
-  },
-};
-
-function getStatus(status: ThesisCardData["status"]): StatusDisplay {
-  return STATUS_DISPLAY[status ?? "ACTIVE"] ?? STATUS_DISPLAY.ACTIVE;
-}
+import { THESIS_STATUS_DISPLAY } from "@/lib/thesis-status";
 
 // ─── Row ─────────────────────────────────────────────────────────────────────
 
@@ -79,7 +40,7 @@ function ThesisReadRow({
   thesis: ThesisCardData;
   onClick: () => void;
 }) {
-  const status = getStatus(thesis.status);
+  const status = THESIS_STATUS_DISPLAY[thesis.status ?? "ACTIVE"];
   const summary = thesis.reasoning_summary?.trim() || "—";
 
   return (

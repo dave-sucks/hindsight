@@ -281,6 +281,12 @@ export async function buildRunInput(
   const watchSymbols = watchlistItems.map((w) => w.symbol);
   const allRelevantSymbols = [...new Set([...openSymbols, ...watchSymbols])];
 
+  // Coverage scope: every thesis the Step 2 close-out contract expects a
+  // ThesisUpdate row for this run. ACTIVE (held) AND WATCHING (entry-gated)
+  // both qualify — the agent must walk all of them. Filtering to ACTIVE-
+  // only here was the bug that let all-watchlist analysts skip every
+  // thesis without the coverage gate firing. Variable name is historical;
+  // semantics now include WATCHING.
   let activeTheses: Array<{
     id: string; ticker: string; direction: string; confidenceScore: number;
     reasoningSummary: string; entryPrice: number | null; targetPrice: number | null;
@@ -291,7 +297,7 @@ export async function buildRunInput(
     try {
       activeTheses = await prisma.thesis.findMany({
         where: {
-          status: "ACTIVE",
+          status: { in: ["ACTIVE", "WATCHING"] },
           ticker: { in: allRelevantSymbols },
           researchRun: { agentConfigId: analystId },
         },
@@ -304,13 +310,15 @@ export async function buildRunInput(
         },
       });
     } catch (err) {
-      console.error("[buildRunInput] FAILED active theses:", err);
+      console.error("[buildRunInput] FAILED coverage theses:", err);
     }
   }
 
-  // Link active theses to positions
+  // Link held (ACTIVE-status) theses to their positions for the portfolio block.
   for (const pos of positions) {
-    const thesis = activeTheses.find((t) => t.ticker === pos.symbol);
+    const thesis = activeTheses.find(
+      (t) => t.ticker === pos.symbol && t.status === "ACTIVE",
+    );
     if (thesis) {
       pos.activeThesisId = thesis.id;
       pos.activeThesisSummary = thesis.reasoningSummary.slice(0, 200);

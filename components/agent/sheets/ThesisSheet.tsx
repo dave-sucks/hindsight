@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
-import { PnlBadge } from "@/components/ui/pnl-badge";
+import { PriceChange } from "@/components/ui/price-change";
 import { InfoRow } from "@/components/ui/info-row";
 import {
   Sheet,
@@ -33,6 +33,10 @@ import {
   ThesisTriggersSection,
   type TriggersResponse,
 } from "@/components/agent/sheets/ThesisTriggersSection";
+import {
+  THESIS_STATUS_DISPLAY,
+  type ThesisStatus,
+} from "@/lib/thesis-status";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -76,23 +80,6 @@ export type ThesisCardData = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Derive a human-friendly verdict from direction + confidence */
-export function verdictLabel(
-  direction: "LONG" | "SHORT" | "PASS",
-  confidence: number,
-): { label: string; variant: "positive" | "negative" | "secondary" } {
-  if (direction === "PASS") return { label: "Pass", variant: "secondary" };
-  if (direction === "LONG") {
-    if (confidence >= 80) return { label: "Strong Buy", variant: "positive" };
-    if (confidence >= 60) return { label: "Buy", variant: "positive" };
-    return { label: "Lean Buy", variant: "positive" };
-  }
-  // SHORT
-  if (confidence >= 80) return { label: "Strong Sell", variant: "negative" };
-  if (confidence >= 60) return { label: "Sell", variant: "negative" };
-  return { label: "Lean Sell", variant: "negative" };
-}
-
 function fmtCompact(n: number): string {
   if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
   if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
@@ -122,203 +109,89 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 // ── StatusPill ──
-// Replaces the old verdict ButtonGroup (Strong Buy / 90%). Lifecycle-
-// status-led: the durable answer to "what is this thesis right now?"
-// Left cell = STATUS (Holding / Watching / Closed / Invalidated).
-// Right cell = a quick verdict that varies by status (live P&L for
-// holdings, confidence-derived label for watches, reason for terminal
-// states). Falls back to the old verdict when no live state has loaded
-// yet so first paint isn't blank.
-
-type LiveStatus = "ACTIVE" | "WATCHING" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
+// One render path. Single Badge with status dot + label, optional PnL%
+// right cell for Holding only. No fallbacks, no per-status switches —
+// the lookup table in lib/thesis-status.ts is the single source of truth.
 
 function StatusPill({
-  liveStatus,
-  fallbackDirection,
-  fallbackConfidence,
+  status,
   position,
-  closeReason,
-  invalidReason,
 }: {
-  liveStatus: LiveStatus | null;
-  fallbackDirection: "LONG" | "SHORT" | "PASS";
-  fallbackConfidence: number;
+  status: ThesisStatus;
   position: TriggersResponse["position"];
-  closeReason: string | null;
-  invalidReason: string | null;
 }) {
-  // Bucket the status into a (label, dot color, tint) triple.
-  type Variant = "positive" | "negative" | "secondary";
-  let leftLabel: string;
-  let dotClass: string;
-  let variant: Variant;
+  const display = THESIS_STATUS_DISPLAY[status];
+  const pnl = status === "ACTIVE" ? position?.unrealizedPnlPct : null;
 
-  switch (liveStatus) {
-    case "ACTIVE":
-      leftLabel = "Holding";
-      dotClass = "bg-positive";
-      variant = "positive";
-      break;
-    case "WATCHING":
-      leftLabel = "Watching";
-      dotClass = "bg-blue-500";
-      variant = "secondary";
-      break;
-    case "CLOSED":
-      leftLabel = "Closed";
-      dotClass = "bg-muted-foreground/60";
-      variant = "secondary";
-      break;
-    case "INVALIDATED":
-      leftLabel = "Invalidated";
-      dotClass = "bg-negative";
-      variant = "negative";
-      break;
-    case "SUPERSEDED":
-      leftLabel = "Superseded";
-      dotClass = "bg-muted-foreground/40";
-      variant = "secondary";
-      break;
-    default: {
-      // Pre-load fallback: derive from the original verdict shape so
-      // first paint isn't blank. Loses Holding/Watching distinction;
-      // recovers as soon as the fetch lands.
-      const verdict = verdictLabel(fallbackDirection, fallbackConfidence);
-      leftLabel = verdict.label;
-      dotClass =
-        verdict.variant === "positive"
-          ? "bg-positive"
-          : verdict.variant === "negative"
-            ? "bg-negative"
-            : "bg-muted-foreground/40";
-      variant = verdict.variant;
-    }
-  }
-
-  // Right cell content varies by status.
-  let rightNode: React.ReactNode;
-  if (liveStatus === "ACTIVE" && position?.unrealizedPnlPct != null) {
-    const pct = position.unrealizedPnlPct;
-    const sign = pct >= 0 ? "+" : "";
-    rightNode = (
-      <span
-        className={cn(
-          "tabular-nums",
-          pct >= 0 ? "text-positive" : "text-negative",
-        )}
-      >
-        {sign}
-        {pct.toFixed(2)}%
-      </span>
-    );
-  } else if (liveStatus === "WATCHING") {
-    rightNode = <span className="tabular-nums">{fallbackConfidence}%</span>;
-  } else if (liveStatus === "CLOSED" && closeReason) {
-    rightNode = (
-      <span className="truncate max-w-[14rem]" title={closeReason}>
-        {closeReason.slice(0, 40)}
-      </span>
-    );
-  } else if (liveStatus === "INVALIDATED" && invalidReason) {
-    rightNode = (
-      <span className="truncate max-w-[14rem]" title={invalidReason}>
-        {invalidReason.slice(0, 40)}
-      </span>
-    );
-  } else {
-    rightNode = (
-      <span className="tabular-nums">{fallbackConfidence}%</span>
+  if (pnl != null) {
+    const sign = pnl >= 0 ? "+" : "";
+    return (
+      <ButtonGroup className="cursor-default">
+        <Badge variant="secondary" className="rounded-r-none gap-1.5 font-normal">
+          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
+          {display.label}
+        </Badge>
+        <ButtonGroupSeparator />
+        <Badge variant="secondary" className="rounded-l-none font-normal">
+          <span className={cn("tabular-nums", pnl >= 0 ? "text-positive" : "text-negative")}>
+            {sign}
+            {pnl.toFixed(2)}%
+          </span>
+        </Badge>
+      </ButtonGroup>
     );
   }
 
   return (
-    <div>
-      <ButtonGroup className="cursor-default">
-        <Badge variant={variant} className="rounded-r-none gap-1.5 font-normal">
-          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
-          {leftLabel}
-        </Badge>
-        <ButtonGroupSeparator />
-        <Badge variant={variant} className="rounded-l-none font-normal">
-          {rightNode}
-        </Badge>
-      </ButtonGroup>
-    </div>
+    <Badge variant="secondary" className="gap-1.5 font-normal">
+      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
+      {display.label}
+    </Badge>
   );
 }
 
 // ── PositionRow ──
-// Mirrors the dashboard ThesisRow's "position row" pattern: shares @
-// cost, market value, live P&L. Renders only when status='ACTIVE' and
-// an open Position is matched on (analyst, ticker).
+// Two stacked lines, no truncation:
+//   "Bought {N} shares at ${avg}, now trading at ${current}"   (body text)
+//   +$X ↗ N.NN%                                                (PriceChange, base size)
+// Live dot lives in the header status pill — no need to repeat it here.
 
 function PositionRow({
   position,
-  stopLoss,
-  targetPrice,
 }: {
   position: NonNullable<TriggersResponse["position"]>;
-  stopLoss: number | null;
-  targetPrice: number | null;
 }) {
-  const $ = (n: number) => `$${n.toFixed(2)}`;
-  const $k = (n: number) =>
-    `$${n.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-
   return (
-    <div className="rounded-lg border bg-positive/10 px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground shrink-0">
-          <span className="h-1.5 w-1.5 rounded-full bg-positive" />
-          OPEN
-        </span>
-        <span className="text-sm">
-          {position.quantity} shares @{" "}
-          <span className="tabular-nums font-medium">
-            {$(position.avgCost)}
-          </span>
-          {targetPrice != null && targetPrice > 0 ? (
-            <>
-              , targeting{" "}
-              <span className="tabular-nums font-medium">
-                {$(targetPrice)}
-              </span>
-            </>
-          ) : null}
-        </span>
-        <div className="flex items-center gap-2 ml-auto">
-          {position.marketValue != null ? (
-            <span className="text-sm tabular-nums font-medium">
-              {$k(position.marketValue)}
+    <div className="rounded-lg border bg-muted/40 px-3 py-2.5 space-y-1">
+      <p className="text-sm tabular-nums leading-relaxed">
+        Bought {position.quantity.toFixed(1)} shares at{" "}
+        <span className="font-medium">${position.avgCost.toFixed(2)}</span>
+        {position.currentPrice != null ? (
+          <>
+            , now trading at{" "}
+            <span className="font-medium">
+              ${position.currentPrice.toFixed(2)}
             </span>
-          ) : null}
-          {position.unrealizedPnlPct != null ? (
-            <PnlBadge value={position.unrealizedPnlPct} />
-          ) : null}
-        </div>
-      </div>
-      {stopLoss != null && stopLoss > 0 ? (
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Stop at <span className="tabular-nums">{$(stopLoss)}</span> ·{" "}
-          {position.daysHeld}d held
-        </p>
-      ) : (
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {position.daysHeld}d held
-        </p>
-      )}
+          </>
+        ) : null}
+      </p>
+      {position.unrealizedPnl != null ? (
+        <PriceChange
+          dollarChange={position.unrealizedPnl}
+          percentChange={position.unrealizedPnlPct}
+          size="base"
+        />
+      ) : null}
     </div>
   );
 }
 
 // ── TriggerFiredBanner ──
-// Surfaces the most-recent TRIGGER_FIRED audit row from the past 7d.
-// One liner: predicate that fired + relative time + link to the run
-// the agent took action in. The full detail lives in the Activity
-// timeline below.
+// Most-recent TRIGGER_FIRED audit row across the past 7d for THIS thesis
+// — not specific to the run that opened the sheet. It answers "is this
+// thesis being acted on right now?" regardless of how you got here.
+// No border, matches PositionRow's body shape: one sentence on top,
+// metadata + view-run link in a flex row below.
 
 function TriggerFiredBanner({
   fire,
@@ -326,33 +199,30 @@ function TriggerFiredBanner({
   fire: NonNullable<TriggersResponse["recentFire"]>;
 }) {
   const router = useRouter();
-  const ago = relativeTime(fire.timestamp);
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (fire.runId) router.push(`/runs/${fire.runId}`);
-      }}
-      className={cn(
-        "w-full text-left rounded-lg border border-amber-500/40 bg-amber-500/10",
-        "px-3 py-2 flex items-start gap-2.5 transition-colors",
-        fire.runId ? "hover:bg-amber-500/15 cursor-pointer" : "cursor-default",
-      )}
-    >
-      <Bell className="size-4 text-amber-500 shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium">Trigger fired</span>
-          <span className="text-xs text-muted-foreground">{ago}</span>
-        </div>
-        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
-          {fire.summary}
+    <div className="rounded-lg bg-muted/40 px-3 py-2.5 space-y-1">
+      <div className="flex items-start gap-2">
+        <Bell className="size-4 text-amber-500 shrink-0 mt-0.5" />
+        <p className="text-sm leading-relaxed flex-1 min-w-0">
+          <span className="font-medium">Trigger fired:</span> {fire.summary}
         </p>
+      </div>
+      <div className="flex items-center gap-2 pl-6 text-xs text-muted-foreground">
+        <span>{relativeTime(fire.timestamp)}</span>
         {fire.runId ? (
-          <p className="text-[11px] text-amber-500 mt-1">View run →</p>
+          <>
+            <span className="opacity-40">·</span>
+            <button
+              type="button"
+              onClick={() => router.push(`/runs/${fire.runId}`)}
+              className="text-amber-500 hover:underline"
+            >
+              View run →
+            </button>
+          </>
         ) : null}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -547,6 +417,10 @@ export interface ThesisSheetBodyProps {
   company_name?: string | null;
   exchange?: string | null;
   fundamentals?: FundamentalsData | null;
+  /** Lifecycle status from the row that opened the sheet. Used as the
+   *  initial StatusPill value so first paint matches the durable state
+   *  with no flicker. The triggers API fetch refines position/PnL data. */
+  status?: "ACTIVE" | "WATCHING" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
 }
 
 export function ThesisSheetBody({
@@ -565,6 +439,7 @@ export function ThesisSheetBody({
   company_name,
   exchange,
   fundamentals,
+  status,
 }: ThesisSheetBodyProps) {
   const isPass = direction === "PASS";
   const displayName = company_name ?? ticker;
@@ -597,32 +472,16 @@ export function ThesisSheetBody({
     };
   }, [thesis_id]);
 
-  const liveStatus = (state?.status ?? null) as
-    | "ACTIVE"
-    | "WATCHING"
-    | "CLOSED"
-    | "INVALIDATED"
-    | "SUPERSEDED"
-    | null;
+  // Status comes from the row that opened the sheet; the API fetch
+  // refines it (live PnL, terminal reasons). If neither has a value the
+  // pill simply doesn't render — no defensive default.
+  const liveStatus = (state?.status ?? status) as ThesisStatus | undefined;
   const position = state?.position ?? null;
   const recentFire = state?.recentFire ?? null;
 
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
-      {/* ── Status pill ButtonGroup (replaces Strong Buy/% verdict) ── */}
-      {/* Status is the durable lifecycle state (Holding / Watching /
-          Closed / Invalidated). The right cell is the verdict at a
-          glance — for Holding it's live PnL%, for Watching it's the
-          confidence-derived label, for Closed/Invalidated it's the
-          terminal reason. Conviction% moves to a secondary stat below. */}
-      <StatusPill
-        liveStatus={liveStatus}
-        fallbackDirection={direction}
-        fallbackConfidence={confidence_score}
-        position={position}
-        closeReason={state?.closeReason ?? null}
-        invalidReason={state?.invalidReason ?? null}
-      />
+      {liveStatus ? <StatusPill status={liveStatus} position={position} /> : null}
 
       {/* ── Stock identity ───────────────────────────────────── */}
       <div className="flex items-center gap-3">
@@ -640,7 +499,7 @@ export function ThesisSheetBody({
       {/* Mirrors the dashboard ThesisRow position pattern: shares @
           cost, market value, live P&L. Stop line below when set. */}
       {position && liveStatus === "ACTIVE" ? (
-        <PositionRow position={position} stopLoss={stop_loss ?? null} targetPrice={target_price ?? null} />
+        <PositionRow position={position} />
       ) : null}
 
       {/* ── Trigger fired banner ─────────────────────────────── */}
@@ -763,6 +622,7 @@ export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
           company_name={data.company_name}
           exchange={data.exchange}
           fundamentals={data.fundamentals}
+          status={data.status}
         />
       </SheetContent>
     </Sheet>

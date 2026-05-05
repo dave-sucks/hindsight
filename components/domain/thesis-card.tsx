@@ -18,18 +18,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import {
-  TrendingDown,
-  TrendingUp,
-} from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 
 import {
   ThesisSheetBody,
-  verdictLabel,
   hasFundamentalDetails,
 } from "@/components/agent/sheets/ThesisSheet";
 import type { FundamentalsData, ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
+import { THESIS_STATUS_DISPLAY } from "@/lib/thesis-status";
 
 // Types are defined in ThesisSheet.tsx (the more primitive file) and re-exported
 // here so existing consumers importing from thesis-card don't need to change.
@@ -56,7 +52,7 @@ function rrRatio(entry: number, target: number, stop: number): string {
 }
 
 // Re-export for consumers that import from thesis-card
-export { verdictLabel, hasFundamentalDetails };
+export { hasFundamentalDetails };
 
 // ─── ThesisCard ───────────────────────────────────────────────────────────────
 
@@ -83,10 +79,7 @@ export function ThesisCard({
   className,
   ...cardProps
 }: ThesisCardProps) {
-  const isLong = direction === "LONG";
   const isPass = direction === "PASS";
-
-  const DirIcon = isLong ? TrendingUp : TrendingDown;
 
   const hasEntry = entry_price != null;
   const hasTarget = target_price != null;
@@ -98,7 +91,7 @@ export function ThesisCard({
       : null;
 
   const displayName = company_name ?? ticker;
-  const verdict = verdictLabel(direction, confidence_score);
+  const statusDisplay = THESIS_STATUS_DISPLAY[status ?? "ACTIVE"];
 
   // ── Shared header for ALL states ──────────────────────────────
   const header = (
@@ -118,18 +111,11 @@ export function ThesisCard({
           </TooltipContent>
         </Tooltip>
       </div>
-      {/* Right: status + verdict badge */}
-      <div className="flex items-center gap-1.5">
-        {status && status !== "ACTIVE" && (
-          <Badge variant="outline">
-            {status}
-          </Badge>
-        )}
-        <Badge variant={verdict.variant}>
-          {!isPass && <DirIcon className="h-3.5 w-3.5" />}
-          {verdict.label}
-        </Badge>
-      </div>
+      {/* Right: lifecycle status pill — matches ThesisSheet + ReadThesesTable */}
+      <Badge variant="secondary" className="gap-1.5 font-normal">
+        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDisplay.dotClass)} />
+        {statusDisplay.label}
+      </Badge>
     </div>
   );
 
@@ -183,6 +169,7 @@ export function ThesisCard({
             company_name={company_name}
             exchange={exchange}
             fundamentals={fundamentals}
+            status={status}
           />
         </SheetContent>
       </Sheet>

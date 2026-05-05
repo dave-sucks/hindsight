@@ -370,6 +370,47 @@ export const updateThesis = defineTool({
       data: patch as object,
     });
 
+    // ── Symmetric watchlist sync ──────────────────────────────────────
+    // PR 203 added the manage_watchlist → Thesis sync (ADD mints WATCHING
+    // thesis; REMOVE supersedes thesis). The reverse path was missing:
+    // when the agent invalidates or closes a WATCHING-anchored thesis via
+    // update_thesis, the AnalystWatchlistItem row was left ACTIVE — the
+    // agent's "this thesis is dead" decision didn't propagate to the
+    // legacy watchlist table. Captured the 2026-05-04 ASML / Tech
+    // Momentum drift case. Bridge fix; the watchlist table is being
+    // collapsed in the next phase, after which Thesis.status='WATCHING'
+    // IS the watchlist and this whole class of two-store bugs is gone.
+    const wasWatching = existing.status === "WATCHING";
+    const flippedToTerminal =
+      args.change_status === "INVALIDATED" ||
+      args.change_status === "CLOSED";
+    const ownerAnalystId = existing.researchRun?.agentConfigId;
+    if (wasWatching && flippedToTerminal && ownerAnalystId) {
+      try {
+        await prisma.analystWatchlistItem.updateMany({
+          where: {
+            analystId: ownerAnalystId,
+            symbol: existing.ticker,
+            status: "ACTIVE",
+          },
+          data: {
+            status: "REMOVED",
+            removedAt: new Date(),
+            removeReason: `thesis ${args.change_status?.toLowerCase()}: ${args.rationale.slice(0, 200)}`,
+          },
+        });
+      } catch (err) {
+        // Non-fatal — the thesis state is the source of truth post-collapse;
+        // the watchlist table is the legacy mirror. Drift is preferable to
+        // a failed update_thesis call here.
+        console.warn(
+          `[update_thesis] watchlist sync failed for thesis=${existing.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
     // Build a punchy summary line for the timeline list view.
     const summaryParts: string[] = [];
     if (fieldChanges.targetPrice) {

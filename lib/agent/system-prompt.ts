@@ -270,21 +270,24 @@ This defines which stocks you may research and trade. Use it to filter discovery
     sections.push(liveSection);
   }
 
-  // ── Section 3.75: Active Theses ───────────────────────────────────────
+  // ── Section 3.75: Live Theses ─────────────────────────────────────────
+  // ACTIVE (held) + WATCHING (entry-gated). Both are in scope for the
+  // Step 2 close-out contract — every row below requires one tool call
+  // this run, typically update_thesis with empty patch (REVIEWED row).
   if (runInput.activeTheses && runInput.activeTheses.length > 0) {
-    let thesesSection = `## Active Theses\nThese are your current ACTIVE theses. When you record a new thesis for any of these tickers, the old one is automatically superseded — you do not need to pass parent_thesis_id.\n\n`;
-    thesesSection += `| Ticker | Direction | Confidence | Entry | Target | Stop | Created | Thesis ID |\n`;
-    thesesSection += `|--------|-----------|-----------|-------|--------|------|---------|----------|\n`;
+    let thesesSection = `## Live Theses\nThese are your durable beliefs — ACTIVE (you hold a position) and WATCHING (entry gated by promotion triggers). When you record a new thesis for any of these tickers, the old one is automatically superseded — you do not need to pass parent_thesis_id.\n\n`;
+    thesesSection += `| Ticker | Status | Direction | Confidence | Entry | Target | Stop | Created | Thesis ID |\n`;
+    thesesSection += `|--------|--------|-----------|-----------|-------|--------|------|---------|----------|\n`;
     for (const t of runInput.activeTheses) {
       const entry = t.entryPrice != null ? `$${t.entryPrice.toFixed(2)}` : "—";
       const target = t.targetPrice != null ? `$${t.targetPrice.toFixed(2)}` : "—";
       const stop = t.stopLoss != null ? `$${t.stopLoss.toFixed(2)}` : "—";
       const created = t.createdAt.slice(0, 10);
-      thesesSection += `| $${t.ticker} | ${t.direction} | ${t.confidence}% | ${entry} | ${target} | ${stop} | ${created} | ${t.id} |\n`;
+      thesesSection += `| $${t.ticker} | ${t.status} | ${t.direction} | ${t.confidence}% | ${entry} | ${target} | ${stop} | ${created} | ${t.id} |\n`;
     }
     thesesSection += `\nSummary per thesis:\n`;
     for (const t of runInput.activeTheses) {
-      thesesSection += `- $${t.ticker} (${t.id}): "${t.reasoningSummary.slice(0, 150)}"\n`;
+      thesesSection += `- $${t.ticker} [${t.status}] (${t.id}): "${t.reasoningSummary.slice(0, 150)}"\n`;
     }
     thesesSection += `\n**Re-researching a held name? Use update_thesis(thesis_id, ...), not record_thesis.** Each thesis above lives as ONE durable row that evolves over time — refining the target, tightening the stop, updating the rationale all happen via update_thesis with a one-line rationale of why. record_thesis is reserved for new coverage (no existing thesis on this ticker) or a genuine direction flip (LONG → SHORT, etc.). Calling record_thesis on a ticker that already has an active same-direction thesis is now a hard reject.`;
     sections.push(thesesSection);
@@ -390,12 +393,12 @@ Call **read_signals** (returns all three buckets — portfolio / watchlist / dis
 - **🔔 Triggers Fired Since Your Last Run** — pre-vetted by the trigger evaluator. Every thesis listed there is a MUST-research today.
 - **📡 Triggers Matching Now** — same priority, server re-evaluated against fresh quotes at run start.
 - **⚠ Priority Reviews** — price-monitor-flagged positions (NEAR_TARGET / NEAR_STOP).
-- **Active Theses** — your durable belief library; each with horizon, nextReviewAt, triggers.
+- **Live Theses** — your durable belief library (ACTIVE + WATCHING); each with horizon, nextReviewAt, triggers.
 
 Cross-reference signals against your theses. Use **read_artifact** for any signal worth a deep read. **web_search** is targeted enrichment only — never a discovery shortcut.
 
 ### Step 2 — Per-thesis review (the heart of this run)
-This is a LOOP. For EVERY thesis in the Active Theses table above (and every WATCHING thesis from get_theses), execute the four questions below — N theses means N iterations, with **at least one tool call per thesis**. Skipping a thesis with narration like "$X looks fine" or "$X needs no action" without calling update_thesis(X) is a run failure. Most theses end on question (c) — one update_thesis call with empty patch + rationale, no research. That's the design.
+This is a LOOP. For EVERY thesis in the Live Theses table above (ACTIVE + WATCHING), execute the four questions below — N theses means N iterations, with **at least one tool call per thesis**. Skipping a thesis with narration like "$X looks fine" or "$X needs no action" without calling update_thesis(X) is a run failure. Most theses end on question (c) — one update_thesis call with empty patch + rationale, no research. That's the design.
 
 **(a) Did anything fire on this thesis since last run?**
 Sources:
@@ -425,7 +428,7 @@ While reviewing, also evaluate:
 - **Trim?** Conviction has dropped (recent confidence_score lower than entry confidence) → \`manage_position\` partial close.
 - **Close?** invalidationConditions clearly met → \`close_position\` then \`update_thesis(change_status: "INVALIDATED")\`. Target hit → \`close_position\` then \`update_thesis(change_status: "CLOSED")\`.
 
-**Step 2 close-out contract — read this every run.** Before you move to Step 3, every thesis in the Active Theses table must have produced exactly one tool call (update_thesis, close_position, or manage_position) IN THIS RUN. The closeout gate counts ThesisUpdate rows on this run's id; an unrecorded thesis is a run failure. If you catch yourself about to write text like "all positions look fine" or "no further action needed" — stop. Loop back and call update_thesis on every thesis you haven't touched yet, with rationale="reviewed; no triggers, thesis intact". This is non-negotiable; it is the audit trail the whole architecture rests on.
+**Step 2 close-out contract — read this every run.** Before you move to Step 3, every thesis in the Live Theses table (ACTIVE + WATCHING both) must have produced exactly one tool call (update_thesis, close_position, or manage_position) IN THIS RUN. The closeout gate counts ThesisUpdate rows on this run's id; an unrecorded thesis is a run failure. If you catch yourself about to write text like "all positions look fine" or "no further action needed" — stop. Loop back and call update_thesis on every thesis you haven't touched yet, with rationale="reviewed; no triggers, thesis intact". This is non-negotiable; it is the audit trail the whole architecture rests on.
 
 ### Step 3 — Discovery (CONDITIONAL — usually skip)
 After walking every thesis, decide whether to do discovery this run. **All three gates must clear**, otherwise skip:
