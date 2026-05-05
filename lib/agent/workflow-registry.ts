@@ -351,39 +351,42 @@ export const TEAMS: Team[] = [
     summary:
       "Per-analyst portfolio review. Walks every active and watching thesis. Decides per-thesis: trigger fired or review due → research + update_thesis; nothing changed → REVIEWED-only audit row. Trades when conviction is there.",
     description:
-      "Each analyst runs as a GPT-4o agent (temperature 0.2, 50-step budget). Before the first tool call, the system loads full context into the prompt: identity + operating manual (the analyst's 3-5 paragraph playbook), trading rules (direction bias, hold durations, minConfidence, maxPositionSize, maxOpenPositions, exclusions), the universe fence (sectors + industries + themes + marketCap), intelligence policy (attention weights + live-search budget), the current portfolio with live P&L and thesis summaries, priority reviews flagged by the price monitor (NEAR_TARGET / NEAR_STOP — must-research), active LONG/SHORT theses, the watchlist with priorities, yesterday's briefing (watch-tomorrow, unresolved items, self-corrections), performance stats (win rate, signal-type accuracy, calibration), and recent closed trades. The agent then follows a strict 6-stage flow with tool-call floors at each stage boundary; stage headers in the prompt (### Stage N — NAME) are structural, not decorative. Every record_thesis must declare source_kind (ROUTED_SIGNAL, WEB_SEARCH, WATCHLIST_REVIEW, POSITION_REVIEW) and pass source_signal_ids when citing signals — this is what powers signal→thesis→monitor traceability. complete_run is blocked until a thesis exists for every researched ticker.",
+      "The Daily Run is where your portfolio actually gets managed. Every weekday morning at 8 AM ET, each enabled analyst spawns its own focused agent. The agent reads its durable thesis library and the signals routed overnight, then walks each active and watching thesis one at a time.\n\nFor each thesis, the agent decides one of three things: a trigger fired or fresh evidence arrived → research and update the thesis; a scheduled review is due → research and confirm or adjust; nothing changed → log a REVIEWED audit row and move on. Then it works position management (close, scale in, trim), considers any worthwhile new discovery candidates, and writes a ranked summary of what it actually touched.",
     icon: Bot,
     model: "GPT-4o",
     schedule: "8:00 AM ET weekdays + on demand",
     substeps: [
       { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references priority reviews flagged by the price monitor. Plain text — no tools." },
-      { title: "Stage 1 — Orient", summary: "read_signals (returns three buckets: portfolio / watchlist / discovery, each with signalId for provenance), get_theses(include_history: true) for the durable thesis library, read_artifact on any signal worth a deep read. web_search only for niche verification within budget." },
-      { title: "Stage 2 — Research", summary: "get_portfolio_context first (live P&L, days held, distance from peak, original thesis). Then get_stock_data on every holding, every priority review, watchlist HIGH/flagged items, and ≥2 discovery candidates not already in portfolio or watchlist." },
-      { title: "Stage 3 — Theses", summary: "record_thesis for every researched ticker (LONG / SHORT / PASS). source_kind is mandatory; source_signal_ids required for ROUTED_SIGNAL, source_rationale required otherwise. Prior theses on the same ticker auto-supersede. Signal IDs flip their AnalystSignalRoute status to ACTED_ON in the same transaction." },
-      { title: "Stage 4 — Act", summary: "Per-position discipline: close_position or manage_position (partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop, add_to_position) for every existing holding, or explicit 'hold unchanged' narration. Then place_trade for new entries. Then manage_watchlist for adds/removes." },
-      { title: "Stage 5 — Recap", summary: "record_run_summary with ranked_picks (every researched ticker + the action that actually happened) and exposure breakdown." },
-      { title: "Stage 6 — Complete", summary: "complete_run with no arguments. Marks the run COMPLETE and inlines the briefing agent which writes tomorrow's standup. Blocked until every researched ticker has a thesis." },
+      { title: "Orient", summary: "read_signals (today's three buckets: portfolio, watchlist, discovery — each carries signalId for provenance) and get_theses with full update history. read_artifact on anything worth a deep read; web_search sparingly within budget." },
+      { title: "Per-thesis review", summary: "Walks every active and watching thesis. For each: did a trigger fire or new evidence arrive? is a scheduled review due? otherwise → REVIEWED-only. Calls get_stock_data on theses that warrant real research, not every ticker." },
+      { title: "Position management", summary: "close_position / manage_position for held names that warrant action; place_trade for new entries; record_thesis reserved for net-new coverage or direction flips. update_thesis is the close-out for every touched thesis." },
+      { title: "Recap", summary: "record_run_summary with ranked picks (every thesis the agent touched + the action that actually happened) and exposure breakdown." },
+      { title: "Complete", summary: "complete_run with no arguments. Marks the run COMPLETE; the briefing agent fires inline to write tomorrow's standup." },
     ],
     tools: [
-      // Intelligence (Stage 1)
+      // Intelligence
       { name: "read_signals", provider: "internal", summary: "Routed signals in three buckets: portfolioSignals, watchlistSignals, discoverySignals. Every signal carries signalId for thesis provenance. Reading flips route status PENDING → READ." },
       { name: "read_artifact", provider: "internal", summary: "Full extracted article content (clean markdown from Firecrawl) behind a signal. Agent passes artifactId from the signal record." },
+      { name: "get_theses", provider: "internal", summary: "Read the analyst's durable thesis library. Default returns ACTIVE + WATCHING; include_history=true returns the recent activity log per thesis. Mandatory in Stage 1." },
       { name: "web_search", provider: "perplexity", summary: "Live Perplexity Sonar search for breaking news or niche topics. Respects intelligencePolicy.allowLiveSearch and liveSearchBudget.",
         resources: [{ source: "perplexity", title: "Sonar web search", description: "Real-time web search with recency filtering.", type: "api", endpointOrPath: "searchSignals(query, { recency })", exampleOutput: "5 results · sentiment: bullish · urgency: MEDIUM", notes: ["Per-run budget from analyst's intelligencePolicy"] }],
       },
       TOOL_GET_MARKET_CONTEXT,
-      // Research (Stage 2)
-      { name: "get_portfolio_context", provider: "internal", summary: "Live portfolio snapshot: P&L %, days held, distance from peak price, exit levels, original thesis reasoning. Called at start of every research stage." },
+      // Research
+      { name: "get_portfolio_context", provider: "internal", summary: "Live portfolio snapshot: P&L %, days held, distance from peak price, exit levels, original thesis reasoning. Called at the start of the per-thesis review." },
       TOOL_GET_STOCK_DATA,
+      { name: "get_earnings_calendar", provider: "finnhub", summary: "Firm-wide earnings calendar for the next N days. scope:\"universe\" fences to watchlist + open positions; scope:\"all\" returns the full firehose. Pull-tool counterpart to the EARNINGS_CALENDAR feed." },
+      { name: "get_market_movers", provider: "fmp", summary: "Today's market movers — gainers, losers, or most-active. scope:\"universe\" fences to watchlist + positions; scope:\"all\" returns the full top-list. Pull-tool counterpart to the MARKET_MOVERS_* feeds." },
       {
         name: "get_options_flow", provider: "fmp", summary: "Put/call ratio, unusual contracts, institutional positioning.",
         resources: [{ source: "fmp", title: "Options chain analysis", description: "P/C ratio, unusual volume/OI contracts, premium flags.", type: "api", endpointOrPath: "/options/chain/{ticker}", exampleOutput: "P/C 0.65 (bullish) · 3 unusual contracts", notes: ["Flags vol/OI ≥ 5x or premium ≥ $500K"] }],
       },
       TOOL_GET_EARNINGS_DATA,
       TOOL_GET_SEC_FILINGS,
-      // Decision (Stage 3)
-      { name: "record_thesis", provider: "internal", summary: "Records LONG/SHORT/PASS verdict with confidence, targets, bullets, risk flags. Requires source_kind (ROUTED_SIGNAL | WEB_SEARCH | WATCHLIST_REVIEW | POSITION_REVIEW); ROUTED_SIGNAL requires source_signal_ids (validated against today's routed pool). Flips cited routes to ACTED_ON. Auto-supersedes prior theses on the same ticker." },
-      // Execution (Stage 4)
+      // Decision
+      { name: "record_thesis", provider: "internal", summary: "Mints a NEW thesis (LONG/SHORT). Reserved for net-new coverage or a direction flip. Refinements to held names go through update_thesis instead. Requires source_kind; ROUTED_SIGNAL requires source_signal_ids." },
+      { name: "update_thesis", provider: "internal", summary: "Update an existing thesis durably. Pass thesis_id + the fields changing + a rationale. Every call writes one ThesisUpdate audit row (UPDATED, REVIEWED, INVALIDATED, CLOSED). The most-used new tool — every per-thesis decision in the daily review writes one of these." },
+      // Execution
       {
         name: "place_trade", provider: "alpaca", summary: "Places a paper market order on Alpaca. Waits for fill.",
         resources: [
@@ -401,7 +404,7 @@ export const TEAMS: Team[] = [
       },
       { name: "manage_position", provider: "alpaca", summary: "Nuanced position management: partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop, add_to_position. Every action is audit-logged with a required reason string." },
       { name: "manage_watchlist", provider: "internal", summary: "Adds/updates/removes watchlist items with priority and catalysts. Narrated watchlist updates without a tool call are a run failure." },
-      // Run lifecycle (Stages 5–6)
+      // Run lifecycle
       { name: "record_run_summary", provider: "internal", summary: "Structured per-ticker recap: ranked picks + exposure breakdown. Pure data." },
       { name: "complete_run", provider: "internal", summary: "No-args. Marks the run complete in the DB and triggers the briefing agent. Always the agent's final tool call." },
     ],
@@ -418,7 +421,7 @@ export const TEAMS: Team[] = [
     summary:
       "Single-thesis, single-decision focused run. ~15 steps. Validates the trigger that fired, acts (trade or update), writes update_thesis as the close-out.",
     description:
-      "Spawns when the Trigger Evaluator emits app/thesis.trigger.fired. The agent loads the firing thesis (with triggers, recent ThesisUpdate rows, position state), the firing signal (if signal-driven), and a fresh price snapshot. The decision tree: (1) does the signal/price actually validate the predicate, or did it match by accident? (2) if validation holds, do the declared action (or override with reasoning); (3) if validation fails, pass and write a REVIEWED row noting the false-fire. Outputs: at most one trade (place_trade / manage_position / close_position), and always one update_thesis as the close-out. record_thesis is intentionally NOT in the allowlist — tactical never mints new theses.",
+      "The Tactical Run is your portfolio's intraday reflex. When the Trigger Evaluator fires, a tactical agent spawns with a small step budget focused on one thesis and one decision: did this trigger fire for a real reason, and if so, what's the right response?\n\nIt validates against fresh stock data, takes at most one position action (open, close, scale, or adjust), and always writes one update_thesis row as the close-out. It cannot mint new theses — record_thesis isn't in its allowlist. New coverage only happens in the Daily or Discovery runs.",
     icon: Zap,
     model: "GPT-4o",
     schedule: "Event-driven",
@@ -454,25 +457,23 @@ export const TEAMS: Team[] = [
     summary:
       "When any agent run completes, GPT-4o reviews the transcript + portfolio and writes the standup memo that feeds into the next run's prompt.",
     description:
-      "Called directly by the complete_run tool at the end of every research session. When the research agent finishes its work and calls complete_run, that tool marks the run COMPLETE and then immediately calls the briefing agent inline — no events, no queues. A GPT-4o agent reads the full conversation transcript, portfolio state, and trade outcomes. It writes a structured standup: narrative (400-600 words), strategy notes, market posture, watch-tomorrow items, unresolved items, self-corrections, and 0-5 dynamic search monitors. The standup feeds into the next session's system prompt. The analyst references watch-tomorrow items in their portfolio check-in before Stage 1. Dynamic monitors are picked up by the next morning's intelligence sweep automatically.",
+      "The Briefing Agent is what gives your analysts continuity between runs. Whenever any agent run completes — daily, tactical, or discovery — the briefing agent fires inline as the run wraps up. It reads the full conversation transcript, the current portfolio with live P&L, and the trade outcomes from the session.\n\nIt writes a structured standup: a narrative of what happened, what's still unresolved, what to watch tomorrow, and any self-corrections worth carrying forward. It can also create a few short-lived search monitors that the next morning's intelligence sweep will run. The standup gets injected into the next run's system prompt — that's how the analyst remembers anything.",
     icon: RotateCcw,
     model: "GPT-4o",
     schedule: "After every run",
     substeps: [
-      { title: "Mark complete", summary: "complete_run tool marks the run COMPLETE, then immediately calls the briefing agent inline. No events or queues." },
-      { title: "Read transcript", summary: "Reads the full conversation — every message, tool call, and result from the session." },
-      { title: "Review portfolio", summary: "Checks current positions with unrealized P&L, trade outcomes, and pass decisions." },
-      { title: "Write standup", summary: "Produces narrative, strategy notes, market posture, watch-tomorrow items, and self-corrections." },
-      { title: "Create monitors", summary: "Generates 0-5 temporary search monitors with expiration dates for next morning's sweep." },
+      { title: "Read context", summary: "Pulls the conversation transcript, current portfolio with live P&L, and recent trade outcomes from the session." },
+      { title: "Write standup", summary: "Narrative, strategy notes, market posture, watch-tomorrow items, unresolved items, self-corrections. 400-600 words." },
+      { title: "Create monitors", summary: "Generates 0-5 short-lived search monitors with expiration dates. Next morning's intelligence sweep picks them up automatically." },
     ],
     tools: [
-      { name: "Conversation transcript", provider: "internal", summary: "Full research session messages, tool calls, and results (~12k chars).",
+      { name: "Conversation transcript", provider: "internal", summary: "Full research session messages, tool calls, and results.",
         resources: [{ source: "internal", title: "Run messages", description: "Complete conversation persisted to RunMessage table.", type: "db", endpointOrPath: "prisma.runMessage.findMany({ runId })", exampleOutput: "47 messages · 12 tool calls · 28k tokens" }],
       },
       { name: "Portfolio state", provider: "internal", summary: "Open positions, unrealized P&L, capital deployed, win rate.",
         resources: [{ source: "internal", title: "Portfolio snapshot", description: "Current positions with live P&L and exposure breakdown.", type: "db", endpointOrPath: "prisma.position.findMany({ status: OPEN })", exampleOutput: "3 positions · $9,870 deployed · 65% win rate" }],
       },
-      { name: "GPT-4o Reviewer", provider: "internal", summary: "Writes an external review — not self-reported by the research agent.",
+      { name: "GPT-4o Reviewer", provider: "internal", summary: "Writes an external review — not self-reported by the agent that just ran.",
         resources: [{ source: "internal", title: "Standup generation", description: "Structured output: narrative, strategy notes, posture, watch items, corrections, dynamic monitors.", type: "internal", endpointOrPath: "generateObject({ schema: standupSchema })", exampleOutput: "Narrative: 450 words · 3 watch items · 1 dynamic monitor" }],
       },
     ],
@@ -488,7 +489,7 @@ export const TEAMS: Team[] = [
     summary:
       "Watches positions hourly. Evaluates each closed trade and credits the source monitor (win/loss). Snapshots EOD prices. Scores weekly accuracy. /intelligence (Health) surfaces pipeline drift.",
     description:
-      "Five background jobs track analyst performance and pipeline health. The price monitor checks all open positions hourly via Alpaca and flags positions near target (80%) or stop-loss. When a position closes, the trade evaluator does two things: (1) GPT-4o reviews the trade and writes a lesson, and (2) it walks the provenance chain — Thesis.sourceSignalIds → Signal → Monitor — and credits each source Monitor's tradesSourced / winsSourced / lossesSourced counters, then recomputes successScore = (wins − losses) / trades. This is what turns the intelligence pipeline into a self-improving system: monitors that keep producing losing theses drift toward negative ROI, and the /intelligence (Health tab) page surfaces it. The EOD snapshot at 5 PM captures closing prices. The Sunday scorer calculates win rate, confidence calibration, and per-sector performance, all injected into the next run's prompt. The Health page layers observability on top: dead crons, signal funnel (routed → read → cited), ticker concentration, novelty histogram, and monitor ROI.",
+      "Evaluation & Tracking is the feedback loop that closes the system. While analysts research and trade, a set of background jobs is watching: the price monitor checks open positions every hour, the trade evaluator fires whenever a position closes, end-of-day snapshots capture closing prices, and a weekly scorer runs Sunday morning.\n\nThe most important piece is the trade evaluator. When a trade closes, it walks back from the thesis to the signals it cited, and credits each source monitor's win/loss counters. Monitors that keep producing losing theses drift toward negative ROI; the Health tab on /intelligence surfaces it. That's what makes the intelligence pipeline self-improving — over time, the analyst learns which sources are worth listening to.",
     icon: BarChart3,
     schedule: "Hourly / EOD / Weekly + on every close",
     substeps: [
