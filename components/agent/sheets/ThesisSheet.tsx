@@ -151,11 +151,10 @@ function StatusPill({
 }
 
 // ── PositionRow ──
-// Same shape as the trades detail page header row:
-//   [glowing dot] Holding {N} shares · avg entry ${avgCost}        +$X ↗ N%
-// Single line, muted background, glowing positive dot. Stop / target /
-// days held live further down in the sheet — this row is the "what do I
-// own and what's it doing right now" summary, nothing else.
+// Two stacked lines, no truncation:
+//   "Bought {N} shares at ${avg}, now trading at ${current}"   (body text)
+//   +$X ↗ N.NN%                                                (PriceChange, base size)
+// Live dot lives in the header status pill — no need to repeat it here.
 
 function PositionRow({
   position,
@@ -163,23 +162,24 @@ function PositionRow({
   position: NonNullable<TriggersResponse["position"]>;
 }) {
   return (
-    <div className="rounded-lg border bg-muted/40 px-3 py-2.5 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="relative flex h-2.5 w-2.5 shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
-        </span>
-        <span className="text-sm tabular-nums truncate">
-          Holding {position.quantity.toFixed(1)} shares · avg entry{" "}
-          <span className="font-medium">${position.avgCost.toFixed(2)}</span>
-        </span>
-      </div>
+    <div className="rounded-lg border bg-muted/40 px-3 py-2.5 space-y-1">
+      <p className="text-sm tabular-nums leading-relaxed">
+        Bought {position.quantity.toFixed(1)} shares at{" "}
+        <span className="font-medium">${position.avgCost.toFixed(2)}</span>
+        {position.currentPrice != null ? (
+          <>
+            , now trading at{" "}
+            <span className="font-medium">
+              ${position.currentPrice.toFixed(2)}
+            </span>
+          </>
+        ) : null}
+      </p>
       {position.unrealizedPnl != null ? (
         <PriceChange
           dollarChange={position.unrealizedPnl}
           percentChange={position.unrealizedPnlPct}
-          size="sm"
-          className="shrink-0"
+          size="base"
         />
       ) : null}
     </div>
@@ -187,10 +187,11 @@ function PositionRow({
 }
 
 // ── TriggerFiredBanner ──
-// Surfaces the most-recent TRIGGER_FIRED audit row from the past 7d.
-// One liner: predicate that fired + relative time + link to the run
-// the agent took action in. The full detail lives in the Activity
-// timeline below.
+// Most-recent TRIGGER_FIRED audit row across the past 7d for THIS thesis
+// — not specific to the run that opened the sheet. It answers "is this
+// thesis being acted on right now?" regardless of how you got here.
+// No border, matches PositionRow's body shape: one sentence on top,
+// metadata + view-run link in a flex row below.
 
 function TriggerFiredBanner({
   fire,
@@ -198,33 +199,30 @@ function TriggerFiredBanner({
   fire: NonNullable<TriggersResponse["recentFire"]>;
 }) {
   const router = useRouter();
-  const ago = relativeTime(fire.timestamp);
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (fire.runId) router.push(`/runs/${fire.runId}`);
-      }}
-      className={cn(
-        "w-full text-left rounded-lg border border-amber-500/40 bg-amber-500/10",
-        "px-3 py-2 flex items-start gap-2.5 transition-colors",
-        fire.runId ? "hover:bg-amber-500/15 cursor-pointer" : "cursor-default",
-      )}
-    >
-      <Bell className="size-4 text-amber-500 shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium">Trigger fired</span>
-          <span className="text-xs text-muted-foreground">{ago}</span>
-        </div>
-        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
-          {fire.summary}
+    <div className="rounded-lg bg-muted/40 px-3 py-2.5 space-y-1">
+      <div className="flex items-start gap-2">
+        <Bell className="size-4 text-amber-500 shrink-0 mt-0.5" />
+        <p className="text-sm leading-relaxed flex-1 min-w-0">
+          <span className="font-medium">Trigger fired:</span> {fire.summary}
         </p>
+      </div>
+      <div className="flex items-center gap-2 pl-6 text-xs text-muted-foreground">
+        <span>{relativeTime(fire.timestamp)}</span>
         {fire.runId ? (
-          <p className="text-[11px] text-amber-500 mt-1">View run →</p>
+          <>
+            <span className="opacity-40">·</span>
+            <button
+              type="button"
+              onClick={() => router.push(`/runs/${fire.runId}`)}
+              className="text-amber-500 hover:underline"
+            >
+              View run →
+            </button>
+          </>
         ) : null}
       </div>
-    </button>
+    </div>
   );
 }
 
