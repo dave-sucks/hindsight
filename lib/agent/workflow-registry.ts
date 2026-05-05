@@ -236,18 +236,17 @@ export const TEAMS: Team[] = [
     title: "Intelligence Pipeline",
     phase: "signals",
     summary:
-      "Background jobs run every weekday morning. Sweep the market, monitor portfolio + watchlist tickers, check tracked sources, and route every finding to each analyst's universe.",
+      "The signal-gathering pipeline. Sweeps the market, monitors portfolio + watchlist tickers, checks tracked sources, and routes every finding into each analyst's universe.",
     description:
-      "Before analysts wake up, 5 background jobs gather market intelligence. Search monitors run custom queries via Perplexity Sonar. Portfolio/watchlist monitors check every open position and watchlist item (per-ticker searches with forced ticker injection). Domain monitors check tracked websites and extract full articles via Firecrawl. Inbound newsletters arrive via Resend and are extracted into signals by GPT-4o-mini. The signal router evaluates each signal against every analyst's universe fence (sectors + industries + themes + market-cap, plus hard watchlist/position bypass) and tags each route with a reason code: POSITION, WATCHLIST, DIRECT_TICKER, SECTOR_MATCH, INDUSTRY_MATCH, THEME_MATCH, DISCOVERY, or CROSS_ANALYST. Relevance is scored (position +50, watchlist +45, industry +22, sector +20, theme +18, breaking +15, high +10) then multiplied by a 7-day novelty score so stale names get crushed (HIGH/BREAKING urgency gets a carve-out). A per-analyst cap reserves 20% of slots for DISCOVERY so new names can't be squeezed out. Finally, GPT-4o synthesizes each analyst's routed findings into a structured morning brief — grounded to today's routes only (signalIds are validated against the day's pool; holdings-attention forces one alert per open position; at least one real discovery is required when the bucket is non-empty).",
+      "The Intelligence Pipeline is what makes sure your analysts wake up to fresh signals. Evidence-gatherers run between 6:30 and 7:30 AM ET — firm-wide market sweeps, per-ticker monitors on your portfolio + watchlist, tracked-domain crawls, FMP movers and earnings firehoses, plus inbound newsletter emails whenever they arrive. Each one normalizes its findings into structured Signal rows.\n\nThe signal router then evaluates every Signal against every analyst's universe — sectors, industries, themes, marketCap, and feeds, plus hard watchlist/position bypass — and writes one route per match with a reason code. Routes are scored, novelty-filtered so stale names get crushed, and capped per-analyst with 20% of slots reserved for new discoveries. By the time you open the app, each analyst has its own ranked feed of what to look at.",
     icon: Radar,
-    schedule: "6:30–7:45 AM ET weekdays",
+    schedule: "6:30–7:30 AM ET weekdays",
     substeps: [
-      { title: "Firm market sweep", time: "6:30 AM", summary: "Runs firm-wide search queries via Perplexity Sonar. Fetches FMP movers (gainers/losers/actives) and Finnhub earnings calendar. All signals normalized through canonical GICS sectors/industries." },
+      { title: "Firm market sweep", time: "6:30 AM", summary: "Firm-wide search queries via Perplexity Sonar. Fetches FMP movers (gainers/losers/actives) and the Finnhub earnings calendar. All signals normalized through canonical GICS sectors/industries." },
       { title: "Portfolio & watchlist monitor", time: "7:00 AM", summary: "Per-analyst Sonar searches on every open position and watchlist ticker, with forced ticker injection so the result is guaranteed to tag the target symbol." },
-      { title: "Domain monitors", time: "7:15 AM", summary: "Checks tracked websites via domain-filtered Sonar. Firecrawl extracts full articles into Artifact rows for high-priority sources so the agent can read the whole page later." },
-      { title: "Email ingest", time: "on receipt", summary: "Resend inbound webhook delivers newsletter emails. GPT-4o-mini extracts one signal per distinct investable idea with tickers, themes, urgency, and sentiment." },
-      { title: "Signal router", time: "7:30 AM", summary: "Per signal × analyst: checks universe fence (sectors + industries + themes + marketCap, AND across dimensions, OR within). Watchlist + open positions bypass fence. Tags route with a reason code, scores relevance, multiplies by novelty, reserves 20% of slots for DISCOVERY." },
-      { title: "Morning brief", time: "7:45 AM", summary: "GPT-4o synthesizes today's routes (not yesterday's) into market context, portfolio alerts, watchlist updates, new opportunities, attention priority, and risk flags. Every cited signalId is validated against the day's route pool; hallucinations trigger retry." },
+      { title: "Domain monitors", time: "7:15 AM", summary: "Tracked websites checked via domain-filtered Sonar. Firecrawl extracts full articles into Artifact rows so the agent can deep-read the whole page later." },
+      { title: "Email ingest", time: "on receipt", summary: "Resend inbound webhook delivers newsletter emails. GPT-4o-mini extracts one signal per distinct investable idea, with tickers, themes, urgency, and sentiment." },
+      { title: "Signal router", time: "7:30 AM", summary: "Each Signal evaluated against every analyst's universe. Routes tagged with a reason code, scored, novelty-filtered, and capped per analyst (20% of slots reserved for discovery). Emits app/signal.routed for the Trigger Evaluator to consume." },
     ],
     tools: [
       {
@@ -276,7 +275,12 @@ export const TEAMS: Team[] = [
           { source: "finnhub", title: "Earnings calendar", description: "Companies reporting in the next 7 days.", type: "api", endpointOrPath: "/calendar/earnings?from={today}&to={+7d}", exampleOutput: "NVDA Mar 26, AAPL Mar 28, ..." },
         ],
       },
-      { name: "GPT-4o Brief Gen", provider: "internal", summary: "Synthesizes routed findings into structured analyst briefs." },
+      {
+        name: "Resend Inbound", provider: "internal", summary: "Inbound email webhook. Newsletter emails arrive via Resend; GPT-4o-mini extracts structured signals from the body.",
+        resources: [
+          { source: "internal", title: "Email ingest webhook", description: "Receives Resend email.received events. Pulls the full body, extracts one signal per distinct investable idea.", type: "internal", endpointOrPath: "app/api/intelligence/email-ingest/route.ts", exampleOutput: "1 newsletter → 3 signals (tickers, themes, urgency, sentiment)" },
+        ],
+      },
     ],
   },
 
