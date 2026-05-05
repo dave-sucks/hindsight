@@ -317,22 +317,20 @@ export function ToolCard({
 
 function SubStepRow({ step, index }: { step: SubStep; index: number }) {
   return (
-    <div className="flex items-start gap-2.5 py-1">
-      {step.time ? (
-        <Badge variant="outline" className="shrink-0 text-[10px] font-mono tabular-nums mt-0.5">
-          {step.time}
-        </Badge>
-      ) : (
-        <span className="text-[10px] text-muted-foreground/50 font-mono tabular-nums w-4 shrink-0 text-center mt-0.5">
-          {index + 1}
+    <div className="py-1.5 space-y-0.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm font-medium">
+          Step {index + 1}: {step.title}
         </span>
-      )}
-      <div className="flex-1 min-w-0">
-        <span className="text-xs font-medium">{step.title}</span>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          {step.summary}
-        </p>
+        {step.time && (
+          <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
+            {step.time}
+          </span>
+        )}
       </div>
+      <p className="text-sm text-muted-foreground leading-relaxed">
+        {step.summary}
+      </p>
     </div>
   );
 }
@@ -456,18 +454,21 @@ export function TeamSheetContent({ team }: { team: Team }) {
     setDialogOpen(true);
   }, []);
 
+  // Skip the schedule badge when it's just "On demand" — that adds no info.
+  const showSchedule = team.schedule && team.schedule !== "On demand";
+
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {/* Header — title is rendered by the parent SheetTitle, so don't duplicate it.
+          Subhead = the team's product-oriented summary; description below is prose. */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="text-sm font-semibold">{team.title}</h2>
-          {team.model && (
-            <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
-          )}
-          <Badge variant="outline" className="text-[10px]">{team.schedule}</Badge>
-        </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">
+        <p className="text-base font-medium leading-snug">{team.summary}</p>
+        {showSchedule && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="secondary">{team.schedule}</Badge>
+          </div>
+        )}
+        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
           {team.description}
         </p>
       </div>
@@ -484,7 +485,7 @@ export function TeamSheetContent({ team }: { team: Team }) {
         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
           Steps
         </p>
-        <div className="space-y-0.5">
+        <div className="space-y-2">
           {team.substeps.map((step, i) => (
             <SubStepRow key={i} step={step} index={i} />
           ))}
@@ -530,16 +531,18 @@ export function WorkflowStepCard({
   onOpenSheet: () => void;
 }) {
   const triggerSource = team.triggeredBy ? getTeam(team.triggeredBy) : null;
+  // Only show the schedule badge when there's something meaningful to surface
+  // — "On demand" alone adds no information.
+  const showSchedule = team.schedule && team.schedule !== "On demand";
   return (
     <Card className="p-0 overflow-hidden">
       <div className="flex items-start gap-3 px-4 py-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{team.title}</span>
-            {team.model && (
-              <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
+            {showSchedule && (
+              <Badge variant="secondary">{team.schedule}</Badge>
             )}
-            <Badge variant="outline" className="text-[10px]">{team.schedule}</Badge>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed mt-1">
             {team.summary}
@@ -587,13 +590,9 @@ export function AnalystsCard({
   return (
     <Card className="p-0 overflow-hidden">
       <div className="px-4 py-3 space-y-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium">Analysts</span>
-          <Badge variant="secondary" className="text-[10px]">GPT-4o</Badge>
-          <Badge variant="outline" className="text-[10px]">On demand</Badge>
-        </div>
+        <span className="text-sm font-medium">Analysts</span>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Create new analyst personas through a structured interview, or refine an existing one via a 4-lane edit flow.
+          Create a new analyst persona through a guided interview, or refine an existing one.
         </p>
         <div className="flex gap-2 pt-1">
           <Button variant="outline" size="sm" onClick={onOpenBuilder}>
