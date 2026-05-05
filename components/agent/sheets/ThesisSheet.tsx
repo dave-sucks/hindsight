@@ -23,7 +23,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
 import { StockLogo } from "@/components/StockLogo";
 import { TickBar, PriceGauge, type Tick } from "@/components/ui/gauge";
 import { Bell } from "lucide-react";
@@ -109,39 +108,12 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 // ── StatusPill ──
-// One render path. Single Badge with status dot + label, optional PnL%
-// right cell for Holding only. No fallbacks, no per-status switches —
-// the lookup table in lib/thesis-status.ts is the single source of truth.
+// Single Badge with status dot + label. One render path, no PnL right
+// cell, no per-status branches — same shape that appears on the
+// read-theses table, the carousel cards, the trade detail header.
 
-function StatusPill({
-  status,
-  position,
-}: {
-  status: ThesisStatus;
-  position: TriggersResponse["position"];
-}) {
+function StatusPill({ status }: { status: ThesisStatus }) {
   const display = THESIS_STATUS_DISPLAY[status];
-  const pnl = status === "ACTIVE" ? position?.unrealizedPnlPct : null;
-
-  if (pnl != null) {
-    const sign = pnl >= 0 ? "+" : "";
-    return (
-      <ButtonGroup className="cursor-default">
-        <Badge variant="secondary" className="rounded-r-none gap-1.5 font-normal">
-          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
-          {display.label}
-        </Badge>
-        <ButtonGroupSeparator />
-        <Badge variant="secondary" className="rounded-l-none font-normal">
-          <span className={cn("tabular-nums", pnl >= 0 ? "text-positive" : "text-negative")}>
-            {sign}
-            {pnl.toFixed(2)}%
-          </span>
-        </Badge>
-      </ButtonGroup>
-    );
-  }
-
   return (
     <Badge variant="secondary" className="gap-1.5 font-normal">
       <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
@@ -151,10 +123,9 @@ function StatusPill({
 }
 
 // ── PositionRow ──
-// Two stacked lines, no truncation:
-//   "Bought {N} shares at ${avg}, now trading at ${current}"   (body text)
-//   +$X ↗ N.NN%                                                (PriceChange, base size)
-// Live dot lives in the header status pill — no need to repeat it here.
+// Plain text, no card wrapper. Two stacked lines:
+//   "Bought {N} shares at ${avg}, now trading at ${current}"
+//   +$X ↗ N.NN%                                                (one size up)
 
 function PositionRow({
   position,
@@ -162,7 +133,7 @@ function PositionRow({
   position: NonNullable<TriggersResponse["position"]>;
 }) {
   return (
-    <div className="rounded-lg border bg-muted/40 px-3 py-2.5 space-y-1">
+    <div className="space-y-1">
       <p className="text-sm tabular-nums leading-relaxed">
         Bought {position.quantity.toFixed(1)} shares at{" "}
         <span className="font-medium">${position.avgCost.toFixed(2)}</span>
@@ -481,7 +452,7 @@ export function ThesisSheetBody({
 
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
-      {liveStatus ? <StatusPill status={liveStatus} position={position} /> : null}
+      {liveStatus ? <StatusPill status={liveStatus} /> : null}
 
       {/* ── Stock identity ───────────────────────────────────── */}
       <div className="flex items-center gap-3">

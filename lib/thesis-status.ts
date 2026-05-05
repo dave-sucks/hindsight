@@ -25,7 +25,10 @@ export interface ThesisStatusDisplay {
 export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = {
   ACTIVE: {
     label: "Holding",
-    dotClass: "bg-positive",
+    // Same dotClass as TRADE_STATUS_DISPLAY.OPEN so a held thesis and
+    // an open trade read identically. Single source of "this is a live
+    // holding" visual across the app.
+    dotClass: "bg-positive animate-pulse",
     tooltip: "Open position — thesis is active in the book",
   },
   WATCHING: {

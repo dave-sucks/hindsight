@@ -286,10 +286,10 @@ export default async function TradeDetailPage({
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default">
-                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status.dotClass}`} />
+                      <Badge variant="secondary" className="gap-1.5 font-normal cursor-default">
+                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", status.dotClass)} />
                         {status.label}
-                      </span>
+                      </Badge>
                     }
                   />
                   <TooltipContent side="bottom">{status.tooltip}</TooltipContent>
