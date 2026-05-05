@@ -395,7 +395,40 @@ export const morningResearch = inngest.createFunction(
           // chance to write missed theses. But we no longer override the
           // final status to FAILED if record_run_summary did fire — the
           // run completed its decision contract.
-          const finalStatus = hasWork ? "COMPLETE" : "FAILED";
+          // Trade-execution gate (added 2026-05-05). primary_decision=ADD or
+          // ROTATE means the agent committed to a new position; if no trade
+          // actually landed (tradesPlaced=0), the agent narrated the trade
+          // in the run summary's decision_rationale without calling
+          // place_trade. Same recurring failure pattern as narrated theses
+          // (Stage 3) and narrated watchlist updates (Stage 4) — both have
+          // explicit prompt prohibitions plus this kind of programmatic
+          // backstop. Captured in CLAUDE.md's "RECURRING BUGS". Without this
+          // gate the run shows status=COMPLETE while no order was sent to
+          // Alpaca; observed 4-of-5 ADD/ROTATE decisions in 2026-04-29 →
+          // 05-01 window producing zero trades despite COMPLETE status.
+          let tradeExecutionGap: string | null = null;
+          if (ranSummary && tradesPlaced === 0) {
+            const summaryEvent = await prisma.runEvent.findFirst({
+              where: { runId: run.id, type: "run_summary" },
+              orderBy: { createdAt: "desc" },
+              select: { payload: true },
+            });
+            const primaryDecision =
+              summaryEvent?.payload && typeof summaryEvent.payload === "object"
+                ? (summaryEvent.payload as Record<string, unknown>).primary_decision
+                : undefined;
+            if (primaryDecision === "ADD" || primaryDecision === "ROTATE") {
+              const placeTradeCount = toolStats["place_trade"]?.count ?? 0;
+              tradeExecutionGap = `primary_decision=${primaryDecision} but no trades placed (place_trade tool calls: ${placeTradeCount}). Trade was narrated in rationale rather than executed.`;
+            }
+          }
+
+          const finalStatus =
+            tradeExecutionGap !== null
+              ? "FAILED"
+              : hasWork
+                ? "COMPLETE"
+                : "FAILED";
           // Keep processViolationFinal for the failure-message branch
           // below so the operator still sees diagnostic info on real
           // failures (where record_run_summary didn't fire).
@@ -407,11 +440,13 @@ export const morningResearch = inngest.createFunction(
             data: { status: finalStatus, completedAt: new Date() },
           });
           if (beltResult.count > 0 && finalStatus === "FAILED") {
-            const reason = processViolationFinal
-              ? `process violation: researched ${researchedCount} tickers but only recorded ${thesisCount} theses`
-              : !ranSummary
-                ? "agent stopped before record_run_summary — no decision captured"
-                : "no work output (no theses, no trades, no run summary)";
+            const reason = tradeExecutionGap
+              ? `trade execution gap: ${tradeExecutionGap}`
+              : processViolationFinal
+                ? `process violation: researched ${researchedCount} tickers but only recorded ${thesisCount} theses`
+                : !ranSummary
+                  ? "agent stopped before record_run_summary — no decision captured"
+                  : "no work output (no theses, no trades, no run summary)";
             console.warn(
               `[morning-research] ⚠️ ${config.name} run=${run.id} FAILED — ${reason}. Steps: ${steps.length}, tool calls: ${toolCalls}, researched: ${researchedCount}, theses: ${thesisCount}, decisions: ${decisionCount}.`
             );
@@ -431,6 +466,7 @@ export const morningResearch = inngest.createFunction(
                     decisionCount,
                     ranSummary,
                     processViolation: processViolationFinal,
+                    tradeExecutionGap,
                   } as object,
                 },
               });

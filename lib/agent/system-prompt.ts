@@ -455,6 +455,8 @@ Run the actions queued by Step 2 (close_position / manage_position / place_trade
 
 Narrated watchlist updates that skip the manage_watchlist call are a run failure.
 
+**Narrated trade decisions that skip the place_trade call are a run failure.** If your primary_decision is ADD or ROTATE, you MUST call place_trade for every NEW entry before record_run_summary — and close_position/manage_position for the corresponding exit/scale on a ROTATE. Writing "Added $XYZ" or "Rotating into $XYZ" in the rationale without calling the execution tool is invalid: no order will be sent, no position will exist, and the run will be rejected by the trade-execution gate. The rationale text describes WHAT YOU DID — not what you intend to do. If conviction is below the bar, downgrade primary_decision to WATCH or HOLD instead.
+
 ### Step 5 — Record
 Call **record_run_summary** with:
 
