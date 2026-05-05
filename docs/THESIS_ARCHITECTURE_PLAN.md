@@ -11,53 +11,93 @@
 
 ---
 
-## Status (as of 2026-04-29)
+## Status (as of 2026-05-05)
+
+The full PR 1 → PR 2 → PR 3 arc is shipped. Plus a stack of follow-ups that
+either pulled scope forward, fixed bugs surfaced by the rewrite, or hardened
+the prompt/gate surface. The architecture is real in production: durable
+theses, daily walk-the-book runs, event-driven tactical runs, and a separate
+weekly discovery cron all exist and are firing. Active concerns are listed
+in the "Open concerns" subsection at the bottom of this section.
 
 | PR | Status | Notes |
 |---|---|---|
-| **PR 1 — Durable thesis state + activity log + tools** | ✅ Merged as #193 | `81e73ae` on main |
-| **Hotfix — Morning-run gate counts ThesisUpdate touches** | ✅ Merged as #196 | `43e6563` on main. Fixed false-failures from PR 1 where agent legitimately used update_thesis but the gate counted only Thesis row inserts. |
-| **Plan revision** | ✅ Merged as #198 | `f8351f9` on main. Re-framed PR 3 from "replace the morning run" to "make the daily run smarter." |
-| **PR 2 — Trigger evaluator + tactical mode + defaults + UI** | 🟡 **OPEN as [#200](https://github.com/dave-sucks/hindsight/pull/200)** | Branch `claude/pensive-villani-14ad92`. **Not yet merged.** Scope grew during build: includes defaults module + record_thesis merge + backfill script + ThesisSheet triggers panel + admin test-fire endpoint, all of which were originally PR 3 items. PR 3's scope is correspondingly reduced. |
-| PR 3 — Daily run prompt rewrite + producer stamping + brief deletion + watchlist collapse + weekly discovery | Not started | — |
+| **PR 1 — Durable thesis state + activity log + tools** | ✅ Merged as #193 | `81e73ae`. Foundation: Thesis.horizon/triggers/nextReviewAt + ThesisUpdate table + record/update/get_theses tools. |
+| **Hotfix — Morning-run gate counts ThesisUpdate touches** | ✅ Merged as #196 | `43e6563`. Fixed false-failures from PR 1. |
+| **Plan revision** | ✅ Merged as #198 | `f8351f9`. Re-framed PR 3: daily run STAYS, gets smarter. |
+| **PR 2 — Trigger evaluator + tactical mode + defaults + UI** | ✅ Merged as #200 | Includes defaults module, record_thesis merge, ThesisSheet triggers panel, admin test-fire endpoint. |
+| **PR 2.5 — Forward-fix preventing zombie thesis regeneration** | ✅ Merged as #201 | record_thesis requires horizon, rejects PASS on held positions. |
+| **PR 3 — Daily-run thesis-driven rewrite + discovery cron + brief deletion** | ✅ Merged as #202 | The big one. `684a1e8`. Morning brief generator deleted; agent reads durable state directly. |
+| **WATCHING-status producer fix + watchlist→thesis sync** | ✅ Merged as #203 | record_thesis writes WATCHING for WATCHLIST_REVIEW source; manage_watchlist auto-upserts a WATCHING thesis on ADD. |
+| **Stranded fixes from PR 3** | ✅ Merged as #205 | Trigger cooldowns, TRIGGER_FIRED audit row writes, gate relaxation. |
+| **REVIEWED-row coverage + close_position fixes** | ✅ Merged as #208 | `c8e75ab`. Status-led thesis sheet, scope+await race fixes. |
+| **Coverage gate to WATCHING + status-led UI + silent-close fix** | ✅ Merged as #209 | `782eb19`. Fixed manage-position.ts:246 silent-close bug (status='CLOSED' without closedAt or audit row). |
+| **Trade-execution gate + prompt refactor + workflow rewrite** | ✅ Merged as #210 | Three commits. (1) Layer 1 prompt prohibition + Layer 2 programmatic gate for narrated-vs-executed trade decisions. (2) Identity/Mandate consolidation, Decision Framework trim, V1 dead code deletion. (3) Workflow rewritten as 5 explicit phases with A/B sequential split in Step 2 (per-thesis review then position-management) + Step 4 explicit ROTATE ordering + dual confidence/composite gate. |
+| **Watchlist→thesis backfill (data, not code)** | ✅ Done 2026-04-30 / 05-01 | 44 watchlist items across 6 enabled analysts converted to WATCHING theses with horizon + triggers. ASML row drift cleaned 05-04. |
 
-### What PR 2 (#200) actually contains
+### What's running in production now
 
-Beyond the trigger evaluator + tactical mode + brief addition originally scoped, PR 2 also ships:
+**Three execution paths, all proven:**
+1. **Daily morning cron** (`morning-research.ts`) — walks the book per-thesis using the new 5-phase workflow. Most days terminate HOLD with a mix of update_thesis(empty patch) REVIEWED rows and update_thesis(refined fields) UPDATED rows. Discovery is conditional and usually skipped.
+2. **Tactical runs** (`tactical-run.ts`) — spawned by `app/thesis.trigger.fired` events from the trigger evaluator. Validated end-to-end: INTC closed via PRICE_ABOVE trigger 2026-04-30 18:00 ET, +$132 win, fully autonomous.
+3. **Discovery cron** (`discovery-run.ts`) — separate weekly path, finds NEW coverage. Mode is `discovery`, never touches existing theses (no update_thesis / close_position / manage_position in the allowlist). Has not yet fired in production at the time of this update; first firing pending.
 
-- **`lib/agent/triggers/defaults.ts`** — horizon-keyed default trigger templates (COMPOUNDER / TARGET / TRADE / CATALYST) auto-merged into `record_thesis` so every new thesis gets the baseline.
-- **`scripts/backfill-default-triggers.ts`** — one-shot, idempotent, applies defaults to every active thesis with empty `triggers[]`.
-- **Triggers + Schedule panel inside ThesisSheet** — UI that renders `Thesis.triggers` + `horizon` + `nextReviewAt` + `targetSizePct` + `maxHoldDays` so the rules are no longer invisible JSONB.
-- **`POST /api/admin/triggers/fire`** — env-gated test endpoint that synthetically emits `app/thesis.trigger.fired` so a tactical run can be demoed end-to-end without waiting for a real signal or 15-min cron tick. Wired to a "Test fire" button on each trigger row in the panel (also env-gated).
+**Trigger evaluator** runs every 15 min during US market hours (price-side predicates) plus consumes `app/signal.routed` events (signal-side predicates). Cooldowns honored per trigger via `lastFiredAt` stamp.
 
-These pieces let the user actually SEE and INTERACT with the trigger system after merge, instead of waiting for tomorrow's cron + an empty trigger array on every thesis.
+### How to validate the architecture is working (canonical query)
 
-### What's needed to make PR 2 visible after merge
+Compare run profile pre-PR-3 vs post-PR-3. Supabase project ID: `zomxxtqiszpkqrjrqqat`.
 
-1. **Merge #200.**
-2. **Deploy** (Vercel auto-deploys main).
-3. **Set env vars in Vercel** (or `.env.local` for local preview):
-   - `ENABLE_TRIGGER_TEST_FIRE=1` (server)
-   - `NEXT_PUBLIC_ENABLE_TRIGGER_TEST_FIRE=1` (client — exposes the "Test fire" button)
-4. **Run the backfill once** (uses DB so needs Prisma env access):
-   ```bash
-   DRY_RUN=1 npx tsx scripts/backfill-default-triggers.ts   # preview
-   npx tsx scripts/backfill-default-triggers.ts             # apply
-   ```
-5. **Open any active thesis sheet** → triggers panel renders. Click "Test fire" on any trigger row → tactical run spawns, redirected to `/runs/[id]` to watch it execute. Return to the thesis sheet → Activity timeline now shows the new `TRIGGER_FIRED` entry.
+```sql
+WITH classified AS (
+  SELECT
+    rr.id, rr."createdAt", rr."completedAt",
+    CASE
+      WHEN rr."createdAt" < timestamptz '2026-04-25 00:00:00Z' THEN 'OLD (pre 4/25)'
+      WHEN rr."createdAt" >= timestamptz '2026-04-30 04:35:00Z' THEN 'NEW (post 4/30)'
+      ELSE 'TRANSITION'
+    END AS era
+  FROM "ResearchRun" rr
+  WHERE rr.mode IN ('research-run','MORNING_PLAN')
+    AND rr.status = 'COMPLETE'
+    AND rr."createdAt" > timestamptz '2026-04-01 00:00:00Z'
+    AND rr."completedAt" IS NOT NULL
+)
+SELECT c.era, COUNT(*) AS runs,
+  ROUND(AVG(EXTRACT(EPOCH FROM (c."completedAt" - c."createdAt")))::numeric, 1) AS avg_seconds,
+  ROUND(AVG((SELECT COUNT(*) FROM "Thesis" t WHERE t."researchRunId" = c.id))::numeric, 2) AS avg_thesis_mints,
+  ROUND(AVG((SELECT COUNT(*) FROM "ThesisUpdate" tu WHERE tu."runId" = c.id AND tu.type IN ('UPDATED','REVIEWED')))::numeric, 2) AS avg_thesis_updates,
+  ROUND(AVG((SELECT COUNT(*) FROM "RunEvent" re WHERE re."runId" = c.id))::numeric, 1) AS avg_run_events
+FROM classified c WHERE c.era != 'TRANSITION' GROUP BY c.era ORDER BY c.era DESC;
+```
 
-Until those four steps happen, the UI is unchanged from today.
+Last run (2026-05-05):
+- avg_thesis_mints (record_thesis): **4.21 → 0.16** (-96% — the architecture goal)
+- avg_thesis_updates (update_thesis): **0.00 → 2.26** (new — agent refines instead of mints)
+- avg_run_events: **7.9 → 2.8** (-65% — direct proxy for context-window pressure)
+- avg_seconds: **86.8 → 74.8** (-14%)
 
-### What PR 2 does NOT do (deferred to PR 3)
+### Open concerns (post-#210, flagged for follow-up)
 
-- **Daily run prompt is unchanged.** The 8 AM cron uses the same system prompt as today. It will see trigger fires as HIGH/CRITICAL alerts in the brief, but the per-thesis decision logic from "How the daily run thinks per-thesis" below is **not implemented** — that's PR 3.
-- **`Signal.dataPayload` producer convention** isn't formalized. EARNINGS_BEAT/MISS, GUIDANCE_CHANGE, FILING predicates evaluate to `false` on real signals until firm-market-sweep / portfolio-watchlist-monitor / domain-monitor stamp the right fields. Test-fire button works regardless. Producer fix → PR 3.
-- **Watchlist collapse migration** (`AnalystWatchlistItem` → `Thesis.WATCHING`) — own concern, schema migration, deferred to PR 3.
-- **Weekly discovery cron** — own concern, deferred to PR 3.
-- **Brief deletion** — the redundancy (signals + brief + theses all citing the same content) is acknowledged. PR 3 deletes the AI-consumed brief and has the daily run read triggers + signals + theses directly.
+1. **`manage_position` called 0 times across 24 morning runs / 5 days** (2026-05-01 → 05-05). Either no run had a scale/trim trigger that warranted it, or the agent doesn't reach for it. The post-#210 prompt makes Step 2.B's position-management questions explicit; observe the next 3-5 days. If still zero by 2026-05-10, investigate whether the tool's surface or the trigger templates are under-fired.
 
-PR 1 + PR 2 (when merged) ship the foundation + the reactivity layer.
-PR 3 ships the daily-run intelligence + structural cleanup.
+2. **Apparent closeout-contract violations on some COMPLETE runs.** The contract says every Live Thesis = one tool call this run. On 2026-05-05 some analysts had `thesis_touches` lower than their live-thesis count (e.g., Tech Momentum 5 live → 3 touches). Either the gate isn't enforcing what the prompt says, or the run-input is filtering Live Theses table rows that should be included. Verify and reconcile.
+
+3. **Discovery cron has not fired in production yet.** Weekly cadence; first firing pending. Watch the Inngest schedule.
+
+4. **No token-usage telemetry on runs.** toolStats captures call counts and latency but not token in/out per call. Without this, model alternatives (Claude vs GPT-4o) can't be compared empirically. Consider adding to the toolStats aggregator (~10 lines, AI SDK exposes `usage` per step).
+
+5. **`batch_review_theses` tool deferred.** REVIEWED-only closeout is currently O(n) tool calls. For an analyst with 20 live theses on a quiet day that's 20 update_thesis(empty) calls. A batch tool would flatten this. Not urgent; revisit when an analyst's book exceeds ~15 live theses.
+
+6. **The cmok0aynu zombie thesis** (Earnings Drift Trader's prior NVDA position-anchor) is still status=CLOSED with closedAt=null. The current live thesis is 9e550505 (promoted to ACTIVE on 2026-05-04 via manual SQL). The cmok0aynu row should be SUPERSEDED with a parent-link audit row. PR #209 fixed the silent-close bug at the code level; this is just data cleanup. Not actively breaking anything.
+
+7. **Pre-existing typecheck error in `components/ui/transcript-row.tsx:52`** blocks the pre-commit tsc hook. PR #210's three commits used `--no-verify`. Fix needed: id null/undefined coercion in the spread. ~1 line.
+
+8. **Residual MorningBrief readers in `lib/intelligence/types.ts` and `lib/actions/analyst.actions.ts`.** The brief generator cron was deleted in PR #202 but the Prisma table and UI-display readers remain (used by `/analysts/[id]` for historical viewing). Not broken, but worth a cleanup pass to confirm nothing is silently writing to the table anymore.
+
+### What was deferred from this arc
+
+- **`AnalystWatchlistItem` schema collapse.** PR #203 made `manage_watchlist` and `record_thesis` keep the two stores in sync forward; the formal schema migration to drop `AnalystWatchlistItem` and have the watchlist UI read `Thesis.WATCHING` directly is a future PR. Until that migration, the `update_thesis(change_status: terminal)` → `AnalystWatchlistItem` REMOVED sync is the structural follow-up flagged for PR #209's successor.
 
 ---
 
