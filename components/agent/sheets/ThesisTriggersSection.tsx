@@ -100,56 +100,18 @@ export interface TriggersResponse {
 }
 
 // ── Predicate helpers ──────────────────────────────────────────────────
-// Single sentence per predicate — the right cell is just plain readable
-// text in foreground. No SCREAMING_CASE reaches the user.
+// `predicateSentence` and `actionLabel` live in lib/agent/triggers/format
+// (single source — server-side producer + sheet banner + trigger pills
+// all read from the same module).
 
-/** The full readable sentence for a predicate, e.g. "Price below $88". */
+import {
+  predicateSentence as sharedPredicateSentence,
+  actionLabel as sharedActionLabel,
+} from "@/lib/agent/triggers/format";
+import type { TriggerPredicate as SharedTriggerPredicate } from "@/lib/agent/triggers/types";
+
 function predicateSentence(p: TriggerPredicate): string {
-  switch (p.kind) {
-    case "PRICE_BELOW":
-      return `Price below $${p.level}`;
-    case "PRICE_ABOVE":
-      return `Price above $${p.level}`;
-    case "PRICE_MOVE_PCT":
-      return `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% over ${p.window}`;
-    case "VS_SMA":
-      return `Price ${p.direction?.toLowerCase()} ${p.period}-day SMA`;
-    case "RSI":
-      return `RSI ${p.direction?.toLowerCase()} ${p.threshold}`;
-    case "SIGNAL_TYPE": {
-      const parts: string[] = [];
-      if (p.sentiment) parts.push(p.sentiment.toLowerCase());
-      const kind = p.signalType
-        ? p.signalType.toLowerCase().replace(/_/g, " ")
-        : "signal";
-      parts.push(kind);
-      let s = parts.join(" ");
-      if (p.minUrgency) s += ` ≥${p.minUrgency.toLowerCase()} urgency`;
-      return s.charAt(0).toUpperCase() + s.slice(1);
-    }
-    case "EARNINGS_BEAT":
-      return p.minSurprisePct
-        ? `Earnings beat ≥${p.minSurprisePct}%`
-        : "Any earnings beat";
-    case "EARNINGS_MISS":
-      return p.minSurprisePct
-        ? `Earnings miss ≥${p.minSurprisePct}%`
-        : "Any earnings miss";
-    case "GUIDANCE_CHANGE":
-      return `Guidance ${p.direction?.toLowerCase()}`;
-    case "FILING":
-      return `${p.formType} filed`;
-    case "TIME_ELAPSED":
-      return `${p.days} days elapsed`;
-    case "REVIEW_DATE_HIT":
-      return "Review date hit";
-    case "AND":
-      return `All of ${(p.predicates ?? []).length} conditions`;
-    case "OR":
-      return `Any of ${(p.predicates ?? []).length} conditions`;
-    default:
-      return p.kind;
-  }
+  return sharedPredicateSentence(p as SharedTriggerPredicate);
 }
 
 /** Long-form description for the hover popover. */
@@ -238,19 +200,9 @@ function actionTintClass(action: string): string {
 }
 
 function actionLabel(action: string): string {
-  switch (action) {
-    case "EXIT":
-      return "Exit position";
-    case "ADD":
-      return "Scale in";
-    case "TRIM":
-      return "Trim position";
-    case "MOVE_STOP":
-      return "Move stop";
-    case "REVIEW":
-    default:
-      return "Review";
-  }
+  // Shared module returns lowercase verb phrases; capitalize for pill display.
+  const phrase = sharedActionLabel(action);
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
 // ── Date formatters ─────────────────────────────────────────────────────
