@@ -23,10 +23,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
 import { StockLogo } from "@/components/StockLogo";
 import { TickBar, PriceGauge, type Tick } from "@/components/ui/gauge";
-import { Bell } from "lucide-react";
+import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import {
@@ -109,39 +108,12 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 // ── StatusPill ──
-// One render path. Single Badge with status dot + label, optional PnL%
-// right cell for Holding only. No fallbacks, no per-status switches —
-// the lookup table in lib/thesis-status.ts is the single source of truth.
+// Single Badge with status dot + label. One render path, no PnL right
+// cell, no per-status branches — same shape that appears on the
+// read-theses table, the carousel cards, the trade detail header.
 
-function StatusPill({
-  status,
-  position,
-}: {
-  status: ThesisStatus;
-  position: TriggersResponse["position"];
-}) {
+function StatusPill({ status }: { status: ThesisStatus }) {
   const display = THESIS_STATUS_DISPLAY[status];
-  const pnl = status === "ACTIVE" ? position?.unrealizedPnlPct : null;
-
-  if (pnl != null) {
-    const sign = pnl >= 0 ? "+" : "";
-    return (
-      <ButtonGroup className="cursor-default">
-        <Badge variant="secondary" className="rounded-r-none gap-1.5 font-normal">
-          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
-          {display.label}
-        </Badge>
-        <ButtonGroupSeparator />
-        <Badge variant="secondary" className="rounded-l-none font-normal">
-          <span className={cn("tabular-nums", pnl >= 0 ? "text-positive" : "text-negative")}>
-            {sign}
-            {pnl.toFixed(2)}%
-          </span>
-        </Badge>
-      </ButtonGroup>
-    );
-  }
-
   return (
     <Badge variant="secondary" className="gap-1.5 font-normal">
       <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
@@ -151,10 +123,9 @@ function StatusPill({
 }
 
 // ── PositionRow ──
-// Two stacked lines, no truncation:
-//   "Bought {N} shares at ${avg}, now trading at ${current}"   (body text)
-//   +$X ↗ N.NN%                                                (PriceChange, base size)
-// Live dot lives in the header status pill — no need to repeat it here.
+// Plain text, no card wrapper. Two stacked lines:
+//   "Bought {N} shares at ${avg}, now trading at ${current}"
+//   +$X ↗ N.NN%                                                (one size up)
 
 function PositionRow({
   position,
@@ -162,7 +133,7 @@ function PositionRow({
   position: NonNullable<TriggersResponse["position"]>;
 }) {
   return (
-    <div className="rounded-lg border bg-muted/40 px-3 py-2.5 space-y-1">
+    <div className="space-y-1">
       <p className="text-sm tabular-nums leading-relaxed">
         Bought {position.quantity.toFixed(1)} shares at{" "}
         <span className="font-medium">${position.avgCost.toFixed(2)}</span>
@@ -187,42 +158,57 @@ function PositionRow({
 }
 
 // ── TriggerFiredBanner ──
-// Most-recent TRIGGER_FIRED audit row across the past 7d for THIS thesis
-// — not specific to the run that opened the sheet. It answers "is this
-// thesis being acted on right now?" regardless of how you got here.
-// No border, matches PositionRow's body shape: one sentence on top,
-// metadata + view-run link in a flex row below.
+// Most-recent TRIGGER_FIRED audit row for THIS thesis across the past
+// 7d (NOT scoped to the run that opened the sheet — answers "is this
+// thesis being acted on" globally). Card shape mirrors the Price
+// Targets card below it: same bg-muted/40, p-2, gap-6, header line.
+//
+// Body composes the sentence at render time from the trigger's
+// predicate + action so the user reads English ("Price below $5.92 —
+// review") regardless of what the producer wrote in `fire.summary`.
 
 function TriggerFiredBanner({
   fire,
+  triggers,
 }: {
   fire: NonNullable<TriggersResponse["recentFire"]>;
+  triggers: TriggersResponse["triggers"];
 }) {
   const router = useRouter();
+  const trigger = triggers.find((t) => t.id === fire.triggerId);
+  // Fall back to the producer's persisted summary if we can't find the
+  // matching trigger row (predicate may have been edited / removed).
+  const sentence = trigger
+    ? describeTriggerFire(trigger as Parameters<typeof describeTriggerFire>[0])
+    : fire.summary;
+
   return (
-    <div className="rounded-lg bg-muted/40 px-3 py-2.5 space-y-1">
-      <div className="flex items-start gap-2">
-        <Bell className="size-4 text-amber-500 shrink-0 mt-0.5" />
-        <p className="text-sm leading-relaxed flex-1 min-w-0">
-          <span className="font-medium">Trigger fired:</span> {fire.summary}
-        </p>
+    <Card className="bg-muted/40 p-2 gap-6">
+      <p className="text-sm font-medium">Most recent trigger</p>
+
+      <div className="space-y-2">
+        <div className="flex items-start gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shrink-0 mt-1.5" />
+          <p className="text-sm leading-relaxed flex-1 min-w-0">{sentence}</p>
+        </div>
+
+        <div className="flex items-center gap-2 pl-3.5 text-xs text-muted-foreground">
+          <span>{relativeTime(fire.timestamp)}</span>
+          {fire.runId ? (
+            <>
+              <span className="opacity-40">·</span>
+              <button
+                type="button"
+                onClick={() => router.push(`/runs/${fire.runId}`)}
+                className="hover:underline hover:text-foreground transition-colors"
+              >
+                View run →
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
-      <div className="flex items-center gap-2 pl-6 text-xs text-muted-foreground">
-        <span>{relativeTime(fire.timestamp)}</span>
-        {fire.runId ? (
-          <>
-            <span className="opacity-40">·</span>
-            <button
-              type="button"
-              onClick={() => router.push(`/runs/${fire.runId}`)}
-              className="text-amber-500 hover:underline"
-            >
-              View run →
-            </button>
-          </>
-        ) : null}
-      </div>
-    </div>
+    </Card>
   );
 }
 
@@ -481,7 +467,7 @@ export function ThesisSheetBody({
 
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
-      {liveStatus ? <StatusPill status={liveStatus} position={position} /> : null}
+      {liveStatus ? <StatusPill status={liveStatus} /> : null}
 
       {/* ── Stock identity ───────────────────────────────────── */}
       <div className="flex items-center gap-3">
@@ -506,7 +492,9 @@ export function ThesisSheetBody({
       {/* Surfaces the most-recent TRIGGER_FIRED audit row from the past
           7 days. Crystal clear what happened + when + a link to the
           run the agent took action in. */}
-      {recentFire ? <TriggerFiredBanner fire={recentFire} /> : null}
+      {recentFire ? (
+        <TriggerFiredBanner fire={recentFire} triggers={state?.triggers ?? []} />
+      ) : null}
 
       {/* ── Summary ───────────────────────────────────────────── */}
       {summaryText && (

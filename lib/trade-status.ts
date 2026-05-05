@@ -52,9 +52,11 @@ export const TRADE_STATUS_DISPLAY: Record<TradeStatus, TradeStatusDisplay> = {
   },
   OPEN: {
     label: "Holding",
-    // Blue + blinking so an active position is visually distinct from
-    // closed/idle states. "Holding" is the most common status in the UI
-    // and the muted gray didn't signal "this is live" strongly enough.
+    // Blue pulse — the canonical "live, open" indicator. Reserved for
+    // active positions; green is for CLOSED_WIN (terminal profit) and
+    // red is for CLOSED_LOSS / INVALIDATED. Same dot used by the trade
+    // detail header, the thesis sheet, the carousel cards, the
+    // read-theses table.
     dotClass: "bg-blue-500 animate-pulse",
     timeLabel: (c) => (c.filledAt ? `Filled ${fmt(c.filledAt)}` : `Opened ${fmt(c.placedAt)}`),
   },

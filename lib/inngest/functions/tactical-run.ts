@@ -22,6 +22,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -45,44 +46,6 @@ function findTriggerById(triggersJson: unknown, id: string): Trigger | null {
   const found = parsed.data.find((t) => t.id === id);
   if (!found || typeof found.id !== "string") return null;
   return found as Trigger;
-}
-
-/**
- * Human-readable one-liner for a trigger's predicate. Used in the kickoff
- * chat message so the run replay shows WHY the run fired. Mirrors the
- * format the TRIGGER_FIRED audit row uses.
- */
-function describeTriggerPredicate(trigger: Trigger): string {
-  const p = trigger.predicate;
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-      return `price above $${p.level}`;
-    case "PRICE_BELOW":
-      return `price below $${p.level}`;
-    case "PRICE_MOVE_PCT":
-      return `${p.direction === "UP" ? "+" : "-"}${p.pct}% over ${p.window}`;
-    case "VS_SMA":
-      return `price ${p.direction.toLowerCase()} ${p.period}d SMA`;
-    case "RSI":
-      return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
-    case "SIGNAL_TYPE":
-      return `${p.signalType} signal${p.sentiment ? ` (${p.sentiment.toLowerCase()})` : ""}`;
-    case "EARNINGS_BEAT":
-      return `earnings beat${p.minSurprisePct ? ` ≥${p.minSurprisePct}%` : ""}`;
-    case "EARNINGS_MISS":
-      return `earnings miss${p.minSurprisePct ? ` ≥${p.minSurprisePct}%` : ""}`;
-    case "GUIDANCE_CHANGE":
-      return `guidance ${p.direction.toLowerCase()}`;
-    case "FILING":
-      return `${p.formType} filing`;
-    case "TIME_ELAPSED":
-      return `${p.days}d elapsed`;
-    case "REVIEW_DATE_HIT":
-      return `review date hit`;
-    case "AND":
-    case "OR":
-      return `${p.predicates.length} compound conditions (${p.kind})`;
-  }
 }
 
 // ── Inngest function ───────────────────────────────────────────────────
@@ -270,9 +233,13 @@ export const tacticalRun = inngest.createFunction(
     // responded." Without this, RunInput.triggersFiredSinceLastRun
     // returns empty even when triggers genuinely fired.
     await step.run("write-trigger-fired", async () => {
+      // Persist a human-readable sentence — same format the sheet's
+      // banner renders. Old SCREAMING_SNAKE_CASE summaries were
+      // unreadable ("REVIEW trigger matched: PRICE_BELOW (price/time)").
+      const baseSentence = describeTriggerFire(trigger as Trigger);
       const summary = signal
-        ? `${trigger.action} trigger matched: ${fired.predicateKind} on ${signal.type} signal "${signal.headline.slice(0, 100)}"`
-        : `${trigger.action} trigger matched: ${fired.predicateKind} (price/time)`;
+        ? `${baseSentence} (signal: "${signal.headline.slice(0, 100)}")`
+        : baseSentence;
       await prisma.thesisUpdate.create({
         data: {
           thesisId: thesis.id,
@@ -339,19 +306,17 @@ export const tacticalRun = inngest.createFunction(
       });
 
       // Build the kickoff message so the chat replay shows WHY this run
-      // fired without the user having to dig. Predicate text mirrors the
-      // TRIGGER_FIRED audit row format, kept short on purpose — the agent
-      // gets the full predicate via the system prompt.
+      // fired without the user having to dig. Same English sentence the
+      // audit row stores so the chat reads naturally.
       // Casts mirror the existing pattern in this file — ctx is loaded
-      // via step.run which Inngest types as unknown; the rest of the
-      // function already accesses these as direct fields.
+      // via step.run which Inngest types as unknown.
       const triggerTyped = trigger as Trigger;
-      const predicateText = describeTriggerPredicate(triggerTyped);
+      const fireSentence = describeTriggerFire(triggerTyped);
       const signalSuffix = signal
-        ? ` Signal: ${(signal as { type: string }).type} — "${(signal as { headline: string }).headline.slice(0, 120)}"`
+        ? ` Signal: "${(signal as { headline: string }).headline.slice(0, 120)}"`
         : "";
       const userPrompt =
-        `Tactical run on $${(thesis as { ticker: string }).ticker}. Trigger fired: ${triggerTyped.action} · ${predicateText}.${signalSuffix} ` +
+        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${signalSuffix} ` +
         `Validate, decide, act if warranted, then close out via update_thesis.`;
       try {
         const { steps, response } = await generateText({
