@@ -6,6 +6,7 @@ import { AgentChat } from "@/components/agent/AgentChat";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 import { getRunSourcesData } from "@/lib/actions/run-sources.actions";
+import { getTeamForRunMode } from "@/lib/agent/workflow-registry";
 import type { UIMessage } from "ai";
 import type { TranscriptRowData } from "@/components/ui/transcript-row";
 
@@ -154,7 +155,7 @@ export default async function RunPage({
             theses={isPodcastSegmentRun ? [] : theses}
             transcript={transcriptForChat}
             headerAction={
-              <HowItWorksSheet flow="agent">
+              <HowItWorksSheet flow={getTeamForRunMode(run.mode)}>
                 <ScanSearch className="h-4 w-4" />
               </HowItWorksSheet>
             }

@@ -25,8 +25,9 @@ Built for one user now, marketed later.
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
 - Redirects to /runs/[id] → renders AgentThread component
 - AgentThread uses AI SDK v6 useChat → POST /api/agent/research-run
-- GPT-4o (maxSteps 50, temperature 0.2) + 19 tools autonomously
-  researches, generates theses, places trades via Alpaca
+- GPT-4o (maxSteps 65, temperature 0.2) + the full tool catalog
+  autonomously researches, updates theses, manages positions, and
+  places trades via Alpaca
 - Tools render via ToolCallGroup → ToolCallRow dispatching on result.ui
 - All research persisted to DB via tool execute functions
 - Morning cron (8 AM ET) runs same agent via generateText
@@ -68,9 +69,9 @@ reach analysts via three orthogonal paths. Pick the right one by intent, don't
 add a fourth.
 
 1. **Subscription push** — `AgentConfig.feeds` includes the aggregate's type.
-   The full firehose routes into the analyst's morning brief and `read_signals`
-   automatically. Earnings Catalyst archetype → `feeds:["EARNINGS_CALENDAR"]`;
-   Momentum Breakout → `feeds:["MARKET_MOVERS_GAINERS","MARKET_MOVERS_ACTIVES"]`.
+   The full firehose routes into `read_signals` automatically. Earnings
+   Catalyst archetype → `feeds:["EARNINGS_CALENDAR"]`; Momentum Breakout
+   → `feeds:["MARKET_MOVERS_GAINERS","MARKET_MOVERS_ACTIVES"]`.
 
 2. **Universe-intersection push** — the aggregate's tickers intersect with the
    analyst's watchlist + open positions (router-side). Even an analyst with no
@@ -87,14 +88,17 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 `read_knowledge_library` and includes the matching feeds in `suggest_config`.
 
 ### V3 Intelligence Pipeline (background, pre-run)
-- 5 Inngest jobs run 6:30–7:45 AM ET before analysts wake up
+- 4 Inngest jobs run 6:30–7:30 AM ET before analysts wake up
 - Firm market sweep: Perplexity Sonar + FMP movers + Finnhub earnings
 - Portfolio/watchlist monitor: Sonar per-ticker searches
 - Domain monitor: domain-filtered Sonar + Firecrawl extraction
-- Signal router: scores and routes signals to analysts
-- Morning brief generator: GPT-4o synthesizes per-analyst briefs
-- Agent reads pre-gathered intelligence via read_morning_brief,
-  read_signals, read_artifact tools instead of rediscovering
+- Signal router: scores and routes signals to analysts; emits
+  `app/signal.routed` for the trigger evaluator to consume
+- Morning brief generator was DELETED in PR 3 — agent reads durable
+  state directly via `read_signals` + `get_theses(include_history: true)`
+- Trigger evaluator (separate cadence): runs every 15 min during US
+  market hours + on `app/signal.routed`, fires `app/thesis.trigger.fired`
+  when a thesis predicate matches, which wakes a tactical run
 
 ### Data Sources
 - Finnhub: quotes, candles, earnings calendar, company metrics,
@@ -157,10 +161,13 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 - /settings — app settings
 
 ## API Routes
-- /api/agent/[mode] — unified agent route (research-run, builder, editor)
-  - research-run: GPT-4o, temperature 0.2, maxSteps 50, all 19 tools
+- /api/agent/[mode] — unified agent route. Modes:
+  - research-run: GPT-4o, temperature 0.2, maxSteps 65 (the daily-run agent)
   - builder: GPT-4o, research tools only + suggest_config
   - editor: GPT-4o, research tools only + suggest_config
+  - tactical: GPT-4o, maxSteps 15 (single-thesis, single-decision)
+  - discovery: GPT-4o, maxSteps 25 (weekly Sunday cron)
+  - podcast-builder / podcast-segment-run / podcast-editor
 - /api/research/agent-run — creates ResearchRun row, returns runId
 - /api/research/trigger — Inngest manual trigger
 - /api/chat/run-followup — post-run discussion with trade tools
@@ -177,10 +184,12 @@ logging/try-catch and returns a `ToolResult<T>` envelope with a `ui`
 discriminator that drives rendering in ToolCallRow.
 
 ### Intelligence Tools (read pre-gathered data)
-1. read_morning_brief — today's pre-generated intelligence brief
-2. read_signals — signals routed by background discovery jobs
-3. read_artifact — full extracted article/document behind a signal
+1. read_signals — signals routed by background discovery jobs
+2. read_artifact — full extracted article/document behind a signal
+3. get_theses — read the analyst's durable thesis library (default ACTIVE+WATCHING; include_history=true for the activity log)
 4. web_search — live Perplexity Sonar search (budget-limited)
+   NOTE: read_morning_brief was DELETED in PR 3 — agent reads
+   durable state directly via read_signals + get_theses
 
 ### Research Tools (live data validation)
 5. get_market_context — SPY/VIX/sector ETFs, macro events, regime
@@ -276,14 +285,23 @@ discriminator that drives rendering in ToolCallRow.
 - AgentConfigCard — analyst config summary
 
 ## Inngest Crons (lib/inngest/functions/)
-### Intelligence Pipeline (6:30–7:45 AM ET Mon-Fri)
+### Intelligence Pipeline (6:30–7:30 AM ET Mon-Fri)
 - firm-market-sweep.ts — 6:30 AM, Sonar + FMP movers + earnings
 - portfolio-watchlist-monitor.ts — 7:00 AM, per-ticker Sonar
 - domain-monitor.ts — 7:15 AM, domain Sonar + Firecrawl
-- signal-router.ts — 7:30 AM, route signals to analysts
-- morning-brief-generator.ts — 7:45 AM, GPT-4o per-analyst brief
+- signal-router.ts — 7:30 AM, routes signals + emits app/signal.routed
+- (morning-brief-generator.ts was DELETED in PR 3 — agent reads
+  durable state directly via read_signals + get_theses)
+### Reactivity (PR 2)
+- trigger-evaluator.ts — every 15 min during market hours + on
+  app/signal.routed; fires app/thesis.trigger.fired when a thesis
+  predicate matches
+- tactical-run.ts — event-driven, consumes app/thesis.trigger.fired,
+  spawns a focused single-thesis agent (~15 steps)
 ### Agent + Trading
-- morning-research.ts — 8 AM ET Mon-Fri, per-analyst agent run
+- morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
+- discovery-run.ts — Sundays 9 AM ET, per-analyst weekly discovery
+  scan (mints up to 5 new WATCHING theses)
 - price-monitor.ts — hourly price check, exit evaluation
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
@@ -385,8 +403,9 @@ it with a ticker chip as if it were a traded security.
   always cast with type guard
 - async params in Next.js App Router: params: Promise<{ id: string }>
 - FMP /quote/ endpoint DEPRECATED — use Finnhub for all quotes
-- Model strategy: GPT-4o EVERYWHERE (research-run, builder, editor).
-  research-run uses temperature 0.2 and maxSteps 50 for stage contract adherence.
+- Model strategy: GPT-4o EVERYWHERE (research-run, builder, editor,
+  tactical, discovery). research-run uses temperature 0.2 and maxSteps
+  65 for stage contract adherence. Tactical maxSteps 15, discovery 25.
   GPT-4o-mini for lightweight summaries. Do NOT swap to Claude —
   the 30k context limit crashes the run.
 - Agent thinking config lives in lib/agent/modes.ts (thinkingBudget field)
@@ -398,14 +417,26 @@ it with a ticker chip as if it were a traded security.
 3. AgentThread → ChatRuntime → POST /api/agent/research-run
 4. Route loads config + historical context (portfolio, watchlist,
    briefs, trades, accuracy, intelligence policy)
-5. GPT-4o (temperature 0.2) follows 6-stage flow (with Phase-0 check-in):
+5. GPT-4o (temperature 0.2) follows the per-thesis review flow with
+   Phase-0 check-in:
    Phase 0: Portfolio check-in (injected context, no tools)
-   Stage 1 — Orient: read_morning_brief, read_signals, read_artifact, web_search
-   Stage 2 — Research: get_portfolio_context, then get_stock_data across holdings/watchlist/≥2 discovery
-   Stage 3 — Theses: record_thesis for every researched ticker (source_kind + source_signal_ids)
-   Stage 4 — Act: close_position / manage_position, then place_trade, then manage_watchlist
+   Stage 1 — Orient: read_signals (today buckets: portfolio / watchlist
+     / discovery), get_theses(include_history: true), read_artifact, web_search
+   Stage 2 — Per-thesis review: for every active + watching thesis,
+     decide: trigger fired / new evidence → research + update_thesis;
+     scheduled review due → research + update_thesis; nothing changed →
+     update_thesis with REVIEWED-only audit row
+   Stage 3 — Theses: update_thesis is default for held names;
+     record_thesis only for net-new coverage or direction flips
+     (source_kind + source_signal_ids required)
+   Stage 4 — Act: close_position / manage_position for held names that
+     warrant action; place_trade for new entries; manage_watchlist
+     for adds/removes
    Stage 5 — Recap: record_run_summary (ranked picks + exposure)
-   Stage 6 — Complete: complete_run (blocked until every researched ticker has a thesis)
+   Stage 6 — Complete: complete_run. Old "blocked until every
+     researched ticker has a thesis" gate was relaxed in #205 as a
+     documented false-fail; current gate is "no work output" (no
+     theses + no trades + no summary)
 6. Each tool result streams with a ToolResult envelope (ok, ui, data, sources)
 7. ToolCallGroup groups results by groupId; ToolCallRow dispatches on ui
 8. record_thesis persists Thesis to DB + ThesisCardRenderer shows full card

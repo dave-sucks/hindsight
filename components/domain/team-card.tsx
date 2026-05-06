@@ -523,6 +523,13 @@ export function TeamSheetContent({ team }: { team: Team }) {
 
 // ── Workflow step card (for /agent-workflow page) ──────────────────────────
 
+// Schedule values that aren't real clock times — suppress in the time slot.
+const NON_TIME_SCHEDULES = new Set(["On demand", "Event-driven", "After every run"]);
+
+function isMeaningfulSchedule(schedule: string | undefined): boolean {
+  return Boolean(schedule && !NON_TIME_SCHEDULES.has(schedule));
+}
+
 export function WorkflowStepCard({
   team,
   onOpenSheet,
@@ -530,55 +537,50 @@ export function WorkflowStepCard({
   team: Team;
   onOpenSheet: () => void;
 }) {
-  const triggerSource = team.triggeredBy ? getTeam(team.triggeredBy) : null;
-  // Only show the schedule badge when there's something meaningful to surface
-  // — "On demand" alone adds no information.
-  const showSchedule = team.schedule && team.schedule !== "On demand";
+  const upstreamSource = team.upstream ? getTeam(team.upstream.teamId) : null;
+  const showSchedule = isMeaningfulSchedule(team.schedule);
   return (
-    <Card className="p-0 overflow-hidden">
-      <div className="flex items-start gap-3 px-4 py-3">
+    <Card className="p-0 gap-0 py-0 shadow-none overflow-hidden">
+      {/* Section 1: title row + description */}
+      <div className="p-3 flex flex-col gap-2 min-w-0">
+        <div className="flex items-center justify-between gap-3 min-w-0">
+          <span className="text-sm font-medium text-foreground truncate">
+            {team.title}
+          </span>
+          {showSchedule && (
+            <span className="text-xs font-mono text-muted-foreground tabular-nums shrink-0">
+              {team.schedule}
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+          {team.summary}
+        </p>
+      </div>
+      {/* Section 2: bordered bottom row — relation chip left, View button right */}
+      <div className="flex items-center justify-between gap-3 p-3 border-t">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium">{team.title}</span>
-            {showSchedule && (
-              <Badge variant="secondary">{team.schedule}</Badge>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-            {team.summary}
-          </p>
-          {triggerSource && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+          {upstreamSource && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
               <HugeiconsIcon icon={ArrowTurnForwardIcon} className="size-3.5 shrink-0" />
-              <span>Triggered by {triggerSource.title}</span>
+              <span className="truncate">
+                {team.upstream!.verb} {upstreamSource.title}
+              </span>
             </div>
           )}
         </div>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={onOpenSheet}
-                  className="shrink-0 p-1.5 rounded-md hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground mt-0.5"
-                />
-              }
-            >
-              <SidebarOpenIcon />
-            </TooltipTrigger>
-            <TooltipContent side="left">View details</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Button variant="outline" size="sm" onClick={onOpenSheet}>
+          View
+        </Button>
       </div>
     </Card>
   );
 }
 
 // ── Analysts card (phase 1: dual-button card for Builder + Editor) ────────
-// Special-case card that replaces two separate WorkflowStepCard instances
-// (builder + editor) on the /agent-workflow page. Both buttons are
-// surfaced inline; each opens the existing TeamSheetContent for its team.
+// Mirrors WorkflowStepCard's layout exactly — title row + description +
+// bordered bottom row — but the bottom row carries TWO View buttons
+// (one each for builder and editor) instead of one.
 
 export function AnalystsCard({
   onOpenBuilder,
@@ -588,20 +590,22 @@ export function AnalystsCard({
   onOpenEditor: () => void;
 }) {
   return (
-    <Card className="p-0 overflow-hidden">
-      <div className="px-4 py-3 space-y-2">
-        <span className="text-sm font-medium">Analysts</span>
-        <p className="text-xs text-muted-foreground leading-relaxed">
+    <Card className="p-0 gap-0 py-0 shadow-none overflow-hidden">
+      {/* Section 1: title + description */}
+      <div className="p-3 flex flex-col gap-2 min-w-0">
+        <span className="text-sm font-medium text-foreground">Analysts</span>
+        <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
           Create a new analyst persona through a guided interview, or refine an existing one.
         </p>
-        <div className="flex gap-2 pt-1">
-          <Button variant="outline" size="sm" onClick={onOpenBuilder}>
-            Builder
-          </Button>
-          <Button variant="outline" size="sm" onClick={onOpenEditor}>
-            Editor
-          </Button>
-        </div>
+      </div>
+      {/* Section 2: bordered bottom row — two View buttons on the right */}
+      <div className="flex items-center justify-end gap-2 p-3 border-t">
+        <Button variant="outline" size="sm" onClick={onOpenBuilder}>
+          View Builder
+        </Button>
+        <Button variant="outline" size="sm" onClick={onOpenEditor}>
+          View Editor
+        </Button>
       </div>
     </Card>
   );

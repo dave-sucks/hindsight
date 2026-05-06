@@ -103,12 +103,12 @@ export interface Team {
   /** When this team runs */
   schedule: string;
   /**
-   * If this team is directly triggered by another team's output (event, not
-   * shared data), set the upstream team id. Renders an arrow chip on the
-   * card. Only direct 1:1 trigger relationships — shared data dependencies
-   * are not represented here.
+   * Upstream relation chip rendered in the bottom row of the card. Used
+   * for any kind of relationship — direct event triggers ("Triggered by"),
+   * cron-after-cron ordering ("After"), or shared-data dependencies
+   * ("Using signals from"). The verb sets the connector phrasing.
    */
-  triggeredBy?: TeamId;
+  upstream?: { teamId: TeamId; verb: string };
   substeps: SubStep[];
   tools: ToolEntry[];
   /** If this team has a system prompt, lazy-load it */
@@ -290,14 +290,14 @@ export const TEAMS: Team[] = [
     title: "Trigger Evaluator",
     phase: "signals",
     summary:
-      "Walks every active thesis's structured predicates against fresh prices and just-arrived signals. Fires thesis.trigger.fired when one hits — that's what wakes a tactical run.",
+      "Checks every active thesis's structured predicates against fresh prices and just-arrived signals. Fires thesis.trigger.fired when one hits — that's what wakes a tactical run.",
     description:
       "The Trigger Evaluator is the reactivity layer between your portfolio and the rest of the world. Every active thesis can carry structured trigger predicates — price levels, technical levels, earnings outcomes, filing types, time elapsed. The evaluator's job is to check those predicates against reality and fire an event when one matches.\n\nTwo paths feed it. The signal-driven path consumes routed signals as they land — earnings beats, guidance changes, 8-K filings — and matches them to signal-side predicates. The cron path runs every 15 minutes during market hours, batch-fetches fresh prices, and matches them to price/time-side predicates. A cooldown gate prevents the same predicate from firing repeatedly. When something fires, it stamps an audit row and emits the event the Tactical Run consumes.",
     icon: Bell,
     schedule: "Every 15m, market hours",
     substeps: [
       { title: "Signal-driven evaluation", summary: "Consumes app/signal.routed. For each (analyst × ticker × thesis × trigger), evaluates signal-side predicates against the routed signal." },
-      { title: "Cron-driven evaluation", summary: "Walks all ACTIVE theses with non-empty triggers. Batches Finnhub /quote for unique tickers (≤200). Evaluates price/time-side predicates." },
+      { title: "Cron-driven evaluation", summary: "Loads all ACTIVE theses with non-empty triggers. Batches Finnhub /quote for unique tickers (≤200). Evaluates price/time-side predicates." },
       { title: "Cooldown gate", summary: "Per-trigger cooldownDays prevents the same predicate from firing twice in the window. EXIT triggers skip cooldown — terminal actions must always fire." },
       { title: "Audit + emit", summary: "Stamps lastFiredAt on the trigger, writes ThesisUpdate(type=TRIGGER_FIRED) with thesisId / triggerId / signalIds, emits app/thesis.trigger.fired." },
     ],
@@ -312,6 +312,7 @@ export const TEAMS: Team[] = [
     id: "discovery",
     title: "Discovery Run",
     phase: "run",
+    upstream: { teamId: "intelligence", verb: "Using signals from" },
     summary:
       "Per analyst: scans the past week's discovery signals, scores the top 2-3 candidates, mints up to 5 new WATCHING theses. The cadence safety net for new coverage.",
     description:
@@ -349,16 +350,16 @@ export const TEAMS: Team[] = [
     title: "Daily Run",
     phase: "run",
     summary:
-      "Per-analyst portfolio review. Walks every active and watching thesis. Decides per-thesis: trigger fired or review due → research + update_thesis; nothing changed → REVIEWED-only audit row. Trades when conviction is there.",
+      "Per-analyst portfolio review every weekday morning. The analyst reviews every holding and watchlist name, updates the theses where new evidence arrived, and trades when conviction is there.",
     description:
-      "The Daily Run is where your portfolio actually gets managed. Every weekday morning at 8 AM ET, each enabled analyst spawns its own focused agent. The agent reads its durable thesis library and the signals routed overnight, then walks each active and watching thesis one at a time.\n\nFor each thesis, the agent decides one of three things: a trigger fired or fresh evidence arrived → research and update the thesis; a scheduled review is due → research and confirm or adjust; nothing changed → log a REVIEWED audit row and move on. Then it works position management (close, scale in, trim), considers any worthwhile new discovery candidates, and writes a ranked summary of what it actually touched.",
+      "The Daily Run is where your portfolio actually gets managed. Every weekday morning at 8 AM ET, each enabled analyst wakes up, reads its current holdings and watchlist along with whatever signals came in overnight, then goes through each name one at a time and asks: does anything need to change today?\n\nFor most names the answer is no — nothing material happened, so the analyst just logs that it looked and moves on. For the rest, it does fresh research, updates the thesis with what it learned (raise the target, tighten the stop, change conviction), and acts on the position if needed (close, scale in, trim). It can also pick up worthwhile new discovery candidates that came in overnight, and writes a quick recap at the end of what it actually changed.",
     icon: Bot,
     model: "GPT-4o",
     schedule: "8:00 AM ET weekdays + on demand",
     substeps: [
       { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references priority reviews flagged by the price monitor. Plain text — no tools." },
       { title: "Orient", summary: "read_signals (today's three buckets: portfolio, watchlist, discovery — each carries signalId for provenance) and get_theses with full update history. read_artifact on anything worth a deep read; web_search sparingly within budget." },
-      { title: "Per-thesis review", summary: "Walks every active and watching thesis. For each: did a trigger fire or new evidence arrive? is a scheduled review due? otherwise → REVIEWED-only. Calls get_stock_data on theses that warrant real research, not every ticker." },
+      { title: "Per-thesis review", summary: "Goes through every active and watching thesis one at a time. For each: did a trigger fire or new evidence arrive? is a scheduled review due? otherwise → REVIEWED-only. Calls get_stock_data only on theses that warrant real research, not every ticker." },
       { title: "Position management", summary: "close_position / manage_position for held names that warrant action; place_trade for new entries; record_thesis reserved for net-new coverage or direction flips. update_thesis is the close-out for every touched thesis." },
       { title: "Recap", summary: "record_run_summary with ranked picks (every thesis the agent touched + the action that actually happened) and exposure breakdown." },
       { title: "Complete", summary: "complete_run with no arguments. Marks the run COMPLETE; the briefing agent fires inline to write tomorrow's standup." },
@@ -417,7 +418,7 @@ export const TEAMS: Team[] = [
     id: "tactical",
     title: "Tactical Run",
     phase: "run",
-    triggeredBy: "triggers",
+    upstream: { teamId: "triggers", verb: "Triggered by" },
     summary:
       "Single-thesis, single-decision focused run. ~15 steps. Validates the trigger that fired, acts (trade or update), writes update_thesis as the close-out.",
     description:
@@ -454,6 +455,7 @@ export const TEAMS: Team[] = [
     id: "briefing",
     title: "Briefing Agent",
     phase: "track",
+    upstream: { teamId: "agent", verb: "After" },
     summary:
       "When any agent run completes, GPT-4o reviews the transcript + portfolio and writes the standup memo that feeds into the next run's prompt.",
     description:
@@ -489,12 +491,12 @@ export const TEAMS: Team[] = [
     summary:
       "Watches positions hourly. Evaluates each closed trade and credits the source monitor (win/loss). Snapshots EOD prices. Scores weekly accuracy. /intelligence (Health) surfaces pipeline drift.",
     description:
-      "Evaluation & Tracking is the feedback loop that closes the system. While analysts research and trade, a set of background jobs is watching: the price monitor checks open positions every hour, the trade evaluator fires whenever a position closes, end-of-day snapshots capture closing prices, and a weekly scorer runs Sunday morning.\n\nThe most important piece is the trade evaluator. When a trade closes, it walks back from the thesis to the signals it cited, and credits each source monitor's win/loss counters. Monitors that keep producing losing theses drift toward negative ROI; the Health tab on /intelligence surfaces it. That's what makes the intelligence pipeline self-improving — over time, the analyst learns which sources are worth listening to.",
+      "Evaluation & Tracking is the feedback loop that closes the system. While analysts research and trade, a set of background jobs is watching: the price monitor checks open positions every hour, the trade evaluator fires whenever a position closes, end-of-day snapshots capture closing prices, and a weekly scorer runs Sunday morning.\n\nThe most important piece is the trade evaluator. When a trade closes, it traces back from the thesis to the signals it cited, and credits each source monitor's win/loss counters. Monitors that keep producing losing theses drift toward negative ROI; the Health tab on /intelligence surfaces it. That's what makes the intelligence pipeline self-improving — over time, the analyst learns which sources are worth listening to.",
     icon: BarChart3,
     schedule: "Hourly / EOD / Weekly + on every close",
     substeps: [
       { title: "Price monitor", time: "Hourly", summary: "Checks all open positions via Alpaca. Flags positions near target (80%) or stop-loss; auto-closes hard stops." },
-      { title: "Trade evaluator", time: "On close", summary: "GPT-4o reviews each closed trade. Then walks Thesis.sourceSignalIds → Monitor and updates tradesSourced / winsSourced / lossesSourced / successScore." },
+      { title: "Trade evaluator", time: "On close", summary: "GPT-4o reviews each closed trade. Then traces Thesis.sourceSignalIds → Monitor and updates tradesSourced / winsSourced / lossesSourced / successScore." },
       { title: "EOD snapshot", time: "5 PM ET", summary: "Captures closing prices for all positions. Builds the equity curve." },
       { title: "Accuracy scorer", time: "Sunday 10 AM", summary: "Calculates win rate, confidence calibration buckets, and per-sector / per-signal-type performance." },
       { title: "Health dashboard", time: "On demand", summary: "/intelligence (Health tab): dead crons (>48h silent), signal funnel per analyst, ticker concentration (7d), novelty histogram, monitor ROI sorted by successScore." },
@@ -506,8 +508,8 @@ export const TEAMS: Team[] = [
       { name: "GPT-4o Evaluator", provider: "internal", summary: "Post-trade analysis: thesis accuracy, timing, lessons learned.",
         resources: [{ source: "internal", title: "Trade review", description: "Evaluates thesis correctness, entry/exit timing, and writes lessons.", type: "internal", endpointOrPath: "generateObject({ schema: evaluationSchema })", exampleOutput: "Thesis: CORRECT · Timing: EARLY · Lesson: wait for confirmation" }],
       },
-      { name: "Monitor ROI walker", provider: "internal", summary: "Follows Thesis.sourceSignalIds → Signal.monitorId → Monitor. Credits the sourcing monitor's trade/win/loss counters and recomputes successScore.",
-        resources: [{ source: "internal", title: "Provenance credit", description: "Every position close walks its thesis's cited signals back to the monitors that found them and updates per-monitor performance counters.", type: "db", endpointOrPath: "prisma.monitor.update({ tradesSourced, winsSourced, lossesSourced, successScore })", exampleOutput: "Monitor 'semi AI capex': +1 trade, +1 win, score 0.67" }],
+      { name: "Monitor ROI tracer", provider: "internal", summary: "Follows Thesis.sourceSignalIds → Signal.monitorId → Monitor. Credits the sourcing monitor's trade/win/loss counters and recomputes successScore.",
+        resources: [{ source: "internal", title: "Provenance credit", description: "Every position close traces its thesis's cited signals back to the monitors that found them and updates per-monitor performance counters.", type: "db", endpointOrPath: "prisma.monitor.update({ tradesSourced, winsSourced, lossesSourced, successScore })", exampleOutput: "Monitor 'semi AI capex': +1 trade, +1 win, score 0.67" }],
       },
       { name: "GPT-4o Scorer", provider: "internal", summary: "Weekly calibration: does confidence predict actual win rate?",
         resources: [{ source: "internal", title: "Accuracy report", description: "Win rate, calibration analysis, per-sector breakdown.", type: "internal", endpointOrPath: "prisma.accuracyReport.create()", exampleOutput: "Win rate: 62% · Calibration: overconfident at 80%+ · Tech: strong" }],
@@ -535,6 +537,25 @@ export const PAGE_TEAM_MAP: Record<string, TeamId> = {
   "/performance": "evaluation",
   "/intelligence": "intelligence",
 };
+
+/**
+ * Returns the workflow TeamId that best matches a given ResearchRun.mode.
+ * Used by /runs/[id] so the HowItWorksSheet shows the right agent's
+ * workflow — tactical runs see the Tactical Run sheet, discovery runs
+ * see the Discovery Run sheet, everything else falls back to the Daily
+ * Run sheet.
+ */
+export function getTeamForRunMode(mode: string | null | undefined): TeamId {
+  switch (mode) {
+    case "INTRADAY_TACTICAL":
+      return "tactical";
+    case "DISCOVERY":
+      return "discovery";
+    case "MORNING_PLAN":
+    default:
+      return "agent";
+  }
+}
 
 // ── Markdown export ────────────────────────────────────────────────────────
 

@@ -21,6 +21,7 @@ import {
 import {
   WorkflowStepCard,
   AnalystsCard,
+  FlowConnector,
   TeamSheetContent,
   ToolsRegistrySheetContent,
   SidebarOpenIcon,
@@ -89,19 +90,21 @@ export default function AgentWorkflowPage() {
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {phaseIdx + 1}. {PHASE_LABELS[phase]}
             </p>
-            <div className="space-y-2">
+            <div>
               {phase === "build" ? (
                 <AnalystsCard
                   onOpenBuilder={() => setActiveSheet(builderTeam)}
                   onOpenEditor={() => setActiveSheet(editorTeam)}
                 />
               ) : (
-                phaseTeams.map((team) => (
-                  <WorkflowStepCard
-                    key={team.id}
-                    team={team}
-                    onOpenSheet={() => setActiveSheet(team)}
-                  />
+                phaseTeams.map((team, i) => (
+                  <div key={team.id}>
+                    <WorkflowStepCard
+                      team={team}
+                      onOpenSheet={() => setActiveSheet(team)}
+                    />
+                    {i < phaseTeams.length - 1 && <FlowConnector />}
+                  </div>
                 ))
               )}
             </div>
