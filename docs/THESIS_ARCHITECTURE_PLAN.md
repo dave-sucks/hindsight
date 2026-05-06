@@ -77,27 +77,24 @@ Last run (2026-05-05):
 - avg_run_events: **7.9 → 2.8** (-65% — direct proxy for context-window pressure)
 - avg_seconds: **86.8 → 74.8** (-14%)
 
-### Open concerns (post-#210, flagged for follow-up)
+### Open concerns (post-#210, real action items)
 
-1. **`manage_position` called 0 times across 24 morning runs / 5 days** (2026-05-01 → 05-05). Either no run had a scale/trim trigger that warranted it, or the agent doesn't reach for it. The post-#210 prompt makes Step 2.B's position-management questions explicit; observe the next 3-5 days. If still zero by 2026-05-10, investigate whether the tool's surface or the trigger templates are under-fired.
+These three need verification or investigation in the days following the #210 merge. They are concerns *from this work*, not pre-existing tech debt.
 
-2. **Apparent closeout-contract violations on some COMPLETE runs.** The contract says every Live Thesis = one tool call this run. On 2026-05-05 some analysts had `thesis_touches` lower than their live-thesis count (e.g., Tech Momentum 5 live → 3 touches). Either the gate isn't enforcing what the prompt says, or the run-input is filtering Live Theses table rows that should be included. Verify and reconcile.
+1. **Verify the trade-execution gate is actually fixing the bug.** PR #210's gate marks runs FAILED when primary_decision is ADD/ROTATE but place_trade was never called. The bug fired 4 of 5 ADD/ROTATE decisions in the 7 days before #210. Watch the next 3-5 days of runs:
+   - If ADD/ROTATE runs now produce trades → Layer 1 prompt prohibition is holding, gate rarely fires.
+   - If ADD/ROTATE runs now show status=FAILED with `tradeExecutionGap` payload → Layer 1 missed, Layer 2 is doing the catching loudly. Either way, the bug stops silently destroying portfolio activity.
+   - If ADD/ROTATE runs still complete with 0 trades → both layers failed, escalate immediately.
 
-3. **Discovery cron has not fired in production yet.** Weekly cadence; first firing pending. Watch the Inngest schedule.
+2. **`manage_position` was called 0 times across 24 morning runs / 5 days** (2026-05-01 → 05-05). Either no run had a scale/trim trigger worth acting on, or the agent doesn't reach for the tool. Post-#210's Step 2.B makes the position-management questions explicit (parallel to the trigger/review check, not a 4th menu option). Observe 3-5 days. If still zero by 2026-05-10, investigate the tool's surface or whether triggers are under-fired.
 
-4. **No token-usage telemetry on runs.** toolStats captures call counts and latency but not token in/out per call. Without this, model alternatives (Claude vs GPT-4o) can't be compared empirically. Consider adding to the toolStats aggregator (~10 lines, AI SDK exposes `usage` per step).
+3. **Apparent closeout-contract violations on some COMPLETE runs.** The contract: every Live Thesis = one tool call this run. On 2026-05-05 some analysts had `thesis_touches` lower than their live-thesis count (Tech Momentum: 5 live → 3 touches; EV Catalyst: 9 live → 3 touches). Either the gate in `morning-research.ts` isn't enforcing what the prompt says, or the Live Theses table injection is filtering rows that should be included. Verify by counting Live Theses in RunInput vs `ThesisUpdate.runId` count for each run; fix whichever side is wrong.
 
-5. **`batch_review_theses` tool deferred.** REVIEWED-only closeout is currently O(n) tool calls. For an analyst with 20 live theses on a quiet day that's 20 update_thesis(empty) calls. A batch tool would flatten this. Not urgent; revisit when an analyst's book exceeds ~15 live theses.
+### Deferred by agreement (scheduled, not urgent)
 
-6. **The cmok0aynu zombie thesis** (Earnings Drift Trader's prior NVDA position-anchor) is still status=CLOSED with closedAt=null. The current live thesis is 9e550505 (promoted to ACTIVE on 2026-05-04 via manual SQL). The cmok0aynu row should be SUPERSEDED with a parent-link audit row. PR #209 fixed the silent-close bug at the code level; this is just data cleanup. Not actively breaking anything.
+- **cmok0aynu zombie data row** — Earnings Drift Trader's prior NVDA thesis is status=CLOSED with closedAt=null. Current live thesis 9e550505 was promoted to ACTIVE 2026-05-04. cmok0aynu should be SUPERSEDED with parent-link audit row. PR #209 fixed the silent-close bug at code level; this is one row of cosmetic data cleanup. Not breaking anything. Held off pending operator review and never resumed.
 
-7. **Pre-existing typecheck error in `components/ui/transcript-row.tsx:52`** blocks the pre-commit tsc hook. PR #210's three commits used `--no-verify`. Fix needed: id null/undefined coercion in the spread. ~1 line.
-
-8. **Residual MorningBrief readers in `lib/intelligence/types.ts` and `lib/actions/analyst.actions.ts`.** The brief generator cron was deleted in PR #202 but the Prisma table and UI-display readers remain (used by `/analysts/[id]` for historical viewing). Not broken, but worth a cleanup pass to confirm nothing is silently writing to the table anymore.
-
-### What was deferred from this arc
-
-- **`AnalystWatchlistItem` schema collapse.** PR #203 made `manage_watchlist` and `record_thesis` keep the two stores in sync forward; the formal schema migration to drop `AnalystWatchlistItem` and have the watchlist UI read `Thesis.WATCHING` directly is a future PR. Until that migration, the `update_thesis(change_status: terminal)` → `AnalystWatchlistItem` REMOVED sync is the structural follow-up flagged for PR #209's successor.
+- **`AnalystWatchlistItem` schema collapse.** PR #203 made `manage_watchlist` ↔ `record_thesis` keep the two stores in sync forward. Formal schema migration to drop `AnalystWatchlistItem` and have the watchlist UI read `Thesis.WATCHING` directly is a future PR. Until then, the `update_thesis(change_status: terminal)` → `AnalystWatchlistItem` REMOVED sync is the structural follow-up that should ship before any new code lands on the watchlist surface.
 
 ---
 
