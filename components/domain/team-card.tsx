@@ -285,7 +285,7 @@ export function ToolCard({
         onClick={onClick}
         className="w-full text-left px-3 py-2.5 space-y-1.5 hover:bg-accent/30 transition-colors disabled:hover:bg-transparent"
       >
-        <code className="text-xs font-mono font-medium">{tool.name}</code>
+        <span className="text-xs font-medium">{tool.name}</span>
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           {tool.summary}
         </p>
@@ -454,20 +454,30 @@ export function TeamSheetContent({ team }: { team: Team }) {
     setDialogOpen(true);
   }, []);
 
-  // Skip the schedule badge when it's just "On demand" — that adds no info.
-  const showSchedule = team.schedule && team.schedule !== "On demand";
+  const upstreamSource = team.upstream ? getTeam(team.upstream.teamId) : null;
+  const showSchedule = isMeaningfulSchedule(team.schedule);
+  const hasMetadata = showSchedule || upstreamSource !== null;
 
   return (
     <div className="space-y-5">
-      {/* Header — title is rendered by the parent SheetTitle, so don't duplicate it.
-          Subhead = the team's product-oriented summary; description below is prose. */}
-      <div className="space-y-2">
-        <p className="text-base font-medium leading-snug">{team.summary}</p>
-        {showSchedule && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="secondary">{team.schedule}</Badge>
+      {/* Header — title is rendered by the parent SheetTitle, so don't
+          duplicate it. Layout: metadata row (schedule + relation chip) →
+          subhead (one font size smaller than the title) → description. */}
+      <div className="space-y-3">
+        {hasMetadata && (
+          <div className="flex items-center gap-3 flex-wrap text-xs">
+            {showSchedule && (
+              <span className="text-foreground">{team.schedule}</span>
+            )}
+            {upstreamSource && (
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                <HugeiconsIcon icon={ArrowTurnForwardIcon} className="size-3.5 shrink-0" />
+                {team.upstream!.verb} {upstreamSource.title}
+              </span>
+            )}
           </div>
         )}
+        <p className="text-sm font-medium leading-snug">{team.summary}</p>
         <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
           {team.description}
         </p>
@@ -482,7 +492,7 @@ export function TeamSheetContent({ team }: { team: Team }) {
 
       {/* Sub-steps */}
       <div>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
           Steps
         </p>
         <div className="space-y-2">
@@ -496,9 +506,9 @@ export function TeamSheetContent({ team }: { team: Team }) {
 
       {/* Tools */}
       <div>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
           Tools
-          <span className="ml-1.5 text-muted-foreground/40">{team.tools.length}</span>
+          <span className="ml-1.5 text-muted-foreground/60">{team.tools.length}</span>
         </p>
         <div className="space-y-1.5">
           {team.tools.map((tool, i) => (
@@ -667,9 +677,9 @@ export function ToolsRegistrySheetContent() {
         if (tools.length === 0) return null;
         return (
           <div key={cat}>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
               {CATEGORY_LABELS[cat]}
-              <span className="ml-1.5 text-muted-foreground/40">{tools.length}</span>
+              <span className="ml-1.5 text-muted-foreground/60">{tools.length}</span>
             </p>
             <div className="space-y-1.5">
               {tools.map((rt) => {
