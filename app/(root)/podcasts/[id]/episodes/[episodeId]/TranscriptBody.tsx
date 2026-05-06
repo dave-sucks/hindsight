@@ -5,6 +5,13 @@ import { SourceChipRow } from "@/components/chat/SourceChip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import type { EpisodeTranscriptItem } from "@/lib/actions/podcast.actions";
 
+function snapToWordEnd(text: string, pos: number): number {
+  while (pos < text.length && text[pos] !== " " && text[pos] !== "\n") {
+    pos++;
+  }
+  return pos;
+}
+
 function buildTextWithMarkers(
   plainText: string,
   citations: EpisodeTranscriptItem["citations"],
@@ -18,10 +25,11 @@ function buildTextWithMarkers(
   let text = "";
   let cursor = 0;
   for (const { c, i } of sorted) {
-    if (c.endChar > cursor && c.endChar <= plainText.length) {
-      text += plainText.slice(cursor, c.endChar);
+    const insertAt = snapToWordEnd(plainText, c.endChar);
+    if (insertAt > cursor && insertAt <= plainText.length) {
+      text += plainText.slice(cursor, insertAt);
       text += `[${i + 1}]`;
-      cursor = c.endChar;
+      cursor = insertAt;
     }
   }
   if (cursor < plainText.length) text += plainText.slice(cursor);
