@@ -26,6 +26,8 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { applyTriggerCooldownDefaults } from "@/lib/agent/triggers/defaults";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import {
   writeThesisUpdate,
   diffThesisFields,
@@ -280,7 +282,41 @@ export const updateThesis = defineTool({
       patch.nextReviewAt = args.next_review_at
         ? new Date(args.next_review_at)
         : null;
-    if (args.triggers !== undefined) patch.triggers = args.triggers as object;
+    if (args.triggers !== undefined) {
+      // Triggers are wholesale-replaced (intentional — agent passes the FULL
+      // array, see file header). But two server-managed fields must survive
+      // that replacement:
+      //
+      //   1. `lastFiredAt` — the cooldown stamp. The agent never sees nor
+      //      reasons about it; if we trust its trigger payload verbatim,
+      //      every update wipes the firing memory and the next signal
+      //      re-fires the trigger. PR 2.5 / PR 3 both relied on this stamp
+      //      and silently lost it on every update_thesis touch.
+      //
+      //   2. `cooldownDays` — agent-authored triggers often omit it
+      //      (schema marks it optional). applyTriggerCooldownDefaults
+      //      backfills a sane per-kind default so the cooldown gate isn't
+      //      a no-op.
+      //
+      // We key by trigger id. The agent SHOULD pass the existing id when
+      // editing an in-place trigger; new triggers get a fresh id from the
+      // schema layer. Triggers with no prior match are treated as net-new.
+      const existingTriggers: Trigger[] = Array.isArray(existing.triggers)
+        ? (existing.triggers as unknown as Trigger[])
+        : [];
+      const lastFiredById = new Map(
+        existingTriggers
+          .filter((t) => t.id && t.lastFiredAt)
+          .map((t) => [t.id, t.lastFiredAt] as const),
+      );
+      const incoming = args.triggers as Trigger[];
+      const preserved = incoming.map((t) => {
+        if (t.lastFiredAt != null) return t; // agent provided one — respect it
+        const prior = t.id ? lastFiredById.get(t.id) : undefined;
+        return prior ? { ...t, lastFiredAt: prior } : t;
+      });
+      patch.triggers = applyTriggerCooldownDefaults(preserved) as object;
+    }
     if (args.scaling_plan !== undefined)
       patch.scalingPlan =
         args.scaling_plan === null ? null : (args.scaling_plan as object);

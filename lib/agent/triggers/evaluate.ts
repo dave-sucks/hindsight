@@ -22,6 +22,7 @@
  */
 
 import type { Trigger, TriggerPredicate, Urgency } from "./types";
+import { defaultCooldownDaysForPredicate } from "./defaults";
 
 // ── EvaluationContext ─────────────────────────────────────────────────
 
@@ -165,6 +166,18 @@ export function evaluateTrigger(
  * Evaluate a full Trigger including the cooldown gate. Returns a reason
  * code so callers (and tests) can distinguish "predicate matched but
  * cooldown blocks fire" from "predicate didn't match."
+ *
+ * Cooldown semantics: if `cooldownDays` is absent on the trigger, fall
+ * back to the predicate-kind default from `defaultCooldownDaysForPredicate`.
+ * Defense in depth — record_thesis / update_thesis backfill the field at
+ * write time, but legacy rows from before that fix may still have an
+ * unset cooldown. Without this fallback, those rows fire on every
+ * `app/signal.routed` event forever.
+ *
+ * If `cooldownDays === 0` (explicitly), no rate limit is applied — that's
+ * the escape hatch for triggers that genuinely should fire on every
+ * matching evaluation (rare; mostly EXIT triggers that close the position
+ * and self-terminate via the ACTIVE-status filter in the cron).
  */
 export function shouldFire(
   trigger: Trigger,
@@ -173,9 +186,12 @@ export function shouldFire(
   const matched = evaluateTrigger(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 
-  if (trigger.cooldownDays != null && trigger.lastFiredAt != null) {
+  const effectiveCooldown =
+    trigger.cooldownDays ?? defaultCooldownDaysForPredicate(trigger.predicate);
+
+  if (effectiveCooldown > 0 && trigger.lastFiredAt != null) {
     const lastFired = new Date(trigger.lastFiredAt).getTime();
-    const cooldownMs = trigger.cooldownDays * 86_400_000;
+    const cooldownMs = effectiveCooldown * 86_400_000;
     if (ctx.now.getTime() - lastFired < cooldownMs) {
       return { fires: false, reason: "cooldown" };
     }

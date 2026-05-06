@@ -132,11 +132,11 @@ export const triggerSchema = z.object({
   cooldownDays: z
     .number()
     .int()
-    .positive()
+    .min(0)
     .max(90)
     .optional()
     .describe(
-      "Don't re-fire this trigger more than once per N days. Default: no cooldown.",
+      "Don't re-fire this trigger more than once per N days. If omitted, the evaluator applies a per-predicate-kind default (EARNINGS_*: 7, FILING/SIGNAL_TYPE/PRICE_*: 1, TIME_ELAPSED: ~80% of window, REVIEW_DATE_HIT: 7). Pass 0 to opt out — useful only for terminal EXIT triggers.",
     ),
   lastFiredAt: z.string().datetime().optional(),
 });
