@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react";
 import { Copy, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Card } from "@/components/ui/card";
 import {
@@ -13,21 +12,18 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   WorkflowStepCard,
+  AnalystsCard,
   FlowConnector,
   TeamSheetContent,
   ToolsRegistrySheetContent,
-  SidebarOpenIcon,
 } from "@/components/domain/team-card";
 import {
   TEAMS,
   TOOL_REGISTRY,
+  PHASE_LABELS,
+  PHASE_ORDER,
+  getTeam,
   exportWorkflowAsMarkdown,
   type Team,
 } from "@/lib/agent/workflow-registry";
@@ -59,86 +55,76 @@ type SheetTarget = Team | "tools-registry" | null;
 export default function AgentWorkflowPage() {
   const [activeSheet, setActiveSheet] = useState<SheetTarget>(null);
 
-  // Editor is on-demand (not part of the daily loop). Rendered as a
-  // separate row below the main flow so the loop connectors stay clean.
-  const loopTeams = TEAMS.filter((t) => t.id !== "editor");
-  const editorTeam = TEAMS.find((t) => t.id === "editor");
+  const builderTeam = getTeam("builder");
+  const editorTeam = getTeam("editor");
 
   return (
-    <div className="p-6 space-y-4 max-w-xl mx-auto">
+    <div className="p-6 space-y-6 max-w-xl mx-auto">
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold">How Hindsight Works</h1>
           <CopyMarkdownButton />
         </div>
         <p className="text-sm text-muted-foreground">
-          5 teams run in a daily loop. Open any step to see its workflow and tools.
+          The lifecycle, end to end. Open any card to see its workflow and tools.
         </p>
       </div>
 
       <Separator />
 
-      {/* Team steps */}
-      <div>
-        {loopTeams.map((team, i) => (
-          <div key={team.id}>
-            <WorkflowStepCard
-              team={team}
-              onOpenSheet={() => setActiveSheet(team)}
-            />
-            {i < loopTeams.length - 1 && <FlowConnector />}
-          </div>
-        ))}
-      </div>
+      {/* Phase-grouped cards */}
+      {PHASE_ORDER.map((phase, phaseIdx) => {
+        const phaseTeams = TEAMS.filter((t) => t.phase === phase);
+        if (phaseTeams.length === 0) return null;
 
-      {/* Editor — on-demand, not in the daily loop */}
-      {editorTeam && (
-        <>
-          <Separator />
-          <div className="space-y-1">
+        return (
+          <div key={phase} className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              On demand
+              {phaseIdx + 1}. {PHASE_LABELS[phase]}
             </p>
-            <WorkflowStepCard
-              team={editorTeam}
-              onOpenSheet={() => setActiveSheet(editorTeam)}
-            />
+            <div>
+              {phase === "build" ? (
+                <AnalystsCard
+                  onOpenBuilder={() => setActiveSheet(builderTeam)}
+                  onOpenEditor={() => setActiveSheet(editorTeam)}
+                />
+              ) : (
+                phaseTeams.map((team, i) => (
+                  <div key={team.id}>
+                    <WorkflowStepCard
+                      team={team}
+                      onOpenSheet={() => setActiveSheet(team)}
+                    />
+                    {i < phaseTeams.length - 1 && <FlowConnector />}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-        </>
-      )}
+        );
+      })}
 
       <Separator />
 
-      {/* Tools Registry row */}
-      <Card className="p-0 overflow-hidden">
-        <div className="flex items-start gap-3 px-4 py-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Tools Registry</span>
-              <Badge variant="outline" className="text-[10px]">
-                {TOOL_REGISTRY.length} tools
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-              All tools available to agents — intelligence, research, action, and system lifecycle.
-            </p>
+      {/* Tools Registry — same card layout as the team cards above */}
+      <Card className="p-0 gap-0 py-0 shadow-none overflow-hidden">
+        <div className="p-3 flex flex-col gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <span className="text-sm font-medium text-foreground truncate">
+              Tools Registry
+            </span>
+            <span className="text-xs text-foreground shrink-0">
+              {TOOL_REGISTRY.length} tools
+            </span>
           </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    onClick={() => setActiveSheet("tools-registry")}
-                    className="shrink-0 p-1.5 rounded-md hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground mt-0.5"
-                  />
-                }
-              >
-                <SidebarOpenIcon />
-              </TooltipTrigger>
-              <TooltipContent side="left">Browse all tools</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+            All tools available to agents — intelligence, research, action, and system lifecycle.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-3 p-3 border-t">
+          <Button variant="outline" size="sm" onClick={() => setActiveSheet("tools-registry")}>
+            View
+          </Button>
         </div>
       </Card>
 

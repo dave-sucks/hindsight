@@ -134,12 +134,14 @@ export const discoveryRun = inngest.createFunction(
           existingTickers,
         });
 
+        const userPrompt =
+          "Begin your weekly discovery scan. Walk read_signals, score the top 2-3 fresh candidates, mint up to 5 new theses. Skip tickers already in your library.";
+
         try {
-          const { steps } = await generateText({
+          const { steps, response } = await generateText({
             model: openai(MODES["discovery"].model),
             system: systemPrompt,
-            prompt:
-              "Begin your weekly discovery scan. Walk read_signals, score the top 2-3 fresh candidates, mint up to 5 new theses. Skip tickers already in your library.",
+            prompt: userPrompt,
             tools,
             providerOptions: { openai: { strictJsonSchema: true } },
             stopWhen: stepCountIs(MODES["discovery"].maxSteps),
@@ -153,6 +155,46 @@ export const discoveryRun = inngest.createFunction(
             0,
           );
           const elapsed = Date.now() - t0;
+
+          // Persist conversation messages so /runs/[id] can replay the chat.
+          // Without this, every discovery run shows "No replay data
+          // available" — same pattern as morning-research and tactical-run.
+          try {
+            const userMessage = {
+              role: "user",
+              content: [{ type: "text", text: userPrompt }],
+            };
+            let responseMessages = response?.messages;
+            if (
+              !responseMessages ||
+              !Array.isArray(responseMessages) ||
+              responseMessages.length === 0
+            ) {
+              responseMessages = steps.flatMap((s) => {
+                const stepMsgs = (
+                  s as unknown as { response?: { messages?: unknown[] } }
+                ).response?.messages;
+                return Array.isArray(stepMsgs) ? stepMsgs : [];
+              }) as typeof responseMessages;
+            }
+            const allMessages = [userMessage, ...responseMessages];
+            const json = JSON.stringify(allMessages);
+            await prisma.$transaction(async (tx) => {
+              await tx.runMessage.deleteMany({ where: { runId: run.id } });
+              await tx.runMessage.create({
+                data: {
+                  runId: run.id,
+                  role: "thread",
+                  content: json,
+                },
+              });
+            });
+          } catch (msgErr) {
+            console.error(
+              `[discovery-run] failed to persist messages for run=${run.id}:`,
+              msgErr instanceof Error ? msgErr.message : msgErr,
+            );
+          }
 
           // Count new theses minted by this run.
           const newTheses = await prisma.thesis.count({

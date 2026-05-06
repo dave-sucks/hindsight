@@ -19,10 +19,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Zap, Globe, Database, Cpu, Copy, Check } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowTurnForwardIcon } from "@hugeicons/core-free-icons";
 import { Markdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/chat/SourceChip";
 import type { Team, ToolEntry, SubStep, Resource, ResourceType, RegistryTool, ToolCategory, TeamId } from "@/lib/agent/workflow-registry";
-import { TOOL_REGISTRY } from "@/lib/agent/workflow-registry";
+import { TOOL_REGISTRY, getTeam } from "@/lib/agent/workflow-registry";
 
 // ── Team label map ─────────────────────────────────────────────────────────
 
@@ -283,7 +285,7 @@ export function ToolCard({
         onClick={onClick}
         className="w-full text-left px-3 py-2.5 space-y-1.5 hover:bg-accent/30 transition-colors disabled:hover:bg-transparent"
       >
-        <code className="text-xs font-mono font-medium">{tool.name}</code>
+        <span className="text-xs font-medium">{tool.name}</span>
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           {tool.summary}
         </p>
@@ -315,22 +317,20 @@ export function ToolCard({
 
 function SubStepRow({ step, index }: { step: SubStep; index: number }) {
   return (
-    <div className="flex items-start gap-2.5 py-1">
-      {step.time ? (
-        <Badge variant="outline" className="shrink-0 text-[10px] font-mono tabular-nums mt-0.5">
-          {step.time}
-        </Badge>
-      ) : (
-        <span className="text-[10px] text-muted-foreground/50 font-mono tabular-nums w-4 shrink-0 text-center mt-0.5">
-          {index + 1}
+    <div className="py-1.5 space-y-0.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm font-medium">
+          Step {index + 1}: {step.title}
         </span>
-      )}
-      <div className="flex-1 min-w-0">
-        <span className="text-xs font-medium">{step.title}</span>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          {step.summary}
-        </p>
+        {step.time && (
+          <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
+            {step.time}
+          </span>
+        )}
       </div>
+      <p className="text-sm text-muted-foreground leading-relaxed">
+        {step.summary}
+      </p>
     </div>
   );
 }
@@ -454,18 +454,31 @@ export function TeamSheetContent({ team }: { team: Team }) {
     setDialogOpen(true);
   }, []);
 
+  const upstreamSource = team.upstream ? getTeam(team.upstream.teamId) : null;
+  const showSchedule = isMeaningfulSchedule(team.schedule);
+  const hasMetadata = showSchedule || upstreamSource !== null;
+
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="text-sm font-semibold">{team.title}</h2>
-          {team.model && (
-            <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
-          )}
-          <Badge variant="outline" className="text-[10px]">{team.schedule}</Badge>
-        </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">
+      {/* Header — title is rendered by the parent SheetTitle, so don't
+          duplicate it. Layout: metadata row (schedule + relation chip) →
+          subhead (one font size smaller than the title) → description. */}
+      <div className="space-y-3">
+        {hasMetadata && (
+          <div className="flex items-center gap-3 flex-wrap text-xs">
+            {showSchedule && (
+              <span className="text-foreground">{team.schedule}</span>
+            )}
+            {upstreamSource && (
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                <HugeiconsIcon icon={ArrowTurnForwardIcon} className="size-3.5 shrink-0" />
+                {team.upstream!.verb} {upstreamSource.title}
+              </span>
+            )}
+          </div>
+        )}
+        <p className="text-sm font-medium leading-snug">{team.summary}</p>
+        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
           {team.description}
         </p>
       </div>
@@ -479,10 +492,10 @@ export function TeamSheetContent({ team }: { team: Team }) {
 
       {/* Sub-steps */}
       <div>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
           Steps
         </p>
-        <div className="space-y-0.5">
+        <div className="space-y-2">
           {team.substeps.map((step, i) => (
             <SubStepRow key={i} step={step} index={i} />
           ))}
@@ -493,9 +506,9 @@ export function TeamSheetContent({ team }: { team: Team }) {
 
       {/* Tools */}
       <div>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
           Tools
-          <span className="ml-1.5 text-muted-foreground/40">{team.tools.length}</span>
+          <span className="ml-1.5 text-muted-foreground/60">{team.tools.length}</span>
         </p>
         <div className="space-y-1.5">
           {team.tools.map((tool, i) => (
@@ -520,6 +533,21 @@ export function TeamSheetContent({ team }: { team: Team }) {
 
 // ── Workflow step card (for /agent-workflow page) ──────────────────────────
 
+// Schedule values that aren't real clock times — suppress in the time slot.
+// "Hourly / EOD / Weekly + on every close" was on Evaluation and read as
+// noise — multiple distinct cadences belong to multiple jobs and the
+// substeps inside the sheet carry the per-job timing.
+const NON_TIME_SCHEDULES = new Set([
+  "On demand",
+  "Event-driven",
+  "After every run",
+  "Hourly / EOD / Weekly + on every close",
+]);
+
+function isMeaningfulSchedule(schedule: string | undefined): boolean {
+  return Boolean(schedule && !NON_TIME_SCHEDULES.has(schedule));
+}
+
 export function WorkflowStepCard({
   team,
   onOpenSheet,
@@ -527,37 +555,75 @@ export function WorkflowStepCard({
   team: Team;
   onOpenSheet: () => void;
 }) {
+  const upstreamSource = team.upstream ? getTeam(team.upstream.teamId) : null;
+  const showSchedule = isMeaningfulSchedule(team.schedule);
   return (
-    <Card className="p-0 overflow-hidden">
-      <div className="flex items-start gap-3 px-4 py-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">{team.title}</span>
-            {team.model && (
-              <Badge variant="secondary" className="text-[10px]">{team.model}</Badge>
-            )}
-            <Badge variant="outline" className="text-[10px]">{team.schedule}</Badge>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-            {team.summary}
-          </p>
+    <Card className="p-0 gap-0 py-0 shadow-none overflow-hidden">
+      {/* Section 1: title row + description */}
+      <div className="p-3 flex flex-col gap-2 min-w-0">
+        <div className="flex items-center justify-between gap-3 min-w-0">
+          <span className="text-sm font-medium text-foreground truncate">
+            {team.title}
+          </span>
+          {showSchedule && (
+            <span className="text-xs text-foreground shrink-0">
+              {team.schedule}
+            </span>
+          )}
         </div>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={onOpenSheet}
-                  className="shrink-0 p-1.5 rounded-md hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground mt-0.5"
-                />
-              }
-            >
-              <SidebarOpenIcon />
-            </TooltipTrigger>
-            <TooltipContent side="left">View details</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+          {team.summary}
+        </p>
+      </div>
+      {/* Section 2: bordered bottom row — relation chip left, View button right */}
+      <div className="flex items-center justify-between gap-3 p-3 border-t">
+        <div className="flex-1 min-w-0">
+          {upstreamSource && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+              <HugeiconsIcon icon={ArrowTurnForwardIcon} className="size-3.5 shrink-0" />
+              <span className="truncate">
+                {team.upstream!.verb} {upstreamSource.title}
+              </span>
+            </div>
+          )}
+        </div>
+        <Button variant="outline" size="sm" onClick={onOpenSheet}>
+          View
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+// ── Analysts card (phase 1: dual-button card for Builder + Editor) ────────
+// Mirrors WorkflowStepCard's layout exactly — title row + description +
+// bordered bottom row — but the bottom row carries TWO View buttons
+// (one each for builder and editor) instead of one.
+
+export function AnalystsCard({
+  onOpenBuilder,
+  onOpenEditor,
+}: {
+  onOpenBuilder: () => void;
+  onOpenEditor: () => void;
+}) {
+  return (
+    <Card className="p-0 gap-0 py-0 shadow-none overflow-hidden">
+      {/* Section 1: title + description */}
+      <div className="p-3 flex flex-col gap-2 min-w-0">
+        <span className="text-sm font-medium text-foreground">Analysts</span>
+        <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+          Create a new analyst persona through a guided interview, or refine an existing one.
+        </p>
+      </div>
+      {/* Section 2: bordered bottom row — two View buttons on the right */}
+      <div className="flex items-center justify-end gap-2 p-3 border-t">
+        <Button variant="outline" size="sm" onClick={onOpenBuilder}>
+          View Builder
+        </Button>
+        <Button variant="outline" size="sm" onClick={onOpenEditor}>
+          View Editor
+        </Button>
       </div>
     </Card>
   );
@@ -611,9 +677,9 @@ export function ToolsRegistrySheetContent() {
         if (tools.length === 0) return null;
         return (
           <div key={cat}>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
               {CATEGORY_LABELS[cat]}
-              <span className="ml-1.5 text-muted-foreground/40">{tools.length}</span>
+              <span className="ml-1.5 text-muted-foreground/60">{tools.length}</span>
             </p>
             <div className="space-y-1.5">
               {tools.map((rt) => {
