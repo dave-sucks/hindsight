@@ -22,6 +22,25 @@ export interface ThesisStatusDisplay {
   tooltip: string;
 }
 
+/**
+ * Safe accessor — returns the ACTIVE display config when the input isn't a
+ * known ThesisStatus. Use this everywhere instead of direct
+ * `THESIS_STATUS_DISPLAY[x]` indexing. Direct indexing was the source of a
+ * production crash ("Cannot read properties of undefined (reading
+ * 'dotClass')") that took down every run-detail page when a card was
+ * rendered with a missing or unexpected status string. The runtime type
+ * is `string | null | undefined`; TypeScript's index-into-Record is too
+ * permissive to catch it.
+ */
+export function getThesisStatusDisplay(
+  status: string | null | undefined,
+): ThesisStatusDisplay {
+  if (status && status in THESIS_STATUS_DISPLAY) {
+    return THESIS_STATUS_DISPLAY[status as ThesisStatus];
+  }
+  return THESIS_STATUS_DISPLAY.ACTIVE;
+}
+
 export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = {
   ACTIVE: {
     label: "Holding",

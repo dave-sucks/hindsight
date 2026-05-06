@@ -32,7 +32,7 @@ import { PriceChange } from '@/components/ui/price-change';
 import { PriceGauge } from '@/components/ui/gauge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { TRADE_STATUS_DISPLAY, shortAlpacaId } from '@/lib/trade-status';
+import { getTradeStatusDisplay, shortAlpacaId } from '@/lib/trade-status';
 import { closeTrade, cancelTrade } from '@/lib/actions/closeTrade.actions';
 import {
   mockOpenTrades,
@@ -247,7 +247,7 @@ export default function TradesPage({
           </TableHeader>
           <TableBody>
             {filtered.map((trade) => {
-              const cfg = TRADE_STATUS_DISPLAY[trade.status] ?? TRADE_STATUS_DISPLAY.OPEN;
+              const cfg = getTradeStatusDisplay(trade.status);
               const timeLabel = cfg.timeLabel({
                 placedAt: trade.placedAt,
                 filledAt: trade.filledAt,

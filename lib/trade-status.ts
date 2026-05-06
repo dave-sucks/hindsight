@@ -44,6 +44,26 @@ function fmt(d: string | Date | null | undefined): string {
   });
 }
 
+/**
+ * Safe accessor — returns the OPEN display config when the input isn't a
+ * known TradeStatus. Use this everywhere instead of direct
+ * `TRADE_STATUS_DISPLAY[x]` indexing, which was the source of a
+ * production crash ("Cannot read properties of undefined (reading
+ * 'dotClass')") that took down every run-detail page when a row was
+ * rendered with a missing or unexpected status string. The runtime type
+ * is `string | null | undefined`; TypeScript's index-into-Record is too
+ * permissive to catch it. OPEN is the safest fallback because it
+ * matches the dot-render shape callers already expect (blue pulse).
+ */
+export function getTradeStatusDisplay(
+  status: string | null | undefined,
+): TradeStatusDisplay {
+  if (status && status in TRADE_STATUS_DISPLAY) {
+    return TRADE_STATUS_DISPLAY[status as TradeStatus];
+  }
+  return TRADE_STATUS_DISPLAY.OPEN;
+}
+
 export const TRADE_STATUS_DISPLAY: Record<TradeStatus, TradeStatusDisplay> = {
   PENDING: {
     label: "Pending",

@@ -25,7 +25,7 @@ import {
   hasFundamentalDetails,
 } from "@/components/agent/sheets/ThesisSheet";
 import type { FundamentalsData, ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
-import { THESIS_STATUS_DISPLAY } from "@/lib/thesis-status";
+import { getThesisStatusDisplay } from "@/lib/thesis-status";
 
 // Types are defined in ThesisSheet.tsx (the more primitive file) and re-exported
 // here so existing consumers importing from thesis-card don't need to change.
@@ -91,7 +91,7 @@ export function ThesisCard({
       : null;
 
   const displayName = company_name ?? ticker;
-  const statusDisplay = THESIS_STATUS_DISPLAY[status ?? "ACTIVE"];
+  const statusDisplay = getThesisStatusDisplay(status);
 
   // ── Shared header for ALL states ──────────────────────────────
   const header = (

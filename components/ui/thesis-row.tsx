@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Favicon } from "@/components/intelligence/signal-feed";
-import { TRADE_STATUS_DISPLAY } from "@/lib/trade-status";
+import { getTradeStatusDisplay } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 
@@ -139,7 +139,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         // Use tradeStatus when available (wired from order fill state).
         // Fall back to deriving from avgCost for legacy/incomplete data.
         const ts: TradeStatus = pos.tradeStatus ?? (pos.avgCost === 0 ? "PENDING" : "OPEN");
-        const cfg = TRADE_STATUS_DISPLAY[ts];
+        const cfg = getTradeStatusDisplay(ts);
         const isPending = ts === "PENDING";
         return (
           <div className={cn("px-4 py-2.5 border-b", posBg(ts))}>

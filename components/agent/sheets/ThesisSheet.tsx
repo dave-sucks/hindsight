@@ -33,7 +33,7 @@ import {
   type TriggersResponse,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import {
-  THESIS_STATUS_DISPLAY,
+  getThesisStatusDisplay,
   type ThesisStatus,
 } from "@/lib/thesis-status";
 import { cn } from "@/lib/utils";
@@ -113,7 +113,7 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 // read-theses table, the carousel cards, the trade detail header.
 
 function StatusPill({ status }: { status: ThesisStatus }) {
-  const display = THESIS_STATUS_DISPLAY[status];
+  const display = getThesisStatusDisplay(status);
   return (
     <Badge variant="secondary" className="gap-1.5 font-normal">
       <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
