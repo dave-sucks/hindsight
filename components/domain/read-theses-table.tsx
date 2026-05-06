@@ -29,7 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import type { ThesisCardData } from "@/components/domain/thesis-card";
-import { THESIS_STATUS_DISPLAY } from "@/lib/thesis-status";
+import { getThesisStatusDisplay } from "@/lib/thesis-status";
 
 // ─── Row ─────────────────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ function ThesisReadRow({
   thesis: ThesisCardData;
   onClick: () => void;
 }) {
-  const status = THESIS_STATUS_DISPLAY[thesis.status ?? "ACTIVE"];
+  const status = getThesisStatusDisplay(thesis.status);
   const summary = thesis.reasoning_summary?.trim() || "—";
 
   return (

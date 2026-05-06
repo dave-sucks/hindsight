@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, pnlColor } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
-import { TRADE_STATUS_DISPLAY, shortAlpacaId } from "@/lib/trade-status";
+import { getTradeStatusDisplay, shortAlpacaId } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 
 // ── Row menu item ────────────────────────────────────────────────────────────
@@ -218,8 +218,7 @@ export function TradeRow({
   const isOpen = status === "OPEN" || isPending;
   const isStalePrice = isOpen && priceSource === "missing";
 
-  const cfg =
-    TRADE_STATUS_DISPLAY[status as TradeStatus] ?? TRADE_STATUS_DISPLAY.OPEN;
+  const cfg = getTradeStatusDisplay(status);
   const timeLabel = cfg.timeLabel({ placedAt, filledAt, closedAt });
   const shortId = shortAlpacaId(alpacaOrderId);
   const priceSourceLabel = isOpen ? fmtPriceSource(priceSource, priceUpdatedAt) : null;

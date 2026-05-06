@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import { ThesisCard, type ThesisCardData } from "@/components/domain/thesis-card";
-import { THESIS_STATUS_DISPLAY } from "@/lib/thesis-status";
+import { getThesisStatusDisplay } from "@/lib/thesis-status";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -77,7 +77,7 @@ function PriceRow({
 // ── Card ────────────────────────────────────────────────────────────────────
 
 export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
-  const statusDisplay = THESIS_STATUS_DISPLAY[thesis.status ?? "ACTIVE"];
+  const statusDisplay = getThesisStatusDisplay(thesis.status);
   const targetDelta = pctDelta(thesis.entry_price, thesis.target_price);
   const stopDelta = pctDelta(thesis.entry_price, thesis.stop_loss);
 
