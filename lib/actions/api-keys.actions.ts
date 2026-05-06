@@ -207,7 +207,7 @@ export async function reverifyApiKey(
 // Read from ELEVENLABS_API_KEY environment variable.
 
 /** Returns the ElevenLabs API key from the environment. */
-export function resolveElevenLabsKey(_userId?: string): string | null {
+export async function resolveElevenLabsKey(_userId?: string): Promise<string | null> {
   return process.env.ELEVENLABS_API_KEY ?? null;
 }
 
@@ -217,7 +217,7 @@ export function resolveElevenLabsKey(_userId?: string): string | null {
  */
 export async function getElevenLabsVoices(): Promise<ElevenLabsVoice[]> {
   try {
-    const apiKey = resolveElevenLabsKey();
+    const apiKey = await resolveElevenLabsKey();
     if (!apiKey) return [];
     return await listVoices(apiKey);
   } catch (err) {
