@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react";
 import { Copy, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Card } from "@/components/ui/card";
 import {
@@ -13,18 +12,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   WorkflowStepCard,
   AnalystsCard,
   FlowConnector,
   TeamSheetContent,
   ToolsRegistrySheetContent,
-  SidebarOpenIcon,
 } from "@/components/domain/team-card";
 import {
   TEAMS,
@@ -114,36 +106,25 @@ export default function AgentWorkflowPage() {
 
       <Separator />
 
-      {/* Tools Registry row */}
-      <Card className="p-0 overflow-hidden">
-        <div className="flex items-start gap-3 px-4 py-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Tools Registry</span>
-              <Badge variant="outline" className="text-[10px]">
-                {TOOL_REGISTRY.length} tools
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-              All tools available to agents — intelligence, research, action, and system lifecycle.
-            </p>
+      {/* Tools Registry — same card layout as the team cards above */}
+      <Card className="p-0 gap-0 py-0 shadow-none overflow-hidden">
+        <div className="p-3 flex flex-col gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <span className="text-sm font-medium text-foreground truncate">
+              Tools Registry
+            </span>
+            <span className="text-xs text-foreground shrink-0">
+              {TOOL_REGISTRY.length} tools
+            </span>
           </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    onClick={() => setActiveSheet("tools-registry")}
-                    className="shrink-0 p-1.5 rounded-md hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground mt-0.5"
-                  />
-                }
-              >
-                <SidebarOpenIcon />
-              </TooltipTrigger>
-              <TooltipContent side="left">Browse all tools</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+            All tools available to agents — intelligence, research, action, and system lifecycle.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-3 p-3 border-t">
+          <Button variant="outline" size="sm" onClick={() => setActiveSheet("tools-registry")}>
+            View
+          </Button>
         </div>
       </Card>
 

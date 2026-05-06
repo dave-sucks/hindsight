@@ -524,7 +524,15 @@ export function TeamSheetContent({ team }: { team: Team }) {
 // ── Workflow step card (for /agent-workflow page) ──────────────────────────
 
 // Schedule values that aren't real clock times — suppress in the time slot.
-const NON_TIME_SCHEDULES = new Set(["On demand", "Event-driven", "After every run"]);
+// "Hourly / EOD / Weekly + on every close" was on Evaluation and read as
+// noise — multiple distinct cadences belong to multiple jobs and the
+// substeps inside the sheet carry the per-job timing.
+const NON_TIME_SCHEDULES = new Set([
+  "On demand",
+  "Event-driven",
+  "After every run",
+  "Hourly / EOD / Weekly + on every close",
+]);
 
 function isMeaningfulSchedule(schedule: string | undefined): boolean {
   return Boolean(schedule && !NON_TIME_SCHEDULES.has(schedule));
@@ -548,7 +556,7 @@ export function WorkflowStepCard({
             {team.title}
           </span>
           {showSchedule && (
-            <span className="text-xs font-mono text-muted-foreground tabular-nums shrink-0">
+            <span className="text-xs text-foreground shrink-0">
               {team.schedule}
             </span>
           )}

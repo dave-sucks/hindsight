@@ -319,7 +319,7 @@ export const TEAMS: Team[] = [
       "Discovery Run is how new tickers enter your analyst's coverage. Once a week, every analyst spawns a focused agent that scans the past seven days of signals on names not already in the library, picks the most promising candidates, and mints WATCHING theses with the triggers and rationale that would later promote them to ACTIVE.\n\nIt cannot touch existing coverage — only Daily and Tactical runs can update or close theses. If conviction on a candidate is high enough at discovery time, it can place a starter trade and mint as ACTIVE; otherwise everything goes onto the watchlist for the daily run to evaluate later.",
     icon: Search,
     model: "GPT-4o",
-    schedule: "Sundays 9 AM ET + on demand",
+    schedule: "Sundays 9 AM ET",
     substeps: [
       { title: "Scan", summary: "read_signals filtered to the discoverySignals bucket. Cross off anything already covered by an active or watching thesis." },
       { title: "Score", summary: "get_stock_data on top 2-3 candidates. Composite score (trendStrength / relativeStrength / entryQuality / catalystFreshness). ≥ 7 required to mint." },
@@ -355,7 +355,7 @@ export const TEAMS: Team[] = [
       "The Daily Run is where your portfolio actually gets managed. Every weekday morning at 8 AM ET, each enabled analyst wakes up, reads its current holdings and watchlist along with whatever signals came in overnight, then goes through each name one at a time and asks: does anything need to change today?\n\nFor most names the answer is no — nothing material happened, so the analyst just logs that it looked and moves on. For the rest, it does fresh research, updates the thesis with what it learned (raise the target, tighten the stop, change conviction), and acts on the position if needed (close, scale in, trim). It can also pick up worthwhile new discovery candidates that came in overnight, and writes a quick recap at the end of what it actually changed.",
     icon: Bot,
     model: "GPT-4o",
-    schedule: "8:00 AM ET weekdays + on demand",
+    schedule: "8:00 AM ET weekdays",
     substeps: [
       { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references priority reviews flagged by the price monitor. Plain text — no tools." },
       { title: "Orient", summary: "read_signals (today's three buckets: portfolio, watchlist, discovery — each carries signalId for provenance) and get_theses with full update history. read_artifact on anything worth a deep read; web_search sparingly within budget." },
