@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { getEpisode } from "@/lib/actions/podcast.actions";
 import type { EpisodeTranscriptItem } from "@/lib/actions/podcast.actions";
 import { GenerateAudioButton } from "./GenerateAudioButton";
+import { EpisodeAvatar } from "./EpisodeAvatar";
 
 type Params = { id: string; episodeId: string };
 
@@ -101,18 +102,21 @@ export default async function EpisodePage({
       <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-semibold">{episode.title}</h1>
-              {isAssembling && (
-                <Badge variant="default">Generating audio…</Badge>
-              )}
+          <div className="flex items-center gap-3">
+            <EpisodeAvatar />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl font-semibold">{episode.title}</h1>
+                {isAssembling && (
+                  <Badge variant="default">Generating audio…</Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground tabular-nums">
+                {new Date(episode.createdAt).toLocaleDateString()} ·{" "}
+                {episode.transcripts.length} segment
+                {episode.transcripts.length === 1 ? "" : "s"}
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground tabular-nums">
-              {new Date(episode.createdAt).toLocaleDateString()} ·{" "}
-              {episode.transcripts.length} segment
-              {episode.transcripts.length === 1 ? "" : "s"}
-            </p>
           </div>
 
           <div className="shrink-0">
