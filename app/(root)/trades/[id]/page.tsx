@@ -15,7 +15,7 @@ import {
 import { StockPriceChart } from '@/components/stocks/StockPriceChart';
 import { StockThesesList } from '@/components/stocks/StockThesesList';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
-import { BarGauge } from '@/components/ui/bar-gauge';
+import { PriceGauge } from '@/components/ui/gauge';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -233,17 +233,9 @@ export default async function TradeDetailPage({
   const targetPrice = position.targetPrice ?? position.avgCost * 1.1;
   const stopPrice = position.stopLoss ?? position.avgCost * 0.9;
 
-  // Progress to target
   const totalMove = Math.abs(
     position.direction === 'LONG' ? targetPrice - position.avgCost : position.avgCost - targetPrice
   );
-  const actualMove = Math.abs(
-    position.direction === 'LONG' ? currentPrice - position.avgCost : position.avgCost - currentPrice
-  );
-  const progressPct = totalMove > 0
-    ? Math.min(100, Math.max(0, Math.round((actualMove / totalMove) * 100)))
-    : 0;
-
   const riskMove = Math.abs(
     position.direction === 'LONG' ? position.avgCost - stopPrice : stopPrice - position.avgCost
   );
@@ -844,15 +836,39 @@ export default async function TradeDetailPage({
                 </Tooltip>
               </div>
               <div className="space-y-2">
-                <BarGauge
-                  mode="fill"
-                  value={progressPct / 100}
-                  color={isPos ? 'positive' : 'negative'}
+                {(() => {
+                  // Entry marker positioning — matches PriceTargetsBlock in
+                  // ThesisSheet so the gauge looks identical between sheets
+                  // and the trade detail page.
+                  const lo = Math.min(stopPrice, trade.entryPrice, targetPrice);
+                  const hi = Math.max(stopPrice, trade.entryPrice, targetPrice);
+                  const span = hi - lo || trade.entryPrice * 0.1;
+                  const COUNT = 60;
+                  const EDGE_PAD = 3;
+                  const usable = COUNT - EDGE_PAD * 2 - 1;
+                  const entryIdx = Math.round(
+                    EDGE_PAD + ((trade.entryPrice - lo) / span) * usable,
+                  );
+                  const entryPct = entryIdx / (COUNT - 1);
+                  return (
+                    <div className="relative h-4">
+                      <span
+                        className="absolute -translate-x-1/2 text-xs font-medium tabular-nums whitespace-nowrap"
+                        style={{ left: `${entryPct * 100}%` }}
+                      >
+                        ${trade.entryPrice.toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                })()}
+                <PriceGauge
+                  entry={trade.entryPrice}
+                  target={targetPrice}
+                  stop={stopPrice}
                 />
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
-                  <span>${stopPrice.toFixed(2)} stop</span>
-                  <span className="font-medium text-foreground">{progressPct}%</span>
-                  <span>${targetPrice.toFixed(2)} target</span>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Stop ${stopPrice.toFixed(2)}</span>
+                  <span>Target ${targetPrice.toFixed(2)}</span>
                 </div>
               </div>
 

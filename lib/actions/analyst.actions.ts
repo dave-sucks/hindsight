@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { getLatestPricesWithMeta } from "@/lib/alpaca";
+import type { TradeStatus } from "@/lib/mock-data/trades";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import type { SourceCategory, QueryCategory, IntelligencePolicy } from "@/lib/intelligence/types";
 import {
@@ -71,6 +73,13 @@ export interface AnalystOpenTrade {
   direction: string;
   entryPrice: number;
   shares: number;
+  currentPrice: number;
+  pnl: number;
+  pnlPct: number;
+  status: TradeStatus;
+  openedAt: string;
+  priceSource: "alpaca" | "finnhub" | "missing";
+  priceUpdatedAt?: string;
 }
 
 export interface AnalystListItem {
@@ -225,7 +234,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
   if (configs.length === 0) return [];
 
   // Load all runs and positions for this user, group in JS
-  const [allRuns, allPositions] = await Promise.all([
+  const [allRuns, allPositions, alpacaCreds] = await Promise.all([
     prisma.researchRun.findMany({
       where: { userId },
       orderBy: { startedAt: "desc" },
@@ -248,9 +257,23 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
         outcome: true,
         realizedPnl: true,
         analystId: true,
+        openedAt: true,
       },
     }),
+    resolveAlpacaCredentials(userId).catch(() => undefined),
   ]);
+
+  // Fetch live prices once for all open positions across analysts.
+  const openSymbols = Array.from(
+    new Set(allPositions.filter((p) => p.status === "OPEN").map((p) => p.symbol)),
+  );
+  const priceLookup = openSymbols.length > 0
+    ? await getLatestPricesWithMeta(openSymbols, alpacaCreds ?? undefined).catch(() => ({
+        prices: {} as Record<string, number>,
+        sources: {} as Record<string, "alpaca" | "finnhub" | "missing">,
+        fetchedAt: new Date().toISOString(),
+      }))
+    : { prices: {} as Record<string, number>, sources: {} as Record<string, "alpaca" | "finnhub" | "missing">, fetchedAt: new Date().toISOString() };
 
   return configs.map((config) => {
     const configRuns = allRuns.filter((r) => r.agentConfigId === config.id);
@@ -271,13 +294,33 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
     const openTrades: AnalystOpenTrade[] = configPositions
       .filter((p) => p.status === "OPEN")
       .slice(0, 3)
-      .map((p) => ({
-        id: p.id,
-        ticker: p.symbol,
-        direction: p.direction,
-        entryPrice: p.avgCost,
-        shares: p.quantity,
-      }));
+      .map((p) => {
+        const livePrice = priceLookup.prices[p.symbol];
+        const priceSource = priceLookup.sources[p.symbol] ?? "missing";
+        const currentPrice = livePrice ?? p.avgCost;
+        const dollars =
+          p.direction === "LONG"
+            ? (currentPrice - p.avgCost) * p.quantity
+            : (p.avgCost - currentPrice) * p.quantity;
+        const pct =
+          p.direction === "LONG"
+            ? ((currentPrice - p.avgCost) / p.avgCost) * 100
+            : ((p.avgCost - currentPrice) / p.avgCost) * 100;
+        return {
+          id: p.id,
+          ticker: p.symbol,
+          direction: p.direction,
+          entryPrice: p.avgCost,
+          shares: p.quantity,
+          currentPrice,
+          pnl: livePrice !== undefined ? dollars : 0,
+          pnlPct: livePrice !== undefined ? pct : 0,
+          status: "OPEN" as TradeStatus,
+          openedAt: p.openedAt.toISOString(),
+          priceSource,
+          priceUpdatedAt: livePrice !== undefined ? priceLookup.fetchedAt : undefined,
+        };
+      });
 
     return {
       id: config.id,
