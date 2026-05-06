@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -8,14 +7,6 @@ import { GenerateAudioButton } from "./GenerateAudioButton";
 
 type Params = { id: string; episodeId: string };
 
-function statusVariant(
-  status: string,
-): "secondary" | "outline" | "default" | "destructive" {
-  if (status === "READY") return "secondary";
-  if (status === "ASSEMBLING") return "default";
-  if (status === "FAILED") return "destructive";
-  return "outline";
-}
 
 function TranscriptBody({ transcript: t, index }: { transcript: EpisodeTranscriptItem; index: number }) {
   // Walk plainText inserting inline citation chip anchors at each citation's endChar.
@@ -107,21 +98,15 @@ export default async function EpisodePage({
 
   return (
     <div className="h-[calc(100dvh-3rem)] overflow-y-auto">
-      <div className="p-4 space-y-6">
+      <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <Link
-              href={`/podcasts/${id}`}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
-              ← {episode.podcastName}
-            </Link>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-semibold">{episode.title}</h1>
-              <Badge variant={statusVariant(episode.status)}>
-                {isAssembling ? "Generating audio…" : episode.status}
-              </Badge>
+              {isAssembling && (
+                <Badge variant="default">Generating audio…</Badge>
+              )}
             </div>
             <p className="text-sm text-muted-foreground tabular-nums">
               {new Date(episode.createdAt).toLocaleDateString()} ·{" "}
