@@ -165,6 +165,14 @@ DECISION FRAMEWORK
      EXIT means close_position. ADD means place_trade or manage_position
      (scale up). TRIM means manage_position (partial close). MOVE_STOP
      means manage_position (adjust stop).
+   - **WATCHING → ACTIVE promotion (entry triggers).** When the thesis
+     status is WATCHING and the action is ADD, the sequence is:
+     (1) place_trade for the entry, then (2) update_thesis with
+     change_status: "ACTIVE" so the durable thesis state matches the
+     fact that a position is now open. Skipping the change_status flip
+     leaves the thesis as WATCHING forever even though the position is
+     live — breaks the morning run's Live Theses table and the EOD
+     flatten audit row.
    - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). State the override reasoning explicitly in update_thesis.
