@@ -512,10 +512,28 @@ describe("shouldFire", () => {
     });
   });
 
-  it("ignores cooldown when cooldownDays is undefined", () => {
+  it("falls back to predicate-kind default cooldown when cooldownDays is absent", () => {
+    // PRICE_ABOVE has a 1-day default cooldown. Fired 1 minute ago →
+    // still inside the default window, so should NOT re-fire.
     const trigger: Trigger = {
       ...baseTrigger,
-      // no cooldownDays — lastFiredAt should be ignored
+      // no cooldownDays — evaluator falls back to the per-kind default.
+      lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
+    };
+    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
+    expect(shouldFire(trigger, ctx)).toEqual({
+      fires: false,
+      reason: "cooldown",
+    });
+  });
+
+  it("treats explicit cooldownDays=0 as no rate limit", () => {
+    // Escape hatch: an explicit zero opts out of the default-cooldown
+    // fallback. Useful for terminal EXIT triggers where the trigger
+    // fires once and the position closes anyway.
+    const trigger: Trigger = {
+      ...baseTrigger,
+      cooldownDays: 0,
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });

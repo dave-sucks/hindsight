@@ -483,6 +483,37 @@ export const signalRouter = inngest.createFunction(
       }
     )
 
+    // ── Step 2.6: Load EXISTING (analystId, signalId) pairs for today ────────
+    //
+    // Used downstream to filter `app/signal.routed` event emission to
+    // genuinely-new routes only. Without this filter, every signal-router
+    // invocation re-fans out events for already-routed signals (cron at
+    // 7:30 AM + every `intelligence/route-signals` event from each intel
+    // producer = 5–10 invocations/day). The trigger-evaluator consumes
+    // each event and re-fires signal-side predicates, spawning duplicate
+    // tactical runs. Observed: AMZN earnings-beat signal routed once,
+    // EARNINGS_BEAT trigger fired 10 tactical runs over 12.5 hours.
+    //
+    // Persistence stays idempotent via UNIQUE(analystId, signalId) +
+    // skipDuplicates on the createMany — re-evaluation can still ADD missing
+    // routes for analysts the first pass missed (cross-analyst starvation
+    // bug from PR #173). Only the EVENT emission gets the dedup.
+    const existingRouteKeys = await step.run(
+      "load-existing-route-keys",
+      async () => {
+        const signalIds = signals.map((s: { id: string }) => s.id)
+        if (signalIds.length === 0) return [] as string[]
+        const rows = await prisma.analystSignalRoute.findMany({
+          where: { signalId: { in: signalIds } },
+          select: { analystId: true, signalId: true },
+        })
+        return rows.map(
+          (r: { analystId: string; signalId: string }) =>
+            `${r.analystId}::${r.signalId}`,
+        )
+      }
+    )
+
     // ── Step 3: Build candidates per analyst ────────────────────────────────
 
     const routeResult = await step.run("route-signals", async () => {
@@ -786,14 +817,27 @@ export const signalRouter = inngest.createFunction(
         )
       }
 
-      // PR 2 — emit one `app/signal.routed` event per unique signal that
-      // got routed to at least one analyst. Trigger-evaluator consumes
-      // these and fires `app/thesis.trigger.fired` on signal-side
-      // predicate matches. One event per signal (not per route) — the
-      // consumer fans out across analysts internally.
+      // Emit `app/signal.routed` ONLY for genuinely-new (analyst, signal)
+      // pairs created in this pass. Re-evaluation of pre-existing routes
+      // is intentional (cross-analyst starvation fix from PR #173) and
+      // harmless at the persistence layer thanks to skipDuplicates — but
+      // the EVENT emission isn't naturally idempotent. Without this filter,
+      // every router invocation re-fires `app/signal.routed` for every
+      // already-routed signal in scope, and trigger-evaluator dutifully
+      // re-fires signal-side predicates on each emit. Observed: AMZN
+      // earnings-beat signal routed once, EARNINGS_BEAT trigger fired 10
+      // tactical runs over 12.5 hours.
+      //
+      // existingRouteKeys was loaded BEFORE the createMany — so any
+      // (analyst, signal) NOT in that set is a row this pass just inserted.
+      const existingKeySet = new Set(existingRouteKeys)
+      const newRoutes = finalRoutes.filter(
+        (r) => !existingKeySet.has(`${r.analystId}::${r.signalId}`),
+      )
+
       const analystsBySignal: Record<string, string[]> = {}
       const tickersBySignal: Record<string, string[]> = {}
-      for (const r of finalRoutes) {
+      for (const r of newRoutes) {
         if (!analystsBySignal[r.signalId]) analystsBySignal[r.signalId] = []
         if (!analystsBySignal[r.signalId].includes(r.analystId)) {
           analystsBySignal[r.signalId].push(r.analystId)
@@ -808,6 +852,7 @@ export const signalRouter = inngest.createFunction(
 
       return {
         routesCreated: finalRoutes.length,
+        newRoutesEmitted: newRoutes.length,
         droppedByNovelty,
         droppedByThreshold,
         droppedOutOfUniverse,

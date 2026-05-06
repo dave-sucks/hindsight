@@ -13,6 +13,7 @@ import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import {
   defaultTriggersForHorizon,
   mergeTriggers,
+  applyTriggerCooldownDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -516,8 +517,17 @@ export const recordThesis = defineTool({
           // baseline without the agent having to remember every time.
           // Agent wins per (predicate, action) bucket; defaults fill gaps.
           // See lib/agent/triggers/defaults.ts.
+          //
+          // applyTriggerCooldownDefaults runs LAST so any trigger (agent
+          // or template-supplied) without a cooldown gets a sane per-kind
+          // default. Without this, agent-authored EARNINGS_BEAT / FILING /
+          // PRICE_* triggers fire on every signal-router invocation —
+          // observed as 10x duplicate tactical runs on a single AMZN
+          // earnings signal in production.
           if (!args.horizon) {
-            return (args.triggers ?? []) as object[];
+            return applyTriggerCooldownDefaults(
+              (args.triggers ?? []) as Trigger[],
+            ) as object[];
           }
           const defaults = defaultTriggersForHorizon(args.horizon as Horizon, {
             entryPrice: args.entry_price ?? null,
@@ -532,7 +542,7 @@ export const recordThesis = defineTool({
             defaults,
             (args.triggers ?? []) as Trigger[],
           );
-          return merged as object[];
+          return applyTriggerCooldownDefaults(merged) as object[];
         })(),
         catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
         maxHoldDays:

@@ -48,7 +48,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}. If we hit it the thesis is broken; close and write up the lessons.`,
-      // No cooldown on EXIT triggers — terminal action, must always fire.
+      cooldownDays: 0, // explicit opt-out — EXIT is terminal; the position closes and the cron's status:ACTIVE filter takes over.
     });
   }
 
@@ -112,7 +112,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}.`,
-      // No cooldown on EXIT — terminal.
+      cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
   if (thesis.targetPrice != null) {
@@ -158,7 +158,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
       action: "EXIT",
       rationale: `Tight stop at $${thesis.stopLoss}. Trade-horizon — get out fast on invalidation.`,
-      // No cooldown on EXIT — terminal.
+      cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
   if (thesis.targetPrice != null) {
@@ -167,7 +167,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
       action: "EXIT",
       rationale: `Target $${thesis.targetPrice} hit. Trade plan executed; close.`,
-      // No cooldown on EXIT — terminal.
+      cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
   const maxDays = thesis.maxHoldDays ?? 14;
@@ -176,8 +176,10 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
     predicate: { kind: "TIME_ELAPSED", days: maxDays },
     action: "REVIEW",
     rationale: `Max hold ${maxDays} days reached — TRADE horizons must close out by this point.`,
-    // No cooldown — TIME_ELAPSED only fires once anyway (after the
-    // window is reached); cooldown is irrelevant.
+    // cooldownDays intentionally unset — falls back to the per-kind default
+    // (~80% of `days`) which is the right shape: TIME_ELAPSED stays true
+    // forever once the window is reached, so without ANY cooldown it would
+    // re-fire on every signal-routed evaluation.
   });
   return out;
 }
@@ -190,7 +192,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}.`,
-      // No cooldown on EXIT — terminal.
+      cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
   // Any FILING is interesting on a catalyst trade — frequently the
@@ -248,6 +250,80 @@ export function defaultTriggersForHorizon(
     case "CATALYST":
       return catalystDefaults(thesis);
   }
+}
+
+// ── Cooldown defaults ──────────────────────────────────────────────────
+//
+// Triggers without a `cooldownDays` value used to fire forever — the
+// `shouldFire` gate only enforces cooldown when both `cooldownDays` and
+// `lastFiredAt` are set, so an unset cooldown silently disabled rate
+// limiting. Observed in production: agent-supplied EARNINGS_BEAT trigger
+// on AMZN with no cooldown fired 10 tactical runs over 12.5 hours on a
+// single earnings signal that the router (correctly) re-evaluated each
+// time a new intel batch landed.
+//
+// We now apply a sane per-predicate-kind default at write time in
+// record_thesis / update_thesis. The values mirror the conventions
+// already baked into the horizon templates above (EARNINGS_*: 7,
+// FILING: 1, etc.) so behavior of a default-minted trigger doesn't
+// change — these only kick in when an agent-supplied trigger is
+// missing the field.
+
+/**
+ * Default cooldown (days) for a predicate when the agent didn't specify
+ * one. Mirrors the conventions in the horizon templates: earnings-class
+ * predicates rate-limit at the quarterly cycle (7d caps the
+ * "earnings-beat aftershocks" window); filings/news/price predicates
+ * rate-limit at 1 day so they don't fan out on every quote tick or
+ * intel batch; review-cadence predicates rate-limit closer to their
+ * window (TIME_ELAPSED 30 ⇒ 25, etc.).
+ */
+export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
+  switch (p.kind) {
+    case "EARNINGS_BEAT":
+    case "EARNINGS_MISS":
+    case "GUIDANCE_CHANGE":
+      return 7;
+    case "FILING":
+      return 1;
+    case "SIGNAL_TYPE":
+      return 1;
+    case "PRICE_ABOVE":
+    case "PRICE_BELOW":
+    case "PRICE_MOVE_PCT":
+    case "VS_SMA":
+    case "RSI":
+      return 1;
+    case "TIME_ELAPSED":
+      // Most TIME_ELAPSED predicates fire once and stay fired; pick a
+      // cooldown ~80% of the window so they don't re-fire every tick once
+      // elapsed but allow re-firing if the agent's window is short.
+      return Math.max(1, Math.round(p.days * 0.8));
+    case "REVIEW_DATE_HIT":
+      return 7;
+    case "AND":
+    case "OR":
+      // Composite: pick the max child cooldown. If a composite contains
+      // an EARNINGS_BEAT, use 7 — the more conservative default wins.
+      return Math.max(
+        1,
+        ...p.predicates.map(defaultCooldownDaysForPredicate),
+      );
+  }
+}
+
+/**
+ * Fill in `cooldownDays` on every trigger in the array that doesn't
+ * already have one. Pure; returns a fresh array. Call this in the write
+ * path (record_thesis / update_thesis) before persistence so disk state
+ * always has cooldown bookkeeping.
+ */
+export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {
+  return triggers.map((t) =>
+    t.cooldownDays != null
+      ? t
+      : { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate) },
+  );
 }
 
 /**
