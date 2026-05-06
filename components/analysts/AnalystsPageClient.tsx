@@ -10,7 +10,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { BarGauge } from "@/components/ui/bar-gauge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,9 +26,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { StockLogo } from "@/components/StockLogo";
 import { PnlBadge } from "@/components/ui/pnl-badge";
-import { cn } from "@/lib/utils";
+import { TradeRow } from "@/components/ui/trade-row";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
 import { BuilderShowcaseTrigger, BuilderShowcaseButton } from "@/components/domain/run-showcase-trigger";
@@ -39,27 +37,6 @@ import {
   CarouselContent,
   CarouselItem,
 } from "@/components/ui/carousel";
-
-// ── Win-rate bar ──────────────────────────────────────────────────────────────
-
-function WinRateBar({ winRate, tradeCount }: { winRate: number | null; tradeCount: number }) {
-  const pct = winRate != null ? `${Math.round(winRate * 100)}%` : "—";
-
-  return (
-    <div className="space-y-1">
-      <BarGauge
-        mode="fill"
-        value={winRate ?? 0}
-        color={winRate != null && winRate >= 0.5 ? "positive" : "negative"}
-        segments={12}
-      />
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
-        <span>{pct} win rate</span>
-        <span>{tradeCount} total</span>
-      </div>
-    </div>
-  );
-}
 
 // ── AnalystCard ───────────────────────────────────────────────────────────────
 
@@ -80,12 +57,15 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
   const promptText = rawPrompt ? stripMarkdown(rawPrompt) : null;
 
   const openCount = analyst.openTrades.length;
+  const winRatePct = analyst.winRate != null ? Math.round(analyst.winRate * 100) : null;
 
   return (
-    <Link href={`/analysts/${analyst.id}`} className="block group min-w-0">
-      <Card className="group-hover:bg-muted/20 transition-colors gap-0 h-full overflow-hidden shadow-none py-0">
-
-        {/* ── Section 1: header, name, description ── */}
+    <Card className="gap-0 h-full overflow-hidden shadow-none py-0 min-w-0">
+      <Link
+        href={`/analysts/${analyst.id}`}
+        className="block hover:bg-muted/20 transition-colors"
+      >
+        {/* ── Header, name, description ── */}
         <div className="p-3 flex flex-col gap-2 min-w-0">
           {/* Row 1: badges left · 3-dot right */}
           <div className="flex items-center justify-between gap-2 min-w-0">
@@ -93,6 +73,11 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
               {openCount > 0 && (
                 <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
                   {openCount} open
+                </span>
+              )}
+              {winRatePct != null && (
+                <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
+                  {winRatePct}% win
                 </span>
               )}
               {analyst.totalPnl !== 0 && (
@@ -136,46 +121,30 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
             )}
           </p>
         </div>
+      </Link>
 
-        {/* ── Section 2: win-rate bar ── */}
-        <div className="p-3 border-t">
-          <WinRateBar winRate={analyst.winRate} tradeCount={analyst.tradeCount} />
+      {/* ── Active trades ── */}
+      {analyst.openTrades.length > 0 && (
+        <div className="border-t">
+          {analyst.openTrades.map((trade) => (
+            <TradeRow
+              key={trade.id}
+              id={trade.id}
+              ticker={trade.ticker}
+              currentPrice={trade.currentPrice}
+              entryPrice={trade.entryPrice}
+              shares={trade.shares}
+              pnl={trade.pnl}
+              pnlPct={trade.pnlPct}
+              status={trade.status}
+              openedAt={trade.openedAt}
+              priceSource={trade.priceSource}
+              priceUpdatedAt={trade.priceUpdatedAt}
+            />
+          ))}
         </div>
-
-        {/* ── Section 3: active trades ── */}
-        {analyst.openTrades.length > 0 && (
-          <div className="border-t">
-            {analyst.openTrades.map((trade, i) => {
-              const cost = trade.entryPrice * trade.shares;
-              return (
-                <button
-                  key={trade.id}
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    router.push(`/trades/${trade.id}`);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-2 p-3 hover:bg-accent/50 transition-colors text-left",
-                    i > 0 && "border-t",
-                  )}
-                >
-                  <StockLogo ticker={trade.ticker} size="sm" />
-                  <span className="text-xs font-mono font-medium">{trade.ticker}</span>
-                  <span className="text-xs font-mono text-muted-foreground tabular-nums">
-                    ({trade.shares} shares)
-                  </span>
-                  <span className="text-xs font-mono text-muted-foreground tabular-nums ml-auto">
-                    ${cost.toLocaleString("en-US", { maximumFractionDigits: 0 })}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </Card>
-    </Link>
+      )}
+    </Card>
   );
 }
 
