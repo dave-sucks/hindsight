@@ -304,7 +304,7 @@ behavior to `manage_position`. We fix `manage_position`, it'll move to
 inspects every TradeDecision's reasoning text for action verbs and
 verifies a corresponding tool call landed.
 
-### Root cause #3: The morning prompt rewards thesis maintenance
+### Root cause #3: The morning prompt rewards thesis maintenance — and the agent moves goalposts to avoid acting
 
 When you read the system prompt for `MORNING_PLAN`, it emphasizes:
 review your theses, update what changed, summarize. The action verbs
@@ -313,10 +313,37 @@ available but not foregrounded. The agent has learned that "a good run"
 means "I read everything and updated some rationales." It's not
 incentivized to act.
 
+**Worse — the agent will actively move the entry trigger up to avoid
+acting on it.** Concrete case (run `cmouv51f7000004jpp5zzogjv`,
+2026-05-06 22:24 ET, Secular Theme Architect):
+
+- MRVL was WATCHING/LONG/CATALYST with `targetPrice: $175`, trigger
+  `PRICE_ABOVE $172 → REVIEW (rationale: "Promote if financial targets beat")`
+- Current price at run time: **$172.15** — trigger condition was true
+- The agent's own prior rationale said "Promote if financial targets beat"
+- Instead of placing a trade, the agent called `update_thesis`:
+  - target $175 → **$195** (raised by $20)
+  - stop $162 → $165 (tightened)
+  - kept the same PRICE_ABOVE $172 trigger (didn't even raise the threshold to match the new target)
+  - added a second REVIEW trigger
+- Decision: HOLD. Run summary: *"1 refined ($MRVL target ↑ to $195). No new trades executed as all positions remain within strategy parameters."*
+
+The agent **acknowledged** the trigger was met (the update's own rationale
+says "MRVL's price has surpassed the trigger level"), then chose to move
+the bar instead of acting. This is not narrate-vs-execute — it's a
+deliberate substitution. ENTER triggers (PR #217) won't fix this on
+their own; the agent will still pick `update_thesis` over `place_trade`.
+
 **Fix vector:** add explicit promotion rules to the morning prompt:
-- "If a WATCHING/LONG thesis has its ENTER trigger near firing (price > 95% of target), you MUST evaluate INITIATE before exiting the run."
+- "If you encounter a WATCHING thesis whose ENTER trigger condition is currently met (PRICE_ABOVE crossed for LONG, PRICE_BELOW crossed for SHORT), you MUST call `get_stock_data` and evaluate INITIATE before exiting the run."
+- "Raising the target instead of placing the trade when the entry condition is met is a RUN FAILURE — the run completes only if you either INITIATE or document why the setup was rejected (volume too low, regime change, etc.)."
 - "If a held position is within 5% of stop, you MUST evaluate `manage_position` (tighten/trim/close) before exiting the run."
-- "Reviewing without acting is a successful run only when no triggers are near firing."
+- "Reviewing without acting is a successful run only when no triggers are near firing AND no entry conditions are currently met."
+
+**Validation gate to enforce it:** the run-summary tool should refuse
+to write `primary_decision: HOLD` when a watching thesis's entry trigger
+predicate currently evaluates true and no `place_trade` call landed.
+Same shape as PR #210's gate but for the entry-not-taken pattern.
 
 ### Root cause #4: No promotion path between horizons
 
@@ -404,7 +431,7 @@ Highlights of what's still open after this PR:
 The architectural rot has a hierarchy. Don't fix #5 before #1 — they
 build on each other.
 
-### Step 1: Verify this PR's changes hold
+### Step 1: Verify this PR's changes hold AND watch for goalpost-moving
 
 Run tomorrow's morning runs (8 AM ET). Watch for:
 
@@ -413,13 +440,80 @@ Run tomorrow's morning runs (8 AM ET). Watch for:
 - Any `ENTER` triggers firing during market hours (the trigger evaluator's
   cron should pick them up; check `ThesisUpdate.type = TRIGGER_FIRED`
   with `triggerId` whose action is `ENTER`)
+- **The MRVL pattern repeating** — query: any `update_thesis` that
+  *raised* a `targetPrice` on a WATCHING thesis whose existing
+  PRICE_ABOVE trigger had a level <= current price at the time of update.
+  That's the agent moving the goalposts instead of trading.
 - The Global Event-Driven ETF Strategist is most fully wired (11 of 13
   watching theses with ENTER triggers) — easiest to spot signal there
 
-If `place_trade` is still 0 after a week of clean runs, the prompt
-issue (Root Cause #3) is dominant and needs work before anything else.
+The goalpost-moving query (run after the morning run):
 
-### Step 2: Fix the action layer
+```sql
+SELECT
+  ac.name AS analyst, t.ticker, tu.timestamp,
+  tu."priceAtTime",
+  tu."fieldChanges"->'targetPrice'->>'from' AS old_target,
+  tu."fieldChanges"->'targetPrice'->>'to' AS new_target,
+  tu.rationale
+FROM "ThesisUpdate" tu
+JOIN "Thesis" t ON t.id = tu."thesisId"
+JOIN "ResearchRun" rr ON rr.id = tu."runId"
+JOIN "AgentConfig" ac ON ac.id = rr."agentConfigId"
+WHERE tu.timestamp >= CURRENT_DATE
+  AND tu.type = 'UPDATED'
+  AND tu."fieldChanges"::jsonb ? 'targetPrice'
+  AND t.status = 'WATCHING'
+  AND (tu."fieldChanges"->'targetPrice'->>'to')::float
+      > (tu."fieldChanges"->'targetPrice'->>'from')::float;
+```
+
+Any rows here are goalpost-moves. **Step 2 and Step 3 are now both
+required** — Step 2 alone (action-layer gate) won't catch this because
+the agent isn't narrating intent then skipping the call; it's
+explicitly choosing update_thesis.
+
+### Step 2: Fix the morning prompt to enforce promotion (was Step 3)
+
+This is now the highest-priority fix because the MRVL run proved the
+agent will move the bar to avoid acting even when triggers exist.
+
+In `lib/agent/system-prompt.ts` MORNING_PLAN workflow, add a hard
+promotion check before `complete_run`:
+
+```
+PROMOTION CHECK (mandatory before complete_run):
+
+For every WATCHING thesis returned by get_theses:
+  - Get current price (get_stock_data if not already loaded)
+  - For LONG direction: if currentPrice >= targetPrice, the entry
+    condition is MET. You MUST evaluate INITIATE.
+    - If passing: call record_thesis with status=ACTIVE (or update_thesis
+      with change_status=ACTIVE), then place_trade.
+    - If rejecting: record_run_summary's decision_rationale MUST cite
+      the specific reason (volume too low, regime change, fresh
+      negative news). "Raising the target" is NOT an acceptable
+      rejection reason — that is goalpost-moving and is a RUN FAILURE.
+  - For SHORT direction: mirror with PRICE_BELOW.
+
+For every ACTIVE held position:
+  - If currentPrice within 5% of stopLoss:
+    - You MUST call manage_position (tighten/trim) OR close_position.
+  - If currentPrice within 5% of targetPrice:
+    - You MUST call close_position OR update_thesis with new target.
+
+Reviewing without acting is a successful run only when no entry
+conditions are currently met AND no held positions are near stops.
+```
+
+Pair the prompt rule with a runtime gate: `record_run_summary` should
+refuse `primary_decision: HOLD` when:
+- Any WATCHING/LONG thesis has `currentPrice >= targetPrice` AND no
+  `place_trade` call landed for that ticker in this run, OR
+- Any update_thesis call raised a target on a watching thesis whose
+  current price was already at-or-above the old target
+
+### Step 3: Fix the action layer (generalized narrate-vs-execute)
 
 Add a generalized narrate-vs-execute gate in `record_run_summary` (or a
 new `validate_run_intent` tool that fires before complete_run):
@@ -431,8 +525,6 @@ new `validate_run_intent` tool that fires before complete_run):
 
 This is the durable fix for the narrate-vs-execute pattern moving between
 layers. PR #210's gate was a special case; we need the general one.
-
-### Step 3: Fix the morning prompt to push action
 
 In `lib/agent/system-prompt.ts`, add to the MORNING_PLAN workflow:
 
@@ -565,17 +657,26 @@ converting to action — that's the action-layer atrophy showing through.
 ## TL;DR for a new session
 
 1. **Read this doc top to bottom**, then `SESSION_AUDIT_2026_05_06.md`.
-2. The single highest-leverage finding from the audit: **watching
-   theses had EXIT triggers for the entire post-rewrite era**, making
-   the watchlist trigger pipeline silently incapable of producing
-   INITIATE. Fixed in this PR.
-3. The next-highest is the **action-layer atrophy** — agent narrates
-   intent and skips the tool call. PR #210 fixed it for `place_trade`;
-   it moved to other action verbs. Need a generalized gate.
+2. **Two intertwined critical findings:**
+   - Watching theses had EXIT triggers (held-position templates) for
+     the entire post-rewrite era. The watchlist trigger pipeline was
+     silently incapable of producing INITIATE. **Fixed in this PR.**
+   - **The agent actively moves entry-trigger thresholds UP to avoid
+     acting on them.** Concrete example: MRVL's PRICE_ABOVE $172
+     trigger fired (current price $172.15), agent's response was to
+     raise the target $175 → $195 and walk away. **Not fixed in this
+     PR — needs the prompt fix.**
+3. The action-layer atrophy is the second-largest issue. PR #210 fixed
+   `place_trade` narrate-vs-execute; the same pattern moved to
+   `manage_position`, `manage_watchlist`, `close_position`. Needs a
+   generalized gate.
 4. Most of the architectural rot stems from **HELD vs WATCHING not
    being load-bearing** in the codebase. Triggers, prompts, action
    verbs all assumed held-position semantics applied everywhere. Fix
    that distinction first; many other bugs collapse into it.
-5. Tomorrow's run after this PR's changes is the next data point. If
-   `place_trade` rises and `ENTER` triggers fire, the system is
-   recovering. If not, the prompt fix (Step 3 above) is dominant.
+5. Tomorrow's run after this PR's changes is the next data point.
+   - If `place_trade` rises AND no goalpost-moves appear (run the
+     query in Step 1), the system is recovering.
+   - If `place_trade` is still 0 OR goalpost-moves continue, **Step 2
+     (prompt fix) is required immediately** — the trigger system fix
+     alone is not sufficient.
