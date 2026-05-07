@@ -87,10 +87,10 @@ export const episodeTts = inngest.createFunction(
       const { audioBase64, combinedAlignment, durationSec } = await step.run(
         "generate-audio",
         async () => {
-          const apiKey = await resolveElevenLabsKey(userId);
+          const apiKey = await resolveElevenLabsKey();
           if (!apiKey) {
             throw new Error(
-              "No ElevenLabs API key found for this user. Add one in Settings.",
+              "ELEVENLABS_API_KEY is not set in the environment.",
             );
           }
 

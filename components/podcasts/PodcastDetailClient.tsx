@@ -43,7 +43,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   EllipsisVertical,
-  ExternalLink,
   FileText,
   Loader2,
   MoreHorizontal,
@@ -150,17 +149,17 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
               <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              {segment.activeRunId ? (
-                <DropdownMenuItem onClick={() => router.push(`/runs/${segment.activeRunId}`)}>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  View live run
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onClick={handleRun} disabled={isStarting}>
-                  <Play className="h-3.5 w-3.5" />
-                  {isStarting ? "Starting…" : "Run segment"}
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem
+                onClick={handleRun}
+                disabled={isStarting || segment.activeRunId != null}
+              >
+                <Play className="h-3.5 w-3.5" />
+                {segment.activeRunId
+                  ? "Running…"
+                  : isStarting
+                    ? "Starting…"
+                    : "Run segment"}
+              </DropdownMenuItem>
               {latest && (
                 <DropdownMenuItem onClick={() => setTranscriptOpen(true)}>
                   <FileText className="h-3.5 w-3.5" />
@@ -197,18 +196,16 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
 
       {/* Section 2: footer — last run + transcript count.
           Clicking the title (when there is a latest transcript) opens the
-          TranscriptDialog. Shows a live-run link when a run is active. */}
+          TranscriptDialog. While a run is active we show a non-clickable
+          status — the run executes server-side via Inngest, no live UI to
+          navigate to (mirrors analyst-cron pattern). */}
       <div className="border-t p-3 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
         <span className="min-w-0 flex-1">
           {segment.activeRunId ? (
-            <button
-              type="button"
-              onClick={() => router.push(`/runs/${segment.activeRunId}`)}
-              className="font-medium text-foreground line-clamp-1 hover:underline text-left flex items-center gap-1.5"
-            >
+            <span className="font-medium text-foreground line-clamp-1 flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
-              Running now — tap to open
-            </button>
+              Running…
+            </span>
           ) : latest ? (
             <button
               type="button"
@@ -272,6 +269,8 @@ export default function PodcastDetailClient({
     (s, seg) => s + seg.transcriptCount,
     0,
   );
+  const runningCount = detail.segments.filter((s) => s.activeRunId).length;
+  const hasAnyRunning = runningCount > 0;
   const monitorCount = useMemo(
     () =>
       detail.segments.reduce(
@@ -330,6 +329,13 @@ export default function PodcastDetailClient({
                     detail.enabled ? "bg-positive" : "bg-muted-foreground/40",
                   )}
                 />
+                {hasAnyRunning && (
+                  <Badge variant="secondary">
+                    {runningCount === 1
+                      ? "1 segment running…"
+                      : `${runningCount} segments running…`}
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 {[
@@ -377,13 +383,20 @@ export default function PodcastDetailClient({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button onClick={handleRunAll} disabled={runAllPending || segmentCount === 0}>
-                {runAllPending ? (
+              <Button
+                onClick={handleRunAll}
+                disabled={runAllPending || segmentCount === 0 || hasAnyRunning}
+              >
+                {runAllPending || hasAnyRunning ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <Play className="h-3.5 w-3.5" />
                 )}
-                {runAllPending ? "Starting…" : "Run all"}
+                {runAllPending
+                  ? "Starting…"
+                  : hasAnyRunning
+                    ? "Running…"
+                    : "Run all"}
               </Button>
             </div>
           </div>
