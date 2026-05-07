@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { getEpisode } from "@/lib/actions/podcast.actions";
 import { GenerateAudioButton } from "./GenerateAudioButton";
 import { EpisodeAvatar } from "./EpisodeAvatar";
+import { EpisodePlayer } from "./EpisodePlayer";
 import { TranscriptBody } from "./TranscriptBody";
 
 type Params = { id: string; episodeId: string };
@@ -55,15 +56,7 @@ export default async function EpisodePage({
             {isAssembling && (
               <span className="text-xs text-muted-foreground">Audio generating…</span>
             )}
-          </div>
-        </div>
-
-        {/* Audio player */}
-        {hasAudio && (
-          <div className="mb-8 space-y-2">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <audio controls src={episode.audioUrl!} className="w-full" preload="metadata" />
-            <div className="flex justify-end">
+            {hasAudio && (
               <GenerateAudioButton
                 episodeId={episodeId}
                 podcastId={id}
@@ -71,19 +64,29 @@ export default async function EpisodePage({
                 charCount={charCount}
                 variant="regenerate"
               />
-            </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Transcripts */}
         {episode.transcripts.length === 0 ? (
           <p className="text-sm text-muted-foreground">No transcripts in this episode.</p>
         ) : (
-          <div>
+          <div className={hasAudio ? "pb-32" : undefined}>
             {episode.transcripts.map((t, i) => (
               <TranscriptBody key={t.id} transcript={t} index={i} />
             ))}
           </div>
+        )}
+
+        {/* Sticky bottom audio player — inside the scroll container so it
+            centers with the content area (no sidebar overlap). */}
+        {hasAudio && (
+          <EpisodePlayer
+            audioUrl={episode.audioUrl!}
+            title={episode.title}
+            initialDurationSec={episode.durationSec ?? undefined}
+          />
         )}
       </div>
     </div>
