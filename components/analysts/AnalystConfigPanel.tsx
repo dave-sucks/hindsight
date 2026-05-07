@@ -138,7 +138,7 @@ function toFormValues(config: AgentConfigData): FormValues {
     sectors: config.sectors ?? [],
     industries: config.industries ?? [],
     themes: config.themes ?? [],
-    feeds: [], // AgentConfigData doesn't carry feeds yet — empty until/if added
+    feeds: config.feeds ?? [],
     marketCapMin: config.marketCapMin ?? null,
     marketCapMax: config.marketCapMax ?? null,
     exclusionList: config.exclusionList ?? [],
@@ -163,6 +163,7 @@ function applyChange<K extends keyof FormValues>(
     case "sectors":
     case "industries":
     case "themes":
+    case "feeds":
     case "marketCapMin":
     case "marketCapMax":
     case "exclusionList":
@@ -174,7 +175,6 @@ function applyChange<K extends keyof FormValues>(
 
     // Fields that don't exist on AgentConfigData are silently ignored — the
     // form surfaces them but the panel's data model can't represent them.
-    case "feeds":
     case "sources":
     case "searchQueries":
     default:

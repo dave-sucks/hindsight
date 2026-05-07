@@ -214,7 +214,24 @@ function diffsFor(
 // ── Renderer ────────────────────────────────────────────────────────────────
 
 export function ConfigPreviewRenderer({ result, loading }: Props) {
-  const config = result.data as AgentConfigData | null;
+  // suggest_config nests the firm-aggregate feeds under universe.feeds, but
+  // AgentConfigData (and the downstream AnalystConfigPanel/Form) reads them
+  // at the top level. Flatten here so feeds round-trip from the agent's
+  // suggestion through the panel into the saved AgentConfig row. Without
+  // this, the right panel's "Feeds" row was always empty regardless of
+  // what the agent passed — and any DAY analyst lost its movers feeds
+  // silently between the tool result and the form.
+  const config = useMemo<AgentConfigData | null>(() => {
+    const raw = result.data as
+      | (AgentConfigData & { universe?: { feeds?: string[] } })
+      | null;
+    if (!raw) return null;
+    const universeFeeds = raw.universe?.feeds;
+    if (raw.feeds == null && Array.isArray(universeFeeds)) {
+      return { ...raw, feeds: universeFeeds };
+    }
+    return raw;
+  }, [result.data]);
   const {
     onConfirmConfig,
     onConfigSuggested,
