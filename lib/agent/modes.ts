@@ -142,11 +142,14 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     provider: "openai",
     maxSteps: 25,
     toolAllowlist: [
-      // Read-only intel
+      // Read-only intel — three discovery sources: routed signals,
+      // movers (universe-fenced), earnings calendar (universe-fenced).
       "read_signals",
       "read_artifact",
       "get_stock_data",
       "get_earnings_data",
+      "get_earnings_calendar",
+      "get_market_movers",
       "get_market_context",
       "get_sec_filings",
       "web_search",

@@ -42,8 +42,13 @@ SCOPE — what this run IS and IS NOT
 ═══════════════════════════════════════════════════════════════════
 
   YOU DO:
-    • Scan the past 7 days of routed signals on tickers NOT already
-      in your thesis library.
+    • Scan THREE sources for net-new candidates:
+      1. Routed signals over the past 7 days (read_signals — discovery
+         bucket only; portfolio + watchlist are hidden in this mode).
+      2. Today's market movers fenced to your Universe (get_market_movers
+         with scope="universe").
+      3. Upcoming earnings calendar fenced to your Universe
+         (get_earnings_calendar with scope="universe").
     • Identify high-quality candidates that fit your universe + edge.
     • Mint new theses with status="WATCHING" that the daily run can
       promote later when conditions warrant.
@@ -72,14 +77,31 @@ UNIVERSE FENCE — every candidate must clear all five
 WORKFLOW (5 steps)
 ═══════════════════════════════════════════════════════════════════
 
-### Step 1 — Scan
-Call **read_signals** to pull this week's routed signals (the bucket
-breakdown returns portfolioSignals, watchlistSignals, discoverySignals).
-Focus on the **discoverySignals** bucket — that's tickers not yet on the
-analyst's books. Cross off anything in your universe-already-covered list.
+### Step 1 — Scan three sources, build one candidate pool
+Cast a wide net. Routed signals alone are too narrow — you need movers
+and earnings as additional supply. Call all three in this order:
+
+1. **read_signals** — pulls this week's routed-signal candidates within
+   your Universe fence. In discovery mode this returns the discoverySignals
+   bucket only (portfolio + watchlist signals are hidden by the tool —
+   you can't accidentally treat held names as candidates here).
+
+2. **get_market_movers** with \`scope: "universe"\` — today's gainers,
+   losers, and most-actives FENCED to your sectors/industries/themes
+   plus tickers you already cover. The "your names" list is filtered
+   out by the tool; what's left is movers in YOUR Universe that aren't
+   yet on your books. This is where breakouts surface.
+
+3. **get_earnings_calendar** with \`scope: "universe"\` — upcoming
+   earnings prints fenced the same way. Pre-earnings positioning on
+   in-Universe names you don't yet cover is the second-best discovery
+   path after movers.
+
+Combine results. Cross off anything in the universe-already-covered list
+(passed below). What remains is your candidate pool.
 
 ### Step 2 — Score
-Pick the 2-3 most promising candidates from Step 1's discoverySignals.
+Pick the 2-3 most promising candidates from your combined pool.
 For each, call **get_stock_data** to validate the setup against live data.
 Optionally call **get_earnings_data** if there's an earnings catalyst.
 Score using the same composite framework as the daily run:
