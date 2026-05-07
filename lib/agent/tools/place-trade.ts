@@ -162,7 +162,96 @@ export const placeTrade = defineTool({
         }
       }
 
-      // ── Guardrail 3: requested notional ≤ maxPositionSize ──────────
+      // ── Guardrail 3: target/stop ordering vs entry_price ───────────
+      // For LONG, target must be ABOVE entry and stop BELOW entry.
+      // For SHORT, target must be BELOW entry and stop ABOVE entry.
+      // Without this, the model can pass stale numbers from an old
+      // WATCHING thesis (target set when price was lower) and the
+      // first price-monitor tick after fill closes the position
+      // because `currentPrice >= targetPrice` is satisfied at avgCost.
+      {
+        const entry = args.entry_price;
+        const tgt = args.target_price;
+        const stp = args.stop_loss;
+        let bad: string | null = null;
+        if (args.direction === "LONG") {
+          if (tgt <= entry) {
+            bad = `target $${tgt.toFixed(2)} is at or below entry $${entry.toFixed(2)} — for a LONG, target must be ABOVE entry`;
+          } else if (stp >= entry) {
+            bad = `stop $${stp.toFixed(2)} is at or above entry $${entry.toFixed(2)} — for a LONG, stop must be BELOW entry`;
+          }
+        } else {
+          if (tgt >= entry) {
+            bad = `target $${tgt.toFixed(2)} is at or above entry $${entry.toFixed(2)} — for a SHORT, target must be BELOW entry`;
+          } else if (stp <= entry) {
+            bad = `stop $${stp.toFixed(2)} is at or below entry $${entry.toFixed(2)} — for a SHORT, stop must be ABOVE entry`;
+          }
+        }
+        if (bad) {
+          const blockedMsg = `Trade blocked: ${bad}. Recompute target and stop relative to the current price, then call place_trade again.`;
+          return {
+            summary: `Trade blocked: $${ticker} — invalid target/stop`,
+            data: {
+              success: false,
+              ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: blockedMsg,
+              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+      }
+
+      // ── Guardrail 4: live-price check vs target/stop ───────────────
+      // Even if entry_price/target/stop are internally consistent,
+      // the model may have used a stale entry estimate (e.g. last
+      // night's close, or an old thesis's entry level). If the live
+      // market price has already crossed target or stop, the
+      // price-monitor will close the position on its next tick —
+      // refuse here instead. Quote failure is non-fatal (the
+      // ordering guardrail above is the static fallback).
+      try {
+        const livePrice = await getLatestPrice(ticker, ctx.alpacaCreds);
+        if (Number.isFinite(livePrice) && livePrice > 0) {
+          let bad: string | null = null;
+          if (args.direction === "LONG") {
+            if (livePrice >= args.target_price) {
+              bad = `current price $${livePrice.toFixed(2)} is at or above target $${args.target_price.toFixed(2)} — a LONG would close on the next price tick`;
+            } else if (livePrice <= args.stop_loss) {
+              bad = `current price $${livePrice.toFixed(2)} is at or below stop $${args.stop_loss.toFixed(2)} — a LONG would close on the next price tick`;
+            }
+          } else {
+            if (livePrice <= args.target_price) {
+              bad = `current price $${livePrice.toFixed(2)} is at or below target $${args.target_price.toFixed(2)} — a SHORT would close on the next price tick`;
+            } else if (livePrice >= args.stop_loss) {
+              bad = `current price $${livePrice.toFixed(2)} is at or above stop $${args.stop_loss.toFixed(2)} — a SHORT would close on the next price tick`;
+            }
+          }
+          if (bad) {
+            const blockedMsg = `Trade blocked: ${bad}. Recompute target and stop relative to the current price, then call place_trade again.`;
+            return {
+              summary: `Trade blocked: $${ticker} — target/stop already breached at live price`,
+              data: {
+                success: false,
+                ticker,
+                status: "FAILED" as const,
+                direction: args.direction,
+                message: blockedMsg,
+                tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+        }
+      } catch (quoteErr) {
+        console.warn(
+          `[place_trade] live-price guardrail skipped for ${ticker}: ${quoteErr instanceof Error ? quoteErr.message : quoteErr}`,
+        );
+      }
+
+      // ── Guardrail 5: requested notional ≤ maxPositionSize ──────────
       // Only checks when the model explicitly sized the trade (notional
       // or shares). If neither is set, the fallback path below uses
       // maxPositionSize as the budget so no violation is possible.
