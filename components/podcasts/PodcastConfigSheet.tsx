@@ -59,7 +59,7 @@ export function PodcastConfigSheet({ open, onOpenChange, detail }: Props) {
   // so navigating away and back doesn't re-fetch.
   useEffect(() => {
     if (!open || voicesLoaded) return;
-    getElevenLabsVoices().then((v) => {
+    getElevenLabsVoices().then(({ voices: v }) => {
       setVoices(v);
       setVoicesLoaded(true);
     });

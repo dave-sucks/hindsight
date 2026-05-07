@@ -42,12 +42,14 @@ export function GenerateAudioButton({
   const router = useRouter();
   const [voices, setVoices] = useState<ElevenLabsVoice[]>([]);
   const [voicesLoading, setVoicesLoading] = useState(true);
+  const [voicesError, setVoicesError] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>(podcastVoiceId ?? "");
   const [manualVoiceId, setManualVoiceId] = useState<string>(podcastVoiceId ?? "");
 
   useEffect(() => {
-    getElevenLabsVoices().then((v) => {
+    getElevenLabsVoices().then(({ voices: v, error }) => {
       setVoices(v);
+      setVoicesError(error ?? null);
       setVoicesLoading(false);
     });
   }, []);
@@ -124,8 +126,8 @@ export function GenerateAudioButton({
             onChange={(e) => setManualVoiceId(e.target.value)}
             onBlur={handleManualVoiceSave}
             onKeyDown={(e) => e.key === "Enter" && handleManualVoiceSave()}
-            placeholder="Paste ElevenLabs voice ID"
-            className="h-8 text-xs w-48"
+            placeholder={voicesError ? `Error: ${voicesError}` : "Paste ElevenLabs voice ID"}
+            className="h-8 text-xs w-64"
           />
         </div>
       )}

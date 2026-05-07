@@ -215,14 +215,16 @@ export async function resolveElevenLabsKey(_userId?: string): Promise<string | n
  * Fetch ElevenLabs voice list.
  * Returns empty array when the env key is missing or the API call fails.
  */
-export async function getElevenLabsVoices(): Promise<ElevenLabsVoice[]> {
+export async function getElevenLabsVoices(): Promise<{ voices: ElevenLabsVoice[]; error?: string }> {
+  const apiKey = await resolveElevenLabsKey();
+  if (!apiKey) return { voices: [], error: "ELEVENLABS_API_KEY env var is not set" };
   try {
-    const apiKey = await resolveElevenLabsKey();
-    if (!apiKey) return [];
-    return await listVoices(apiKey);
+    const voices = await listVoices(apiKey);
+    return { voices };
   } catch (err) {
-    console.error("[api-keys] getElevenLabsVoices error:", err);
-    return [];
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[api-keys] getElevenLabsVoices error:", msg);
+    return { voices: [], error: msg };
   }
 }
 
