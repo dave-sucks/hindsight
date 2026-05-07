@@ -53,12 +53,10 @@ export interface CombinedAlignment {
 }
 
 // ── Auth header helper ────────────────────────────────────────────────────────
-// Scoped keys (sk_...) use Authorization: Bearer; classic keys use xi-api-key.
+// All ElevenLabs keys — including scoped sk_* keys — authenticate via xi-api-key.
 
 function elevenLabsHeaders(apiKey: string): Record<string, string> {
-  return apiKey.startsWith("sk_")
-    ? { Authorization: `Bearer ${apiKey}` }
-    : { "xi-api-key": apiKey };
+  return { "xi-api-key": apiKey };
 }
 
 // ── Voice library ─────────────────────────────────────────────────────────────
