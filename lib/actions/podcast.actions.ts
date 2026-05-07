@@ -560,6 +560,7 @@ export interface EpisodeDetail {
   id: string;
   podcastId: string;
   podcastName: string;
+  podcastVoiceId: string | null;
   title: string;
   description: string | null;
   status: "DRAFT" | "ASSEMBLING" | "READY" | "FAILED";
@@ -610,7 +611,7 @@ export async function getEpisode(episodeId: string): Promise<EpisodeDetail | nul
   const user = await requireUser();
   const episode = await prisma.episode.findFirst({
     where: { id: episodeId, userId: user.id },
-    include: { podcast: { select: { name: true } } },
+    include: { podcast: { select: { name: true, voiceId: true } } },
   });
   if (!episode) return null;
 
@@ -650,6 +651,7 @@ export async function getEpisode(episodeId: string): Promise<EpisodeDetail | nul
     id: episode.id,
     podcastId: episode.podcastId,
     podcastName: episode.podcast.name,
+    podcastVoiceId: episode.podcast.voiceId,
     title: episode.title,
     description: episode.description,
     status: episode.status as EpisodeDetail["status"],

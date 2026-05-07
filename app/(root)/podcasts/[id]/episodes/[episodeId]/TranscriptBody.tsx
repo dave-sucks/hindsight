@@ -1,39 +1,8 @@
 "use client";
 
-import { CitedText } from "@/components/chat/CitedText";
+import { SourceChipRow } from "@/components/chat/SourceChip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import type { EpisodeTranscriptItem } from "@/lib/actions/podcast.actions";
-
-function snapToWordEnd(text: string, pos: number): number {
-  while (pos < text.length && text[pos] !== " " && text[pos] !== "\n") {
-    pos++;
-  }
-  return pos;
-}
-
-function buildTextWithMarkers(
-  plainText: string,
-  citations: EpisodeTranscriptItem["citations"],
-): string {
-  if (citations.length === 0) return plainText;
-
-  const sorted = [...citations]
-    .map((c, i) => ({ c, i }))
-    .sort((a, b) => a.c.startChar - b.c.startChar);
-
-  let text = "";
-  let cursor = 0;
-  for (const { c, i } of sorted) {
-    const insertAt = snapToWordEnd(plainText, c.endChar);
-    if (insertAt > cursor && insertAt <= plainText.length) {
-      text += plainText.slice(cursor, insertAt);
-      text += `[${i + 1}]`;
-      cursor = insertAt;
-    }
-  }
-  if (cursor < plainText.length) text += plainText.slice(cursor);
-  return text || plainText;
-}
 
 export function TranscriptBody({
   transcript: t,
@@ -42,8 +11,6 @@ export function TranscriptBody({
   transcript: EpisodeTranscriptItem;
   index: number;
 }) {
-  const markedText = buildTextWithMarkers(t.plainText, t.citations);
-
   const sources: SourceChipData[] = t.citations.map((c) => {
     let hostname = c.url;
     try {
@@ -75,10 +42,14 @@ export function TranscriptBody({
         <h2 className="text-xl font-semibold leading-snug">{t.title}</h2>
 
         <div className="text-base leading-[1.8] whitespace-pre-wrap">
-          <CitedText text={markedText} sources={sources} />
+          {t.plainText}
         </div>
 
+        {sources.length > 0 && (
+          <SourceChipRow sources={sources} className="pt-2" />
+        )}
       </div>
     </section>
   );
 }
+

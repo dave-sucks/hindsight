@@ -45,7 +45,12 @@ export default async function EpisodePage({
 
           <div className="shrink-0">
             {!hasAudio && !isAssembling && (
-              <GenerateAudioButton episodeId={episodeId} charCount={charCount} />
+              <GenerateAudioButton
+                episodeId={episodeId}
+                podcastId={id}
+                podcastVoiceId={episode.podcastVoiceId}
+                charCount={charCount}
+              />
             )}
             {isAssembling && (
               <span className="text-xs text-muted-foreground">Audio generating…</span>
@@ -59,7 +64,13 @@ export default async function EpisodePage({
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <audio controls src={episode.audioUrl!} className="w-full" preload="metadata" />
             <div className="flex justify-end">
-              <GenerateAudioButton episodeId={episodeId} charCount={charCount} variant="regenerate" />
+              <GenerateAudioButton
+                episodeId={episodeId}
+                podcastId={id}
+                podcastVoiceId={episode.podcastVoiceId}
+                charCount={charCount}
+                variant="regenerate"
+              />
             </div>
           </div>
         )}
