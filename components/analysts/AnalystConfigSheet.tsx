@@ -13,7 +13,11 @@ import {
   type FormValues,
   type FormChangeHandler,
 } from "@/components/analysts/AnalystConfigForm";
-import { updateAnalystField } from "@/lib/actions/analyst.actions";
+import {
+  updateAnalystField,
+  addAnalystMonitor,
+  removeAnalystMonitor,
+} from "@/lib/actions/analyst.actions";
 import type { AnalystConfig } from "@/lib/actions/analyst.actions";
 
 interface AnalystConfigSheetProps {
@@ -41,10 +45,14 @@ export function AnalystConfigSheet({
     analystPrompt: config.analystPrompt,
     watchlist: config.watchlist,
     sources: config.domainMonitors.map((m) => ({
+      id: m.id,
       name: m.name,
       domain: m.domain,
     })),
-    searchQueries: config.searchMonitors.map((m) => ({ query: m.query })),
+    searchQueries: config.searchMonitors.map((m) => ({
+      id: m.id,
+      query: m.query,
+    })),
     directionBias: (config.directionBias as FormValues["directionBias"]) ?? "BOTH",
     holdDurations: config.holdDurations,
     minConfidence: config.minConfidence,
@@ -64,7 +72,8 @@ export function AnalystConfigSheet({
     // The form's FormValues field names align 1:1 with UpdatableField for
     // every persisted field. Fields the form surfaces but the server doesn't
     // accept (sources, searchQueries, intelligencePolicy) never call this —
-    // they're display-only in the form.
+    // sources + searchQueries mutate via add/remove handlers below;
+    // intelligencePolicy is display-only.
     if (
       field === "sources" ||
       field === "searchQueries" ||
@@ -79,6 +88,21 @@ export function AnalystConfigSheet({
         value,
       );
     });
+  };
+
+  // Mirrors SegmentConfigSheet's wiring (components/podcasts/SegmentConfigSheet.tsx).
+  // Same shape, same Monitor table — just scope=ANALYST + analystId instead
+  // of PODCAST_SEGMENT + podcastSegmentId.
+  const handleAddDomain = async (input: { name: string; domain: string }) => {
+    await addAnalystMonitor(config.id, { type: "DOMAIN", ...input });
+  };
+
+  const handleAddSearch = async (input: { name?: string; query: string }) => {
+    await addAnalystMonitor(config.id, { type: "SEARCH", ...input });
+  };
+
+  const handleRemoveMonitor = async (monitorId: string) => {
+    await removeAnalystMonitor(monitorId);
   };
 
   return (
@@ -99,6 +123,9 @@ export function AnalystConfigSheet({
             values={values}
             onChange={handleChange}
             livePrices={livePrices}
+            onAddDomainMonitor={handleAddDomain}
+            onAddSearchMonitor={handleAddSearch}
+            onRemoveMonitor={handleRemoveMonitor}
           />
         </div>
       </SheetContent>

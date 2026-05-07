@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Info, Search, ArrowRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Info, Search, ArrowRight, Plus, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -60,12 +60,16 @@ import { FEEDS, feedLabel } from "@/lib/universe/feeds";
 // (DB save vs. local state).
 
 export type FormSource = {
+  /** Monitor row id — present for persisted monitors so add/remove can target them. Absent on transient/preview rows. */
+  id?: string;
   name: string;
   domain: string;
   reason?: string;
 };
 
 export type FormQuery = {
+  /** Monitor row id — present for persisted monitors so add/remove can target them. Absent on transient/preview rows. */
+  id?: string;
   query: string;
   reason?: string;
 };
@@ -125,6 +129,15 @@ export interface AnalystConfigFormProps {
   livePrices?: Record<string, number>;
   /** When true, expose a Watchlist tab. Sheet hides it; builder/editor shows it. */
   showWatchlist?: boolean;
+  /**
+   * Optional add/remove handlers for monitors. When supplied, the Monitors
+   * tab renders inline add rows and per-row delete affordances — same
+   * pattern as the podcast SegmentConfigForm. When omitted, the tab stays
+   * read-only (preview / builder-driven surfaces).
+   */
+  onAddDomainMonitor?: (input: { name: string; domain: string }) => Promise<void> | void;
+  onAddSearchMonitor?: (input: { name?: string; query: string }) => Promise<void> | void;
+  onRemoveMonitor?: (monitorId: string) => Promise<void> | void;
 }
 
 export function AnalystConfigForm({
@@ -134,6 +147,9 @@ export function AnalystConfigForm({
   defaultTab = "brief",
   livePrices,
   showWatchlist = false,
+  onAddDomainMonitor,
+  onAddSearchMonitor,
+  onRemoveMonitor,
 }: AnalystConfigFormProps) {
   return (
     <TooltipProvider>
@@ -163,7 +179,13 @@ export function AnalystConfigForm({
 
         <TabsContent value="monitors" className="flex-1 min-h-0 mt-0">
           <ScrollArea className="h-full">
-            <MonitorsTab values={values} onChange={onChange} />
+            <MonitorsTab
+              values={values}
+              onChange={onChange}
+              onAddDomainMonitor={onAddDomainMonitor}
+              onAddSearchMonitor={onAddSearchMonitor}
+              onRemoveMonitor={onRemoveMonitor}
+            />
           </ScrollArea>
         </TabsContent>
 
@@ -345,53 +367,68 @@ function WatchlistTab({
 }
 
 // ─── Monitors tab ────────────────────────────────────────────────────────────
+//
+// When add/remove handlers are supplied, this tab matches the podcast
+// SegmentConfigForm's MonitorsSections 1:1 — same Section labels, same
+// row layout, same hover-X delete affordance, same ghost-row inline add
+// at the bottom. Without handlers, it falls back to a read-only tooltip
+// view (used by preview surfaces that don't have a backing analystId).
 
 function MonitorsTab({
   values,
-  onChange,
+  onAddDomainMonitor,
+  onAddSearchMonitor,
+  onRemoveMonitor,
 }: {
   values: FormValues;
   onChange: FormChangeHandler;
+  onAddDomainMonitor?: (input: { name: string; domain: string }) => Promise<void> | void;
+  onAddSearchMonitor?: (input: { name?: string; query: string }) => Promise<void> | void;
+  onRemoveMonitor?: (monitorId: string) => Promise<void> | void;
 }) {
-  const hasAny =
-    values.sources.length > 0 || values.searchQueries.length > 0;
-
   return (
     <div className="flex flex-col">
       <Section
         label="Sources"
-        tooltip="Websites monitored daily by Perplexity Sonar + Firecrawl. Edit via the AI chat."
+        tooltip="Websites monitored daily by Perplexity Sonar + Firecrawl. Add a domain or use the AI chat."
       >
-        {values.sources.length > 0 ? (
-          <div className="flex flex-col gap-1">
-            {values.sources.map((s) => (
-              <Tooltip key={s.domain}>
-                <TooltipTrigger
-                  render={
-                    <div className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8">
-                      <img
-                        src={`https://www.google.com/s2/favicons?domain=${s.domain}&sz=16`}
-                        alt=""
-                        width={14}
-                        height={14}
-                        className="size-3.5 rounded-sm shrink-0"
-                      />
-                      <span className="truncate flex-1">{s.name}</span>
-                    </div>
-                  }
-                />
-                {s.reason && <TooltipContent side="left">{s.reason}</TooltipContent>}
-              </Tooltip>
-            ))}
-          </div>
-        ) : (
-          <EmptyHint>None — use the AI chat to suggest sources.</EmptyHint>
-        )}
+        <div className="flex flex-col gap-1">
+          {values.sources.map((s, i) => (
+            <div
+              key={s.id ?? `${s.domain}-${i}`}
+              className="group/row flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${s.domain}&sz=16`}
+                alt=""
+                width={14}
+                height={14}
+                className="size-3.5 rounded-sm shrink-0"
+              />
+              <span className="truncate flex-1">{s.name}</span>
+              {onRemoveMonitor && s.id && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveMonitor(s.id!)}
+                  className="opacity-0 group-hover/row:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                  aria-label="Remove source"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+          {onAddDomainMonitor && <AddDomainRow onAdd={onAddDomainMonitor} />}
+          {!onAddDomainMonitor && values.sources.length === 0 && (
+            <EmptyHint>None — use the AI chat to suggest sources.</EmptyHint>
+          )}
+        </div>
       </Section>
 
       <Section
         label="Search Queries"
-        tooltip="Daily Sonar queries that route results to this analyst. Edit via the AI chat."
+        tooltip="Daily Sonar queries that route results to this analyst. Add a query or use the AI chat."
       >
         <div className="flex flex-col gap-1">
           <Tooltip>
@@ -408,34 +445,202 @@ function MonitorsTab({
             </TooltipContent>
           </Tooltip>
           {values.searchQueries.map((q, i) => (
-            <Tooltip key={`${q.query}-${i}`}>
-              <TooltipTrigger
-                render={
-                  <div className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8">
-                    <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="flex-1 truncate">{q.query}</span>
-                  </div>
-                }
-              />
-              {q.reason && <TooltipContent side="left">{q.reason}</TooltipContent>}
-            </Tooltip>
+            <div
+              key={q.id ?? `${q.query}-${i}`}
+              className="group/row flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8"
+            >
+              <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="flex-1 truncate">{q.query}</span>
+              {onRemoveMonitor && q.id && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveMonitor(q.id!)}
+                  className="opacity-0 group-hover/row:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                  aria-label="Remove query"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           ))}
-          {values.searchQueries.length === 0 && (
+          {onAddSearchMonitor && <AddSearchRow onAdd={onAddSearchMonitor} />}
+          {!onAddSearchMonitor && values.searchQueries.length === 0 && (
             <EmptyHint>No additional queries — use the AI chat to suggest some.</EmptyHint>
           )}
         </div>
       </Section>
 
       <p className="px-3 py-3 text-[11px] text-muted-foreground/60 leading-relaxed">
-        Plus any signal that hits this analyst's Universe fence
+        Plus any signal that hits this analyst&apos;s Universe fence
         (Sectors / Industries / Themes / Feeds) is routed here automatically.
       </p>
+    </div>
+  );
+}
 
-      {!hasAny && (
-        <div className="text-xs text-muted-foreground/40 py-6 text-center">
-          No monitors yet.
-        </div>
-      )}
+// ─── Ghost-row add UI ───────────────────────────────────────────────────────
+//
+// Copied verbatim from components/podcasts/SegmentConfigForm.tsx so the two
+// surfaces are visually + behaviorally identical. Both Sources and Search
+// Queries follow the same pattern: at the bottom of each list there's an
+// extra "row" that pretends to be a real monitor row but with muted colors
+// and a leading + icon. Clicking flips it into edit mode — the row layout
+// and height stay identical, just the trailing span becomes a bare input.
+// Pressing Enter commits via onAdd(); blur with empty input quietly returns
+// to the ghost state. ESC also cancels.
+
+function AddDomainRow({
+  onAdd,
+}: {
+  onAdd: (input: { name: string; domain: string }) => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [domain, setDomain] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const submit = async () => {
+    const trimmed = domain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    if (!trimmed) {
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onAdd({ name: trimmed, domain: trimmed });
+      setDomain("");
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className={cn(
+          "flex items-center gap-2 text-sm text-muted-foreground/55 hover:text-foreground",
+          "border-b border-border pb-1 last:border-0 min-h-8 w-full text-left",
+          "transition-colors cursor-pointer",
+        )}
+      >
+        <Plus className="h-3.5 w-3.5 shrink-0" />
+        <span className="flex-1">Add a source</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 min-h-8">
+      <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      <input
+        ref={inputRef}
+        value={domain}
+        placeholder="domain.com"
+        disabled={busy}
+        onChange={(e) => setDomain(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void submit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setDomain("");
+            setEditing(false);
+          }
+        }}
+        onBlur={() => {
+          if (!domain.trim() && !busy) setEditing(false);
+        }}
+        className={cn(
+          "flex-1 bg-transparent border-none outline-none text-sm",
+          "placeholder:text-muted-foreground/55",
+        )}
+      />
+    </div>
+  );
+}
+
+function AddSearchRow({
+  onAdd,
+}: {
+  onAdd: (input: { name?: string; query: string }) => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const submit = async () => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onAdd({ query: trimmed });
+      setQuery("");
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className={cn(
+          "flex items-center gap-2 text-sm text-muted-foreground/55 hover:text-foreground",
+          "border-b border-border pb-1 last:border-0 min-h-8 w-full text-left",
+          "transition-colors cursor-pointer",
+        )}
+      >
+        <Plus className="h-3.5 w-3.5 shrink-0" />
+        <span className="flex-1">Add a search query</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 min-h-8">
+      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      <input
+        ref={inputRef}
+        value={query}
+        placeholder="e.g. AI tech capex announcements Q3 2026"
+        disabled={busy}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void submit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setQuery("");
+            setEditing(false);
+          }
+        }}
+        onBlur={() => {
+          if (!query.trim() && !busy) setEditing(false);
+        }}
+        className={cn(
+          "flex-1 bg-transparent border-none outline-none text-sm",
+          "placeholder:text-muted-foreground/55",
+        )}
+      />
     </div>
   );
 }

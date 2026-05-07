@@ -1148,6 +1148,94 @@ export async function updateAnalystField(
   revalidatePath("/analysts");
 }
 
+// ── Analyst monitor add/remove ──────────────────────────────────────────────
+// Mirrors addSegmentMonitor / removeSegmentMonitor (lib/actions/podcast.actions.ts)
+// 1:1 — same shape, same Monitor table, same downstream cron path.
+// scope: "ANALYST" + analystId (vs PODCAST_SEGMENT + podcastSegmentId for segments).
+//
+// origin="USER" marks rows the user added directly via the settings sheet.
+// The BUILDER-rebuild path filters by origin to avoid clobbering them on
+// a config rewrite.
+
+type AddAnalystMonitorInput =
+  | { type: "DOMAIN"; name: string; domain: string; qualityScore?: number; reason?: string }
+  | { type: "SEARCH"; name?: string; query: string; reason?: string };
+
+export async function addAnalystMonitor(
+  analystId: string,
+  input: AddAnalystMonitorInput,
+) {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+  const analyst = await prisma.agentConfig.findFirst({
+    where: { id: analystId, userId },
+    select: { id: true },
+  });
+  if (!analyst) throw new Error("Analyst not found");
+
+  if (input.type === "DOMAIN") {
+    const domain = input.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    await prisma.monitor.create({
+      data: {
+        name: input.name || domain,
+        type: "DOMAIN",
+        method: "perplexity_sonar",
+        config: {
+          domain,
+          url: `https://${domain}`,
+          qualityScore: Math.min(5, Math.max(1, Math.round(input.qualityScore ?? 3))),
+          ...(input.reason ? { reason: input.reason } : {}),
+        } as object,
+        scope: "ANALYST",
+        analystId: analyst.id,
+        enabled: true,
+        builtIn: false,
+        origin: "USER",
+        category: "THEMATIC",
+      },
+    });
+  } else {
+    await prisma.monitor.create({
+      data: {
+        name: input.name?.trim() || input.query,
+        type: "SEARCH",
+        method: "perplexity_sonar",
+        config: {
+          query: input.query,
+          ...(input.reason ? { reason: input.reason } : {}),
+        } as object,
+        scope: "ANALYST",
+        analystId: analyst.id,
+        enabled: true,
+        builtIn: false,
+        origin: "USER",
+        category: "THEMATIC",
+      },
+    });
+  }
+  revalidatePath(`/analysts/${analyst.id}`);
+  revalidatePath("/analysts");
+}
+
+export async function removeAnalystMonitor(monitorId: string) {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+  const monitor = await prisma.monitor.findFirst({
+    where: { id: monitorId },
+    select: {
+      id: true,
+      analystId: true,
+      analyst: { select: { userId: true } },
+    },
+  });
+  if (!monitor || !monitor.analyst || monitor.analyst.userId !== userId) {
+    throw new Error("Monitor not found");
+  }
+  await prisma.monitor.delete({ where: { id: monitorId } });
+  if (monitor.analystId) revalidatePath(`/analysts/${monitor.analystId}`);
+  revalidatePath("/analysts");
+}
+
 // ── updateAnalystWatchlist (add/remove single symbol) ────────────────────────
 
 export async function addToWatchlist(
