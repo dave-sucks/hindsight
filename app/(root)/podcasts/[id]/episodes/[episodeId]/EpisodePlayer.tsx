@@ -96,16 +96,20 @@ export function EpisodePlayer({ audioUrl, title }: Props) {
   const progressPct = duration > 0 ? (current / duration) * 100 : 0;
 
   return (
-    <div className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-50 sm:w-[640px] max-w-[calc(100vw-2rem)]">
-      <div className="flex items-center gap-3 rounded-2xl border bg-background/70 backdrop-blur-xl shadow-lg px-3 py-2.5">
-        <Button
-          size="icon-lg"
-          variant="default"
+    <div className="sticky bottom-4 z-50 mx-auto w-full sm:w-[640px] max-w-[calc(100%-1rem)] px-2 sm:px-0">
+      <div className="flex items-center gap-3 rounded-full bg-background/40 backdrop-blur-2xl shadow-lg pl-1.5 pr-3 py-1.5">
+        <button
+          type="button"
           onClick={togglePlay}
           aria-label={playing ? "Pause" : "Play"}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-90 active:translate-y-px"
         >
-          {playing ? <Pause /> : <Play />}
-        </Button>
+          {playing ? (
+            <Pause className="size-5" fill="currentColor" />
+          ) : (
+            <Play className="size-5 translate-x-px" fill="currentColor" />
+          )}
+        </button>
 
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate mb-1.5">{title}</p>

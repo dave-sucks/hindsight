@@ -24,7 +24,7 @@ export default async function EpisodePage({
 
   return (
     <div className="h-[calc(100dvh-3rem)] overflow-y-auto">
-      <div className="px-4 sm:px-6 py-6 pb-32 max-w-5xl mx-auto">
+      <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 mb-8">
           <div className="flex items-center gap-3">
@@ -72,18 +72,19 @@ export default async function EpisodePage({
         {episode.transcripts.length === 0 ? (
           <p className="text-sm text-muted-foreground">No transcripts in this episode.</p>
         ) : (
-          <div>
+          <div className={hasAudio ? "pb-32" : undefined}>
             {episode.transcripts.map((t, i) => (
               <TranscriptBody key={t.id} transcript={t} index={i} />
             ))}
           </div>
         )}
-      </div>
 
-      {/* Sticky bottom audio player */}
-      {hasAudio && (
-        <EpisodePlayer audioUrl={episode.audioUrl!} title={episode.title} />
-      )}
+        {/* Sticky bottom audio player — inside the scroll container so it
+            centers with the content area (no sidebar overlap). */}
+        {hasAudio && (
+          <EpisodePlayer audioUrl={episode.audioUrl!} title={episode.title} />
+        )}
+      </div>
     </div>
   );
 }
