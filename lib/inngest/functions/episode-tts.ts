@@ -5,10 +5,12 @@
  * `triggerEpisodeAudio` server action after the user clicks "Generate audio").
  *
  * Steps:
- *   1. load-episode    — fetch Episode + ordered transcripts from DB
- *   2. generate-audio  — call ElevenLabs TTS (chunked), get audio + alignment
- *   3. upload-audio    — write MP3 to Supabase Storage (podcast-audio bucket)
- *   4. update-episode  — set audioUrl, durationSec, combinedAlignment, status=READY
+ *   1. load-episode               — fetch Episode + ordered transcripts from DB
+ *   2. generate-and-upload-audio  — TTS via ElevenLabs + write MP3 to Supabase
+ *      Storage in a single step. Combined so the raw audio buffer never
+ *      crosses an Inngest step boundary (it can exceed Inngest's 1MB step
+ *      output cap, producing an "error validating generator opcode" failure).
+ *   3. update-episode             — set audioUrl, durationSec, combinedAlignment, status=READY
  *
  * On failure: episode status is set to FAILED and the error is re-thrown so
  * Inngest records a failed run. Retries: 2 (set in the function config).
@@ -82,10 +84,18 @@ export const episodeTts = inngest.createFunction(
         },
       );
 
-      // ── Step 2: Generate audio via ElevenLabs ───────────────────────────
+      // ── Step 2: Generate audio + upload (combined) ──────────────────────
+      //
+      // Combined into ONE step so the raw audio buffer never crosses an
+      // Inngest step boundary. ElevenLabs MP3 + alignment for a multi-
+      // thousand-char episode runs ~600KB-1MB+ as base64; Inngest's per-
+      // step output cap is 1MB on cloud, and exceeding it produces an
+      // "error validating generator opcode" failure that retries until
+      // the run dies. By uploading to Supabase Storage inside the same
+      // step, only the signed URL + alignment metadata leave the step.
 
-      const { audioBase64, combinedAlignment, durationSec } = await step.run(
-        "generate-audio",
+      const { audioUrl, combinedAlignment, durationSec } = await step.run(
+        "generate-and-upload-audio",
         async () => {
           const apiKey = await resolveElevenLabsKey();
           if (!apiKey) {
@@ -95,44 +105,36 @@ export const episodeTts = inngest.createFunction(
           }
 
           const result = await generateEpisodeAudio(fullText, voiceId, apiKey);
-          // Serialize Buffer → base64 so Inngest can checkpoint the result
+
+          const supabase = createServiceClient();
+          const path = `${userId}/episodes/${episodeId}.mp3`;
+
+          const { error: uploadError } = await supabase.storage
+            .from(BUCKET)
+            .upload(path, result.audioBuffer, {
+              contentType: "audio/mpeg",
+              upsert: true,
+            });
+          if (uploadError) {
+            throw new Error(`Storage upload failed: ${uploadError.message}`);
+          }
+
+          const { data: signedData, error: signError } = await supabase.storage
+            .from(BUCKET)
+            .createSignedUrl(path, SIGNED_URL_EXPIRY);
+          if (signError || !signedData?.signedUrl) {
+            throw new Error(
+              `Failed to create signed URL: ${signError?.message ?? "unknown"}`,
+            );
+          }
+
           return {
-            audioBase64: result.audioBuffer.toString("base64"),
+            audioUrl: signedData.signedUrl,
             combinedAlignment: result.combinedAlignment,
             durationSec: result.durationSec,
           };
         },
       );
-
-      // ── Step 3: Upload MP3 to Supabase Storage ──────────────────────────
-
-      const audioUrl = await step.run("upload-audio", async () => {
-        const supabase = createServiceClient();
-        const path = `${userId}/episodes/${episodeId}.mp3`;
-        const audioBuffer = Buffer.from(audioBase64, "base64");
-
-        const { error: uploadError } = await supabase.storage
-          .from(BUCKET)
-          .upload(path, audioBuffer, {
-            contentType: "audio/mpeg",
-            upsert: true,
-          });
-        if (uploadError) {
-          throw new Error(`Storage upload failed: ${uploadError.message}`);
-        }
-
-        // Long-lived signed URL for browser streaming
-        const { data: signedData, error: signError } = await supabase.storage
-          .from(BUCKET)
-          .createSignedUrl(path, SIGNED_URL_EXPIRY);
-        if (signError || !signedData?.signedUrl) {
-          throw new Error(
-            `Failed to create signed URL: ${signError?.message ?? "unknown"}`,
-          );
-        }
-
-        return signedData.signedUrl;
-      });
 
       // ── Step 4: Update episode row ──────────────────────────────────────
 
