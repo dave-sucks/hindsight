@@ -142,10 +142,15 @@ export const discoverSignalsForFence = defineTool({
           (v.industries?.length ?? 0) +
           (v.themes?.length ?? 0) +
           (v.tickers?.length ?? 0) >
-        0,
+          0 ||
+        (typeof v.marketCapMin === "number" && v.marketCapMin > 0),
       {
+        // Sector-agnostic strategies (e.g. an intraday momentum scalper that
+        // trades whatever moves) validly carry only a market-cap floor.
+        // Reject only when there is NO discriminator at all — that would
+        // scan every signal in the window with no narrowing.
         message:
-          "Must pass at least one of: sectors, industries, themes, tickers.",
+          "Must pass at least one of: sectors, industries, themes, tickers — OR a marketCapMin > 0 (cap-floor-only fence for sector-agnostic strategies).",
       },
     ),
   ui: "tool-ui" as const,
