@@ -114,6 +114,7 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
 export const triggerActionSchema = z.enum([
   "REVIEW",
   "EXIT",
+  "ENTER",
   "ADD",
   "TRIM",
   "MOVE_STOP",

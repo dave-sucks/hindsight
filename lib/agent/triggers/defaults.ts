@@ -29,12 +29,29 @@ import type { Trigger, TriggerPredicate } from "./types";
 
 export type Horizon = "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER";
 
+/**
+ * Thesis state at the time defaults are derived. Drives the template
+ * selection — held positions get EXIT/REVIEW templates around the open
+ * position; watching theses get ENTER/REVIEW templates around the
+ * watchlist entry condition.
+ *
+ * Without this distinction, watchlist theses end up with EXIT triggers
+ * on stop-loss that can never fire usefully — there's no position to
+ * exit. The agent then has no entry trigger to push it from WATCHING
+ * → INITIATE, and the watchlist becomes inert.
+ */
+export type ThesisState = "HELD" | "WATCHING";
+
+export type ThesisDirection = "LONG" | "SHORT" | "PASS";
+
 export interface ThesisShape {
   entryPrice?: number | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
   maxHoldDays?: number | null;
   catalystDate?: Date | null;
+  /** Direction colors entry-trigger semantics for watching theses. */
+  direction?: ThesisDirection | null;
 }
 
 // ── Builders for each horizon ──────────────────────────────────────────
@@ -230,16 +247,133 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
   return out;
 }
 
+// ── Watching templates ─────────────────────────────────────────────────
+// For NON-HELD theses on the watchlist. The semantic shift is:
+//   - No EXIT triggers (nothing to exit)
+//   - The TARGET price is the ENTRY-trigger threshold ("waiting for
+//     price to break above X to consider INITIATE")
+//   - The STOP price becomes a REVIEW threshold for LONG ("price
+//     fell to support — better entry or thesis weakening?") and an
+//     ENTRY threshold for SHORT (mirror semantics)
+//   - News/event triggers stay as REVIEW
+//
+// Direction matters here: LONG watches enter on PRICE_ABOVE target,
+// SHORT watches enter on PRICE_BELOW target. PASS watches get only
+// REVIEW triggers ("the move I dismissed actually happened — re-look").
+//
+// Same horizon variants apply (CATALYST/TARGET/TRADE/COMPOUNDER) but
+// the templates are simpler — most of the held-position complexity
+// (TIME_ELAPSED max-hold, stop-tighten, etc.) doesn't apply pre-entry.
+
+function watchingDefaults(thesis: ThesisShape): Trigger[] {
+  const out: Trigger[] = [];
+  const direction = thesis.direction ?? "LONG";
+
+  // Entry trigger — derived from target. For LONG, enter on break above;
+  // for SHORT, enter on break below; for PASS, no entry trigger.
+  if (thesis.targetPrice != null && direction === "LONG") {
+    out.push({
+      id: createId(),
+      predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
+      action: "ENTER",
+      rationale: `Entry trigger — price broke above $${thesis.targetPrice}. Validate setup and consider INITIATE.`,
+      cooldownDays: 1,
+    });
+  } else if (thesis.targetPrice != null && direction === "SHORT") {
+    out.push({
+      id: createId(),
+      predicate: { kind: "PRICE_BELOW", level: thesis.targetPrice },
+      action: "ENTER",
+      rationale: `Short entry trigger — price broke below $${thesis.targetPrice}. Validate setup and consider INITIATE short.`,
+      cooldownDays: 1,
+    });
+  } else if (thesis.targetPrice != null && direction === "PASS") {
+    // The move we dismissed actually happened. Worth re-evaluating
+    // the PASS — the thesis may need to flip to LONG/SHORT.
+    out.push({
+      id: createId(),
+      predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
+      action: "REVIEW",
+      rationale: `Price hit the target we dismissed. Re-evaluate the PASS — was the rejection wrong?`,
+      cooldownDays: 7,
+    });
+  }
+
+  // Secondary price level — stop becomes a REVIEW for LONG (better
+  // entry or thesis breaking?). For SHORT, the entry-trigger is below
+  // and the "thesis breaking" signal would be price climbing well above
+  // the entry; we skip that for now, keep the template lean.
+  if (thesis.stopLoss != null && direction === "LONG") {
+    out.push({
+      id: createId(),
+      predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
+      action: "REVIEW",
+      rationale: `Price dropped to support level $${thesis.stopLoss}. Better entry, or thesis weakening?`,
+      cooldownDays: 1,
+    });
+  }
+
+  // News / event triggers — same shape as held but framed for entry.
+  out.push(
+    {
+      id: createId(),
+      predicate: { kind: "EARNINGS_BEAT" },
+      action: "REVIEW",
+      rationale:
+        direction === "PASS"
+          ? `Beat — possibly a reason to flip the PASS.`
+          : `Beat — possible entry catalyst. Validate before INITIATE.`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
+      action: "REVIEW",
+      rationale:
+        direction === "PASS"
+          ? `Miss — confirms the PASS, possibly remove from watch.`
+          : `Miss — entry conditions worsening. Consider removing from watch.`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "TIME_ELAPSED", days: 30 },
+      action: "REVIEW",
+      rationale: `Monthly hygiene — is this still worth tracking?`,
+      cooldownDays: 25,
+    },
+  );
+
+  return out;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────
 
 /**
  * Returns the horizon-keyed default trigger array for this thesis.
  * Pure function — no DB, no clock; delegates ID generation to cuid.
+ *
+ * @param horizon  Trade structure (CATALYST/TARGET/TRADE/COMPOUNDER)
+ * @param state    HELD vs WATCHING — determines whether to emit EXIT
+ *                 triggers (held) or ENTER triggers (watching). Defaults
+ *                 to HELD for backward compatibility with callers minted
+ *                 before the split. New callers should pass explicitly.
+ * @param thesis   Thesis fields used to parameterize the templates
  */
 export function defaultTriggersForHorizon(
   horizon: Horizon,
   thesis: ThesisShape,
+  state: ThesisState = "HELD",
 ): Trigger[] {
+  if (state === "WATCHING") {
+    // Watching templates don't currently vary by horizon — entry
+    // semantics are the same regardless of trade structure. We accept
+    // the horizon arg so the call signature is uniform with the held
+    // path; once we have horizon-specific watching templates (e.g.
+    // CATALYST watching with a date-based ENTER), this branch can
+    // delegate to per-horizon helpers like the held side does.
+    return watchingDefaults(thesis);
+  }
   switch (horizon) {
     case "COMPOUNDER":
       return compounderDefaults(thesis);

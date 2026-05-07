@@ -43,7 +43,19 @@ export const recordRunSummary = defineTool({
           direction: z.enum(["LONG", "SHORT", "PASS"]),
           confidence: z.number(),
           reasoning: z.string().describe("One-line rationale (<= 80 chars)"),
-          action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS", "FAILED"]),
+          action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS", "FAILED"])
+            .describe(
+              "What ACTUALLY happened to this ticker this run. Choose by what you have, not what you thought:\n" +
+              "  INITIATE = opened a new position (place_trade fired success).\n" +
+              "  ADD      = added to an existing position.\n" +
+              "  HOLD     = you currently HOLD an open position in this ticker and kept it. Do NOT use HOLD for a watched/tracked thesis where you have no position — that is WATCH.\n" +
+              "  REDUCE   = trimmed an existing position.\n" +
+              "  EXIT     = closed an existing position (close_position fired).\n" +
+              "  WATCH    = you do NOT have a position; you maintained or updated the thesis to keep tracking. This is the right verb whenever you edited a thesis on a ticker you don't own.\n" +
+              "  REMOVE_WATCH = removed from watchlist / dropped tracking.\n" +
+              "  PASS     = researched and rejected; no thesis maintained.\n" +
+              "  FAILED   = place_trade returned success: false (rejected by broker, duplicate, etc).",
+            ),
           composite_score: z
             .number()
             .min(0)
@@ -55,7 +67,7 @@ export const recordRunSummary = defineTool({
         }),
       )
       .describe(
-        "Every ticker you researched in Step 3, ranked by composite_score (or by conviction if composite unavailable), with the action that ACTUALLY happened in Step 5. Use FAILED for tickers where place_trade returned success: false.",
+        "Every ticker you researched in Step 3, ranked by composite_score (or by conviction if composite unavailable), with the action that ACTUALLY happened in Step 5. HOLD is reserved for tickers you currently own. For a thesis edit on a ticker you don't own, use WATCH. Use FAILED for tickers where place_trade returned success: false.",
       ),
     exposure_breakdown: z
       .object({
@@ -71,6 +83,57 @@ export const recordRunSummary = defineTool({
 
   execute: async (args, ctx) => {
     try {
+      // ── Pre-pass: downgrade misclassified HOLDs to WATCH ─────────────
+      // The agent sometimes labels a thesis edit on a non-held ticker as
+      // HOLD. Semantically that's WATCH. We resolve the open-position set
+      // once here so the corrected actions land in the RunEvent payload,
+      // ResearchRun.parameters, the rendered DecisionSummaryCard, AND the
+      // TradeDecision rows — keeping every consumer in sync. We also
+      // memoize the position lookup so the TradeDecision write loop
+      // below doesn't repeat the same query.
+      const positionByTicker = new Map<string, string | null>();
+      if (ctx.analystId) {
+        const trackingTickers = Array.from(
+          new Set(
+            args.ranked_picks
+              .filter((p) => {
+                const a = p.action.toUpperCase();
+                return a === "HOLD" || a === "WATCH";
+              })
+              .map((p) => p.ticker.toUpperCase()),
+          ),
+        );
+        if (trackingTickers.length > 0) {
+          try {
+            const openPositions = await prisma.position.findMany({
+              where: {
+                analystId: ctx.analystId,
+                symbol: { in: trackingTickers },
+                status: "OPEN",
+              },
+              select: { id: true, symbol: true },
+            });
+            for (const t of trackingTickers) positionByTicker.set(t, null);
+            for (const p of openPositions) positionByTicker.set(p.symbol.toUpperCase(), p.id);
+          } catch (lookupErr) {
+            console.warn(
+              `[tool] record_run_summary position lookup failed:`,
+              lookupErr instanceof Error ? lookupErr.message : lookupErr,
+            );
+          }
+        }
+        for (const pick of args.ranked_picks) {
+          if (pick.action.toUpperCase() !== "HOLD") continue;
+          const positionId = positionByTicker.get(pick.ticker.toUpperCase());
+          if (positionId == null) {
+            console.info(
+              `[tool] record_run_summary downgrading ${pick.ticker} action HOLD→WATCH (no open position)`,
+            );
+            pick.action = "WATCH" as typeof pick.action;
+          }
+        }
+      }
+
       const traded = args.ranked_picks.filter((p) => {
         const a = p.action.toUpperCase();
         return a === "INITIATE" || a === "ADD";
@@ -148,28 +211,36 @@ export const recordRunSummary = defineTool({
         }
       }
 
-      // Record HOLD decisions (non-fatal)
-      const holdPicks = args.ranked_picks.filter((p) => p.action.toUpperCase() === "HOLD");
-      if (holdPicks.length > 0 && ctx.analystId && ctx.runId) {
-        for (const pick of holdPicks) {
+      // Persist HOLD and WATCH decisions (non-fatal). The pre-pass above
+      // already downgraded any HOLD without a matching open position, so
+      // pick.action is now authoritative. WATCH picks were previously
+      // silently dropped; we persist them too so analytics can answer
+      // "what is the analyst tracking without trading?".
+      const trackingPicks = args.ranked_picks.filter((p) => {
+        const a = p.action.toUpperCase();
+        return a === "HOLD" || a === "WATCH";
+      });
+      if (trackingPicks.length > 0 && ctx.analystId && ctx.runId) {
+        for (const pick of trackingPicks) {
           try {
-            const position = await prisma.position.findFirst({
-              where: { analystId: ctx.analystId, symbol: pick.ticker.toUpperCase(), status: "OPEN" },
-              select: { id: true },
-            });
+            const decision = pick.action.toUpperCase();
+            const positionId = positionByTicker.get(pick.ticker.toUpperCase()) ?? null;
             await prisma.tradeDecision.create({
               data: {
                 runId: ctx.runId,
                 analystId: ctx.analystId,
                 userId: ctx.userId,
                 symbol: pick.ticker.toUpperCase(),
-                decision: "HOLD",
+                decision,
                 reasoning: pick.reasoning?.slice(0, 500) ?? null,
-                positionId: position?.id ?? null,
+                positionId,
               },
             });
-          } catch (holdErr) {
-            console.warn(`[tool] record_run_summary HOLD decision failed for ${pick.ticker}:`, holdErr instanceof Error ? holdErr.message : holdErr);
+          } catch (writeErr) {
+            console.warn(
+              `[tool] record_run_summary decision write failed for ${pick.ticker}:`,
+              writeErr instanceof Error ? writeErr.message : writeErr,
+            );
           }
         }
       }
