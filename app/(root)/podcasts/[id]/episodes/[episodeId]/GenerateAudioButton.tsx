@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectTrigger,
@@ -42,6 +43,7 @@ export function GenerateAudioButton({
   const [voices, setVoices] = useState<ElevenLabsVoice[]>([]);
   const [voicesLoading, setVoicesLoading] = useState(true);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>(podcastVoiceId ?? "");
+  const [manualVoiceId, setManualVoiceId] = useState<string>(podcastVoiceId ?? "");
 
   useEffect(() => {
     getElevenLabsVoices().then((v) => {
@@ -73,6 +75,15 @@ export function GenerateAudioButton({
     });
   }
 
+  function handleManualVoiceSave() {
+    const id = manualVoiceId.trim();
+    if (!id) return;
+    setSelectedVoiceId(id);
+    startTransition(async () => {
+      await updatePodcastVoice(podcastId, id);
+    });
+  }
+
   if (variant === "regenerate") {
     return (
       <Button variant="ghost" size="sm" onClick={handleGenerate} disabled={isPending}>
@@ -82,16 +93,15 @@ export function GenerateAudioButton({
     );
   }
 
-  const hasVoice = !!(selectedVoiceId || podcastVoiceId);
+  const activeVoiceId = selectedVoiceId || podcastVoiceId || "";
+  const hasVoice = !!activeVoiceId;
 
   return (
     <div className="flex items-center gap-2">
       {voicesLoading ? (
         <span className="text-xs text-muted-foreground">Loading voices…</span>
-      ) : voices.length === 0 ? (
-        <span className="text-xs text-muted-foreground">No voices — check ElevenLabs key in Settings</span>
-      ) : (
-        <Select value={selectedVoiceId} onValueChange={handleVoiceChange}>
+      ) : voices.length > 0 ? (
+        <Select value={activeVoiceId} onValueChange={handleVoiceChange}>
           <SelectTrigger size="sm" variant="ghost" className="max-w-[160px]">
             <SelectValue placeholder="Pick a voice" />
           </SelectTrigger>
@@ -106,6 +116,18 @@ export function GenerateAudioButton({
             ))}
           </SelectContent>
         </Select>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <Input
+            size={28}
+            value={manualVoiceId}
+            onChange={(e) => setManualVoiceId(e.target.value)}
+            onBlur={handleManualVoiceSave}
+            onKeyDown={(e) => e.key === "Enter" && handleManualVoiceSave()}
+            placeholder="Paste ElevenLabs voice ID"
+            className="h-8 text-xs w-48"
+          />
+        </div>
       )}
       <Button
         size="sm"
