@@ -71,6 +71,35 @@ function normalizeSuggestConfig(input: unknown): unknown {
     cfg.universe = u;
   }
 
+  // Belt-and-suspenders: DAY-only analysts MUST have the movers + earnings
+  // calendar feeds. The morning playbook screens movers as its primary
+  // discovery work; without these feeds the analyst's inbox is empty and
+  // the morning run has nothing to chew on. The builder prompt already
+  // says feeds are mandatory for DAY archetypes, but agents have dropped
+  // them anyway. This auto-fill is the durable safety net — it's a
+  // structural fact about the DAY workflow, not an archetype preference.
+  const holdDurations = cfg.holdDurations;
+  const isDayOnly =
+    Array.isArray(holdDurations) &&
+    holdDurations.length > 0 &&
+    holdDurations.every((h) => typeof h === "string" && h.toUpperCase() === "DAY");
+  if (isDayOnly) {
+    const universe = (cfg.universe as Record<string, unknown> | undefined) ?? {};
+    const existingFeeds = universe.feeds;
+    const hasFeeds = Array.isArray(existingFeeds) && existingFeeds.length > 0;
+    if (!hasFeeds) {
+      cfg.universe = {
+        ...universe,
+        feeds: [
+          "MARKET_MOVERS_GAINERS",
+          "MARKET_MOVERS_LOSERS",
+          "MARKET_MOVERS_ACTIVES",
+          "EARNINGS_CALENDAR",
+        ],
+      };
+    }
+  }
+
   return cfg;
 }
 

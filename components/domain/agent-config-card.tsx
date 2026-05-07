@@ -28,6 +28,14 @@ export type AgentConfigData = {
   // ── Universe (B1) — mirror of AgentConfig shape ───────────────────
   industries?: string[];
   themes?: string[];
+  /**
+   * Firm-aggregate feed subscriptions (canonical FEEDS values — see
+   * lib/universe/feeds.ts). suggest_config nests these under
+   * `universe.feeds`; the ConfigPreviewRenderer flattens them to the
+   * top-level `feeds` here so AnalystConfigPanel + AnalystConfigForm
+   * can surface them without reaching into a sub-object.
+   */
+  feeds?: string[];
   marketCapMin?: number | null;
   marketCapMax?: number | null;
   signalTypes?: string[];

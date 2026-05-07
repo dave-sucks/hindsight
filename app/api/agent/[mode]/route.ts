@@ -539,7 +539,24 @@ export async function POST(
       //     the user clicks an option mid-stream).
       // ai SDK v6 accepts an array of StopConditions; first to fire
       // wins. hasToolCall("ask_question") is the SDK helper.
-      stopWhen: [stepCountIs(modeConfig.maxSteps), hasToolCall("ask_question")],
+      //
+      // For builder/editor, also stop on the terminal "suggest" tool —
+      // suggest_config / suggest_podcast_config are the END of the
+      // configuration flow. Without these stops the agent kept going
+      // after suggest_config and fired a late ask_question, which then
+      // blocked the chat because it was waiting on an answer to a
+      // question it never should have asked. The right panel showed a
+      // valid analyst draft; the middle showed a stalled question card;
+      // the user couldn't proceed either way. Fixed by terminating the
+      // run the moment the suggest tool fires.
+      stopWhen: [
+        stepCountIs(modeConfig.maxSteps),
+        hasToolCall("ask_question"),
+        ...(modeConfig.hasSuggestConfig ? [hasToolCall("suggest_config")] : []),
+        ...(agentMode === "podcast-builder" || agentMode === "podcast-editor"
+          ? [hasToolCall("suggest_podcast_config")]
+          : []),
+      ],
 
       onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage }) {
         const now = Date.now();
