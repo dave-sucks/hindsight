@@ -208,11 +208,26 @@ export const discoverSignalsForFence = defineTool({
     if (themes.length > 0) orClauses.push({ themes: { hasSome: themes } });
     if (tickers.length > 0) orClauses.push({ tickers: { hasSome: tickers } });
 
+    // Sector-agnostic strategies (e.g. intraday momentum scalper) carry only
+    // a market-cap floor. Signal table has no cap column to filter on
+    // server-side, but we still want to surface coverage — otherwise the
+    // builder thinks the pipeline is dead. Query recent signals broadly
+    // and return them; the tickerFrequency output gives the agent a
+    // sample of what's actually flowing through the pipeline.
+    const isCapOnlyFence =
+      orClauses.length === 0 &&
+      ((args.marketCapMin != null && args.marketCapMin > 0) ||
+        (args.marketCapMax != null && args.marketCapMax > 0));
+
     const signals =
-      orClauses.length === 0
+      orClauses.length === 0 && !isCapOnlyFence
         ? []
         : await prisma.signal.findMany({
-            where: { createdAt: { gte: since }, deletedAt: null, OR: orClauses },
+            where: {
+              createdAt: { gte: since },
+              deletedAt: null,
+              ...(orClauses.length > 0 ? { OR: orClauses } : {}),
+            },
             orderBy: { createdAt: "desc" },
             take: Math.max(limit * 4, 40),
           });
