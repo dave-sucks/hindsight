@@ -1,7 +1,6 @@
 "use client";
 
 import { CitedText } from "@/components/chat/CitedText";
-import { SourceChipRow } from "@/components/chat/SourceChip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import type { EpisodeTranscriptItem } from "@/lib/actions/podcast.actions";
 
@@ -79,9 +78,6 @@ export function TranscriptBody({
           <CitedText text={markedText} sources={sources} />
         </div>
 
-        {sources.length > 0 && (
-          <SourceChipRow sources={sources} className="pt-2" />
-        )}
       </div>
     </section>
   );
