@@ -40,10 +40,14 @@ export function GenerateAudioButton({
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const [voices, setVoices] = useState<ElevenLabsVoice[]>([]);
+  const [voicesLoading, setVoicesLoading] = useState(true);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>(podcastVoiceId ?? "");
 
   useEffect(() => {
-    getElevenLabsVoices().then(setVoices);
+    getElevenLabsVoices().then((v) => {
+      setVoices(v);
+      setVoicesLoading(false);
+    });
   }, []);
 
   const estimatedCost = estimateCost(charCount);
@@ -82,7 +86,11 @@ export function GenerateAudioButton({
 
   return (
     <div className="flex items-center gap-2">
-      {voices.length > 0 && (
+      {voicesLoading ? (
+        <span className="text-xs text-muted-foreground">Loading voices…</span>
+      ) : voices.length === 0 ? (
+        <span className="text-xs text-muted-foreground">No voices — check ElevenLabs key in Settings</span>
+      ) : (
         <Select value={selectedVoiceId} onValueChange={handleVoiceChange}>
           <SelectTrigger size="sm" variant="ghost" className="max-w-[160px]">
             <SelectValue placeholder="Pick a voice" />
@@ -102,7 +110,7 @@ export function GenerateAudioButton({
       <Button
         size="sm"
         onClick={handleGenerate}
-        disabled={isPending || charCount === 0 || !hasVoice}
+        disabled={isPending || charCount === 0 || !hasVoice || voicesLoading}
         className="shrink-0"
       >
         <Mic className="h-3.5 w-3.5 mr-1.5" />
