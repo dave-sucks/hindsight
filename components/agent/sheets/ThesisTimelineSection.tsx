@@ -22,8 +22,19 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// When the sheet opens from a run-detail page (/runs/[id]), entries whose
+// runId matches the URL get the "edited-in-this-run" treatment. Pure URL
+// detection — no prop plumbing required from callers.
+function useCurrentRunId(): string | null {
+  const pathname = usePathname();
+  if (!pathname) return null;
+  const match = pathname.match(/^\/runs\/([^/]+)/);
+  return match?.[1] ?? null;
+}
 
 interface ThesisUpdate {
   id: string;
@@ -70,6 +81,7 @@ interface Props {
 export function ThesisTimelineSection({ thesisId }: Props) {
   const [updates, setUpdates] = useState<ThesisUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const currentRunId = useCurrentRunId();
 
   useEffect(() => {
     let cancelled = false;
@@ -110,20 +122,38 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                 ? u.priceAtTime - olderPrice
                 : null;
             const isLast = idx === updates.length - 1;
+            const isCurrentRun =
+              currentRunId != null && u.runId === currentRunId;
 
             return (
               <div key={u.id} className="flex gap-3">
                 {/* ── Rail (dot + line) ─────────────────────────────── */}
                 <div className="flex flex-col items-center shrink-0">
-                  {/* Tiny dot, vertically aligned with the price line */}
-                  <div className="size-1.5 rounded-full bg-muted-foreground/50 mt-1.5" />
+                  {/* Tiny dot, vertically aligned with the price line.
+                      Current-run entries get an amber pulsing dot to
+                      mark them out from history. */}
+                  <div
+                    className={cn(
+                      "size-1.5 rounded-full mt-1.5",
+                      isCurrentRun
+                        ? "bg-amber-500 animate-pulse ring-2 ring-amber-500/30"
+                        : "bg-muted-foreground/50",
+                    )}
+                  />
                   {!isLast ? (
                     <div className="w-px flex-1 bg-border mt-1" />
                   ) : null}
                 </div>
 
                 {/* ── Body ──────────────────────────────────────────── */}
-                <div className={cn("flex-1 min-w-0 space-y-1", !isLast && "pb-4")}>
+                <div
+                  className={cn(
+                    "flex-1 min-w-0 space-y-1",
+                    !isLast && "pb-4",
+                    isCurrentRun &&
+                      "rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 -ml-2 mb-1",
+                  )}
+                >
                   {/* Top row: Price (left) · Date (right) */}
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium tabular-nums flex items-center gap-1">
@@ -155,6 +185,12 @@ export function ThesisTimelineSection({ thesisId }: Props) {
 
                   {/* Footer: Type · TriggerId chip · View run · Signals */}
                   <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                    {isCurrentRun ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-amber-600 dark:text-amber-400 font-medium">
+                        <span className="size-1 rounded-full bg-amber-500 animate-pulse" />
+                        in this run
+                      </span>
+                    ) : null}
                     <span>{typeLabel(u.type)}</span>
                     {u.type === "TRIGGER_FIRED" && u.triggerId ? (
                       <>
@@ -167,7 +203,7 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                         </span>
                       </>
                     ) : null}
-                    {u.runId ? (
+                    {u.runId && !isCurrentRun ? (
                       <>
                         <span className="opacity-40">·</span>
                         <Link

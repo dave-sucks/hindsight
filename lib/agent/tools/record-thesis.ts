@@ -473,6 +473,15 @@ export const recordThesis = defineTool({
         nextReviewAt = new Date(now + days * dayMs);
       }
 
+      // ── Effective status — derived once, used both for triggers and DB ──
+      // We compute the held vs watching distinction up front so the
+      // trigger factory below can pick the right template (ENTER triggers
+      // for watching, EXIT triggers for held). Same logic as line 638's
+      // effectiveStatus — kept in lockstep; if you change one, change both.
+      const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" =
+        args.status ??
+        (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
+
       const coreData = {
         researchRunId: ctx.runId,
         userId: ctx.userId,
@@ -513,9 +522,17 @@ export const recordThesis = defineTool({
           : undefined,
         triggers: (() => {
           // Merge agent-supplied triggers with horizon-keyed defaults so
-          // every thesis ships with the universal "stop / earnings / 8-K"
-          // baseline without the agent having to remember every time.
-          // Agent wins per (predicate, action) bucket; defaults fill gaps.
+          // every thesis ships with the universal baseline without the
+          // agent having to remember every time. Agent wins per
+          // (predicate, action) bucket; defaults fill gaps.
+          //
+          // Defaults shape depends on status:
+          //   WATCHING → ENTER triggers off targetPrice (entry threshold)
+          //              + REVIEW triggers; no EXIT (nothing to exit yet)
+          //   ACTIVE   → EXIT/REVIEW triggers off stop/target (held shape)
+          //
+          // Without this split, watching theses get EXIT triggers that
+          // can never fire usefully and never produce an INITIATE.
           // See lib/agent/triggers/defaults.ts.
           //
           // applyTriggerCooldownDefaults runs LAST so any trigger (agent
@@ -529,15 +546,20 @@ export const recordThesis = defineTool({
               (args.triggers ?? []) as Trigger[],
             ) as object[];
           }
-          const defaults = defaultTriggersForHorizon(args.horizon as Horizon, {
-            entryPrice: args.entry_price ?? null,
-            targetPrice: args.target_price ?? null,
-            stopLoss: args.stop_loss ?? null,
-            maxHoldDays: args.max_hold_days ?? null,
-            catalystDate: args.catalyst_date
-              ? new Date(args.catalyst_date)
-              : null,
-          });
+          const defaults = defaultTriggersForHorizon(
+            args.horizon as Horizon,
+            {
+              entryPrice: args.entry_price ?? null,
+              targetPrice: args.target_price ?? null,
+              stopLoss: args.stop_loss ?? null,
+              maxHoldDays: args.max_hold_days ?? null,
+              catalystDate: args.catalyst_date
+                ? new Date(args.catalyst_date)
+                : null,
+              direction: args.direction,
+            },
+            effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
+          );
           const merged = mergeTriggers(
             defaults,
             (args.triggers ?? []) as Trigger[],
@@ -645,9 +667,9 @@ export const recordThesis = defineTool({
       // This is the producer fix that makes the WATCHING enum value
       // (consumed by trigger-evaluator, morning-brief-generator,
       // tactical-run, get-theses, update-thesis) actually populated.
-      const effectiveStatus: "ACTIVE" | "WATCHING" =
-        args.status ??
-        (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
+      // Reuse the value we hoisted earlier for the trigger factory so
+      // status, triggers, and the DB row never disagree.
+      const effectiveStatus = effectiveStatusForTriggers;
 
       let thesis;
       try {

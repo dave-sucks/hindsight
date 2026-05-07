@@ -100,8 +100,19 @@ export type TriggerPredicate =
  * which tool path to take. Note: the agent CAN override (e.g. trigger said
  * EXIT but agent decides the move was overdone and chooses TRIM instead) —
  * the action is the default, not a hard rule.
+ *
+ * Action by thesis state:
+ *   HELD positions    — EXIT, TRIM, ADD, MOVE_STOP, REVIEW
+ *   WATCHING theses   — ENTER, REVIEW
+ *
+ * ENTER fires when a watchlist entry condition is met (e.g. price breaks
+ * above a target/breakout level). The tactical agent's typical response
+ * is to consider INITIATE; ENTER is the trigger-side counterpart to the
+ * decision-side INITIATE/ADD verbs. Without ENTER, watching theses can
+ * only carry REVIEW triggers, which is too vague — REVIEW IF earnings
+ * beat is housekeeping; ENTER IF price > $268 is the actionable signal.
  */
-export type TriggerAction = "REVIEW" | "EXIT" | "ADD" | "TRIM" | "MOVE_STOP";
+export type TriggerAction = "REVIEW" | "EXIT" | "ENTER" | "ADD" | "TRIM" | "MOVE_STOP";
 
 export type Trigger = {
   /** Stable cuid — same id across thesis updates so cooldown can be tracked. */

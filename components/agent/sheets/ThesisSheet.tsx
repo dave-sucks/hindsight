@@ -123,14 +123,27 @@ function StatusPill({ status }: { status: ThesisStatus }) {
 }
 
 // ── PositionRow ──
-// Plain text, no card wrapper. Two stacked lines:
+// Plain text, no card wrapper. Three stacked lines:
 //   "Bought {N} shares at ${avg}, now trading at ${current}"
 //   +$X ↗ N.NN%                                                (one size up)
+//   "{LONG|SHORT} · target ${T} / stop ${S} · {HORIZON} horizon"
+//
+// The third line is the "intent" suffix — at-a-glance what kind of
+// trade this is and where the exits are. Renders only when we have
+// horizon/target/stop info to show.
 
 function PositionRow({
   position,
+  direction,
+  horizon,
+  targetPrice,
+  stopLoss,
 }: {
   position: NonNullable<TriggersResponse["position"]>;
+  direction: "LONG" | "SHORT" | "PASS";
+  horizon?: string | null;
+  targetPrice?: number | null;
+  stopLoss?: number | null;
 }) {
   return (
     <div className="space-y-1">
@@ -153,7 +166,150 @@ function PositionRow({
           size="base"
         />
       ) : null}
+      <IntentSuffix
+        direction={direction}
+        horizon={horizon}
+        targetPrice={targetPrice}
+        stopLoss={stopLoss}
+      />
     </div>
+  );
+}
+
+// ── WatchingRow ──
+// The non-held analogue of PositionRow. Renders when status === 'WATCHING'.
+// Two stacked lines:
+//   "Watching for entry above ${target}"     (or "below" for SHORT)
+//   "{LONG|SHORT|PASS} · target ${T} / stop ${S} · {HORIZON} horizon"
+//
+// Direction shapes the headline:
+//   LONG  → "Watching for entry above $X"
+//   SHORT → "Watching for entry below $X"
+//   PASS  → "Watching · rejected previously"
+//
+// We don't show proximity-to-trigger here (e.g. "1.9% below current")
+// because the triggers API doesn't return a current quote for non-held
+// theses today — adding that requires a quote fetch the API doesn't do.
+// The TARGET is the entry-trigger threshold; that's the actionable info.
+
+function WatchingRow({
+  direction,
+  horizon,
+  entryPrice,
+  targetPrice,
+  stopLoss,
+}: {
+  direction: "LONG" | "SHORT" | "PASS";
+  horizon?: string | null;
+  entryPrice?: number | null;
+  targetPrice?: number | null;
+  stopLoss?: number | null;
+}) {
+  const headline = (() => {
+    if (direction === "PASS") return "Watching — previously rejected";
+    if (direction === "SHORT" && targetPrice != null) {
+      return (
+        <>
+          Watching for entry below{" "}
+          <span className="font-medium tabular-nums">
+            ${targetPrice.toFixed(2)}
+          </span>
+        </>
+      );
+    }
+    if (direction === "LONG" && targetPrice != null) {
+      return (
+        <>
+          Watching for entry above{" "}
+          <span className="font-medium tabular-nums">
+            ${targetPrice.toFixed(2)}
+          </span>
+        </>
+      );
+    }
+    return "Watching";
+  })();
+
+  return (
+    <div className="space-y-1">
+      <p className="text-sm leading-relaxed">{headline}</p>
+      <IntentSuffix
+        direction={direction}
+        horizon={horizon}
+        entryPrice={entryPrice}
+        targetPrice={targetPrice}
+        stopLoss={stopLoss}
+        forWatching
+      />
+    </div>
+  );
+}
+
+// ── IntentSuffix ──
+// Single line of dot-separated metadata appended to PositionRow and
+// WatchingRow: direction · target/stop · horizon. Hides cleanly when
+// any piece is missing — never renders an empty container.
+
+function IntentSuffix({
+  direction,
+  horizon,
+  entryPrice,
+  targetPrice,
+  stopLoss,
+  forWatching,
+}: {
+  direction: "LONG" | "SHORT" | "PASS";
+  horizon?: string | null;
+  entryPrice?: number | null;
+  targetPrice?: number | null;
+  stopLoss?: number | null;
+  forWatching?: boolean;
+}) {
+  const parts: React.ReactNode[] = [];
+
+  // Direction. PASS surfaces only on watching rows (held positions are
+  // always LONG/SHORT, never PASS).
+  if (direction !== "PASS" || forWatching) {
+    parts.push(<span key="dir" className="font-medium">{direction}</span>);
+  }
+
+  // Target / stop, joined into one token. Show whichever is set.
+  if (targetPrice != null || stopLoss != null) {
+    parts.push(
+      <span key="ts" className="tabular-nums">
+        {targetPrice != null ? `target $${targetPrice.toFixed(2)}` : null}
+        {targetPrice != null && stopLoss != null ? " / " : null}
+        {stopLoss != null ? `stop $${stopLoss.toFixed(2)}` : null}
+      </span>,
+    );
+  }
+
+  // Entry reference shown only for watching, only when no target (target
+  // is the entry trigger; entry is the analyst's reference point).
+  if (forWatching && entryPrice != null && targetPrice == null) {
+    parts.push(
+      <span key="entry" className="tabular-nums">
+        ref entry ${entryPrice.toFixed(2)}
+      </span>,
+    );
+  }
+
+  // Horizon — render the bare label; the description sits in the
+  // Schedule section below.
+  if (horizon) {
+    parts.push(
+      <span key="hz">
+        <span className="font-medium">{horizon}</span> horizon
+      </span>,
+    );
+  }
+
+  if (parts.length === 0) return null;
+
+  return (
+    <p className="text-xs text-muted-foreground leading-relaxed">
+      {parts.flatMap((p, i) => (i === 0 ? [p] : [<span key={`s${i}`} className="opacity-50"> · </span>, p]))}
+    </p>
   );
 }
 
@@ -483,9 +639,32 @@ export function ThesisSheetBody({
 
       {/* ── Position row (only when ACTIVE + open Position exists) ── */}
       {/* Mirrors the dashboard ThesisRow position pattern: shares @
-          cost, market value, live P&L. Stop line below when set. */}
+          cost, market value, live P&L. Intent suffix (direction · target/
+          stop · horizon) appended so a glance tells you the whole trade
+          structure. */}
       {position && liveStatus === "ACTIVE" ? (
-        <PositionRow position={position} />
+        <PositionRow
+          position={position}
+          direction={direction}
+          horizon={state?.horizon ?? null}
+          targetPrice={state?.targetPrice ?? target_price ?? null}
+          stopLoss={state?.stopLoss ?? stop_loss ?? null}
+        />
+      ) : null}
+
+      {/* ── Watching row (status WATCHING, no open position) ── */}
+      {/* The non-held analogue of PositionRow. Communicates the same
+          shape: state, direction, levels, horizon. For LONG watching,
+          the headline frames the target price as the entry trigger
+          ("Watching for entry above $X"). */}
+      {liveStatus === "WATCHING" && !position ? (
+        <WatchingRow
+          direction={direction}
+          horizon={state?.horizon ?? null}
+          entryPrice={state?.entryPrice ?? entry_price ?? null}
+          targetPrice={state?.targetPrice ?? target_price ?? null}
+          stopLoss={state?.stopLoss ?? stop_loss ?? null}
+        />
       ) : null}
 
       {/* ── Trigger fired banner ─────────────────────────────── */}

@@ -25,6 +25,7 @@ import { InboxUnreadIcon } from "@hugeicons/core-free-icons";
 import {
   DoorOpen,
   Eye,
+  LogIn,
   Minus,
   Plus,
   Shield,
@@ -171,6 +172,8 @@ function ActionIcon({
   switch (action) {
     case "EXIT":
       return <DoorOpen className={cls} />;
+    case "ENTER":
+      return <LogIn className={cls} />;
     case "ADD":
       return <Plus className={cls} />;
     case "TRIM":
@@ -187,6 +190,8 @@ function actionTintClass(action: string): string {
   switch (action) {
     case "EXIT":
       return "bg-red-500/10 text-red-500";
+    case "ENTER":
+      return "bg-emerald-500/10 text-emerald-500";
     case "ADD":
       return "bg-emerald-500/10 text-emerald-500";
     case "TRIM":
@@ -204,6 +209,23 @@ function actionLabel(action: string): string {
   const phrase = sharedActionLabel(action);
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
+
+// ── Horizon descriptions ────────────────────────────────────────────────
+// One-liner exit policy per horizon. Sourced from the schema comment in
+// prisma/schema.prisma:159-164 — keep in sync if the comments change.
+// Surfaces below the Horizon row in the Schedule section so the reader
+// doesn't need to know the enum semantics.
+
+const HORIZON_DESCRIPTIONS: Record<string, string> = {
+  CATALYST:
+    "Exit on the catalyst event (good or bad), or 30 days past the catalyst date.",
+  TARGET:
+    "Open-ended hold. Exit only at target, stop, or thesis invalidation.",
+  TRADE:
+    "Bounded short-term trade. Exit on stop, target, or maxHoldDays reached.",
+  COMPOUNDER:
+    "Multi-year hold. Exits only when invalidation triggers fire — never auto-exits on time.",
+};
 
 // ── Date formatters ─────────────────────────────────────────────────────
 
@@ -360,6 +382,100 @@ function TriggerPopoverContent({
   );
 }
 
+// ── Trigger grouping ────────────────────────────────────────────────────
+// Triggers are grouped by intent so the eye reads the trigger pile as a
+// status board, not a flat chip cloud:
+//   EXIT IF    — terminal actions that close the position
+//   ENTER IF   — actions that open or scale into a position
+//   REVIEW IF  — re-evaluate triggers (the agent looks again, decides)
+//
+// Action → group mapping:
+//   EXIT, TRIM       → EXIT IF
+//   ADD              → ENTER IF
+//   MOVE_STOP, REVIEW (default) → REVIEW IF
+//
+// NOTE on watching-vs-held trigger semantics: the current
+// `triggers/defaults.ts` templates assume a held position and emit
+// EXIT triggers for stop-loss. For a WATCHING (non-held) thesis,
+// EXIT triggers don't make sense — there's nothing to exit. The right
+// shape for a watching/LONG thesis is ENTER triggers (PRICE_ABOVE
+// breakout level → review for INITIATE). Until that backend fix lands,
+// the grouping below shows the templates as written, including any
+// EXIT triggers on watching theses. See docs/SESSION_AUDIT_2026_05_06.md.
+
+const TRIGGER_GROUPS: ReadonlyArray<{
+  key: "EXIT" | "ENTER" | "REVIEW";
+  label: string;
+  actions: ReadonlySet<string>;
+}> = [
+  {
+    key: "ENTER",
+    label: "Enter if",
+    actions: new Set(["ENTER", "ADD"]),
+  },
+  {
+    key: "EXIT",
+    label: "Exit if",
+    actions: new Set(["EXIT", "TRIM"]),
+  },
+  {
+    key: "REVIEW",
+    label: "Review if",
+    actions: new Set(["REVIEW", "MOVE_STOP"]),
+  },
+];
+
+function groupOf(action: string): "EXIT" | "ENTER" | "REVIEW" {
+  for (const g of TRIGGER_GROUPS) {
+    if (g.actions.has(action)) return g.key;
+  }
+  return "REVIEW";
+}
+
+function TriggerGroups({
+  triggers,
+  firing,
+  onTestFire,
+}: {
+  triggers: Trigger[];
+  firing: string | null;
+  onTestFire: (id: string) => void;
+}) {
+  const grouped = new Map<"EXIT" | "ENTER" | "REVIEW", Trigger[]>();
+  for (const t of triggers) {
+    const k = groupOf(t.action);
+    const arr = grouped.get(k) ?? [];
+    arr.push(t);
+    grouped.set(k, arr);
+  }
+
+  return (
+    <div className="space-y-3">
+      {TRIGGER_GROUPS.map(({ key, label }) => {
+        const items = grouped.get(key) ?? [];
+        if (items.length === 0) return null;
+        return (
+          <div key={key} className="space-y-1.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {label}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {items.map((t) => (
+                <TriggerPill
+                  key={t.id}
+                  trigger={t}
+                  firing={firing === t.id}
+                  onTestFire={() => onTestFire(t.id)}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main section ────────────────────────────────────────────────────────
 
 interface Props {
@@ -476,16 +592,11 @@ export function ThesisTriggersSection({ thesisId, data: dataProp }: Props) {
             auto-attach the baseline.
           </p>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {data.triggers.map((t) => (
-              <TriggerPill
-                key={t.id}
-                trigger={t}
-                firing={firing === t.id}
-                onTestFire={() => testFire(t.id)}
-              />
-            ))}
-          </div>
+          <TriggerGroups
+            triggers={data.triggers}
+            firing={firing}
+            onTestFire={testFire}
+          />
         )}
         {fireError ? (
           <p className="text-xs text-red-500">Test fire failed: {fireError}</p>
@@ -509,7 +620,14 @@ export function ThesisTriggersSection({ thesisId, data: dataProp }: Props) {
           <SectionHeader>Schedule</SectionHeader>
           <div className="flex flex-col gap-1">
             {data.horizon ? (
-              <InfoRow label="Horizon" value={data.horizon} />
+              <>
+                <InfoRow label="Horizon" value={data.horizon} />
+                {HORIZON_DESCRIPTIONS[data.horizon] ? (
+                  <p className="text-xs text-muted-foreground leading-relaxed -mt-1 pb-1">
+                    {HORIZON_DESCRIPTIONS[data.horizon]}
+                  </p>
+                ) : null}
+              </>
             ) : null}
             {data.nextReviewAt ? (
               <InfoRow

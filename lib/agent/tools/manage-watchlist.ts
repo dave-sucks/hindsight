@@ -79,13 +79,22 @@ async function ensureWatchingThesisForWatchlistAdd(params: {
   // / place_trade can re-pick if needed.
   const horizon: Horizon = params.catalyst ? "CATALYST" : "TRADE";
 
-  const triggers = defaultTriggersForHorizon(horizon, {
-    entryPrice: params.targetPrice ?? null,
-    targetPrice: params.targetPrice ?? null,
-    stopLoss: params.stopPrice ?? null,
-    maxHoldDays: horizon === "TRADE" ? 14 : null,
-    catalystDate: null,
-  });
+  // manage_watchlist always mints a WATCHING thesis (never an open
+  // position), so the watching template is the right baseline. That
+  // gives us ENTER triggers off targetPrice instead of the held-only
+  // EXIT-off-stopLoss template that used to land here and never fire.
+  const triggers = defaultTriggersForHorizon(
+    horizon,
+    {
+      entryPrice: params.targetPrice ?? null,
+      targetPrice: params.targetPrice ?? null,
+      stopLoss: params.stopPrice ?? null,
+      maxHoldDays: horizon === "TRADE" ? 14 : null,
+      catalystDate: null,
+      direction,
+    },
+    "WATCHING",
+  );
 
   const dayMs = 24 * 60 * 60 * 1000;
   const reviewDays = horizon === "CATALYST" || horizon === "TRADE" ? 1 : 7;

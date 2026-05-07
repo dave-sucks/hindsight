@@ -81,6 +81,8 @@ export function actionLabel(action: string): string {
   switch (action) {
     case "EXIT":
       return "exit position";
+    case "ENTER":
+      return "consider entry";
     case "ADD":
       return "scale in";
     case "TRIM":
