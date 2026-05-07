@@ -48,6 +48,17 @@ export interface ToolContext {
   intelligencePolicy?: IntelligencePolicy;
 
   /**
+   * When true, read_signals returns ONLY the discoverySignals bucket and
+   * zeroes out portfolioSignals + watchlistSignals. Used by the weekly
+   * discovery cron to keep the agent focused on net-new candidates only —
+   * the prompt was asking the LLM to mentally filter, but the chat
+   * rendering of "all three buckets in one flat list" looked like noise
+   * about already-covered names and the agent still acted on the wrong
+   * signals. Set in lib/inngest/functions/discovery-run.ts.
+   */
+  discoveryOnly?: boolean;
+
+  /**
    * Returns a stable group key for the given phase string.
    * Consecutive tool calls returning the same groupId collapse into one UI group.
    * Tools in the "research" phase all return "research", so they group together.

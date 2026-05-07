@@ -108,6 +108,15 @@ export const discoveryRun = inngest.createFunction(
           maxOpenPositions: config.maxOpenPositions,
           minConfidence: config.minConfidence,
           alpacaCreds,
+          // Discovery's job is finding NEW coverage. read_signals returns
+          // only the discoverySignals bucket; portfolio + watchlist signals
+          // are hidden so the agent can't accidentally treat already-covered
+          // names as discovery candidates (which is what was happening per
+          // the user's manual-trigger run on 2026-05-07 — the chat showed
+          // signals on held NVDA / AMD / KLAC etc. and the agent looked
+          // confused because it was filtering them mentally instead of the
+          // tool doing it).
+          discoveryOnly: true,
         });
 
         const allowlist = MODES["discovery"].toolAllowlist;

@@ -562,29 +562,42 @@ export const readSignals = defineTool({
 
     const mappedSignals = finalRoutes.map(mapSignal);
 
-    const portfolioSignals = mappedSignals.filter((s) => bucketOf(s) === "portfolio");
-    const watchlistSignals = mappedSignals.filter((s) => bucketOf(s) === "watchlist");
-    const discoverySignals = mappedSignals.filter((s) => bucketOf(s) === "discovery");
+    const portfolioSignalsAll = mappedSignals.filter((s) => bucketOf(s) === "portfolio");
+    const watchlistSignalsAll = mappedSignals.filter((s) => bucketOf(s) === "watchlist");
+    const discoverySignalsAll = mappedSignals.filter((s) => bucketOf(s) === "discovery");
 
-    const urgent = mappedSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
-    const bullish = mappedSignals.filter((s) => s.sentiment === "BULLISH").length;
-    const bearish = mappedSignals.filter((s) => s.sentiment === "BEARISH").length;
+    // Discovery-cron mode: hide portfolio/watchlist buckets entirely so the
+    // agent only sees net-new candidates. Without this, the chat rendering
+    // shows all three buckets in one flat list and the agent acts confused
+    // (or wastes tokens "filtering" mentally). The discovery prompt is
+    // explicit about scope; this enforces it at the data layer.
+    const portfolioSignals = ctx.discoveryOnly ? [] : portfolioSignalsAll;
+    const watchlistSignals = ctx.discoveryOnly ? [] : watchlistSignalsAll;
+    const discoverySignals = discoverySignalsAll;
+    const visibleSignals = ctx.discoveryOnly ? discoverySignals : mappedSignals;
+
+    const urgent = visibleSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
+    const bullish = visibleSignals.filter((s) => s.sentiment === "BULLISH").length;
+    const bearish = visibleSignals.filter((s) => s.sentiment === "BEARISH").length;
 
 
     return {
-      summary:
-        `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} ` +
-        `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
-        `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist / ${discoverySignals.length} discovery.`,
+      summary: ctx.discoveryOnly
+        ? `${discoverySignals.length} discovery candidate${discoverySignals.length !== 1 ? "s" : ""} ` +
+          `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish). ` +
+          `Portfolio + watchlist signals hidden — discovery scope only.`
+        : `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} ` +
+          `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
+          `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist / ${discoverySignals.length} discovery.`,
       data: {
-        count: mappedSignals.length,
+        count: visibleSignals.length,
         policyApplied: {
           maxSignals: policyMaxSignals,
           minUrgency: urgencyOrder[effectiveMinIdx],
           minSourceQuality,
           excludedCategories,
         },
-        signals: mappedSignals,
+        signals: visibleSignals,
         portfolioSignals,
         watchlistSignals,
         discoverySignals,
@@ -592,13 +605,13 @@ export const readSignals = defineTool({
           discoverySignals.length === 0
             ? "No discovery candidates this session — your Universe may need expansion."
             : undefined,
-        tickers: mappedSignals.map((s) => ({
+        tickers: visibleSignals.map((s) => ({
           ticker: s.tickers[0] ?? "MACRO",
           tag: s.urgency,
           summary: s.headline,
         })),
       } as SignalsToolData & { tickers: { ticker: string; tag: string; summary: string }[] },
-      sources: sourceRefsToToolSources(mappedSignals.flatMap((s) => s.sources)),
+      sources: sourceRefsToToolSources(visibleSignals.flatMap((s) => s.sources)),
     };
   },
 });

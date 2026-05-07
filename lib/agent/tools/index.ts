@@ -61,6 +61,8 @@ interface ToolCtx {
   minConfidence?: number;
   alpacaCreds?: AlpacaCredentials;
   intelligencePolicy?: IntelligencePolicy;
+  /** Restrict read_signals to discoverySignals bucket only (discovery cron). */
+  discoveryOnly?: boolean;
 }
 
 export function createResearchTools(ctx: ToolCtx) {
