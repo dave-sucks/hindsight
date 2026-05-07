@@ -6,10 +6,12 @@
  * existing theses, does NOT trade off momentum (the daily run does
  * that).
  *
- * Why a separate cron when the daily run can also do discovery: the
- * daily run is allowed to skip discovery (slots full, hostile regime,
- * no candidates). The weekly cron is the safety net so we never go
- * weeks without scanning the universe.
+ * As of 2026-05-06, this is the ONLY autonomous path for net-new ticker
+ * coverage. The daily run was scoped down to walk + manage only — it no
+ * longer mints theses on tickers it doesn't already cover. The "daily
+ * run also does discovery" path was producing exactly the failure mode
+ * the cron split was designed to prevent (auto-minting fresh theses on
+ * never-before-covered tickers and placing trades on them inline).
  */
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
 

@@ -228,11 +228,42 @@ function processCitationChildren(
  */
 function CitedP({ className, children, ...props }: React.ComponentProps<"p">) {
   const sources = useSources();
+  // Strip workflow-step labels that the model occasionally emits as a
+  // bold paragraph instead of an h3 heading ("**Step 3 — Discovery**" on
+  // its own line). These are internal prompt scaffolding — never meant
+  // for the user. Mirrors the h3 filter below.
+  if (isStepLabel(children)) return null;
   return (
     <p className={cn("aui-md-p my-2.5 leading-normal first:mt-0 last:mb-0", className)} {...props}>
       {processCitationChildren(children, sources)}
     </p>
   );
+}
+
+/**
+ * Detect leaked "Stage N — NAME" / "Phase N — NAME" / "Step N — NAME"
+ * scaffolding from the system prompt. Returns true so the renderer can
+ * drop the node entirely.
+ *
+ * The model can emit these as either an h3 heading or a bold paragraph,
+ * so we filter both. Walks ReactNode children — including a wrapping
+ * <strong> tag — to extract the underlying text.
+ */
+function isStepLabel(children: React.ReactNode): boolean {
+  const text = extractText(children).trim();
+  if (!text) return false;
+  return /^(Stage|Phase|Step)\s+\d+\s*[—–\-]/i.test(text);
+}
+
+function extractText(node: React.ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (typeof node === "object" && "props" in node) {
+    return extractText((node as { props?: { children?: React.ReactNode } }).props?.children);
+  }
+  return "";
 }
 
 function CitedLi({ className, children, ...props }: React.ComponentProps<"li">) {
@@ -340,18 +371,13 @@ const citedComponents = memoizeMarkdownComponents({
     />
   ),
   h3: ({ className, children, ...props }) => {
-    // Belt-and-suspenders: strip "Stage N — NAME" / "Phase N — NAME" headings
-    // that GPT-4o copies from system prompt structure despite the narration rule.
-    // The system prompt uses these as internal instruction labels (not ### headers),
-    // but the model still sometimes outputs them. This filter is the last line of
-    // defense. DO NOT REMOVE — it will be needed as long as stage terminology
+    // Belt-and-suspenders: strip "Stage N — NAME" / "Phase N — NAME" /
+    // "Step N — NAME" headings that GPT-4o copies from the system prompt's
+    // workflow structure despite the narration rule. The prompt uses these
+    // as internal instruction labels — they should never reach the user.
+    // DO NOT REMOVE — it will be needed as long as workflow-step terminology
     // appears anywhere in the system prompt.
-    const text = Array.isArray(children)
-      ? children.map((c) => (typeof c === "string" ? c : "")).join("")
-      : typeof children === "string"
-        ? children
-        : "";
-    if (/^(Stage|Phase)\s+\d+\s*[—–\-]/i.test(text.trim())) return null;
+    if (isStepLabel(children)) return null;
     return (
       <h3
         className={cn(
