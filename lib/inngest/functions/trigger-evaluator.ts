@@ -297,13 +297,16 @@ export const triggerEvaluator = inngest.createFunction(
 
     // ── Cron path (intraday price reactivity) ──────────────────────────
     const cronFires = await step.run("evaluate-cron", async () => {
-      // ACTIVE only — WATCHING theses don't have positions at risk, so
-      // we skip them on the cron tick to keep the loop bounded. They
-      // still get evaluated by signal-router on the signal-driven path
-      // and by the daily run inline.
+      // ACTIVE + WATCHING. ACTIVE theses have positions at risk (stop /
+      // target / trail). WATCHING theses carry promotion triggers — for
+      // day-traders especially, the morning playbook mints WATCHING
+      // theses with PRICE_ABOVE/PRICE_BELOW entry triggers; without
+      // cron-path evaluation those triggers would never fire intraday.
+      // The 200-ticker cap below still bounds the loop. Signal-router
+      // continues to handle signal-side predicates on both statuses.
       const theses = await prisma.thesis.findMany({
         where: {
-          status: "ACTIVE",
+          status: { in: ["ACTIVE", "WATCHING"] },
           triggers: { not: [] },
         },
         select: {

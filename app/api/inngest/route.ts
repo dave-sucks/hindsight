@@ -16,6 +16,7 @@ import { signalRouter } from "@/lib/inngest/functions/signal-router";
 import { triggerEvaluator } from "@/lib/inngest/functions/trigger-evaluator";
 import { tacticalRun } from "@/lib/inngest/functions/tactical-run";
 import { discoveryRun } from "@/lib/inngest/functions/discovery-run";
+import { intradayEodFlatten } from "@/lib/inngest/functions/intraday-eod-flatten";
 import { backfillSignalFingerprint } from "@/lib/inngest/functions/backfill-signal-fingerprint";
 import { pipelineCleanup } from "@/lib/inngest/functions/pipeline-cleanup";
 import { episodeTts } from "@/lib/inngest/functions/episode-tts";
@@ -56,6 +57,10 @@ export const { GET, POST, PUT } = serve({
     // net-new ticker coverage and mints WATCHING theses. Does NOT
     // touch existing theses (the daily run handles those).
     discoveryRun,
+    // DAY-only analysts: 15:45 ET cron force-closes any open positions
+    // before the 16:00 market close. System rule, not an LLM decision —
+    // a DAY analyst going home with an open position is a config violation.
+    intradayEodFlatten,
     // 2026-04-30: morningBriefGenerator removed. The agent reads durable
     // state (theses, triggers fired since last run, today's signals)
     // directly via tools — no need for a synthesized AI digest.

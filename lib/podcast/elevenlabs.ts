@@ -52,12 +52,19 @@ export interface CombinedAlignment {
   totalDurationSec: number;
 }
 
+// ── Auth header helper ────────────────────────────────────────────────────────
+// Scoped keys (sk_...) use Authorization: Bearer; classic keys use xi-api-key.
+
+function elevenLabsHeaders(apiKey: string): Record<string, string> {
+  return apiKey.startsWith("sk_")
+    ? { Authorization: `Bearer ${apiKey}` }
+    : { "xi-api-key": apiKey };
+}
+
 // ── Voice library ─────────────────────────────────────────────────────────────
 
 export async function listVoices(apiKey: string): Promise<ElevenLabsVoice[]> {
-  const res = await fetch(`${BASE}/voices`, {
-    headers: { "xi-api-key": apiKey },
-  });
+  const res = await fetch(`${BASE}/voices`, { headers: elevenLabsHeaders(apiKey) });
   if (!res.ok) {
     throw new Error(`ElevenLabs /voices failed: ${res.status}`);
   }
@@ -70,7 +77,7 @@ export async function listVoices(apiKey: string): Promise<ElevenLabsVoice[]> {
 export async function verifyElevenLabsKey(apiKey: string): Promise<boolean> {
   try {
     const res = await fetch(`${BASE}/user`, {
-      headers: { "xi-api-key": apiKey },
+      headers: elevenLabsHeaders(apiKey),
     });
     return res.ok;
   } catch {
@@ -118,7 +125,7 @@ async function ttsChunk(
     {
       method: "POST",
       headers: {
-        "xi-api-key": apiKey,
+        ...elevenLabsHeaders(apiKey),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

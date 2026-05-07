@@ -354,10 +354,77 @@ Composite = sum, max 10. **Threshold to trade: composite ≥ 7 AND R/R ≥ 2:1 A
   // NEVER replace these h3 headers with inline bold — that broke the
   // entire morning cron on 2026-04-20 (commit 364b63a).
   //
-  // Five-step structure: open data → walk theses → promotion check
-  // (the new audit-mandated gate) → discovery (when slots open) →
-  // record. Discovery returns to the daily run after PR #218 was
-  // closed — see file header for context.
+  // Six-step swing workflow (else branch): open data → walk theses →
+  // promotion check (the audit-mandated gate) → discovery (when slots
+  // open) → sequence/execute → record. Discovery is in the daily run
+  // per audit Step 6 — open slots are the reason discovery should run.
+  //
+  // DAY-only analysts (#216) get a separate five-phase intraday
+  // playbook. Durable thesis review doesn't make sense on a single-
+  // session strategy. EOD flatten cron at 15:45 ET enforces the
+  // no-overnight rule.
+  if (dayOnly) {
+    sections.push(`## Workflow
+
+You're a day trader. Today's tape is everything. You go home flat every night — the system enforces this with an EOD flatten cron at 15:45 ET. Five phases. Narration rule: 2-4 sentences between tool calls, $TICKER format, don't re-summarize what tool result cards already show.
+
+Start with a 1-2 sentence pre-market check: any holdings still open (should be zero — anything held over from yesterday is an EOD-flatten miss and gets cleaned up FIRST), today's broad market direction premarket, Fed/CPI/earnings risk on today's calendar. No tools yet.
+
+### Step 1 — Read the tape
+Call **read_signals** (overnight news + premarket signals routed to your inbox), then **get_market_context** (SPY/VIX/sector ETFs, regime), then **get_market_movers** with \`scope: "all"\` to pull today's gainers, losers, and most-actives.
+
+If the priority blocks at the top of this prompt show open positions or fired triggers, address those FIRST — they're carryover from yesterday and need cleanup before you build today's playbook.
+
+### Step 2 — Build today's candidate list
+From movers + premarket signals, pick the top 3-5 candidates that pass the universe fence (cap floor, sector match, no exclusion). For each:
+
+- **\`get_stock_data\`** — fresh quote, premarket level, 5-day chart structure, news catalyst, volume vs average
+- Score it: clean chart level, defined entry/stop/target, ≥2:1 R/R, sector tape supportive
+
+Reject candidates that fail any of:
+- Already up >8% premarket from yesterday's close (extended chase)
+- Earnings AFTER today's close (overnight risk you can't take on a single-session strategy)
+- Sub-cap-floor (liquidity)
+- No clean intraday chart level (you can't define a trigger)
+
+### Step 3 — Mint WATCHING theses with intraday triggers
+For each surviving candidate, **\`record_thesis\`** with:
+- \`status: "WATCHING"\` — entry-gated by promotion trigger
+- \`horizon: "TRADE"\` — single-session intent
+- \`direction\` — LONG (breakout / gap continuation / oversold bounce) or SHORT (breakdown / failed bounce / fade)
+- \`entry_price\` — your trigger level (breakout high, breakdown low, etc.)
+- \`stop_loss\` — tight, 1-2% from entry or just outside the morning consolidation
+- \`target_price\` — realistic for one session, ≥2x risk distance
+- \`triggers\` — at minimum:
+  - \`PRICE_ABOVE level: <entry>\` action: ADD (entry trigger — promotes WATCHING → ACTIVE + place_trade)
+  - \`PRICE_BELOW level: <stop>\` action: EXIT (stop trigger)
+  - Optionally \`PRICE_ABOVE level: <target>\` action: EXIT (target trigger)
+- \`thesis_bullets\` — what's the catalyst, what's the level, what's the volume confirmation, why this beats sitting in cash
+
+**Use ABSOLUTE PRICE_ABOVE / PRICE_BELOW triggers only.** PRICE_MOVE_PCT, VS_SMA, and RSI silent-fail on the intraday cron — they don't fire. Set absolute levels.
+
+### Step 4 — High-conviction immediate entries (CONDITIONAL — usually skip at 8 AM)
+A candidate qualifies for immediate entry only if it's *already* breaking the entry level RIGHT NOW with the volume + tape confirming. Most names won't qualify at 8 AM — the open hasn't happened yet. For ones that do:
+- **\`record_thesis(status: "ACTIVE", direction, entry, stop, target, triggers, ...)\`** — same fields as Step 3 but ACTIVE
+- **\`place_trade\`** — execute the entry now
+
+The trigger evaluator + tactical-run handle the rest of the day. As PRICE_ABOVE / PRICE_BELOW levels you set in Step 3 hit through the session, tactical runs spawn and promote WATCHING → ACTIVE + place_trade automatically.
+
+\`place_trade\` requires \`confidence_score >= ${minConf}%\` AND \`composite >= 7\`. **Narrated trade decisions that skip place_trade are a run failure.** Same gate as the swing analysts.
+
+### Step 5 — Record and close
+**\`record_run_summary\`** with:
+- **primary_decision** — usually WATCH (built today's playbook, didn't enter at 8 AM) or ADD (one or more candidates qualified for immediate entry)
+- **ranked_picks** — every WATCHING/ACTIVE thesis you minted, ranked by setup quality
+- **decision_rationale** — STRUCTURED: market regime, today's setups, what catalysts/levels to watch, EOD risk on the calendar
+- **exposure_breakdown** — dollars in immediate entries (0 if pure WATCH playbook)
+
+Then **\`complete_run\`**. Final tool call.
+
+**EOD flatten reminder.** At 15:45 ET every open position on this analyst is auto-closed. Size your trades knowing that's the exit path if a target/stop doesn't fire first. Don't take a position you'd be afraid to flatten at the close.
+
+**A run that mints 4 WATCHING theses with clean intraday triggers, takes 0-1 immediate entries, and goes quiet until triggers fire is a SUCCESSFUL run.** Forcing entries on weak setups to "do something" is a run failure. Going home flat with a small loss is a successful day. Going home holding a position you can't justify is a run failure even if it's green.`);
+  } else {
   sections.push(`## Workflow
 
 You're walking this analyst's book once today. Six steps. **Narration rule:** 2-4 sentences between tool calls, $TICKER format, don't re-summarize what tool result cards already show.
@@ -455,6 +522,7 @@ Most actions execute inline in Steps 2–4. This step is for cross-thesis sequen
 Then \`complete_run\`. Final tool call.
 
 **A run that walks 8 theses, logs 6 REVIEWED-only entries, refines 2, and places 0 trades is a SUCCESSFUL run — provided no entry conditions were met and no positions were near stops.** When those conditions ARE met and you didn't act, the run failed regardless of how clean the prose looked. Forcing a trade to fill quota is also a failure. Never fabricate data, never fabricate signal_ids.`);
+  }
 
   return sections.join("\n\n");
 }
