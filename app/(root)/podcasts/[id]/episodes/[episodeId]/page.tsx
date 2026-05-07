@@ -82,7 +82,11 @@ export default async function EpisodePage({
         {/* Sticky bottom audio player — inside the scroll container so it
             centers with the content area (no sidebar overlap). */}
         {hasAudio && (
-          <EpisodePlayer audioUrl={episode.audioUrl!} title={episode.title} />
+          <EpisodePlayer
+            audioUrl={episode.audioUrl!}
+            title={episode.title}
+            initialDurationSec={episode.durationSec ?? undefined}
+          />
         )}
       </div>
     </div>

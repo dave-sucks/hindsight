@@ -20,6 +20,13 @@ import { Progress } from "@/components/ui/progress";
 interface Props {
   audioUrl: string;
   title: string;
+  /**
+   * Duration in seconds, persisted on the Episode row at generation time.
+   * Used as a fallback because some browsers report `audio.duration === 0`
+   * (or Infinity) for signed-URL MP3s until the full file is downloaded.
+   * Without this, the progress bar can't render and seek can't compute.
+   */
+  initialDurationSec?: number;
 }
 
 const SKIP_BACK_SECONDS = 15;
@@ -32,22 +39,29 @@ function formatTime(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function EpisodePlayer({ audioUrl, title }: Props) {
+export function EpisodePlayer({ audioUrl, title, initialDurationSec }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(initialDurationSec ?? 0);
 
-  // Sync audio element events → state.
+  // Sync audio element events → state. Use initialDurationSec as a fallback
+  // — some browsers report duration as 0 or Infinity for streamed MP3s until
+  // the full file is downloaded, which breaks both progress and seek.
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
     const onTime = () => setCurrent(el.currentTime);
-    const onMeta = () => setDuration(el.duration || 0);
+    const onMeta = () => {
+      const d = el.duration;
+      if (Number.isFinite(d) && d > 0) setDuration(d);
+    };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
     const onEnded = () => setPlaying(false);
+    // Capture metadata that may have already loaded before this effect ran.
+    onMeta();
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("loadedmetadata", onMeta);
     el.addEventListener("durationchange", onMeta);
