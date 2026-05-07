@@ -22,13 +22,17 @@ export const completeRun = defineTool({
 
   execute: async (_args, ctx) => {
     try {
-      // Atomic: only transition non-COMPLETE → COMPLETE
+      // Atomic: only transition RUNNING → COMPLETE. Was previously
+      // `status: { not: "COMPLETE" }`, which clobbered FAILED status set
+      // by the record_run_summary narration→execution gate (or any other
+      // upstream terminal-state writer). RUNNING-only matches the
+      // morning-research cron-level gate's transition shape.
       const completeResult = await prisma.researchRun.updateMany({
-        where: { id: ctx.runId, status: { not: "COMPLETE" } },
+        where: { id: ctx.runId, status: "RUNNING" },
         data: { status: "COMPLETE", completedAt: new Date() },
       });
       if (completeResult.count === 0) {
-        console.log(`[tool] complete_run: run ${ctx.runId} already COMPLETE, skipping status update`);
+        console.log(`[tool] complete_run: run ${ctx.runId} not RUNNING (already terminal), skipping status update`);
       }
 
       if (ctx.runId) {
@@ -219,7 +223,7 @@ export const completeRun = defineTool({
       console.error(`[tool] complete_run FAILED:`, err instanceof Error ? err.message : err);
       try {
         await prisma.researchRun.updateMany({
-          where: { id: ctx.runId, status: { not: "COMPLETE" } },
+          where: { id: ctx.runId, status: "RUNNING" },
           data: { status: "COMPLETE", completedAt: new Date() },
         });
       } catch { /* already tried */ }
