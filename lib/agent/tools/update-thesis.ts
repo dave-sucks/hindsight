@@ -71,7 +71,6 @@ const updateSchema = z.object({
   // ── Patchable fields ──────────────────────────────────────────────────
   // Every field is optional. Whatever's passed gets written; whatever's
   // omitted is left unchanged.
-  core_belief: z.string().optional(),
   reasoning_summary: z
     .string()
     .optional()
@@ -80,8 +79,30 @@ const updateSchema = z.object({
     ),
   thesis_bullets: z.array(z.string()).optional(),
   risk_flags: z.array(z.string()).optional(),
-  key_assumptions: z.array(z.string()).optional(),
-  invalidation_conditions: z.array(z.string()).optional(),
+  // The three "structural belief" fields. Audit Root Cause showed these
+  // are touched on <6% of update_thesis calls, while reasoning_summary +
+  // thesis_bullets get rewritten constantly. The agent treats narrative
+  // fields as the entire output and ignores the structural ones. Schema
+  // descriptions now strongly request these on substantive updates so
+  // the thesis sheet's "Plan" section actually has data to render.
+  core_belief: z
+    .string()
+    .optional()
+    .describe(
+      "The actual claim — one sentence that captures WHY this trade should work. STRONGLY ENCOURAGED on substantive updates. Diverges from reasoning_summary: core_belief is durable (the underlying claim, rarely changed), reasoning_summary is the current-state framing (refreshed often). If you're updating target/stop/confidence and the underlying belief HASN'T changed, say so explicitly in the rationale rather than skipping this field.",
+    ),
+  key_assumptions: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "What must be true for this trade to work. STRONGLY ENCOURAGED on substantive updates. Concrete and falsifiable: 'AI capex stays >$200B/quarter through 2026', 'no breakup of $TICKER's preferred customer relationship', 'guidance not cut more than 5% on next print'. Generic prose ('strong fundamentals') is insufficient.",
+    ),
+  invalidation_conditions: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "What would prove this thesis wrong. STRONGLY ENCOURAGED on substantive updates AND REQUIRED on PASS theses (the agent uses these as re-entry criteria — if any of them flip the other way, the PASS becomes a candidate to flip to LONG/SHORT). Concrete: 'guidance cut next quarter', 'CFO departure', 'gross margin below 35% on next print'. Generic 'market downturn' is insufficient.",
+    ),
   signal_types: z.array(z.string()).optional(),
 
   confidence_score: z.number().int().min(0).max(100).optional(),
@@ -159,7 +180,8 @@ type UpdatePatch = Partial<{
 
 export const updateThesis = defineTool({
   description:
-    "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief).",
+    "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
+    "Two hard-reject conditions to know about: (1) zero-trigger guard — refuses updates on theses with no triggers unless the update adds triggers OR closes the thesis; (2) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar).",
   schema: updateSchema,
   ui: "thesis-card" as const,
 
@@ -251,6 +273,73 @@ export const updateThesis = defineTool({
       return {
         summary: `Thesis ${args.thesis_id} is ${existing.status}; can't update a terminal thesis.`,
         data: { ok: false, error: "terminal_status", current_status: existing.status },
+        sources: [],
+      };
+    }
+
+    // ── Zero-trigger guard (audit Step 4) ─────────────────────────────────
+    // A WATCHING thesis with no triggers can't react to anything — the
+    // trigger evaluator has nothing to fire on, the agent has nothing to
+    // promote. If the agent is reviewing one of these and isn't either
+    // (a) closing it or (b) adding triggers, the review is a no-op that
+    // still claims the closeout-contract slot. Refuse the update so the
+    // agent has to either fix it or close it.
+    //
+    // ACTIVE theses with zero triggers are also broken (no exit triggers!)
+    // — same rule applies.
+    //
+    // Exception: status transition to INVALIDATED/CLOSED is the
+    // legitimate "give up on this broken thesis" path. Allow that.
+    const isTerminalTransition =
+      args.change_status === "INVALIDATED" ||
+      args.change_status === "CLOSED";
+    const existingTriggerCount = Array.isArray(existing.triggers)
+      ? (existing.triggers as unknown[]).length
+      : 0;
+    const updateAddsTriggers =
+      args.triggers !== undefined && args.triggers.length > 0;
+    if (existingTriggerCount === 0 && !updateAddsTriggers && !isTerminalTransition) {
+      return {
+        summary: `Thesis ${args.thesis_id} has no triggers; refusing review-only update.`,
+        data: {
+          ok: false,
+          error: "zero_trigger_thesis",
+          message:
+            `${existing.ticker} thesis has no triggers — the trigger system can't fire anything on it. A review without action is a no-op. You must EITHER (a) supply a non-empty triggers[] array describing what would fire entry/exit/review, OR (b) close it via change_status: "INVALIDATED" if the thesis is no longer trackable.`,
+        },
+        sources: [],
+      };
+    }
+
+    // ── Goalpost-moving guard (audit Root Cause #3) ───────────────────────
+    // Refuse to raise targetPrice on a WATCHING thesis whose existing
+    // entry condition is currently met. This is the MRVL pattern: trigger
+    // PRICE_ABOVE $172 has fired (current price $172.15), and instead of
+    // entering the trade the agent calls update_thesis to raise the
+    // target to $195 — moving the bar instead of acting. The trigger-
+    // evaluator will keep firing on every signal route until the agent
+    // either INITIATEs or invalidates.
+    //
+    // A target raise on WATCHING is allowed when the current price is
+    // BELOW the OLD target (legitimate refinement before the entry
+    // condition triggers). It's blocked when the current price has
+    // already crossed the OLD target.
+    if (
+      existing.status === "WATCHING" &&
+      args.target_price != null &&
+      existing.targetPrice != null &&
+      args.target_price > existing.targetPrice &&
+      resolvedPriceAtTime != null &&
+      resolvedPriceAtTime >= existing.targetPrice
+    ) {
+      return {
+        summary: `Refused to raise target on $${existing.ticker} — entry condition is currently met.`,
+        data: {
+          ok: false,
+          error: "goalpost_moving_blocked",
+          message:
+            `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${existing.targetPrice.toFixed(2)}. The entry condition is MET — your action is to PROMOTE (record_thesis status=ACTIVE → place_trade), not raise the target to $${args.target_price.toFixed(2)} and walk away. If you genuinely think the setup has changed, document a concrete rejection reason in record_run_summary's decision_rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1) and leave the target untouched. Or close the thesis with change_status: "INVALIDATED".`,
+        },
         sources: [],
       };
     }

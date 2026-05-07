@@ -204,7 +204,7 @@ export const manageWatchlist = defineTool({
     priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional().describe("LOW = background monitoring, MEDIUM = review when relevant, HIGH = review every run"),
     notes: z.string().optional().describe("Additional notes or conditions"),
     thesis_direction: z.enum(["LONG", "SHORT", "PASS"]).optional().describe("Your directional view on this stock"),
-    target_price: z.number().optional().describe("Price target you're watching for"),
+    target_price: z.number().optional().describe("Price target you're watching for. **REQUIRED on ADD when thesis_direction is LONG or SHORT** — this is the level the ENTER trigger will fire on. Optional for PASS additions."),
     stop_price: z.number().optional().describe("Price level that would invalidate the thesis"),
     conviction: z.number().min(0).max(100).optional().describe("Conviction score 0-100"),
     catalyst: z.string().optional().describe("Key catalyst being monitored (e.g. 'Q2 earnings Aug 1')"),
@@ -257,6 +257,30 @@ export const manageWatchlist = defineTool({
       return {
         summary: `Watchlist ${args.action.toLowerCase()} failed: $${ticker}`,
         data: { success: false, action: args.action, ticker, changed: false, message: "stop_price must be positive." },
+        sources: [],
+      };
+    }
+
+    // ADD with a directional thesis (LONG/SHORT) MUST have a targetPrice —
+    // without it the trigger factory can't mint an ENTER trigger and the
+    // watching thesis becomes inert (zero-trigger junk on the watchlist).
+    // PASS additions are exempt because PASS theses are intentionally
+    // non-actionable (institutional memory only).
+    if (
+      args.action === "ADD" &&
+      (args.thesis_direction === "LONG" || args.thesis_direction === "SHORT") &&
+      args.target_price === undefined
+    ) {
+      return {
+        summary: `Watchlist ADD failed: $${ticker}`,
+        data: {
+          success: false,
+          action: args.action,
+          ticker,
+          changed: false,
+          message:
+            `Directional watchlist additions (${args.thesis_direction}) require target_price — that's the level the ENTER trigger fires on. Without it, the thesis sits inert. Either supply target_price or set thesis_direction to PASS for institutional-memory-only entries.`,
+        },
         sources: [],
       };
     }
