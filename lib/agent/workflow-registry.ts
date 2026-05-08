@@ -236,7 +236,7 @@ export const TEAMS: Team[] = [
       { name: "web_search", provider: "perplexity", summary: "Live Sonar search for verification beyond the inbox." },
       { name: "suggest_config", provider: "internal", summary: "Emits the updated analyst as a side-panel diff. Lane-aware: numeric-only never touches analystPrompt; fence changes preserve the rest of the document; archetype shifts rewrite from skeleton." },
     ],
-    getPrompt: () => import("@/lib/agent/builder-prompt-template").then((m) => m.BUILDER_PROMPT_TEMPLATE),
+    getPrompt: () => import("@/lib/agent/builder-prompt-template").then((m) => m.EDITOR_PROMPT_TEMPLATE),
     promptSource: "lib/agent/modes.ts → EDITOR_SYSTEM_PROMPT",
   },
 
