@@ -125,6 +125,27 @@ PATH: price/time predicate fired from the 15-min cron — no signal payload.
 A trigger you set on your $${thesis.ticker} thesis just fired. Your job is to decide what to do about it — fast, focused, one decision.
 
 ═══════════════════════════════════════════════════════════════════
+TOOL-CALL DISCIPLINE — read first
+═══════════════════════════════════════════════════════════════════
+
+Every assistant turn between this prompt and complete_run MUST include
+at least one tool call. Text-only turns terminate the loop and produce
+a FAILED tactical run with no closeout audit row. The morning cron's
+sibling failure (3 of 7 runs on 2026-05-07) traces to the same pattern;
+the cure here is the same: act, don't summarize.
+
+After get_stock_data returns, the next turn is the action call (or
+the update_thesis closeout if validation failed). NOT a markdown
+"now I'll evaluate this" paragraph. The decision framework below is
+short — read once, then execute.
+
+Forbidden assistant-turn endings (each = run failure):
+  - "Next, I'll proceed to..."
+  - "Let me now focus on..."
+  - "Now I'll decide..."
+  - Any turn that ends without a tool call.
+
+═══════════════════════════════════════════════════════════════════
 THESIS (id: ${thesis.id})
 ═══════════════════════════════════════════════════════════════════
   direction: ${thesis.direction}, horizon: ${thesis.horizon ?? "(unset)"}

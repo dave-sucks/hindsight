@@ -331,38 +331,150 @@ export const tacticalRun = inngest.createFunction(
           ),
         });
 
-        const toolCalls = steps.reduce(
+        let toolCalls = steps.reduce(
           (sum, s) => sum + (s.toolCalls?.length ?? 0),
           0,
         );
-        const elapsed = Date.now() - t0;
+        let elapsed = Date.now() - t0;
         console.log(
           `[tactical-run] thesis=${thesis.id} trigger=${trigger.id} ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`,
         );
 
-        // Persist conversation messages so /runs/[id] can replay the
-        // chat. Without this, every tactical run shows "No replay data
-        // available" — exactly the morning-research persistence block,
-        // copied for consistency.
+        // ── Compute responseMessages with step-flatten fallback ────────────
+        // AI SDK v6 sometimes returns response.messages empty on a text-only
+        // tail (the same shape morning-research's prematureExitViolation
+        // path saw on 2026-05-07). The persistence block + the retry below
+        // both need a usable conversation, so resolve once up here.
+        let responseMessages = response?.messages;
+        if (
+          !responseMessages ||
+          !Array.isArray(responseMessages) ||
+          responseMessages.length === 0
+        ) {
+          responseMessages = steps.flatMap((s) => {
+            const stepMsgs = (
+              s as unknown as { response?: { messages?: unknown[] } }
+            ).response?.messages;
+            return Array.isArray(stepMsgs) ? stepMsgs : [];
+          }) as typeof responseMessages;
+        }
+
+        // ── Closeout retry ─────────────────────────────────────────────────
+        // Mirrors morning-research's prematureExitViolation gate. Tactical
+        // runs require update_thesis as the closeout contract. If the agent
+        // skipped it (typically because the assistant turn ended with text
+        // like "Now I'll decide..." and AI SDK terminated the loop), give
+        // the model one focused chance to write the closeout row before
+        // marking the run FAILED. 2026-05-07 captured 1 of 18 tactical
+        // runs (Earnings Drift Trader) hitting this exact contract miss.
+        const initialUpdate = await prisma.thesisUpdate.findFirst({
+          where: {
+            runId: run.id,
+            thesisId: thesis.id,
+            type: { not: "TRIGGER_FIRED" },
+          },
+          select: { id: true },
+        });
+        let closedOut = initialUpdate !== null;
+        if (
+          !closedOut &&
+          responseMessages &&
+          responseMessages.length > 0
+        ) {
+          console.warn(
+            `[tactical-run] thesis=${thesis.id} trigger=${trigger.id} did not close out (${steps.length} steps, ${toolCalls} tool calls) — attempting retry`,
+          );
+          try {
+            const retryResp = await generateText({
+              model: openai(MODES["tactical"].model),
+              system: systemPrompt,
+              messages: [
+                {
+                  role: "user",
+                  content: [{ type: "text", text: userPrompt }],
+                },
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ...(responseMessages as any[]),
+                {
+                  role: "user",
+                  content:
+                    `You did not close out via update_thesis. The tactical contract requires exactly one update_thesis(thesis_id="${thesis.id}", triggerId="${trigger.id}", rationale="<one line>") call before complete_run. ` +
+                    `Call update_thesis NOW with whatever rationale matches what you decided (or "Trigger fired but no action taken — <reason>" if validation failed). Then complete_run. ` +
+                    `TOOL CALLS only — no narration, no markdown, no transition prose.`,
+                },
+              ],
+              tools,
+              providerOptions: { openai: { strictJsonSchema: true } },
+              stopWhen: stepCountIs(5),
+              abortSignal: AbortSignal.timeout(60_000),
+            });
+            const retrySteps = retryResp.steps.length;
+            const retryToolCalls = retryResp.steps.reduce(
+              (s, x) => s + (x.toolCalls?.length ?? 0),
+              0,
+            );
+            console.log(
+              `[tactical-run] thesis=${thesis.id} retry: ${retrySteps} steps, ${retryToolCalls} tool calls`,
+            );
+            toolCalls += retryToolCalls;
+            elapsed = Date.now() - t0;
+
+            // Append retry messages so the persisted thread shows the
+            // full recovery sequence on /runs/[id].
+            let retryMessages = retryResp.response?.messages;
+            if (
+              !retryMessages ||
+              !Array.isArray(retryMessages) ||
+              retryMessages.length === 0
+            ) {
+              retryMessages = retryResp.steps.flatMap((s) => {
+                const stepMsgs = (
+                  s as unknown as { response?: { messages?: unknown[] } }
+                ).response?.messages;
+                return Array.isArray(stepMsgs) ? stepMsgs : [];
+              }) as typeof retryMessages;
+            }
+            if (retryMessages && retryMessages.length > 0) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              responseMessages = [
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ...(responseMessages as any[]),
+                {
+                  role: "user",
+                  content:
+                    "(retry nudge: you did not close out via update_thesis — call it now)",
+                },
+                ...retryMessages,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              ] as any[];
+            }
+
+            const retryUpdate = await prisma.thesisUpdate.findFirst({
+              where: {
+                runId: run.id,
+                thesisId: thesis.id,
+                type: { not: "TRIGGER_FIRED" },
+              },
+              select: { id: true },
+            });
+            closedOut = retryUpdate !== null;
+          } catch (retryErr) {
+            console.error(
+              `[tactical-run] retry failed for thesis=${thesis.id}:`,
+              retryErr instanceof Error ? retryErr.message : retryErr,
+            );
+          }
+        }
+
+        // ── Persist conversation messages ──────────────────────────────────
+        // /runs/[id] replays from this row. Includes any retry sequence so
+        // the user sees the full recovery, not just the original tail.
         try {
           const userMessage = {
             role: "user",
             content: [{ type: "text", text: userPrompt }],
           };
-          let responseMessages = response?.messages;
-          if (
-            !responseMessages ||
-            !Array.isArray(responseMessages) ||
-            responseMessages.length === 0
-          ) {
-            responseMessages = steps.flatMap((s) => {
-              const stepMsgs = (
-                s as unknown as { response?: { messages?: unknown[] } }
-              ).response?.messages;
-              return Array.isArray(stepMsgs) ? stepMsgs : [];
-            }) as typeof responseMessages;
-          }
-          const allMessages = [userMessage, ...responseMessages];
+          const allMessages = [userMessage, ...(responseMessages ?? [])];
           const json = JSON.stringify(allMessages);
           await prisma.$transaction(async (tx) => {
             await tx.runMessage.deleteMany({ where: { runId: run.id } });
@@ -380,20 +492,6 @@ export const tacticalRun = inngest.createFunction(
             msgErr instanceof Error ? msgErr.message : msgErr,
           );
         }
-
-        // Verify update_thesis was actually called for this thesis (the
-        // close-out contract). If not, mark FAILED so the operator sees it.
-        // Excludes the TRIGGER_FIRED row WE wrote in write-trigger-fired —
-        // we're checking for the AGENT's response, not our audit row.
-        const update = await prisma.thesisUpdate.findFirst({
-          where: {
-            runId: run.id,
-            thesisId: thesis.id,
-            type: { not: "TRIGGER_FIRED" },
-          },
-          select: { id: true },
-        });
-        const closedOut = update !== null;
 
         await prisma.researchRun.update({
           where: { id: run.id },
