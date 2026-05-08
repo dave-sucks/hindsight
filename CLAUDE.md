@@ -96,7 +96,7 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
   `app/signal.routed` for the trigger evaluator to consume
 - Morning brief generator was DELETED in PR 3 — agent reads durable
   state directly via `read_signals` + `get_theses(include_history: true)`
-- Trigger evaluator (separate cadence): runs every 15 min during US
+- Trigger evaluator (separate cadence): runs hourly during US
   market hours + on `app/signal.routed`, fires `app/thesis.trigger.fired`
   when a thesis predicate matches, which wakes a tactical run
 
@@ -301,7 +301,7 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 - (morning-brief-generator.ts was DELETED in PR 3 — agent reads
   durable state directly via read_signals + get_theses)
 ### Reactivity (PR 2)
-- trigger-evaluator.ts — every 15 min during market hours + on
+- trigger-evaluator.ts — hourly during market hours + on
   app/signal.routed; fires app/thesis.trigger.fired when a thesis
   predicate matches
 - tactical-run.ts — event-driven, consumes app/thesis.trigger.fired,

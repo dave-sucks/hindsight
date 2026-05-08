@@ -105,14 +105,6 @@ These prevent the core loop from working as designed. Fix first.
 
 ## P1 — Quality is degraded but system functions
 
-### P1-3 — Trigger evaluator is hourly, not "every 15 min"
-**Source:** Crons agent audit — Inngest cron is `0 9,10,11,12,13,14,15,16 * * 1-5` (hourly), not every-15-min.
-
-**Why it matters:** registry and CLAUDE.md both claim 15-min cadence. Reality is hourly. For DAY-style trades or fast-moving names, an hourly evaluator misses the window. Item 34 in SESSION_AUDIT (now legacy) flagged that `PRICE_MOVE_PCT` / `VS_SMA` triggers don't fire on the cron path at all.
-
-**Fix path:** decide which is correct — bump cron frequency to actually run every 15 min (Inngest doesn't support `*/15` natively in cron; would need scheduled function pattern), OR update registry/CLAUDE.md to say "hourly + on signal.routed". The registry's already been updated as of 2026-05-07.
-
-**Effort:** if we want true 15-min, ~2 hours. If we accept hourly, the doc fix already shipped — 0 hours.
 
 ### P1-4 — Discovery softer than required at minting
 **Source:** Prompts audit — the discovery-to-action wiring softer than ARCHITECTURE_DEEP_AUDIT Step 6 requires.
@@ -127,17 +119,23 @@ These prevent the core loop from working as designed. Fix first.
 
 ## P2 — Paper cuts and FE polish
 
-### P2-2 — `manage_watchlist` defaults to TRADE horizon
-Hold-style audit — biases new watchlist entries toward short-term. Should default to TARGET when there's no explicit catalyst. ~15 min.
 
 ### P2-4 — No DAY horizon
 SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints theses with `horizon: "TRADE"` (14d max). DAY enforcement happens via EOD-flatten cron, not horizon logic. Decision needed: add a DAY horizon, or document that DAY-style runs use TRADE + EOD-flatten composition. ~1 day if adding the horizon.
 
-### P2-5 — `sync-heartbeat.ts` is dead
-Crons agent — file exists, imports exist, but not in `app/api/inngest/route.ts` `functions[]` array. Either wire it up or delete the file. ~5 min.
 
 ### P2-7 — Intelligence pipeline crons are independent
 Crons agent — no Inngest `.after()` or `.waitFor()` between firm-market-sweep → portfolio-watchlist-monitor → domain-monitor → signal-router. If one lags, downstream still fires on schedule with stale data. Today this is theoretical; flag it as a known fragility. ~2 hours to add chaining.
+
+---
+
+## Done since 2026-05-08 (small sweep — P1-3, P2-2, P2-5)
+
+PR: "chore: small sweep — P1-3 cadence doc, P2-2 watchlist default, P2-5 dead code"
+
+- ✅ **P1-3 — Trigger evaluator cadence doc corrected.** CLAUDE.md had "every 15 min" in two places (Architecture/Reactivity section and Inngest Crons section). Updated both to "hourly". Registry was already correct (`workflow-registry.ts` schedule field and the Done-since note from 2026-05-07). No code change — the cron itself (`0 9,10,11,12,13,14,15,16 * * 1-5`) was always hourly; only the docs were wrong.
+- ✅ **P2-2 — `manage_watchlist` default horizon changed TRADE → TARGET.** `ensureWatchingThesisForWatchlistAdd()` in [`lib/agent/tools/manage-watchlist.ts`](../lib/agent/tools/manage-watchlist.ts): default when no catalyst is supplied is now TARGET (open-ended hold, exits at target/stop/invalidation). `reviewDays` updated from the 1d TRADE default to 30d for TARGET. `maxHoldDays` already defaults to null for non-TRADE horizons — no change needed there. Tool description updated to document all three horizon options. No external callers relied on the TRADE default — the horizon is derived internally from the `catalyst` field presence.
+- ✅ **P2-5 — `sync-heartbeat.ts` deleted.** Note: the audit's claim that it wasn't in `functions[]` was wrong — `syncHeartbeat` was imported and registered at `route.ts:36`. However the product owner's decision to delete stands. Removed the import (`route.ts` line 5) and the `functions[]` entry (`route.ts` line 36), then deleted the file. No other references in the codebase except `portfolio.actions.ts:537` which is a comment describing the prior cron cadence — that line does not import or call the function, so no change needed there.
 
 ---
 
