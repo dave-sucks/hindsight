@@ -13,6 +13,12 @@
 /** ISO date the registry was last manually verified against the codebase. */
 export const LAST_VERIFIED_AT = "2026-05-08"; // bumped: P1-3 cadence doc, P2-2 watchlist default, P2-5 dead code
 
+/**
+ * Live thesis-system reference. Linked from the agent / tactical /
+ * discovery team cards on /agent-workflow as a "see also."
+ */
+export const THESIS_ARCHITECTURE_DOC = "docs/THESIS_ARCHITECTURE.md";
+
 import type { LucideIcon } from "lucide-react";
 import {
   Sparkles,

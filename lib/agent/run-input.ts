@@ -85,6 +85,14 @@ export interface RunInput {
     createdAt: string;
     runId: string;
     status: string;
+    // Durable-state fields surfaced so the daily-run prompt can render
+    // exit-policy hints + structural belief preview without forcing the
+    // agent to call get_theses on every walk.
+    horizon: string | null;
+    coreBelief: string | null;
+    nextReviewAt: string | null;
+    catalystDate: string | null;
+    maxHoldDays: number | null;
   }>;
   performance: {
     winRate: number | null;
@@ -291,6 +299,8 @@ export async function buildRunInput(
     id: string; ticker: string; direction: string; confidenceScore: number;
     reasoningSummary: string; entryPrice: number | null; targetPrice: number | null;
     stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
+    horizon: string | null; coreBelief: string | null; nextReviewAt: Date | null;
+    catalystDate: Date | null; maxHoldDays: number | null;
   }> = [];
 
   if (allRelevantSymbols.length > 0) {
@@ -307,6 +317,13 @@ export async function buildRunInput(
           id: true, ticker: true, direction: true, confidenceScore: true,
           reasoningSummary: true, entryPrice: true, targetPrice: true,
           stopLoss: true, createdAt: true, researchRunId: true, status: true,
+          // Durable-state fields drive the prompt's per-thesis exit-policy
+          // hint + structural-belief preview. coreBelief is the durable
+          // claim; nextReviewAt + catalystDate + maxHoldDays let the
+          // prompt render "review due in N days" / "catalyst in N days"
+          // without a get_theses round-trip.
+          horizon: true, coreBelief: true, nextReviewAt: true,
+          catalystDate: true, maxHoldDays: true,
         },
       });
     } catch (err) {
@@ -663,6 +680,11 @@ export async function buildRunInput(
       createdAt: t.createdAt.toISOString(),
       runId: t.researchRunId,
       status: t.status,
+      horizon: t.horizon,
+      coreBelief: t.coreBelief,
+      nextReviewAt: t.nextReviewAt ? t.nextReviewAt.toISOString() : null,
+      catalystDate: t.catalystDate ? t.catalystDate.toISOString() : null,
+      maxHoldDays: t.maxHoldDays,
     })),
     performance,
     recentClosedTrades,

@@ -19,6 +19,8 @@ import {
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
+import { validateThesisBelief } from "@/lib/agent/thesis-belief";
+import { HORIZON_REVIEW_DAYS, type Horizon as HorizonPolicy } from "@/lib/agent/horizon-policy";
 
 const thesisFields = z.object({
   ticker: z.string(),
@@ -166,19 +168,19 @@ const thesisFields = z.object({
     .string()
     .optional()
     .describe(
-      "The actual claim, separate from the trade rationale. 1-2 sentences stating what you believe will happen and why. Often overlaps with reasoning_summary on first creation; diverges as the thesis is updated.",
+      "REQUIRED for LONG/SHORT. ONE sentence stating WHAT you believe will happen and why — the durable claim that, if it stops being true, the thesis is broken (e.g. \"AI capex sustains $200B/quarter through 2026, driving NVDA's gross margin above 75%\"). Distinct from reasoning_summary (the current-state framing, refreshed often); core_belief is the load-bearing claim. Optional only for direction=PASS.",
     ),
   key_assumptions: z
     .array(z.string())
     .optional()
     .describe(
-      "Premises that must hold for this thesis to work. Each item is a single checkable claim (e.g. 'Datacenter capex stays above $200B/yr through 2027'). The agent re-evaluates these against fresh signals during housekeeping.",
+      "REQUIRED for LONG/SHORT — must contain ≥2 specific premises. Each item is a single checkable claim that must remain true for core_belief to hold (e.g. \"Datacenter capex stays above $200B/yr through 2027\", \"No breakup of preferred customer relationship\"). Generic prose like \"strong fundamentals\" is insufficient — the tactical agent re-evaluates these against fresh signals to decide whether a trigger fire is thesis-breaking. Optional only for direction=PASS.",
     ),
   invalidation_conditions: z
     .array(z.string())
     .optional()
     .describe(
-      "Specific things that would prove this thesis wrong. Used to decide when a signal counts as thesis-breaking. e.g. ['Guidance cut on next print', 'Sector ETF breaks 200d SMA'].",
+      "REQUIRED for LONG/SHORT — must contain ≥2 specific items. Concrete things that would prove this thesis wrong (e.g. \"Guidance cut on next print\", \"Gross margin below 70% on next print\", \"CFO departure\"). Generic risks like \"market volatility\" are insufficient. Used by the trade evaluator to grade exits and by the daily-run prompt to decide when a signal counts as thesis-breaking. Optional only for direction=PASS.",
     ),
   target_size_pct: z
     .number()
@@ -207,7 +209,7 @@ const thesisFields = z.object({
     .datetime()
     .optional()
     .describe(
-      "ISO timestamp. CATALYST horizon only — when the catalyst event is expected (e.g. earnings date, FDA decision date).",
+      "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (with max_hold_days) or TARGET (open-ended).",
     ),
   max_hold_days: z
     .number()
@@ -215,7 +217,9 @@ const thesisFields = z.object({
     .positive()
     .max(365)
     .optional()
-    .describe("TRADE horizon only. Default 14 if omitted."),
+    .describe(
+      "REQUIRED when horizon=TRADE — declares the time-exit window for this short-term setup. Typical values: 5-7 for tight intraday/breakout, 10-14 for swing patterns. The TIME_ELAPSED trigger fires a REVIEW at this many days. There is NO silent default — set it explicitly or pick TARGET if you want open-ended.",
+    ),
   next_review_at: z
     .string()
     .datetime()
@@ -278,7 +282,8 @@ const thesisSchema = thesisFields.superRefine((val, ctx) => {
 
 export const recordThesis = defineTool({
   description:
-    "STAGE 3 ONLY. Write a thesis for every ticker you researched in Stage 2, back to back, in one batch. Direction must be LONG, SHORT, or PASS — PASS theses are mandatory for tickers you researched but won't trade, they document the decision. Never call this in Stage 2 (research) or Stage 4 (execution). Never write a verdict as narration text instead of calling this tool.",
+    "STAGE 3 ONLY. Write a thesis for every ticker you researched in Stage 2, back to back, in one batch. Direction must be LONG, SHORT, or PASS — PASS theses are mandatory for tickers you researched but won't trade, they document the decision. Never call this in Stage 2 (research) or Stage 4 (execution). Never write a verdict as narration text instead of calling this tool. " +
+    "Structural-belief gate: directional theses (LONG/SHORT) MUST include core_belief (1 sentence), key_assumptions (≥2 specific items), and invalidation_conditions (≥2 specific items). Without all three the call is rejected — these fields drive the trade evaluator's post-mortem, the tactical agent's invalidation reasoning, and the daily run's assumption-drift checks. PASS theses are exempt.",
   schema: thesisSchema,
   ui: "thesis-card" as const,
 
@@ -509,6 +514,91 @@ export const recordThesis = defineTool({
         };
       }
 
+      // Structural-belief gate (P0-1). Directional theses MUST carry the
+      // durable claim + the falsifiable premises + the things that would
+      // prove them wrong. Audit 2026-05-07: 32% / 32% / 38% population
+      // across 53 open theses; one analyst at 0% on all three. Without
+      // these fields the thesis is a paragraph of vibes — the trade
+      // evaluator can't grade against a falsifiable claim, the tactical
+      // agent can't decide whether a trigger fire is thesis-breaking,
+      // and the daily run can't tell when an assumption has flipped.
+      // PASS theses bypass — they're "researched, decided not to trade"
+      // and live in reasoning_summary + thesis_bullets + risk_flags.
+      const beliefCheck = validateThesisBelief({
+        direction: args.direction,
+        coreBelief: args.core_belief ?? null,
+        keyAssumptions: args.key_assumptions ?? null,
+        invalidationConds: args.invalidation_conditions ?? null,
+      });
+      if (!beliefCheck.ok) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — missing structural belief (${beliefCheck.missingFields.join(", ")}).`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: missing ${beliefCheck.missingFields.join(", ")}.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note: beliefCheck.note,
+          },
+          sources: [],
+        };
+      }
+
+      // ── Conditional-requireds gate ─────────────────────────────────────
+      // Some horizon × field combinations are structurally required but
+      // were silently defaulted before this gate landed. Make them
+      // explicit at write time so the durable thesis row reflects what
+      // the agent actually decided, not what defaultTriggersForHorizon
+      // happened to fall through to.
+      //
+      //   horizon=CATALYST → catalyst_date REQUIRED. The whole point of
+      //                      a CATALYST trade is the dated event; the
+      //                      trigger templates and the 30d-past-event
+      //                      exit policy both key off it.
+      //   horizon=TRADE    → max_hold_days REQUIRED (no default). 14
+      //                      used to be the silent fallback. Force the
+      //                      agent to declare the window so a TRADE
+      //                      thesis isn't quietly auto-extended past
+      //                      its intended life.
+      // PASS theses bypass — they're not actionable plans.
+      if (args.direction !== "PASS" && args.horizon === "CATALYST" && !args.catalyst_date) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — CATALYST horizon without catalyst_date.`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: CATALYST requires catalyst_date.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note:
+              `CATALYST horizon means the trade is built around a specific dated event (FDA decision, M&A close, named earnings, court ruling). ` +
+              `The catalyst_date drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. ` +
+              `Pass catalyst_date as an ISO timestamp (e.g. "2026-06-15T20:30:00Z" for AMC earnings on 6/15). ` +
+              `If you don't actually know when the catalyst lands, this isn't a CATALYST thesis — pick TRADE (max_hold_days bounds it) or TARGET (open-ended) instead.`,
+          },
+          sources: [],
+        };
+      }
+      if (args.direction !== "PASS" && args.horizon === "TRADE" && args.max_hold_days == null) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — TRADE horizon without explicit max_hold_days.`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: TRADE requires explicit max_hold_days.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note:
+              `TRADE horizon means a bounded short-term setup (days-to-weeks) with a hard time exit. ` +
+              `Pass max_hold_days explicitly — typical values are 5-7 for tight intraday/breakout setups, 10-14 for swing patterns. ` +
+              `The TIME_ELAPSED trigger will fire a REVIEW at this many days; without it set, the thesis silently auto-extends past its intended window. ` +
+              `If you want open-ended (no time exit), use TARGET instead.`,
+          },
+          sources: [],
+        };
+      }
+
       // Compute composite = SUM of the four weighted dimensions (caps:
       // 3+3+2+2 = 10). NOT an average — each dimension's cap is the weight,
       // so summing produces a score on the same /10 scale. ≥ 7 = ADD/ROTATE
@@ -530,23 +620,17 @@ export const recordThesis = defineTool({
 
       // Default nextReviewAt by horizon. Cheap, transparent, lets the
       // housekeeping run pick up theses without the agent having to do
-      // the date math. Falls through to null when horizon is omitted —
-      // legacy theses don't get an auto-review date.
+      // the date math. Constants live in lib/agent/horizon-policy.ts so
+      // the daily-run prompt's per-horizon hint and the writer's review
+      // cadence stay in lockstep. Falls through to null when horizon is
+      // omitted — legacy theses don't get an auto-review date.
       let nextReviewAt: Date | null = null;
       if (args.next_review_at) {
         nextReviewAt = new Date(args.next_review_at);
       } else if (args.horizon) {
-        const now = Date.now();
         const dayMs = 24 * 60 * 60 * 1000;
-        const days =
-          args.horizon === "CATALYST"
-            ? 1
-            : args.horizon === "TRADE"
-              ? 1
-              : args.horizon === "TARGET"
-                ? 7
-                : 30; // COMPOUNDER
-        nextReviewAt = new Date(now + days * dayMs);
+        const days = HORIZON_REVIEW_DAYS[args.horizon as HorizonPolicy];
+        nextReviewAt = new Date(Date.now() + days * dayMs);
       }
 
       // ── Effective status — derived once, used both for triggers and DB ──
