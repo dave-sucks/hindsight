@@ -98,6 +98,18 @@ function normalizeSuggestConfig(input: unknown): unknown {
         ],
       };
     }
+    // Day-traders should ship with an EMPTY watchlist. The whole point of
+    // the strategy is "screen today's tape, find today's setups." A
+    // pre-seeded watchlist anchors the morning run — read_signals returns
+    // routes biased toward those tickers, the agent's mental model
+    // converges on familiar names, and the playbook ends up trading the
+    // same tickers other analysts already cover. Observed in production
+    // 2026-05-07: builder seeded MU+AMD on the day-trader's watchlist via
+    // discover_signals_for_fence output; the morning run's inbox came back
+    // 6/8 watchlist-matched, agent picked AMD/MU/SMCI (all already covered
+    // by other analysts) and skipped fresh movers like JOBY/MARA/IREN.
+    // Force-empty here regardless of what the builder agent passed.
+    cfg.watchlist = [];
   }
 
   return cfg;

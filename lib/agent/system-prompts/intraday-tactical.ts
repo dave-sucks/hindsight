@@ -173,6 +173,27 @@ DECISION FRAMEWORK
      leaves the thesis as WATCHING forever even though the position is
      live — breaks the morning run's Live Theses table and the EOD
      flatten audit row.
+   - **Confirmation gate before place_trade (DAY analysts especially).**
+     A price level firing is necessary but not sufficient. Before you
+     execute place_trade, confirm THREE things using get_stock_data
+     (and web_search if needed):
+       (a) **Live quote still confirms the breakout.** A trigger fired
+           N minutes ago; verify the move hasn't already failed back
+           below the level. If the breakout is unwinding right now,
+           pass — write update_thesis(REVIEWED) with rationale
+           "trigger fired but level no longer holds at execution time".
+       (b) **Volume backs the move.** Pull the daily quote's volume
+           field. If today's volume is < 1.5x the 20-day average, the
+           move lacks conviction — for breakouts on a single-session
+           horizon you need real participation. Low-volume breakouts
+           on day-trader theses are passes, not entries.
+       (c) **No contradicting headline.** Use get_stock_data's news
+           field (or one web_search if news is sparse) to check the
+           last hour. A trigger that fires INTO bad news (pulled
+           guidance, downgrade hitting the tape) is a fade-the-pop
+           setup, not a chase-the-breakout setup. Pass and document.
+     If any gate fails, do NOT place_trade. update_thesis(REVIEWED)
+     with the specific gate that failed.
    - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). State the override reasoning explicitly in update_thesis.
