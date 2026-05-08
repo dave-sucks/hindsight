@@ -35,6 +35,7 @@ import {
 } from "@/lib/agent/thesis-updates";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
+import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -43,6 +44,13 @@ const updateSchema = z.object({
     .min(10)
     .describe(
       "Why you're updating this thesis. Required — every update writes a timeline row and the rationale is what the user (or future you) reads to understand the change.",
+    ),
+  structural_unchanged_reason: z
+    .string()
+    .min(10)
+    .optional()
+    .describe(
+      "OPTIONAL escape hatch for substantive non-belief changes. Required when the patch changes confidence_score / target_price / stop_loss WITHOUT also changing core_belief / key_assumptions / invalidation_conditions. State explicitly why the underlying belief still holds (e.g. \"key_assumption #2 confirmed by today's earnings beat — raising target to reflect, belief unchanged\"). Without this OR a belief-field change, target/stop/confidence patches are rejected — the discipline gate forces the agent to either update the belief or articulate why it didn't.",
     ),
   signal_ids: z
     .array(z.string())
@@ -80,29 +88,28 @@ const updateSchema = z.object({
     ),
   thesis_bullets: z.array(z.string()).optional(),
   risk_flags: z.array(z.string()).optional(),
-  // The three "structural belief" fields. Audit Root Cause showed these
-  // are touched on <6% of update_thesis calls, while reasoning_summary +
-  // thesis_bullets get rewritten constantly. The agent treats narrative
-  // fields as the entire output and ignores the structural ones. Schema
-  // descriptions now strongly request these on substantive updates so
-  // the thesis sheet's "Plan" section actually has data to render.
+  // The three "structural belief" fields. Substantive non-belief patches
+  // (target/stop/confidence) without touching at least one of these are
+  // rejected at the discipline gate below — the agent must either update
+  // the belief OR pass `structural_unchanged_reason` explaining why the
+  // underlying claim still holds. Closes P0-1.
   core_belief: z
     .string()
     .optional()
     .describe(
-      "The actual claim — one sentence that captures WHY this trade should work. STRONGLY ENCOURAGED on substantive updates. Diverges from reasoning_summary: core_belief is durable (the underlying claim, rarely changed), reasoning_summary is the current-state framing (refreshed often). If you're updating target/stop/confidence and the underlying belief HASN'T changed, say so explicitly in the rationale rather than skipping this field.",
+      "The durable claim — one sentence that captures WHAT you believe will happen and why. Diverges from reasoning_summary: core_belief is the underlying claim (rarely changes), reasoning_summary is the current-state framing (refreshed often). Touch this when the actual belief has shifted. If you're patching target/stop/confidence and the belief is unchanged, leave this alone and pass `structural_unchanged_reason` instead — the discipline gate enforces this.",
     ),
   key_assumptions: z
     .array(z.string())
     .optional()
     .describe(
-      "What must be true for this trade to work. STRONGLY ENCOURAGED on substantive updates. Concrete and falsifiable: 'AI capex stays >$200B/quarter through 2026', 'no breakup of $TICKER's preferred customer relationship', 'guidance not cut more than 5% on next print'. Generic prose ('strong fundamentals') is insufficient.",
+      "What must be true for the core_belief to hold. Concrete and falsifiable items only: 'AI capex stays >$200B/quarter through 2026', 'no breakup of $TICKER's preferred customer relationship', 'guidance not cut more than 5% on next print'. Generic prose ('strong fundamentals') is insufficient. Touch this when one or more assumptions has been refined, confirmed, or invalidated by new evidence.",
     ),
   invalidation_conditions: z
     .array(z.string())
     .optional()
     .describe(
-      "What would prove this thesis wrong. STRONGLY ENCOURAGED on substantive updates AND REQUIRED on PASS theses (the agent uses these as re-entry criteria — if any of them flip the other way, the PASS becomes a candidate to flip to LONG/SHORT). Concrete: 'guidance cut next quarter', 'CFO departure', 'gross margin below 35% on next print'. Generic 'market downturn' is insufficient.",
+      "What would prove this thesis wrong. Concrete: 'guidance cut next quarter', 'CFO departure', 'gross margin below 35% on next print'. Generic 'market downturn' is insufficient. Used by the trade evaluator to grade exits and by the daily run to decide when a signal counts as thesis-breaking. On PASS theses, these double as re-entry criteria — if any flips the other way the PASS becomes a candidate to flip to LONG/SHORT.",
     ),
   signal_types: z.array(z.string()).optional(),
 
@@ -182,7 +189,10 @@ type UpdatePatch = Partial<{
 export const updateThesis = defineTool({
   description:
     "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
-    "Two hard-reject conditions to know about: (1) zero-trigger guard — refuses updates on theses with no triggers unless the update adds triggers OR closes the thesis; (2) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar).",
+    "Three hard-reject conditions to know about: " +
+    "(1) zero-trigger guard — refuses updates on theses with no triggers unless the update adds triggers OR closes the thesis; " +
+    "(2) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar); " +
+    "(3) structural-belief discipline gate — patches that change confidence_score / target_price / stop_loss WITHOUT also touching core_belief / key_assumptions / invalidation_conditions are rejected unless `structural_unchanged_reason` is supplied. Either update the belief to reflect why the trade plan is moving, or state explicitly why the belief is intact.",
   schema: updateSchema,
   ui: "thesis-card" as const,
 
@@ -209,6 +219,11 @@ export const updateThesis = defineTool({
         userId: true,
         ticker: true,
         status: true,
+        // direction + entryPrice are read by the shape gate below — adding
+        // them to the select fixes a latent bug where existing.direction
+        // and existing.entryPrice came back undefined at runtime.
+        direction: true,
+        entryPrice: true,
         researchRun: { select: { agentConfigId: true } },
         // Snapshot every field we might diff:
         reasoningSummary: true,
@@ -541,6 +556,66 @@ export const updateThesis = defineTool({
       ...diffFields,
     ]);
 
+    // ── Structural-unchanged-reason gate (P0-1) ──────────────────────────
+    // Substantive non-belief patches (target_price / stop_loss /
+    // confidence_score) without touching at least one belief field
+    // (core_belief / key_assumptions / invalidation_conditions) AND
+    // without `structural_unchanged_reason` are rejected.
+    //
+    // Why: audit Root Cause showed reasoning_summary + thesis_bullets get
+    // rewritten constantly while structural fields are touched on <6% of
+    // updates. The agent silently moves target/stop/confidence without
+    // ever interrogating whether the underlying belief still holds. The
+    // gate forces one of two outcomes:
+    //   (a) the belief HAS shifted → update at least one belief field, OR
+    //   (b) the belief HASN'T shifted → state explicitly why in
+    //       `structural_unchanged_reason` (e.g. "key_assumption #2
+    //       confirmed by today's earnings beat — raising target,
+    //       belief unchanged").
+    //
+    // Bypass conditions (gate doesn't apply):
+    //   - terminal transitions (INVALIDATED / CLOSED) — the patch is
+    //     paperwork on a dead thesis, belief is frozen by definition
+    //   - REVIEWED-only updates (empty patch) — handled separately above
+    //   - patches that don't touch any quant field — pure rationale
+    //     refreshes, narrative cleanups, signal_type re-tags
+    const touchesQuant = !!(
+      fieldChanges.confidenceScore ||
+      fieldChanges.targetPrice ||
+      fieldChanges.stopLoss
+    );
+    const touchesBelief = !!(
+      fieldChanges.coreBelief ||
+      fieldChanges.keyAssumptions ||
+      fieldChanges.invalidationConds
+    );
+    const hasUnchangedReason =
+      typeof args.structural_unchanged_reason === "string" &&
+      args.structural_unchanged_reason.trim().length >= 10;
+    if (
+      touchesQuant &&
+      !touchesBelief &&
+      !hasUnchangedReason &&
+      !isTerminalTransition
+    ) {
+      const changed = Object.keys(fieldChanges).filter((f) =>
+        ["confidenceScore", "targetPrice", "stopLoss"].includes(f),
+      );
+      return {
+        summary: `Refused update on $${existing.ticker} — quant change without belief change or justification.`,
+        data: {
+          ok: false,
+          error: "structural_belief_unchanged",
+          message:
+            `You're patching ${changed.join(", ")} on ${existing.ticker} without touching the underlying belief (core_belief / key_assumptions / invalidation_conditions). ` +
+            `The discipline rule: a substantive trade-plan change requires either (1) a corresponding belief update — refine an assumption, drop one that's been confirmed, add an invalidation condition that just became plausible — OR (2) an explicit \`structural_unchanged_reason\` (≥10 chars) stating why the underlying belief still holds. ` +
+            `Examples of (2): "key_assumption #2 (datacenter capex) confirmed by today's earnings beat — raising target to reflect, belief unchanged", or "tightening stop after price moved in our favor; assumptions and invalidation conditions still hold". ` +
+            `Retry with one of those.`,
+        },
+        sources: [],
+      };
+    }
+
     // Apply.
     await prisma.thesis.update({
       where: { id: existing.id },
@@ -631,11 +706,19 @@ export const updateThesis = defineTool({
     // morning-research coverage gate both query ThesisUpdate the moment
     // the agent finishes; fire-and-forget races dropped the row past
     // the gate's read horizon and false-failed legitimate runs.
+    //
+    // structural_unchanged_reason is appended to the timeline rationale
+    // when supplied so the discipline justification is preserved alongside
+    // the change explanation — otherwise it'd be visible only in agent
+    // logs, not in the user-facing thesis timeline.
+    const persistedRationale = hasUnchangedReason
+      ? `${args.rationale}\n\n[Belief unchanged: ${args.structural_unchanged_reason!.trim()}]`
+      : args.rationale;
     await writeThesisUpdate({
       thesisId: existing.id,
       type: updateType,
       summary,
-      rationale: args.rationale,
+      rationale: persistedRationale,
       fieldChanges,
       runId: ctx.runId,
       signalIds: args.signal_ids,

@@ -19,6 +19,7 @@ import {
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
+import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 
 const thesisFields = z.object({
   ticker: z.string(),
@@ -166,19 +167,19 @@ const thesisFields = z.object({
     .string()
     .optional()
     .describe(
-      "The actual claim, separate from the trade rationale. 1-2 sentences stating what you believe will happen and why. Often overlaps with reasoning_summary on first creation; diverges as the thesis is updated.",
+      "REQUIRED for LONG/SHORT. ONE sentence stating WHAT you believe will happen and why — the durable claim that, if it stops being true, the thesis is broken (e.g. \"AI capex sustains $200B/quarter through 2026, driving NVDA's gross margin above 75%\"). Distinct from reasoning_summary (the current-state framing, refreshed often); core_belief is the load-bearing claim. Optional only for direction=PASS.",
     ),
   key_assumptions: z
     .array(z.string())
     .optional()
     .describe(
-      "Premises that must hold for this thesis to work. Each item is a single checkable claim (e.g. 'Datacenter capex stays above $200B/yr through 2027'). The agent re-evaluates these against fresh signals during housekeeping.",
+      "REQUIRED for LONG/SHORT — must contain ≥2 specific premises. Each item is a single checkable claim that must remain true for core_belief to hold (e.g. \"Datacenter capex stays above $200B/yr through 2027\", \"No breakup of preferred customer relationship\"). Generic prose like \"strong fundamentals\" is insufficient — the tactical agent re-evaluates these against fresh signals to decide whether a trigger fire is thesis-breaking. Optional only for direction=PASS.",
     ),
   invalidation_conditions: z
     .array(z.string())
     .optional()
     .describe(
-      "Specific things that would prove this thesis wrong. Used to decide when a signal counts as thesis-breaking. e.g. ['Guidance cut on next print', 'Sector ETF breaks 200d SMA'].",
+      "REQUIRED for LONG/SHORT — must contain ≥2 specific items. Concrete things that would prove this thesis wrong (e.g. \"Guidance cut on next print\", \"Gross margin below 70% on next print\", \"CFO departure\"). Generic risks like \"market volatility\" are insufficient. Used by the trade evaluator to grade exits and by the daily-run prompt to decide when a signal counts as thesis-breaking. Optional only for direction=PASS.",
     ),
   target_size_pct: z
     .number()
@@ -278,7 +279,8 @@ const thesisSchema = thesisFields.superRefine((val, ctx) => {
 
 export const recordThesis = defineTool({
   description:
-    "STAGE 3 ONLY. Write a thesis for every ticker you researched in Stage 2, back to back, in one batch. Direction must be LONG, SHORT, or PASS — PASS theses are mandatory for tickers you researched but won't trade, they document the decision. Never call this in Stage 2 (research) or Stage 4 (execution). Never write a verdict as narration text instead of calling this tool.",
+    "STAGE 3 ONLY. Write a thesis for every ticker you researched in Stage 2, back to back, in one batch. Direction must be LONG, SHORT, or PASS — PASS theses are mandatory for tickers you researched but won't trade, they document the decision. Never call this in Stage 2 (research) or Stage 4 (execution). Never write a verdict as narration text instead of calling this tool. " +
+    "Structural-belief gate: directional theses (LONG/SHORT) MUST include core_belief (1 sentence), key_assumptions (≥2 specific items), and invalidation_conditions (≥2 specific items). Without all three the call is rejected — these fields drive the trade evaluator's post-mortem, the tactical agent's invalidation reasoning, and the daily run's assumption-drift checks. PASS theses are exempt.",
   schema: thesisSchema,
   ui: "thesis-card" as const,
 
@@ -504,6 +506,37 @@ export const recordThesis = defineTool({
             thesis_id: null,
             status: "FAILED" as const,
             note: shapeCheck.note,
+          },
+          sources: [],
+        };
+      }
+
+      // Structural-belief gate (P0-1). Directional theses MUST carry the
+      // durable claim + the falsifiable premises + the things that would
+      // prove them wrong. Audit 2026-05-07: 32% / 32% / 38% population
+      // across 53 open theses; one analyst at 0% on all three. Without
+      // these fields the thesis is a paragraph of vibes — the trade
+      // evaluator can't grade against a falsifiable claim, the tactical
+      // agent can't decide whether a trigger fire is thesis-breaking,
+      // and the daily run can't tell when an assumption has flipped.
+      // PASS theses bypass — they're "researched, decided not to trade"
+      // and live in reasoning_summary + thesis_bullets + risk_flags.
+      const beliefCheck = validateThesisBelief({
+        direction: args.direction,
+        coreBelief: args.core_belief ?? null,
+        keyAssumptions: args.key_assumptions ?? null,
+        invalidationConds: args.invalidation_conditions ?? null,
+      });
+      if (!beliefCheck.ok) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — missing structural belief (${beliefCheck.missingFields.join(", ")}).`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: missing ${beliefCheck.missingFields.join(", ")}.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note: beliefCheck.note,
           },
           sources: [],
         };
