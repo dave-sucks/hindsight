@@ -572,12 +572,19 @@ export async function buildRunInput(
           "id" in (x as object) &&
           (x as { id: unknown }).id === f.triggerId,
       );
+      // Synthetic firings from the housekeeping-overdue-theses cron use
+      // a stable triggerId that won't be present in thesis.triggers[].
+      // Label them clearly so the agent knows it's a scheduled-review
+      // overdue surface, not a stale "(predicate removed)" mystery.
+      const isSyntheticOverdue = f.triggerId === "__OVERDUE_REVIEW__";
       return {
         thesisId: f.thesisId,
         ticker: f.thesis.ticker,
         triggerId: f.triggerId ?? "",
-        action: t?.action ?? "REVIEW",
-        predicateSummary: t?.predicate.kind ?? "(predicate removed)",
+        action: isSyntheticOverdue ? "REVIEW" : (t?.action ?? "REVIEW"),
+        predicateSummary: isSyntheticOverdue
+          ? "scheduled review overdue"
+          : (t?.predicate.kind ?? "(predicate removed)"),
         rationale: f.rationale ?? f.summary ?? "",
         firedAt: f.timestamp.toISOString(),
       };
