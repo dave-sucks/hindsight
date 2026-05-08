@@ -177,45 +177,53 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools — 19 tools (lib/agent/tools/)
+## Agent Tools — 25 trading tools (lib/agent/tools/)
 Each tool is defined in its own file using `defineTool()` from
 `lib/agent/define-tool.ts`. The factory wraps execute() in timing/
 logging/try-catch and returns a `ToolResult<T>` envelope with a `ui`
-discriminator that drives rendering in ToolCallRow.
+discriminator that drives rendering in ToolCallRow. Three additional
+podcast-only tools (`read_past_transcripts`, `suggest_podcast_config`,
+`write_segment_transcript`) live alongside but are out of scope for the
+trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 
 ### Intelligence Tools (read pre-gathered data)
 1. read_signals — signals routed by background discovery jobs
 2. read_artifact — full extracted article/document behind a signal
 3. get_theses — read the analyst's durable thesis library (default ACTIVE+WATCHING; include_history=true for the activity log)
-4. web_search — live Perplexity Sonar search (budget-limited)
+4. get_portfolio_context — open positions, exposure, available buying power, recent fills
+5. web_search — live Perplexity Sonar search (budget-limited)
    NOTE: read_morning_brief was DELETED in PR 3 — agent reads
    durable state directly via read_signals + get_theses
 
 ### Research Tools (live data validation)
-5. get_market_context — SPY/VIX/sector ETFs, macro events, regime
-6. get_stock_data — quote + company profile + financials + technicals + news
-7. get_earnings_data — per-ticker EPS history, beat rate, next report date
-8. get_earnings_calendar — firm-wide upcoming earnings calendar; `scope:"universe"`
+6. get_market_context — SPY/VIX/sector ETFs, macro events, regime
+7. get_stock_data — quote + company profile + financials + technicals + news
+8. get_earnings_data — per-ticker EPS history, beat rate, next report date
+9. get_earnings_calendar — firm-wide upcoming earnings calendar; `scope:"universe"`
    fences to watchlist + positions, `scope:"all"` returns the full firehose.
    Pull-tool counterpart to the `EARNINGS_CALENDAR` feed subscription.
-9. get_market_movers — today's gainers / losers / most-actives from FMP;
-   `scope:"universe"` fences to watchlist + positions, `scope:"all"` returns
-   the full top list. Pull-tool counterpart to the `MARKET_MOVERS_*` feeds.
-10. get_options_flow — put/call ratio, unusual contracts
-11. get_sec_filings — SEC EDGAR filings
+10. get_market_movers — today's gainers / losers / most-actives from FMP;
+    `scope:"universe"` fences to watchlist + positions, `scope:"all"` returns
+    the full top list. Pull-tool counterpart to the `MARKET_MOVERS_*` feeds.
+11. get_options_flow — put/call ratio, unusual contracts
+12. get_sec_filings — SEC EDGAR filings
 
 ### Action Tools
-12. record_thesis — persist thesis to DB (LONG/SHORT/PASS)
-13. place_trade — Alpaca market order, create Position
-14. close_position — close an existing open position
-    14b. manage_position — scale in/out, move stop, trail stop, adjust target
-15. record_run_summary — persist HOLD decisions + run summary event
-16. manage_watchlist — add/remove/update watchlist items
-17. complete_run — mark run COMPLETE with ranked picks
+13. record_thesis — mint a NEW thesis (LONG/SHORT/PASS) for net-new coverage or direction flip
+14. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, INVALIDATED, or CLOSED). The single most-used tool — every daily-run REVIEWED entry and every tactical close-out is one of these
+15. place_trade — Alpaca market order, create Position
+16. close_position — close an existing open position fully
+17. manage_position — partial close, scale in/out, move stop, trail stop, adjust target
+18. manage_watchlist — add/remove/update watchlist items
+19. record_run_summary — persist run summary + ranked picks + decision rationale; runs the narration-gate verb→tool gate
+20. complete_run — mark run COMPLETE (only allowed from RUNNING; FAILED status set by the narration-gate sticks)
 
 ### Builder/Editor-only Tools
-18. read_knowledge_library — strategy archetypes, source catalog, signal types
-19. ask_question / discover_signals_for_fence / read_analyst_inbox_stats — see lib/agent/tools/
+21. read_knowledge_library — strategy archetypes, source catalog, signal types
+22. ask_question — structured 2-5 quick-reply interview, one call per turn
+23. discover_signals_for_fence — validate a proposed sectors/industries/themes/tickers fence against the past 30d of routed signals
+24. read_analyst_inbox_stats — 30-day routing rollup for THIS analyst (top tickers, dead themes, hot unwatched tickers)
+25. suggest_config — emit the full proposed analyst config as a side-panel diff
 
 ## How to Add a New Agent Tool
 

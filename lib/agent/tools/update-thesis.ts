@@ -115,7 +115,7 @@ const updateSchema = z.object({
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
     .optional()
     .describe(
-      "Rarely changed — flipping horizon means the analyst's exit policy changed, which is usually a sign the thesis itself should be replaced via record_thesis instead.",
+      "Promote or demote when the trade structure has actually changed. Examples: a TRADE that's compounding past its 14d window because the thesis got bigger → upgrade to TARGET (and extend maxHoldDays + push nextReviewAt to the new cadence). A COMPOUNDER whose moat eroded but isn't dead → downgrade to TARGET with a tighter exit. A CATALYST that printed and is now a position trade on residual momentum → upgrade to TARGET. When you change horizon you MUST also update maxHoldDays and nextReviewAt to the new horizon's defaults (TRADE 14d / TARGET 90d / COMPOUNDER 365d) — leaving the old cadence in place produces a thesis whose exit policy doesn't match its label, which is worse than not promoting at all. Only spawn a fresh record_thesis when direction or core belief flips, not when the time horizon evolves.",
     ),
   catalyst_date: z.string().datetime().nullable().optional(),
   max_hold_days: z.number().int().positive().max(365).nullable().optional(),

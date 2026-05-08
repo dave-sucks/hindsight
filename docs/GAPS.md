@@ -87,20 +87,6 @@ These prevent the core loop from working as designed. Fix first.
 
 **Effort:** ~1 hour (tool schema + validation + prompt language).
 
-### P0-3 — Generalized narrate-vs-execute gate
-**Source:** ARCHITECTURE_DEEP_AUDIT (Step 3) + prompts agent audit (PR #210 fixed `place_trade` only; the same pattern moved to `manage_position`, `manage_watchlist`, `close_position`).
-
-**Why it matters:** the agent narrates "I'll close this" or "I'll add NVDA to the watchlist" without calling the tool. Each per-tool gate plays whack-a-mole — the bug just migrates.
-
-**Fix path:**
-1. Add a generalized validator (a new tool `validate_run_intent` or part of `record_run_summary`) that:
-   - Parses every TradeDecision's `reasoning` text for action verbs (close, sell, trim, scale, tighten stop, watchlist add/remove, buy)
-   - Verifies a corresponding tool call landed during the run
-   - Flags mismatches as `RunEvent` warnings
-2. Optional v2: refuse `complete_run` when narrate-without-execute mismatches exceed a threshold.
-
-**Effort:** ~4 hours (verb parser + cross-reference + RunEvent emission).
-
 ### P0-4 — Monitor ROI tracer is not functioning
 **Source:** Supabase — 2 trades ever credited across 148 monitors.
 
@@ -123,10 +109,10 @@ These prevent the core loop from working as designed. Fix first.
 1. **P0-5a** — Make horizon visible in the daily-run prompt portfolio + Live Theses tables (currently absent; agent must click into the thesis card to remember exit policy).
 2. **P0-5b** — Move time-based exit enforcement from prompt to code. `lib/trade-exit.ts` and `lib/inngest/functions/price-monitor.ts` should accept and respect `Thesis.horizon`. Code rule: `if (horizon === "TRADE" && daysHeld >= maxHoldDays) → trigger REVIEW`.
 3. **P0-5c** — Branch daily prompt on horizon. Separate alert thresholds: "5% of stop" for TRADE, "10% of stop" for COMPOUNDER. Separate guidance: "COMPOUNDER theses ignore intraday moves <-3% absent fundamental invalidation."
-4. **P0-5d** — Add horizon promotion path. `update_thesis.horizon` is in the schema but the description discourages it ("Rarely changed"). Rewrite the description to invite promotion, document the workflow ("TRADE that's compounding → upgrade to TARGET; update maxHoldDays + nextReviewAt to match").
+4. ~~**P0-5d** — Add horizon promotion path.~~ Closed 2026-05-08 (admin sweep PR).
 5. **P0-5e** — Differentiate data fetching per horizon. Long-term theses should pull SEC filings + analyst consensus more; intraday should pull options flow + volume.
 
-**Effort:** ~1-2 days for P0-5a through P0-5d. P0-5e is bigger.
+**Effort:** ~1-2 days for P0-5a through P0-5c. P0-5e is bigger.
 
 ---
 
@@ -161,30 +147,9 @@ These prevent the core loop from working as designed. Fix first.
 
 **Effort:** ~30 min.
 
-### P1-5 — Editor's lane taxonomy lives in registry only, not prompt
-**Source:** Prompts audit.
-
-**Why it matters:** the registry describes a 4-lane classification (Q&A, numeric, fence, archetype) that determines which prompt instructions apply. The editor prompt itself doesn't mention these lanes. If the editor session is spawned in isolation it has no idea what lanes are.
-
-**Fix path:** add the lane taxonomy to `lib/agent/builder-prompt-template.ts` (editor variant) so the agent reads it.
-
-**Effort:** ~30 min.
-
-### P1-6 — `get_sec_filings` claimed for builder but missing from allowlist
-**Source:** Tools agent audit — registry's `builder` team has `get_sec_filings` in `tools[]`, but `lib/agent/modes.ts` BUILDER allowlist omits it.
-
-**Why it matters:** the page advertises a tool the builder can't actually use.
-
-**Fix path:** decide intent. If builder should have it (likely yes — Q&A about value plays needs filings access), add to BUILDER allowlist in modes.ts. If not, remove from registry team.tools.
-
-**Effort:** ~5 min.
-
 ---
 
 ## P2 — Paper cuts and FE polish
-
-### P2-1 — 6 PASS-on-watchlist theses with no triggers
-SQL fix from SESSION_AUDIT item 8. ~5 min.
 
 ### P2-2 — `manage_watchlist` defaults to TRADE horizon
 Hold-style audit — biases new watchlist entries toward short-term. Should default to TARGET when there's no explicit catalyst. ~15 min.
@@ -195,20 +160,23 @@ SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints th
 ### P2-5 — `sync-heartbeat.ts` is dead
 Crons agent — file exists, imports exist, but not in `app/api/inngest/route.ts` `functions[]` array. Either wire it up or delete the file. ~5 min.
 
-### P2-6 — Thesis sheet UI items
-SESSION_AUDIT items 20-32 (FE work). Status pill should be a sentence ("Watching for entry > $268 · 1.9% below"); horizon needs an exit-policy explanation; trigger panel needs proximity-to-fire chips; activity log should call out "edited in this run"; Plan section needs to exist; horizon override control; days-held / maxHoldDays progress; overdue review red flag; run-detail "Why these tickers?" panel. Half-day to a full day each.
-
 ### P2-7 — Intelligence pipeline crons are independent
 Crons agent — no Inngest `.after()` or `.waitFor()` between firm-market-sweep → portfolio-watchlist-monitor → domain-monitor → signal-router. If one lags, downstream still fires on schedule with stale data. Today this is theoretical; flag it as a known fragility. ~2 hours to add chaining.
 
-### P2-8 — Briefing isn't a separate cron
-Crons agent — registry implies it is. Already clarified in 2026-05-07 registry edit ("Inline after every run, no separate cron"). No code change needed; documentation only.
+---
 
-### P2-9 — CLAUDE.md tool count says 19, registry has 25
-Tools agent — CLAUDE.md predates `update_thesis`, `get_portfolio_context`, `get_earnings_calendar`, `get_market_movers`, etc. Update the count and the itemized list. ~10 min.
+## Done since 2026-05-08 (admin sweep)
 
-### P2-10 — Podcast tools missing from TOOL_REGISTRY
-Tools agent — `read_past_transcripts`, `suggest_podcast_config`, `write_segment_transcript` exist in `lib/agent/tools/` but not in `TOOL_REGISTRY`. Decision: either add them with their own podcast-feature teams in the registry, or document explicitly that podcast is out-of-scope for `/agent-workflow` (the registry header comment now says this). Status quo is fine; revisit if podcast becomes a first-class feature.
+Doc + prompt + tool-allowlist housekeeping. PR title "chore: admin sweep — P0-3 / P0-5d / P1-5 / P1-6 / P2-9".
+
+- ✅ **P0-3 — Generalized narrate-vs-execute gate.** Verified PR #228 fully implements the design. `lib/agent/narration-gate.ts` is a pure verb→tool ruleset covering `manage_position` (tighten/trim/scale/move stop/trail/adjust), `close_position` (closing/exiting/sold/sell), and `manage_watchlist` (add/remove ... watchlist). Wired into `record_run_summary`'s persistence path: scans `decision_rationale` + each pick's `reasoning`, cross-references against `RunEvent` rows of type `position_closed | position_modified | watchlist_add | watchlist_remove`, emits a `run_failed` RunEvent and atomically transitions `ResearchRun: RUNNING → FAILED` on any mismatch. `complete_run`'s atomic transition was tightened from `status: { not: COMPLETE }` to `status: RUNNING`, so the FAILED status set by the gate sticks — that's the optional v2 "refuse complete_run on mismatch" half of the original fix path. `place_trade` is intentionally excluded from the verb list (gated upstream by morning-research's trade-execution gap check). 21 unit tests in `lib/agent/narration-gate.test.ts`.
+- ✅ **P0-5d — Horizon promotion path on update_thesis.** Rewrote the `horizon` field schema description in [`update-thesis.ts`](../lib/agent/tools/update-thesis.ts) from "Rarely changed" (which actively discouraged the workflow) to a description that invites promotion with concrete examples: TRADE compounding past its 14d window → upgrade to TARGET; COMPOUNDER with eroded moat → downgrade to TARGET with tighter exit; CATALYST that printed and is now riding residual momentum → TARGET. Includes the must-do guardrail: any horizon change MUST also update `maxHoldDays` and `nextReviewAt` to the new horizon's defaults (TRADE 14d / TARGET 90d / COMPOUNDER 365d) — otherwise the thesis ends up with an exit policy that contradicts its label. No runtime guard yet (deferred to P0-5b territory).
+- ✅ **P1-5 — Editor lane taxonomy in workflow-page prompt template.** The runtime editor prompt (`lib/agent/modes.ts → buildEditorSystemPrompt`) already documents all 4 lanes in detail (Step 0 — CLASSIFY THE REQUEST). The gap was on the documentation surface: `lib/agent/builder-prompt-template.ts` exported only a builder template, and the workflow-registry's editor card imported the same builder template — so users browsing `/agent-workflow` saw builder content under the editor card. New `EDITOR_PROMPT_TEMPLATE` export documents all four lanes (Q&A, numeric, fence, archetype) at the top with one-sentence descriptions of when each applies and how deeply it rewrites the analystPrompt. `workflow-registry.ts:239` updated to import it.
+- ✅ **P1-6 — `get_sec_filings` builder allowlist.** Already done. `lib/agent/modes.ts:103` has `"get_sec_filings"` in the BUILDER `toolAllowlist`; registry's `agents: ["builder", "agent", "tactical", "discovery"]` matches. GAPS entry was stale relative to the code.
+- ✅ **P2-9 — CLAUDE.md tool count refresh.** Updated heading from "19 tools" to "25 trading tools" with a line acknowledging the 3 podcast-only tools that live alongside but are out of scope. Itemized list adds: `get_portfolio_context`, `update_thesis`, `get_earnings_calendar`, `get_market_movers`, `manage_position` (was nested under close_position as 14b), `ask_question`, `discover_signals_for_fence`, `read_analyst_inbox_stats`, `suggest_config`. Cross-checked against `TOOL_REGISTRY` and `lib/agent/tools/` directory.
+- ✅ **P2-1 — 6 PASS-on-watchlist theses with no triggers.** Closed as stale. The watching-thesis integrity workstream's reframe of P1-1 covers this directly: PASS-direction theses are institutional-memory rows that by design don't carry ENTER triggers — there's no entry to trigger on. The "6 zero-trigger PASS theses" the audit flagged are the same population as the 14 PASS-direction watching theses already accounted for. No SQL fix needed.
+- ✅ **P2-8 — Briefing isn't a separate cron.** Closed. The 2026-05-07 registry edit changed briefing's `schedule` field to "Inline after every run (no separate cron)" — that's the documentation fix the gap was asking for. No code change, no further work.
+- ✅ **P2-10 — Podcast tools missing from TOOL_REGISTRY.** Closed as intentional. The registry's header comment now explicitly scopes the podcast feature out of `/agent-workflow` — `read_past_transcripts`, `suggest_podcast_config`, `write_segment_transcript` live in `lib/agent/tools/` alongside the trading tools but are part of the podcast surface (`lib/podcast/`, `docs/PODCAST_PLAN.md`). Revisit only if podcast becomes a first-class feature on the workflow page.
 
 ---
 
@@ -250,6 +218,14 @@ For posterity — what got fixed in the 2026-05-06 → 2026-05-07 window:
   - PR #232 — block inverted-target theses at write time (record + update)
 
 **Important caveat:** PR #228 in particular *claims* to generalize the narrate-vs-execute gate. This GAPS doc still lists P0-3 (generalized narrate-vs-execute) as open because the audit didn't verify whether #228 actually implements the full design or just adds a per-tool check. Verify before closing.
+
+---
+
+## Cancelled
+
+Items deliberately not pursued. Recorded so future sessions don't re-add them.
+
+- ❌ **P2-6 — Thesis sheet UI items** (cancelled by user 2026-05-08). The thesis-sheet redesign as scoped (sentence-style status pill, exit-policy explanation on horizon, proximity-to-fire trigger chips, "edited in this run" activity-log call-outs, Plan section, horizon override control, days-held progress, overdue-review red flag, run-detail "Why these tickers?" panel) is not being pursued in its current form. Individual sub-pieces may resurface as their own scoped gaps if they become load-bearing for the daily loop, but the bundled redesign is shelved.
 
 ---
 
