@@ -248,7 +248,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 }
 
 // ── Watching templates ─────────────────────────────────────────────────
-// For NON-HELD theses on the watchlist. The semantic shift is:
+// For NON-HELD theses on the watchlist. Semantic shift vs HELD:
 //   - No EXIT triggers (nothing to exit)
 //   - The TARGET price is the ENTRY-trigger threshold ("waiting for
 //     price to break above X to consider INITIATE")
@@ -256,53 +256,185 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 //     fell to support — better entry or thesis weakening?") and an
 //     ENTRY threshold for SHORT (mirror semantics)
 //   - News/event triggers stay as REVIEW
+//   - REVIEW_DATE_HIT on every template — drives the cron's overdue-
+//     review path. Without this, `nextReviewAt` is a soft hint with no
+//     automatic firing; with it, the trigger-evaluator's 5-min cron
+//     spawns a tactical run the moment a watching thesis is overdue.
 //
 // Direction matters here: LONG watches enter on PRICE_ABOVE target,
 // SHORT watches enter on PRICE_BELOW target. PASS watches get only
 // REVIEW triggers ("the move I dismissed actually happened — re-look").
 //
-// Same horizon variants apply (CATALYST/TARGET/TRADE/COMPOUNDER) but
-// the templates are simpler — most of the held-position complexity
-// (TIME_ELAPSED max-hold, stop-tighten, etc.) doesn't apply pre-entry.
+// Per-horizon shape (matches the held side's per-horizon split):
+//   CATALYST    — entry trigger + filing/earnings REVIEW + tight 14d
+//                 hygiene (catalyst windows are short)
+//   TRADE       — entry trigger + 14d REVIEW (matches max-hold; if a
+//                 watch is stale after the trade window, kill it)
+//   TARGET      — current shape: entry + support REVIEW + 30d hygiene
+//   COMPOUNDER  — entry trigger with longer cooldown (ignore noise) +
+//                 90d hygiene; no support REVIEW (compounders shouldn't
+//                 react to short-term wiggles)
 
-function watchingDefaults(thesis: ThesisShape): Trigger[] {
-  const out: Trigger[] = [];
-  const direction = thesis.direction ?? "LONG";
-
-  // Entry trigger — derived from target. For LONG, enter on break above;
-  // for SHORT, enter on break below; for PASS, no entry trigger.
-  if (thesis.targetPrice != null && direction === "LONG") {
-    out.push({
+/** Direction-aware ENTER trigger off targetPrice. Shared across horizons. */
+function watchingEntryTrigger(
+  thesis: ThesisShape,
+  direction: ThesisDirection,
+  cooldownDays: number,
+): Trigger | null {
+  if (thesis.targetPrice == null) return null;
+  if (direction === "LONG") {
+    return {
       id: createId(),
       predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
       action: "ENTER",
       rationale: `Entry trigger — price broke above $${thesis.targetPrice}. Validate setup and consider INITIATE.`,
-      cooldownDays: 1,
-    });
-  } else if (thesis.targetPrice != null && direction === "SHORT") {
-    out.push({
+      cooldownDays,
+    };
+  }
+  if (direction === "SHORT") {
+    return {
       id: createId(),
       predicate: { kind: "PRICE_BELOW", level: thesis.targetPrice },
       action: "ENTER",
       rationale: `Short entry trigger — price broke below $${thesis.targetPrice}. Validate setup and consider INITIATE short.`,
-      cooldownDays: 1,
-    });
-  } else if (thesis.targetPrice != null && direction === "PASS") {
-    // The move we dismissed actually happened. Worth re-evaluating
-    // the PASS — the thesis may need to flip to LONG/SHORT.
-    out.push({
-      id: createId(),
-      predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
-      action: "REVIEW",
-      rationale: `Price hit the target we dismissed. Re-evaluate the PASS — was the rejection wrong?`,
-      cooldownDays: 7,
-    });
+      cooldownDays,
+    };
   }
+  // PASS: the move we dismissed actually happened. Re-evaluate.
+  return {
+    id: createId(),
+    predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
+    action: "REVIEW",
+    rationale: `Price hit the target we dismissed. Re-evaluate the PASS — was the rejection wrong?`,
+    cooldownDays: 7,
+  };
+}
 
-  // Secondary price level — stop becomes a REVIEW for LONG (better
-  // entry or thesis breaking?). For SHORT, the entry-trigger is below
-  // and the "thesis breaking" signal would be price climbing well above
-  // the entry; we skip that for now, keep the template lean.
+/** Standard nextReviewAt fire — hooked off `Thesis.nextReviewAt`. */
+function reviewDateHitTrigger(): Trigger {
+  return {
+    id: createId(),
+    predicate: { kind: "REVIEW_DATE_HIT" },
+    action: "REVIEW",
+    rationale: `Scheduled review date reached. Walk the thesis against today's tape.`,
+    cooldownDays: 1,
+  };
+}
+
+function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
+  const out: Trigger[] = [];
+  const direction = thesis.direction ?? "LONG";
+
+  const entry = watchingEntryTrigger(thesis, direction, 1);
+  if (entry) out.push(entry);
+  out.push(reviewDateHitTrigger());
+
+  // Catalyst windows live and die on filings + earnings — those are
+  // typically how the catalyst lands. No support-REVIEW: a binary
+  // catalyst is either resolved or not, intermediate price wiggles
+  // don't change the entry plan.
+  out.push(
+    {
+      id: createId(),
+      predicate: {
+        kind: "OR",
+        predicates: [
+          { kind: "FILING", formType: "8-K" },
+          { kind: "FILING", formType: "10-Q" },
+          { kind: "FILING", formType: "10-K" },
+        ],
+      },
+      action: "REVIEW",
+      rationale:
+        direction === "PASS"
+          ? `Material filing on a catalyst-PASS — the news may invalidate the rejection.`
+          : `Material filing on a catalyst-watch — the filing may BE the catalyst.`,
+      cooldownDays: 1,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "EARNINGS_BEAT" },
+      action: "REVIEW",
+      rationale:
+        direction === "PASS"
+          ? `Beat — possibly a reason to flip the PASS.`
+          : `Beat — possibly the catalyst. Validate before INITIATE.`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
+      action: "REVIEW",
+      rationale:
+        direction === "PASS"
+          ? `Miss — confirms the PASS, possibly remove from watch.`
+          : `Miss — possibly the inverse catalyst. Consider removing from watch.`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "TIME_ELAPSED", days: 14 },
+      action: "REVIEW",
+      rationale: `Catalyst-window hygiene — if we're still watching after 14 days, the setup is stale.`,
+      cooldownDays: 12,
+    },
+  );
+
+  return out;
+}
+
+function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
+  const out: Trigger[] = [];
+  const direction = thesis.direction ?? "LONG";
+
+  // TRADE-horizon entries are tight by design — the agent set a specific
+  // breakout level on a known short-term setup. Cooldown 1d so an
+  // intraday cross fires once and tactical-run takes it from there.
+  const entry = watchingEntryTrigger(thesis, direction, 1);
+  if (entry) out.push(entry);
+  out.push(reviewDateHitTrigger());
+
+  // No support-REVIEW for TRADE: the setup IS the entry plan; if price
+  // drops to "support" the setup is gone, the thesis should age out via
+  // TIME_ELAPSED rather than fire a noisy mid-window REVIEW.
+  out.push(
+    {
+      id: createId(),
+      predicate: { kind: "EARNINGS_BEAT" },
+      action: "REVIEW",
+      rationale: `Beat — short-term tape may flip in our favor before the entry trigger.`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
+      action: "REVIEW",
+      rationale: `Miss — entry conditions deteriorating. Consider removing.`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "TIME_ELAPSED", days: 14 },
+      action: "REVIEW",
+      rationale: `Trade-window hygiene — TRADE setups stale after 14 days. Confirm or remove.`,
+      cooldownDays: 12,
+    },
+  );
+
+  return out;
+}
+
+function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
+  const out: Trigger[] = [];
+  const direction = thesis.direction ?? "LONG";
+
+  const entry = watchingEntryTrigger(thesis, direction, 1);
+  if (entry) out.push(entry);
+  out.push(reviewDateHitTrigger());
+
+  // Support-REVIEW for LONG: a pullback to the stop level is either
+  // a better entry or evidence the thesis is breaking. Worth a look.
+  // (SHORT mirror omitted — kept lean.)
   if (thesis.stopLoss != null && direction === "LONG") {
     out.push({
       id: createId(),
@@ -313,7 +445,6 @@ function watchingDefaults(thesis: ThesisShape): Trigger[] {
     });
   }
 
-  // News / event triggers — same shape as held but framed for entry.
   out.push(
     {
       id: createId(),
@@ -332,7 +463,7 @@ function watchingDefaults(thesis: ThesisShape): Trigger[] {
       rationale:
         direction === "PASS"
           ? `Miss — confirms the PASS, possibly remove from watch.`
-          : `Miss — entry conditions worsening. Consider removing from watch.`,
+          : `Miss — entry conditions worsening. Consider removing.`,
       cooldownDays: 7,
     },
     {
@@ -341,6 +472,61 @@ function watchingDefaults(thesis: ThesisShape): Trigger[] {
       action: "REVIEW",
       rationale: `Monthly hygiene — is this still worth tracking?`,
       cooldownDays: 25,
+    },
+  );
+
+  return out;
+}
+
+function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
+  const out: Trigger[] = [];
+  const direction = thesis.direction ?? "LONG";
+
+  // COMPOUNDER entry requires patience — short-term spikes through the
+  // breakout level are noise on a multi-year hold. 7d cooldown means a
+  // single fleeting cross doesn't spam tactical runs; if price holds
+  // above the level over a week the cron will re-fire.
+  const entry = watchingEntryTrigger(thesis, direction, 7);
+  if (entry) out.push(entry);
+  out.push(reviewDateHitTrigger());
+
+  // No support-REVIEW. Compounder watches don't react to intra-month
+  // price moves — only to fundamental events (earnings/guidance) or
+  // the scheduled hygiene check.
+  out.push(
+    {
+      id: createId(),
+      predicate: { kind: "EARNINGS_BEAT" },
+      action: "REVIEW",
+      rationale:
+        direction === "PASS"
+          ? `Beat — possibly a reason to flip the PASS.`
+          : `Beat — long-term entry validation. Re-evaluate.`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
+      action: "REVIEW",
+      rationale:
+        direction === "PASS"
+          ? `Miss — confirms the PASS.`
+          : `Miss — does this break the compounder thesis?`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "GUIDANCE_CHANGE", direction: "DOWN" },
+      action: "REVIEW",
+      rationale: `Guidance cut on a compounder watch — biggest signal that the long-term thesis is flawed. Re-evaluate.`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "TIME_ELAPSED", days: 90 },
+      action: "REVIEW",
+      rationale: `Quarterly hygiene — even compounders get a periodic look.`,
+      cooldownDays: 80,
     },
   );
 
@@ -366,13 +552,16 @@ export function defaultTriggersForHorizon(
   state: ThesisState = "HELD",
 ): Trigger[] {
   if (state === "WATCHING") {
-    // Watching templates don't currently vary by horizon — entry
-    // semantics are the same regardless of trade structure. We accept
-    // the horizon arg so the call signature is uniform with the held
-    // path; once we have horizon-specific watching templates (e.g.
-    // CATALYST watching with a date-based ENTER), this branch can
-    // delegate to per-horizon helpers like the held side does.
-    return watchingDefaults(thesis);
+    switch (horizon) {
+      case "CATALYST":
+        return watchingCatalystDefaults(thesis);
+      case "TRADE":
+        return watchingTradeDefaults(thesis);
+      case "TARGET":
+        return watchingTargetDefaults(thesis);
+      case "COMPOUNDER":
+        return watchingCompounderDefaults(thesis);
+    }
   }
   switch (horizon) {
     case "COMPOUNDER":

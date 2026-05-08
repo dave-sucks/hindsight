@@ -11,7 +11,7 @@
 // and bump LAST_VERIFIED_AT below.
 
 /** ISO date the registry was last manually verified against the codebase. */
-export const LAST_VERIFIED_AT = "2026-05-07";
+export const LAST_VERIFIED_AT = "2026-05-08";
 
 import type { LucideIcon } from "lucide-react";
 import {

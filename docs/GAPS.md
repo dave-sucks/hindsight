@@ -4,7 +4,7 @@
 >
 > **How to use it:** start at the top. P0s block the product. P1s degrade quality but the system still functions. P2s are paper cuts. Don't skip levels.
 >
-> **Last refreshed:** 2026-05-07 — synthesized from a 5-agent audit of the codebase + Supabase production-data queries. Successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived).
+> **Last refreshed:** 2026-05-08 — watching-thesis integrity workstream (this session) closed P0-2, P1-1, P1-7, P1-8, P2-3. Trigger-health snapshot re-verified post-changes. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived).
 
 ---
 
@@ -39,19 +39,19 @@ These numbers are the empirical baseline for the gaps below. Re-run the queries 
 
 **Reading:** ~⅔ of open theses have null structural-belief fields. EV Catalyst Trader is the worst offender — zero theses with any of them populated. The agent is treating these fields as optional even though they're load-bearing for sheet rendering and tactical-run reasoning.
 
-### Watching trigger health (2026-05-07)
+### Watching trigger health (2026-05-08, post watching-integrity workstream)
 
 | Analyst | Watching | with ENTER | with EXIT | zero triggers | avg/thesis |
 |---|---|---|---|---|---|
 | Catalyst Event Raider | 5 | 4 | 0 | 0 | 4.6 |
 | Earnings Drift Trader | 6 | 4 | 0 | 0 | 4.2 |
-| EV Catalyst Event Trader | 6 | **1** | 0 | 0 | 4.2 |
+| EV Catalyst Event Trader | 6 | 1 | 0 | 0 | 4.2 |
 | Global Event-Driven ETF | 14 | 12 | 0 | 0 | 4.9 |
 | Intraday Momentum Scalper | 2 | 2 | 0 | 0 | 5.0 |
 | Secular Theme Architect | 5 | 4 | 0 | 0 | 4.6 |
 | Tech Momentum Trader | 5 | 2 | 0 | 0 | 4.2 |
 
-**Reading:** PR #217 worked — zero EXIT triggers on watching theses, zero zero-trigger watching theses. But **11 of 43 watching theses (26%) still have no ENTER trigger** — they have other triggers (REVIEW, news-based) but no entry-promotion path. EV Catalyst Trader (1/6) and Tech Momentum Trader (2/5) are the worst.
+**Reading:** numbers identical to 2026-05-07 (no new WATCHING theses landed in directional spots). The 14 watching theses without ENTER triggers — previously flagged as a 26% bug — are **all `direction: PASS`**, which by design don't get ENTER triggers (they're institutional memory, not entry-gated). The "missing ENTER" line was a measurement issue, not a coverage hole. Going forward, `record_thesis` rejects new directional WATCHING theses that lack an ENTER trigger (parity with manage_watchlist). See "Done since" → P1-1.
 
 ### Goalpost-moving check (2026-05-07)
 
@@ -86,18 +86,6 @@ These prevent the core loop from working as designed. Fix first.
 3. Tighten the same fields in `record_thesis` — currently optional, should be required for non-PASS theses.
 
 **Effort:** ~1 hour (tool schema + validation + prompt language).
-
-### P0-2 — Promotion check missing from daily-run prompt
-**Source:** ARCHITECTURE_DEEP_AUDIT (Step 2) + prompts agent audit (the prompt has soft language but no enforcement gate).
-
-**Why it matters:** the MRVL anti-pattern (raise target on a watching thesis when entry condition is already met, walk away). This is the single biggest behavioral regression from the old "mint a fresh thesis daily" era. The daily prompt today says "HOLD-only is fine when no entry condition is met" but does not enforce a check.
-
-**Fix path:**
-1. Add a hard PROMOTION CHECK section to `lib/agent/system-prompt.ts` MORNING_PLAN before Stage 6 complete_run. For every WATCHING thesis: get current price, check entry condition, MUST evaluate INITIATE or document specific rejection reason (volume, regime, news).
-2. Add a runtime gate in `record_run_summary` that refuses `primary_decision: HOLD` when any WATCHING thesis has currentPrice ≥ targetPrice (LONG) AND no `place_trade` landed for that ticker, OR any update_thesis raised a target on a watching thesis whose current price was already at/above the old target.
-3. Re-run the goalpost-moving query daily for a week to confirm the fix holds.
-
-**Effort:** ~3 hours (prompt edit + tool gate + verification).
 
 ### P0-3 — Generalized narrate-vs-execute gate
 **Source:** ARCHITECTURE_DEEP_AUDIT (Step 3) + prompts agent audit (PR #210 fixed `place_trade` only; the same pattern moved to `manage_position`, `manage_watchlist`, `close_position`).
@@ -143,17 +131,6 @@ These prevent the core loop from working as designed. Fix first.
 ---
 
 ## P1 — Quality is degraded but system functions
-
-### P1-1 — 11 watching theses missing ENTER triggers
-**Source:** Supabase — 11 of 43 watching theses (26%). EV Catalyst Trader (1/6), Tech Momentum Trader (2/5).
-
-**Why it matters:** these theses have no entry-promotion path. The trigger evaluator can't fire on them. They sit on the watchlist as decoration.
-
-**Fix path:**
-- One SQL: identify them, close them, force agent to re-mint with proper triggers, OR backfill default ENTER triggers via the `defaultTriggersForHorizon('LONG' | 'SHORT', 'WATCHING')` factory.
-- Long-term: add a runtime guard in `record_thesis` and `manage_watchlist` that refuses to mint a WATCHING thesis with a numeric target unless ENTER triggers are attached.
-
-**Effort:** ~1 hour (SQL + add guard).
 
 ### P1-2 — Monitor pipeline bloat (44 dead SEARCH monitors)
 **Source:** Supabase — 44 of 76 SEARCH monitors stale or never-run.
@@ -202,24 +179,6 @@ These prevent the core loop from working as designed. Fix first.
 
 **Effort:** ~5 min.
 
-### P1-7 — Overdue reviews not picked up by housekeeping cron
-**Source:** SESSION_AUDIT item 11 — MRVL had `nextReviewAt: 5d ago`, never re-reviewed.
-
-**Why it matters:** theses that need attention sit silent until something else fires.
-
-**Fix path:** find the housekeeping cron in `lib/inngest/functions/`, add `nextReviewAt < NOW()` to its query regardless of trigger state. Emit an event that wakes a tactical run on overdue.
-
-**Effort:** ~1 hour.
-
-### P1-8 — Triggers fire 0× during agent runs (only via cron)
-**Source:** SESSION_AUDIT item 12.
-
-**Why it matters:** the agent isn't checking trigger state during the morning walk. It's reading `get_theses` and editing rationales in isolation. Every trigger fire we've seen came from the 15-min cron path.
-
-**Fix path:** add a step in the daily-run prompt that explicitly asks "are any of my thesis triggers currently true given today's prices?" before the per-thesis review loop. Or pre-compute and inject as context.
-
-**Effort:** ~1 hour.
-
 ---
 
 ## P2 — Paper cuts and FE polish
@@ -229,9 +188,6 @@ SQL fix from SESSION_AUDIT item 8. ~5 min.
 
 ### P2-2 — `manage_watchlist` defaults to TRADE horizon
 Hold-style audit — biases new watchlist entries toward short-term. Should default to TARGET when there's no explicit catalyst. ~15 min.
-
-### P2-3 — Watching templates don't vary by horizon
-Hold-style audit — `watchingDefaults()` in `lib/agent/triggers/defaults.ts` ignores horizon. A WATCHING/CATALYST should have a date-based entry trigger; WATCHING/TRADE should have a tighter stop. ~2 hours.
 
 ### P2-4 — No DAY horizon
 SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints theses with `horizon: "TRADE"` (14d max). DAY enforcement happens via EOD-flatten cron, not horizon logic. Decision needed: add a DAY horizon, or document that DAY-style runs use TRADE + EOD-flatten composition. ~1 day if adding the horizon.
@@ -256,9 +212,27 @@ Tools agent — `read_past_transcripts`, `suggest_podcast_config`, `write_segmen
 
 ---
 
-## Done since 2026-05-06 audit
+## Done since 2026-05-08 (watching-thesis integrity workstream)
 
-For posterity — what got fixed in the last 24h:
+This session: closed P0-2, P1-1, P1-7, P1-8, P2-3. PR pending — number to fill in once the branch lands.
+
+- ✅ **P0-2 — Promotion check enforced at runtime.** New state-based gate in `record_run_summary`: for every WATCHING/LONG-or-SHORT thesis owned by the analyst, fetches the latest quote, evaluates the entry condition, and marks the run FAILED unless either (a) a `place_trade` INITIATE TradeDecision landed for that ticker, (b) an `update_thesis(change_status: INVALIDATED)` ThesisUpdate landed, or (c) the rationale corpus names the ticker AND contains a concrete rejection keyword (volume / regime / news / R/R / liquidity / etc.). Same FAILED severity as the existing narration→execution gate. The MRVL pattern (raise target, walk away) has been blocked at the `update_thesis` layer since PR #232; this gate catches the broader "did absolutely nothing" case.
+- ✅ **P1-1 — Reframed and resolved.** The audit's "11 of 43 watching theses missing ENTER triggers" was a measurement issue. Rerunning the trigger-health query 2026-05-08: of the 14 watching theses without ENTER triggers, **all 14 have `direction: PASS`** — institutional-memory theses that by design don't get ENTER triggers. Zero directional (LONG/SHORT) watching theses in production lack an ENTER trigger. To prevent regressions: `record_thesis` now rejects WATCHING + LONG-or-SHORT mints whose merged trigger array contains zero ENTER actions (parity with the existing `manage_watchlist` guard).
+- ✅ **P1-7 — Overdue reviews fire daily.** New `housekeeping-overdue-theses` Inngest cron, hourly during US market hours. Queries every ACTIVE/WATCHING thesis with `nextReviewAt < NOW() AND closedAt IS NULL`; writes one synthetic `ThesisUpdate(type=TRIGGER_FIRED, triggerId=__OVERDUE_REVIEW__)` per overdue thesis with a 24h per-thesis cooldown. The next Daily Run for the analyst surfaces the row in its prompt's "Triggers Fired Since Your Last Run" priority block (run-input.ts adapted to label the synthetic id as "scheduled review overdue"). Test population on 2026-05-08: 14 watching PASS theses with `nextReviewAt = 2026-05-02` (6 days overdue) — the cron's first market-hours tick will fire 14 synthetic rows.
+- ✅ **P1-8 — Already addressed.** Triggers DO fire during agent runs via `triggersMatchingNow` in [`run-input.ts`](../lib/agent/run-input.ts) (server-side `evaluateLiveTriggerMatches` at run start, surfaced as Section 7 of the system prompt). The audit's "0×" finding was pre-PR. Marking P1-8 closed; no action needed.
+- ✅ **P2-3 — Per-horizon WATCHING templates.** [`defaults.ts`](../lib/agent/triggers/defaults.ts) `defaultTriggersForHorizon(_, _, "WATCHING")` now branches on horizon: WATCHING/CATALYST gets filing+earnings REVIEW + 14d hygiene; WATCHING/TRADE gets a tight ENTER + 14d hygiene (matches max-hold); WATCHING/TARGET keeps the current shape (entry + support REVIEW + 30d hygiene); WATCHING/COMPOUNDER gets a patient ENTER (7d cooldown — ignore wiggles), guidance-cut REVIEW, and 90d hygiene. All four templates carry `REVIEW_DATE_HIT` so the trigger-evaluator's 5-min cron auto-fires when `nextReviewAt` lands.
+- ✅ **Self-healing prompt language.** Step 2.A NO branch in [`system-prompt.ts`](../lib/agent/system-prompt.ts) now requires the agent to inspect a WATCHING thesis's triggers[] before logging REVIEWED — if the array has zero ENTER triggers (or only legacy EXIT triggers), it's malformed and must be repaired via `update_thesis(triggers: [...])` or explicitly closed via `change_status: INVALIDATED`. The existing `update_thesis` zero-trigger guard backstops this — REVIEWED-only updates on zero-trigger theses are already rejected.
+
+**Verification 2026-05-08 (production):**
+- Goalpost-moves since 2026-05-07: **0** (5 in the prior 7-day window, all on AMZN by Catalyst Event Raider 5/05–5/06 — pre-existing baseline).
+- New WATCHING theses 2026-05-07: **5** (MRVL, MU, AMKR, SMCI, FIVN). All directional, all have ENTER + target + horizon + ≥2 keyAssumptions + ≥2 invalidationConds. coreBelief 3 of 5 (60%) — the rest is the P0-1 structural-fields work, separate session.
+- Manual cron sanity check via Inngest dashboard pending — outside this session's automated reach.
+
+---
+
+## Done since 2026-05-06 audit (prior session)
+
+For posterity — what got fixed in the 2026-05-06 → 2026-05-07 window:
 
 - ✅ `defaultTriggersForHorizon()` now takes a `state: 'HELD' | 'WATCHING'` param. WATCHING templates emit `ENTER` triggers (no EXIT). 39 watching theses re-backfilled. (PR #217)
 - ✅ Watching trigger health: 0 EXIT triggers on watching theses (down from majority); 0 zero-trigger watching theses (down from 11).

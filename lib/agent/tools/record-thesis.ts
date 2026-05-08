@@ -526,6 +526,75 @@ export const recordThesis = defineTool({
         args.status ??
         (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
 
+      // ── Hoisted trigger build ─────────────────────────────────────────
+      // Hoisted so we can run the watching ENTER-trigger guard below
+      // BEFORE the row hits the DB. The guard inspects the merged final
+      // array (defaults + agent-supplied + cooldown backfill) and rejects
+      // WATCHING/LONG-or-SHORT theses with no ENTER actions — matches the
+      // upstream guard in manage_watchlist.ts and closes the last creation
+      // hole for inert watching theses.
+      const mergedTriggers: Trigger[] = (() => {
+        // Without horizon we can't pick a defaults template — agent's
+        // raw triggers are all we have. Cooldown backfill still runs.
+        if (!args.horizon) {
+          return applyTriggerCooldownDefaults(
+            (args.triggers ?? []) as Trigger[],
+          );
+        }
+        const defaults = defaultTriggersForHorizon(
+          args.horizon as Horizon,
+          {
+            entryPrice: args.entry_price ?? null,
+            targetPrice: args.target_price ?? null,
+            stopLoss: args.stop_loss ?? null,
+            maxHoldDays: args.max_hold_days ?? null,
+            catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
+            direction: args.direction,
+          },
+          effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
+        );
+        const merged = mergeTriggers(
+          defaults,
+          (args.triggers ?? []) as Trigger[],
+        );
+        return applyTriggerCooldownDefaults(merged);
+      })();
+
+      // ── ENTER-trigger guard (parity with manage_watchlist) ───────────
+      // A WATCHING/LONG or WATCHING/SHORT thesis without an ENTER trigger
+      // sits inert — the trigger evaluator has no entry-promotion path,
+      // and the daily-run promotion check has no level to compare price
+      // against. The default templates emit one off targetPrice; this
+      // guard catches the cases where (a) targetPrice is missing or (b)
+      // the agent passed an explicit triggers[] array that crowded out
+      // the default ENTER via the (predicate.kind, action) merge bucket.
+      // PASS theses are exempt — they're institutional memory, not
+      // entry-gated.
+      if (
+        effectiveStatusForTriggers === "WATCHING" &&
+        (args.direction === "LONG" || args.direction === "SHORT")
+      ) {
+        const hasEnter = mergedTriggers.some((t) => t.action === "ENTER");
+        if (!hasEnter) {
+          const reason =
+            args.target_price == null
+              ? `target_price is required on a directional WATCHING thesis — that's the level the ENTER trigger fires on. Either supply target_price (the breakout level for LONG, the breakdown level for SHORT) or set direction to PASS for institutional-memory-only entries.`
+              : `Your supplied triggers[] array displaced the default ENTER trigger via the (predicate, action) merge bucket. Add a trigger with action: "ENTER" and a price predicate (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT) at the entry level — without it the watchlist trigger pipeline can't promote this thesis.`;
+          console.warn(
+            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — WATCHING ${args.direction} with no ENTER trigger.`,
+          );
+          return {
+            summary: `Thesis rejected for ${args.ticker}: WATCHING ${args.direction} requires an ENTER trigger.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note: reason,
+            },
+            sources: [],
+          };
+        }
+      }
+
       const coreData = {
         researchRunId: ctx.runId,
         userId: ctx.userId,
@@ -564,52 +633,11 @@ export const recordThesis = defineTool({
         scalingPlan: args.scaling_plan
           ? (args.scaling_plan as object)
           : undefined,
-        triggers: (() => {
-          // Merge agent-supplied triggers with horizon-keyed defaults so
-          // every thesis ships with the universal baseline without the
-          // agent having to remember every time. Agent wins per
-          // (predicate, action) bucket; defaults fill gaps.
-          //
-          // Defaults shape depends on status:
-          //   WATCHING → ENTER triggers off targetPrice (entry threshold)
-          //              + REVIEW triggers; no EXIT (nothing to exit yet)
-          //   ACTIVE   → EXIT/REVIEW triggers off stop/target (held shape)
-          //
-          // Without this split, watching theses get EXIT triggers that
-          // can never fire usefully and never produce an INITIATE.
-          // See lib/agent/triggers/defaults.ts.
-          //
-          // applyTriggerCooldownDefaults runs LAST so any trigger (agent
-          // or template-supplied) without a cooldown gets a sane per-kind
-          // default. Without this, agent-authored EARNINGS_BEAT / FILING /
-          // PRICE_* triggers fire on every signal-router invocation —
-          // observed as 10x duplicate tactical runs on a single AMZN
-          // earnings signal in production.
-          if (!args.horizon) {
-            return applyTriggerCooldownDefaults(
-              (args.triggers ?? []) as Trigger[],
-            ) as object[];
-          }
-          const defaults = defaultTriggersForHorizon(
-            args.horizon as Horizon,
-            {
-              entryPrice: args.entry_price ?? null,
-              targetPrice: args.target_price ?? null,
-              stopLoss: args.stop_loss ?? null,
-              maxHoldDays: args.max_hold_days ?? null,
-              catalystDate: args.catalyst_date
-                ? new Date(args.catalyst_date)
-                : null,
-              direction: args.direction,
-            },
-            effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
-          );
-          const merged = mergeTriggers(
-            defaults,
-            (args.triggers ?? []) as Trigger[],
-          );
-          return applyTriggerCooldownDefaults(merged) as object[];
-        })(),
+        // mergedTriggers built and validated above the coreData literal.
+        // Centralized so the ENTER-trigger guard can inspect the final
+        // array (defaults + agent + cooldown) BEFORE the row hits the
+        // DB. See the build block above for the templating rules.
+        triggers: mergedTriggers as object[],
         catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
         maxHoldDays:
           args.max_hold_days ?? (args.horizon === "TRADE" ? 14 : null),
