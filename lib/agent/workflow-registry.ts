@@ -1,7 +1,17 @@
 // ── Workflow Registry ──────────────────────────────────────────────────────
-// Single source of truth for Hindsight's operational flow.
-// 5 teams, each with sub-steps and tools. Powers both the /agent-workflow
+// Single source of truth for Hindsight's operational flow — the canonical
+// description of WHAT THE SYSTEM HAS TODAY. Powers the /agent-workflow
 // page (full flow) and each page's HowItWorksSheet (single team).
+//
+// Out of scope here: podcast feature (own modes/tools, not part of core
+// trading loop). For the intended target state see docs/VISION.md.
+// For known gaps between this registry and that vision, see docs/GAPS.md.
+//
+// Update this file whenever any team / cron / tool / prompt changes,
+// and bump LAST_VERIFIED_AT below.
+
+/** ISO date the registry was last manually verified against the codebase. */
+export const LAST_VERIFIED_AT = "2026-05-07";
 
 import type { LucideIcon } from "lucide-react";
 import {
@@ -294,7 +304,7 @@ export const TEAMS: Team[] = [
     description:
       "The Trigger Evaluator is the reactivity layer between your portfolio and the rest of the world. Every active thesis can carry structured trigger predicates — price levels, technical levels, earnings outcomes, filing types, time elapsed. The evaluator's job is to check those predicates against reality and fire an event when one matches.\n\nTwo paths feed it. The signal-driven path consumes routed signals as they land — earnings beats, guidance changes, 8-K filings — and matches them to signal-side predicates. The cron path runs every 15 minutes during market hours, batch-fetches fresh prices, and matches them to price/time-side predicates. A cooldown gate prevents the same predicate from firing repeatedly. When something fires, it stamps an audit row and emits the event the Tactical Run consumes.",
     icon: Bell,
-    schedule: "Every 15m, market hours",
+    schedule: "Hourly during market hours + on signal.routed",
     substeps: [
       { title: "Signal-driven evaluation", summary: "Consumes app/signal.routed. For each (analyst × ticker × thesis × trigger), evaluates signal-side predicates against the routed signal." },
       { title: "Cron-driven evaluation", summary: "Loads all ACTIVE theses with non-empty triggers. Batches Finnhub /quote for unique tickers (≤200). Evaluates price/time-side predicates." },
@@ -319,7 +329,7 @@ export const TEAMS: Team[] = [
       "Discovery Run is how new tickers enter your analyst's coverage. Once a week, every analyst spawns a focused agent that scans the past seven days of signals on names not already in the library, picks the most promising candidates, and mints WATCHING theses with the triggers and rationale that would later promote them to ACTIVE.\n\nIt cannot touch existing coverage — only Daily and Tactical runs can update or close theses. If conviction on a candidate is high enough at discovery time, it can place a starter trade and mint as ACTIVE; otherwise everything goes onto the watchlist for the daily run to evaluate later.",
     icon: Search,
     model: "GPT-4o",
-    schedule: "Sundays 9 AM ET",
+    schedule: "Sundays 9 AM ET (weekly)",
     substeps: [
       { title: "Scan", summary: "read_signals filtered to the discoverySignals bucket. Cross off anything already covered by an active or watching thesis." },
       { title: "Score", summary: "get_stock_data on top 2-3 candidates. Composite score (trendStrength / relativeStrength / entryQuality / catalystFreshness). ≥ 7 required to mint." },
@@ -355,7 +365,7 @@ export const TEAMS: Team[] = [
       "The Daily Run is where your portfolio actually gets managed. Every weekday morning at 8 AM ET, each enabled analyst wakes up, reads its current holdings and watchlist along with whatever signals came in overnight, then goes through each name one at a time and asks: does anything need to change today?\n\nFor most names the answer is no — nothing material happened, so the analyst just logs that it looked and moves on. For the rest, it does fresh research, updates the thesis with what it learned (raise the target, tighten the stop, change conviction), and acts on the position if needed (close, scale in, trim). It can also pick up worthwhile new discovery candidates that came in overnight, and writes a quick recap at the end of what it actually changed.",
     icon: Bot,
     model: "GPT-4o",
-    schedule: "8:00 AM ET weekdays",
+    schedule: "8:00 AM ET weekdays (daily)",
     substeps: [
       { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references priority reviews flagged by the price monitor. Plain text — no tools." },
       { title: "Orient", summary: "read_signals (today's three buckets: portfolio, watchlist, discovery — each carries signalId for provenance) and get_theses with full update history. read_artifact on anything worth a deep read; web_search sparingly within budget." },
@@ -462,7 +472,7 @@ export const TEAMS: Team[] = [
       "The Briefing Agent is what gives your analysts continuity between runs. Whenever any agent run completes — daily, tactical, or discovery — the briefing agent fires inline as the run wraps up. It reads the full conversation transcript, the current portfolio with live P&L, and the trade outcomes from the session.\n\nIt writes a structured standup: a narrative of what happened, what's still unresolved, what to watch tomorrow, and any self-corrections worth carrying forward. It can also create a few short-lived search monitors that the next morning's intelligence sweep will run. The standup gets injected into the next run's system prompt — that's how the analyst remembers anything.",
     icon: RotateCcw,
     model: "GPT-4o",
-    schedule: "After every run",
+    schedule: "Inline after every run (no separate cron)",
     substeps: [
       { title: "Read context", summary: "Pulls the conversation transcript, current portfolio with live P&L, and recent trade outcomes from the session." },
       { title: "Write standup", summary: "Narrative, strategy notes, market posture, watch-tomorrow items, unresolved items, self-corrections. 400-600 words." },
