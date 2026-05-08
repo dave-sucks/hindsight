@@ -165,7 +165,16 @@ export const triggerEvaluator = inngest.createFunction(
   },
   [
     { event: "app/signal.routed" },
-    { cron: "TZ=America/New_York */15 9-16 * * 1-5" },
+    // Bumped from */15 to */5 on 2026-05-07 to support DAY analysts.
+    // Day-traders set absolute PRICE_ABOVE/PRICE_BELOW entry triggers on
+    // intraday levels — at 15 min cadence the breakout has often failed
+    // or run away by the time tactical-run spawns. 5 min is the floor for
+    // "real-time enough to act on a breakout." Swing analysts unaffected
+    // because per-trigger cooldowns prevent over-firing — a EXIT trigger
+    // with cooldownDays=1 fires once whether the cron checks every 5 or
+    // every 15 min. Cost: 3x Finnhub /quote calls per market hour, still
+    // within the 200-unique-ticker cap and Finnhub paid-tier rate limits.
+    { cron: "TZ=America/New_York */5 9-16 * * 1-5" },
   ],
   async ({ event, step }) => {
     const isSignalDriven = event?.name === "app/signal.routed";

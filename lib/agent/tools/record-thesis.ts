@@ -236,6 +236,19 @@ const thesisFields = z.object({
     .describe(
       "Coverage status. ACTIVE = trade-eligible coverage (the agent intends to act now or imminently). WATCHING = on-the-radar coverage (watchlist review, discovery candidate, named-but-not-yet-actionable). Default is derived from source_kind — WATCHLIST_REVIEW → WATCHING, else ACTIVE — pass explicitly when the intent differs.",
     ),
+  // Cross-analyst overlap acknowledgement. The tool blocks DAY-only
+  // analysts from minting a thesis on a ticker another analyst on the
+  // same account already covers ACTIVE/WATCHING in the same direction —
+  // the day-trader's edge is the marginal intraday setup, not duplicate
+  // coverage. To proceed anyway, pass a one-line rationale explaining
+  // what's specifically intraday-distinct about this setup vs the
+  // existing coverage. Non-DAY analysts ignore this field.
+  acknowledge_cross_analyst_overlap: z
+    .string()
+    .optional()
+    .describe(
+      "DAY-only override. When another analyst already covers this ticker + direction, pass a one-line rationale explaining the day-trade-specific setup (e.g. 'opening-range breakout setup distinct from Tech Momentum's multi-week thesis'). Required to proceed in DAY-only configs; ignored otherwise.",
+    ),
 });
 
 const thesisSchema = thesisFields.superRefine((val, ctx) => {
@@ -659,6 +672,80 @@ export const recordThesis = defineTool({
             resolvedParentId = existingThesis.id;
           }
         } catch { /* non-fatal */ }
+      }
+
+      // ── Cross-analyst overlap guard (DAY-only) ──────────────────────────
+      // Day-traders should pick fresh names from today's tape, not lean on
+      // tickers another analyst already covers. Observed in production
+      // 2026-05-07: a fresh DAY analyst minted theses on AMD/MU/SMCI —
+      // every one already covered ACTIVE/WATCHING by another analyst on
+      // the same account. The intraday workflow degenerated into "review
+      // the rest of the book's tickers" instead of net-new discovery.
+      //
+      // For DAY-only analysts: block when another analyst has the same
+      // (ticker, direction) ACTIVE/WATCHING. Override allowed via
+      // acknowledge_cross_analyst_overlap with a rationale — the marginal
+      // intraday setup may genuinely be distinct from a multi-week thesis.
+      // Non-DAY analysts: no check (overlapping coverage across time
+      // horizons is a feature, not a bug).
+      if (ctx.analystId && ctx.userId && args.direction !== "PASS") {
+        try {
+          const thisAnalyst = await prisma.agentConfig.findFirst({
+            where: { id: ctx.analystId },
+            select: { holdDurations: true },
+          });
+          const isDayOnly =
+            (thisAnalyst?.holdDurations ?? []).length > 0 &&
+            (thisAnalyst?.holdDurations ?? []).every(
+              (h: string) => h.toUpperCase() === "DAY",
+            );
+          if (isDayOnly && !args.acknowledge_cross_analyst_overlap) {
+            const otherAnalystThesis = await prisma.thesis.findFirst({
+              where: {
+                ticker: args.ticker,
+                direction: args.direction,
+                status: { in: ["ACTIVE", "WATCHING"] },
+                researchRun: {
+                  agentConfig: {
+                    userId: ctx.userId,
+                    id: { not: ctx.analystId },
+                  },
+                },
+              },
+              orderBy: { createdAt: "desc" },
+              select: {
+                id: true,
+                status: true,
+                researchRun: {
+                  select: { agentConfig: { select: { id: true, name: true } } },
+                },
+              },
+            });
+            if (otherAnalystThesis) {
+              const otherName =
+                otherAnalystThesis.researchRun.agentConfig?.name ?? "another analyst";
+              return {
+                summary: `${args.ticker} already covered ${otherAnalystThesis.status} ${args.direction} by ${otherName} — pick a fresh name or pass acknowledge_cross_analyst_overlap.`,
+                data: {
+                  thesis_id: null,
+                  status: "CROSS_ANALYST_OVERLAP" as const,
+                  ticker: args.ticker,
+                  conflicting_analyst: otherName,
+                  conflicting_thesis_id: otherAnalystThesis.id,
+                  conflicting_status: otherAnalystThesis.status,
+                  note:
+                    `${args.ticker} (${args.direction}) is already covered ${otherAnalystThesis.status} by ${otherName} (thesis ${otherAnalystThesis.id}). ` +
+                    `As a DAY-only analyst, your edge is the intraday setup — duplicating swing/position coverage doesn't add edge to this account. ` +
+                    `OPTIONS:\n` +
+                    `  1. (preferred) Pick a different name from today's movers list. Plenty of net-new candidates above your $5B cap floor.\n` +
+                    `  2. (override) If today's intraday setup is genuinely distinct from ${otherName}'s thesis (e.g. opening-range breakout vs multi-week earnings drift), retry record_thesis with acknowledge_cross_analyst_overlap: "<one-line rationale>".\n` +
+                    `Do NOT retry without one of these — the same block will fire again.`,
+                },
+                sources: [],
+              };
+            }
+          }
+        } catch { /* non-fatal — overlap check is advisory, not blocking on error */ }
       }
 
       // Effective status: explicit `status` arg wins; otherwise derive
