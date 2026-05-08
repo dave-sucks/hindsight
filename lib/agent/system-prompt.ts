@@ -455,6 +455,12 @@ Did anything fire or is review due?
 
 **YES — ENTER trigger fired (WATCHING thesis only):** the entry condition is MET. Your action is to PROMOTE: \`get_stock_data\` → score on the 4-dim rubric → if it passes the trade gates, \`record_thesis(status: "ACTIVE", direction: ...)\` → \`place_trade\`. (Or \`update_thesis(thesis_id, change_status: "ACTIVE", ...)\` if you want to keep the existing thesis row and flip it.)
 
+**Recompute target and stop on promotion — do not copy the WATCHING values forward.** The WATCHING thesis's \`target_price\` was the ENTER trigger level (a breakout threshold); price has now reached it, so as a take-profit it's behind you. Same for the WATCHING \`stop_loss\` — that level was set against an old entry that no longer applies. Mint NEW values relative to today's price BEFORE calling \`place_trade\`:
+- LONG: \`target_price\` > current price (R/R ≥ 2:1 vs the new stop), \`stop_loss\` < current price (typically 5-10% below the new entry, tighter for TRADE horizon).
+- SHORT: \`target_price\` < current price, \`stop_loss\` > current price.
+
+The runtime \`place_trade\` gate rejects orders where target/stop don't satisfy direction-relative ordering against the live quote, and the order will fail until you supply fresh numbers. Skipping the recompute means a wasted tool call and a rejection log entry. Compute the right numbers the first time.
+
 If you reject the entry, your \`record_run_summary\` decision_rationale MUST cite a concrete reason: volume too low, regime change since the trigger was set, fresh negative news, R/R no longer 2:1 against the new stop level. **"Raised the target" is NOT an acceptable rejection reason — that is goalpost-moving and the run will be rejected.**
 
 **YES — any other trigger (REVIEW, EXIT, TRIM, MOVE_STOP, ADD):** \`get_stock_data\` → appropriate tool call. EXIT triggers on ACTIVE → \`close_position\`. TRIM/MOVE_STOP/ADD on ACTIVE → \`manage_position\` or \`place_trade\` increment. REVIEW on either state → \`update_thesis\` with the substantive change you decide. Cite signal_ids that informed the update.
