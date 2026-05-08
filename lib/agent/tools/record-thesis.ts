@@ -19,6 +19,7 @@ import {
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
+import { computeNextReviewAt } from "@/lib/agent/thesis-review-cadence";
 
 const thesisFields = z.object({
   ticker: z.string(),
@@ -499,23 +500,11 @@ export const recordThesis = defineTool({
       // Default nextReviewAt by horizon. Cheap, transparent, lets the
       // housekeeping run pick up theses without the agent having to do
       // the date math. Falls through to null when horizon is omitted —
-      // legacy theses don't get an auto-review date.
-      let nextReviewAt: Date | null = null;
-      if (args.next_review_at) {
-        nextReviewAt = new Date(args.next_review_at);
-      } else if (args.horizon) {
-        const now = Date.now();
-        const dayMs = 24 * 60 * 60 * 1000;
-        const days =
-          args.horizon === "CATALYST"
-            ? 1
-            : args.horizon === "TRADE"
-              ? 1
-              : args.horizon === "TARGET"
-                ? 7
-                : 30; // COMPOUNDER
-        nextReviewAt = new Date(now + days * dayMs);
-      }
+      // legacy theses don't get an auto-review date. Cadence math lives
+      // in computeNextReviewAt so update_thesis stays in lockstep.
+      const nextReviewAt: Date | null = args.next_review_at
+        ? new Date(args.next_review_at)
+        : computeNextReviewAt(args.horizon ?? null, new Date());
 
       // ── Effective status — derived once, used both for triggers and DB ──
       // We compute the held vs watching distinction up front so the

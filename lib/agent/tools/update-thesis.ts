@@ -35,6 +35,7 @@ import {
 } from "@/lib/agent/thesis-updates";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
+import { computeNextReviewAt } from "@/lib/agent/thesis-review-cadence";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -480,12 +481,44 @@ export const updateThesis = defineTool({
     // an UPDATED row. Useful when housekeeping looks at a thesis and
     // decides it's still right — we want a paper trail of "agent looked
     // here on this date" without polluting the diff log.
-    const patchKeyCount = Object.keys(patch).length;
-    if (patchKeyCount === 0) {
-      // Awaited (was void). Both the morning-research coverage gate and
-      // the tactical-run close-out gate query ThesisUpdate immediately
-      // after the agent finishes — fire-and-forget races caused false
-      // FAILED on legitimate REVIEWED-only runs.
+    //
+    // Detect this BEFORE the nextReviewAt auto-refresh below — a pure
+    // rationale-only call should still route to REVIEWED even though we
+    // slide the review schedule on the way through.
+    const isReviewedOnly = Object.keys(patch).length === 0;
+
+    // Auto-refresh nextReviewAt on every touch when the agent didn't
+    // explicitly schedule one. Without this the field is stamped at
+    // creation and never moves, drifting past "now" within days and
+    // making any "overdue review" filter useless. Skip when:
+    //   • The agent passed next_review_at explicitly (respect intent;
+    //     null means "no scheduled review").
+    //   • Terminal transition (INVALIDATED/CLOSED) — field is moot.
+    //   • Horizon is missing (legacy theses).
+    // Resolved horizon takes the post-patch value so a horizon change
+    // in the same call drives the new cadence, not the old one.
+    if (args.next_review_at === undefined && !isTerminalTransition) {
+      const resolvedHorizon = args.horizon ?? existing.horizon ?? null;
+      const refreshed = computeNextReviewAt(resolvedHorizon, new Date());
+      if (refreshed != null) {
+        patch.nextReviewAt = refreshed;
+      }
+    }
+
+    if (isReviewedOnly) {
+      // REVIEWED-only path: apply the auto-refreshed nextReviewAt as a
+      // side-effect (kept off the diff log so the timeline row stays
+      // clean), then write the REVIEWED audit row. Awaited (was void).
+      // Both the morning-research coverage gate and the tactical-run
+      // close-out gate query ThesisUpdate immediately after the agent
+      // finishes — fire-and-forget races caused false FAILED on
+      // legitimate REVIEWED-only runs.
+      if (patch.nextReviewAt !== undefined) {
+        await prisma.thesis.update({
+          where: { id: existing.id },
+          data: { nextReviewAt: patch.nextReviewAt as Date | null },
+        });
+      }
       await writeThesisUpdate({
         thesisId: existing.id,
         type: "REVIEWED",
