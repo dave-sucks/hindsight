@@ -4,7 +4,7 @@
 >
 > **How to use it:** start at the top. P0s block the product. P1s degrade quality but the system still functions. P2s are paper cuts. Don't skip levels.
 >
-> **Last refreshed:** 2026-05-08 — Monitor Health workstream (this session) closed P0-4, P1-2. Backfill recomputed Monitor counters from authoritative chain; total trades-sourced lifted 2 → 5 immediately. Earlier same-day: watching-thesis integrity workstream closed P0-2, P1-1, P1-7, P1-8, P2-3; admin sweep closed P0-3, P0-5d, P1-5, P1-6, P2-9. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived).
+> **Last refreshed:** 2026-05-08 — Thesis Architecture pass (PR #239) closed P0-1, P0-5a + the previously-untracked promotion gap and conditional-requireds gaps. Same day: Monitor Health workstream (PR #237) closed P0-4, P1-2 (Monitor-counter backfill lifted trades-sourced 2 → 5). Small sweep (PR #238) closed P1-3, P2-2, P2-5. Admin sweep closed P0-3, P0-5d, P1-5, P1-6, P2-9. Watching-thesis integrity workstream closed P0-2, P1-1, P1-7, P1-8, P2-3. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived). Live thesis-system reference: [`docs/THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
 
 ---
 
@@ -75,31 +75,19 @@ The MRVL anti-pattern (raising target on a watching thesis when current price is
 
 These prevent the core loop from working as designed. Fix first.
 
-### P0-1 — `update_thesis` ignores structural belief fields
-**Source:** ARCHITECTURE_DEEP_AUDIT (Step 4) + Supabase: 32% / 32% / 38% population for coreBelief / keyAssumptions / invalidationConds. EV Catalyst Trader has 0%.
-
-**Why it matters:** these fields are how the thesis says "what's the actual claim, what must be true, what would prove it wrong." Without them, the thesis sheet's Plan section can't render anything substantive, the tactical run has no basis for "is this trigger actually invalidating my thesis," and post-trade evaluation has nothing to grade against.
-
-**Fix path:**
-1. Tighten the schema description in `lib/agent/tools/update-thesis.ts` — any update that changes more than rationale must include at least one structural belief field (or explicitly document why none changed).
-2. Add a runtime guard: refuse `update_thesis` calls that touch confidenceScore / horizon / target / stop without any structural-field change AND without an explicit `structural_unchanged_reason` parameter.
-3. Tighten the same fields in `record_thesis` — currently optional, should be required for non-PASS theses.
-
-**Effort:** ~1 hour (tool schema + validation + prompt language).
-
 ### P0-5 — Horizon awareness is mostly cosmetic
 **Source:** Hold-style audit (overall grade D+).
 
 **Why it matters:** this is the most important pillar from VISION.md and the one most at risk. The system says it's horizon-aware (triggers differ per horizon, A-) but doesn't behave horizon-aware (daily prompt grade C, action layer D, data fetching F).
 
 **Fix path (sub-items, in order):**
-1. **P0-5a** — Make horizon visible in the daily-run prompt portfolio + Live Theses tables (currently absent; agent must click into the thesis card to remember exit policy).
-2. **P0-5b** — Move time-based exit enforcement from prompt to code. `lib/trade-exit.ts` and `lib/inngest/functions/price-monitor.ts` should accept and respect `Thesis.horizon`. Code rule: `if (horizon === "TRADE" && daysHeld >= maxHoldDays) → trigger REVIEW`.
-3. **P0-5c** — Branch daily prompt on horizon. Separate alert thresholds: "5% of stop" for TRADE, "10% of stop" for COMPOUNDER. Separate guidance: "COMPOUNDER theses ignore intraday moves <-3% absent fundamental invalidation."
+1. ~~**P0-5a** — Make horizon visible in the daily-run prompt.~~ Closed 2026-05-08 (Thesis Architecture, PR #239) — Live Theses table now renders horizon, schedule, and per-thesis exit-policy hint sourced from `lib/agent/horizon-policy.ts`.
+2. **P0-5b** — Move time-based exit enforcement from prompt to code. `lib/trade-exit.ts` and `lib/inngest/functions/price-monitor.ts` should accept and respect `Thesis.horizon`. Code rule: `if (horizon === "TRADE" && daysHeld >= maxHoldDays) → trigger REVIEW`. **Note (2026-05-08):** PR #239 shipped the constants module (`HORIZON_REVIEW_DAYS`, `HORIZON_EXIT_POLICY`) but did NOT wire it into price-monitor or trade-exit at runtime — those still operate on Position fields with hardcoded proximity thresholds. The constants are ready; this fix is the actual integration.
+3. **P0-5c** — Branch daily prompt on horizon. Separate alert thresholds: "5% of stop" for TRADE, "10% of stop" for COMPOUNDER. Separate guidance: "COMPOUNDER theses ignore intraday moves <-3% absent fundamental invalidation." **Note (2026-05-08):** the per-horizon exit-policy strings now render in the Live Theses table (PR #239), but the agent-facing branching language in Step 2.B is still uniform 5%. Tightening this is the remaining piece.
 4. ~~**P0-5d** — Add horizon promotion path.~~ Closed 2026-05-08 (admin sweep PR).
 5. **P0-5e** — Differentiate data fetching per horizon. Long-term theses should pull SEC filings + analyst consensus more; intraday should pull options flow + volume.
 
-**Effort:** ~1-2 days for P0-5a through P0-5c. P0-5e is bigger.
+**Effort:** ~1-2 days for P0-5b through P0-5c. P0-5e is bigger.
 
 ---
 
@@ -126,6 +114,25 @@ SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints th
 
 ### P2-7 — Intelligence pipeline crons are independent
 Crons agent — no Inngest `.after()` or `.waitFor()` between firm-market-sweep → portfolio-watchlist-monitor → domain-monitor → signal-router. If one lags, downstream still fires on schedule with stale data. Today this is theoretical; flag it as a known fragility. ~2 hours to add chaining.
+
+---
+
+## Done since 2026-05-08 (Thesis Architecture)
+
+End-to-end thesis-system pass. PR [#239](https://github.com/dave-sucks/hindsight/pull/239). Live reference: [`docs/THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
+
+- ✅ **P0-1 — Structural-belief fields required.** New [`lib/agent/thesis-belief.ts`](../lib/agent/thesis-belief.ts) validator (mirrors `thesis-shape.ts`). `record_thesis` rejects directional theses missing `core_belief` (non-empty after trim), ≥2 `key_assumptions`, ≥2 `invalidation_conditions`. `update_thesis` adds `structural_unchanged_reason` + discipline gate: patches that change `confidence_score` / `target_price` / `stop_loss` without touching belief AND without an explicit reason are rejected (gate bypasses on terminal transitions and ACTIVE promotions). Reason persists into the timeline rationale. 14 unit tests; closes the 32%/32%/38% population gap audited 2026-05-07.
+- ✅ **P0-5a — Horizon + structural belief surfaced in daily-run prompt.** [`run-input.ts`](../lib/agent/run-input.ts) `activeTheses` select now carries `horizon`, `coreBelief`, `nextReviewAt`, `catalystDate`, `maxHoldDays`. [`system-prompt.ts`](../lib/agent/system-prompt.ts) Live Theses table renders Horizon + Schedule columns (review-due / catalyst-in-Nd / max-hold-Xd-left), plus per-thesis line: belief preview + horizon exit-policy hint sourced from [`lib/agent/horizon-policy.ts`](../lib/agent/horizon-policy.ts). Agent no longer needs a `get_theses` round-trip to remember what kind of trade it's managing.
+- ✅ **Promotion gap — `change_status: "ACTIVE"` enum extension.** Pre-this-PR the tactical prompt instructed `update_thesis(change_status: "ACTIVE")` but the enum only allowed INVALIDATED/CLOSED. Calls rejected silently; theses stayed WATCHING with open positions, breaking the morning-run Live Theses table. Now legal: requires `existing.status === "WATCHING"` and recomputed `target_price` + `stop_loss` (the WATCHING target was the ENTER trigger level — behind us at promotion). Bypasses the goalpost-moving guard (legitimate target raise on promotion) and the structural-unchanged-reason gate (promotion is its own justification — capital behind existing belief). Tactical + daily prompts updated to use the new path.
+- ✅ **Conditional requireds — `catalystDate` when CATALYST, explicit `maxHoldDays` when TRADE.** `record_thesis` rejects `horizon=CATALYST` without `catalyst_date` (the dated event drives both the trigger template and the 30d-past-event exit policy) and `horizon=TRADE` without explicit `max_hold_days` (no more silent default-14 auto-extending past the intended window). PASS theses bypass.
+- ✅ **Trade evaluator reads the belief.** [`trade-evaluator.ts`](../lib/inngest/functions/trade-evaluator.ts) post-mortem prompt now feeds `coreBelief` + `keyAssumptions` + `invalidationConds` + `horizon` into GPT-4o. System prompt instructs grading against the BELIEF, not just the rationale: "right outcome, wrong reasons" becomes a documentable learning. Closes the eval side of P0-1.
+- ✅ **`horizon-policy.ts` — single source for horizon constants.** New module exports `HORIZON_REVIEW_DAYS`, `HORIZON_REVIEW_CADENCE`, `HORIZON_EXIT_POLICY`. `record_thesis` imports the day constants for `nextReviewAt` math (replacing inline 1/1/7/30 ternary). Daily-run prompt imports the cadence + policy strings for per-thesis hint rendering. Writer and reader stay aligned.
+- ✅ **Drive-by — `update-thesis.ts` `select` was missing `direction` + `entryPrice`.** Latent bug in the shape gate (it referenced fields the Prisma client returned as undefined at runtime). Added to the select.
+
+**Verification 2026-05-08:**
+- `npx tsc --noEmit` clean for all modified files. Two pre-existing unrelated errors (`GenerateAudioButton.tsx`, `transcript-row.tsx`) remain.
+- 168/168 jest tests pass (14 new in `thesis-belief.test.ts`; 154 existing across 7 suites).
+- **Pending:** next morning cron — watch for rejection-loop behavior on the new gates. If thesis mint count drops to ~0 the prompt didn't fully adapt; revert + tighten before re-shipping. Spot-check via Supabase: `SELECT direction, coreBelief IS NOT NULL, array_length(keyAssumptions,1), array_length(invalidationConds,1) FROM "Thesis" WHERE createdAt::date = current_date AND direction IN ('LONG','SHORT')`.
 
 ---
 

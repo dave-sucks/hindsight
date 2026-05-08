@@ -74,6 +74,8 @@ A thesis is not a paragraph of vibes. It's a structured object with:
 
 **What good looks like:** every active or watching thesis populates these fields. The triggers actually fire and produce action. The target/stop math respects the horizon. When evidence arrives that touches a key assumption, the agent updates the thesis durably with a `ThesisUpdate` audit row, not a free-text comment.
 
+> **See also:** [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — the live reference for how the thesis system actually works (definition, lifecycle, per-horizon shapes, producers + gates, consumers).
+
 ### Pillar 3 — Watchlist → trade promotion
 **The system actually pulls the trigger.**
 
