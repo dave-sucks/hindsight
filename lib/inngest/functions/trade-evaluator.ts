@@ -24,7 +24,11 @@ export const evaluateTrade = inngest.createFunction(
   async ({ event, step }) => {
     const { positionId } = event.data as { positionId: string };
 
-    // Step 1: Fetch position + thesis from DB
+    // Step 1: Fetch position + thesis from DB. Selects the structured
+    // belief fields (coreBelief / keyAssumptions / invalidationConds) so
+    // the GPT-4o post-mortem can grade against the falsifiable claim,
+    // not just the trade rationale. Pre-this-PR the eval saw only the
+    // narrative — couldn't tell when an assumption flipped under it.
     const position = await step.run("fetch-position", async () => {
       return prisma.position.findUnique({
         where: { id: positionId },
@@ -38,6 +42,11 @@ export const evaluateTrade = inngest.createFunction(
                   signalTypes: true,
                   thesisBullets: true,
                   sourceSignalIds: true,
+                  coreBelief: true,
+                  keyAssumptions: true,
+                  invalidationConds: true,
+                  horizon: true,
+                  direction: true,
                 },
               },
             },
@@ -61,9 +70,32 @@ export const evaluateTrade = inngest.createFunction(
       const holdDays = daysBetween(position.openedAt as unknown as string, position.closedAt as unknown as string | null);
       const pnlPct = ((Number(position.closePrice) - Number(position.avgCost)) / Number(position.avgCost) * 100).toFixed(2);
 
+      // Belief block — the structured claim the agent committed to at
+      // mint time. Lets the evaluator distinguish "thesis correct, exit
+      // timing was off" from "thesis broken, lucky we got out." Falls
+      // through gracefully on legacy theses with empty fields.
+      const beliefBlock = (() => {
+        if (!thesis) return "";
+        const lines: string[] = [];
+        if (thesis.horizon) lines.push(`Horizon: ${thesis.horizon}`);
+        if (thesis.coreBelief) lines.push(`\nCore belief: ${thesis.coreBelief}`);
+        if (thesis.keyAssumptions?.length) {
+          lines.push(`\nKey assumptions (must remain true for the belief to hold):`);
+          for (const a of thesis.keyAssumptions) lines.push(`- ${a}`);
+        }
+        if (thesis.invalidationConds?.length) {
+          lines.push(`\nInvalidation conditions (would prove the belief wrong):`);
+          for (const i of thesis.invalidationConds) lines.push(`- ${i}`);
+        }
+        return lines.length > 0 ? `\n\n${lines.join("\n")}` : "";
+      })();
+
       const { text } = await generateText({
         model: openai("gpt-4o"),
-        system: "You are a trading coach evaluating closed paper trades. Be honest and constructive. Focus on what the analyst got right, what they missed, and what they should learn. Keep it to 3-4 paragraphs.",
+        system:
+          "You are a trading coach evaluating closed paper trades. Be honest and constructive. Focus on what the analyst got right, what they missed, and what they should learn. " +
+          "When the thesis included a structured belief (core_belief + key_assumptions + invalidation_conditions), grade against the BELIEF, not just the trade rationale: did each key_assumption actually hold through the hold period? Did any invalidation_condition come true? If the trade closed at a profit but the belief was already broken, name that — \"right outcome, wrong reasons\" is still a learning. " +
+          "Keep it to 3-4 paragraphs.",
         prompt: `Evaluate this closed paper trade:
 
 Ticker: ${position.symbol}
@@ -74,11 +106,11 @@ P&L: ${pnlPct}%
 Outcome: ${position.outcome}
 Close reason: ${position.closeReason ?? "MANUAL"}
 Hold duration: ${holdDays} days
-${thesis?.reasoningSummary ? `\nOriginal thesis: ${thesis.reasoningSummary}` : ""}
+${thesis?.reasoningSummary ? `\nOriginal thesis (rationale): ${thesis.reasoningSummary}` : ""}
 ${thesis?.signalTypes?.length ? `Signal types: ${thesis.signalTypes.join(", ")}` : ""}
-${thesis?.thesisBullets?.length ? `\nKey bullets:\n${thesis.thesisBullets.map((b: string) => `- ${b}`).join("\n")}` : ""}
+${thesis?.thesisBullets?.length ? `\nThesis bullets:\n${thesis.thesisBullets.map((b: string) => `- ${b}`).join("\n")}` : ""}${beliefBlock}
 
-Write an honest post-trade evaluation. Was the thesis correct? Was sizing appropriate? What should the analyst learn from this trade?`,
+Write an honest post-trade evaluation. Was the BELIEF correct (each assumption, each invalidation condition)? Was sizing appropriate? What should the analyst learn from this trade?`,
         maxOutputTokens: 500,
       });
 

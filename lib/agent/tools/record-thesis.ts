@@ -20,6 +20,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
+import { HORIZON_REVIEW_DAYS, type Horizon as HorizonPolicy } from "@/lib/agent/horizon-policy";
 
 const thesisFields = z.object({
   ticker: z.string(),
@@ -208,7 +209,7 @@ const thesisFields = z.object({
     .datetime()
     .optional()
     .describe(
-      "ISO timestamp. CATALYST horizon only — when the catalyst event is expected (e.g. earnings date, FDA decision date).",
+      "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (with max_hold_days) or TARGET (open-ended).",
     ),
   max_hold_days: z
     .number()
@@ -216,7 +217,9 @@ const thesisFields = z.object({
     .positive()
     .max(365)
     .optional()
-    .describe("TRADE horizon only. Default 14 if omitted."),
+    .describe(
+      "REQUIRED when horizon=TRADE — declares the time-exit window for this short-term setup. Typical values: 5-7 for tight intraday/breakout, 10-14 for swing patterns. The TIME_ELAPSED trigger fires a REVIEW at this many days. There is NO silent default — set it explicitly or pick TARGET if you want open-ended.",
+    ),
   next_review_at: z
     .string()
     .datetime()
@@ -542,6 +545,60 @@ export const recordThesis = defineTool({
         };
       }
 
+      // ── Conditional-requireds gate ─────────────────────────────────────
+      // Some horizon × field combinations are structurally required but
+      // were silently defaulted before this gate landed. Make them
+      // explicit at write time so the durable thesis row reflects what
+      // the agent actually decided, not what defaultTriggersForHorizon
+      // happened to fall through to.
+      //
+      //   horizon=CATALYST → catalyst_date REQUIRED. The whole point of
+      //                      a CATALYST trade is the dated event; the
+      //                      trigger templates and the 30d-past-event
+      //                      exit policy both key off it.
+      //   horizon=TRADE    → max_hold_days REQUIRED (no default). 14
+      //                      used to be the silent fallback. Force the
+      //                      agent to declare the window so a TRADE
+      //                      thesis isn't quietly auto-extended past
+      //                      its intended life.
+      // PASS theses bypass — they're not actionable plans.
+      if (args.direction !== "PASS" && args.horizon === "CATALYST" && !args.catalyst_date) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — CATALYST horizon without catalyst_date.`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: CATALYST requires catalyst_date.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note:
+              `CATALYST horizon means the trade is built around a specific dated event (FDA decision, M&A close, named earnings, court ruling). ` +
+              `The catalyst_date drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. ` +
+              `Pass catalyst_date as an ISO timestamp (e.g. "2026-06-15T20:30:00Z" for AMC earnings on 6/15). ` +
+              `If you don't actually know when the catalyst lands, this isn't a CATALYST thesis — pick TRADE (max_hold_days bounds it) or TARGET (open-ended) instead.`,
+          },
+          sources: [],
+        };
+      }
+      if (args.direction !== "PASS" && args.horizon === "TRADE" && args.max_hold_days == null) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — TRADE horizon without explicit max_hold_days.`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: TRADE requires explicit max_hold_days.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note:
+              `TRADE horizon means a bounded short-term setup (days-to-weeks) with a hard time exit. ` +
+              `Pass max_hold_days explicitly — typical values are 5-7 for tight intraday/breakout setups, 10-14 for swing patterns. ` +
+              `The TIME_ELAPSED trigger will fire a REVIEW at this many days; without it set, the thesis silently auto-extends past its intended window. ` +
+              `If you want open-ended (no time exit), use TARGET instead.`,
+          },
+          sources: [],
+        };
+      }
+
       // Compute composite = SUM of the four weighted dimensions (caps:
       // 3+3+2+2 = 10). NOT an average — each dimension's cap is the weight,
       // so summing produces a score on the same /10 scale. ≥ 7 = ADD/ROTATE
@@ -563,23 +620,17 @@ export const recordThesis = defineTool({
 
       // Default nextReviewAt by horizon. Cheap, transparent, lets the
       // housekeeping run pick up theses without the agent having to do
-      // the date math. Falls through to null when horizon is omitted —
-      // legacy theses don't get an auto-review date.
+      // the date math. Constants live in lib/agent/horizon-policy.ts so
+      // the daily-run prompt's per-horizon hint and the writer's review
+      // cadence stay in lockstep. Falls through to null when horizon is
+      // omitted — legacy theses don't get an auto-review date.
       let nextReviewAt: Date | null = null;
       if (args.next_review_at) {
         nextReviewAt = new Date(args.next_review_at);
       } else if (args.horizon) {
-        const now = Date.now();
         const dayMs = 24 * 60 * 60 * 1000;
-        const days =
-          args.horizon === "CATALYST"
-            ? 1
-            : args.horizon === "TRADE"
-              ? 1
-              : args.horizon === "TARGET"
-                ? 7
-                : 30; // COMPOUNDER
-        nextReviewAt = new Date(now + days * dayMs);
+        const days = HORIZON_REVIEW_DAYS[args.horizon as HorizonPolicy];
+        nextReviewAt = new Date(Date.now() + days * dayMs);
       }
 
       // ── Effective status — derived once, used both for triggers and DB ──

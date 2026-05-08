@@ -154,10 +154,14 @@ const updateSchema = z.object({
 
   // ── Status transitions (deliberate) ───────────────────────────────────
   change_status: z
-    .enum(["INVALIDATED", "CLOSED"])
+    .enum(["ACTIVE", "INVALIDATED", "CLOSED"])
     .optional()
     .describe(
-      "Deliberate status transition. INVALIDATED = we no longer believe the thesis. CLOSED = we exited the position based on this thesis (target hit, stop, or manual close). For PASS-by-pivot or replacement, use record_thesis with parent_thesis_id instead.",
+      "Deliberate status transition. " +
+        "ACTIVE = WATCHING → ACTIVE promotion (entry condition fired and you took the trade). MUST be paired with a place_trade in the same run, AND target_price + stop_loss must be supplied — recomputed relative to the actual entry, not copied from the WATCHING row's old levels. " +
+        "INVALIDATED = the belief broke; we no longer believe the thesis. " +
+        "CLOSED = we exited the position based on this thesis (target hit, stop, manual close). " +
+        "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
 });
 
@@ -197,6 +201,7 @@ export const updateThesis = defineTool({
   ui: "thesis-card" as const,
 
   progressLabel: (args) => {
+    if (args.change_status === "ACTIVE") return `Promoting thesis ${args.thesis_id.slice(-8)} → ACTIVE`;
     if (args.change_status === "INVALIDATED") return `Invalidating thesis ${args.thesis_id.slice(-8)}`;
     if (args.change_status === "CLOSED") return `Closing thesis ${args.thesis_id.slice(-8)}`;
     return `Updating thesis ${args.thesis_id.slice(-8)}`;
@@ -340,7 +345,14 @@ export const updateThesis = defineTool({
     // BELOW the OLD target (legitimate refinement before the entry
     // condition triggers). It's blocked when the current price has
     // already crossed the OLD target.
+    //
+    // Bypass on ACTIVE promotion: the WATCHING target_price doubled as
+    // the ENTER trigger level — promotion legitimately recomputes new
+    // target/stop relative to the actual fill, so the new target being
+    // > old target while price is ≥ old target is the EXPECTED shape
+    // of a promotion, not goalpost-moving.
     if (
+      args.change_status !== "ACTIVE" &&
       existing.status === "WATCHING" &&
       args.target_price != null &&
       existing.targetPrice != null &&
@@ -489,6 +501,52 @@ export const updateThesis = defineTool({
       patch.closedAt = new Date();
       patch.closeReason = args.rationale.slice(0, 500);
       updateType = "CLOSED";
+    } else if (args.change_status === "ACTIVE") {
+      // ── WATCHING → ACTIVE promotion (close the promotion gap) ──────────
+      // Pre-this-PR there was no first-class path: the tactical prompt
+      // instructed `update_thesis(change_status: "ACTIVE")` but the enum
+      // only allowed INVALIDATED/CLOSED, so the call rejected silently
+      // and theses stayed WATCHING with open positions. Now legal.
+      //
+      // Two requirements at promotion:
+      //   1. Source must be WATCHING — promoting an already-ACTIVE row
+      //      makes no sense; promoting a terminal-state row is blocked
+      //      upstream by the existing terminal_status guard.
+      //   2. target_price + stop_loss MUST be supplied and recomputed
+      //      relative to the actual entry. The WATCHING row's old
+      //      target was the ENTER trigger level (the breakout
+      //      threshold); price has now reached it, so as a take-profit
+      //      it's behind the agent. Same for stop. Mint NEW values.
+      if (existing.status !== "WATCHING") {
+        return {
+          summary: `Refused promotion on $${existing.ticker} — current status is ${existing.status}, not WATCHING.`,
+          data: {
+            ok: false,
+            error: "promotion_from_non_watching",
+            message:
+              `change_status: "ACTIVE" is the WATCHING → ACTIVE promotion path. This thesis is already ${existing.status}; you can't promote what's already promoted (or terminal). ` +
+              `If you meant to refine an open ACTIVE thesis, drop change_status and pass the fields you want to change directly. ` +
+              `If you meant to re-open a CLOSED thesis, mint a new one via record_thesis.`,
+          },
+          sources: [],
+        };
+      }
+      if (args.target_price == null || args.stop_loss == null) {
+        return {
+          summary: `Refused promotion on $${existing.ticker} — recomputed target_price and stop_loss required.`,
+          data: {
+            ok: false,
+            error: "promotion_missing_levels",
+            message:
+              `Promoting WATCHING → ACTIVE requires fresh target_price AND stop_loss recomputed relative to the actual entry, not copied from the WATCHING row's old levels. ` +
+              `The old target was the ENTER trigger threshold (price has now crossed it, so as a take-profit it's behind you). The old stop was set against an old reference entry that no longer applies. ` +
+              `Pass new values: LONG → target_price > current price (R/R ≥ 2:1 vs new stop), stop_loss < current price. SHORT → mirror.`,
+          },
+          sources: [],
+        };
+      }
+      patch.status = "ACTIVE";
+      updateType = "STATUS_CHANGED";
     }
 
     // Empty patch (only rationale supplied)? That's a REVIEWED row, not
@@ -592,11 +650,18 @@ export const updateThesis = defineTool({
     const hasUnchangedReason =
       typeof args.structural_unchanged_reason === "string" &&
       args.structural_unchanged_reason.trim().length >= 10;
+    // The gate bypasses on ANY deliberate state transition (terminal +
+    // ACTIVE promotion). For terminal: belief is frozen by definition.
+    // For promotion: the act of putting capital behind the WATCHING
+    // belief is its own implicit justification — the agent isn't moving
+    // goalposts on an open trade, they're acting on the existing thesis.
+    const isStateTransition =
+      isTerminalTransition || args.change_status === "ACTIVE";
     if (
       touchesQuant &&
       !touchesBelief &&
       !hasUnchangedReason &&
-      !isTerminalTransition
+      !isStateTransition
     ) {
       const changed = Object.keys(fieldChanges).filter((f) =>
         ["confidenceScore", "targetPrice", "stopLoss"].includes(f),

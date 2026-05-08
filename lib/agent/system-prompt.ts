@@ -49,6 +49,11 @@
 
 import type { RunInput } from "./run-input";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
+import {
+  HORIZON_REVIEW_CADENCE,
+  HORIZON_EXIT_POLICY,
+  type Horizon,
+} from "@/lib/agent/horizon-policy";
 
 // ─── Config type (shared with consumers) ─────────────────────────────────────
 
@@ -254,19 +259,28 @@ Composite = sum, max 10. **Threshold to trade: composite ≥ 7 AND R/R ≥ 2:1 A
   // The HELD-vs-WATCHING semantics are now load-bearing per #217 +
   // Root Cause #1. Trigger semantics differ by state.
   if (runInput.activeTheses && runInput.activeTheses.length > 0) {
-    let thesesSection = `## Live Theses\nYour durable beliefs. **Status + direction determine semantics:**\n- **ACTIVE** (held) — EXIT/TRIM/MOVE_STOP/ADD triggers operate on the open position. ENTER triggers don't apply.\n- **WATCHING + LONG/SHORT** (entry-gated) — ENTER triggers fire when the entry condition is met (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT). Your YES action on ENTER is PROMOTE: \`record_thesis(status: ACTIVE)\` (or \`update_thesis(change_status: ACTIVE)\`) → \`place_trade\`.\n- **WATCHING + PASS** (institutional memory + watching for material change) — you researched, decided not to trade. Catalyst triggers (earnings/filings/signals) revisit. Each run, audit \`invalidation_conditions\` and \`key_assumptions\` against today's data: if any have flipped (e.g., assumption "guidance not cut" was the basis for the pass, now guidance WAS cut → assumption broken), that's the trigger to flip direction. Use \`record_thesis\` to mint the new-direction thesis (the PASS gets superseded automatically). If no conditions flipped, REVIEWED-only is correct.\n\n**Re-researching a held name? Use \`update_thesis(thesis_id, ...)\`, not record_thesis.** Each row evolves over time via update_thesis (refining target, tightening stop, lowering confidence). \`record_thesis\` on a same-direction held thesis is rejected at the tool layer.\n\n**update_thesis hard rejects to know about:**\n- **Zero-trigger guard:** updating a thesis with no triggers requires either adding triggers OR closing it via \`change_status: "INVALIDATED"\`. A pure rationale-only review on a zero-trigger thesis is rejected (it's a no-op that wastes the closeout slot).\n- **Goalpost-moving guard:** raising \`target_price\` on a WATCHING thesis whose entry condition is currently met (price has crossed the old target) is REJECTED. Your action there is PROMOTE or close, not move the bar.\n\n`;
-    thesesSection += `| Ticker | Status | Direction | Confidence | Entry | Target | Stop | Created | Thesis ID |\n`;
-    thesesSection += `|--------|--------|-----------|-----------|-------|--------|------|---------|----------|\n`;
+    let thesesSection = `## Live Theses\nYour durable beliefs. **Status + direction determine semantics:**\n- **ACTIVE** (held) — EXIT/TRIM/MOVE_STOP/ADD triggers operate on the open position. ENTER triggers don't apply.\n- **WATCHING + LONG/SHORT** (entry-gated) — ENTER triggers fire when the entry condition is met (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT). Your YES action on ENTER is PROMOTE: \`update_thesis(thesis_id, change_status: "ACTIVE", target_price: <new>, stop_loss: <new>, ...)\` → \`place_trade\`. The \`update_thesis\` call requires recomputed target_price + stop_loss (the WATCHING target was the ENTER trigger level, behind you now). \`record_thesis(status: ACTIVE)\` on the same direction is rejected (USE_UPDATE_THESIS redirect).\n- **WATCHING + PASS** (institutional memory + watching for material change) — you researched, decided not to trade. Catalyst triggers (earnings/filings/signals) revisit. Each run, audit \`invalidation_conditions\` and \`key_assumptions\` against today's data: if any have flipped (e.g., assumption "guidance not cut" was the basis for the pass, now guidance WAS cut → assumption broken), that's the trigger to flip direction. Use \`record_thesis\` to mint the new-direction thesis (the PASS gets superseded automatically). If no conditions flipped, REVIEWED-only is correct.\n\n**Re-researching a held name? Use \`update_thesis(thesis_id, ...)\`, not record_thesis.** Each row evolves over time via update_thesis (refining target, tightening stop, lowering confidence). \`record_thesis\` on a same-direction held thesis is rejected at the tool layer.\n\n**update_thesis hard rejects to know about:**\n- **Zero-trigger guard:** updating a thesis with no triggers requires either adding triggers OR closing it via \`change_status: "INVALIDATED"\`. A pure rationale-only review on a zero-trigger thesis is rejected (it's a no-op that wastes the closeout slot).\n- **Goalpost-moving guard:** raising \`target_price\` on a WATCHING thesis whose entry condition is currently met (price has crossed the old target) is REJECTED. Your action there is PROMOTE or close, not move the bar.\n\n`;
+    thesesSection += `| Ticker | Status | Direction | Horizon | Confidence | Entry | Target | Stop | Schedule | Created | Thesis ID |\n`;
+    thesesSection += `|--------|--------|-----------|---------|-----------|-------|--------|------|----------|---------|----------|\n`;
     for (const t of runInput.activeTheses) {
       const entry = t.entryPrice != null ? `$${t.entryPrice.toFixed(2)}` : "—";
       const target = t.targetPrice != null ? `$${t.targetPrice.toFixed(2)}` : "—";
       const stop = t.stopLoss != null ? `$${t.stopLoss.toFixed(2)}` : "—";
       const created = t.createdAt.slice(0, 10);
-      thesesSection += `| $${t.ticker} | ${t.status} | ${t.direction} | ${t.confidence}% | ${entry} | ${target} | ${stop} | ${created} | ${t.id} |\n`;
+      const horizon = t.horizon ?? "—";
+      const schedule = formatSchedule(t.nextReviewAt, t.catalystDate, t.maxHoldDays, t.horizon, t.createdAt);
+      thesesSection += `| $${t.ticker} | ${t.status} | ${t.direction} | ${horizon} | ${t.confidence}% | ${entry} | ${target} | ${stop} | ${schedule} | ${created} | ${t.id} |\n`;
     }
-    thesesSection += `\nSummary per thesis:\n`;
+    // Per-horizon hints + per-thesis belief preview. The hints come from
+    // lib/agent/horizon-policy.ts so this prompt and record_thesis +
+    // trade-evaluator stay in lockstep on what each horizon means.
+    thesesSection += `\nPer-thesis belief + exit policy:\n`;
     for (const t of runInput.activeTheses) {
-      thesesSection += `- $${t.ticker} [${t.status}] (${t.id}): "${t.reasoningSummary.slice(0, 150)}"\n`;
+      const beliefPreview = t.coreBelief
+        ? `"${t.coreBelief.slice(0, 140)}${t.coreBelief.length > 140 ? "…" : ""}"`
+        : `"${t.reasoningSummary.slice(0, 140)}${t.reasoningSummary.length > 140 ? "…" : ""}" (no core_belief — use update_thesis to add one)`;
+      const policyLine = t.horizon ? horizonPolicyLine(t.horizon) : "no horizon set";
+      thesesSection += `- $${t.ticker} [${t.status}/${t.horizon ?? "?"}] ${beliefPreview} — ${policyLine}\n`;
     }
     sections.push(thesesSection);
   }
@@ -490,7 +504,7 @@ Did anything fire or is review due?
 - TRADE horizon: \`position.openedAt + maxHoldDays\` approaching or past
 - CATALYST horizon: \`catalystDate\` within 3d, OR more than 30d past with no resolution
 
-**YES — ENTER trigger fired (WATCHING thesis only):** the entry condition is MET. Your action is to PROMOTE: \`get_stock_data\` → score on the 4-dim rubric → if it passes the trade gates, \`record_thesis(status: "ACTIVE", direction: ...)\` → \`place_trade\`. (Or \`update_thesis(thesis_id, change_status: "ACTIVE", ...)\` if you want to keep the existing thesis row and flip it.)
+**YES — ENTER trigger fired (WATCHING thesis only):** the entry condition is MET. Your action is to PROMOTE: \`get_stock_data\` → score on the 4-dim rubric → if it passes the trade gates, \`update_thesis(thesis_id, change_status: "ACTIVE", target_price: <new>, stop_loss: <new>, ...)\` → \`place_trade\`. The \`update_thesis\` promotion path requires recomputed target_price AND stop_loss (the tool rejects without them). The \`record_thesis(status: "ACTIVE")\` path is rejected for same-direction tickers — use \`update_thesis\` for the existing WATCHING thesis.
 
 **Recompute target and stop on promotion — do not copy the WATCHING values forward.** The WATCHING thesis's \`target_price\` was the ENTER trigger level (a breakout threshold); price has now reached it, so as a take-profit it's behind you. Same for the WATCHING \`stop_loss\` — that level was set against an old entry that no longer applies. Mint NEW values relative to today's price BEFORE calling \`place_trade\`:
 - LONG: \`target_price\` > current price (R/R ≥ 2:1 vs the new stop), \`stop_loss\` < current price (typically 5-10% below the new entry, tighter for TRADE horizon).
@@ -606,6 +620,73 @@ function formatCap(amount: number): string {
 // The "Attention: holdings X% | watchlist Y% | discovery Z%" line was
 // removed 2026-05-07. It was data without instruction — the prompt
 // never told the agent what to do with the ratios.
+
+// ─── Per-thesis schedule + horizon hint helpers ──────────────────────────────
+//
+// formatSchedule renders ONE compact cell per thesis showing the most
+// urgent time-relevant fact: how many days until next review, OR — when
+// CATALYST/TRADE — how many days until catalystDate / maxHoldDays expiry.
+// Empty string when nothing time-relevant; the cell stays clean.
+//
+// horizonPolicyLine renders the per-horizon cadence + exit-policy summary
+// underneath the table, sourced from horizon-policy.ts so this prompt's
+// rendering and the writer's defaults stay aligned.
+
+function formatSchedule(
+  nextReviewAt: string | null,
+  catalystDate: string | null,
+  maxHoldDays: number | null,
+  horizon: string | null,
+  createdAt: string,
+): string {
+  const now = Date.now();
+  const dayMs = 86_400_000;
+
+  const parts: string[] = [];
+
+  if (nextReviewAt) {
+    const days = Math.round((new Date(nextReviewAt).getTime() - now) / dayMs);
+    if (days <= 0) {
+      parts.push(`review overdue ${Math.abs(days)}d`);
+    } else {
+      parts.push(`review in ${days}d`);
+    }
+  }
+
+  if (horizon === "CATALYST" && catalystDate) {
+    const days = Math.round((new Date(catalystDate).getTime() - now) / dayMs);
+    if (days <= 0) {
+      parts.push(`catalyst was ${Math.abs(days)}d ago`);
+    } else {
+      parts.push(`catalyst in ${days}d`);
+    }
+  }
+
+  if (horizon === "TRADE" && maxHoldDays != null) {
+    const heldDays = Math.round((now - new Date(createdAt).getTime()) / dayMs);
+    const remaining = maxHoldDays - heldDays;
+    if (remaining <= 0) {
+      parts.push(`max-hold expired (${heldDays}/${maxHoldDays}d)`);
+    } else {
+      parts.push(`max-hold ${remaining}d left`);
+    }
+  }
+
+  return parts.length > 0 ? parts.join(", ") : "—";
+}
+
+function horizonPolicyLine(horizon: string): string {
+  if (
+    horizon !== "CATALYST" &&
+    horizon !== "TRADE" &&
+    horizon !== "TARGET" &&
+    horizon !== "COMPOUNDER"
+  ) {
+    return "unknown horizon";
+  }
+  const h = horizon as Horizon;
+  return `${HORIZON_REVIEW_CADENCE[h]}. ${HORIZON_EXIT_POLICY[h]}`;
+}
 
 function buildPolicySummary(policy: IntelligencePolicy): string {
   const preferred = policy.preferredSourceCategories.length > 0
