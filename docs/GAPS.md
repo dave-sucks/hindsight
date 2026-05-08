@@ -4,7 +4,7 @@
 >
 > **How to use it:** start at the top. P0s block the product. P1s degrade quality but the system still functions. P2s are paper cuts. Don't skip levels.
 >
-> **Last refreshed:** 2026-05-08 — watching-thesis integrity workstream (this session) closed P0-2, P1-1, P1-7, P1-8, P2-3. Trigger-health snapshot re-verified post-changes. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived).
+> **Last refreshed:** 2026-05-08 — Monitor Health workstream (this session) closed P0-4, P1-2. Backfill recomputed Monitor counters from authoritative chain; total trades-sourced lifted 2 → 5 immediately. Earlier same-day: watching-thesis integrity workstream closed P0-2, P1-1, P1-7, P1-8, P2-3; admin sweep closed P0-3, P0-5d, P1-5, P1-6, P2-9. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived).
 
 ---
 
@@ -57,17 +57,17 @@ These numbers are the empirical baseline for the gaps below. Re-run the queries 
 
 The MRVL anti-pattern (raising target on a watching thesis when current price is already at/above the old target, instead of trading): **0 occurrences on 5/07.** Either the agent stopped doing it, or it actually traded the names that would have triggered it (which fits the 10 INITIATE count). Caveat: one day of data, can't conclude trend yet.
 
-### Monitor health (all-time)
+### Monitor health (2026-05-08, post P0-4 / P1-2 fixes)
 
-| Type | Count | Active 7d | Stale or dead | Trades sourced | Wins |
-|---|---|---|---|---|---|
-| API | 4 | 4 | 0 | 0 | 0 |
-| DOMAIN | 42 | 37 | 5 | 0 | 0 |
-| EMAIL | 26 | 21 | 1 | 0 | 0 |
-| SEARCH | 76 | 32 | **44** | 2 | 1 |
-| **Total** | **148** | **94** | **50** | **2** | **1** |
+| Type | Count | Enabled | Disabled | Trades sourced | Wins | Losses |
+|---|---|---|---|---|---|---|
+| API | 4 | 4 | 0 | 0 | 0 | 0 |
+| DOMAIN | 42 | 42 | 0 | 0 | 0 | 0 |
+| EMAIL | 26 | 26 | 0 | 0 | 0 | 0 |
+| SEARCH | 76 | 44 | **32** | **5** | 2 | 0 |
+| **Total** | **148** | **116** | **32** | **5** | **2** | **0** |
 
-**Reading:** **Two of the worst findings in the audit.** (1) Of 76 SEARCH monitors, only 32 fired in the last 7 days; 44 are stale or never run. The signal pipeline is bloated with dead queries. (2) Across 148 monitors and ~weeks of trading, only 2 trades have ever been credited back to a source monitor. **The Monitor ROI tracer is not functioning** — either `Thesis.sourceSignalIds → Signal.monitorId → Monitor` is broken, or theses aren't citing signals when minted, or the trade evaluator isn't running. The "self-improving via monitor scores" loop in [`VISION.md`](./VISION.md) Pillar 5 does not currently exist.
+**Reading:** Trades-sourced lifted from 2 → 5 after the P0-4 backfill recomputed counters from the canonical chain. 32 SEARCH monitors are now soft-disabled (`enabled: false`) — they're skipped by firm-market-sweep / domain-monitor (which both filter by `enabled: true`) but the rows are kept so historical signals citing them still resolve. Monitor ROI tracer is wired and crediting; the remaining gap is **provenance population** — only 9% of closed positions since 4/01 carry `sourceSignalIds`, because the agent overwhelmingly picks `WEB_SEARCH` provenance over `ROUTED_SIGNAL` even when read_signals informed the thesis. Prompt-tightening + a soft-nudge in `record_thesis` (this PR) push that back up.
 
 ---
 
@@ -87,19 +87,6 @@ These prevent the core loop from working as designed. Fix first.
 
 **Effort:** ~1 hour (tool schema + validation + prompt language).
 
-### P0-4 — Monitor ROI tracer is not functioning
-**Source:** Supabase — 2 trades ever credited across 148 monitors.
-
-**Why it matters:** the entire "self-improving" loop in VISION Pillar 5 depends on this. Without it, there's no way to know which monitors are paying for themselves and which are noise.
-
-**Fix path:**
-1. Verify `Thesis.sourceSignalIds` is being populated on `record_thesis` calls. (Today's 10 INITIATEs are a good sample — query: `SELECT id, sourceSignalIds FROM "Thesis" WHERE createdAt::date = '2026-05-07'`.)
-2. Verify `Signal.monitorId` is being populated when signals are created.
-3. Verify `lib/inngest/functions/trade-evaluator.ts` actually runs on `trade/closed` and updates Monitor counters.
-4. Walk the chain end-to-end for one closed trade today (e.g. GOOGL or MU) — find the signal it cited, find the monitor that produced the signal, confirm the monitor's counters incremented.
-
-**Effort:** ~2-4 hours (chain-walking + likely 1-3 fixes along the way).
-
 ### P0-5 — Horizon awareness is mostly cosmetic
 **Source:** Hold-style audit (overall grade D+).
 
@@ -117,17 +104,6 @@ These prevent the core loop from working as designed. Fix first.
 ---
 
 ## P1 — Quality is degraded but system functions
-
-### P1-2 — Monitor pipeline bloat (44 dead SEARCH monitors)
-**Source:** Supabase — 44 of 76 SEARCH monitors stale or never-run.
-
-**Why it matters:** dead monitors cost inference budget on wakeup, dilute signal quality, and clutter the /intelligence health view.
-
-**Fix path:**
-1. Audit the 44 stale SEARCH monitors — when were they created, what's the last fire date, why didn't they fire?
-2. Likely root cause: orphaned monitors from analysts that were edited or deleted. Add a cleanup cron (or extend `lib/inngest/functions/pipeline-cleanup.ts`) to soft-delete monitors with `lastRunAt > 30 days ago` AND `tradesSourced = 0`.
-
-**Effort:** ~1-2 hours.
 
 ### P1-3 — Trigger evaluator is hourly, not "every 15 min"
 **Source:** Crons agent audit — Inngest cron is `0 9,10,11,12,13,14,15,16 * * 1-5` (hourly), not every-15-min.
@@ -162,6 +138,15 @@ Crons agent — file exists, imports exist, but not in `app/api/inngest/route.ts
 
 ### P2-7 — Intelligence pipeline crons are independent
 Crons agent — no Inngest `.after()` or `.waitFor()` between firm-market-sweep → portfolio-watchlist-monitor → domain-monitor → signal-router. If one lags, downstream still fires on schedule with stale data. Today this is theoretical; flag it as a known fragility. ~2 hours to add chaining.
+
+---
+
+## Done since 2026-05-08 (Monitor Health workstream)
+
+This session: closed P0-4, P1-2. PR pending — number to fill in once the branch lands.
+
+- ✅ **P0-4 — Monitor ROI tracer wired (Pillar 5).** Diagnosis: the chain `Thesis.sourceSignalIds → Signal.monitorId → Monitor` was actually intact end-to-end — `trade-evaluator.ts` fires within 12–48s of every close, `Signal.monitorId` is populated on 39 of 39 cited signals, and `Monitor.{tradesSourced,winsSourced,lossesSourced,successScore}` does increment correctly via the transactional update at `trade-evaluator.ts:139-162`. The break was upstream at thesis minting: the agent overwhelmingly picks `source_kind: WEB_SEARCH` (8/10 on 5/07, 3/5 on 5/08) instead of `ROUTED_SIGNAL` even when read_signals informed the thesis. WEB_SEARCH provenance is allowed to leave `source_signal_ids` empty, which silently skips the credit chain. **Fixes (this PR):** (1) new `ToolContext.signalsByTicker` map; `read_signals` populates it on every return so record_thesis can detect the mismatch. (2) Soft-nudge in `record_thesis`: when `source_kind ≠ ROUTED_SIGNAL` for a ticker that appeared in this run's read_signals output, log a WARN + append a hint to the success message so the agent sees it in-context. No hard reject — would risk a regression and the thesis itself is fine. (3) Strengthened the `read_signals` tool description (citation is now imperative, not advisory) and added a "Provenance is not optional — pick the right kind" block to the daily-run system prompt explaining the 4 source_kind options and *why* (the credit chain). (4) **Backfill ran on production:** recomputed Monitor counters from the canonical chain via authoritative SQL — total trades-sourced lifted from 2 → 5; portfolio_searches went 2/2/0 → 3/2/0 (score 1.0 → 0.667), watchlist_searches 1/0/0 → 2/0/0. Idempotent — safe to re-run.
+- ✅ **P1-2 — Dead SEARCH monitor cleanup.** `pipeline-cleanup.ts` gains Step 3: `enabled: false` on SEARCH monitors where `lastRunAt > 30 days ago AND tradesSourced = 0`. Soft-disable (not delete) — `Signal.monitorId` keeps its FK target, so historical signals still resolve and the trade-evaluator's chain walk for any open thesis citing them keeps working. Both `firm-market-sweep` and `domain-monitor` already filter by `enabled: true`, so disabled monitors auto-silence on the next cron tick. Existing dead population was already cleaned by a prior intervention (32 SEARCH monitors are currently `enabled: false`); the new rule keeps them disabled and catches future strays. No one-time SQL needed today (no monitors currently meet the 30d+0-trades cutoff that aren't already disabled).
 
 ---
 

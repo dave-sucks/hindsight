@@ -71,11 +71,18 @@ export function createResearchTools(ctx: ToolCtx) {
   // record_thesis gates against this to enforce "researched before thesis."
   // Lives for the duration of a single run (one createResearchTools call).
   const calledTickers = new Map<string, Set<string>>();
+  // In-run signal tracker — read_signals populates TICKER → {signalId, ...}
+  // for every ticker on every routed signal it returned. record_thesis reads
+  // it to soft-nudge the agent toward ROUTED_SIGNAL provenance when the
+  // chain is available — the Monitor ROI tracer needs sourceSignalIds to
+  // credit the producing monitor (VISION Pillar 5).
+  const signalsByTicker = new Map<string, Set<string>>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const newCtx: any = {
     ...ctx,
     groupId: (phase: string) => phase,
     calledTickers,
+    signalsByTicker,
   };
 
   const toolsBase = {

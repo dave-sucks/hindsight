@@ -104,6 +104,36 @@ function bucketOf(
 }
 
 /**
+ * Track every (ticker, signalId) pair returned to the agent so record_thesis
+ * can soft-nudge when the agent picks WEB_SEARCH provenance for a ticker
+ * that was actually informed by routed signals. The trade-evaluator's
+ * Monitor ROI tracer (VISION Pillar 5) walks
+ *   Thesis.sourceSignalIds → Signal.monitorId → Monitor
+ * to credit the producing monitor on close. WEB_SEARCH provenance is allowed
+ * to leave sourceSignalIds empty, which silently breaks the chain — so we
+ * surface a hint at thesis-write time when the chain was available.
+ */
+function recordSignalsByTicker(
+  map: Map<string, Set<string>> | undefined,
+  signals: Array<{ signalId?: string; tickers: string[] }>,
+): void {
+  if (!map) return;
+  for (const s of signals) {
+    if (!s.signalId) continue;
+    for (const ticker of s.tickers) {
+      const key = ticker.toUpperCase().trim();
+      if (!key) continue;
+      let set = map.get(key);
+      if (!set) {
+        set = new Set<string>();
+        map.set(key, set);
+      }
+      set.add(s.signalId);
+    }
+  }
+}
+
+/**
  * ──────────────────────────────────────────────────────────────────────────────
  * TOOL DESIGN NOTE — why `bucket` was removed from the schema (2026-04-24)
  * ──────────────────────────────────────────────────────────────────────────────
@@ -144,7 +174,7 @@ export const readSignals = defineTool({
     "Read TODAY's intelligence signals routed to you by background discovery jobs. Scoped to the current ET trading day.\n\n" +
     "The tool ALWAYS returns today's entire routed pool for this analyst, grouped into three buckets — portfolioSignals (news on your open positions), watchlistSignals (news on your watchlist), and discoverySignals (new-ticker candidates matched via your Universe fence). You cannot filter to a single bucket; that's the point — you need to see all three every run.\n\n" +
     "All parameters are OPTIONAL. For your FIRST call in a run, pass nothing — that returns the complete pool across all three buckets. Filters (tickers, themes, type, urgency) are for rare follow-up calls to deep-dive a specific ticker or sweep BREAKING urgency; never narrow on the first call.\n\n" +
-    "Every returned signal carries a `signalId` — pass them to record_thesis as `sourceSignalIds` so the system can attribute the trade's outcome back to the monitors that produced them. Signals are marked as READ after retrieval. Do NOT ignore discoverySignals — that bucket is how new names surface.",
+    "Every returned signal carries a `signalId`. When you write a thesis on any ticker that appears here, you MUST pass source_kind: \"ROUTED_SIGNAL\" + source_signal_ids: [the IDs from this response] to record_thesis. WEB_SEARCH provenance is reserved for tickers you found from a live web_search call, not from this list. Skipping the citation breaks the Monitor ROI tracer (the trade-evaluator credits the source monitor when the position closes — without sourceSignalIds it can't), and the agent's source-quality learning loop dies. Signals are marked as READ after retrieval. Do NOT ignore discoverySignals — that bucket is how new names surface.",
   schema: z.object({
     tickers: z
       .array(z.string())
@@ -513,6 +543,7 @@ export const readSignals = defineTool({
           const urgent = fbSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
           const bullish = fbSignals.filter((s) => s.sentiment === "BULLISH").length;
           const bearish = fbSignals.filter((s) => s.sentiment === "BEARISH").length;
+          recordSignalsByTicker(ctx.signalsByTicker, fbSignals);
           return {
             summary: `${fbSignals.length} signal${fbSignals.length !== 1 ? "s" : ""} (${urgent} urgent, ${bullish} bullish, ${bearish} bearish). Fallback: sector/industry/theme/watchlist match.`,
             data: {
@@ -580,6 +611,7 @@ export const readSignals = defineTool({
     const bullish = visibleSignals.filter((s) => s.sentiment === "BULLISH").length;
     const bearish = visibleSignals.filter((s) => s.sentiment === "BEARISH").length;
 
+    recordSignalsByTicker(ctx.signalsByTicker, visibleSignals);
 
     return {
       summary: ctx.discoveryOnly

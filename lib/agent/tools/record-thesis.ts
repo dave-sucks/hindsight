@@ -406,6 +406,38 @@ export const recordThesis = defineTool({
         );
       }
 
+      // Provenance soft-nudge — Monitor ROI tracer hook (VISION Pillar 5).
+      // When the agent picks non-ROUTED_SIGNAL provenance for a ticker that
+      // appeared in this run's read_signals output, the chain
+      //   Thesis.sourceSignalIds → Signal.monitorId → Monitor
+      // loses its hook and the trade-evaluator can't credit the source
+      // monitor on close. We log loud, append a hint to the success message,
+      // but do NOT reject — a hard gate would risk a regression and the
+      // thesis itself is fine. The fix is a prompt-level expectation; this
+      // gives us telemetry on how often the agent ignores it AND reminds
+      // the agent in-context for the rest of the run.
+      let provenanceNudge: string | null = null;
+      if (
+        inferredSourceKind !== "ROUTED_SIGNAL" &&
+        ctx.signalsByTicker &&
+        ctx.analystId
+      ) {
+        const tickerKey = args.ticker.toUpperCase();
+        const matchingSignals = ctx.signalsByTicker.get(tickerKey);
+        if (matchingSignals && matchingSignals.size > 0) {
+          const sample = Array.from(matchingSignals).slice(0, 3);
+          console.warn(
+            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} provenance=${inferredSourceKind} ` +
+              `but read_signals returned ${matchingSignals.size} matching signal(s) this run (e.g. ${sample.join(", ")}). ` +
+              `Monitor ROI credit chain broken — agent should pass source_kind=ROUTED_SIGNAL with these IDs.`,
+          );
+          provenanceNudge =
+            `Note: read_signals returned ${matchingSignals.size} signal${matchingSignals.size === 1 ? "" : "s"} on $${args.ticker} this run ` +
+            `(IDs: ${sample.join(", ")}${matchingSignals.size > sample.length ? ", …" : ""}). ` +
+            `Next time, pass source_kind:"ROUTED_SIGNAL" + source_signal_ids:[those IDs] so the trade-evaluator can credit the source monitor on close.`;
+        }
+      }
+
       // Forcing function: when the call claims (or infers) ROUTED_SIGNAL
       // provenance, every signalId must belong to this analyst's routed
       // inbox for today (ET trading day). Rejecting out-of-pool IDs prevents
@@ -1040,10 +1072,13 @@ export const recordThesis = defineTool({
       }
 
       return {
-        summary: `Thesis recorded: ${args.direction} ${args.ticker} (${effectiveStatus.toLowerCase()}, confidence: ${args.confidence_score})`,
+        summary:
+          `Thesis recorded: ${args.direction} ${args.ticker} (${effectiveStatus.toLowerCase()}, confidence: ${args.confidence_score})` +
+          (provenanceNudge ? ` — ${provenanceNudge}` : ""),
         data: {
           thesis_id: thesis.id,
           status: effectiveStatus,
+          ...(provenanceNudge ? { provenance_nudge: provenanceNudge } : {}),
         },
         sources: [],
       };

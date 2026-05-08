@@ -1,5 +1,5 @@
 // ── Pipeline Cleanup ─────────────────────────────────────────────────────────
-// Runs daily at 11 PM ET. Two jobs:
+// Runs daily at 11 PM ET. Three jobs:
 //   1. Archive AnalystSignalRoute rows older than 24 hours (status -> ARCHIVED)
 //      so today's inbox stays uncluttered without losing the historical paper
 //      trail. Routes are queried by status IN ("PENDING", "READ"), so flipping
@@ -10,6 +10,12 @@
 //      historical attribution (a trade closed last quarter still references
 //      the signals that informed it). Active read paths filter deletedAt IS
 //      NULL; lookups by id still resolve.
+//   3. Disable dead SEARCH monitors — `enabled: false` on SEARCH monitors
+//      where lastRunAt > 30 days ago AND tradesSourced = 0. We keep the row
+//      (Signals reference it via FK), but the firm-market-sweep cron skips
+//      disabled monitors so the bloated stable goes quiet on its own. Hard
+//      delete is unsafe — it would break the Monitor ROI tracer's chain
+//      walk for any historical signal still cited by an open thesis.
 //
 // Scope rationale:
 //   - 24h on routes: the morning brief and read_signals queries already scope
@@ -26,6 +32,7 @@ import { prisma } from "@/lib/prisma"
 import { etTradingDayDate } from "@/lib/market-hours"
 
 const SIGNAL_SOFT_DELETE_AGE_DAYS = 30
+const SEARCH_MONITOR_DEAD_AGE_DAYS = 30
 
 export const pipelineCleanup = inngest.createFunction(
   {
@@ -77,10 +84,36 @@ export const pipelineCleanup = inngest.createFunction(
       return { softDeleted: result.count, cutoffIso: cutoff.toISOString() }
     })
 
+    // ── Step 3: disable dead SEARCH monitors ─────────────────────────────────
+    // Bounded scope: SEARCH only (the only monitor type with user-defined
+    // queries that go stale when an analyst is edited). API monitors are
+    // built-in and shouldn't be auto-disabled. Domain/email monitors have
+    // their own lifecycle. Skip already-disabled rows so the count reflects
+    // net new disables this run.
+    const disabledMonitors = await step.run("disable-dead-search-monitors", async () => {
+      const cutoff = new Date(
+        Date.now() - SEARCH_MONITOR_DEAD_AGE_DAYS * 24 * 60 * 60 * 1000,
+      )
+      const result = await prisma.monitor.updateMany({
+        where: {
+          type: "SEARCH",
+          enabled: true,
+          tradesSourced: 0,
+          OR: [
+            { lastRunAt: null },
+            { lastRunAt: { lt: cutoff } },
+          ],
+        },
+        data: { enabled: false },
+      })
+      return { disabled: result.count, cutoffIso: cutoff.toISOString() }
+    })
+
     return {
       success: true,
       routes: archivedRoutes,
       signals: softDeleted,
+      monitors: disabledMonitors,
     }
   },
 )

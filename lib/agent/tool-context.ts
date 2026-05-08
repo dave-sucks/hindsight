@@ -79,6 +79,17 @@ export interface ToolContext {
    * createResearchTools().
    */
   calledTickers?: Map<string, Set<string>>;
+
+  /**
+   * In-run signal tracker. Maps TICKER (uppercase) → set of signalIds that
+   * were returned by read_signals for that ticker in this run. Drives the
+   * provenance soft-nudge in record_thesis: when the agent picks
+   * source_kind=WEB_SEARCH for a ticker that had matching routed signals,
+   * we know read_signals informed the thesis and the trade-evaluator's
+   * monitor-credit chain just lost its hook. Skipping the citation kills
+   * the Pillar 5 self-improvement loop. Populated by read_signals.
+   */
+  signalsByTicker?: Map<string, Set<string>>;
 }
 
 /** Create a ToolContext from plain options (adds the groupId method). */
