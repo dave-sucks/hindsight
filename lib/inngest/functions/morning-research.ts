@@ -254,13 +254,97 @@ export const morningResearch = inngest.createFunction(
           const expectedCoverage = runInput.activeTheses?.length ?? 0;
           const coverageViolation =
             expectedCoverage > 0 && preRetryThesisCount < expectedCoverage;
-          if ((processViolation || coverageViolation) && response?.messages) {
+
+          // Premature-exit violation: agent loaded data tools (read_signals
+          // / get_portfolio_context / get_theses) and stopped without
+          // emitting any action tool. Captures the 2026-05-07 prose-
+          // termination shape — three Step-1 tool calls returned, the
+          // model wrote a markdown thesis-by-thesis review, then the
+          // assistant turn ended without queuing the next tool call and
+          // generateText returned. coverageViolation should ALSO catch
+          // this, but it doesn't fire when expectedCoverage = 0 (analyst
+          // with empty Live Theses) and was bypassed for the 5/07 cases
+          // because response?.messages came back falsy on a text-only
+          // tail. We compute responseMessages with the same step-flatten
+          // fallback used in the persistence block so the retry has a
+          // valid context to seed from.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let responseMessages: any[] | undefined = response?.messages as
+            | // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              any[]
+            | undefined;
+          if (
+            !responseMessages ||
+            !Array.isArray(responseMessages) ||
+            responseMessages.length === 0
+          ) {
+            responseMessages = steps.flatMap((s) => {
+              const stepMsgs = (
+                s as unknown as { response?: { messages?: unknown[] } }
+              ).response?.messages;
+              return Array.isArray(stepMsgs) ? stepMsgs : [];
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            }) as any[];
+          }
+
+          // Detect "data-only" runs: every tool call so far was a Step-1
+          // data-loading tool, no get_stock_data / record_thesis /
+          // update_thesis / place_trade landed. Distinct from
+          // coverageViolation because it can fire on analysts whose
+          // Live Theses table is empty (new analysts, post-cleanup
+          // states) where expectedCoverage = 0.
+          const ACTION_TOOLS = new Set([
+            "get_stock_data",
+            "record_thesis",
+            "update_thesis",
+            "place_trade",
+            "manage_position",
+            "close_position",
+            "manage_watchlist",
+            "record_run_summary",
+            "complete_run",
+          ]);
+          let actionToolCount = 0;
+          for (const s of steps) {
+            for (const tc of s.toolCalls ?? []) {
+              if (ACTION_TOOLS.has(tc.toolName)) actionToolCount += 1;
+            }
+          }
+          const totalToolCallsSoFar = steps.reduce(
+            (sum, s) => sum + (s.toolCalls?.length ?? 0),
+            0,
+          );
+          const prematureExitViolation =
+            totalToolCallsSoFar > 0 && actionToolCount === 0;
+
+          const shouldRetry =
+            (processViolation ||
+              coverageViolation ||
+              prematureExitViolation) &&
+            responseMessages !== undefined &&
+            responseMessages.length > 0;
+
+          if (shouldRetry) {
             console.warn(
-              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers, expected coverage ${expectedCoverage} active theses, only ${preRetryThesisCount} touched — attempting retry (process=${processViolation}, coverage=${coverageViolation})`
+              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers, expected coverage ${expectedCoverage} active theses, only ${preRetryThesisCount} touched, action tools=${actionToolCount}/${totalToolCallsSoFar} — attempting retry (process=${processViolation}, coverage=${coverageViolation}, premature=${prematureExitViolation})`,
             );
             try {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const priorMessages = response.messages as any[];
+              const priorMessages = responseMessages;
+              const nudge = prematureExitViolation
+                ? // The agent loaded data and stopped without acting. Tell it
+                  // exactly what to do, in tool-call language, with no room
+                  // to summarize the data it just read.
+                  "You loaded the Step-1 data tools and stopped before acting. The Live Theses block in the system prompt is the source of truth — DO NOT re-summarize it in markdown. " +
+                  "Begin Step 2 NOW. For each thesis listed in the Live Theses table above, emit one tool call: " +
+                  "update_thesis(thesis_id=<id>, rationale='Reviewed; no triggers, thesis intact') for the NO branch (no triggers fired), or get_stock_data + the appropriate action tool for the YES branch. " +
+                  "After every Live Theses row has produced one tool call, run Step 3 (promotion check), Step 4 (discovery if slots open), Step 5/6 (record_run_summary then complete_run). " +
+                  "TOOL CALLS only. No markdown narrative. Each assistant turn from this point on MUST contain at least one tool call — text-only turns terminate the run as FAILED."
+                : "You researched tickers with get_stock_data but did not record / update a thesis for each. The run will be marked FAILED unless you act NOW. " +
+                  "For EVERY ticker you researched this session, emit ONE tool call as follows — TOOL CALLS only, no narration, no markdown: " +
+                  "(a) If get_theses showed an ACTIVE same-direction thesis on this ticker (or a prior record_thesis call returned status='USE_UPDATE_THESIS' with an existing_thesis_id), call update_thesis(thesis_id=<that id>, ...patch fields..., rationale='<one line>'). " +
+                  "(b) Otherwise, call record_thesis(ticker, direction, ...) for new coverage. " +
+                  "When in doubt, prefer update_thesis with empty patch + a rationale (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
+                  "Then call record_run_summary. Then call complete_run. Any text output beyond a short status sentence is a failure.";
               const retry = await generateText({
                 model: openai("gpt-4o"),
                 system: systemPrompt,
@@ -268,13 +352,7 @@ export const morningResearch = inngest.createFunction(
                   ...priorMessages,
                   {
                     role: "user",
-                    content:
-                      "You researched tickers with get_stock_data but did not record / update a thesis for each. The run will be marked FAILED unless you act NOW. " +
-                      "For EVERY ticker you researched this session, emit ONE tool call as follows — TOOL CALLS only, no narration, no markdown: " +
-                      "(a) If get_theses showed an ACTIVE same-direction thesis on this ticker (or a prior record_thesis call returned status='USE_UPDATE_THESIS' with an existing_thesis_id), call update_thesis(thesis_id=<that id>, ...patch fields..., rationale='<one line>'). " +
-                      "(b) Otherwise, call record_thesis(ticker, direction, ...) for new coverage. " +
-                      "When in doubt, prefer update_thesis with empty patch + a rationale (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
-                      "Then call record_run_summary. Then call complete_run. Any text output beyond a short status sentence is a failure.",
+                    content: nudge,
                   },
                 ],
                 tools,
