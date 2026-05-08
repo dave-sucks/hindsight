@@ -34,6 +34,7 @@ import {
   type ThesisUpdateType,
 } from "@/lib/agent/thesis-updates";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import { validateThesisShape } from "@/lib/agent/thesis-shape";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -342,6 +343,57 @@ export const updateThesis = defineTool({
         },
         sources: [],
       };
+    }
+
+    // ── Relative-ordering gate ────────────────────────────────────────────
+    // If the patch touches target_price or stop_loss, validate that the
+    // resulting (entry, target, stop) tuple satisfies direction-relative
+    // ordering. Same shape rule that record_thesis uses; this catches the
+    // case where the agent edits one price but produces a bad pair (e.g.
+    // raises stop_loss above the existing entry_price on a LONG).
+    //
+    // We do NOT run this check when the patch leaves target/stop alone —
+    // a confidence-only update on a pre-existing broken row shouldn't be
+    // blocked by this gate (the row's shape is rotten, but cleaning it up
+    // is the job of either a future update or a SQL cleanup, not this
+    // particular review). Terminal transitions (INVALIDATED/CLOSED) also
+    // bypass — the values become reference history at that point.
+    const shapeCheckNeeded =
+      (args.target_price !== undefined || args.stop_loss !== undefined) &&
+      !isTerminalTransition &&
+      (existing.direction === "LONG" || existing.direction === "SHORT");
+    if (shapeCheckNeeded) {
+      const effectiveTarget =
+        args.target_price !== undefined
+          ? args.target_price
+          : existing.targetPrice != null
+            ? Number(existing.targetPrice)
+            : null;
+      const effectiveStop =
+        args.stop_loss !== undefined
+          ? args.stop_loss
+          : existing.stopLoss != null
+            ? Number(existing.stopLoss)
+            : null;
+      const effectiveEntry =
+        existing.entryPrice != null ? Number(existing.entryPrice) : null;
+      const shapeCheck = validateThesisShape({
+        direction: existing.direction as "LONG" | "SHORT",
+        entryPrice: effectiveEntry,
+        targetPrice: effectiveTarget,
+        stopLoss: effectiveStop,
+      });
+      if (!shapeCheck.ok) {
+        return {
+          summary: `Refused update on $${existing.ticker} — invalid post-patch shape (${shapeCheck.reason}).`,
+          data: {
+            ok: false,
+            error: "invalid_thesis_shape",
+            message: shapeCheck.note,
+          },
+          sources: [],
+        };
+      }
     }
 
     // Build the patch. Only set keys the agent supplied — undefined ≠ null.
