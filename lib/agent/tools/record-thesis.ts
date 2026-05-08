@@ -18,6 +18,7 @@ import {
 } from "@/lib/agent/triggers/defaults";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { validateThesisShape } from "@/lib/agent/thesis-shape";
 
 const thesisFields = z.object({
   ticker: z.string(),
@@ -444,6 +445,36 @@ export const recordThesis = defineTool({
             sources: [],
           };
         }
+      }
+
+      // Relative-ordering gate. The shape rule depends on direction:
+      //   LONG  — target_price > entry_price > stop_loss
+      //   SHORT — target_price < entry_price < stop_loss
+      //   PASS  — no shape rule (reference levels, no trade plan)
+      // Catches inverted-target theses at write time. PR #227 added the
+      // same check at place_trade; this is the upstream cure that prevents
+      // broken WATCHING rows from sitting in the watchlist for weeks
+      // (2026-05-07 audit found 3 such rows on Earnings Drift / Secular
+      // Theme dating back to April 23-27).
+      const shapeCheck = validateThesisShape({
+        direction: args.direction,
+        entryPrice: args.entry_price ?? null,
+        targetPrice: args.target_price ?? null,
+        stopLoss: args.stop_loss ?? null,
+      });
+      if (!shapeCheck.ok) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — invalid thesis shape (${shapeCheck.reason}).`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: ${shapeCheck.reason}.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note: shapeCheck.note,
+          },
+          sources: [],
+        };
       }
 
       // Compute composite = SUM of the four weighted dimensions (caps:
