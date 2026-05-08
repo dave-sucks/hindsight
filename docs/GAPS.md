@@ -151,9 +151,6 @@ These prevent the core loop from working as designed. Fix first.
 
 ## P2 — Paper cuts and FE polish
 
-### P2-1 — 6 PASS-on-watchlist theses with no triggers
-SQL fix from SESSION_AUDIT item 8. ~5 min.
-
 ### P2-2 — `manage_watchlist` defaults to TRADE horizon
 Hold-style audit — biases new watchlist entries toward short-term. Should default to TARGET when there's no explicit catalyst. ~15 min.
 
@@ -163,17 +160,8 @@ SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints th
 ### P2-5 — `sync-heartbeat.ts` is dead
 Crons agent — file exists, imports exist, but not in `app/api/inngest/route.ts` `functions[]` array. Either wire it up or delete the file. ~5 min.
 
-### P2-6 — Thesis sheet UI items
-SESSION_AUDIT items 20-32 (FE work). Status pill should be a sentence ("Watching for entry > $268 · 1.9% below"); horizon needs an exit-policy explanation; trigger panel needs proximity-to-fire chips; activity log should call out "edited in this run"; Plan section needs to exist; horizon override control; days-held / maxHoldDays progress; overdue review red flag; run-detail "Why these tickers?" panel. Half-day to a full day each.
-
 ### P2-7 — Intelligence pipeline crons are independent
 Crons agent — no Inngest `.after()` or `.waitFor()` between firm-market-sweep → portfolio-watchlist-monitor → domain-monitor → signal-router. If one lags, downstream still fires on schedule with stale data. Today this is theoretical; flag it as a known fragility. ~2 hours to add chaining.
-
-### P2-8 — Briefing isn't a separate cron
-Crons agent — registry implies it is. Already clarified in 2026-05-07 registry edit ("Inline after every run, no separate cron"). No code change needed; documentation only.
-
-### P2-10 — Podcast tools missing from TOOL_REGISTRY
-Tools agent — `read_past_transcripts`, `suggest_podcast_config`, `write_segment_transcript` exist in `lib/agent/tools/` but not in `TOOL_REGISTRY`. Decision: either add them with their own podcast-feature teams in the registry, or document explicitly that podcast is out-of-scope for `/agent-workflow` (the registry header comment now says this). Status quo is fine; revisit if podcast becomes a first-class feature.
 
 ---
 
@@ -186,6 +174,9 @@ Doc + prompt + tool-allowlist housekeeping. PR title "chore: admin sweep — P0-
 - ✅ **P1-5 — Editor lane taxonomy in workflow-page prompt template.** The runtime editor prompt (`lib/agent/modes.ts → buildEditorSystemPrompt`) already documents all 4 lanes in detail (Step 0 — CLASSIFY THE REQUEST). The gap was on the documentation surface: `lib/agent/builder-prompt-template.ts` exported only a builder template, and the workflow-registry's editor card imported the same builder template — so users browsing `/agent-workflow` saw builder content under the editor card. New `EDITOR_PROMPT_TEMPLATE` export documents all four lanes (Q&A, numeric, fence, archetype) at the top with one-sentence descriptions of when each applies and how deeply it rewrites the analystPrompt. `workflow-registry.ts:239` updated to import it.
 - ✅ **P1-6 — `get_sec_filings` builder allowlist.** Already done. `lib/agent/modes.ts:103` has `"get_sec_filings"` in the BUILDER `toolAllowlist`; registry's `agents: ["builder", "agent", "tactical", "discovery"]` matches. GAPS entry was stale relative to the code.
 - ✅ **P2-9 — CLAUDE.md tool count refresh.** Updated heading from "19 tools" to "25 trading tools" with a line acknowledging the 3 podcast-only tools that live alongside but are out of scope. Itemized list adds: `get_portfolio_context`, `update_thesis`, `get_earnings_calendar`, `get_market_movers`, `manage_position` (was nested under close_position as 14b), `ask_question`, `discover_signals_for_fence`, `read_analyst_inbox_stats`, `suggest_config`. Cross-checked against `TOOL_REGISTRY` and `lib/agent/tools/` directory.
+- ✅ **P2-1 — 6 PASS-on-watchlist theses with no triggers.** Closed as stale. The watching-thesis integrity workstream's reframe of P1-1 covers this directly: PASS-direction theses are institutional-memory rows that by design don't carry ENTER triggers — there's no entry to trigger on. The "6 zero-trigger PASS theses" the audit flagged are the same population as the 14 PASS-direction watching theses already accounted for. No SQL fix needed.
+- ✅ **P2-8 — Briefing isn't a separate cron.** Closed. The 2026-05-07 registry edit changed briefing's `schedule` field to "Inline after every run (no separate cron)" — that's the documentation fix the gap was asking for. No code change, no further work.
+- ✅ **P2-10 — Podcast tools missing from TOOL_REGISTRY.** Closed as intentional. The registry's header comment now explicitly scopes the podcast feature out of `/agent-workflow` — `read_past_transcripts`, `suggest_podcast_config`, `write_segment_transcript` live in `lib/agent/tools/` alongside the trading tools but are part of the podcast surface (`lib/podcast/`, `docs/PODCAST_PLAN.md`). Revisit only if podcast becomes a first-class feature on the workflow page.
 
 ---
 
@@ -227,6 +218,14 @@ For posterity — what got fixed in the 2026-05-06 → 2026-05-07 window:
   - PR #232 — block inverted-target theses at write time (record + update)
 
 **Important caveat:** PR #228 in particular *claims* to generalize the narrate-vs-execute gate. This GAPS doc still lists P0-3 (generalized narrate-vs-execute) as open because the audit didn't verify whether #228 actually implements the full design or just adds a per-tool check. Verify before closing.
+
+---
+
+## Cancelled
+
+Items deliberately not pursued. Recorded so future sessions don't re-add them.
+
+- ❌ **P2-6 — Thesis sheet UI items** (cancelled by user 2026-05-08). The thesis-sheet redesign as scoped (sentence-style status pill, exit-policy explanation on horizon, proximity-to-fire trigger chips, "edited in this run" activity-log call-outs, Plan section, horizon override control, days-held progress, overdue-review red flag, run-detail "Why these tickers?" panel) is not being pursued in its current form. Individual sub-pieces may resurface as their own scoped gaps if they become load-bearing for the daily loop, but the bundled redesign is shelved.
 
 ---
 
