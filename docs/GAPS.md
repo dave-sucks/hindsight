@@ -131,7 +131,7 @@ Crons agent — no Inngest `.after()` or `.waitFor()` between firm-market-sweep 
 
 ## Done since 2026-05-08 (small sweep — P1-3, P2-2, P2-5)
 
-PR: "chore: small sweep — P1-3 cadence doc, P2-2 watchlist default, P2-5 dead code"
+PR: [#238 — chore: small sweep — P1-3 cadence doc, P2-2 watchlist default, P2-5 dead code](https://github.com/dave-sucks/hindsight/pull/238)
 
 - ✅ **P1-3 — Trigger evaluator cadence doc corrected.** CLAUDE.md had "every 15 min" in two places (Architecture/Reactivity section and Inngest Crons section). Updated both to "hourly". Registry was already correct (`workflow-registry.ts` schedule field and the Done-since note from 2026-05-07). No code change — the cron itself (`0 9,10,11,12,13,14,15,16 * * 1-5`) was always hourly; only the docs were wrong.
 - ✅ **P2-2 — `manage_watchlist` default horizon changed TRADE → TARGET.** `ensureWatchingThesisForWatchlistAdd()` in [`lib/agent/tools/manage-watchlist.ts`](../lib/agent/tools/manage-watchlist.ts): default when no catalyst is supplied is now TARGET (open-ended hold, exits at target/stop/invalidation). `reviewDays` updated from the 1d TRADE default to 30d for TARGET. `maxHoldDays` already defaults to null for non-TRADE horizons — no change needed there. Tool description updated to document all three horizon options. No external callers relied on the TRADE default — the horizon is derived internally from the `catalyst` field presence.
