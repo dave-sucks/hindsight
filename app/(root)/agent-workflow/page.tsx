@@ -23,6 +23,7 @@ import {
   TOOL_REGISTRY,
   PHASE_LABELS,
   PHASE_ORDER,
+  LAST_VERIFIED_AT,
   getTeam,
   exportWorkflowAsMarkdown,
   type Team,
@@ -60,13 +61,20 @@ export default function AgentWorkflowPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-xl mx-auto">
-      <div className="space-y-1">
+      <div className="space-y-2">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold">How Hindsight Works</h1>
           <CopyMarkdownButton />
         </div>
-        <p className="text-sm text-muted-foreground">
-          The lifecycle, end to end. Open any card to see its workflow and tools.
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          The canonical map of what Hindsight runs today — every team, cron, tool, and prompt
+          that drives the daily portfolio loop. Open any card to see its workflow and tools.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Last verified against codebase:{" "}
+          <span className="tabular-nums text-foreground">{LAST_VERIFIED_AT}</span>
+          {" · "}See also <span className="font-mono">docs/VISION.md</span> (target state)
+          {" and "}<span className="font-mono">docs/GAPS.md</span> (known gaps).
         </p>
       </div>
 
