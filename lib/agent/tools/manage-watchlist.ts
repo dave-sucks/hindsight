@@ -72,12 +72,13 @@ async function ensureWatchingThesisForWatchlistAdd(params: {
   // it via update_thesis the next time it researches the ticker.
   const direction: "LONG" | "SHORT" | "PASS" = params.thesisDirection ?? "LONG";
 
-  // Horizon default: TRADE is the safe baseline because it requires the
-  // fewest assumptions (tight stop, max hold gate). When the watchlist
-  // entry mentions a named catalyst, prefer CATALYST so the catalyst
-  // filing/earnings triggers attach. Promotion to ACTIVE in record_thesis
-  // / place_trade can re-pick if needed.
-  const horizon: Horizon = params.catalyst ? "CATALYST" : "TRADE";
+  // Horizon default: TARGET is the open-ended baseline (exits at
+  // target/stop/invalidation, no max-hold gate, 30d review cadence).
+  // When the watchlist entry mentions a named catalyst, prefer CATALYST
+  // so the filing/earnings triggers attach. Pass TRADE explicitly for
+  // intentional short-term swings (14d max-hold, 1d review). Promotion
+  // to ACTIVE in record_thesis / place_trade can re-pick if needed.
+  const horizon: Horizon = params.catalyst ? "CATALYST" : "TARGET";
 
   // manage_watchlist always mints a WATCHING thesis (never an open
   // position), so the watching template is the right baseline. That
@@ -89,7 +90,7 @@ async function ensureWatchingThesisForWatchlistAdd(params: {
       entryPrice: params.targetPrice ?? null,
       targetPrice: params.targetPrice ?? null,
       stopLoss: params.stopPrice ?? null,
-      maxHoldDays: horizon === "TRADE" ? 14 : null,
+      maxHoldDays: null,
       catalystDate: null,
       direction,
     },
@@ -97,7 +98,10 @@ async function ensureWatchingThesisForWatchlistAdd(params: {
   );
 
   const dayMs = 24 * 60 * 60 * 1000;
-  const reviewDays = horizon === "CATALYST" || horizon === "TRADE" ? 1 : 7;
+  const reviewDays =
+    horizon === "CATALYST" ? 1
+    : horizon === "TARGET" ? 30
+    : 7; // COMPOUNDER default
   const nextReviewAt = new Date(Date.now() + reviewDays * dayMs);
 
   try {
@@ -122,13 +126,10 @@ async function ensureWatchingThesisForWatchlistAdd(params: {
         targetPrice: params.targetPrice,
         stopLoss: params.stopPrice,
         horizon,
-        // CATALYST and TRADE are both swing-shaped at the holdDuration
-        // level. Kept explicit (not a literal "SWING") so a future
-        // horizon default doesn't silently misclassify.
         holdDuration: "SWING",
         triggers: triggers as object[],
         nextReviewAt,
-        maxHoldDays: horizon === "TRADE" ? 14 : null,
+        maxHoldDays: null,
       },
     });
     await writeThesisUpdate({
@@ -196,7 +197,10 @@ export const manageWatchlist = defineTool({
   description:
     "Explicitly add, remove, or update a watchlist item during a run. " +
     "This tool mutates watchlist state only. It does not research the stock, generate a thesis, or place trades. " +
-    "Use when you want to save an idea for later, remove a dead idea, change watch priority, or attach notes/catalysts/targets after research.",
+    "Use when you want to save an idea for later, remove a dead idea, change watch priority, or attach notes/catalysts/targets after research. " +
+    "Horizon defaults to TARGET (open-ended hold, exits at target/stop/invalidation, 30d review cadence). " +
+    "Pass catalyst to use CATALYST horizon (event-driven; filing/earnings triggers attach). " +
+    "TRADE horizon (14d max-hold, 1d review) requires an explicit caller decision — it is not the default.",
   schema: z.object({
     action: z.enum(["ADD", "REMOVE", "UPDATE"]).describe("What to do with the watchlist item"),
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),

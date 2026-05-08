@@ -11,7 +11,7 @@
 // and bump LAST_VERIFIED_AT below.
 
 /** ISO date the registry was last manually verified against the codebase. */
-export const LAST_VERIFIED_AT = "2026-05-08";
+export const LAST_VERIFIED_AT = "2026-05-08"; // bumped: P1-3 cadence doc, P2-2 watchlist default, P2-5 dead code
 
 import type { LucideIcon } from "lucide-react";
 import {
