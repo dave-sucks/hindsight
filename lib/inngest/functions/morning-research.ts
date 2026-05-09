@@ -18,7 +18,15 @@ export const morningResearch = inngest.createFunction(
     retries: 1,
   },
   [
-    { cron: "TZ=America/New_York 0 8 * * 1-5" }, // 8:00 AM ET Mon–Fri (auto-adjusts for EDT/EST)
+    // Morning playbook — 8:00 AM ET Mon–Fri. Fires for ALL enabled analysts.
+    { cron: "TZ=America/New_York 0 8 * * 1-5" },
+    // Midday refresh — 11:30 AM ET Mon–Fri. Fires for DAY-only analysts so
+    // they catch new gappers / mid-session breakouts that weren't on the
+    // 8 AM mover list. Non-DAY analysts ignore this tick.
+    { cron: "TZ=America/New_York 30 11 * * 1-5" },
+    // Afternoon refresh — 2:30 PM ET Mon–Fri. Fires for DAY-only analysts
+    // for late-session setups before EOD flatten at 15:45.
+    { cron: "TZ=America/New_York 30 14 * * 1-5" },
     { event: "app/research.run.manual" },
   ],
   async ({ event, step }) => {
@@ -26,9 +34,29 @@ export const morningResearch = inngest.createFunction(
     const targetConfigId = (event as { data?: { agentConfigId?: string } })
       ?.data?.agentConfigId ?? null;
 
+    // Derive run slot from current ET hour. Used to filter analysts by
+    // holdDurations on the midday/afternoon ticks (DAY-only) and to inject
+    // slot-specific framing into the system prompt so the agent knows
+    // "this is a refresh, not a fresh playbook."
+    const etHour = parseInt(
+      new Date().toLocaleString("en-US", {
+        timeZone: "America/New_York",
+        hour: "2-digit",
+        hour12: false,
+      }),
+      10,
+    );
+    const runSlot: "morning" | "midday" | "afternoon" =
+      etHour < 10 ? "morning" : etHour < 13 ? "midday" : "afternoon";
+
+    const isDayOnly = (durations: string[] | null | undefined): boolean =>
+      Array.isArray(durations) &&
+      durations.length > 0 &&
+      durations.every((h) => h.toUpperCase() === "DAY");
+
     // ── Step 1: Load enabled AgentConfigs (all, or filtered to one) ──────────
 
-    const configs = await step.run("load-agent-configs", async () => {
+    const allConfigs = await step.run("load-agent-configs", async () => {
       return prisma.agentConfig.findMany({
         where: {
           enabled: true,
@@ -37,8 +65,23 @@ export const morningResearch = inngest.createFunction(
       });
     });
 
+    // Slot-based filter. Manual triggers always run. Morning slot runs for
+    // all analysts (default cadence). Midday + afternoon slots run for
+    // DAY-only analysts (intraday refresh cadence).
+    const isManual = !!targetConfigId;
+    const configs = isManual
+      ? allConfigs
+      : runSlot === "morning"
+        ? allConfigs
+        : allConfigs.filter((c: { holdDurations: string[] }) => isDayOnly(c.holdDurations));
+
     if (configs.length === 0) {
-      return { ran: 0, reason: "no-enabled-configs" };
+      return {
+        ran: 0,
+        reason: "no-enabled-configs",
+        slot: runSlot,
+        filtered: allConfigs.length,
+      };
     }
 
     let totalTradesPlaced = 0;
@@ -73,7 +116,8 @@ export const morningResearch = inngest.createFunction(
               minConfidence: config.minConfidence,
               signalTypes: config.signalTypes,
               tickers: config.watchlist ?? [],
-              triggeredBy: "morning-cron",
+              triggeredBy: `morning-cron:${runSlot}`,
+              runSlot,
               agentMode: true,
               analystName: config.name,
             } as object,
@@ -101,7 +145,7 @@ export const morningResearch = inngest.createFunction(
         const alpacaCreds = await resolveAlpacaCredentials(config.userId) ?? undefined;
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
-        const systemPrompt = buildV2SystemPrompt(agentConfig, runInput);
+        const systemPrompt = buildV2SystemPrompt(agentConfig, runInput, { runSlot });
 
         // 2d. Create tools with run context
         const tools = createResearchTools({

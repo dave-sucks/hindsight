@@ -29,8 +29,13 @@ export const discoveryRun = inngest.createFunction(
     retries: 1,
   },
   [
-    // 9 AM ET Sundays. Inngest auto-handles EDT/EST.
+    // Sunday weekly discovery — 9 AM ET. Fires for ALL enabled analysts.
     { cron: "TZ=America/New_York 0 9 * * 0" },
+    // DAY-trader pre-open discovery — 7 AM ET Mon–Fri. Fires for DAY-only
+    // analysts so they get a fresh net-new-name screen before the 8 AM
+    // morning playbook run. Runs the same discovery prompt; the prompt
+    // detects holdDurations and emits the day-trade-shaped branch.
+    { cron: "TZ=America/New_York 0 7 * * 1-5" },
     // Manual fire — useful for one-off testing.
     { event: "app/discovery.run.manual" },
   ],
@@ -39,7 +44,25 @@ export const discoveryRun = inngest.createFunction(
       (event as { data?: { agentConfigId?: string } })?.data?.agentConfigId ??
       null;
 
-    const configs = await step.run("load-agent-configs", async () => {
+    // Sunday cron = all analysts. Mon-Fri 7 AM cron = DAY-only.
+    // Day-of-week is the simplest disambiguator since the two crons fire
+    // on different days. Inngest doesn't expose which cron fired in the
+    // event metadata, so we rely on the wall clock.
+    const dayOfWeek = parseInt(
+      new Date().toLocaleString("en-US", {
+        timeZone: "America/New_York",
+        weekday: "short",
+      }) === "Sun" ? "0" : "1",
+      10,
+    );
+    const isWeekdayCron = dayOfWeek !== 0;
+
+    const isDayOnly = (durations: string[] | null | undefined): boolean =>
+      Array.isArray(durations) &&
+      durations.length > 0 &&
+      durations.every((h) => h.toUpperCase() === "DAY");
+
+    const allConfigs = await step.run("load-agent-configs", async () => {
       return prisma.agentConfig.findMany({
         where: {
           enabled: true,
@@ -48,8 +71,21 @@ export const discoveryRun = inngest.createFunction(
       });
     });
 
+    // Manual triggers always run. Sunday cron runs for all. Weekday cron
+    // (Mon-Fri 7 AM) runs only for DAY-only analysts.
+    const isManual = !!targetConfigId;
+    const configs = isManual
+      ? allConfigs
+      : isWeekdayCron
+        ? allConfigs.filter((c: { holdDurations: string[] }) => isDayOnly(c.holdDurations))
+        : allConfigs;
+
     if (configs.length === 0) {
-      return { ran: 0, reason: "no-enabled-configs" };
+      return {
+        ran: 0,
+        reason: "no-enabled-configs",
+        cadence: isWeekdayCron ? "weekday-day-only" : "sunday-all",
+      };
     }
 
     let totalNewTheses = 0;
