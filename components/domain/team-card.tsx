@@ -483,6 +483,29 @@ export function TeamSheetContent({ team }: { team: Team }) {
         </p>
       </div>
 
+      {/* Cadence by analyst type — only when the schedule actually
+          differs by analyst type (Daily Run, Discovery Run). Renders
+          a clean two-row breakdown so the user can see at a glance
+          how DAY-only analysts run a different cadence from the
+          SWING / POSITION default. */}
+      {team.scheduleByType && (
+        <div className="rounded-md border bg-muted/30 px-3 py-2.5 space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Cadence by analyst type
+          </p>
+          <div className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
+            <span className="text-muted-foreground">Default</span>
+            <span className="text-foreground leading-snug">
+              {team.scheduleByType.default}
+            </span>
+            <span className="text-muted-foreground">DAY-only</span>
+            <span className="text-foreground leading-snug">
+              {team.scheduleByType.dayTrader}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Prompt banner */}
       {(team.getPrompt || team.promptSource) && (
         <PromptBanner team={team} />

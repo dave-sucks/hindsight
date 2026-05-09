@@ -116,8 +116,21 @@ export interface Team {
   icon: LucideIcon;
   /** Model used, if any */
   model?: string;
-  /** When this team runs */
+  /** When this team runs — succinct chip for the card; shown as the
+   * default schedule everywhere else. For teams whose schedule differs
+   * by analyst type, also populate `scheduleByType` below. */
   schedule: string;
+  /**
+   * Optional per-analyst-type cadence breakdown, rendered as a small
+   * table in the sheet under the description. Use this when DAY-only
+   * analysts run a different cadence from the default — e.g. the daily
+   * run fires once for swing analysts but multiple times for day-traders.
+   * The card chip keeps using `schedule`; this is sheet-only detail.
+   */
+  scheduleByType?: {
+    default: string;
+    dayTrader: string;
+  };
   /**
    * Upstream relation chip rendered in the bottom row of the card. Used
    * for any kind of relationship — direct event triggers ("Triggered by"),
@@ -308,17 +321,17 @@ export const TEAMS: Team[] = [
     summary:
       "Checks every active thesis's structured predicates against fresh prices and just-arrived signals. Fires thesis.trigger.fired when one hits — that's what wakes a tactical run.",
     description:
-      "The Trigger Evaluator is the reactivity layer between your portfolio and the rest of the world. Every active thesis can carry structured trigger predicates — price levels, technical levels, earnings outcomes, filing types, time elapsed. The evaluator's job is to check those predicates against reality and fire an event when one matches.\n\nTwo paths feed it. The signal-driven path consumes routed signals as they land — earnings beats, guidance changes, 8-K filings — and matches them to signal-side predicates. The cron path runs every 15 minutes during market hours, batch-fetches fresh prices, and matches them to price/time-side predicates. A cooldown gate prevents the same predicate from firing repeatedly. When something fires, it stamps an audit row and emits the event the Tactical Run consumes.",
+      "The Trigger Evaluator is the reactivity layer between your portfolio and the rest of the world. Every active or watching thesis can carry structured trigger predicates — price levels, technical levels, earnings outcomes, filing types, time elapsed. The evaluator's job is to check those predicates against reality and fire an event when one matches.\n\nTwo paths feed it. The signal-driven path consumes routed signals as they land — earnings beats, guidance changes, 8-K filings — and matches them to signal-side predicates. The cron path runs every 5 minutes during market hours, batch-fetches fresh prices, and matches them to price/time-side predicates. The 5-minute cadence is what makes day-trader entry triggers viable — at 15 minutes the breakout had often failed or run away by the time tactical-run spawned. A cooldown gate prevents the same predicate from firing repeatedly. When something fires, it stamps an audit row and emits the event the Tactical Run consumes.",
     icon: Bell,
-    schedule: "Hourly during market hours + on signal.routed",
+    schedule: "Every 5m, market hours + on signal.routed",
     substeps: [
       { title: "Signal-driven evaluation", summary: "Consumes app/signal.routed. For each (analyst × ticker × thesis × trigger), evaluates signal-side predicates against the routed signal." },
-      { title: "Cron-driven evaluation", summary: "Loads all ACTIVE theses with non-empty triggers. Batches Finnhub /quote for unique tickers (≤200). Evaluates price/time-side predicates." },
+      { title: "Cron-driven evaluation", summary: "Every 5 min during market hours. Loads all ACTIVE + WATCHING theses with non-empty triggers. Batches Finnhub /quote for unique tickers (≤200). Evaluates price/time-side predicates. Includes WATCHING theses so day-trader entry triggers (PRICE_ABOVE level → ADD) can promote to ACTIVE intraday." },
       { title: "Cooldown gate", summary: "Per-trigger cooldownDays prevents the same predicate from firing twice in the window. EXIT triggers skip cooldown — terminal actions must always fire." },
       { title: "Audit + emit", summary: "Stamps lastFiredAt on the trigger, writes ThesisUpdate(type=TRIGGER_FIRED) with thesisId / triggerId / signalIds, emits app/thesis.trigger.fired." },
     ],
     tools: [
-      { name: "Finnhub /quote", provider: "finnhub", summary: "Cron-path price fetch — one call per unique ticker per 15-min interval, capped at 200." },
+      { name: "Finnhub /quote", provider: "finnhub", summary: "Cron-path price fetch — one call per unique ticker per 5-min interval, capped at 200." },
     ],
     promptSource: "lib/agent/triggers/evaluate.ts",
   },
@@ -332,14 +345,19 @@ export const TEAMS: Team[] = [
     summary:
       "Per analyst: scans the past week's discovery signals, scores the top 2-3 candidates, mints up to 5 new WATCHING theses. The cadence safety net for new coverage.",
     description:
-      "Discovery Run is how new tickers enter your analyst's coverage. Once a week, every analyst spawns a focused agent that scans the past seven days of signals on names not already in the library, picks the most promising candidates, and mints WATCHING theses with the triggers and rationale that would later promote them to ACTIVE.\n\nIt cannot touch existing coverage — only Daily and Tactical runs can update or close theses. If conviction on a candidate is high enough at discovery time, it can place a starter trade and mint as ACTIVE; otherwise everything goes onto the watchlist for the daily run to evaluate later.",
+      "Discovery Run is how new tickers enter your analyst's coverage. A focused agent scans for net-new candidates, picks the most promising, and mints WATCHING theses with triggers + rationale that the daily run can later promote to ACTIVE.\n\nThe cadence depends on the analyst type. Default analysts (SWING / POSITION / mixed) run discovery once a week on Sundays — net-new sector / industry / theme coverage that the daily run wouldn't have surfaced organically. DAY-only analysts run discovery every weekday at 7 AM ET — a pre-open scan of overnight gappers, earnings reactions, and pre-market movers, minting WATCHING theses with intraday entry triggers (PRICE_ABOVE breakout level → ADD) so the trigger evaluator can fire them during the regular session. The weekday DAY discovery uses a tighter prompt branch (TRADE horizon, ADD-action entries, 1-2% stops, single-session targets) distinct from the swing-analyst version.\n\nIt cannot touch existing coverage — only Daily and Tactical runs can update or close theses.",
     icon: Search,
     model: "GPT-4o",
-    schedule: "Sundays 9 AM ET (weekly)",
+    schedule: "Sundays 9 AM ET (default) · Mon-Fri 7 AM ET (DAY)",
+    scheduleByType: {
+      default: "Sundays 9 AM ET — weekly net-new sector/theme scan.",
+      dayTrader:
+        "Mon-Fri 7 AM ET — pre-open scan of overnight gappers + earnings reactions; mints WATCHING theses with intraday entry triggers. Plus the Sunday 9 AM cadence as a backup.",
+    },
     substeps: [
-      { title: "Scan", summary: "read_signals filtered to the discoverySignals bucket. Cross off anything already covered by an active or watching thesis." },
-      { title: "Score", summary: "get_stock_data on top 2-3 candidates. Composite score (trendStrength / relativeStrength / entryQuality / catalystFreshness). ≥ 7 required to mint." },
-      { title: "Mint", summary: "record_thesis with status=WATCHING (default) or status=ACTIVE + place_trade (high conviction only). Default triggers attach by horizon." },
+      { title: "Scan", summary: "read_signals filtered to the discoverySignals bucket. Cross off anything already covered by an active or watching thesis. DAY analysts also call get_market_movers + get_earnings_calendar for overnight gappers." },
+      { title: "Score", summary: "get_stock_data on top 2-3 candidates (default) or top 3-5 (DAY pre-open). Composite score (trendStrength / relativeStrength / entryQuality / catalystFreshness). ≥ 7 required to mint." },
+      { title: "Mint", summary: "Default analysts: record_thesis with status=WATCHING + REVIEW-action triggers, horizon picked by archetype. DAY analysts: status=WATCHING + horizon=TRADE + ADD-action entry triggers + tight 1-2% stops + single-session targets." },
       { title: "Recap", summary: "record_run_summary then complete_run. Briefing agent fires inline." },
     ],
     tools: [
@@ -368,10 +386,15 @@ export const TEAMS: Team[] = [
     summary:
       "Per-analyst portfolio review every weekday morning. The analyst reviews every holding and watchlist name, updates the theses where new evidence arrived, and trades when conviction is there.",
     description:
-      "The Daily Run is where your portfolio actually gets managed. Every weekday morning at 8 AM ET, each enabled analyst wakes up, reads its current holdings and watchlist along with whatever signals came in overnight, then goes through each name one at a time and asks: does anything need to change today?\n\nFor most names the answer is no — nothing material happened, so the analyst just logs that it looked and moves on. For the rest, it does fresh research, updates the thesis with what it learned (raise the target, tighten the stop, change conviction), and acts on the position if needed (close, scale in, trim). It can also pick up worthwhile new discovery candidates that came in overnight, and writes a quick recap at the end of what it actually changed.",
+      "The Daily Run is where your portfolio actually gets managed. The analyst wakes up, reads its current holdings and watchlist along with whatever signals came in overnight, then goes through each name one at a time and asks: does anything need to change today? For most names the answer is no — nothing material happened, so the analyst logs it and moves on. For the rest, it does fresh research, updates the thesis (raise the target, tighten the stop, change conviction), and acts on the position if needed.\n\nThe cadence depends on analyst type. Default analysts (SWING / POSITION / mixed) run once at 8 AM ET weekdays — one full portfolio walk per day. DAY-only analysts run three times: 8 AM (morning playbook from the open-of-session mover screen), 11:30 AM (midday refresh — what's NEW on today's tape, plus invalidate stale morning theses), 2:30 PM (afternoon review — late-session setups + closeout review before the bell). The midday and afternoon runs use slot-aware framing in the prompt — they're refreshes, not fresh playbooks. DAY analysts also have an EOD flatten cron at 3:45 PM ET that force-closes any still-open positions before market close.",
     icon: Bot,
     model: "GPT-4o",
-    schedule: "8:00 AM ET weekdays (daily)",
+    schedule: "8:00 AM ET weekdays (default) · 4× daily (DAY)",
+    scheduleByType: {
+      default: "8:00 AM ET weekdays — one portfolio walk per day.",
+      dayTrader:
+        "Mon-Fri 8:00 AM (morning playbook) + 11:30 AM (midday refresh) + 2:30 PM (afternoon review) ET. Plus EOD flatten at 3:45 PM ET to force-close anything still open.",
+    },
     substeps: [
       { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references priority reviews flagged by the price monitor. Plain text — no tools." },
       { title: "Orient", summary: "read_signals (today's three buckets: portfolio, watchlist, discovery — each carries signalId for provenance) and get_theses with full update history. read_artifact on anything worth a deep read; web_search sparingly within budget." },
@@ -589,6 +612,10 @@ export function exportWorkflowAsMarkdown(): string {
     lines.push(`${team.summary}`);
     if (team.model) lines.push(`Model: ${team.model}`);
     lines.push(`Schedule: ${team.schedule}`);
+    if (team.scheduleByType) {
+      lines.push(`  - Default analysts: ${team.scheduleByType.default}`);
+      lines.push(`  - DAY-only analysts: ${team.scheduleByType.dayTrader}`);
+    }
     lines.push("");
 
     lines.push("### Steps");
