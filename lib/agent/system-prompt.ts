@@ -77,9 +77,19 @@ export interface AgentConfigInput {
 
 // ─── Daily run system prompt ─────────────────────────────────────────────────
 
+/**
+ * Optional run-context flags passed by the caller (morning-research cron).
+ * Currently used to inject "morning vs midday vs afternoon" framing into
+ * the DAY workflow branch so a refresh run knows it's not a fresh playbook.
+ */
+export interface RunContext {
+  runSlot?: "morning" | "midday" | "afternoon";
+}
+
 export function buildV2SystemPrompt(
   config: AgentConfigInput,
   runInput: RunInput,
+  ctx?: RunContext,
 ): string {
   const name = config.name || "Research Analyst";
   const sectors = config.sectors?.length
@@ -386,9 +396,19 @@ Composite = sum, max 10. **Threshold to trade: composite ≥ 7 AND R/R ≥ 2:1 A
   // session strategy. EOD flatten cron at 15:45 ET enforces the
   // no-overnight rule.
   if (dayOnly) {
+    const runSlot = ctx?.runSlot ?? "morning";
+    const slotIntro =
+      runSlot === "midday"
+        ? `**This is your MIDDAY REFRESH run (~11:30 AM ET), not a fresh playbook.** Your 8 AM morning run already minted the day's WATCHING theses with entry/stop/target levels. Your job now is: (a) check what's NEW on today's tape that wasn't on the 8 AM mover list — late gappers, news-driven moves, breakouts forming during the session — and mint additional WATCHING theses if any clean setups appeared. (b) Review your morning theses' triggers — has anything fired? Has the regime shifted? Tighten or invalidate as needed. Do NOT re-research everything from scratch; the morning playbook stands unless something materially changed.`
+        : runSlot === "afternoon"
+          ? `**This is your AFTERNOON / LATE-SESSION run (~2:30 PM ET), not a fresh playbook.** Power hour is approaching and the EOD flatten cron fires at 15:45 ET. Your job now is: (a) review every still-WATCHING thesis that hasn't fired — is the setup still valid going into the close, or should it be invalidated? (b) Scan for late-day reversal / continuation setups specific to this part of the session. (c) Review every still-OPEN position — would you re-enter at this price? If not, consider closing now rather than waiting for EOD flatten. Be ruthless about cutting weak setups before the close.`
+          : `**This is your MORNING PLAYBOOK run (~8 AM ET).** This is where today's plan gets built. Pre-open discovery may have already minted some WATCHING theses for you to refine — review those first. Then build the rest of today's playbook from the regular-session-open mover screen.`;
+
     sections.push(`## Workflow
 
-You're a day trader. Today's tape is everything. You go home flat every night — the system enforces this with an EOD flatten cron at 15:45 ET. Five phases. Narration rule: 2-4 sentences between tool calls, $TICKER format, don't re-summarize what tool result cards already show.
+You're a day trader. Today's tape is everything. You go home flat every night — the system enforces this with an EOD flatten cron at 15:45 ET. ${slotIntro}
+
+Five phases. Narration rule: 2-4 sentences between tool calls, $TICKER format, don't re-summarize what tool result cards already show.
 
 Start with a 1-2 sentence pre-market check: any holdings still open (should be zero — anything held over from yesterday is an EOD-flatten miss and gets cleaned up FIRST), today's broad market direction premarket, Fed/CPI/earnings risk on today's calendar. No tools yet.
 

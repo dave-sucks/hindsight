@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Info, Search, ArrowRight, Plus, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -802,6 +802,84 @@ function SettingsTab({
             </div>
           </div>
         )}
+      </Section>
+
+      {/* Run schedule ─────────────────────────────────────────────
+        Static, derived from holdDurations. Shows the analyst owner what
+        cadence the agent runs at — different schedules apply to DAY-only
+        analysts so they can react intraday, while SWING/POSITION run
+        once daily. The schedule itself is hardcoded by holdDurations in
+        the cron functions (morning-research.ts, discovery-run.ts); this
+        section is a read-only mirror of that logic for transparency. To
+        change the cadence, change the holdDurations dropdown above. */}
+      <Section label="Run schedule">
+        {(() => {
+          const isDayOnly =
+            values.holdDurations.length > 0 &&
+            values.holdDurations.every((h) => h.toUpperCase() === "DAY");
+          const rows: Array<{ label: string; when: string; tooltip: string }> = isDayOnly
+            ? [
+                {
+                  label: "Pre-open discovery",
+                  when: "7:00 AM ET · Mon-Fri",
+                  tooltip: "Scans overnight movers + earnings, mints WATCHING theses with intraday entry triggers before the regular session opens.",
+                },
+                {
+                  label: "Morning playbook",
+                  when: "8:00 AM ET · Mon-Fri",
+                  tooltip: "Builds today's day-trade playbook from the open-of-session mover screen.",
+                },
+                {
+                  label: "Midday refresh",
+                  when: "11:30 AM ET · Mon-Fri",
+                  tooltip: "Adds late gappers / news-driven setups that weren't on the 8 AM list. Reviews morning theses for invalidation.",
+                },
+                {
+                  label: "Afternoon review",
+                  when: "2:30 PM ET · Mon-Fri",
+                  tooltip: "Late-session setups + closeout review before the 15:45 EOD flatten.",
+                },
+                {
+                  label: "Trigger evaluator",
+                  when: "Every 5 min · 9 AM-4 PM ET",
+                  tooltip: "Watches your WATCHING theses' price triggers. When a level fires, spawns a tactical run that confirms the breakout and places the trade.",
+                },
+                {
+                  label: "EOD flatten",
+                  when: "3:45 PM ET · Mon-Fri",
+                  tooltip: "Force-closes any open positions before the bell. Day-traders go home flat.",
+                },
+              ]
+            : [
+                {
+                  label: "Daily review",
+                  when: "8:00 AM ET · Mon-Fri",
+                  tooltip: "Walks the analyst's book — reviews active + watching theses, decides on actions, optionally does discovery.",
+                },
+                {
+                  label: "Weekly discovery",
+                  when: "9:00 AM ET · Sundays",
+                  tooltip: "Net-new ticker scan within your universe. Mints WATCHING theses for the daily review to refine.",
+                },
+                {
+                  label: "Trigger evaluator",
+                  when: "Every 5 min · 9 AM-4 PM ET",
+                  tooltip: "Watches your active theses' price + signal triggers. Spawns tactical runs when conditions match.",
+                },
+              ];
+          return (
+            <div className="grid grid-cols-[1fr_auto] items-center gap-y-1 [&>*:nth-child(even)]:justify-self-end">
+              {rows.map((row) => (
+                <Fragment key={row.label}>
+                  <RowLabel label={row.label} tooltip={row.tooltip} />
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {row.when}
+                  </span>
+                </Fragment>
+              ))}
+            </div>
+          );
+        })()}
       </Section>
 
       {/* Universe ──────────────────────────────────────────────── */}
