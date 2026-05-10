@@ -126,7 +126,13 @@ export const priceMonitor = inngest.createFunction(
             },
           });
 
-          // Check exit conditions — pass stored peakPrice to avoid event-scan query
+          // Trailing-stop check (TRAILING-only after Fix #0 — see
+          // docs/MORNING_RUN_V2_DESIGN.md). Per-thesis EXIT triggers
+          // handle every other exit path via the trigger evaluator's
+          // 5-min cron. checkExitConditions early-returns for any
+          // non-TRAILING exitStrategy; the call here exists so positions
+          // that opted into manage_position.set_trailing_stop continue
+          // to honor their trail-from-peak math.
           await checkExitConditions(position as unknown as PositionModel, currentPrice, position.peakPrice);
 
           // Near-target alert — send once when ≥80% of the way to price target

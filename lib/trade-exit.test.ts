@@ -4,132 +4,43 @@ jest.mock("@/lib/actions/closeTrade.actions", () => ({
   closeTrade: jest.fn(),
 }));
 
-import { evaluateExitStrategy, targetProximity } from "./trade-exit";
+import { evaluateExitStrategy, targetProximity, stopProximity } from "./trade-exit";
 
-// ─── Shared test fixtures ─────────────────────────────────────────────────────
+// ─── PRICE_TARGET / TIME_BASED → no-op after Fix #0 ──────────────────────────
+// Fix #0 (docs/MORNING_RUN_V2_DESIGN.md) made per-thesis triggers the single
+// source of truth for non-trailing exits. evaluateExitStrategy now no-ops for
+// any strategy other than TRAILING; the PRICE_TARGET / TIME_BASED test suites
+// were deleted with the branches.
 
-const baseLong = {
-  direction: "LONG" as const,
-  exitStrategy: "PRICE_TARGET" as const,
-  avgCost: 100,
-  targetPrice: 120,
-  stopLoss: 90,
-  exitDate: null,
-  trailingStopPct: null,
-};
-
-const baseShort = {
-  direction: "SHORT" as const,
-  exitStrategy: "PRICE_TARGET" as const,
-  avgCost: 100,
-  targetPrice: 80,
-  stopLoss: 110,
-  exitDate: null,
-  trailingStopPct: null,
-};
-
-// ─── PRICE_TARGET ─────────────────────────────────────────────────────────────
-
-describe("PRICE_TARGET — LONG", () => {
-  it("returns TARGET when currentPrice >= targetPrice", () => {
-    expect(evaluateExitStrategy(baseLong, 120, 120)).toEqual({
-      reason: "TARGET",
-      label: "Target price reached",
-    });
-    expect(evaluateExitStrategy(baseLong, 125, 125)).toEqual({
-      reason: "TARGET",
-      label: "Target price reached",
-    });
+describe("evaluateExitStrategy — non-TRAILING strategies are no-ops", () => {
+  it("returns null for legacy PRICE_TARGET regardless of price vs levels", () => {
+    const legacy = {
+      direction: "LONG" as const,
+      exitStrategy: "PRICE_TARGET" as const,
+      trailingStopPct: null,
+    };
+    // Below stop, at target, above target — all should no-op.
+    expect(evaluateExitStrategy(legacy, 50, 50)).toBeNull();
+    expect(evaluateExitStrategy(legacy, 200, 200)).toBeNull();
   });
 
-  it("returns STOP when currentPrice <= stopLoss", () => {
-    expect(evaluateExitStrategy(baseLong, 90, 100)).toEqual({
-      reason: "STOP",
-      label: "Stop loss triggered",
-    });
-    expect(evaluateExitStrategy(baseLong, 85, 100)).toEqual({
-      reason: "STOP",
-      label: "Stop loss triggered",
-    });
-  });
-
-  it("returns null when price is between entry and target", () => {
-    expect(evaluateExitStrategy(baseLong, 110, 110)).toBeNull();
-  });
-
-  it("returns null when stopLoss is null", () => {
-    const noStop = { ...baseLong, stopLoss: null };
-    expect(evaluateExitStrategy(noStop, 85, 100)).toBeNull();
+  it("returns null for legacy TIME_BASED regardless of price", () => {
+    const legacy = {
+      direction: "SHORT" as const,
+      exitStrategy: "TIME_BASED" as const,
+      trailingStopPct: null,
+    };
+    expect(evaluateExitStrategy(legacy, 50, 50)).toBeNull();
+    expect(evaluateExitStrategy(legacy, 200, 200)).toBeNull();
   });
 });
 
-describe("PRICE_TARGET — SHORT", () => {
-  it("returns TARGET when currentPrice <= targetPrice", () => {
-    expect(evaluateExitStrategy(baseShort, 80, 80)).toEqual({
-      reason: "TARGET",
-      label: "Target price reached",
-    });
-    expect(evaluateExitStrategy(baseShort, 75, 80)).toEqual({
-      reason: "TARGET",
-      label: "Target price reached",
-    });
-  });
-
-  it("returns STOP when currentPrice >= stopLoss", () => {
-    expect(evaluateExitStrategy(baseShort, 110, 100)).toEqual({
-      reason: "STOP",
-      label: "Stop loss triggered",
-    });
-  });
-
-  it("returns null when price is between entry and target", () => {
-    expect(evaluateExitStrategy(baseShort, 90, 100)).toBeNull();
-  });
-});
-
-// ─── TIME_BASED ───────────────────────────────────────────────────────────────
-
-describe("TIME_BASED", () => {
-  const timeTrade = {
-    direction: "LONG" as const,
-    exitStrategy: "TIME_BASED" as const,
-    avgCost: 100,
-    targetPrice: null,
-    stopLoss: null,
-    trailingStopPct: null,
-  };
-
-  it("returns TIME when exitDate has passed", () => {
-    const past = new Date(Date.now() - 1000).toISOString();
-    expect(
-      evaluateExitStrategy({ ...timeTrade, exitDate: new Date(past) }, 105, 105)
-    ).toEqual({ reason: "TIME", label: "Hold duration expired" });
-  });
-
-  it("returns null when exitDate is in the future", () => {
-    const future = new Date(Date.now() + 86400000).toISOString();
-    expect(
-      evaluateExitStrategy({ ...timeTrade, exitDate: new Date(future) }, 105, 105)
-    ).toBeNull();
-  });
-
-  it("returns null when exitDate is null", () => {
-    expect(
-      evaluateExitStrategy({ ...timeTrade, exitDate: null }, 105, 105)
-    ).toBeNull();
-  });
-});
-
-// ─── TRAILING ─────────────────────────────────────────────────────────────────
+// ─── TRAILING — still active (explicit opt-in via manage_position) ───────────
 
 describe("TRAILING — LONG", () => {
   const trailingLong = {
     direction: "LONG" as const,
     exitStrategy: "TRAILING" as const,
-    avgCost: 100,
-    targetPrice: null,
-    stopLoss: null,
-    exitDate: null,
     trailingStopPct: 10,
   };
 
@@ -160,10 +71,6 @@ describe("TRAILING — SHORT", () => {
   const trailingShort = {
     direction: "SHORT" as const,
     exitStrategy: "TRAILING" as const,
-    avgCost: 100,
-    targetPrice: null,
-    stopLoss: null,
-    exitDate: null,
     trailingStopPct: 10,
   };
 
@@ -181,17 +88,13 @@ describe("TRAILING — SHORT", () => {
   });
 });
 
-// ─── MANUAL ───────────────────────────────────────────────────────────────────
+// ─── MANUAL — new default after Fix #0 ───────────────────────────────────────
 
 describe("MANUAL", () => {
   it("never auto-closes regardless of price", () => {
     const manual = {
       direction: "LONG" as const,
       exitStrategy: "MANUAL" as const,
-      avgCost: 100,
-      targetPrice: 50, // would normally trigger
-      stopLoss: 200, // would normally trigger
-      exitDate: new Date(Date.now() - 1000), // in the past
       trailingStopPct: null,
     };
     expect(evaluateExitStrategy(manual, 30, 30)).toBeNull();
@@ -199,7 +102,7 @@ describe("MANUAL", () => {
   });
 });
 
-// ─── targetProximity ──────────────────────────────────────────────────────────
+// ─── targetProximity / stopProximity helpers (still used by email path) ─────
 
 describe("targetProximity", () => {
   it("returns 1.0 when at target (LONG)", () => {
@@ -230,5 +133,25 @@ describe("targetProximity", () => {
     expect(
       targetProximity({ direction: "LONG", avgCost: 100, targetPrice: 120 }, 90)
     ).toBe(0);
+  });
+});
+
+describe("stopProximity", () => {
+  it("returns 1.0 when price reaches stop (LONG)", () => {
+    expect(
+      stopProximity({ direction: "LONG", avgCost: 100, stopLoss: 90 }, 90)
+    ).toBe(1);
+  });
+
+  it("returns 0 when price is at entry (LONG)", () => {
+    expect(
+      stopProximity({ direction: "LONG", avgCost: 100, stopLoss: 90 }, 100)
+    ).toBe(0);
+  });
+
+  it("returns 1.0 when price reaches stop (SHORT)", () => {
+    expect(
+      stopProximity({ direction: "SHORT", avgCost: 100, stopLoss: 110 }, 110)
+    ).toBe(1);
   });
 });
