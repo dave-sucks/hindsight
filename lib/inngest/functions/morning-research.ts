@@ -7,6 +7,7 @@ import {
   buildV2SystemPrompt,
   buildDailyRunSystemPromptV2,
 } from "@/lib/agent/system-prompt";
+import { MODES } from "@/lib/agent/modes";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
@@ -113,8 +114,14 @@ export const morningResearch = inngest.createFunction(
           ? buildDailyRunSystemPromptV2(agentConfig, runInput)
           : buildV2SystemPrompt(agentConfig, runInput);
 
-        // 2d. Create tools with run context
-        const tools = createResearchTools({
+        // 2d. Create tools with run context, then enforce the
+        // research-run allowlist (Fix #5). The unified route already
+        // does this; the cron previously did not, so the Daily Run
+        // saw every tool — including record_thesis + manage_watchlist
+        // — and could mint new coverage that's the Discovery cron's
+        // job. Mirrors the same allowlist-filter pattern in
+        // tactical-run.ts and discovery-run.ts.
+        const allTools = createResearchTools({
           runId: run.id,
           userId: config.userId,
           analystId: config.id,
@@ -126,6 +133,17 @@ export const morningResearch = inngest.createFunction(
           minConfidence: config.minConfidence,
           alpacaCreds,
         });
+        const allowlist = MODES["research-run"].toolAllowlist;
+        const tools = allowlist
+          ? Object.fromEntries(
+              allowlist
+                .map(
+                  (name) =>
+                    [name, allTools[name as keyof typeof allTools]] as const,
+                )
+                .filter(([, v]) => v != null),
+            )
+          : allTools;
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)
         // Use AbortSignal to kill the agent before Vercel's 300s timeout kills the process.
