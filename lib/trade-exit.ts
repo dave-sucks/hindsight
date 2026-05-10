@@ -1,16 +1,34 @@
 /**
- * Position exit condition evaluation.
- * Called by the price-monitor Inngest cron for every OPEN position.
- * closeOpenPosition is in lib/actions/closeTrade.actions.ts.
+ * Position exit condition evaluation — TRAILING + MANUAL only.
+ *
+ * Fix #0 (docs/MORNING_RUN_V2_DESIGN.md) gutted the PRICE_TARGET and
+ * TIME_BASED branches and the NEAR_TARGET / NEAR_STOP PositionManagementAction
+ * writes. Per-thesis triggers in lib/agent/triggers/* are now the single
+ * source of truth for "should this position close?" — the trigger evaluator's
+ * 5-min cron evaluates the agent's PRICE_ABOVE / PRICE_BELOW EXIT triggers
+ * and spawns a tactical-run that decides via close_position.
+ *
+ * What's left:
+ *   - TRAILING — explicit per-position behavior the agent OPTS IN to via
+ *     manage_position.set_trailing_stop. Different semantic from triggers:
+ *     trailing peak math, not predicate evaluation. Stays callable; the
+ *     price-monitor cron gates the call on exitStrategy === "TRAILING".
+ *   - MANUAL — new default for new positions. Never auto-closes.
+ *   - targetProximity / stopProximity helpers — still useful for the
+ *     near-target email in price-monitor.ts.
+ *
+ * Existing legacy rows on Position.exitStrategy ("PRICE_TARGET", "TIME_BASED")
+ * are effectively MANUAL — checkExitConditions early-returns when the strategy
+ * isn't TRAILING. The column stays for legacy-row tolerance; remove once
+ * production has zero non-TRAILING/MANUAL OPEN positions.
  */
 
-import { prisma } from "@/lib/prisma";
 import type { PositionModel } from "@/lib/generated/prisma/models";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ExitSignal {
-  reason: "TARGET" | "STOP" | "TIME";
+  reason: "STOP";
   label: string;
 }
 
@@ -21,76 +39,40 @@ export function evaluateExitStrategy(
     PositionModel,
     | "direction"
     | "exitStrategy"
-    | "targetPrice"
-    | "stopLoss"
-    | "exitDate"
     | "trailingStopPct"
   >,
   currentPrice: number,
   peakPrice: number
 ): ExitSignal | null {
+  if (position.exitStrategy !== "TRAILING") return null;
+
   const isLong = position.direction === "LONG";
+  const trailPct = position.trailingStopPct ?? 5;
+  const trailingStopPrice = isLong
+    ? peakPrice * (1 - trailPct / 100)
+    : peakPrice * (1 + trailPct / 100);
 
-  switch (position.exitStrategy) {
-    case "PRICE_TARGET": {
-      // Target hit
-      if (isLong && position.targetPrice && currentPrice >= position.targetPrice) {
-        return { reason: "TARGET", label: "Target price reached" };
-      }
-      if (!isLong && position.targetPrice && currentPrice <= position.targetPrice) {
-        return { reason: "TARGET", label: "Target price reached" };
-      }
-      // Stop loss
-      if (position.stopLoss) {
-        if (isLong && currentPrice <= position.stopLoss) {
-          return { reason: "STOP", label: "Stop loss triggered" };
-        }
-        if (!isLong && currentPrice >= position.stopLoss) {
-          return { reason: "STOP", label: "Stop loss triggered" };
-        }
-      }
-      return null;
-    }
-
-    case "TIME_BASED": {
-      if (position.exitDate && new Date() >= new Date(position.exitDate)) {
-        return { reason: "TIME", label: "Hold duration expired" };
-      }
-      return null;
-    }
-
-    case "TRAILING": {
-      const trailPct = position.trailingStopPct ?? 5;
-      const trailingStopPrice = isLong
-        ? peakPrice * (1 - trailPct / 100)
-        : peakPrice * (1 + trailPct / 100);
-
-      if (isLong && currentPrice <= trailingStopPrice) {
-        return {
-          reason: "STOP",
-          label: `Trailing stop hit (${trailPct}% from peak $${peakPrice.toFixed(2)})`,
-        };
-      }
-      if (!isLong && currentPrice >= trailingStopPrice) {
-        return {
-          reason: "STOP",
-          label: `Trailing stop hit (${trailPct}% from peak $${peakPrice.toFixed(2)})`,
-        };
-      }
-      return null;
-    }
-
-    case "MANUAL":
-    default:
-      return null; // Never auto-closes
+  if (isLong && currentPrice <= trailingStopPrice) {
+    return {
+      reason: "STOP",
+      label: `Trailing stop hit (${trailPct}% from peak $${peakPrice.toFixed(2)})`,
+    };
   }
+  if (!isLong && currentPrice >= trailingStopPrice) {
+    return {
+      reason: "STOP",
+      label: `Trailing stop hit (${trailPct}% from peak $${peakPrice.toFixed(2)})`,
+    };
+  }
+  return null;
 }
 
 // ─── Proximity helpers ────────────────────────────────────────────────────────
 
 /**
  * Returns how close (0–1) the position is to its target.
- * 1.0 = at target, 0 = at entry.
+ * 1.0 = at target, 0 = at entry. Still used by price-monitor's
+ * near-target email path.
  */
 export function targetProximity(
   position: Pick<PositionModel, "direction" | "avgCost" | "targetPrice">,
@@ -108,7 +90,8 @@ export function targetProximity(
 
 /**
  * Returns how close (0–1) the position is to its stop loss.
- * 1.0 = at stop, 0 = far from stop.
+ * 1.0 = at stop, 0 = far from stop. Still useful for telemetry / future
+ * informational surfaces; no longer drives auto-action after Fix #0.
  */
 export function stopProximity(
   position: Pick<PositionModel, "direction" | "avgCost" | "stopLoss">,
@@ -124,103 +107,24 @@ export function stopProximity(
   return Math.max(0, Math.min(1, distanceToStop / totalRange));
 }
 
-// ─── Main export: called by price-monitor ────────────────────────────────────
+// ─── Main export: called by price-monitor for TRAILING positions only ───────
 
 /**
- * Evaluates exit conditions for a position.
- * Uses stored peakPrice from Position row (maintained by price-monitor).
- * Falls back to avgCost only when peakPrice is null (first tick).
+ * Evaluates exit conditions for a TRAILING position. No-op for any other
+ * exitStrategy — per-thesis triggers handle non-trailing exits.
  *
- * Side effects:
- *  - Writes NEAR_TARGET PositionEvent + PositionManagementAction (once per 2h)
- *  - Writes NEAR_STOP PositionEvent + PositionManagementAction (once per 2h)
- *  - Calls closeOpenPosition when exit signal fires
+ * Side effects: calls closeOpenPosition when the trailing stop fires.
+ * No PositionManagementAction writes; no NEAR_* alerts.
  */
 export async function checkExitConditions(
   position: PositionModel,
   currentPrice: number,
   storedPeakPrice?: number | null,
 ): Promise<void> {
-  // Use stored peak if available (avoids full event-scan query)
+  if (position.exitStrategy !== "TRAILING") return;
   const peak = storedPeakPrice ?? position.peakPrice ?? position.avgCost;
   const signal = evaluateExitStrategy(position, currentPrice, peak);
-
-  // ── Near-target alert ─────────────────────────────────────────────────────
-  if (!signal && position.targetPrice) {
-    const proximity = targetProximity(position, currentPrice);
-    if (proximity >= 0.9) {
-      const pct = Math.round(proximity * 100);
-      const recentAlert = await prisma.positionEvent.findFirst({
-        where: {
-          positionId: position.id,
-          eventType: "NEAR_TARGET",
-          createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-        },
-      });
-      if (!recentAlert) {
-        const description = `${position.symbol} approaching target: $${currentPrice.toFixed(2)} (${pct}% to target $${position.targetPrice.toFixed(2)})`;
-        await prisma.$transaction([
-          prisma.positionEvent.create({
-            data: {
-              positionId: position.id,
-              eventType: "NEAR_TARGET",
-              description,
-              priceAt: currentPrice,
-            },
-          }),
-          prisma.positionManagementAction.create({
-            data: {
-              positionId: position.id,
-              actionType: "NEAR_TARGET",
-              source: "price_monitor",
-              newTargetPrice: position.targetPrice,
-              reason: description,
-            },
-          }),
-        ]);
-      }
-    }
-  }
-
-  // ── Near-stop alert ───────────────────────────────────────────────────────
-  if (!signal && position.stopLoss) {
-    const proximity = stopProximity(position, currentPrice);
-    if (proximity >= 0.8) {
-      const pct = Math.round(proximity * 100);
-      const recentAlert = await prisma.positionEvent.findFirst({
-        where: {
-          positionId: position.id,
-          eventType: "NEAR_STOP",
-          createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-        },
-      });
-      if (!recentAlert) {
-        const description = `${position.symbol} approaching stop loss: $${currentPrice.toFixed(2)} (${pct}% to stop $${position.stopLoss.toFixed(2)})`;
-        await prisma.$transaction([
-          prisma.positionEvent.create({
-            data: {
-              positionId: position.id,
-              eventType: "NEAR_STOP",
-              description,
-              priceAt: currentPrice,
-            },
-          }),
-          prisma.positionManagementAction.create({
-            data: {
-              positionId: position.id,
-              actionType: "NEAR_STOP",
-              source: "price_monitor",
-              newStopLoss: position.stopLoss,
-              reason: description,
-            },
-          }),
-        ]);
-      }
-    }
-  }
-
   if (!signal) return;
-
   // Lazy import to avoid circular dependency
   const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
   await closeOpenPosition(position.id, signal.reason, undefined, "price_monitor");

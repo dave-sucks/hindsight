@@ -449,35 +449,30 @@ export const readSignals = defineTool({
       });
     }
 
-    // Fallback: no routed signals at all for this analyst today — fall back
-    // to direct sector/industry/theme/watchlist matching on today's signals.
+    // Fallback: no routed signals today. Watchlist-only — Fix #3 deleted
+    // the sector / industry / theme branches because they turned "router
+    // routed nothing today" into a 50-signal sector firehose, which the
+    // agent then anchored on as if it were today's inbox. Empty routing
+    // is real signal; the agent walks the book on internal triggers.
+    //
+    // Watchlist names stay because they're the analyst's curated set of
+    // explicit interests — surfacing fresh signals on those is correct
+    // even when the router didn't reach the analyst this morning.
     if (finalRoutes.length === 0) {
       const config = await prisma.agentConfig.findUnique({
         where: { id: ctx.analystId },
         select: {
-          sectors: true,
-          industries: true,
-          themes: true,
           watchlist: true,
           exclusionList: true,
         },
       });
 
-      const cfgSectors = config?.sectors ?? [];
-      const cfgIndustries = config?.industries ?? [];
-      const cfgThemes = config?.themes ?? [];
       const cfgWatchlist = config?.watchlist ?? [];
       const exclSet = new Set(
         (config?.exclusionList ?? []).map((e) => e.toUpperCase()),
       );
 
-      const hasAnyFilter =
-        cfgWatchlist.length > 0 ||
-        cfgSectors.length > 0 ||
-        cfgIndustries.length > 0 ||
-        cfgThemes.length > 0;
-
-      if (hasAnyFilter) {
+      if (cfgWatchlist.length > 0) {
         const fallbackSignals = await prisma.signal.findMany({
           where: {
             AND: [
@@ -487,14 +482,7 @@ export const readSignals = defineTool({
                   { tradingDay: null, createdAt: { gte: windowStart } },
                 ],
               },
-              {
-                OR: [
-                  ...(cfgWatchlist.length > 0 ? [{ tickers: { hasSome: cfgWatchlist } }] : []),
-                  ...(cfgSectors.length > 0 ? [{ sectors: { hasSome: cfgSectors } }] : []),
-                  ...(cfgIndustries.length > 0 ? [{ industries: { hasSome: cfgIndustries } }] : []),
-                  ...(cfgThemes.length > 0 ? [{ themes: { hasSome: cfgThemes } }] : []),
-                ],
-              },
+              { tickers: { hasSome: cfgWatchlist } },
             ],
             urgency: { in: validUrgencies },
             sourceQuality: { gte: minSourceQuality },
@@ -510,8 +498,6 @@ export const readSignals = defineTool({
             .filter((s) => !s.tickers.some((t) => exclSet.has(t.toUpperCase())))
             .map((s): SignalItem => {
               const hasWatchlist = s.tickers.some((t) => watchSet.has(t.toUpperCase()));
-              // Fallback never has position data (positions require routing),
-              // so classify as WATCHLIST or DISCOVERY only.
               const code: RouteReasonCode = hasWatchlist ? "WATCHLIST" : "DISCOVERY";
               return {
                 signalId: s.id,
@@ -525,7 +511,7 @@ export const readSignals = defineTool({
                 freshness: s.freshness ?? undefined,
                 sources: toSourceRefs(s.sourceNames, s.sourceUrls),
                 relevanceScore: 0,
-                routeReason: "fallback_sector_watchlist_match",
+                routeReason: "fallback_watchlist_match",
                 artifactId: s.artifactId,
                 routeReasonCode: code,
                 matchedUniverse: {
@@ -545,12 +531,12 @@ export const readSignals = defineTool({
           const bearish = fbSignals.filter((s) => s.sentiment === "BEARISH").length;
           recordSignalsByTicker(ctx.signalsByTicker, fbSignals);
           return {
-            summary: `${fbSignals.length} signal${fbSignals.length !== 1 ? "s" : ""} (${urgent} urgent, ${bullish} bullish, ${bearish} bearish). Fallback: sector/industry/theme/watchlist match.`,
+            summary: `${fbSignals.length} signal${fbSignals.length !== 1 ? "s" : ""} (${urgent} urgent, ${bullish} bullish, ${bearish} bearish). Fallback: watchlist match.`,
             data: {
               count: fbSignals.length,
               fallback: true,
               fallbackReason:
-                "No routed signals found — falling back to sector/industry/theme/watchlist match",
+                "No routed signals found — falling back to watchlist match",
               policyApplied: {
                 maxSignals: policyMaxSignals,
                 minUrgency: urgencyOrder[effectiveMinIdx],
@@ -563,7 +549,7 @@ export const readSignals = defineTool({
               discoverySignals,
               discoveryNote:
                 discoverySignals.length === 0
-                  ? "No discovery candidates this session — your Universe may need expansion."
+                  ? "No discovery candidates this session."
                   : undefined,
               tickers: fbSignals.map((s) => ({
                 ticker: s.tickers[0] ?? "MACRO",
@@ -576,9 +562,10 @@ export const readSignals = defineTool({
         }
       }
 
-      // Nothing — return empty but still shape-stable.
+      // Nothing — return empty but still shape-stable. The agent should
+      // walk the book on internal triggers (get_theses needsAction).
       return {
-        summary: "No signals routed or available for fallback.",
+        summary: "No signals routed today.",
         data: {
           count: 0,
           signals: [],
@@ -597,15 +584,22 @@ export const readSignals = defineTool({
     const watchlistSignalsAll = mappedSignals.filter((s) => bucketOf(s) === "watchlist");
     const discoverySignalsAll = mappedSignals.filter((s) => bucketOf(s) === "discovery");
 
-    // Discovery-cron mode: hide portfolio/watchlist buckets entirely so the
-    // agent only sees net-new candidates. Without this, the chat rendering
-    // shows all three buckets in one flat list and the agent acts confused
-    // (or wastes tokens "filtering" mentally). The discovery prompt is
-    // explicit about scope; this enforces it at the data layer.
+    // Mode-aware bucket filtering:
+    //   discoveryOnly → Discovery cron: hide portfolio + watchlist
+    //                   buckets, agent only sees net-new candidates.
+    //   dailyRunOnly  → Daily Run V2 (Fix #6): hide discovery bucket,
+    //                   agent only sees its book + watchlist. Discovery
+    //                   candidates only show up in Sunday's Discovery Run.
+    // The flags are mutually exclusive in practice (different crons set
+    // them); if both are set discoveryOnly wins.
     const portfolioSignals = ctx.discoveryOnly ? [] : portfolioSignalsAll;
     const watchlistSignals = ctx.discoveryOnly ? [] : watchlistSignalsAll;
-    const discoverySignals = discoverySignalsAll;
-    const visibleSignals = ctx.discoveryOnly ? discoverySignals : mappedSignals;
+    const discoverySignals = ctx.dailyRunOnly && !ctx.discoveryOnly ? [] : discoverySignalsAll;
+    const visibleSignals = ctx.discoveryOnly
+      ? discoverySignalsAll
+      : ctx.dailyRunOnly
+        ? [...portfolioSignalsAll, ...watchlistSignalsAll]
+        : mappedSignals;
 
     const urgent = visibleSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
     const bullish = visibleSignals.filter((s) => s.sentiment === "BULLISH").length;
@@ -618,9 +612,14 @@ export const readSignals = defineTool({
         ? `${discoverySignals.length} discovery candidate${discoverySignals.length !== 1 ? "s" : ""} ` +
           `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish). ` +
           `Portfolio + watchlist signals hidden — discovery scope only.`
-        : `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} ` +
-          `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
-          `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist / ${discoverySignals.length} discovery.`,
+        : ctx.dailyRunOnly
+          ? `${visibleSignals.length} signal${visibleSignals.length !== 1 ? "s" : ""} ` +
+            `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
+            `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist. ` +
+            `Discovery bucket hidden — daily run manages the existing book.`
+          : `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} ` +
+            `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
+            `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist / ${discoverySignals.length} discovery.`,
       data: {
         count: visibleSignals.length,
         policyApplied: {

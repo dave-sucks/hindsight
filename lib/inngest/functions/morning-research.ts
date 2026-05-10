@@ -3,7 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
-import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
+import {
+  buildV2SystemPrompt,
+  buildDailyRunSystemPromptV2,
+} from "@/lib/agent/system-prompt";
+import { MODES } from "@/lib/agent/modes";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
@@ -101,10 +105,23 @@ export const morningResearch = inngest.createFunction(
         const alpacaCreds = await resolveAlpacaCredentials(config.userId) ?? undefined;
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
-        const systemPrompt = buildV2SystemPrompt(agentConfig, runInput);
+        // V1/V2 dispatch — flagged per-analyst (docs/MORNING_RUN_V2_DESIGN.md
+        // Rollout). Default false; flip one analyst at a time. The V2
+        // builder is ~80 lines (goals + identity + standup), reads the
+        // priority data through tool results (get_theses.needsAction)
+        // rather than rendering 5 cross-referenced priority blocks.
+        const systemPrompt = config.useV2Prompt
+          ? buildDailyRunSystemPromptV2(agentConfig, runInput)
+          : buildV2SystemPrompt(agentConfig, runInput);
 
-        // 2d. Create tools with run context
-        const tools = createResearchTools({
+        // 2d. Create tools with run context, then enforce the
+        // research-run allowlist (Fix #5). The unified route already
+        // does this; the cron previously did not, so the Daily Run
+        // saw every tool — including record_thesis + manage_watchlist
+        // — and could mint new coverage that's the Discovery cron's
+        // job. Mirrors the same allowlist-filter pattern in
+        // tactical-run.ts and discovery-run.ts.
+        const allTools = createResearchTools({
           runId: run.id,
           userId: config.userId,
           analystId: config.id,
@@ -115,7 +132,23 @@ export const morningResearch = inngest.createFunction(
           maxOpenPositions: config.maxOpenPositions,
           minConfidence: config.minConfidence,
           alpacaCreds,
+          // Fix #6 — gated on the V2 flag. The V1 prompt expects all
+          // three buckets; V2 narrows to portfolio + watchlist so the
+          // agent isn't tempted to act on discovery candidates that
+          // belong to the Sunday Discovery cron.
+          dailyRunOnly: config.useV2Prompt,
         });
+        const allowlist = MODES["research-run"].toolAllowlist;
+        const tools = allowlist
+          ? Object.fromEntries(
+              allowlist
+                .map(
+                  (name) =>
+                    [name, allTools[name as keyof typeof allTools]] as const,
+                )
+                .filter(([, v]) => v != null),
+            )
+          : allTools;
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)
         // Use AbortSignal to kill the agent before Vercel's 300s timeout kills the process.
@@ -130,11 +163,21 @@ export const morningResearch = inngest.createFunction(
         const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
         let lastStepTimeMs = t0;
 
+        // V1/V2 user prompt (Fix #4). The V1 string was the same wording
+        // used in interactive /runs/[id] chats; the model treated cron
+        // runs like assistant-style conversations and ended turns with
+        // "would you like me to proceed?" The V2 string makes the lack
+        // of a human respondent explicit so the loop doesn't terminate
+        // on prose-style questions.
+        const userPrompt = config.useV2Prompt
+          ? "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run."
+          : "Begin your research session. Follow all phases in order.";
+
         try {
           const { text, steps, response } = await generateText({
             model: openai("gpt-4o"),
             system: systemPrompt,
-            prompt: "Begin your research session. Follow all phases in order.",
+            prompt: userPrompt,
             tools,
             // strictJsonSchema forces OpenAI to reject tool calls whose arguments
             // don't match the Zod-derived JSON Schema. Without this, the model
@@ -591,7 +634,7 @@ export const morningResearch = inngest.createFunction(
           try {
             const userMessage = {
               role: "user",
-              content: [{ type: "text", text: "Begin your research session. Follow all phases in order." }],
+              content: [{ type: "text", text: userPrompt }],
             };
             // Defensive: response.messages may be undefined depending on the
             // AI SDK provider (observed after switching from OpenAI to Anthropic).

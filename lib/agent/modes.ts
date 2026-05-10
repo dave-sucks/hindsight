@@ -82,7 +82,42 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // narration-only steps. 50 was hitting the ceiling mid-Stage 4. 65
     // leaves ~10 steps of breathing room.
     maxSteps: 65,
-    toolAllowlist: undefined,
+    // Fix #5 (docs/MORNING_RUN_V2_DESIGN.md). The Daily Run manages the
+    // existing book; minting NEW coverage is the Discovery cron's job
+    // (Sundays). record_thesis + manage_watchlist intentionally excluded.
+    // Three paths still mint new coverage:
+    //   (a) Tactical promotion — ENTER trigger fires on a WATCHING thesis
+    //       (already minted by Discovery), tactical-run flips status to
+    //       ACTIVE via update_thesis + place_trade.
+    //   (b) Sunday Discovery cron — the weekly mint window.
+    //   (c) `app/discovery.run.manual` event — fire on demand for a hot
+    //       mid-week name.
+    toolAllowlist: [
+      // Read
+      "read_signals",
+      "get_portfolio_context",
+      "get_theses",
+      "get_stock_data",
+      "read_artifact",
+      "web_search",
+      "get_market_context",
+      "get_earnings_data",
+      "get_earnings_calendar",
+      "get_market_movers",
+      "get_options_flow",
+      "get_sec_filings",
+      // Write — manage existing book ONLY
+      "update_thesis",
+      "place_trade",
+      "manage_position",
+      "close_position",
+      // Terminal
+      "record_run_summary",
+      "complete_run",
+      // EXCLUDED:
+      //   record_thesis    — minting new coverage is Discovery's job
+      //   manage_watchlist — adding watchlist names is Discovery's job
+    ] as const,
     hasSuggestConfig: false,
     maxDuration: 300,
   },

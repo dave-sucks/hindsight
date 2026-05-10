@@ -154,6 +154,22 @@ export interface RunInput {
     rationale: string;
     matchDetail: string;
   }>;
+  // Latest AnalystBriefing — written by the briefing agent inline after
+  // every run. The V2 system prompt renders this as "Yesterday's standup"
+  // for continuity between runs. The V1 builder ignores it (the V1 prompt
+  // intentionally does not surface a synthesized briefing).
+  //
+  // watchTomorrow / selfCorrections are JSONB arrays of objects on the
+  // schema (see prisma AnalystBriefing); kept as `unknown[]` here so the
+  // prompt builder can flatten them safely.
+  latestBriefing: {
+    narrative: string | null;
+    strategyNotes: string | null;
+    marketPosture: string | null;
+    watchTomorrow: unknown[] | null;
+    selfCorrections: unknown[] | null;
+    createdAt: string;
+  } | null;
   intelligencePolicy: IntelligencePolicy;
 }
 
@@ -628,7 +644,44 @@ export async function buildRunInput(
     console.error("[buildRunInput] FAILED triggersMatchingNow:", err);
   }
 
-  // 12. Intelligence policy
+  // 12. Latest analyst briefing — drives the V2 prompt's "Yesterday's
+  // standup" section. V1 ignores this. Written by the briefing agent
+  // inline after every run completes.
+  let latestBriefing: RunInput["latestBriefing"] = null;
+  try {
+    const row = await prisma.analystBriefing.findFirst({
+      where: { analystId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        narrative: true,
+        strategyNotes: true,
+        marketPosture: true,
+        watchTomorrow: true,
+        selfCorrections: true,
+        createdAt: true,
+      },
+    });
+    if (row) {
+      latestBriefing = {
+        narrative: row.narrative ?? null,
+        strategyNotes: row.strategyNotes ?? null,
+        marketPosture: row.marketPosture ?? null,
+        watchTomorrow:
+          Array.isArray(row.watchTomorrow) && row.watchTomorrow.length > 0
+            ? (row.watchTomorrow as unknown[])
+            : null,
+        selfCorrections:
+          Array.isArray(row.selfCorrections) && row.selfCorrections.length > 0
+            ? (row.selfCorrections as unknown[])
+            : null,
+        createdAt: row.createdAt.toISOString(),
+      };
+    }
+  } catch (err) {
+    console.error("[buildRunInput] FAILED latestBriefing:", err);
+  }
+
+  // 13. Intelligence policy
   const intelligencePolicy = parseIntelligencePolicy(
     (config as Record<string, unknown>).intelligencePolicy
   );
@@ -691,6 +744,7 @@ export async function buildRunInput(
     priorityReviews,
     triggersFiredSinceLastRun,
     triggersMatchingNow,
+    latestBriefing,
     intelligencePolicy,
   };
 }
