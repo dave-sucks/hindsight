@@ -222,6 +222,7 @@ export async function POST(
             priorityReviews: null,
             triggersFiredSinceLastRun: [],
             triggersMatchingNow: [],
+            latestBriefing: null,
             intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
           });
 

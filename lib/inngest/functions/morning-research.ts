@@ -3,7 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
-import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
+import {
+  buildV2SystemPrompt,
+  buildDailyRunSystemPromptV2,
+} from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
@@ -101,7 +104,14 @@ export const morningResearch = inngest.createFunction(
         const alpacaCreds = await resolveAlpacaCredentials(config.userId) ?? undefined;
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
-        const systemPrompt = buildV2SystemPrompt(agentConfig, runInput);
+        // V1/V2 dispatch — flagged per-analyst (docs/MORNING_RUN_V2_DESIGN.md
+        // Rollout). Default false; flip one analyst at a time. The V2
+        // builder is ~80 lines (goals + identity + standup), reads the
+        // priority data through tool results (get_theses.needsAction)
+        // rather than rendering 5 cross-referenced priority blocks.
+        const systemPrompt = config.useV2Prompt
+          ? buildDailyRunSystemPromptV2(agentConfig, runInput)
+          : buildV2SystemPrompt(agentConfig, runInput);
 
         // 2d. Create tools with run context
         const tools = createResearchTools({

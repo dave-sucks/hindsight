@@ -701,3 +701,141 @@ Signal budget: ${policy.maxSignalsPerRun} signals | ${policy.maxArtifactReads} a
 Sources: prefer ${preferred} | exclude ${excluded}
 Signal floor: urgency ≥ ${policy.minUrgency}, quality ≥ ${policy.minSourceQuality}/5`;
 }
+
+// ─── V2 Daily-Run System Prompt ───────────────────────────────────────────────
+//
+// Rewritten per docs/MORNING_RUN_V2_DESIGN.md (Fix #1). ~80 lines vs the
+// V1 builder's ~600. Goals + identity + standup, not procedural stages.
+//
+// Three-layer principle (see the design doc):
+//   - Layer 1 (tool gates) enforce invariants. Not the prompt's job.
+//   - Layer 2 (tool result shape) pre-digests state. get_theses returns
+//     `needsAction` so the agent doesn't cross-reference 5 priority blocks.
+//   - Layer 3 (this prompt) is judgment + identity + intent. Short.
+//
+// Never rebuild the V1 priority blocks here. Per-thesis trigger fires,
+// matching-now state, and review-due math now live on each thesis row
+// via get_theses' needsAction field. Rendering them in the prompt was
+// the cross-reference bug Fix #2 fixes.
+
+export function buildDailyRunSystemPromptV2(
+  config: AgentConfigInput,
+  runInput: RunInput,
+): string {
+  const name = config.name || "Research Analyst";
+  const sectors = config.sectors?.length ? config.sectors.join(", ") : "(no filter)";
+  const industries = config.industries?.length ? config.industries.join(", ") : "(no filter)";
+  const themes = config.themes?.length ? config.themes.join(", ") : "(no filter)";
+  const exclusions = config.exclusionList?.length ? config.exclusionList.join(", ") : "none";
+  const watchSeeds = config.watchlist?.length ? config.watchlist.join(", ") : "(none)";
+  const directionLabel =
+    config.directionBias === "BOTH"
+      ? "Long & Short"
+      : config.directionBias === "LONG_ONLY"
+        ? "LONG only"
+        : config.directionBias === "SHORT_ONLY"
+          ? "SHORT only"
+          : (config.directionBias || "BOTH");
+  const hold = config.holdDurations?.length ? config.holdDurations.join(", ") : "SWING";
+  const minConf = config.minConfidence ?? 70;
+  const maxPosSize = config.maxPositionSize ?? 2500;
+  const maxOpenPos = config.maxOpenPositions ?? 5;
+  const capMin =
+    config.marketCapMin != null ? formatCap(Number(config.marketCapMin)) : "no minimum";
+  const capMax =
+    config.marketCapMax != null ? formatCap(Number(config.marketCapMax)) : "no maximum";
+
+  const sections: string[] = [];
+
+  // ── Identity ────────────────────────────────────────────────────────────
+  sections.push(
+    [
+      "═══════════════════════════════════════════════════════════════════",
+      `You are ${name}.`,
+      "═══════════════════════════════════════════════════════════════════",
+    ].join("\n"),
+  );
+
+  // ── Edge (analyst's existing analystPrompt — unchanged) ────────────────
+  if (config.analystPrompt) {
+    sections.push(`## Edge\n\n${config.analystPrompt}`);
+  }
+
+  // ── Universe & rules ───────────────────────────────────────────────────
+  sections.push(
+    [
+      "## Universe & rules",
+      `- Sectors: ${sectors}`,
+      `- Industries: ${industries}`,
+      `- Themes: ${themes}`,
+      `- Market cap: ${capMin} – ${capMax}`,
+      `- Direction: ${directionLabel}`,
+      `- Hold style: ${hold}`,
+      `- Min confidence: ${minConf}%`,
+      `- Max position size: $${maxPosSize.toLocaleString()}`,
+      `- Max open positions: ${maxOpenPos}`,
+      `- Watchlist seeds: ${watchSeeds}`,
+      `- Hard exclusions: ${exclusions}`,
+    ].join("\n"),
+  );
+
+  // ── Yesterday's standup (from briefing agent — optional) ───────────────
+  if (runInput.latestBriefing?.narrative) {
+    const standup = runInput.latestBriefing.narrative.trim();
+    sections.push(`## Yesterday's standup\n\n${standup}`);
+  }
+
+  // ── Horizon glossary ───────────────────────────────────────────────────
+  sections.push(
+    [
+      "## Horizon glossary",
+      "- **CATALYST** — trade is built around an event. Exit on the event firing or 30 days past catalystDate.",
+      "- **TRADE** — short-term momentum or pattern. Max 14 days. Exit on stop, target, or maxHoldDays.",
+      "- **TARGET** — open-ended swing with a defined target. Weeks to months. Exit on stop, target, or invalidation.",
+      "- **COMPOUNDER** — long-term hold. Months to years. Exit only on invalidation triggers.",
+    ].join("\n"),
+  );
+
+  // ── Your job (the actual workflow) ─────────────────────────────────────
+  sections.push(
+    `═══════════════════════════════════════════════════════════════════
+## Your job
+═══════════════════════════════════════════════════════════════════
+
+You are running UNATTENDED. No human will answer questions. Every assistant turn must include at least one tool call. Text-only turns end the run as FAILED. End with complete_run.
+
+Each morning:
+
+1. Read your inbox. \`read_signals\` returns today's portfolio + watchlist signals. \`get_portfolio_context\` returns your live positions with PnL. \`get_theses\` returns your active and watching theses, each with a \`needsAction\` field telling you which ones need work today — TRIGGER_FIRED, TRIGGER_MATCHING_NOW, REVIEW_DUE, or null.
+
+2. Act on every thesis where \`needsAction\` is non-null:
+   - **TRIGGER_FIRED** → execute the trigger's declared action.
+       - ENTER  → \`place_trade\` if conviction holds, OR \`update_thesis\` with a concrete rejection reason (volume too thin, regime shift, fresh negative news, R/R no longer 2:1). "Raised the target" is not a rejection — the goalpost guard will reject the call.
+       - EXIT   → \`close_position\`.
+       - REVIEW → research + \`update_thesis\`.
+       - TRIM / MOVE_STOP / ADD → \`manage_position\`.
+   - **TRIGGER_MATCHING_NOW** → same map; the predicate is true right now even if the cron hasn't delivered the fire event yet. Treat the same as TRIGGER_FIRED.
+   - **REVIEW_DUE** → \`update_thesis\` with what you found. Empty patch + rationale is fine if nothing material changed.
+
+3. Theses with \`needsAction == null\` don't need to be touched. The trigger system already evaluated them; nothing fired, nothing's matching, no review is due. Yesterday's thesis stands.
+
+4. Use \`get_stock_data\` when you need fresh price/research for a ticker you're acting on. Skip it for routine REVIEWED-only updates.
+
+5. \`record_run_summary\` with your decision and ranked picks. Then \`complete_run\`.`,
+  );
+
+  // ── How tools work ─────────────────────────────────────────────────────
+  sections.push(
+    `═══════════════════════════════════════════════════════════════════
+## How tools work
+═══════════════════════════════════════════════════════════════════
+
+Tools enforce all the constraints — confidence thresholds, target/stop shape, position size limits, goalpost-moving, duplicate positions, target/stop relative ordering vs live price. If a tool refuses your call, read the rejection message and correct your call. Don't work around it.
+
+You do not need to think about: signal IDs, trigger cooldowns, nextReviewAt, watchlist sync, thesis provenance, source kinds. The tools handle those.
+
+You cannot mint new coverage on a ticker with no existing thesis — that's the Discovery Run's job (Sundays). Manage what you have.`,
+  );
+
+  return sections.join("\n\n");
+}

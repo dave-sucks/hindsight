@@ -255,6 +255,11 @@ model AgentConfig {
   userId                String        // NOT unique — multiple Analysts per user
   name                  String        @default("My Analyst")
   enabled               Boolean       @default(false)
+  // Per-analyst rollout flag for the V2 daily-run prompt + tool surface
+  // (docs/MORNING_RUN_V2_DESIGN.md Fixes #1-#6). Default false; flip one
+  // analyst at a time. Once every analyst has been on V2 for ~7 trading
+  // days without regression, the V1 builder + this flag come out.
+  useV2Prompt           Boolean       @default(false)
   // Analyst identity
   analystPrompt         String?       // "Find me high-risk EV day trades every morning"
   analystVoice          String?       // "aggressive momentum day trader who focuses on catalysts"
