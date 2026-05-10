@@ -132,6 +132,11 @@ export const morningResearch = inngest.createFunction(
           maxOpenPositions: config.maxOpenPositions,
           minConfidence: config.minConfidence,
           alpacaCreds,
+          // Fix #6 — gated on the V2 flag. The V1 prompt expects all
+          // three buckets; V2 narrows to portfolio + watchlist so the
+          // agent isn't tempted to act on discovery candidates that
+          // belong to the Sunday Discovery cron.
+          dailyRunOnly: config.useV2Prompt,
         });
         const allowlist = MODES["research-run"].toolAllowlist;
         const tools = allowlist

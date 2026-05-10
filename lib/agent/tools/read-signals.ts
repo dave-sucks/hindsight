@@ -584,15 +584,22 @@ export const readSignals = defineTool({
     const watchlistSignalsAll = mappedSignals.filter((s) => bucketOf(s) === "watchlist");
     const discoverySignalsAll = mappedSignals.filter((s) => bucketOf(s) === "discovery");
 
-    // Discovery-cron mode: hide portfolio/watchlist buckets entirely so the
-    // agent only sees net-new candidates. Without this, the chat rendering
-    // shows all three buckets in one flat list and the agent acts confused
-    // (or wastes tokens "filtering" mentally). The discovery prompt is
-    // explicit about scope; this enforces it at the data layer.
+    // Mode-aware bucket filtering:
+    //   discoveryOnly → Discovery cron: hide portfolio + watchlist
+    //                   buckets, agent only sees net-new candidates.
+    //   dailyRunOnly  → Daily Run V2 (Fix #6): hide discovery bucket,
+    //                   agent only sees its book + watchlist. Discovery
+    //                   candidates only show up in Sunday's Discovery Run.
+    // The flags are mutually exclusive in practice (different crons set
+    // them); if both are set discoveryOnly wins.
     const portfolioSignals = ctx.discoveryOnly ? [] : portfolioSignalsAll;
     const watchlistSignals = ctx.discoveryOnly ? [] : watchlistSignalsAll;
-    const discoverySignals = discoverySignalsAll;
-    const visibleSignals = ctx.discoveryOnly ? discoverySignals : mappedSignals;
+    const discoverySignals = ctx.dailyRunOnly && !ctx.discoveryOnly ? [] : discoverySignalsAll;
+    const visibleSignals = ctx.discoveryOnly
+      ? discoverySignalsAll
+      : ctx.dailyRunOnly
+        ? [...portfolioSignalsAll, ...watchlistSignalsAll]
+        : mappedSignals;
 
     const urgent = visibleSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
     const bullish = visibleSignals.filter((s) => s.sentiment === "BULLISH").length;
@@ -605,9 +612,14 @@ export const readSignals = defineTool({
         ? `${discoverySignals.length} discovery candidate${discoverySignals.length !== 1 ? "s" : ""} ` +
           `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish). ` +
           `Portfolio + watchlist signals hidden — discovery scope only.`
-        : `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} ` +
-          `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
-          `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist / ${discoverySignals.length} discovery.`,
+        : ctx.dailyRunOnly
+          ? `${visibleSignals.length} signal${visibleSignals.length !== 1 ? "s" : ""} ` +
+            `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
+            `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist. ` +
+            `Discovery bucket hidden — daily run manages the existing book.`
+          : `${mappedSignals.length} signal${mappedSignals.length !== 1 ? "s" : ""} ` +
+            `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
+            `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist / ${discoverySignals.length} discovery.`,
       data: {
         count: visibleSignals.length,
         policyApplied: {

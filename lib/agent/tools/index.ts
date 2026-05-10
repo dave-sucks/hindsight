@@ -63,6 +63,8 @@ interface ToolCtx {
   intelligencePolicy?: IntelligencePolicy;
   /** Restrict read_signals to discoverySignals bucket only (discovery cron). */
   discoveryOnly?: boolean;
+  /** Hide discoverySignals from read_signals (daily-run V2 cron). */
+  dailyRunOnly?: boolean;
 }
 
 export function createResearchTools(ctx: ToolCtx) {

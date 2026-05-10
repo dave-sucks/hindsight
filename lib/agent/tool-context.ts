@@ -59,6 +59,16 @@ export interface ToolContext {
   discoveryOnly?: boolean;
 
   /**
+   * Mirror of discoveryOnly for the Daily Run (Fix #6). When true,
+   * read_signals zeroes out the discoverySignals bucket and returns
+   * portfolio + watchlist signals only. Daily's job is to MANAGE the
+   * existing book; new-coverage candidates are the Discovery cron's
+   * responsibility. Set in lib/inngest/functions/morning-research.ts
+   * when the V2 prompt is enabled.
+   */
+  dailyRunOnly?: boolean;
+
+  /**
    * Returns a stable group key for the given phase string.
    * Consecutive tool calls returning the same groupId collapse into one UI group.
    * Tools in the "research" phase all return "research", so they group together.
