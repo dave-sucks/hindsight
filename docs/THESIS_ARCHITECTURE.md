@@ -2,7 +2,7 @@
 
 > **What this is:** the live reference for how the thesis system works. Sourced from the 2026-05-08 architecture pass that landed in [#239](https://github.com/dave-sucks/hindsight/pull/239). Update this doc whenever a thesis-system component changes. For target state, read [`VISION.md`](./VISION.md). For known gaps, read [`GAPS.md`](./GAPS.md).
 >
-> **Last verified:** 2026-05-08
+> **Last verified:** 2026-05-10
 
 ---
 
@@ -220,14 +220,16 @@ Adds/removes/updates `AnalystWatchlistItem` rows AND mints/supersedes a parallel
 
 | Consumer | Reads | Contract |
 |---|---|---|
-| **Daily-run prompt** ([`system-prompt.ts`](../lib/agent/system-prompt.ts)) | Live Theses table: ticker, status, direction, **horizon**, confidence, entry/target/stop, **schedule** (review-due / catalyst-in-Nd / max-hold-Xd-left), created. Plus per-thesis line: belief preview + horizon exit-policy hint. | Agent walks each thesis with all the structured shape visible. No `get_theses` round-trip needed for routine review. |
+| **Daily-run prompt V1** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildV2SystemPrompt`) | Live Theses table: ticker, status, direction, **horizon**, confidence, entry/target/stop, **schedule** (review-due / catalyst-in-Nd / max-hold-Xd-left), created. Plus per-thesis line: belief preview + horizon exit-policy hint. | Agent walks each thesis with all the structured shape visible. No `get_theses` round-trip needed for routine review. **V1 is the legacy path; V2 is the rollout target.** |
+| **Daily-run prompt V2** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildDailyRunSystemPromptV2`) | Identity + edge + universe + yesterday's standup + horizon glossary. ~80 lines total — does NOT render the V1 priority blocks. | Agent reads per-thesis state through `get_theses.needsAction` (Fix #2) instead of cross-referencing 5 prompt sections. Gated on `AgentConfig.useV2Prompt` (default false). |
+| **`get_theses.needsAction`** ([`needs-action.ts`](../lib/agent/needs-action.ts)) | Per-thesis: `triggers[]`, `nextReviewAt`, latest `ThesisUpdate` row, fresh quote. | Returns `TRIGGER_FIRED` / `TRIGGER_MATCHING_NOW` / `REVIEW_DUE` / null per thesis row. Trigger-driven only — no hardcoded proximity. The V2 prompt's "act on every thesis where needsAction is non-null" rule replaces the V1 prompt's 5 cross-referenced priority blocks. |
 | **Tactical-run prompt** ([`intraday-tactical.ts`](../lib/agent/system-prompts/intraday-tactical.ts)) | Full thesis: id, ticker, direction, horizon, **coreBelief, keyAssumptions, invalidationConds**, entry/target/stop, targetSizePct, scalingPlan, recentUpdates. Plus the firing trigger and signal payload. | Validates trigger → scores against keyAssumptions → executes the action. The canonical structured-belief consumer. |
 | **Discovery-run prompt** ([`discovery.ts`](../lib/agent/system-prompts/discovery.ts)) | existingTickers (just symbols). | Mints; never updates. Output theses must satisfy the structural-belief gate. |
 | **Trigger evaluator** ([`evaluate.ts`](../lib/agent/triggers/evaluate.ts)) | `triggers[]`, `nextReviewAt`, `createdAt`. | Pure predicate matching. No belief reading — that's the LLM's job in tactical-run. |
 | **Trade evaluator** ([`trade-evaluator.ts`](../lib/inngest/functions/trade-evaluator.ts)) | `direction`, `horizon`, **`coreBelief`, `keyAssumptions`, `invalidationConds`**, `sourceSignalIds`, `reasoningSummary`, `signalTypes`, `thesisBullets`. | GPT-4o post-mortem grades against the BELIEF: did each `keyAssumption` hold? Did any `invalidationCondition` come true? "Right outcome, wrong reasons" becomes a documented learning. |
 | **Briefing agent** | Run transcript + portfolio. | Doesn't crack open thesis-level belief fields today. Future enhancement. |
 | **ThesisSheet UI** ([`ThesisSheet.tsx`](../components/agent/sheets/ThesisSheet.tsx)) | direction, confidence, reasoning, bullets, risks, entry/target/stop, hold_duration, signal_types, fundamentals, status. Plus separate fetch for triggers/horizon/nextReviewAt via `/api/theses/[id]/triggers`. | Renders the trade card. Does NOT yet render coreBelief / keyAssumptions / invalidationConds — that's a separate UI follow-up. |
-| **Price monitor + trade-exit** | Position fields only (today). | Hardcoded proximity thresholds (0.8 near-stop, 0.9 near-target, 0.8 near-target email). Horizon-aware enforcement is **not yet shipped** — see GAPS P0-5b/c. |
+| **Price monitor + trade-exit** | Position fields only — peakPrice, troughPrice, exitStrategy, avgCost, targetPrice (for the email). | **TRAILING-only after Fix #0 (Morning Run V2, 2026-05-10).** `price-monitor.ts` keeps peak/trough updates, `PRICE_CHECK` events, and the near-target email; `checkExitConditions` is now TRAILING-guarded so non-trailing positions no-op. The `PRICE_TARGET` / `TIME_BASED` branches in `lib/trade-exit.ts` and the NEAR_TARGET / NEAR_STOP `PositionManagementAction` writes were deleted — per-thesis triggers in `lib/agent/triggers/*` (evaluated by the trigger evaluator's 5-min cron) are now the single source of truth for "should this position close?" The 14 watching theses + every ACTIVE thesis already carry the agent's own `PRICE_BELOW level: stop` EXIT triggers; no parallel layer fires on hardcoded percentages. |
 
 ---
 
