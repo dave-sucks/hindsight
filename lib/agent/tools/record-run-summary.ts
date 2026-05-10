@@ -288,11 +288,49 @@ export const recordRunSummary = defineTool({
       // this gate catches the "did absolutely nothing" case the prompt
       // promised would be enforced but wasn't.
       //
+      // MODE GATING: this gate is scoped to the DAILY RUN (MORNING_PLAN
+      // mode). The Daily Run is the run that's supposed to walk every
+      // active+watching thesis and react. Discovery and Tactical have
+      // different jobs:
+      //   • DISCOVERY mints net-new coverage; it doesn't manage existing
+      //     theses (no update_thesis / close_position in its allowlist),
+      //     so it cannot "address" a watching thesis with a met entry
+      //     condition — that's the Daily Run's job the next morning.
+      //     Applying the gate here fails every Sunday discovery run that
+      //     legitimately had no candidates this week. (2026-05-10:
+      //     6 of 7 first-ever auto-cron runs failed for this exact reason.)
+      //   • TACTICAL is single-thesis by construction; the WATCHING
+      //     theses on OTHER tickers aren't in scope and don't need to be
+      //     addressed in this run's record_run_summary call.
+      //
       // Quote-fetch failures skip the gate entirely (the cron-path
       // trigger evaluator will still fire on the next 5-minute tick) —
       // we don't want a transient Alpaca outage to fail an otherwise
       // healthy run.
       if (ctx.runId && ctx.analystId) {
+        // Mode lookup. One extra round-trip but the alternative is plumbing
+        // mode through ToolContext just for this gate, which is more churn
+        // for the same correctness. Failure to fetch the run row defaults
+        // to "run the gate" (the legacy, more-conservative path) so a
+        // transient DB hiccup doesn't silently disable promotion checks
+        // on legitimate Daily Runs.
+        let runMode: string | null = null;
+        try {
+          const runRow = await prisma.researchRun.findUnique({
+            where: { id: ctx.runId },
+            select: { mode: true },
+          });
+          runMode = runRow?.mode ?? null;
+        } catch {
+          runMode = null;
+        }
+        if (runMode && runMode !== "MORNING_PLAN") {
+          // Skip the promotion gate. Discovery / Tactical / EOD modes
+          // aren't responsible for promoting existing watching theses.
+          console.log(
+            `[tool] record_run_summary promotion gate SKIPPED (mode=${runMode}) run=${ctx.runId}`,
+          );
+        } else {
         try {
           // Explicit row shapes — the prisma generated types ride through
           // a few await/try wrappers and the lambda parameters lose
@@ -495,6 +533,7 @@ export const recordRunSummary = defineTool({
             gateErr instanceof Error ? gateErr.message : gateErr,
           );
         }
+        } // end else (mode === MORNING_PLAN branch)
       }
 
       // ── Narration → execution gate ─────────────────────────────────
