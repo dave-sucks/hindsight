@@ -82,7 +82,48 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // narration-only steps. 50 was hitting the ceiling mid-Stage 4. 65
     // leaves ~10 steps of breathing room.
     maxSteps: 65,
-    toolAllowlist: undefined,
+    // Daily Run = manage the existing book. NOT find new coverage.
+    // The boundary "Daily manages, Discovery mints" is now enforced at
+    // the allowlist layer rather than as prose rules in the prompt.
+    // Previously `undefined` (all tools); the 2026-05-08 morning-cron
+    // failures all involved Daily reaching for discovery-bucket signals
+    // and trying to record_thesis on names not in coverage. New names
+    // enter coverage via three mode-correct paths now:
+    //   1. Tactical promotion when an ENTER trigger fires on a WATCHING
+    //      thesis (already minted by Discovery)
+    //   2. Sunday Discovery cron
+    //   3. Manual `app/discovery.run.manual` fire if a hot name appears
+    //      mid-week and shouldn't wait until Sunday
+    // EXCLUDED tools: `record_thesis` and `manage_watchlist` (those are
+    // Discovery's job). Everything else stays — Daily can still
+    // update_thesis on existing coverage, place_trade on existing
+    // ACTIVE theses, manage_position, close_position, etc.
+    toolAllowlist: [
+      // Read
+      "read_signals",
+      "read_artifact",
+      "get_theses",
+      "get_portfolio_context",
+      "get_market_context",
+      "get_stock_data",
+      "get_earnings_data",
+      "get_earnings_calendar",
+      "get_market_movers",
+      "get_options_flow",
+      "get_sec_filings",
+      "web_search",
+      // Write — manage existing book ONLY
+      "update_thesis",
+      "place_trade",
+      "manage_position",
+      "close_position",
+      // Terminal
+      "record_run_summary",
+      "complete_run",
+      // EXCLUDED:
+      //   record_thesis    → minting new coverage is Discovery's job
+      //   manage_watchlist → adding watchlist names is Discovery's job
+    ] as const,
     hasSuggestConfig: false,
     maxDuration: 300,
   },

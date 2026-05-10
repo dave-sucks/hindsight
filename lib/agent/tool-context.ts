@@ -59,6 +59,19 @@ export interface ToolContext {
   discoveryOnly?: boolean;
 
   /**
+   * When true, read_signals zeroes out the discoverySignals bucket and
+   * returns ONLY portfolio + watchlist signals. Used by the Daily Run cron
+   * to keep the agent focused on managing the existing book. The 2026-05-08
+   * morning-cron failures all involved the agent reaching for discovery
+   * candidates (AVGO / GOOGL / MRVL) that weren't in coverage, because the
+   * prompt said "manage your book" but the inbox contained 15+ discovery
+   * signals on tickers it didn't cover. Mode-locked at the data layer so
+   * the prompt doesn't have to police it. Set in
+   * lib/inngest/functions/morning-research.ts.
+   */
+  dailyRunOnly?: boolean;
+
+  /**
    * Returns a stable group key for the given phase string.
    * Consecutive tool calls returning the same groupId collapse into one UI group.
    * Tools in the "research" phase all return "research", so they group together.

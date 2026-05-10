@@ -103,7 +103,11 @@ export const morningResearch = inngest.createFunction(
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
         const systemPrompt = buildV2SystemPrompt(agentConfig, runInput);
 
-        // 2d. Create tools with run context
+        // 2d. Create tools with run context. `dailyRunOnly: true` hides
+        // discovery-bucket signals from read_signals — Daily Run manages
+        // the existing book; discovery candidates only surface in Sunday's
+        // Discovery cron. Mirrors the existing `discoveryOnly: true`
+        // pattern in discovery-run.ts.
         const tools = createResearchTools({
           runId: run.id,
           userId: config.userId,
@@ -115,6 +119,7 @@ export const morningResearch = inngest.createFunction(
           maxOpenPositions: config.maxOpenPositions,
           minConfidence: config.minConfidence,
           alpacaCreds,
+          dailyRunOnly: true,
         });
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)
@@ -134,7 +139,7 @@ export const morningResearch = inngest.createFunction(
           const { text, steps, response } = await generateText({
             model: openai("gpt-4o"),
             system: systemPrompt,
-            prompt: "Begin your research session. Follow all phases in order.",
+            prompt: "It's the start of the trading day. Run your morning playbook UNATTENDED — there is no human to respond to questions, no chat partner waiting for clarification. Every assistant turn must include at least one tool call; text-only turns terminate the run as FAILED. End with complete_run.",
             tools,
             // strictJsonSchema forces OpenAI to reject tool calls whose arguments
             // don't match the Zod-derived JSON Schema. Without this, the model
@@ -591,7 +596,7 @@ export const morningResearch = inngest.createFunction(
           try {
             const userMessage = {
               role: "user",
-              content: [{ type: "text", text: "Begin your research session. Follow all phases in order." }],
+              content: [{ type: "text", text: "It's the start of the trading day. Run your morning playbook UNATTENDED — there is no human to respond to questions, no chat partner waiting for clarification. Every assistant turn must include at least one tool call; text-only turns terminate the run as FAILED. End with complete_run." }],
             };
             // Defensive: response.messages may be undefined depending on the
             // AI SDK provider (observed after switching from OpenAI to Anthropic).
