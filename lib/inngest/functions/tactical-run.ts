@@ -317,7 +317,9 @@ export const tacticalRun = inngest.createFunction(
         : "";
       const userPrompt =
         `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${signalSuffix} ` +
-        `Validate, decide, act if warranted, then close out via update_thesis.`;
+        `Validate, decide, act if warranted, then close out via update_thesis. ` +
+        `You are running unattended — no human will respond. Every turn must call a tool; ` +
+        `text-only turns terminate the run as FAILED.`;
       try {
         const { steps, response } = await generateText({
           model: openai(MODES["tactical"].model),

@@ -140,11 +140,21 @@ export const morningResearch = inngest.createFunction(
         const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
         let lastStepTimeMs = t0;
 
+        // V1/V2 user prompt (Fix #4). The V1 string was the same wording
+        // used in interactive /runs/[id] chats; the model treated cron
+        // runs like assistant-style conversations and ended turns with
+        // "would you like me to proceed?" The V2 string makes the lack
+        // of a human respondent explicit so the loop doesn't terminate
+        // on prose-style questions.
+        const userPrompt = config.useV2Prompt
+          ? "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run."
+          : "Begin your research session. Follow all phases in order.";
+
         try {
           const { text, steps, response } = await generateText({
             model: openai("gpt-4o"),
             system: systemPrompt,
-            prompt: "Begin your research session. Follow all phases in order.",
+            prompt: userPrompt,
             tools,
             // strictJsonSchema forces OpenAI to reject tool calls whose arguments
             // don't match the Zod-derived JSON Schema. Without this, the model
@@ -601,7 +611,7 @@ export const morningResearch = inngest.createFunction(
           try {
             const userMessage = {
               role: "user",
-              content: [{ type: "text", text: "Begin your research session. Follow all phases in order." }],
+              content: [{ type: "text", text: userPrompt }],
             };
             // Defensive: response.messages may be undefined depending on the
             // AI SDK provider (observed after switching from OpenAI to Anthropic).
