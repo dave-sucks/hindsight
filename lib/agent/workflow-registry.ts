@@ -11,7 +11,7 @@
 // and bump LAST_VERIFIED_AT below.
 
 /** ISO date the registry was last manually verified against the codebase. */
-export const LAST_VERIFIED_AT = "2026-05-08"; // bumped: P1-3 cadence doc, P2-2 watchlist default, P2-5 dead code
+export const LAST_VERIFIED_AT = "2026-05-10"; // bumped: Morning Run V2 (per-thesis triggers authoritative; V1/V2 prompt dispatch; needsAction; tightened Daily Run allowlist + bucket scope)
 
 /**
  * Live thesis-system reference. Linked from the agent / tactical /
