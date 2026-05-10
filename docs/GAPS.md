@@ -4,7 +4,7 @@
 >
 > **How to use it:** start at the top. P0s block the product. P1s degrade quality but the system still functions. P2s are paper cuts. Don't skip levels.
 >
-> **Last refreshed:** 2026-05-08 — Thesis Architecture pass (PR #239) closed P0-1, P0-5a + the previously-untracked promotion gap and conditional-requireds gaps. Same day: Monitor Health workstream (PR #237) closed P0-4, P1-2 (Monitor-counter backfill lifted trades-sourced 2 → 5). Small sweep (PR #238) closed P1-3, P2-2, P2-5. Admin sweep closed P0-3, P0-5d, P1-5, P1-6, P2-9. Watching-thesis integrity workstream closed P0-2, P1-1, P1-7, P1-8, P2-3. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived). Live thesis-system reference: [`docs/THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
+> **Last refreshed:** 2026-05-08 — GAPS cleanup pass: verified open items against merged code, closed P1-4 (already-done), reframed P0-5 umbrella in plain English, downgraded P0-5e from P0 to P1. Earlier same day: Thesis Architecture (PR #239) closed P0-1, P0-5a + the previously-untracked promotion gap and conditional-requireds gaps. Monitor Health (PR #237) closed P0-4, P1-2 (Monitor-counter backfill lifted trades-sourced 2 → 5). Small sweep (PR #238) closed P1-3, P2-2, P2-5. Admin sweep closed P0-3, P0-5d, P1-5, P1-6, P2-9. Watching-thesis integrity closed P0-2, P1-1, P1-7, P1-8, P2-3. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived). Live thesis-system reference: [`docs/THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
 
 ---
 
@@ -75,33 +75,30 @@ The MRVL anti-pattern (raising target on a watching thesis when current price is
 
 These prevent the core loop from working as designed. Fix first.
 
-### P0-5 — Horizon awareness is mostly cosmetic
-**Source:** Hold-style audit (overall grade D+).
+### P0-5 — Horizon awareness: operational layers are still horizon-blind
+**Source:** Hold-style audit 2026-05-07 (original grade D+; substantially upgraded by PR #239 which shipped horizon visibility + per-horizon prompt rules).
 
-**Why it matters:** this is the most important pillar from VISION.md and the one most at risk. The system says it's horizon-aware (triggers differ per horizon, A-) but doesn't behave horizon-aware (daily prompt grade C, action layer D, data fetching F).
+**The umbrella problem (in plain English):** the system has horizon as a label and shows it in the daily prompt, but the **operational layers that run between morning runs** — the hourly price-monitor cron, the specific numeric thresholds in the prompt, the data the agent fetches — still treat every position identically. Three sub-items below; they're three layers of the same gap.
 
 **Fix path (sub-items, in order):**
-1. ~~**P0-5a** — Make horizon visible in the daily-run prompt.~~ Closed 2026-05-08 (Thesis Architecture, PR #239) — Live Theses table now renders horizon, schedule, and per-thesis exit-policy hint sourced from `lib/agent/horizon-policy.ts`.
-2. **P0-5b** — Move time-based exit enforcement from prompt to code. `lib/trade-exit.ts` and `lib/inngest/functions/price-monitor.ts` should accept and respect `Thesis.horizon`. Code rule: `if (horizon === "TRADE" && daysHeld >= maxHoldDays) → trigger REVIEW`. **Note (2026-05-08):** PR #239 shipped the constants module (`HORIZON_REVIEW_DAYS`, `HORIZON_EXIT_POLICY`) but did NOT wire it into price-monitor or trade-exit at runtime — those still operate on Position fields with hardcoded proximity thresholds. The constants are ready; this fix is the actual integration.
-3. **P0-5c** — Branch daily prompt on horizon. Separate alert thresholds: "5% of stop" for TRADE, "10% of stop" for COMPOUNDER. Separate guidance: "COMPOUNDER theses ignore intraday moves <-3% absent fundamental invalidation." **Note (2026-05-08):** the per-horizon exit-policy strings now render in the Live Theses table (PR #239), but the agent-facing branching language in Step 2.B is still uniform 5%. Tightening this is the remaining piece.
-4. ~~**P0-5d** — Add horizon promotion path.~~ Closed 2026-05-08 (admin sweep PR).
-5. **P0-5e** — Differentiate data fetching per horizon. Long-term theses should pull SEC filings + analyst consensus more; intraday should pull options flow + volume.
 
-**Effort:** ~1-2 days for P0-5b through P0-5c. P0-5e is bigger.
+1. ~~**P0-5a** — Make horizon visible in the daily-run prompt.~~ ✅ Closed 2026-05-08 (Thesis Architecture, PR #239) — Live Theses table renders horizon, schedule, and per-thesis exit-policy hint sourced from `lib/agent/horizon-policy.ts`.
+
+2. **P0-5b** — **Wire `horizon-policy.ts` constants into the hourly watchdog.** `lib/inngest/functions/price-monitor.ts` and `lib/trade-exit.ts` are horizon-blind today: same proximity thresholds for every position, no maxHoldDays awareness for TRADE, no time-stop bypass for COMPOUNDER. **Concrete failure mode:** a 6-month TARGET position dips -3.5% intraday on noise; the watchdog flags it as "near stop" → defensive action triggered the agent would otherwise have skipped. Inverse: a 14-day TRADE hits maxHoldDays at 11 AM Tuesday; the watchdog has no rule for it, position sits open until tomorrow's 8 AM run. Constants from `horizon-policy.ts` are ready; this is the actual integration. **Effort: ~3-4 hours.**
+
+3. **P0-5c** — **Per-horizon proximity thresholds in Step 2.B of the daily-run prompt.** Largely closed by PR #239 (per-horizon review timing in the prompt; horizon-aware exit-policy strings render in the Live Theses table). The remaining piece: Step 2.B still says uniform "Within 5% of stopLoss → MUST call manage_position." Should be per-horizon (TRADE 5%, TARGET 8%, COMPOUNDER 10%, DAY tighter). Pure prompt edit + read from `horizon-policy.ts`. **Effort: ~30 min (folds into the same session as P0-5b).**
+
+4. ~~**P0-5d** — Add horizon promotion path.~~ ✅ Closed 2026-05-08 (admin sweep PR).
+
+5. **P0-5e** — **Per-horizon data-fetching guidance in the prompt.** The data-fetching tools (`get_stock_data`, `get_options_flow`, `get_sec_filings`, `get_earnings_data`, etc.) don't take horizon as input — but they don't need to. The actual fix is prompt guidance: "Reviewing a TRADE position? Pull options flow + technical setup. Reviewing a COMPOUNDER? Pull SEC filings + analyst targets + earnings calendar." Today the agent picks whatever it picks; quality suffers when the data type doesn't match the horizon. **Reframed as P1 (prompt fix, not code fix). Effort: ~1 hour.**
+
+**Total remaining:** ~4-5 hours for P0-5b/c (one session), then P0-5e separately when the bigger-picture P0-5b/c lessons are absorbed.
 
 ---
 
 ## P1 — Quality is degraded but system functions
 
-
-### P1-4 — Discovery softer than required at minting
-**Source:** Prompts audit — the discovery-to-action wiring softer than ARCHITECTURE_DEEP_AUDIT Step 6 requires.
-
-**Why it matters:** the prompt says "Research ≥ 2 new tickers every run; worthy names go to watchlist via manage_watchlist." Audit demanded "convert at least N high-conviction signals to fresh `record_thesis` calls when discovery slots are open." Watchlist items don't trigger the per-thesis review loop the same way.
-
-**Fix path:** sharpen the prompt language in the daily-run + discovery prompts. "Watchlist add" is the fallback; `record_thesis` (WATCHING status) is the default for high-conviction discoveries.
-
-**Effort:** ~30 min.
+*(P1-4 was closed via cumulative prompt sharpening across PRs #235 + #239 — see "Done since" below. P0-5e was downgraded here from P0; see P0-5 above for details.)*
 
 ---
 
@@ -114,6 +111,17 @@ SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints th
 
 ### P2-7 — Intelligence pipeline crons are independent
 Crons agent — no Inngest `.after()` or `.waitFor()` between firm-market-sweep → portfolio-watchlist-monitor → domain-monitor → signal-router. If one lags, downstream still fires on schedule with stale data. Today this is theoretical; flag it as a known fragility. ~2 hours to add chaining.
+
+---
+
+## Done since 2026-05-08 (GAPS cleanup — verified against merged code)
+
+Doc-only pass. The product owner asked for an honest re-grade of the open items after spot-checking the actually-merged code (not just session summaries). Two items moved to closed; the P0-5 umbrella was rewritten in plain English; P0-5e was downgraded from P0 to P1.
+
+- ✅ **P1-4 — Discovery softer than required at minting.** Closed as already-done. Verified Step 4 of [`lib/agent/system-prompt.ts`](../lib/agent/system-prompt.ts) on main (after PR #235 + PR #239): explicitly says use `record_thesis`, not `manage_watchlist`, with three conviction bands (high → ACTIVE+place_trade, lower → WATCHING with ENTER triggers, fails → PASS thesis). Explicit framing: *"Open slots are the reason discovery should run, not a reason to skip it."* The original GAPS framing ("the prompt says 'add to watchlist'") predates these PRs. No code change in this cleanup — just GAPS.md acknowledging the prompt is already where the audit wanted it.
+- ✅ **P0-5 umbrella reframed.** "Mostly cosmetic" was true on 2026-05-07 audit but stale after PR #239 closed P0-5a + most of P0-5c. Rewrote the section in plain English: the umbrella problem is "operational layers between morning runs are still horizon-blind." P0-5b (cron-side wiring of `horizon-policy.ts`) is the real remaining P0; P0-5c is a 30-min prompt-edit follow-on; P0-5e was downgraded from P0 to P1 because it's a prompt fix (per-horizon tool-selection guidance), not a code change.
+
+**No code changes** in this PR — pure GAPS.md honesty. The "open items" list now accurately reflects what's actually missing in `origin/main`.
 
 ---
 
