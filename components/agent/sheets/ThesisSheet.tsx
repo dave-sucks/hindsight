@@ -75,6 +75,28 @@ export type ThesisCardData = {
   exchange?: string | null;
   fundamentals?: FundamentalsData | null;
   status?: "ACTIVE" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "WATCHING";
+  /**
+   * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
+   * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
+   * on the read-theses table row. null/undefined means no work needed.
+   */
+  needs_action?:
+    | {
+        kind: "TRIGGER_FIRED";
+        triggerId: string;
+        action: string;
+        summary: string;
+        firedAt: string;
+      }
+    | {
+        kind: "TRIGGER_MATCHING_NOW";
+        triggerId: string;
+        action: string;
+        predicateSummary: string;
+        livePrice: number | null;
+      }
+    | { kind: "REVIEW_DUE"; daysOverdue: number }
+    | null;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

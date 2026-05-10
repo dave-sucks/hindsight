@@ -33,6 +33,19 @@ import { getThesisStatusDisplay } from "@/lib/thesis-status";
 
 // ─── Row ─────────────────────────────────────────────────────────────────────
 
+function describeNeedsAction(na: NonNullable<ThesisCardData["needs_action"]>): string {
+  switch (na.kind) {
+    case "TRIGGER_FIRED":
+      return `Trigger fired: ${na.action}`;
+    case "TRIGGER_MATCHING_NOW":
+      return `Trigger matching: ${na.predicateSummary}`;
+    case "REVIEW_DUE":
+      return na.daysOverdue > 0
+        ? `Review ${na.daysOverdue}d overdue`
+        : "Review due";
+  }
+}
+
 function ThesisReadRow({
   thesis,
   onClick,
@@ -42,6 +55,8 @@ function ThesisReadRow({
 }) {
   const status = getThesisStatusDisplay(thesis.status);
   const summary = thesis.reasoning_summary?.trim() || "—";
+  const needsAction = thesis.needs_action ?? null;
+  const needsActionLabel = needsAction ? describeNeedsAction(needsAction) : null;
 
   return (
     <HoverCard>
@@ -78,6 +93,12 @@ function ThesisReadRow({
             <TooltipContent>{status.tooltip}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
+        {needsActionLabel ? (
+          <Badge variant="outline" className="gap-1.5 font-normal">
+            <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-amber-500" />
+            {needsActionLabel}
+          </Badge>
+        ) : null}
         <span className="flex-1 min-w-0 text-right text-xs text-muted-foreground truncate">
           {summary}
         </span>

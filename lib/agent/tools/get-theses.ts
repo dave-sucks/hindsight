@@ -27,6 +27,11 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
+import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { getLatestPrices } from "@/lib/alpaca";
+import type { Trigger } from "@/lib/agent/triggers/types";
+import type { NeedsAction } from "@/lib/agent/needs-action";
 
 const STATUS_VALUES = [
   "ACTIVE",
@@ -218,6 +223,88 @@ export const getTheses = defineTool({
       }
     }
 
+    // ── needsAction (Fix #2) ───────────────────────────────────────────
+    // For every ACTIVE/WATCHING thesis row in this response, compute the
+    // per-thesis needsAction annotation: TRIGGER_FIRED / TRIGGER_MATCHING_NOW
+    // / REVIEW_DUE / null. The agent reads this field to decide which
+    // theses need touching today; nulls don't need attention.
+    //
+    // Two batched dependencies:
+    //   1. Most-recent ThesisUpdate per thesis — drives TRIGGER_FIRED
+    //      (an unanswered fire is one whose row is still on top of the
+    //      activity log).
+    //   2. Live quote per unique ticker — drives TRIGGER_MATCHING_NOW
+    //      via shouldFire on price-side predicates. Fetched only when
+    //      we have at least one ACTIVE/WATCHING row to evaluate; quote
+    //      failures degrade gracefully (matching-now skipped, the
+    //      cron's 5-min path still catches it later).
+    //
+    // Terminal-status theses (INVALIDATED/CLOSED/SUPERSEDED) skip the
+    // computation — needsAction stays null there.
+    const liveTheses = theses.filter(
+      (t) => t.status === "ACTIVE" || t.status === "WATCHING",
+    );
+    const needsActionByThesisId = new Map<string, NeedsAction | null>();
+
+    if (liveTheses.length > 0) {
+      // Latest ThesisUpdate per thesis — one batched query.
+      const latestUpdates = await prisma.thesisUpdate.findMany({
+        where: { thesisId: { in: liveTheses.map((t) => t.id) } },
+        orderBy: { timestamp: "desc" },
+        distinct: ["thesisId"],
+        select: {
+          thesisId: true,
+          type: true,
+          triggerId: true,
+          timestamp: true,
+        },
+      });
+      const latestByThesisId = new Map(
+        latestUpdates.map((u) => [u.thesisId, u]),
+      );
+
+      // Live quotes — one Alpaca call per unique ticker.
+      const uniqueTickers = Array.from(
+        new Set(liveTheses.map((t) => t.ticker)),
+      );
+      let priceByTicker: Record<string, number> = {};
+      try {
+        priceByTicker = await getLatestPrices(uniqueTickers, ctx.alpacaCreds);
+      } catch (err) {
+        console.warn(
+          "[get_theses] live quote fetch failed; matching-now skipped:",
+          err,
+        );
+      }
+
+      const now = new Date();
+      for (const t of liveTheses) {
+        const parsed = triggersArraySchema.safeParse(t.triggers);
+        const triggers: Trigger[] = parsed.success
+          ? (parsed.data as Trigger[])
+          : [];
+        const price = priceByTicker[t.ticker];
+        const latestQuote =
+          typeof price === "number" && price > 0
+            ? { price, changePct: 0 }
+            : null;
+        needsActionByThesisId.set(
+          t.id,
+          computeNeedsAction({
+            thesis: {
+              id: t.id,
+              triggers,
+              createdAt: t.createdAt,
+              nextReviewAt: t.nextReviewAt,
+            },
+            latestUpdate: latestByThesisId.get(t.id) ?? null,
+            latestQuote,
+            now,
+          }),
+        );
+      }
+    }
+
     const enriched = theses.map((t) => {
       const triggerCount = Array.isArray(t.triggers)
         ? (t.triggers as unknown[]).length
@@ -226,6 +313,7 @@ export const getTheses = defineTool({
         ...t,
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
+        needsAction: needsActionByThesisId.get(t.id) ?? null,
       };
     });
 
@@ -254,6 +342,10 @@ export const getTheses = defineTool({
         | "INVALIDATED"
         | "CLOSED"
         | "SUPERSEDED",
+      // Surface the per-thesis needsAction annotation so the
+      // ThesisCardRenderer / read-theses-table can show an alert chip
+      // on rows that need work today.
+      needs_action: t.needsAction ?? null,
     }));
 
     const activeCount = enriched.filter((t) => t.status === "ACTIVE").length;
