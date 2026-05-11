@@ -76,6 +76,7 @@ export const completeRun = defineTool({
             segmentId: ctx.podcastSegmentId,
             runId: ctx.runId,
             userId: ctx.userId,
+            accountId: ctx.accountId,
           });
           const written = await prisma.podcastSegmentBriefing.findUnique({
             where: { runId: ctx.runId },
@@ -154,7 +155,7 @@ export const completeRun = defineTool({
       if (ctx.analystId) {
         try {
           const briefStart = Date.now();
-          await updateAnalystBriefing({ analystId: ctx.analystId, runId: ctx.runId, userId: ctx.userId });
+          await updateAnalystBriefing({ analystId: ctx.analystId, runId: ctx.runId, userId: ctx.userId, accountId: ctx.accountId });
           console.log(`[tool] complete_run: updateAnalystBriefing returned for run=${ctx.runId} in ${Date.now() - briefStart}ms`);
           const writtenBrief = await prisma.analystBriefing.findFirst({
             where: { runId: ctx.runId },

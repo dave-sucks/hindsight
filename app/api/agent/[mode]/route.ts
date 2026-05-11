@@ -427,6 +427,7 @@ export async function POST(
     const allTools = createResearchTools({
       runId: runId || agentMode,
       userId: user.id,
+      accountId,
       analystId: resolvedAnalystId,
       podcastSegmentId: resolvedPodcastSegmentId,
       watchlist: (agentConfig.watchlist as string[]) ?? [],
@@ -735,7 +736,7 @@ export async function POST(
               });
               if (!existingBriefing && resolvedAnalystId) {
                 try {
-                  await updateAnalystBriefing({ analystId: resolvedAnalystId, runId, userId: user.id });
+                  await updateAnalystBriefing({ analystId: resolvedAnalystId, runId, userId: user.id, accountId });
                   console.log(`[agent/${agentMode}] ✅ Briefing written for run ${runId}`);
                 } catch (err) {
                   console.error(`[agent/${agentMode}] Briefing failed:`, err);

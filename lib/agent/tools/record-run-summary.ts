@@ -256,6 +256,7 @@ export const recordRunSummary = defineTool({
                 runId: ctx.runId,
                 analystId: ctx.analystId,
                 userId: ctx.userId,
+                accountId: ctx.accountId,
                 symbol: pick.ticker.toUpperCase(),
                 decision,
                 reasoning: pick.reasoning?.slice(0, 500) ?? null,

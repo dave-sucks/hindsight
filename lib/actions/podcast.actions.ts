@@ -15,6 +15,7 @@ import type { SuggestedPodcastConfig } from "@/lib/agent/tools/suggest-podcast-c
 import type { TranscriptCardData } from "@/components/agent/sheets/TranscriptSheet";
 import { inngest } from "@/lib/inngest/client";
 import { estimateCost } from "@/lib/podcast/elevenlabs";
+import { getAccountId } from "@/lib/auth/account";
 
 // ── Shared types ────────────────────────────────────────────────────────────
 
@@ -115,6 +116,13 @@ async function requireUser() {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
   return user;
+}
+
+async function requireAccount(): Promise<{ userId: string; accountId: string }> {
+  const user = await requireUser();
+  const accountId = await getAccountId(user.id);
+  if (!accountId) throw new Error("No account");
+  return { userId: user.id, accountId };
 }
 
 // ── Read ────────────────────────────────────────────────────────────────────
@@ -290,12 +298,13 @@ export async function createPodcastFromBuilder(
   config: SuggestedPodcastConfig,
   builderPrompt?: string,
 ): Promise<{ id: string }> {
-  const user = await requireUser();
+  const { userId, accountId } = await requireAccount();
 
   const podcast = await prisma.$transaction(async (tx) => {
     const created = await tx.podcast.create({
       data: {
-        userId: user.id,
+        userId,
+        accountId,
         name: config.podcast.name,
         description: config.podcast.description,
         hostStyle: config.podcast.hostStyle ?? null,
@@ -312,7 +321,8 @@ export async function createPodcastFromBuilder(
       const segment = await tx.podcastSegment.create({
         data: {
           podcastId: created.id,
-          userId: user.id,
+          userId,
+          accountId,
           name: s.name,
           description: s.description ?? null,
           segmentPrompt: s.segmentPrompt,
@@ -334,6 +344,7 @@ export async function createPodcastFromBuilder(
         const domain = m.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
         await tx.monitor.create({
           data: {
+            accountId,
             name: m.name,
             type: "DOMAIN",
             method: "perplexity_sonar",
@@ -359,6 +370,7 @@ export async function createPodcastFromBuilder(
       for (const q of s.searchQueries) {
         await tx.monitor.create({
           data: {
+            accountId,
             name: q.query,
             type: "SEARCH",
             method: "perplexity_sonar",
@@ -454,9 +466,9 @@ export async function addSegmentMonitor(
   segmentId: string,
   input: AddMonitorInput,
 ) {
-  const user = await requireUser();
+  const { accountId } = await requireAccount();
   const seg = await prisma.podcastSegment.findFirst({
-    where: { id: segmentId, userId: user.id },
+    where: { id: segmentId, accountId },
     select: { id: true, podcastId: true },
   });
   if (!seg) throw new Error("Segment not found");
@@ -465,6 +477,7 @@ export async function addSegmentMonitor(
     const domain = input.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
     await prisma.monitor.create({
       data: {
+        accountId,
         name: input.name || domain,
         type: "DOMAIN",
         method: "perplexity_sonar",
@@ -484,6 +497,7 @@ export async function addSegmentMonitor(
   } else {
     await prisma.monitor.create({
       data: {
+        accountId,
         name: input.name?.trim() || input.query,
         type: "SEARCH",
         method: "perplexity_sonar",
@@ -668,15 +682,15 @@ export async function createEpisodeFromTranscripts(
   transcriptIds: string[],
   title?: string,
 ): Promise<{ id: string }> {
-  const user = await requireUser();
+  const { userId, accountId } = await requireAccount();
   if (transcriptIds.length === 0) {
     throw new Error("Pick at least one transcript to assemble.");
   }
 
   // Ownership + scope check: every transcript must belong to a segment of
-  // this podcast and to this user. Anything else is a 403 path.
+  // this podcast and to this account. Anything else is a 403 path.
   const podcast = await prisma.podcast.findFirst({
-    where: { id: podcastId, userId: user.id },
+    where: { id: podcastId, accountId },
     select: { id: true, name: true },
   });
   if (!podcast) throw new Error("Podcast not found");
@@ -709,7 +723,8 @@ export async function createEpisodeFromTranscripts(
   const episode = await prisma.episode.create({
     data: {
       podcastId,
-      userId: user.id,
+      userId,
+      accountId,
       title: derivedTitle,
       transcriptIds,
       durationSec: totalDuration > 0 ? totalDuration : null,
@@ -744,10 +759,10 @@ export async function updatePodcastFromEditor(
   podcastId: string,
   config: SuggestedPodcastConfig,
 ): Promise<void> {
-  const user = await requireUser();
+  const { userId, accountId } = await requireAccount();
 
   const existing = await prisma.podcast.findFirst({
-    where: { id: podcastId, userId: user.id },
+    where: { id: podcastId, accountId },
     include: {
       segments: {
         select: {
@@ -823,7 +838,8 @@ export async function updatePodcastFromEditor(
         const created = await tx.podcastSegment.create({
           data: {
             podcastId: existing.id,
-            userId: user.id,
+            userId,
+            accountId,
             name: s.name,
             description: s.description ?? null,
             segmentPrompt: s.segmentPrompt,
@@ -844,6 +860,7 @@ export async function updatePodcastFromEditor(
         const domain = m.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
         await tx.monitor.create({
           data: {
+            accountId,
             name: m.name,
             type: "DOMAIN",
             method: "perplexity_sonar",
@@ -866,6 +883,7 @@ export async function updatePodcastFromEditor(
       for (const q of s.searchQueries) {
         await tx.monitor.create({
           data: {
+            accountId,
             name: q.query,
             type: "SEARCH",
             method: "perplexity_sonar",
@@ -889,9 +907,9 @@ export async function updatePodcastFromEditor(
 // ── Run kick ────────────────────────────────────────────────────────────────
 
 export async function runSegment(segmentId: string): Promise<{ runId: string }> {
-  const user = await requireUser();
+  const { userId, accountId } = await requireAccount();
   const seg = await prisma.podcastSegment.findFirst({
-    where: { id: segmentId, userId: user.id },
+    where: { id: segmentId, accountId },
     select: { id: true, podcastId: true },
   });
   if (!seg) throw new Error("Segment not found");
@@ -908,7 +926,8 @@ export async function runSegment(segmentId: string): Promise<{ runId: string }> 
 
   const run = await prisma.researchRun.create({
     data: {
-      userId: user.id,
+      userId,
+      accountId,
       source: "MANUAL",
       status: "RUNNING",
       // Mark the run with a podcast-flavored mode value so historical
@@ -928,9 +947,9 @@ export async function runSegment(segmentId: string): Promise<{ runId: string }> 
  * Sets source=AGENT so the run page knows not to auto-start AgentThread.
  */
 export async function runSegmentViaInngest(segmentId: string): Promise<{ runId: string }> {
-  const user = await requireUser();
+  const { userId, accountId } = await requireAccount();
   const seg = await prisma.podcastSegment.findFirst({
-    where: { id: segmentId, userId: user.id },
+    where: { id: segmentId, accountId },
     select: { id: true, podcastId: true },
   });
   if (!seg) throw new Error("Segment not found");
@@ -943,7 +962,8 @@ export async function runSegmentViaInngest(segmentId: string): Promise<{ runId: 
 
   const run = await prisma.researchRun.create({
     data: {
-      userId: user.id,
+      userId,
+      accountId,
       source: "AGENT",
       status: "RUNNING",
       mode: "PODCAST_SEGMENT",
@@ -954,7 +974,7 @@ export async function runSegmentViaInngest(segmentId: string): Promise<{ runId: 
 
   await inngest.send({
     name: "podcast/segment.run.requested",
-    data: { segmentId: seg.id, runId: run.id, userId: user.id },
+    data: { segmentId: seg.id, runId: run.id, userId, accountId },
   });
 
   revalidatePath(`/podcasts/${seg.podcastId}`);

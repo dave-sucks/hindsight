@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { getAccountId } from "@/lib/auth/account";
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 
@@ -194,10 +195,12 @@ export async function addWatchlistItem(
 ): Promise<WatchlistItemView> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   // Verify analyst ownership
   const analyst = await prisma.agentConfig.findFirst({
-    where: { id: analystId, userId },
+    where: { id: analystId, accountId },
     select: { id: true },
   });
   if (!analyst) throw new Error("Analyst not found");
@@ -234,6 +237,7 @@ export async function addWatchlistItem(
     data: {
       analystId,
       userId,
+      accountId,
       symbol: upper,
       reason,
       addedBy,

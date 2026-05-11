@@ -320,6 +320,7 @@ export const placeTrade = defineTool({
           data: {
             analystId,
             userId: ctx.userId,
+            accountId: ctx.accountId,
             symbol: ticker,
             direction: args.direction,
             status: "OPEN",
@@ -368,6 +369,7 @@ export const placeTrade = defineTool({
             runId: ctx.runId,
             analystId,
             userId: ctx.userId,
+            accountId: ctx.accountId,
             symbol: ticker,
             decision: "INITIATE",
             reasoning: `${args.direction} ${finalShares} shares — submitting market order (target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)})`,

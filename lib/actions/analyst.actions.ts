@@ -14,6 +14,7 @@ import {
   normalizeThemes,
 } from "@/lib/universe/canonical";
 import { normalizeFeeds } from "@/lib/universe/feeds";
+import { getAccountId } from "@/lib/auth/account";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -735,10 +736,13 @@ export async function createAnalystFromWizard(
 ): Promise<{ id: string }> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   const analyst = await prisma.agentConfig.create({
     data: {
       userId,
+      accountId,
       name: data.name,
       enabled: true,
       analystPrompt: data.analystPrompt,
@@ -1167,8 +1171,10 @@ export async function addAnalystMonitor(
 ) {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
   const analyst = await prisma.agentConfig.findFirst({
-    where: { id: analystId, userId },
+    where: { id: analystId, accountId },
     select: { id: true },
   });
   if (!analyst) throw new Error("Analyst not found");
@@ -1177,6 +1183,7 @@ export async function addAnalystMonitor(
     const domain = input.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
     await prisma.monitor.create({
       data: {
+        accountId,
         name: input.name || domain,
         type: "DOMAIN",
         method: "perplexity_sonar",
@@ -1197,6 +1204,7 @@ export async function addAnalystMonitor(
   } else {
     await prisma.monitor.create({
       data: {
+        accountId,
         name: input.name?.trim() || input.query,
         type: "SEARCH",
         method: "perplexity_sonar",
@@ -1361,6 +1369,8 @@ export async function updateAnalystFromBuilder(
 ): Promise<void> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   const updateData: Record<string, unknown> = {};
   if (data.name !== undefined) updateData.name = data.name;
@@ -1464,6 +1474,7 @@ export async function updateAnalystFromBuilder(
           data: toCreate.map((w) => ({
             analystId: id,
             userId,
+            accountId,
             symbol: w.symbol,
             reason: w.reason,
             addedBy: "BUILDER",
@@ -1507,6 +1518,7 @@ export async function updateAnalystFromBuilder(
         .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
       await prisma.monitor.create({
         data: {
+          accountId,
           name: src.name,
           type: "DOMAIN",
           method: "perplexity_sonar",
@@ -1548,6 +1560,7 @@ export async function updateAnalystFromBuilder(
         .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
       await prisma.monitor.create({
         data: {
+          accountId,
           name: q.query,
           type: "SEARCH",
           method: "perplexity_sonar",

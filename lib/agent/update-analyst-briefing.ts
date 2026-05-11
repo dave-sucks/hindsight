@@ -82,6 +82,7 @@ interface BriefingContext {
   analystId: string;
   runId: string;
   userId: string;
+  accountId: string;
 }
 
 /**
@@ -95,6 +96,7 @@ export async function updateAnalystBriefing({
   analystId,
   runId,
   userId,
+  accountId,
 }: BriefingContext): Promise<void> {
   try {
     const t0 = Date.now();
@@ -528,6 +530,7 @@ Rules:
       analystId,
       runId,
       userId,
+      accountId,
       narrative: object.narrative || "(empty)",
       marketContext: marketContext as object | undefined,
       theses: thesesData as object[],
