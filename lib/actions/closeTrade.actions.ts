@@ -13,6 +13,7 @@ import {
 import { inngest } from "@/lib/inngest/client";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
+import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -352,36 +353,79 @@ export async function closeOpenPosition(
   });
 
   // 5. Post-close side effects (non-fatal).
+  //
+  // Two parallel side effects intentionally:
+  //   (a) `trade/closed` Inngest event — consumed by `evaluateTrade`
+  //       (lib/inngest/functions/trade-evaluator.ts). Runs GPT-4o
+  //       post-trade evaluation and updates Monitor ROI counters. Not
+  //       responsible for email.
+  //   (b) Inline trade-closed email below — fire-and-forget so every
+  //       close path (agent close_position, manage_position full close,
+  //       price-monitor stop/target, intraday EOD flatten, user-UI
+  //       close) emails exactly once. Inline (not its own Inngest
+  //       handler) prevents the double-send failure mode that would
+  //       come with a duplicate event delivery.
+  //
+  // Suppression: if the close happened inside a MORNING_PLAN run during
+  // the morning-cron window (Mon-Fri 7-10 AM ET), the 10 AM digest
+  // covers it — skip the immediate email. Off-cycle closes (price-
+  // monitor, user-UI, EOD-flatten, tactical-run agent closes) email
+  // immediately. Gated on AgentConfig.emailAlerts for trade-closed too
+  // so a "no emails for this analyst" opt-out actually means none.
   await inngest.send({ name: "trade/closed", data: { positionId } });
 
-  getUserEmail(position.userId).then((toEmail) => {
-    if (!toEmail) return;
-    const pnlPct = positionCost > 0 ? (realizedPnl / positionCost) * 100 : 0;
-    const daysHeld = Math.max(
-      1,
-      Math.round((Date.now() - new Date(position.openedAt).getTime()) / 86_400_000),
-    );
-    const isWin = outcome === "WIN";
-    const sign2 = realizedPnl >= 0 ? "+" : "";
-    sendEmail({
-      to: toEmail,
-      subject: isWin
-        ? `✅ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — WIN`
-        : `⛔ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — ${outcome}`,
-      html: tradeClosedHtml({
-        ticker: position.symbol,
-        direction: position.direction as "LONG" | "SHORT",
-        entryPrice: position.avgCost,
-        closePrice,
-        realizedPnl,
-        realizedPnlPct: pnlPct,
-        outcome,
-        closeReason: reason,
-        daysHeld,
-        tradeId: positionId,
-      }),
-    });
-  });
+  void (async () => {
+    try {
+      const run = runId
+        ? await prisma.researchRun.findUnique({
+            where: { id: runId },
+            select: { mode: true },
+          })
+        : null;
+      if (isInsideMorningBatch(run?.mode)) {
+        return; // digest will cover it
+      }
+      const config = position.analystId
+        ? await prisma.agentConfig.findUnique({
+            where: { id: position.analystId },
+            select: { emailAlerts: true },
+          })
+        : null;
+      if (config && config.emailAlerts === false) return;
+      const toEmail = await getUserEmail(position.userId);
+      if (!toEmail) return;
+      const pnlPct = positionCost > 0 ? (realizedPnl / positionCost) * 100 : 0;
+      const daysHeld = Math.max(
+        1,
+        Math.round((Date.now() - new Date(position.openedAt).getTime()) / 86_400_000),
+      );
+      const isWin = outcome === "WIN";
+      const sign2 = realizedPnl >= 0 ? "+" : "";
+      await sendEmail({
+        to: toEmail,
+        subject: isWin
+          ? `✅ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — WIN`
+          : `⛔ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — ${outcome}`,
+        html: tradeClosedHtml({
+          ticker: position.symbol,
+          direction: position.direction as "LONG" | "SHORT",
+          entryPrice: position.avgCost,
+          closePrice,
+          realizedPnl,
+          realizedPnlPct: pnlPct,
+          outcome,
+          closeReason: reason,
+          daysHeld,
+          tradeId: positionId,
+        }),
+      });
+    } catch (err) {
+      console.warn(
+        "[closeOpenPosition] trade-closed email failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  })();
 
   return {
     positionId,

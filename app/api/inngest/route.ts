@@ -5,7 +5,7 @@ import { reconcileOrders } from "@/lib/inngest/functions/reconcile-orders";
 import { evaluateTrade } from "@/lib/inngest/functions/trade-evaluator";
 import { morningResearch } from "@/lib/inngest/functions/morning-research";
 import { eodEvaluation } from "@/lib/inngest/functions/eod-evaluation";
-import { weeklyDigest } from "@/lib/inngest/functions/weekly-digest";
+import { dailyRunDigest } from "@/lib/inngest/functions/daily-run-digest";
 import { accuracyScorer } from "@/lib/inngest/functions/accuracy-scorer";
 // V3 Intelligence Layer
 import { firmMarketSweep } from "@/lib/inngest/functions/firm-market-sweep";
@@ -35,7 +35,11 @@ export const { GET, POST, PUT } = serve({
     evaluateTrade,
     morningResearch,
     eodEvaluation,
-    weeklyDigest,
+    // 10 AM ET Mon-Fri — per-owner digest of every analyst's morning activity
+    // (new positions, closed positions, material thesis changes). Trade-opened
+    // and trade-closed alerts fire immediately per-trade; this is the daily
+    // roll-up scan-at-a-glance.
+    dailyRunDigest,
     accuracyScorer,
     // V3 Intelligence (run in order: 6:30 → 7:00 → 7:15 → 7:30 → 7:45 → 8:00 analyst runs)
     firmMarketSweep,
