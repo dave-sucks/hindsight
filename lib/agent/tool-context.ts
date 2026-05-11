@@ -69,6 +69,23 @@ export interface ToolContext {
   dailyRunOnly?: boolean;
 
   /**
+   * Full set of tickers this analyst already covers — ACTIVE + WATCHING
+   * theses, plus watchlist, plus open positions. Used by:
+   *   • read_signals discoveryOnly path: "discovery" means signals on
+   *     tickers NOT in this set (was incorrectly using routeReasonCode
+   *     buckets which silently dropped AGGREGATE_TICKER_MATCH routes on
+   *     watchlist names into the watchlist bucket and then hid them).
+   *   • get_market_movers / get_earnings_calendar scope:"universe":
+   *     "universe" means the full firm firehose minus this set (was
+   *     incorrectly intersecting WITH watchlist+positions which is the
+   *     opposite of discovery semantics).
+   *
+   * Populated by lib/inngest/functions/discovery-run.ts. Daily/manual
+   * runs leave undefined → tools fall back to watchlist ∪ positionTickers.
+   */
+  coveredTickers?: string[];
+
+  /**
    * Returns a stable group key for the given phase string.
    * Consecutive tool calls returning the same groupId collapse into one UI group.
    * Tools in the "research" phase all return "research", so they group together.
