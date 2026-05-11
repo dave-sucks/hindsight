@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getAccountId } from "@/lib/auth/account";
 
 // GET /api/analysts/[id]/routing-stats?days=30
 // Aggregates AnalystSignalRoute rows for one analyst, grouped by
@@ -13,11 +14,14 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
+
   const { id: analystId } = await params;
 
-  // Ownership check — don't leak another user's routing history.
+  // Ownership check — don't leak another account's routing history.
   const owned = await prisma.agentConfig.findFirst({
-    where: { id: analystId, userId: user.id },
+    where: { id: analystId, accountId },
     select: { id: true },
   });
   if (!owned) return NextResponse.json({ error: "Not found" }, { status: 404 });

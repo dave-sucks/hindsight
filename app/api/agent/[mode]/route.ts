@@ -15,6 +15,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { getAccountId } from "@/lib/auth/account";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
@@ -117,6 +118,9 @@ export async function POST(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
 
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return new Response("No account", { status: 403 });
+
   let runId: string | undefined;
   let resolvedAnalystId: string | undefined;
   // Podcast feature — set when the route is handling a podcast-segment-run.
@@ -161,7 +165,7 @@ export async function POST(
 
       if (resolvedAnalystId) {
         const ac = await prisma.agentConfig.findFirst({
-          where: { id: resolvedAnalystId, userId: user.id },
+          where: { id: resolvedAnalystId, accountId },
         });
         if (ac) {
           agentConfig = {
@@ -250,7 +254,7 @@ export async function POST(
         );
       }
       const podcast = await prisma.podcast.findFirst({
-        where: { id: podcastId, userId: user.id },
+        where: { id: podcastId, accountId },
         include: {
           segments: {
             orderBy: { orderIndex: "asc" },
@@ -323,7 +327,7 @@ export async function POST(
       }
 
       const segment = await prisma.podcastSegment.findFirst({
-        where: { id: resolvedPodcastSegmentId, userId: user.id },
+        where: { id: resolvedPodcastSegmentId, accountId },
         include: { podcast: true },
       });
       if (!segment) {
@@ -410,7 +414,7 @@ export async function POST(
       ? (
           await prisma.position.findMany({
             where: {
-              userId: user.id,
+              accountId,
               analystId: resolvedAnalystId,
               status: "OPEN",
             },

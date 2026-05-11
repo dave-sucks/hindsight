@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getAccountId } from "@/lib/auth/account";
 
 // GET /api/intelligence/coverage?days=7
 // Returns per-dimension counts of signals routed to any of this user's
@@ -12,9 +13,12 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
+
   const analystIds = (
     await prisma.agentConfig.findMany({
-      where: { userId: user.id },
+      where: { accountId },
       select: { id: true },
     })
   ).map((a) => a.id);
