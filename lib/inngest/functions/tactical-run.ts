@@ -532,10 +532,33 @@ export const tacticalRun = inngest.createFunction(
         console.error(
           `[tactical-run] thesis=${thesis.id} trigger=${trigger.id} agent error: ${msg}`,
         );
-        await prisma.researchRun.update({
-          where: { id: run.id },
-          data: { status: "FAILED", completedAt: new Date() },
-        });
+        // Persist the error text into ResearchRun.parameters so SQL queries
+        // can surface it without needing the Inngest dashboard. Mirrors the
+        // pattern in morning-research.ts. Best-effort — wrapped in try so a
+        // parameters-merge failure doesn't mask the original error.
+        try {
+          const fresh = await prisma.researchRun.findUnique({
+            where: { id: run.id },
+            select: { parameters: true },
+          });
+          await prisma.researchRun.update({
+            where: { id: run.id },
+            data: {
+              status: "FAILED",
+              completedAt: new Date(),
+              parameters: {
+                ...((fresh?.parameters as object) ?? {}),
+                error: msg,
+                failedAt: new Date().toISOString(),
+              } as object,
+            },
+          });
+        } catch {
+          await prisma.researchRun.update({
+            where: { id: run.id },
+            data: { status: "FAILED", completedAt: new Date() },
+          });
+        }
         return { error: msg, closedOut: false };
       }
     });
