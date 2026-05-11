@@ -95,18 +95,11 @@ export const domainMonitor = inngest.createFunction(
     { event: "intelligence/domain-monitor" },
   ],
   async ({ event, step }) => {
-    // ── Invocation diagnostic (Session 4 follow-up) ───────────────────────
-    // All 27 enabled DOMAIN monitors have lastRunAt=null and no SignalBatch
-    // row with jobType='DOMAIN_MONITOR' has ever been created. The function
-    // is registered and the cron spec is valid; the invocation is what's
-    // missing. These two changes make the next invocation self-evident:
-    //   1. An unconditional console.log surfaces in Inngest's run stream
-    //      the moment the handler starts. No log line → Inngest never
-    //      started the function.
-    //   2. createSignalBatch is hoisted out of step.run so a batch row
-    //      lands on the first DB touch instead of being gated behind the
-    //      monitor-load step. No batch row → handler crashed before the
-    //      hoisted write (or, again, was never invoked at all).
+    // ── Invocation diagnostic ────────────────────────────────────────────
+    // Logged on every function replay; harmless and useful for Inngest's
+    // run stream. Note: console.log OUTSIDE step.run runs on every replay
+    // (once per step boundary), which is fine for ephemeral logs but
+    // CATASTROPHIC for DB writes — see batch-creation note below.
     const invokedAt = new Date().toISOString()
     const triggeredBy = event?.name ?? "unknown"
     const scope =
@@ -115,14 +108,23 @@ export const domainMonitor = inngest.createFunction(
       `[domain-monitor] invoked at ${invokedAt}, scope=${scope}, event=${triggeredBy}`
     )
 
-    // Create the batch row UP FRONT, OUTSIDE any step.run. The duplicate
-    // batch rows on retries are the accepted cost of this diagnostic —
-    // presence proves the function ran at least once, absence is now
-    // unambiguous evidence the function was never invoked.
-    const batchId = await createSignalBatch("DOMAIN_MONITOR")
-    console.log(
-      `[domain-monitor] created SignalBatch ${batchId} at ${invokedAt}`
-    )
+    // 2026-05-11: previously this called createSignalBatch UNINSIDE step.run
+    // as a "did the function actually run?" diagnostic. That created a
+    // catastrophe in Inngest's replay model — the function replays from
+    // the top every time a step advances, so this DB write fired once per
+    // step.run boundary (27+ monitors = 27+ writes per cron firing). Result:
+    // 752 stuck-RUNNING SignalBatch rows in 14 days vs only 10 COMPLETE.
+    // Moving inside step.run with a stable key memoizes the row across
+    // replays (one batch per cron invocation, as intended). The invocation-
+    // diagnostic concern is now covered by the console.log above + Inngest's
+    // own run history.
+    const batchId = await step.run("create-batch", async () => {
+      const id = await createSignalBatch("DOMAIN_MONITOR")
+      console.log(
+        `[domain-monitor] created SignalBatch ${id} at ${invokedAt}`
+      )
+      return id
+    })
 
     // ── Step 1: Load enabled DOMAIN monitors ─────────────────────────────
 

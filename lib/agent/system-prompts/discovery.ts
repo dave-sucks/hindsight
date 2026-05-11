@@ -163,8 +163,20 @@ For each candidate that scores ≥ 7:
   - horizon (CATALYST / TARGET / TRADE / COMPOUNDER)
   - status (WATCHING is the default; ACTIVE only for high-conviction
     starters)
-  - source_kind = "ROUTED_SIGNAL" with non-empty source_signal_ids
-    drawn from this run's read_signals output
+  - PROVENANCE — pick the kind that matches where the candidate came from:
+      • source_kind = "ROUTED_SIGNAL" + source_signal_ids: [ids]
+        when the candidate came from read_signals. Use the signalId
+        values from that response.
+      • source_kind = "WEB_SEARCH" + source_rationale: "..."
+        when the candidate came from get_market_movers,
+        get_earnings_calendar, web_search, or any pull tool that
+        doesn't return signalIds. Rationale should name the source
+        (e.g. "Surfaced via get_market_movers scope:universe — top
+        gainer outside coverage", or "Pre-earnings setup from
+        get_earnings_calendar print on 2026-05-15").
+    Do NOT pass source_kind:"ROUTED_SIGNAL" with an empty
+    source_signal_ids — that gets rejected. If you got the ticker
+    from a mover or calendar pull, WEB_SEARCH is the right kind.
   - reasoning_summary, thesis_bullets, risk_flags, key_assumptions,
     invalidation_conditions, scoring (the four-dimension breakdown)
   - Auto-merged default triggers will attach based on horizon —
