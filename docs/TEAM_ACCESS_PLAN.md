@@ -1,121 +1,239 @@
-# Team Access Plan — Multi-user shared-account model
+# Team Access Plan — Account-based multi-user model
 
 **Status:** Design ready, not started  
 **PR target:** Single PR, many commits  
-**Migration risk:** LOW — Dave has 2 test accounts and can delete one. No production users to migrate.
+**Migration risk:** LOW — near-clean-slate. One owner, one test account to delete.
 
 ---
 
-## What we're building
+## Mental model
 
-One account owner (Dave) can invite colleagues as team members. Members log in with their own Supabase credentials but see the owner's analysts, positions, theses, and runs. The owner's `userId` becomes the `effectiveUserId` for all DB queries in any member session.
+```
+Account
+  └── AgentConfig (accountId)
+  └── Thesis       (accountId)
+  └── Position     (accountId)
+  └── ResearchRun  (accountId)
+  └── ... all data entities
 
-This is the "shared-account" model, not an org model. One owner, N members. Upgradeable to full org later — the `effectiveUserId` abstraction makes that a swap in one utility file.
+User ──── AccountMembership ──── Account
+           (role: OWNER | EDITOR | VIEWER)
+```
+
+- **Account** owns all data. Every entity scopes to `accountId`, not `userId`.
+- **User** is the person who logs in (Supabase auth mirror). A user belongs to an account via `AccountMembership`.
+- **AccountMembership** is the join table — `userId + accountId + role`.
+- On signup, we auto-create one Account + one OWNER membership for the new user.
+- On invite acceptance, we create an EDITOR or VIEWER membership for an existing/new user on the inviter's account.
 
 ---
 
-## Schema additions
+## Schema changes
 
-Add to `prisma/schema.prisma` at the end of the file, before the closing:
+### 1. New `Account` model
+
+```prisma
+model Account {
+  id        String   @id @default(cuid())
+  name      String                         // display name, e.g. "Dave's Account"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+```
+
+### 2. New `AccountMembership` model
 
 ```prisma
 model AccountMembership {
   id        String     @id @default(cuid())
-  ownerId   String                      // owner's Supabase userId
-  memberId  String                      // member's Supabase userId
+  accountId String
+  userId    String
   role      MemberRole @default(VIEWER)
   createdAt DateTime   @default(now())
 
-  @@unique([ownerId, memberId])
-  @@index([memberId])                   // "which account does this user belong to?"
-}
-
-model AccountInvite {
-  id         String     @id @default(cuid())
-  ownerId    String
-  email      String                     // invited email address
-  role       MemberRole @default(VIEWER)
-  token      String     @unique @default(cuid())
-  expiresAt  DateTime                   // set to now() + 7 days on creation
-  acceptedAt DateTime?
-  createdAt  DateTime   @default(now())
-
-  @@index([ownerId])
-  @@index([token])
+  @@unique([accountId, userId])
+  @@index([userId])                       // "which accounts does this user belong to?"
+  @@index([accountId])                    // "who are the members of this account?"
 }
 
 enum MemberRole {
-  VIEWER   // read-only: can see everything, cannot trigger runs or place trades
-  EDITOR   // full access: can trigger runs, manage analysts, manage watchlist
+  OWNER    // full access + team management
+  EDITOR   // full access, cannot manage team
+  VIEWER   // read-only
 }
 ```
 
-Generate the migration:
+### 3. New `AccountInvite` model
+
+```prisma
+model AccountInvite {
+  id         String     @id @default(cuid())
+  accountId  String
+  email      String
+  role       MemberRole @default(VIEWER)
+  token      String     @unique @default(cuid())
+  expiresAt  DateTime                        // now() + 7 days on creation
+  acceptedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([accountId])
+  @@index([token])
+}
 ```
-npx prisma migrate dev --name add-team-access
+
+### 4. Add `accountId` to every data model
+
+Replace `userId` with `accountId` as the primary scope field on all data models below.
+**Exception:** keep `userId` on `Position` and `TradeDecision` as a `placedByUserId` audit field (which team member triggered the trade). Keep `userId` as-is on `UserApiKey` (API keys are per-person, not per-account).
+
+Models to update (add `accountId String`, drop `userId` as scope or rename to `placedByUserId`):
+
 ```
+AgentConfig
+ResearchRun
+Thesis
+WatchlistItem
+AnalystWatchlistItem
+Monitor
+MorningBrief
+AnalystBriefing
+AccuracyReport
+Podcast
+PodcastSegment
+PodcastSegmentBriefing
+Episode
+SegmentTranscript
+```
+
+Models that keep `userId` but also get `accountId`:
+```
+Position       — add accountId (scope); rename userId → placedByUserId (audit)
+TradeDecision  — add accountId (scope); rename userId → placedByUserId (audit)
+```
+
+Models that keep `userId` only (no accountId needed):
+```
+UserApiKey     — API keys are per-person
+```
+
+Update all `@@index([userId])` to `@@index([accountId])` on the models above.
 
 ---
 
-## effectiveUserId utility (new file)
+## Migration steps (Prisma migration file)
 
-**`lib/auth/effective-user.ts`** — new file, no existing content to read first.
+The migration file should do this in order:
+
+```sql
+-- 1. Create Account table (done by Prisma via schema change)
+
+-- 2. Create one Account per existing User
+INSERT INTO "Account" (id, name, "createdAt", "updatedAt")
+SELECT
+  gen_random_uuid()::text,
+  u.email,                  -- use email as initial display name
+  NOW(),
+  NOW()
+FROM "User" u;
+
+-- 3. Create OWNER membership for each user → their new account
+-- (Requires a temp join — match user to the account we just created for them)
+-- Easiest: do this in application code after migration, not raw SQL.
+-- See "Seeding memberships" note below.
+
+-- 4. Backfill accountId on all data models from userId
+-- e.g. for AgentConfig:
+UPDATE "AgentConfig" ac
+SET "accountId" = am.id
+FROM "AccountMembership" am
+JOIN "Account" a ON a.id = am."accountId"
+WHERE am."userId" = ac."userId"
+  AND am.role = 'OWNER';
+-- Repeat for every model listed above.
+
+-- 5. Add NOT NULL constraint on accountId after backfill
+-- 6. Drop userId columns that were replaced (after verifying backfill)
+```
+
+**Seeding memberships note:** The mapping from userId → new accountId needs to be deterministic. Simplest approach: in the migration, create accounts with `id = cuid_from_userid` (or use a temp table). Better: write a short Node.js seed script (`prisma/seed-accounts.ts`) that runs after `migrate deploy`. The implementation session should decide which is cleaner — both work.
+
+---
+
+## `getAccountId` utility (new file)
+
+**`lib/auth/account.ts`** — replaces the old `effective-user.ts` concept.
 
 ```ts
 import { prisma } from "@/lib/prisma";
 
 /**
- * For any session userId, return the account owner's userId.
- * If the user is the owner (no membership row), returns userId unchanged.
- * This is the single choke-point for the shared-account model — swap
- * this function's internals to add org-level isolation later.
+ * Returns the accountId for the current session user.
+ * For an owner: their own account.
+ * For a member: the account they were invited to.
+ * If a user belongs to multiple accounts (future), this returns
+ * the "active" account stored in the session cookie — not implemented yet,
+ * so for now it returns the first membership found (OWNER preferred).
  */
-export async function getEffectiveUserId(userId: string): Promise<string> {
-  const membership = await prisma.accountMembership.findFirst({
-    where: { memberId: userId },
-    select: { ownerId: true },
+export async function getAccountId(userId: string): Promise<string | null> {
+  // Prefer OWNER membership (their own account)
+  const owner = await prisma.accountMembership.findFirst({
+    where: { userId, role: "OWNER" },
+    select: { accountId: true },
   });
-  return membership?.ownerId ?? userId;
+  if (owner) return owner.accountId;
+
+  // Fall back to any membership (EDITOR or VIEWER)
+  const member = await prisma.accountMembership.findFirst({
+    where: { userId },
+    select: { accountId: true },
+  });
+  return member?.accountId ?? null;
 }
 
 /**
- * Returns the role the current session user has relative to the effective
- * account. Used by write routes to gate EDITOR-only actions.
+ * Returns the role the current user has on the given account.
+ * Used by write routes to gate EDITOR-only and OWNER-only actions.
  */
-export async function getMemberRole(
-  sessionUserId: string,
-  ownerId: string,
-): Promise<"OWNER" | "EDITOR" | "VIEWER"> {
-  if (sessionUserId === ownerId) return "OWNER";
+export async function getUserRole(
+  userId: string,
+  accountId: string,
+): Promise<MemberRole | null> {
   const m = await prisma.accountMembership.findUnique({
-    where: { ownerId_memberId: { ownerId, memberId: sessionUserId } },
+    where: { accountId_userId: { accountId, userId } },
     select: { role: true },
   });
-  return (m?.role as "EDITOR" | "VIEWER") ?? "VIEWER";
+  return m?.role ?? null;
 }
+
+type MemberRole = "OWNER" | "EDITOR" | "VIEWER";
 ```
 
 ---
 
 ## Route migration pattern
 
-Every API route that currently does:
+Every API route currently does:
 ```ts
 const { data: { user } } = await supabase.auth.getUser();
 if (!user) return new Response("Unauthorized", { status: 401 });
-const userId = user.id;   // ← change this
+const userId = user.id;
+// then: prisma.something.findMany({ where: { userId } })
 ```
 
-Should become:
+Change to:
 ```ts
-import { getEffectiveUserId } from "@/lib/auth/effective-user";
+import { getAccountId, getUserRole } from "@/lib/auth/account";
 
 const { data: { user } } = await supabase.auth.getUser();
 if (!user) return new Response("Unauthorized", { status: 401 });
-const effectiveUserId = await getEffectiveUserId(user.id);
-// Use effectiveUserId in all DB queries.
-// If the route has write operations and you need to check for VIEWER:
-// const role = await getMemberRole(user.id, effectiveUserId);
+
+const accountId = await getAccountId(user.id);
+if (!accountId) return new Response("No account", { status: 403 });
+
+// then: prisma.something.findMany({ where: { accountId } })
+
+// For write routes — gate VIEWER role:
+// const role = await getUserRole(user.id, accountId);
 // if (role === "VIEWER") return new Response("Forbidden", { status: 403 });
 ```
 
@@ -139,91 +257,117 @@ app/api/agent-activity/route.ts
 app/api/universe/validate-fence/route.ts
 ```
 
-For **write routes** (agent-run, triggers, monitors), add the VIEWER gate — VIEWER members cannot trigger runs or manage analysts. For **read routes** (signals, briefs, activity, theses), no gate needed — all roles can read.
+VIEWER gate applies to: `agent-run`, `research/trigger`, `admin/triggers/fire`.  
+Read-only routes (signals, briefs, activity, theses): no gate, all roles can read.
 
-### Inngest functions
+### Inngest cron functions
 
-The Inngest crons query by `userId` directly from `AgentConfig` — they don't go through a session. **No changes needed to cron functions.** The crons always run as the data owner because they read `AgentConfig.userId` directly from DB rows.
+Crons query `AgentConfig` directly from DB — no session. They already query by a scoped field. Update them to filter by `accountId` instead of `userId`:
 
-The one exception: `morning-research.ts` and `discovery-run.ts` use `agentConfig.userId` to call `getUserEmail()` for any email sends — this is already the owner's userId, so it's correct as-is.
+```ts
+// Before:
+prisma.agentConfig.findMany({ where: { enabled: true } })
+// After (no change needed for the cron itself — it processes all accounts)
+// BUT when the cron builds context (getUserEmail, etc.), resolve via accountId:
+const membership = await prisma.accountMembership.findFirst({
+  where: { accountId: config.accountId, role: "OWNER" },
+  select: { userId: true },
+});
+const email = await getUserEmail(membership.userId);
+```
+
+Check `morning-research.ts`, `discovery-run.ts`, `price-monitor.ts`, `weekly-digest.ts`, `accuracy-scorer.ts` for `userId` references — replace with `accountId` where used for data scoping, and the membership lookup above where used to resolve the owner's email.
+
+### Server components (app router pages)
+
+Pages that do `supabase.auth.getUser()` and pass `userId` to child components or server queries need the same `getAccountId()` swap. Grep for `user.id` in `app/(root)/` to find them.
+
+---
+
+## Signup flow change
+
+When a new user signs up (Supabase auth callback), the app must create:
+1. An `Account` row (name = email for now, user can rename later)
+2. An `AccountMembership` row with `role: "OWNER"`
+
+Find the auth callback route — likely `app/auth/callback/route.ts` or similar. After Supabase confirms the session, add:
+
+```ts
+// Check if user already has an account (returning user, edge case)
+const existing = await prisma.accountMembership.findFirst({
+  where: { userId: user.id },
+});
+if (!existing) {
+  const account = await prisma.account.create({
+    data: { name: user.email ?? "My Account" },
+  });
+  await prisma.accountMembership.create({
+    data: { accountId: account.id, userId: user.id, role: "OWNER" },
+  });
+}
+```
 
 ---
 
 ## New API routes (invite flow)
 
 ### `POST /api/settings/team/invite`
-
 ```ts
 // body: { email: string; role: "VIEWER" | "EDITOR" }
-// 1. Auth check: user must be OWNER (no membership row for their own userId)
-// 2. Create AccountInvite row with token, expiresAt = now() + 7 days
-// 3. Send invite email via sendEmail() using team-invite.ts template
-// 4. Return { ok: true }
+// 1. getAccountId(user.id) — must be OWNER to invite
+// 2. Check no existing membership for this email on this account
+// 3. Create AccountInvite { accountId, email, role, token, expiresAt: +7d }
+// 4. Send invite email (team-invite.ts template)
 ```
-
-Guard: reject if the invited email already has an AccountMembership pointing to this owner.
 
 ### `GET /api/settings/team/accept?token=xxx`
-
 ```ts
-// 1. Find AccountInvite by token; reject if expired or already accepted
-// 2. Check if a Supabase user exists for invite.email
-//    a. If yes: create AccountMembership { ownerId, memberId: existingUser.id, role }
-//    b. If no:  generate a Supabase magic link for invite.email with
-//               redirectTo = /settings/team/accept?token=xxx (so they land here
-//               after signup with a valid session, then step 2a applies)
-// 3. Mark invite.acceptedAt = now()
-// 4. Redirect to / (the dashboard, now showing the owner's data)
+// 1. Find AccountInvite by token; reject if expired or accepted
+// 2. If Supabase user exists for invite.email → create AccountMembership
+// 3. If not → send Supabase magic link with redirectTo pointing back here
+// 4. Mark invite acceptedAt = now()
+// 5. Redirect to /
 ```
 
-### `DELETE /api/settings/team/members/[memberId]`
-
+### `DELETE /api/settings/team/members/[userId]`
 ```ts
-// Owner only. Delete AccountMembership row. Member's account stays intact.
+// OWNER only. Delete AccountMembership. User's Supabase account untouched.
 ```
 
 ### `GET /api/settings/team`
-
 ```ts
-// Returns: pending invites + active members with role
+// Returns: active members + pending invites for this account
 ```
 
 ---
 
 ## Email template
 
-**`lib/emails/team-invite.ts`** — new file.
-
-Content: short HTML email.  
-- Subject: `{ownerName} invited you to Hindsight`  
-- Body: "You've been invited to view/collaborate on {ownerName}'s trading analysts. Click below to accept."  
-- CTA button → `{APP_URL}/api/settings/team/accept?token={token}`  
-- Expiry note: "This link expires in 7 days."
-
-Use the same visual style as `trade-closed.ts` (dark background, white text, branded).
+**`lib/emails/team-invite.ts`** — new file.  
+Subject: `You've been invited to Hindsight`  
+Body: "{ownerName} invited you to collaborate. Click below to accept."  
+CTA → `{APP_URL}/api/settings/team/accept?token={token}`  
+Expiry: "Link expires in 7 days."  
+Style: match `trade-closed.ts` (dark background, branded).
 
 ---
 
-## UI components
+## Settings UI
 
-### `/settings/team` page — new page
+### `/settings/team` — new page
 
-Tab or section under Settings. Two panels:
+Two panels using ShadCN Table + Card:
 
-**Active members table** (columns: Email, Role, Joined, Remove button)  
-ShadCN Table. Remove button → DELETE request → optimistic remove.  
+**Members** (columns: Email, Role, Joined, Remove)  
+- Remove button → `DELETE /api/settings/team/members/[userId]` → optimistic remove  
+- OWNER row has no Remove button
 
-**Invite form**  
-Email input + role select (Viewer / Editor) + "Send Invite" button.  
-Below: pending invites list (Email, Role, Expires, Revoke button).  
-
-Wire to the 4 new API routes above.
+**Invite** (email input + role Select + "Send Invite" button)  
+- Below: pending invites table (Email, Role, Expires, Revoke)
 
 ### Nav account indicator
 
-In the top nav or sidebar: if `sessionUserId !== effectiveUserId`, show a small badge "Viewing Dave's account" with the owner's name. Fetch from `AgentConfig` (any analyst's name field will do — or add a `displayName` to the User model in a follow-up).
-
-For now: `GET /api/settings/team/me` returns `{ isOwner: boolean; ownerName: string | null }`.
+If `getUserRole(session.user.id, accountId) !== "OWNER"`, show a small badge in the nav: "Viewing [Account Name]". Fetch account name from `Account.name`.
 
 ---
 
@@ -231,29 +375,30 @@ For now: `GET /api/settings/team/me` returns `{ isOwner: boolean; ownerName: str
 
 | Action | OWNER | EDITOR | VIEWER |
 |--------|-------|--------|--------|
-| View analysts / runs / positions / theses | ✅ | ✅ | ✅ |
-| Trigger a run (agent-run route) | ✅ | ✅ | ❌ |
-| Place / close trades | ✅ | ✅ | ❌ |
-| Manage analysts (create / edit / delete) | ✅ | ✅ | ❌ |
-| Manage watchlist | ✅ | ✅ | ❌ |
-| Invite / remove team members | ✅ | ❌ | ❌ |
-
-Implement via the `getMemberRole()` check in write routes. VIEWER hitting a write route gets HTTP 403.
+| View all data | ✅ | ✅ | ✅ |
+| Trigger runs / place trades | ✅ | ✅ | ❌ |
+| Manage analysts / watchlist | ✅ | ✅ | ❌ |
+| Invite / remove members | ✅ | ❌ | ❌ |
+| Rename account | ✅ | ❌ | ❌ |
 
 ---
 
 ## Rollout
 
-1. Delete Dave's second test account from Supabase dashboard (clean slate)
-2. Apply the Prisma migration
-3. Deploy with the new routes + utility — no behavioral change yet (zero AccountMembership rows)
-4. Test the invite flow: send invite to a second email, accept, verify the dashboard shows Dave's analysts
-5. Verify crons are unaffected (they run as system; no session; no change)
-6. Verify VIEWER gets 403 on write routes
+1. Delete the second test account from Supabase dashboard
+2. `npx prisma migrate dev --name add-account-model`
+3. Run seed script to create Account + OWNER membership for Dave's user
+4. Backfill `accountId` on all data models
+5. Deploy — no behavioral change yet (all queries resolve to same account)
+6. Add `getAccountId()` call to all 15 routes — verify nothing breaks
+7. Test invite flow end-to-end with a second email
+8. Verify VIEWER gets 403 on write routes
+9. Verify Inngest crons still process correctly (check morning run logs)
 
 ## What NOT to touch
 
-- `lib/auth/` — only add `effective-user.ts`, don't touch Supabase client setup
-- Inngest cron functions — they don't use session auth, already run as data owner
-- `prisma/schema.prisma` User model — don't add org FKs; keep User as Supabase mirror
-- Any podcast or weekly-digest code — out of scope
+- Supabase auth config — users still sign in the same way
+- `UserApiKey` model — stays `userId`-scoped, not `accountId`
+- Inngest function IDs or cron schedules
+- Any podcast code — out of scope
+- `lib/email.ts` — `getUserEmail()` still resolves by userId; just make sure callers pass the OWNER's userId (resolved via membership lookup)
