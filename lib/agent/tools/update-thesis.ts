@@ -36,6 +36,7 @@ import {
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
+import { HORIZON_REVIEW_DAYS, type Horizon } from "@/lib/agent/horizon-policy";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -553,8 +554,27 @@ export const updateThesis = defineTool({
     // an UPDATED row. Useful when housekeeping looks at a thesis and
     // decides it's still right — we want a paper trail of "agent looked
     // here on this date" without polluting the diff log.
+    //
+    // Auto-bump nextReviewAt forward by the horizon's default cadence.
+    // Without this, REVIEWED-only updates write the audit row but leave
+    // the review clock stuck — the same thesis surfaces as needsAction
+    // == REVIEW_DUE on every subsequent run forever. Bug observed
+    // 2026-05-11: theses with nextReviewAt = 2026-05-02 still showing
+    // "Review 9d overdue" the day after the agent reviewed them.
     const patchKeyCount = Object.keys(patch).length;
     if (patchKeyCount === 0) {
+      const horizon =
+        ((existing as { horizon: string | null }).horizon as Horizon | null) ??
+        "TARGET";
+      const cadenceDays = HORIZON_REVIEW_DAYS[horizon] ?? 7;
+      const newNextReviewAt = new Date(
+        Date.now() + cadenceDays * 86_400_000,
+      );
+      await prisma.thesis.update({
+        where: { id: existing.id },
+        data: { nextReviewAt: newNextReviewAt },
+      });
+
       // Awaited (was void). Both the morning-research coverage gate and
       // the tactical-run close-out gate query ThesisUpdate immediately
       // after the agent finishes — fire-and-forget races caused false
@@ -562,7 +582,7 @@ export const updateThesis = defineTool({
       await writeThesisUpdate({
         thesisId: existing.id,
         type: "REVIEWED",
-        summary: `Reviewed ${existing.ticker} thesis — no changes`,
+        summary: `Reviewed ${existing.ticker} thesis — no changes (next review in ${cadenceDays}d)`,
         rationale: args.rationale,
         runId: ctx.runId,
         signalIds: args.signal_ids,
@@ -570,12 +590,15 @@ export const updateThesis = defineTool({
         priceAtTime: resolvedPriceAtTime,
       });
       return {
-        summary: `Reviewed ${existing.ticker} thesis: no changes.`,
+        summary: `Reviewed ${existing.ticker} thesis: no changes (next review in ${cadenceDays}d).`,
         data: {
           ok: true,
           thesis_id: existing.id,
           type: "REVIEWED" as const,
-          card: thesisToCardData(existing),
+          card: thesisToCardData({
+            ...existing,
+            nextReviewAt: newNextReviewAt,
+          }),
         },
         sources: [],
       };

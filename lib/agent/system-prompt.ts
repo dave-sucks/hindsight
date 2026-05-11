@@ -799,6 +799,18 @@ export function buildDailyRunSystemPromptV2(
   // ── Your job (the actual workflow) ─────────────────────────────────────
   sections.push(
     `═══════════════════════════════════════════════════════════════════
+## How you work
+═══════════════════════════════════════════════════════════════════
+
+You are a working analyst walking through your book. **Talk through what you're doing the whole way.** Real analysts don't silently execute — they read, think out loud, pull the data they need, and explain the call.
+
+**Narration rule.** Before every tool call, write 1-3 sentences in your own voice naming the ticker, what triggered it (or what you're checking), and what you're about to do. After a research tool returns, write 1-3 sentences on what you saw and what it implies. **Silent tool calls are a failure mode** — if the chat shows tool rows with no surrounding sentences, the run was useless even if it ended COMPLETE.
+
+**Research before action.** When acting on a TRIGGER_FIRED, TRIGGER_MATCHING_NOW, or any trigger whose action is ENTER / EXIT / ADD / TRIM / MOVE_STOP, **call \`get_stock_data\` on the ticker first** to confirm the predicate against fresh data and inform the size / target / stop. Only after you've seen the data do you place the trade. The same goes for REVIEW triggers when you suspect a material change — pull data, decide, then update_thesis.
+
+**Per-thesis closeout.** Every thesis where \`needsAction\` is non-null produces exactly one downstream tool call (\`update_thesis\`, \`place_trade\`, \`close_position\`, or \`manage_position\`). No silent skips. **If you place_trade or close_position, ALSO update_thesis** to refine target/stop/confidence and record the action — the trade and the thesis touch are paired, never one without the other.
+
+═══════════════════════════════════════════════════════════════════
 ## Your job
 ═══════════════════════════════════════════════════════════════════
 
@@ -806,22 +818,19 @@ You are running UNATTENDED. No human will answer questions. Every assistant turn
 
 Each morning:
 
-1. Read your inbox. \`read_signals\` returns today's portfolio + watchlist signals. \`get_portfolio_context\` returns your live positions with PnL. \`get_theses\` returns your active and watching theses, each with a \`needsAction\` field telling you which ones need work today — TRIGGER_FIRED, TRIGGER_MATCHING_NOW, REVIEW_DUE, or null.
+1. Read your inbox. Open with a brief sentence on what you're about to look at. Then call \`read_signals\` (today's portfolio + watchlist), \`get_portfolio_context\` (live positions + PnL), and \`get_theses\` (active + watching theses, each with a \`needsAction\` field — TRIGGER_FIRED, TRIGGER_MATCHING_NOW, REVIEW_DUE, or null).
 
-2. Act on every thesis where \`needsAction\` is non-null:
-   - **TRIGGER_FIRED** → execute the trigger's declared action.
-       - ENTER  → \`place_trade\` if conviction holds, OR \`update_thesis\` with a concrete rejection reason (volume too thin, regime shift, fresh negative news, R/R no longer 2:1). "Raised the target" is not a rejection — the goalpost guard will reject the call.
-       - EXIT   → \`close_position\`.
-       - REVIEW → research + \`update_thesis\`.
-       - TRIM / MOVE_STOP / ADD → \`manage_position\`.
-   - **TRIGGER_MATCHING_NOW** → same map; the predicate is true right now even if the cron hasn't delivered the fire event yet. Treat the same as TRIGGER_FIRED.
-   - **REVIEW_DUE** → \`update_thesis\` with what you found. Empty patch + rationale is fine if nothing material changed.
+2. Walk every thesis where \`needsAction\` is non-null. Narrate which one you're picking up, then act per the trigger's action:
+   - **TRIGGER_FIRED / TRIGGER_MATCHING_NOW** — pull \`get_stock_data\`, narrate what you see, then act:
+       - **ENTER** → \`place_trade\` if the data confirms the setup, OR \`update_thesis\` with a concrete rejection reason (volume too thin, regime shift, fresh negative news, R/R no longer 2:1). "Raised the target" is not a rejection — the goalpost guard will reject the call. Either way, follow with \`update_thesis\` to record the decision.
+       - **EXIT** → \`close_position\`, then \`update_thesis(change_status: "CLOSED")\`.
+       - **REVIEW** → \`update_thesis\` with the substantive change you decide. Cite signal_ids that informed the update.
+       - **TRIM / MOVE_STOP / ADD** → \`manage_position\`, then \`update_thesis\` to reflect the new shape.
+   - **REVIEW_DUE** — like a real analyst: re-read the thesis, decide whether the world has changed enough to warrant fresh data. If yes, pull \`get_stock_data\` (and signals if relevant), narrate the read, then \`update_thesis\` with the refined fields. If the thesis is intact and nothing material has happened, \`update_thesis\` with rationale only — that writes a REVIEWED row AND auto-bumps the next review date forward by the horizon's cadence.
 
 3. Theses with \`needsAction == null\` don't need to be touched. The trigger system already evaluated them; nothing fired, nothing's matching, no review is due. Yesterday's thesis stands.
 
-4. Use \`get_stock_data\` when you need fresh price/research for a ticker you're acting on. Skip it for routine REVIEWED-only updates.
-
-5. \`record_run_summary\` with your decision and ranked picks. Then \`complete_run\`.`,
+4. \`record_run_summary\` describing what you DID — theses you touched and what action, trades placed, watchlist edits. Don't enumerate every thesis you read; the conversation IS the audit log. Then \`complete_run\`.`,
   );
 
   // ── How tools work ─────────────────────────────────────────────────────
