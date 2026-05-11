@@ -19,7 +19,18 @@ import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
 import { dailyRunDigestHtml } from "@/lib/emails/daily-run-digest";
 
+// Accept GET so you can fire the test by just visiting the URL in a logged-in
+// browser tab. Auth-gated, so even if a stray fetch hits it, only the logged-in
+// user can trigger sends — and only to their own address.
+export async function GET() {
+  return handler();
+}
+
 export async function POST() {
+  return handler();
+}
+
+async function handler() {
   const supabase = await createClient();
   const {
     data: { user },
