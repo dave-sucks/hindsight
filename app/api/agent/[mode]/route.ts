@@ -15,7 +15,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { getAccountId } from "@/lib/auth/account";
+import { getAccountId, getUserRole } from "@/lib/auth/account";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
@@ -120,6 +120,16 @@ export async function POST(
 
   const accountId = await getAccountId(user.id);
   if (!accountId) return new Response("No account", { status: 403 });
+
+  // research-run + podcast-segment-run actually mutate (place_trade /
+  // record_thesis / write_segment_transcript). Builder/editor modes
+  // are read-only — they suggest configs but never persist. Gate
+  // VIEWER on the mutating subset. (`tactical` mode is internal-only
+  // and doesn't enter via this route.)
+  if (agentMode === "research-run" || agentMode === "podcast-segment-run") {
+    const role = await getUserRole(user.id, accountId);
+    if (role === "VIEWER") return new Response("Forbidden", { status: 403 });
+  }
 
   let runId: string | undefined;
   let resolvedAnalystId: string | undefined;

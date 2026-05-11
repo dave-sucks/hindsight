@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { MemberRole } from "@/lib/generated/prisma";
+import type { MemberRole } from "@/lib/generated/prisma/enums";
 
 /**
  * Returns the accountId the current user should operate against.

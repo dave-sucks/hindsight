@@ -61,9 +61,9 @@ export default async function SettingsPage() {
                 Invite teammates as Editors or Viewers.
               </p>
             </div>
-            <Button asChild variant="outline">
-              <Link href="/settings/team">Open</Link>
-            </Button>
+            <Link href="/settings/team">
+              <Button variant="outline">Open</Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

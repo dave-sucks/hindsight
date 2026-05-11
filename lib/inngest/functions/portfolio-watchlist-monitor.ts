@@ -33,11 +33,18 @@ async function ensurePermanentMonitors() {
     },
   })
 
+  // FIRM-scope built-in monitors need an Account to attach to. Until the
+  // pipeline is per-account-aware, anchor them to the first existing
+  // Account. Skip entirely if no Account exists yet (fresh DB).
+  const account = await prisma.account.findFirst({ select: { id: true } })
+  if (!account) return
+
   await Promise.all([
     prisma.monitor.upsert({
       where: { id: PORTFOLIO_MONITOR_ID },
       create: {
         id: PORTFOLIO_MONITOR_ID,
+        accountId: account.id,
         name: "Portfolio Searches",
         type: "SEARCH",
         method: "perplexity_sonar",
@@ -58,6 +65,7 @@ async function ensurePermanentMonitors() {
       where: { id: WATCHLIST_MONITOR_ID },
       create: {
         id: WATCHLIST_MONITOR_ID,
+        accountId: account.id,
         name: "Watchlist Searches",
         type: "SEARCH",
         method: "perplexity_sonar",

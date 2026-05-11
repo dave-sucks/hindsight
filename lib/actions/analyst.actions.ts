@@ -226,18 +226,20 @@ async function getCurrentUserId(): Promise<string | null> {
 export async function getAnalystList(): Promise<AnalystListItem[]> {
   const userId = await getCurrentUserId();
   if (!userId) return [];
+  const accountId = await getAccountId(userId);
+  if (!accountId) return [];
 
   const configs = await prisma.agentConfig.findMany({
-    where: { userId },
+    where: { accountId },
     orderBy: { createdAt: "asc" },
   });
 
   if (configs.length === 0) return [];
 
-  // Load all runs and positions for this user, group in JS
+  // Load all runs and positions for this account, group in JS
   const [allRuns, allPositions, alpacaCreds] = await Promise.all([
     prisma.researchRun.findMany({
-      where: { userId },
+      where: { accountId },
       orderBy: { startedAt: "desc" },
       select: {
         id: true,
@@ -247,7 +249,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       },
     }),
     prisma.position.findMany({
-      where: { userId },
+      where: { accountId },
       select: {
         id: true,
         symbol: true,
@@ -351,16 +353,18 @@ export async function getAnalystDetail(
 ): Promise<AnalystDetail | null> {
   const userId = await getCurrentUserId();
   if (!userId) return null;
+  const accountId = await getAccountId(userId);
+  if (!accountId) return null;
 
   const config = await prisma.agentConfig.findFirst({
-    where: { id: analystId, userId },
+    where: { id: analystId, accountId },
   });
   if (!config) return null;
 
   const [recentRuns, recentPositions, totalRuns, totalTheses, briefings, morningBriefs, monitors] = await Promise.all([
     // Last 20 runs with their theses (join trade info via decisions)
     prisma.researchRun.findMany({
-      where: { agentConfigId: analystId, userId },
+      where: { agentConfigId: analystId, accountId },
       orderBy: { startedAt: "desc" },
       take: 20,
       select: {
@@ -400,7 +404,7 @@ export async function getAnalystDetail(
     }),
     // Last 20 positions attributed to this analyst
     prisma.position.findMany({
-      where: { userId, analystId },
+      where: { accountId, analystId },
       orderBy: { openedAt: "desc" },
       take: 20,
       select: {
@@ -429,13 +433,13 @@ export async function getAnalystDetail(
         },
       },
     }),
-    prisma.researchRun.count({ where: { agentConfigId: analystId, userId } }),
+    prisma.researchRun.count({ where: { agentConfigId: analystId, accountId } }),
     prisma.thesis.count({
-      where: { researchRun: { agentConfigId: analystId }, userId },
+      where: { researchRun: { agentConfigId: analystId }, accountId },
     }),
     // Load briefings (most recent 20)
     prisma.analystBriefing.findMany({
-      where: { analystId, userId },
+      where: { analystId, accountId },
       orderBy: { createdAt: "desc" },
       take: 20,
       select: {
@@ -490,11 +494,11 @@ export async function getAnalystDetail(
   // Compute stats from all positions for this analyst
   const [allPositions, avgConfAgg] = await Promise.all([
     prisma.position.findMany({
-      where: { userId, analystId },
+      where: { accountId, analystId },
       select: { outcome: true, realizedPnl: true },
     }),
     prisma.thesis.aggregate({
-      where: { researchRun: { agentConfigId: analystId }, userId },
+      where: { researchRun: { agentConfigId: analystId }, accountId },
       _avg: { confidenceScore: true },
     }),
   ]);
@@ -651,9 +655,11 @@ export async function getAnalystDetail(
 export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
   const userId = await getCurrentUserId();
   if (!userId) return [];
+  const accountId = await getAccountId(userId);
+  if (!accountId) return [];
 
   const runs = await prisma.researchRun.findMany({
-    where: { userId },
+    where: { accountId },
     orderBy: { startedAt: "desc" },
     take: 8,
     select: {
@@ -711,9 +717,19 @@ export async function updateAnalystPrompt(
 ): Promise<void> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
+
+  // accountId can't go in `update.where` (not a unique key) — verify
+  // ownership separately, then update by primary key.
+  const owned = await prisma.agentConfig.findFirst({
+    where: { id, accountId },
+    select: { id: true },
+  });
+  if (!owned) throw new Error("Analyst not found");
 
   await prisma.agentConfig.update({
-    where: { id, userId },
+    where: { id },
     data: { analystPrompt: prompt },
   });
 
@@ -842,6 +858,8 @@ export async function createAnalystFromBuilder(
 ): Promise<{ id: string }> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   // Coerce all values to their expected types — AI tool output can be unpredictable
   const name = String(data.name || "Untitled Analyst");
@@ -948,6 +966,7 @@ export async function createAnalystFromBuilder(
     const newAnalyst = await tx.agentConfig.create({
       data: {
         userId,
+        accountId,
         name,
         description: data.description ?? "",
         enabled: true,
@@ -991,6 +1010,7 @@ export async function createAnalystFromBuilder(
         data: structuredWatchlist.map((w) => ({
           analystId: newAnalyst.id,
           userId,
+          accountId,
           symbol: w.symbol,
           reason: w.reason,
           addedBy: "BUILDER",
@@ -1004,6 +1024,7 @@ export async function createAnalystFromBuilder(
         data: watchlistSymbols.map((sym) => ({
           analystId: newAnalyst.id,
           userId,
+          accountId,
           symbol: sym,
           reason: "Added during analyst creation",
           addedBy: "BUILDER",
@@ -1023,6 +1044,7 @@ export async function createAnalystFromBuilder(
           .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
         await tx.monitor.create({
           data: {
+            accountId,
             name: src.name,
             type: "DOMAIN",
             method: "perplexity_sonar",
@@ -1050,6 +1072,7 @@ export async function createAnalystFromBuilder(
           .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
         await tx.monitor.create({
           data: {
+            accountId,
             name: q.query,
             type: "SEARCH",
             method: "perplexity_sonar",
@@ -1112,6 +1135,13 @@ export async function updateAnalystField(
 ): Promise<void> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
+  const owned = await prisma.agentConfig.findFirst({
+    where: { id, accountId },
+    select: { id: true },
+  });
+  if (!owned) throw new Error("Analyst not found");
 
   // Normalize BigInt-backed Universe fields. UI sends number | null; Prisma
   // wants BigInt | null.
@@ -1144,7 +1174,7 @@ export async function updateAnalystField(
   }
 
   await prisma.agentConfig.update({
-    where: { id, userId },
+    where: { id },
     data: { [field]: storedValue },
   });
 
@@ -1228,15 +1258,13 @@ export async function addAnalystMonitor(
 export async function removeAnalystMonitor(monitorId: string) {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
   const monitor = await prisma.monitor.findFirst({
-    where: { id: monitorId },
-    select: {
-      id: true,
-      analystId: true,
-      analyst: { select: { userId: true } },
-    },
+    where: { id: monitorId, accountId },
+    select: { id: true, analystId: true },
   });
-  if (!monitor || !monitor.analyst || monitor.analyst.userId !== userId) {
+  if (!monitor) {
     throw new Error("Monitor not found");
   }
   await prisma.monitor.delete({ where: { id: monitorId } });
@@ -1252,9 +1280,11 @@ export async function addToWatchlist(
 ): Promise<string[]> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   const config = await prisma.agentConfig.findFirst({
-    where: { id, userId },
+    where: { id, accountId },
     select: { watchlist: true },
   });
   if (!config) throw new Error("Analyst not found");
@@ -1265,7 +1295,7 @@ export async function addToWatchlist(
 
   const updated = [...current, upper];
   await prisma.agentConfig.update({
-    where: { id, userId },
+    where: { id },
     data: { watchlist: updated },
   });
 
@@ -1279,9 +1309,11 @@ export async function removeFromWatchlist(
 ): Promise<string[]> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   const config = await prisma.agentConfig.findFirst({
-    where: { id, userId },
+    where: { id, accountId },
     select: { watchlist: true },
   });
   if (!config) throw new Error("Analyst not found");
@@ -1291,7 +1323,7 @@ export async function removeFromWatchlist(
   const updated = current.filter((s) => s !== upper);
 
   await prisma.agentConfig.update({
-    where: { id, userId },
+    where: { id },
     data: { watchlist: updated },
   });
 
@@ -1304,10 +1336,12 @@ export async function removeFromWatchlist(
 export async function deleteAnalyst(analystId: string): Promise<void> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   // Verify ownership
   const config = await prisma.agentConfig.findFirst({
-    where: { id: analystId, userId },
+    where: { id: analystId, accountId },
   });
   if (!config) throw new Error("Analyst not found");
 
@@ -1371,6 +1405,11 @@ export async function updateAnalystFromBuilder(
   if (!userId) throw new Error("Not authenticated");
   const accountId = await getAccountId(userId);
   if (!accountId) throw new Error("No account");
+  const owned = await prisma.agentConfig.findFirst({
+    where: { id, accountId },
+    select: { id: true },
+  });
+  if (!owned) throw new Error("Analyst not found");
 
   const updateData: Record<string, unknown> = {};
   if (data.name !== undefined) updateData.name = data.name;
@@ -1502,7 +1541,7 @@ export async function updateAnalystFromBuilder(
   }
 
   await prisma.agentConfig.update({
-    where: { id, userId },
+    where: { id },
     data: updateData,
   });
 

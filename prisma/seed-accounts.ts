@@ -13,9 +13,12 @@
  * Run with:
  *   npx tsx prisma/seed-accounts.ts
  */
-import { PrismaClient } from "../lib/generated/prisma";
+import { PrismaClient } from "../lib/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
+});
 
 async function main() {
   const users = await prisma.user.findMany({ select: { id: true, email: true } });

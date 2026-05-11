@@ -698,7 +698,7 @@ export async function createEpisodeFromTranscripts(
   const transcripts = await prisma.segmentTranscript.findMany({
     where: {
       id: { in: transcriptIds },
-      userId: user.id,
+      accountId,
       segment: { podcastId },
     },
     select: { id: true, durationSec: true, status: true },

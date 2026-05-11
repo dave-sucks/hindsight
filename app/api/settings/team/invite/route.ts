@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     html: teamInviteHtml({
       accountName: account?.name ?? "Hindsight",
       inviterEmail: ownerEmail ?? "your team owner",
-      role: invite.role,
+      role: parsed.data.role,
       acceptUrl,
       expiresInDays: INVITE_TTL_DAYS,
     }),
