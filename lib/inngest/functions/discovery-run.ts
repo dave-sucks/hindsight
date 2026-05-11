@@ -97,26 +97,46 @@ export const discoveryRun = inngest.createFunction(
         const alpacaCreds =
           (await resolveAlpacaCredentials(config.userId)) ?? undefined;
 
+        // coveredTickers = ACTIVE + WATCHING thesis tickers ∪ watchlist ∪
+        // open position tickers. Tools (read_signals discoveryOnly path,
+        // get_market_movers/get_earnings_calendar scope:"universe") use
+        // this to mean "the set of names you've already chosen NOT to
+        // discover again" — anything outside it is a candidate.
+        const openPositionTickers = await prisma.position
+          .findMany({
+            where: { analystId: config.id, status: "OPEN" },
+            select: { symbol: true },
+          })
+          .then((rows: Array<{ symbol: string }>) =>
+            rows.map((r) => r.symbol.toUpperCase()),
+          );
+        const coveredTickers = Array.from(
+          new Set([
+            ...existingTickers.map((t: string) => t.toUpperCase()),
+            ...(config.watchlist ?? []).map((t: string) => t.toUpperCase()),
+            ...openPositionTickers,
+          ]),
+        );
+
         const allTools = createResearchTools({
           runId: run.id,
           userId: config.userId,
           analystId: config.id,
           watchlist: config.watchlist ?? [],
+          positionTickers: openPositionTickers,
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
           maxPositionSize: Number(config.maxPositionSize),
           maxOpenPositions: config.maxOpenPositions,
           minConfidence: config.minConfidence,
           alpacaCreds,
-          // Discovery's job is finding NEW coverage. read_signals returns
-          // only the discoverySignals bucket; portfolio + watchlist signals
-          // are hidden so the agent can't accidentally treat already-covered
-          // names as discovery candidates (which is what was happening per
-          // the user's manual-trigger run on 2026-05-07 — the chat showed
-          // signals on held NVDA / AMD / KLAC etc. and the agent looked
-          // confused because it was filtering them mentally instead of the
-          // tool doing it).
+          // Discovery's job is finding NEW coverage. read_signals' discovery
+          // path filters by "ticker NOT in coveredTickers" (was incorrectly
+          // using routeReasonCode buckets, which dropped AGGREGATE_TICKER_MATCH
+          // routes on watchlist names into the watchlist bucket and then hid
+          // them — the 2026-05-10 weekly auto-cron hit this).
           discoveryOnly: true,
+          coveredTickers,
         });
 
         const allowlist = MODES["discovery"].toolAllowlist;
