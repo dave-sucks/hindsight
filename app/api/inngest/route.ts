@@ -5,7 +5,10 @@ import { reconcileOrders } from "@/lib/inngest/functions/reconcile-orders";
 import { evaluateTrade } from "@/lib/inngest/functions/trade-evaluator";
 import { morningResearch } from "@/lib/inngest/functions/morning-research";
 import { eodEvaluation } from "@/lib/inngest/functions/eod-evaluation";
-import { weeklyDigest } from "@/lib/inngest/functions/weekly-digest";
+// weeklyDigest intentionally not imported — the Sunday cron is dormant.
+// The code in lib/inngest/functions/weekly-digest.ts is kept for reference
+// but is not registered. Re-add the import + registry entry below if you
+// want the Sunday email back.
 import { dailyRunDigest } from "@/lib/inngest/functions/daily-run-digest";
 import { accuracyScorer } from "@/lib/inngest/functions/accuracy-scorer";
 // V3 Intelligence Layer
@@ -36,7 +39,6 @@ export const { GET, POST, PUT } = serve({
     evaluateTrade,
     morningResearch,
     eodEvaluation,
-    weeklyDigest,
     // 10 AM ET Mon-Fri — per-owner digest of every analyst's morning activity
     // (new positions, closed positions, material thesis changes). Trade-opened
     // and trade-closed alerts fire immediately per-trade; this is the daily

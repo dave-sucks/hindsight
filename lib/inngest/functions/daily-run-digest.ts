@@ -1,17 +1,29 @@
 /**
- * daily-run-digest — one email per owner at 10 AM ET, summarising what their
- * analysts did this morning. Captures positions opened, positions closed, and
- * material thesis changes (UPDATED / INVALIDATED / CLOSED — REVIEWED is too
- * noisy). Analysts with no activity collapse to a single "no actions" line.
- * Skips the owner entirely if nothing happened across all their analysts.
+ * daily-run-digest — one email per owner at 10 AM ET, summarising what
+ * their analysts did this morning during the 8 AM MORNING_PLAN cron.
  *
- * The trade-opened and trade-closed alerts fire immediately per-trade; this
- * digest exists so the owner can scan the morning's full output at a glance
- * without having to reconcile a flurry of single-trade emails into a mental
- * model of what each analyst did.
+ * Includes ONLY actions taken inside MORNING_PLAN runs that started in
+ * the morning window today (Mon-Fri 7-10 AM ET):
  *
- * Gated on AgentConfig.emailAlerts (same flag as trade-opened). Once team
- * access ships, swap the single ownerEmail lookup for getAccountEmails().
+ *   - Bought / Shorted  — TradeDecision.decision = INITIATE
+ *   - Sold   / Covered  — TradeDecision.decision = EXIT
+ *   - Added              — TradeDecision.decision = ADD
+ *   - Reduced            — TradeDecision.decision = PARTIAL_EXIT
+ *   - Watch              — TradeDecision.decision = WATCH
+ *
+ * Off-cycle activity (tactical runs, discovery runs, manual user runs,
+ * price-monitor stop/target closes, EOD flatten) fires immediate emails
+ * via place-trade / closeOpenPosition with the matching suppression rule
+ * — so the digest and the per-trade emails partition the action space
+ * cleanly with no double-notify. Hold and Pass decisions are skipped:
+ * the user explicitly asked for "action ones" only.
+ *
+ * Analysts that ran but took no actions collapse to "No actions taken
+ * this morning." Owners with zero actions across all analysts get
+ * skipped entirely.
+ *
+ * Gated on AgentConfig.emailAlerts. Future team access: replace
+ * getUserEmail(ownerId) with getAccountEmails(ownerId).
  */
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
@@ -19,9 +31,8 @@ import { sendEmail, getUserEmail } from "@/lib/email";
 import {
   dailyRunDigestHtml,
   type DigestAnalyst,
-  type DigestNewTrade,
-  type DigestClosedTrade,
-  type DigestThesisChange,
+  type DigestActionRow,
+  type DigestActionKind,
 } from "@/lib/emails/daily-run-digest";
 
 function formatEtDate(now: Date = new Date()): string {
@@ -33,6 +44,14 @@ function formatEtDate(now: Date = new Date()): string {
   });
 }
 
+function formatNotional(qty: number, price: number): string {
+  const n = qty * price;
+  if (n >= 1000) {
+    return `$${Math.round(n).toLocaleString()}`;
+  }
+  return `$${n.toFixed(2)}`;
+}
+
 export const dailyRunDigest = inngest.createFunction(
   {
     id: "daily-run-digest",
@@ -40,210 +59,200 @@ export const dailyRunDigest = inngest.createFunction(
     concurrency: { limit: 1 },
     retries: 1,
   },
-  // 10:00 AM ET Mon–Fri. Cron string auto-adjusts for EDT/EST.
+  // 10:00 AM ET Mon–Fri. Cron auto-adjusts for EDT/EST.
   { cron: "TZ=America/New_York 0 10 * * 1-5" },
   async ({ step }) => {
-    // Cron fires at 10 AM ET. Walk back 6 hours to capture everything that
-    // happened since ~4 AM ET — comfortably before the 6:30 AM intelligence
-    // pipeline starts. DST-safe; we don't need precise midnight ET.
+    // Look back 6h from the 10 AM ET fire time — comfortably covers the
+    // 8 AM morning cron, no DST math required.
     const morningStart = new Date(Date.now() - 6 * 60 * 60 * 1000);
     const dateLabel = formatEtDate();
 
-    // Step 1: Load all analysts opted in to email alerts.
-    const analysts = await step.run("load-analysts", async () => {
+    type AnalystRow = { id: string; name: string; userId: string };
+    const analysts = (await step.run("load-analysts", async () => {
       return prisma.agentConfig.findMany({
         where: { emailAlerts: true, enabled: true },
         select: { id: true, name: true, userId: true },
       });
-    });
+    })) as AnalystRow[];
 
     if (analysts.length === 0) {
       return { skipped: true, reason: "no-analysts-opted-in" };
     }
 
-    // Group analysts by owner — one email per account, not one per analyst.
-    type AnalystRow = { id: string; name: string; userId: string };
-    const analystRows = analysts as AnalystRow[];
+    // Group analysts by owner — one email per account, regardless of analyst count.
     const byOwner = new Map<string, AnalystRow[]>();
-    for (const a of analystRows) {
+    for (const a of analysts) {
       const existing = byOwner.get(a.userId) ?? [];
       existing.push(a);
       byOwner.set(a.userId, existing);
     }
 
-    type GatheredNew = {
+    type GatheredDecision = {
       analystId: string;
       symbol: string;
-      direction: string;
-      quantity: number;
-      avgCost: number;
-      stopLoss: number | null;
-      targetPrice: number | null;
-    };
-    type GatheredClosed = {
-      analystId: string;
-      symbol: string;
-      direction: string;
-      avgCost: number;
-      closePrice: number | null;
-      outcome: string | null;
-      closeReason: string | null;
-      openedAt: Date | string;
-      closedAt: Date | string | null;
-    };
-    type GatheredThesisChange = {
-      type: string;
-      summary: string;
-      thesis: {
-        ticker: string;
+      decision: string;
+      position: {
         direction: string;
-        researchRun: { agentConfigId: string } | null;
-      };
+        quantity: number;
+        avgCost: number;
+        stopLoss: number | null;
+        targetPrice: number | null;
+        closePrice: number | null;
+        outcome: string | null;
+      } | null;
+    };
+    type GatheredWatchAdd = {
+      analystId: string;
+      symbol: string;
+      reason: string;
+      targetPrice: number | null;
     };
 
     const sent: string[] = [];
     const skipped: { ownerId: string; reason: string }[] = [];
 
     for (const [ownerId, ownerAnalysts] of byOwner) {
-      const analystIds = ownerAnalysts.map((a: AnalystRow) => a.id);
+      const analystIds = ownerAnalysts.map((a) => a.id);
 
       const gatheredRaw = await step.run(`gather-${ownerId}`, async () => {
-        const [newPositions, closedPositions, thesisChanges] = await Promise.all([
-          prisma.position.findMany({
-            where: {
-              userId: ownerId,
-              analystId: { in: analystIds },
-              openedAt: { gte: morningStart },
-              status: "OPEN",
-            },
-            select: {
-              analystId: true,
-              symbol: true,
-              direction: true,
-              quantity: true,
-              avgCost: true,
-              stopLoss: true,
-              targetPrice: true,
-            },
-          }),
-          prisma.position.findMany({
-            where: {
-              userId: ownerId,
-              analystId: { in: analystIds },
-              closedAt: { gte: morningStart },
-              status: "CLOSED",
-            },
-            select: {
-              analystId: true,
-              symbol: true,
-              direction: true,
-              avgCost: true,
-              closePrice: true,
-              outcome: true,
-              closeReason: true,
-              openedAt: true,
-              closedAt: true,
-            },
-          }),
-          prisma.thesisUpdate.findMany({
-            where: {
-              timestamp: { gte: morningStart },
-              type: { in: ["INVALIDATED", "CLOSED", "UPDATED"] },
-              thesis: {
-                userId: ownerId,
-                researchRun: { agentConfigId: { in: analystIds } },
-              },
-            },
-            select: {
-              type: true,
-              summary: true,
-              thesis: {
-                select: {
-                  ticker: true,
-                  direction: true,
-                  researchRun: { select: { agentConfigId: true } },
-                },
-              },
-            },
-          }),
-        ]);
+        // 1. This morning's MORNING_PLAN runs for this owner.
+        const morningRuns = await prisma.researchRun.findMany({
+          where: {
+            userId: ownerId,
+            agentConfigId: { in: analystIds },
+            mode: "MORNING_PLAN",
+            startedAt: { gte: morningStart },
+          },
+          select: { id: true },
+        });
+        const morningRunIds = (morningRuns as Array<{ id: string }>).map((r) => r.id);
 
-        return { newPositions, closedPositions, thesisChanges };
+        if (morningRunIds.length === 0) {
+          return {
+            decisions: [] as GatheredDecision[],
+            watchAdds: [] as GatheredWatchAdd[],
+          };
+        }
+
+        // 2. All decisions in those runs that map to an action chip.
+        const decisions = await prisma.tradeDecision.findMany({
+          where: {
+            runId: { in: morningRunIds },
+            decision: { in: ["INITIATE", "EXIT", "ADD", "PARTIAL_EXIT", "WATCH"] },
+          },
+          select: {
+            analystId: true,
+            symbol: true,
+            decision: true,
+            position: {
+              select: {
+                direction: true,
+                quantity: true,
+                avgCost: true,
+                stopLoss: true,
+                targetPrice: true,
+                closePrice: true,
+                outcome: true,
+              },
+            },
+          },
+        });
+
+        // 3. Watchlist items added by this morning's runs.
+        const watchAdds = await prisma.analystWatchlistItem.findMany({
+          where: {
+            analystId: { in: analystIds },
+            addedRunId: { in: morningRunIds },
+            status: "ACTIVE",
+          },
+          select: {
+            analystId: true,
+            symbol: true,
+            reason: true,
+            targetPrice: true,
+          },
+        });
+
+        return { decisions, watchAdds };
       });
 
       const gathered = gatheredRaw as {
-        newPositions: GatheredNew[];
-        closedPositions: GatheredClosed[];
-        thesisChanges: GatheredThesisChange[];
+        decisions: GatheredDecision[];
+        watchAdds: GatheredWatchAdd[];
       };
 
       // Build per-analyst sections.
-      const perAnalyst: DigestAnalyst[] = ownerAnalysts.map((a: AnalystRow) => {
-        const newTrades: DigestNewTrade[] = gathered.newPositions
-          .filter((p) => p.analystId === a.id)
-          .map((p) => ({
-            ticker: p.symbol,
-            direction: p.direction as "LONG" | "SHORT",
-            qty: p.quantity,
-            avgCost: p.avgCost,
-            stopLoss: p.stopLoss,
-            targetPrice: p.targetPrice,
-          }));
+      const perAnalyst: DigestAnalyst[] = ownerAnalysts.map((a) => {
+        const rows: DigestActionRow[] = [];
 
-        const closedTrades: DigestClosedTrade[] = gathered.closedPositions
-          .filter((p) => p.analystId === a.id)
-          .map((p) => {
-            const closePrice = p.closePrice ?? p.avgCost;
-            const rawPct =
-              p.avgCost > 0
-                ? ((closePrice - p.avgCost) / p.avgCost) * 100
-                : 0;
-            const pnlPct = p.direction === "SHORT" ? -rawPct : rawPct;
-            const closedAtMs = p.closedAt
-              ? new Date(p.closedAt).getTime()
-              : Date.now();
-            const daysHeld = Math.max(
-              1,
-              Math.round(
-                (closedAtMs - new Date(p.openedAt).getTime()) / 86_400_000,
-              ),
-            );
-            return {
-              ticker: p.symbol,
-              direction: p.direction as "LONG" | "SHORT",
-              outcome: (p.outcome ?? "BREAKEVEN") as
-                | "WIN"
-                | "LOSS"
-                | "BREAKEVEN",
-              realizedPnlPct: pnlPct,
-              daysHeld,
-              closeReason: p.closeReason ?? "MANUAL",
-            };
+        for (const dec of gathered.decisions.filter((d) => d.analystId === a.id)) {
+          const p = dec.position;
+          if (!p) continue;
+          const isLong = p.direction === "LONG";
+
+          if (dec.decision === "INITIATE") {
+            const kind: DigestActionKind = isLong ? "BOUGHT" : "SHORTED";
+            const desc = [
+              `${p.quantity.toLocaleString()} @ $${p.avgCost.toFixed(2)}`,
+              formatNotional(p.quantity, p.avgCost),
+              p.stopLoss != null ? `stop $${p.stopLoss.toFixed(2)}` : null,
+              p.targetPrice != null ? `target $${p.targetPrice.toFixed(2)}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            rows.push({ ticker: dec.symbol, kind, description: desc });
+            continue;
+          }
+
+          if (dec.decision === "EXIT") {
+            const kind: DigestActionKind = isLong ? "SOLD" : "COVERED";
+            const close = p.closePrice ?? p.avgCost;
+            const rawPct = p.avgCost > 0 ? ((close - p.avgCost) / p.avgCost) * 100 : 0;
+            const pnlPct = isLong ? rawPct : -rawPct;
+            const sign = pnlPct >= 0 ? "+" : "";
+            const outcome = p.outcome ?? "BREAKEVEN";
+            const desc = `${outcome} · ${sign}${pnlPct.toFixed(1)}% · ${p.quantity.toLocaleString()} @ $${close.toFixed(2)}`;
+            rows.push({ ticker: dec.symbol, kind, description: desc });
+            continue;
+          }
+
+          if (dec.decision === "ADD") {
+            rows.push({
+              ticker: dec.symbol,
+              kind: "ADDED",
+              description: `Scaled in · ${p.quantity.toLocaleString()} shares now @ avg $${p.avgCost.toFixed(2)}`,
+            });
+            continue;
+          }
+
+          if (dec.decision === "PARTIAL_EXIT") {
+            rows.push({
+              ticker: dec.symbol,
+              kind: "REDUCED",
+              description: `Partial close · ${p.quantity.toLocaleString()} shares remaining @ avg $${p.avgCost.toFixed(2)}`,
+            });
+            continue;
+          }
+        }
+
+        for (const w of gathered.watchAdds.filter((x) => x.analystId === a.id)) {
+          const targetPart = w.targetPrice != null ? ` · target $${w.targetPrice.toFixed(2)}` : "";
+          const reasonPart =
+            w.reason && w.reason.length > 0
+              ? ` · ${w.reason.length > 80 ? w.reason.slice(0, 77) + "…" : w.reason}`
+              : "";
+          rows.push({
+            ticker: w.symbol,
+            kind: "WATCH",
+            description: `Added to watchlist${targetPart}${reasonPart}`,
           });
+        }
 
-        const thesisChanges: DigestThesisChange[] = gathered.thesisChanges
-          .filter((u) => u.thesis.researchRun?.agentConfigId === a.id)
-          .map((u) => ({
-            ticker: u.thesis.ticker,
-            type: u.type,
-            summary: u.summary,
-          }));
-
-        return {
-          analystName: a.name,
-          newTrades,
-          closedTrades,
-          thesisChanges,
-        };
+        return { analystName: a.name, actions: rows };
       });
 
-      const accountTotal = perAnalyst.reduce(
-        (s, x) =>
-          s + x.newTrades.length + x.closedTrades.length + x.thesisChanges.length,
-        0,
-      );
-
-      if (accountTotal === 0) {
+      const totalActions = perAnalyst.reduce((s, x) => s + x.actions.length, 0);
+      if (totalActions === 0) {
         skipped.push({ ownerId, reason: "no-activity" });
         continue;
       }
@@ -255,8 +264,7 @@ export const dailyRunDigest = inngest.createFunction(
           const r: EmailResult = { sent: false, reason: "no-email" };
           return r;
         }
-
-        await sendEmail({
+        const ok = await sendEmail({
           to: toEmail,
           subject: `Morning Run Digest — ${dateLabel}`,
           html: dailyRunDigestHtml({
@@ -264,7 +272,9 @@ export const dailyRunDigest = inngest.createFunction(
             analysts: perAnalyst,
           }),
         });
-        const r: EmailResult = { sent: true, to: toEmail };
+        const r: EmailResult = ok
+          ? { sent: true, to: toEmail }
+          : { sent: false, reason: "send-rejected", to: toEmail };
         return r;
       });
 

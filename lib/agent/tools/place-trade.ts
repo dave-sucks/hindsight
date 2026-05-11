@@ -13,6 +13,7 @@ import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/al
 import { isExcluded } from "@/lib/agent/universe";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
+import { isInsideMorningBatch } from "@/lib/email-suppression";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -621,13 +622,29 @@ export const placeTrade = defineTool({
       }
 
       // Trade-opened alert — fire-and-forget. Only emails when the order
-      // actually filled (avgCost is meaningful then). Gated on the analyst's
-      // emailAlerts setting; never blocks or fails the trade path.
+      // actually filled (avgCost is meaningful then). Two gates:
+      //   1. AgentConfig.emailAlerts — owner opt-out per analyst.
+      //   2. isInsideMorningBatch — suppress for trades inside the 8 AM
+      //      morning cron's MORNING_PLAN runs; the 10 AM daily digest
+      //      will consolidate them. Off-cycle trades (tactical, discovery,
+      //      manual user clicks outside the morning window) still fire
+      //      immediate emails per call.
+      // Never blocks or fails the trade path.
       if (didFill) {
         const emailedShares = resolvedShares ?? finalShares;
         const emailedAvgCost = fillPrice;
         void (async () => {
           try {
+            // Fetch the run mode to decide morning-batch suppression.
+            const run = ctx.runId
+              ? await prisma.researchRun.findUnique({
+                  where: { id: ctx.runId },
+                  select: { mode: true },
+                })
+              : null;
+            if (isInsideMorningBatch(run?.mode)) {
+              return; // digest will cover it
+            }
             const config = await prisma.agentConfig.findUnique({
               where: { id: analystId },
               select: { emailAlerts: true, name: true },
