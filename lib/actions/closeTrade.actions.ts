@@ -352,6 +352,22 @@ export async function closeOpenPosition(
   });
 
   // 5. Post-close side effects (non-fatal).
+  //
+  // Two parallel side effects intentionally:
+  //   (a) `trade/closed` Inngest event — consumed by `evaluateTrade`
+  //       (lib/inngest/functions/trade-evaluator.ts). Runs GPT-4o
+  //       post-trade evaluation and updates Monitor ROI counters. Not
+  //       responsible for email.
+  //   (b) Inline trade-closed email below — sent fire-and-forget from
+  //       this action so every close path (agent close_position, manage_
+  //       position full close, price-monitor stop/target, intraday EOD
+  //       flatten, user-UI close) emails exactly once. Keeping email
+  //       inline (not its own Inngest handler) avoids the failure mode
+  //       where a duplicate Inngest delivery would double-send.
+  //
+  // Trade-closed email is intentionally NOT gated on AgentConfig.
+  // emailAlerts — closes are high-signal events the user should always
+  // see. The `emailAlerts` flag gates trade-opened + daily digest only.
   await inngest.send({ name: "trade/closed", data: { positionId } });
 
   getUserEmail(position.userId).then((toEmail) => {
