@@ -49,5 +49,5 @@ export function TranscriptRow({ transcript }: { transcript: TranscriptRowData })
     </div>
   );
 
-  return <TranscriptCard {...transcript} customTrigger={trigger} />;
+  return <TranscriptCard {...transcript} id={transcript.id ?? undefined} customTrigger={trigger} />;
 }

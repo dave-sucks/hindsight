@@ -70,7 +70,8 @@ export function GenerateAudioButton({
     });
   }
 
-  function handleVoiceChange(voiceId: string) {
+  function handleVoiceChange(voiceId: string | null) {
+    if (!voiceId) return;
     setSelectedVoiceId(voiceId);
     startTransition(async () => {
       await updatePodcastVoice(podcastId, voiceId || null);
