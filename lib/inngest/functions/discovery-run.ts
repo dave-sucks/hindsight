@@ -75,6 +75,7 @@ export const discoveryRun = inngest.createFunction(
         const run = await prisma.researchRun.create({
           data: {
             userId: config.userId,
+            accountId: config.accountId,
             agentConfigId: config.id,
             source: "AGENT",
             status: "RUNNING",
@@ -100,6 +101,7 @@ export const discoveryRun = inngest.createFunction(
         const allTools = createResearchTools({
           runId: run.id,
           userId: config.userId,
+          accountId: config.accountId,
           analystId: config.id,
           watchlist: config.watchlist ?? [],
           exclusionList: config.exclusionList ?? [],

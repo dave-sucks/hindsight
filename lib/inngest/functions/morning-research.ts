@@ -68,6 +68,7 @@ export const morningResearch = inngest.createFunction(
         const run = await prisma.researchRun.create({
           data: {
             userId: config.userId,
+            accountId: config.accountId,
             agentConfigId: config.id,
             source: "AGENT",
             status: "RUNNING",
@@ -124,6 +125,7 @@ export const morningResearch = inngest.createFunction(
         const allTools = createResearchTools({
           runId: run.id,
           userId: config.userId,
+          accountId: config.accountId,
           analystId: config.id,
           watchlist: config.watchlist ?? [],
           exclusionList: config.exclusionList ?? [],
@@ -675,7 +677,7 @@ export const morningResearch = inngest.createFunction(
           }
 
           // Generate briefing directly (runs inside this Inngest step, guaranteed execution)
-          await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId });
+          await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId, accountId: config.accountId });
 
           return { tradesPlaced, steps: steps.length, toolCalls, elapsedMs: elapsed };
         } catch (err) {
@@ -725,7 +727,7 @@ export const morningResearch = inngest.createFunction(
           // Generate briefing for runs that ended up COMPLETE (either we set it or complete_run did)
           const finalRun = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { status: true } });
           if (finalRun?.status === "COMPLETE") {
-            await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId });
+            await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId, accountId: config.accountId });
           }
 
           return { error: message, partialTheses, partialTrades };

@@ -10,6 +10,7 @@ import type {
 } from "@/lib/emails/weekly-digest";
 import OpenAI from "openai";
 import { etTradingDayDate } from "@/lib/market-hours";
+import { getOwnerUserId } from "@/lib/auth/account";
 
 // ─── Clients (lazy — instantiated at runtime, not module load) ────────────────
 
@@ -92,11 +93,11 @@ export const weeklyDigest = inngest.createFunction(
       const stats = await step.run(`stats-${config.userId}`, async () => {
         const [runsRaw, closedRaw, openRaw] = await Promise.all([
           prisma.researchRun.count({
-            where: { userId: config.userId, createdAt: { gte: weekAgo } },
+            where: { accountId: config.accountId, createdAt: { gte: weekAgo } },
           }),
           prisma.position.findMany({
             where: {
-              userId: config.userId,
+              accountId: config.accountId,
               status: "CLOSED",
               closedAt: { gte: weekAgo },
             },
@@ -113,7 +114,7 @@ export const weeklyDigest = inngest.createFunction(
             },
           }),
           prisma.position.findMany({
-            where: { userId: config.userId, status: "OPEN" },
+            where: { accountId: config.accountId, status: "OPEN" },
             select: {
               symbol: true,
               direction: true,
@@ -122,14 +123,14 @@ export const weeklyDigest = inngest.createFunction(
             },
           }),
           prisma.thesis.count({
-            where: { userId: config.userId, createdAt: { gte: weekAgo } },
+            where: { accountId: config.accountId, createdAt: { gte: weekAgo } },
           }),
         ]);
 
         return {
           runsThisWeek: runsRaw,
           thesesGenerated: await prisma.thesis.count({
-            where: { userId: config.userId, createdAt: { gte: weekAgo } },
+            where: { accountId: config.accountId, createdAt: { gte: weekAgo } },
           }),
           closed: closedRaw,
           open: openRaw,
@@ -191,9 +192,14 @@ export const weeklyDigest = inngest.createFunction(
 
       // Step 5: Build email and send via Resend
       await step.run(`email-${config.userId}`, async () => {
+        // Resolve the OWNER of this analyst's account — the canonical
+        // digest recipient in multi-tenant world. config.userId is kept
+        // as a fallback for legacy rows where the membership lookup
+        // misses for any reason.
+        const ownerUserId = await getOwnerUserId(config.accountId);
         const toEmail =
           config.digestEmail ??
-          (await getUserEmail(config.userId));
+          (await getUserEmail(ownerUserId ?? config.userId));
 
         if (!toEmail) return { skipped: true, reason: "no-email" };
 

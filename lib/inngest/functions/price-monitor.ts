@@ -7,6 +7,7 @@ import { checkExitConditions } from "@/lib/trade-exit";
 import type { PositionModel } from "@/lib/generated/prisma/models";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { nearTargetHtml } from "@/lib/emails/near-target";
+import { getOwnerUserId } from "@/lib/auth/account";
 
 // ─── P&L helpers ─────────────────────────────────────────────────────────────
 
@@ -155,7 +156,15 @@ export const priceMonitor = inngest.createFunction(
                 where: { id: position.id },
                 data: { nearTargetAlertSent: true },
               });
-              getUserEmail(position.userId).then((toEmail) => {
+              // Resolve the account OWNER's email rather than the userId
+              // that originally placed the trade — multi-tenant: the OWNER
+              // is the canonical alert recipient. Falls back to the trader's
+              // own email if the membership lookup misses.
+              getOwnerUserId(position.accountId)
+                .then((ownerUserId) =>
+                  getUserEmail(ownerUserId ?? position.userId),
+                )
+                .then((toEmail) => {
                 if (!toEmail) return;
                 const unrealizedPnl =
                   position.direction === "LONG"
