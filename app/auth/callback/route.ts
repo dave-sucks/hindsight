@@ -39,6 +39,24 @@ export async function GET(request: Request) {
         },
       })
 
+      // Ensure the new user has an Account + OWNER membership. Skipped
+      // for users that already belong to an account (invited members
+      // attach to the inviter's account via the invite-accept flow, not
+      // here; this guard prevents the OAuth callback from minting a
+      // spare OWNER account for them after acceptance).
+      const existingMembership = await prisma.accountMembership.findFirst({
+        where: { userId: data.user.id },
+        select: { id: true },
+      })
+      if (!existingMembership) {
+        const account = await prisma.account.create({
+          data: { name: data.user.email ?? "My Account" },
+        })
+        await prisma.accountMembership.create({
+          data: { accountId: account.id, userId: data.user.id, role: "OWNER" },
+        })
+      }
+
       return NextResponse.redirect(`${origin}${next}`)
     }
   }
