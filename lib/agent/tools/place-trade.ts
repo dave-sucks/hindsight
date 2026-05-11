@@ -11,6 +11,8 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
+import { sendEmail, getUserEmail } from "@/lib/email";
+import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -616,6 +618,49 @@ export const placeTrade = defineTool({
         };
       } catch (portfolioErr) {
         console.warn("[tool] place_trade portfolio update fetch failed:", portfolioErr);
+      }
+
+      // Trade-opened alert — fire-and-forget. Only emails when the order
+      // actually filled (avgCost is meaningful then). Gated on the analyst's
+      // emailAlerts setting; never blocks or fails the trade path.
+      if (didFill) {
+        const emailedShares = resolvedShares ?? finalShares;
+        const emailedAvgCost = fillPrice;
+        void (async () => {
+          try {
+            const config = await prisma.agentConfig.findUnique({
+              where: { id: analystId },
+              select: { emailAlerts: true, name: true },
+            });
+            if (!config?.emailAlerts) return;
+            const toEmail = await getUserEmail(ctx.userId);
+            if (!toEmail) return;
+            const thesis = await prisma.thesis.findUnique({
+              where: { id: args.thesis_id },
+              select: { reasoningSummary: true },
+            });
+            const verb = args.direction === "LONG" ? "📈 Bought" : "📉 Shorted";
+            await sendEmail({
+              to: toEmail,
+              subject: `${verb} ${ticker} — ${config.name}`,
+              html: tradeOpenedHtml({
+                ticker,
+                direction: args.direction,
+                qty: emailedShares,
+                avgCost: emailedAvgCost,
+                stopLoss: args.stop_loss,
+                targetPrice: args.target_price,
+                analystName: config.name,
+                thesisSummary: thesis?.reasoningSummary ?? null,
+              }),
+            });
+          } catch (err) {
+            console.warn(
+              "[place_trade] trade-opened email failed:",
+              err instanceof Error ? err.message : err,
+            );
+          }
+        })();
       }
 
       const message = didFill
