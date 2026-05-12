@@ -4,7 +4,7 @@
 >
 > **How to use it:** start at the top. P0s block the product. P1s degrade quality but the system still functions. P2s are paper cuts. Don't skip levels.
 >
-> **Last refreshed:** 2026-05-08 — GAPS cleanup pass: verified open items against merged code, closed P1-4 (already-done), reframed P0-5 umbrella in plain English, downgraded P0-5e from P0 to P1. Earlier same day: Thesis Architecture (PR #239) closed P0-1, P0-5a + the previously-untracked promotion gap and conditional-requireds gaps. Monitor Health (PR #237) closed P0-4, P1-2 (Monitor-counter backfill lifted trades-sourced 2 → 5). Small sweep (PR #238) closed P1-3, P2-2, P2-5. Admin sweep closed P0-3, P0-5d, P1-5, P1-6, P2-9. Watching-thesis integrity closed P0-2, P1-1, P1-7, P1-8, P2-3. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived). Live thesis-system reference: [`docs/THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
+> **Last refreshed:** 2026-05-11 — Discovery Run full rework: `read_signals` lookbackDays=7 default in discovery mode, all four intelligence-pipeline crons daily (no more Mon-Fri only), full `analystPrompt` passthrough (no more 400-char truncation), 8 new strategy fields piped to prompt, prompt rewritten as a trader with horizon-picking + target/stop derivation + cross-analyst overlap sections, DAY-only analysts skipped from cron, pre-prune removed, threshold lowered to 5 for WATCHING. Opened P1-9 (archetype-blind rubric), P1-10 (no route-signals event emission), P2-10/-11/-12 (idempotency, FAILED-status mis-reporting, manage_watchlist not in prompt). See `DISCOVERY_REVIEW.md` for the full audit. 2026-05-08 — GAPS cleanup pass: verified open items against merged code, closed P1-4 (already-done), reframed P0-5 umbrella in plain English, downgraded P0-5e from P0 to P1. Earlier same day: Thesis Architecture (PR #239) closed P0-1, P0-5a + the previously-untracked promotion gap and conditional-requireds gaps. Monitor Health (PR #237) closed P0-4, P1-2 (Monitor-counter backfill lifted trades-sourced 2 → 5). Small sweep (PR #238) closed P1-3, P2-2, P2-5. Admin sweep closed P0-3, P0-5d, P1-5, P1-6, P2-9. Watching-thesis integrity closed P0-2, P1-1, P1-7, P1-8, P2-3. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived). Live thesis-system reference: [`docs/THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
 
 ---
 
@@ -100,6 +100,14 @@ These prevent the core loop from working as designed. Fix first.
 
 *(P1-4 was closed via cumulative prompt sharpening across PRs #235 + #239 — see "Done since" below. P0-5e was downgraded here from P0; see P0-5 above for details.)*
 
+### P1-9 — Discovery prompt is archetype-blind
+**Source:** Discovery review 2026-05-11 (see `DISCOVERY_REVIEW.md`). The 4-dimension scoring rubric (trendStrength / relativeStrength / entryQuality / catalystFreshness) is calibrated for momentum/breakout playbooks and applied universally. A Deep Value Contrarian buys downtrends — `trendStrength: 3` is a SELL signal for them. An Insider Cluster Buying archetype has no slot in the rubric for Form 4 cluster patterns. Catalyst Event Trader / Earnings Drift should weight earnings_calendar heavily; momentum scoring barely.
+
+**Fix path:** branch the discovery prompt into three families — EVENT_DRIVEN (Earnings Drift, Catalyst Event), MOMENTUM (Momentum Breakout, Mean Reversion, Sector Rotation, Unusual Options), FUNDAMENTAL (Deep Value, Thematic Secular, Insider Cluster) — each with a tuned scoring rubric and primary source priority. Requires either an `AgentConfig.archetypeId` column or runtime classification from analystPrompt + holdDurations. Full spec in `DISCOVERY_REVIEW.md` § Proposed redesign. ~1 session of work.
+
+### P1-10 — Producers don't emit `intelligence/route-signals` event
+The signal-router has `{ event: "intelligence/route-signals" }` as a trigger but **nothing in the codebase emits that event**. Fresh signals from firm-market-sweep / portfolio-watchlist-monitor / domain-monitor wait for the next 7:30am router cron tick (now daily — see 2026-05-11 Done) rather than routing immediately on landing. Adds 15-60 minutes latency between signal creation and route availability. Fix: each producer cron emits the event at the end of its step.run. ~30 min.
+
 ---
 
 ## P2 — Paper cuts and FE polish
@@ -111,6 +119,63 @@ SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints th
 
 ### P2-7 — Intelligence pipeline crons are independent
 Crons agent — no Inngest `.after()` or `.waitFor()` between firm-market-sweep → portfolio-watchlist-monitor → domain-monitor → signal-router. If one lags, downstream still fires on schedule with stale data. Today this is theoretical; flag it as a known fragility. ~2 hours to add chaining.
+
+
+### P2-10 — Discovery run idempotency on Inngest retries
+`discovery-run.ts` creates the `ResearchRun` row inside `step.run("discovery-${id}", ...)` BEFORE the try/catch around `generateText`. An Inngest step retry after a transient prisma/OpenAI failure creates a second ResearchRun row for the same analyst-week → duplicate theses + double LLM billing. Fix: wrap the create + generateText in a single try/catch, or move the create outside the step (with an idempotency key on `agentConfigId + weekStart`). ~30 min.
+
+
+### P2-11 — Discovery FAILED status hides successful theses
+`discovery-run.ts` sets `status = COMPLETE` only if `record_run_summary` fired. A run that mints 5 valid WATCHING theses but token-limits before the summary lands as `FAILED`. The work is real; the badge says it isn't. Fix: branch on `newTheses > 0` — `newTheses > 0 && ranSummary` → COMPLETE, `newTheses > 0 && !ranSummary` → COMPLETE_PARTIAL (or COMPLETE with a flag), `newTheses === 0 && !ranSummary` → FAILED. ~20 min.
+
+
+### P2-12 — Discovery prompt doesn't mention `manage_watchlist`
+`manage_watchlist` is in `MODES.discovery.toolAllowlist` but the prompt never names it. The watchlist ↔ WATCHING-thesis collapse (per `docs/THESIS_ARCHITECTURE_PLAN.md`) is pending, so today an analyst can add watchlist names without a thesis — but discovery can't surface that affordance because the prompt is silent. Either remove the tool from the allowlist (forcing every name to mint a WATCHING thesis) or add prompt guidance. Decide after the watchlist collapse lands.
+
+---
+
+## Done since 2026-05-11 (Discovery Run — full rework)
+
+End-to-end Discovery cron + prompt + tool rework, driven by the 2026-05-10 weekly auto-cron that minted zero theses across all seven enabled analysts. Root cause was a stack of compounding issues, not a single bug — see `DISCOVERY_REVIEW.md` for the full review.
+
+**The dominant root cause:** `read_signals` defaulted to `lookbackDays: 0` (today-only), AND the four intelligence-pipeline crons (firm-market-sweep, portfolio-watchlist-monitor, domain-monitor, signal-router) all ran Mon-Fri only. On Sunday 9am ET, `AnalystSignalRoute` had **zero** rows for "today" because the router never fired on Sunday. The discovery agent saw an empty inbox by construction, regardless of what was in the prompt.
+
+**Adjacent root causes, also fixed:**
+
+- The discovery prompt **truncated the analyst's `analystPrompt` to 400 characters** — the agent was operating without its own strategy, signal preferences, or risk philosophy. The first paragraph of an analyst's identity, applied as if it were the whole thing.
+- The prompt was passed only 6 of ~14 strategy-relevant fields from `AgentConfig`. Direction bias, hold durations, signal types, position sizing, market cap bounds, and the analyst's watchlist were all withheld.
+- The prompt told the agent to apply the universe fence manually — but the router already enforced it at routing time. Agent-side filtering was both wasted work and an error surface.
+- `scope:"universe"` on movers + earnings tools intersected with `watchlist + positions` (i.e. coverage), which is the OPPOSITE of what discovery wants. Already fixed by PR #247 — confirmed.
+- The composite ≥ 7 threshold was the daily-run "tradeable today" bar. Discovery's job is to seed WATCHING for the daily run to evaluate later; the bar should be lower.
+- Step 2 said "Pick the 2-3 most promising candidates BEFORE scoring." Lossy pre-prune with no methodology — discarded 5+ candidates unscored.
+- DAY-only analysts were running the weekly cron. A weekly WATCHING thesis with an intraday-level ENTER trigger is architecturally broken — Monday's premarket gap moves the breakout level. They shouldn't be in the cron at all.
+- The prompt gave **zero guidance on horizon selection** — VISION's load-bearing concept — and zero guidance on deriving target_price + stop_loss, even though `record_thesis` rejects WATCHING/LONG or WATCHING/SHORT without a target_price (because the default ENTER trigger keys off it).
+- No cross-analyst overlap check at the workflow level. The 2026-05-10 EV Catalyst case (3 attempts to mint $MU, all rejected by the same-direction guard) is what that gap looks like.
+
+**Shipped fixes:**
+
+- ✅ **`read_signals` defaults `lookbackDays: 7` in discovery mode.** Single source of truth — the cron and the prompt don't have to pass it. Daily-run mode still defaults to 0 (today-only).
+- ✅ **All four intelligence-pipeline crons now run daily (`* * *`)** — firm-market-sweep (6:30am), portfolio-watchlist-monitor (7:00am), domain-monitor (7:15am), signal-router (7:30am). Weekend news (M&A, pre-announces, policy moves) now gets routed before Sunday's Discovery cron at 9am.
+- ✅ **`discovery-run.ts` passes the FULL `analystPrompt`** (no truncation) plus 8 additional fields: `holdDurations`, `directionBias`, `minConfidence`, `maxPositionSize`, `maxOpenPositions`, `signalTypes`, `watchlist`, `marketCapMin`, `marketCapMax`.
+- ✅ **Discovery prompt rewritten as a TRADER's prompt, not a filter.** New sections: "YOUR CONFIG — what bounds your work" (direction bias / hold style / signal types / watchlist), "WHAT'S ALREADY DONE FOR YOU — DO NOT RE-FILTER" (router fenced; tools coverage-excluded), "PICKING THE RIGHT HORIZON" (CATALYST/TRADE/TARGET/COMPOUNDER decision tree mapping VISION Part 2's hold-style spectrum), "TARGET, ENTRY, STOP — REQUIRED on every directional thesis" (derivation guidance from real chart structure + R/R ≥ 2:1 + direction shape enforcement), "DON'T DUPLICATE OTHER ANALYSTS" (cross-analyst overlap check).
+- ✅ **Step 2 cross-analyst pre-check.** Agent calls `get_theses(tickers: [<candidate>])` before `get_stock_data` to avoid wasting research on a name another analyst already covers in the same direction.
+- ✅ **Pre-prune removed.** Step 2 now says "research every promising candidate (typically 6-10 names)" instead of capping at 2-3. Score all, mint the ones that clear the bar.
+- ✅ **Composite threshold lowered to 5 for WATCHING**, 8 for high-conviction ACTIVE. The WATCHING bar is "worth tracking," not "tradeable today."
+- ✅ **Cap raised 5 → 8 new theses** per run (typical range 2-5).
+- ✅ **DAY-only analysts skipped in the cron.** `holdDurations === ["DAY"]` analysts are filtered out (manual `targetConfigId` fire still passes through for testing).
+- ✅ **Kickoff user prompt rewritten** to match the new prompt: parallel pull of all three surfaces, no manual re-filter, mint everything ≥ 5, up to 8.
+- ✅ **Stale "Mon-Fri only" justifications removed** from the prompt and `read-signals.ts` comments now that the routing crons run daily.
+
+**Files touched:**
+- `lib/agent/tools/read-signals.ts` — default `lookbackDays = 7` when `ctx.discoveryOnly`
+- `lib/agent/system-prompts/discovery.ts` — full rewrite (~245 lines → ~405 lines)
+- `lib/inngest/functions/discovery-run.ts` — DAY-only skip, full config passthrough, new kickoff prompt
+- `lib/inngest/functions/firm-market-sweep.ts` — `1-5` → `*`
+- `lib/inngest/functions/portfolio-watchlist-monitor.ts` — `1-5` → `*`
+- `lib/inngest/functions/domain-monitor.ts` — `1-5` → `*`
+- `lib/inngest/functions/signal-router.ts` — `1-5` → `*`
+
+**Known issues NOT addressed in this pass** (filed as P1/P2 above): P1-9 archetype-blind scoring rubric, P1-10 producers don't emit `intelligence/route-signals`, P2-10 idempotency on step.run retries, P2-11 FAILED status hides successful theses, P2-12 `manage_watchlist` not in prompt.
 
 ---
 
