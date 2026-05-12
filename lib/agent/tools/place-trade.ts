@@ -50,6 +50,12 @@ export const placeTrade = defineTool({
     notional: z.number().optional().describe("Dollar amount to invest (e.g. 5000 for $5,000). Preferred over shares — just pass your position size budget directly."),
     shares: z.number().optional().describe("Number of shares. Only use if you need a specific share count; prefer notional instead."),
     thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
+    analyst_id: z
+      .string()
+      .optional()
+      .describe(
+        "Principal-chat only: which analyst is placing the trade. Required when the run isn't already scoped to one analyst (e.g. /chat). Within an analyst run, leave undefined — the run's analyst is used.",
+      ),
   }),
   ui: "tool-ui" as const,
   groupId: "Executing",
@@ -69,6 +75,11 @@ export const placeTrade = defineTool({
     // Normalize ticker to uppercase — model sometimes passes lowercase/mixed case,
     // which bypasses the duplicate check and hits Alpaca with a 422.
     const ticker = args.ticker.toUpperCase().trim();
+
+    // Principal-chat override: the agent passes analyst_id explicitly because
+    // the route context isn't scoped to one analyst. Within an analyst run,
+    // ctx.analystId is set and args.analyst_id is omitted.
+    const effectiveAnalystId: string | undefined = args.analyst_id ?? ctx.analystId;
     try {
       // 0a. Universe exclusion check — hard reject
       // exclusionList is the hard block dimension of Universe. The analyst's
@@ -92,7 +103,7 @@ export const placeTrade = defineTool({
 
       // 0. Check for existing open position (scoped to this analyst only)
       const existingPosition = await prisma.position.findFirst({
-        where: { userId: ctx.userId, analystId: ctx.analystId ?? undefined, symbol: ticker, status: "OPEN" },
+        where: { userId: ctx.userId, analystId: effectiveAnalystId ?? undefined, symbol: ticker, status: "OPEN" },
         select: { id: true, symbol: true },
       });
 
@@ -142,10 +153,10 @@ export const placeTrade = defineTool({
       }
 
       // ── Guardrail 2: open position count < maxOpenPositions ────────
-      if (ctx.maxOpenPositions != null && ctx.analystId) {
+      if (ctx.maxOpenPositions != null && effectiveAnalystId) {
         const openCount = await prisma.position.count({
           where: {
-            analystId: ctx.analystId,
+            analystId: effectiveAnalystId,
             status: "OPEN",
           },
         });
@@ -323,9 +334,20 @@ export const placeTrade = defineTool({
       // PENDING Order row is recoverable by reconcile-orders looking it up
       // by client_order_id.
 
-      const analystId = ctx.analystId;
+      const analystId = effectiveAnalystId;
       if (!analystId) {
-        throw new Error("Cannot place trade without an analyst ID. Ensure the run is linked to an analyst.");
+        throw new Error("Cannot place trade without an analyst ID. Pass analyst_id (principal chat) or ensure the run is linked to an analyst.");
+      }
+      // Belt-and-suspenders: if the agent overrides via args.analyst_id,
+      // confirm the analyst belongs to the user.
+      if (args.analyst_id && args.analyst_id !== ctx.analystId) {
+        const owner = await prisma.agentConfig.findFirst({
+          where: { id: args.analyst_id, userId: ctx.userId },
+          select: { id: true },
+        });
+        if (!owner) {
+          throw new Error(`Analyst ${args.analyst_id} not found or not yours.`);
+        }
       }
 
       const finalShares = resolvedShares ?? 1;

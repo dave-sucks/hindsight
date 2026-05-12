@@ -38,6 +38,16 @@ import { discoverSignalsForFence } from "./discover-signals-for-fence";
 import { readAnalystInboxStats } from "./read-analyst-inbox-stats";
 import { writeSegmentTranscript } from "./write-segment-transcript";
 import { readPastTranscripts } from "./read-past-transcripts";
+// Principal-chat cross-cutting read tools
+import { listAnalysts } from "./list-analysts";
+import { readAnalystConfig } from "./read-analyst-config";
+import { listRuns } from "./list-runs";
+import { readRun } from "./read-run";
+import { listMonitors } from "./list-monitors";
+import { readAccuracyReports } from "./read-accuracy-reports";
+import { listPositionsAll } from "./list-positions-all";
+import { listThesesAll } from "./list-theses-all";
+import { readDatabase } from "./read-database";
 
 interface ToolCtx {
   runId: string;
@@ -127,6 +137,18 @@ export function createResearchTools(ctx: ToolCtx) {
     // Podcast feature — see docs/PODCAST_PLAN.md.
     write_segment_transcript: writeSegmentTranscript(newCtx),
     read_past_transcripts: readPastTranscripts(newCtx),
+    // Principal-chat cross-cutting read tools — only included in
+    // principal-mode toolAllowlist; safe to register here unconditionally
+    // because the per-mode allowlist filters them out everywhere else.
+    list_analysts: listAnalysts(newCtx),
+    read_analyst_config: readAnalystConfig(newCtx),
+    list_runs: listRuns(newCtx),
+    read_run: readRun(newCtx),
+    list_monitors: listMonitors(newCtx),
+    read_accuracy_reports: readAccuracyReports(newCtx),
+    list_positions_all: listPositionsAll(newCtx),
+    list_theses_all: listThesesAll(newCtx),
+    read_database: readDatabase(newCtx),
   };
 
   // Backward-compat aliases for old persisted RunMessages
@@ -169,3 +191,13 @@ export { writeSegmentTranscript } from "./write-segment-transcript";
 export { readPastTranscripts } from "./read-past-transcripts";
 export { suggestPodcastConfigTool } from "./suggest-podcast-config";
 export type { SuggestedPodcastConfig } from "./suggest-podcast-config";
+// Principal-chat tools
+export { listAnalysts } from "./list-analysts";
+export { readAnalystConfig } from "./read-analyst-config";
+export { listRuns } from "./list-runs";
+export { readRun } from "./read-run";
+export { listMonitors } from "./list-monitors";
+export { readAccuracyReports } from "./read-accuracy-reports";
+export { listPositionsAll } from "./list-positions-all";
+export { listThesesAll } from "./list-theses-all";
+export { readDatabase } from "./read-database";

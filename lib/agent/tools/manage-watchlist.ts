@@ -230,6 +230,12 @@ export const manageWatchlist = defineTool({
         "How many days this watchlist entry stays active before EOD cleanup expires it. Default 30. Use 7-14 for tactical setups (earnings, near-term catalyst), 60-90 for slow-burn structural watches.",
       ),
     review_frequency: z.enum(["DAILY", "WEEKLY", "ON_CATALYST"]).optional().describe("How often to review this item"),
+    analyst_id: z
+      .string()
+      .optional()
+      .describe(
+        "Principal-chat only: which analyst's watchlist to mutate. Required when the run isn't already scoped to one analyst. Within an analyst run, leave undefined.",
+      ),
   }),
   ui: "tool-ui" as const,
   groupId: "Executing",
@@ -244,12 +250,28 @@ export const manageWatchlist = defineTool({
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
 
-    if (!ctx.analystId) {
+    // Principal-chat override: args.analyst_id selects which analyst's
+    // watchlist this mutates when the run context isn't analyst-scoped.
+    const effectiveAnalystId: string | undefined = args.analyst_id ?? ctx.analystId;
+    if (!effectiveAnalystId) {
       return {
         summary: `Watchlist ${args.action.toLowerCase()} failed: $${ticker}`,
         data: { success: false, action: args.action, ticker, changed: false, message: "Cannot manage watchlist without an analyst ID." },
         sources: [],
       };
+    }
+    if (args.analyst_id && args.analyst_id !== effectiveAnalystId) {
+      const owner = await prisma.agentConfig.findFirst({
+        where: { id: args.analyst_id, userId: ctx.userId },
+        select: { id: true },
+      });
+      if (!owner) {
+        return {
+          summary: `Watchlist ${args.action.toLowerCase()} failed: analyst not found`,
+          data: { success: false, action: args.action, ticker, changed: false, message: `Analyst ${args.analyst_id} not found or not yours.` },
+          sources: [],
+        };
+      }
     }
 
     if (args.target_price !== undefined && args.target_price <= 0) {
@@ -315,7 +337,7 @@ export const manageWatchlist = defineTool({
         }
 
         const existing = await prisma.analystWatchlistItem.findFirst({
-          where: { analystId: ctx.analystId, symbol: ticker, status: "ACTIVE" },
+          where: { analystId: effectiveAnalystId, symbol: ticker, status: "ACTIVE" },
         });
 
         if (existing) {
@@ -403,7 +425,7 @@ export const manageWatchlist = defineTool({
 
         const created = await prisma.analystWatchlistItem.create({
           data: {
-            analystId: ctx.analystId,
+            analystId: effectiveAnalystId,
             userId: ctx.userId,
             accountId: ctx.accountId,
             symbol: ticker,
@@ -427,7 +449,7 @@ export const manageWatchlist = defineTool({
 
         // Sync to durable thesis store. See helper for rationale.
         await ensureWatchingThesisForWatchlistAdd({
-          analystId: ctx.analystId,
+          analystId: effectiveAnalystId,
           userId: ctx.userId,
           accountId: ctx.accountId,
           runId: ctx.runId ?? null,
@@ -441,11 +463,11 @@ export const manageWatchlist = defineTool({
         });
 
         const activeItems = await prisma.analystWatchlistItem.findMany({
-          where: { analystId: ctx.analystId, status: "ACTIVE" },
+          where: { analystId: effectiveAnalystId, status: "ACTIVE" },
           select: { symbol: true },
         });
         await prisma.agentConfig.update({
-          where: { id: ctx.analystId },
+          where: { id: effectiveAnalystId },
           data: { watchlist: activeItems.map((i) => i.symbol) },
         });
 
@@ -461,12 +483,12 @@ export const manageWatchlist = defineTool({
           });
         }
 
-        if (ctx.runId && ctx.analystId) {
+        if (ctx.runId && effectiveAnalystId) {
           try {
             await prisma.tradeDecision.create({
               data: {
                 runId: ctx.runId,
-                analystId: ctx.analystId,
+                analystId: effectiveAnalystId,
                 userId: ctx.userId,
                 accountId: ctx.accountId,
                 symbol: ticker,
@@ -479,7 +501,7 @@ export const manageWatchlist = defineTool({
           }
         }
 
-        try { revalidatePath(`/analysts/${ctx.analystId}`); } catch { /* non-fatal */ }
+        try { revalidatePath(`/analysts/${effectiveAnalystId}`); } catch { /* non-fatal */ }
 
         const addSummary = args.reason || (args.catalyst ? `Catalyst: ${args.catalyst}` : "Added to watchlist");
         return {
@@ -509,7 +531,7 @@ export const manageWatchlist = defineTool({
 
       if (args.action === "REMOVE") {
         const item = await prisma.analystWatchlistItem.findFirst({
-          where: { analystId: ctx.analystId, symbol: ticker, status: "ACTIVE" },
+          where: { analystId: effectiveAnalystId, symbol: ticker, status: "ACTIVE" },
         });
 
         if (!item) {
@@ -535,18 +557,18 @@ export const manageWatchlist = defineTool({
         // Mirror to durable thesis store. ACTIVE theses are left alone —
         // those belong to held positions and have their own lifecycle.
         await supersedeWatchingThesisForWatchlistRemove({
-          analystId: ctx.analystId,
+          analystId: effectiveAnalystId,
           runId: ctx.runId ?? null,
           ticker,
           reason: args.reason,
         });
 
         const activeItems = await prisma.analystWatchlistItem.findMany({
-          where: { analystId: ctx.analystId, status: "ACTIVE" },
+          where: { analystId: effectiveAnalystId, status: "ACTIVE" },
           select: { symbol: true },
         });
         await prisma.agentConfig.update({
-          where: { id: ctx.analystId },
+          where: { id: effectiveAnalystId },
           data: { watchlist: activeItems.map((i) => i.symbol) },
         });
 
@@ -562,12 +584,12 @@ export const manageWatchlist = defineTool({
           });
         }
 
-        if (ctx.runId && ctx.analystId) {
+        if (ctx.runId && effectiveAnalystId) {
           try {
             await prisma.tradeDecision.create({
               data: {
                 runId: ctx.runId,
-                analystId: ctx.analystId,
+                analystId: effectiveAnalystId,
                 userId: ctx.userId,
                 accountId: ctx.accountId,
                 symbol: ticker,
@@ -580,7 +602,7 @@ export const manageWatchlist = defineTool({
           }
         }
 
-        try { revalidatePath(`/analysts/${ctx.analystId}`); } catch { /* non-fatal */ }
+        try { revalidatePath(`/analysts/${effectiveAnalystId}`); } catch { /* non-fatal */ }
 
         return {
           summary: `Removed $${ticker} from watchlist`,
@@ -598,7 +620,7 @@ export const manageWatchlist = defineTool({
 
       if (args.action === "UPDATE") {
         const item = await prisma.analystWatchlistItem.findFirst({
-          where: { analystId: ctx.analystId, symbol: ticker, status: "ACTIVE" },
+          where: { analystId: effectiveAnalystId, symbol: ticker, status: "ACTIVE" },
         });
 
         if (!item) {
@@ -638,7 +660,7 @@ export const manageWatchlist = defineTool({
           },
         });
 
-        try { revalidatePath(`/analysts/${ctx.analystId}`); } catch { /* non-fatal */ }
+        try { revalidatePath(`/analysts/${effectiveAnalystId}`); } catch { /* non-fatal */ }
 
         const updateSummary = args.reason || (updated.catalyst ? `Catalyst: ${updated.catalyst}` : "Updated watchlist entry");
         return {
