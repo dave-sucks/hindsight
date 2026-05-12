@@ -163,7 +163,7 @@ export function PromoteAnalystDialog({
               <div className="rounded-md border divide-y text-xs">
                 {preview!.openPaperPositions.map((p) => (
                   <div key={p.id} className="flex justify-between px-3 py-1.5">
-                    <span className="font-mono">{p.symbol}</span>
+                    <span className="tabular-nums">{p.symbol}</span>
                     <span className="text-muted-foreground tabular-nums">
                       {p.direction} {p.quantity} @ ${p.avgCost.toFixed(2)}
                     </span>
@@ -200,7 +200,7 @@ export function PromoteAnalystDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="promote-confirm" className="text-xs">
-              Type <span className="font-mono">{preview!.analystName}</span> to confirm
+              Type <span className="tabular-nums">{preview!.analystName}</span> to confirm
             </Label>
             <Input
               id="promote-confirm"
@@ -292,7 +292,7 @@ function DemoteBody({
               <div className="rounded-md border divide-y text-xs">
                 {preview.openLivePositions.map((p) => (
                   <div key={p.id} className="flex justify-between px-3 py-1.5">
-                    <span className="font-mono">{p.symbol}</span>
+                    <span className="tabular-nums">{p.symbol}</span>
                     <span className="text-muted-foreground tabular-nums">
                       {p.direction} {p.quantity} @ ${p.avgCost.toFixed(2)}
                     </span>

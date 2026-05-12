@@ -406,11 +406,12 @@ export async function closeOpenPosition(
       );
       const isWin = outcome === "WIN";
       const sign2 = realizedPnl >= 0 ? "+" : "";
+      const livePrefix = positionEnvironment === "LIVE" ? "[LIVE] " : "";
       await sendEmail({
         to: toEmail,
         subject: isWin
-          ? `✅ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — WIN`
-          : `⛔ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — ${outcome}`,
+          ? `${livePrefix}✅ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — WIN`
+          : `${livePrefix}⛔ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — ${outcome}`,
         html: tradeClosedHtml({
           ticker: position.symbol,
           direction: position.direction as "LONG" | "SHORT",

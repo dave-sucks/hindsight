@@ -675,9 +675,10 @@ export const placeTrade = defineTool({
               select: { reasoningSummary: true },
             });
             const verb = args.direction === "LONG" ? "📈 Bought" : "📉 Shorted";
+            const livePrefix = positionEnvironment === "LIVE" ? "[LIVE] " : "";
             await sendEmail({
               to: toEmail,
-              subject: `${verb} ${ticker} — ${config.name}`,
+              subject: `${livePrefix}${verb} ${ticker} — ${config.name}`,
               html: tradeOpenedHtml({
                 ticker,
                 direction: args.direction,
