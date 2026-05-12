@@ -12,11 +12,34 @@ import {
   deleteApiKey,
   reverifyApiKey,
   type ApiKeyStatus,
+  type AlpacaEnvironment,
 } from "@/lib/actions/api-keys.actions";
 import { Trash2, RefreshCw, CheckCircle2, XCircle, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
-export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
+const COPY: Record<AlpacaEnvironment, { title: string; subtitle: string; keysUrl: string; danger: boolean }> = {
+  PAPER: {
+    title: "Alpaca Paper Trading",
+    subtitle: "Simulated trades against Alpaca's paper account",
+    keysUrl: "https://app.alpaca.markets/paper/account/management",
+    danger: false,
+  },
+  LIVE: {
+    title: "Alpaca Live Trading",
+    subtitle: "Real-money trades. Only used by analysts you've promoted to live.",
+    keysUrl: "https://app.alpaca.markets/account/management",
+    danger: true,
+  },
+};
+
+export function AlpacaKeyForm({
+  initial,
+  environment,
+}: {
+  initial: ApiKeyStatus;
+  environment: AlpacaEnvironment;
+}) {
+  const copy = COPY[environment];
   const [status, setStatus] = useState(initial);
   const [editing, setEditing] = useState(false);
   const [apiKey, setApiKey] = useState("");
@@ -32,20 +55,20 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
     startTransition(async () => {
       const result = await saveApiKey({
         provider: "ALPACA",
-        environment: "PAPER",
+        environment,
         apiKey: apiKey.trim(),
         apiSecret: apiSecret.trim(),
       });
       if (result.success) {
         toast.success(
           result.verified
-            ? "Alpaca keys saved and verified"
+            ? `${copy.title} keys saved and verified`
             : "Keys saved but verification failed — check your credentials"
         );
         setStatus({
           hasKey: true,
           provider: "ALPACA",
-          environment: "PAPER",
+          environment,
           keyHint: `...${apiKey.trim().slice(-4)}`,
           verified: result.verified,
           verifiedAt: result.verified ? new Date().toISOString() : null,
@@ -62,13 +85,13 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
 
   function handleDelete() {
     startTransition(async () => {
-      const result = await deleteApiKey("ALPACA", "PAPER");
+      const result = await deleteApiKey("ALPACA", environment);
       if (result.success) {
-        toast.success("Alpaca keys removed");
+        toast.success(`${copy.title} keys removed`);
         setStatus({
           hasKey: false,
           provider: "ALPACA",
-          environment: "PAPER",
+          environment,
           keyHint: null,
           verified: false,
           verifiedAt: null,
@@ -83,9 +106,9 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
 
   function handleReverify() {
     startTransition(async () => {
-      const result = await reverifyApiKey("ALPACA", "PAPER");
+      const result = await reverifyApiKey("ALPACA", environment);
       if (result.verified) {
-        toast.success("Alpaca connection verified");
+        toast.success(`${copy.title} connection verified`);
         setStatus((s) => ({ ...s, verified: true, verifiedAt: new Date().toISOString() }));
       } else {
         toast.error(result.error || "Verification failed");
@@ -100,33 +123,34 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
     return (
       <Card>
         <CardContent className="p-4 space-y-4">
-          <div className="flex items-center gap-3">
-            <img src="/assets/icons/alpaca.svg" alt="Alpaca" className="h-8 w-8 rounded" />
-            <div>
-              <p className="text-sm font-medium">Alpaca Paper Trading</p>
-              <p className="text-xs text-muted-foreground">
-                Connect your Alpaca paper trading account to place simulated trades
-              </p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <img src="/assets/icons/alpaca.svg" alt="Alpaca" className="h-8 w-8 rounded" />
+              <div>
+                <p className="text-sm font-medium">{copy.title}</p>
+                <p className="text-xs text-muted-foreground">{copy.subtitle}</p>
+              </div>
             </div>
+            <Badge variant={copy.danger ? "destructive" : "outline"}>{environment}</Badge>
           </div>
           <Separator />
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="alpaca-key" className="text-xs">API Key</Label>
+              <Label htmlFor={`alpaca-key-${environment}`} className="text-xs">API Key</Label>
               <Input
-                id="alpaca-key"
+                id={`alpaca-key-${environment}`}
                 type="text"
-                placeholder="PK..."
+                placeholder={environment === "LIVE" ? "AK..." : "PK..."}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 autoComplete="off"
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="alpaca-secret" className="text-xs">API Secret</Label>
+              <Label htmlFor={`alpaca-secret-${environment}`} className="text-xs">API Secret</Label>
               <div className="relative">
                 <Input
-                  id="alpaca-secret"
+                  id={`alpaca-secret-${environment}`}
                   type={showSecret ? "text" : "password"}
                   placeholder="Secret key"
                   value={apiSecret}
@@ -145,7 +169,7 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
             <p className="text-xs text-muted-foreground">
               Get your keys from{" "}
               <a
-                href="https://app.alpaca.markets/paper/account/management"
+                href={copy.keysUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline"
@@ -187,19 +211,22 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
           <div className="flex items-center gap-3">
             <img src="/assets/icons/alpaca.svg" alt="Alpaca" className="h-8 w-8 rounded" />
             <div>
-              <p className="text-sm font-medium">Alpaca Paper Trading</p>
+              <p className="text-sm font-medium">{copy.title}</p>
               <p className="text-xs text-muted-foreground">
                 API Key: <span className="font-mono">{status.keyHint}</span>
               </p>
             </div>
           </div>
-          <Badge variant={status.verified ? "default" : "destructive"}>
-            {status.verified ? (
-              <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Connected</span>
-            ) : (
-              <span className="flex items-center gap-1"><XCircle className="h-3 w-3" /> Not Verified</span>
-            )}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={copy.danger ? "destructive" : "outline"}>{environment}</Badge>
+            <Badge variant={status.verified ? "default" : "destructive"}>
+              {status.verified ? (
+                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Connected</span>
+              ) : (
+                <span className="flex items-center gap-1"><XCircle className="h-3 w-3" /> Not Verified</span>
+              )}
+            </Badge>
+          </div>
         </div>
         {status.verifiedAt && (
           <p className="text-xs text-muted-foreground">
