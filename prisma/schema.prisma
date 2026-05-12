@@ -45,6 +45,11 @@ model ResearchRun {
   //   EOD_REFLECTIVE     — 4:30 PM cron, validate theses + journal + age watchlist
   // Existing rows backfilled to MORNING_PLAN.
   mode          String       @default("MORNING_PLAN")
+  // Snapshot of the analyst's tradingEnvironment at run-create time.
+  // Locks the env for the duration of the run so a mid-run promotion
+  // does not split a single run's tool calls across two Alpaca accounts.
+  // place_trade reads this to tag new Position + Order rows.
+  environment   String       @default("PAPER")  // "PAPER" | "LIVE"
   parameters    Json         // agent config snapshot at time of run
   startedAt     DateTime     @default(now())
   completedAt   DateTime?
@@ -69,6 +74,7 @@ model ResearchRun {
   @@index([agentConfigId])
   @@index([userId])
   @@index([podcastSegmentId])
+  @@index([agentConfigId, environment])
 }
 
 model RunEvent {
@@ -318,7 +324,13 @@ model AgentConfig {
   graduationWinRate     Float    @default(0.65)
   graduationMinTrades   Int      @default(50)
   graduationProfitFactor Float   @default(1.5)
-  realTradingEnabled    Boolean  @default(false)
+  // Per-analyst trading environment. New analysts default to PAPER; the
+  // "Promote to live" action flips to LIVE after force-closing any open
+  // paper positions for the analyst (theses are preserved with no position,
+  // re-evaluated on first live run). See docs/PROD_DEPLOYMENT_PLAN.md.
+  tradingEnvironment    String   @default("PAPER")  // "PAPER" | "LIVE"
+  // Notional cap per position when tradingEnvironment="LIVE". Ignored in
+  // PAPER (paper uses maxPositionSize). Enforced inside place_trade.
   realMaxPosition       Float    @default(500)
   emailAlerts           Boolean  @default(true)
   weeklyDigestEnabled   Boolean  @default(true)
@@ -673,6 +685,11 @@ model Position {
   id              String          @id @default(cuid())
   analystId       String          // FK to AgentConfig (the analyst who owns this)
   userId          String
+  // Snapshot of which Alpaca account this position lives in. Set at
+  // place_trade time from the run's environment. Filters
+  // get_portfolio_context and the price-monitor / sync-heartbeat crons
+  // so paper and live inventories never mix. See docs/PROD_DEPLOYMENT_PLAN.md.
+  environment     String          @default("PAPER")  // "PAPER" | "LIVE"
   symbol          String
   direction       String          // "LONG" | "SHORT"
   status          String          // "OPEN" | "CLOSED" | "CANCELLED"
@@ -718,6 +735,7 @@ model Position {
   @@index([userId])
   @@index([status])
   @@index([userId, status])
+  @@index([analystId, environment, status])
 }
 
 /// Intent to buy/sell — what we told Alpaca.
@@ -727,6 +745,9 @@ model Order {
   id              String          @id @default(cuid())
   positionId      String          // FK to Position
   userId          String
+  // Mirrors Position.environment. Lets sync-heartbeat reconcile each
+  // Alpaca account independently without joining through Position.
+  environment     String          @default("PAPER")  // "PAPER" | "LIVE"
   symbol          String
   side            String          // "BUY" | "SELL"
   orderType       String          @default("MARKET") // "MARKET" | "LIMIT" | "STOP"
@@ -916,13 +937,16 @@ model UserApiKey {
   id             String   @id @default(cuid())
   userId         String
   provider       String   // "ALPACA" — extensible for future providers
+  // Per-environment credential. A user may hold one PAPER row and one
+  // LIVE row for the same provider; the unique key includes environment.
+  // PAPER → paper-api.alpaca.markets, LIVE → api.alpaca.markets.
+  environment    String   @default("PAPER")  // "PAPER" | "LIVE"
   label          String?  // user-friendly label, e.g. "My Paper Account"
   // Encrypted fields — ciphertext + iv + authTag, base64-encoded
   encryptedKey   String   // API key (encrypted)
   encryptedSecret String  // API secret (encrypted)
   keyHint        String?  // last 4 chars of key for display, e.g. "...a1b2"
   // Alpaca-specific
-  paperMode      Boolean  @default(true)  // paper vs live (always paper for now)
   baseUrl        String?  // custom base URL override
   // Status
   verified       Boolean  @default(false) // true after successful getAccount() call
@@ -930,7 +954,7 @@ model UserApiKey {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  @@unique([userId, provider])
+  @@unique([userId, provider, environment])
   @@index([userId])
 }
 

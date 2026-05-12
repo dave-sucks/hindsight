@@ -32,6 +32,7 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
     startTransition(async () => {
       const result = await saveApiKey({
         provider: "ALPACA",
+        environment: "PAPER",
         apiKey: apiKey.trim(),
         apiSecret: apiSecret.trim(),
       });
@@ -44,10 +45,10 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
         setStatus({
           hasKey: true,
           provider: "ALPACA",
+          environment: "PAPER",
           keyHint: `...${apiKey.trim().slice(-4)}`,
           verified: result.verified,
           verifiedAt: result.verified ? new Date().toISOString() : null,
-          paperMode: true,
           label: null,
         });
         setEditing(false);
@@ -61,16 +62,16 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
 
   function handleDelete() {
     startTransition(async () => {
-      const result = await deleteApiKey("ALPACA");
+      const result = await deleteApiKey("ALPACA", "PAPER");
       if (result.success) {
         toast.success("Alpaca keys removed");
         setStatus({
           hasKey: false,
           provider: "ALPACA",
+          environment: "PAPER",
           keyHint: null,
           verified: false,
           verifiedAt: null,
-          paperMode: true,
           label: null,
         });
         setEditing(false);
@@ -82,7 +83,7 @@ export function AlpacaKeyForm({ initial }: { initial: ApiKeyStatus }) {
 
   function handleReverify() {
     startTransition(async () => {
-      const result = await reverifyApiKey("ALPACA");
+      const result = await reverifyApiKey("ALPACA", "PAPER");
       if (result.verified) {
         toast.success("Alpaca connection verified");
         setStatus((s) => ({ ...s, verified: true, verifiedAt: new Date().toISOString() }));

@@ -45,6 +45,7 @@ export function AlpacaKeyGate({
     startTransition(async () => {
       const result = await saveApiKey({
         provider: "ALPACA",
+        environment: "PAPER",
         apiKey: apiKey.trim(),
         apiSecret: apiSecret.trim(),
       });
