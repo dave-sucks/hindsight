@@ -266,34 +266,17 @@ export async function POST(
       resolvedAnalystId = undefined;
 
     } else if (agentMode === "principal") {
-      // Principal chat — wide-open operator surface, no fixed analyst.
-      // resolvedAnalystId stays undefined; tools that need an analyst
-      // get it from their args (analyst_id) instead of ctx.analystId.
+      // Principal chat — operator chat, NOT a research run. No
+      // ResearchRun row is created. resolvedAnalystId stays undefined;
+      // tools that need an analyst get it from args.analyst_id.
+      // Tools that require a real runId FK (place_trade, close_position,
+      // manage_position, manage_watchlist, update_thesis) will fail
+      // cleanly in this mode — the agent's system prompt directs the
+      // user to the analyst page for writes that require run attribution.
+      // Reads — which is 95% of principal-chat usage — don't touch runId.
       systemPrompt = PRINCIPAL_SYSTEM_PROMPT;
       resolvedAnalystId = undefined;
-      // Find-or-create a ResearchRun(mode="PRINCIPAL_CHAT") row so the
-      // write tools that FK into runId (TradeDecision, PositionEvent,
-      // ThesisUpdate) have something to point at. The /chat page passes
-      // runId; if missing we mint one server-side.
-      if (!runId) {
-        const newRun = await prisma.researchRun.create({
-          data: {
-            userId: user.id,
-            source: "MANUAL",
-            status: "RUNNING",
-            mode: "PRINCIPAL_CHAT",
-            parameters: {} as object,
-          },
-        });
-        runId = newRun.id;
-      } else {
-        // Existing principal-chat session — make sure it's RUNNING so
-        // any tool writes succeed. updateMany is idempotent.
-        await prisma.researchRun.updateMany({
-          where: { id: runId, userId: user.id, mode: "PRINCIPAL_CHAT" },
-          data: { status: "RUNNING" },
-        });
-      }
+      runId = undefined;
 
     } else if (agentMode === "podcast-builder") {
       systemPrompt = PODCAST_BUILDER_SYSTEM_PROMPT;
@@ -688,17 +671,9 @@ export async function POST(
           `[agent/${agentMode}] ✅ onFinish elapsed=${elapsed}ms reason=${finishReason} tokens=${usage?.totalTokens ?? "?"}`,
         );
 
-        // Builder/editor modes don't have a ResearchRun to persist.
-        // Principal mode does — we create one in the principal branch above
-        // so write tools have a real FK target. Persist messages + mark
-        // the run COMPLETE on a clean finish so the next POST starts fresh
-        // or so the chat history can be replayed.
-        if (
-          (agentMode !== "research-run" &&
-            agentMode !== "podcast-segment-run" &&
-            agentMode !== "principal") ||
-          !runId
-        ) {
+        // Builder/editor/principal modes don't have a ResearchRun row
+        // (principal chat is intentionally not tied to a run).
+        if ((agentMode !== "research-run" && agentMode !== "podcast-segment-run") || !runId) {
           resolveOnFinish!();
           return;
         }
@@ -757,19 +732,6 @@ export async function POST(
             } catch (err) {
               console.error(`[agent/${agentMode}] Failed to persist toolStats:`, err);
             }
-          } else if (agentMode === "principal") {
-            // Principal chat — between messages we leave status RUNNING so
-            // subsequent POSTs find an open session. On final stream close
-            // (typically when the user navigates away) we'd mark COMPLETE,
-            // but in practice this onFinish fires after every assistant
-            // turn. Mark COMPLETE only if no future write is plausible;
-            // simplest invariant: always mark COMPLETE on finish. The
-            // principal branch above flips it back to RUNNING on the next
-            // POST.
-            await prisma.researchRun.updateMany({
-              where: { id: runId, status: "RUNNING" },
-              data: { status: "COMPLETE", completedAt: new Date() },
-            });
           } else {
             // podcast-segment-run: safety guard — mark RUNNING → COMPLETE if the
             // save_podcast_segment_transcript tool didn't already do so.
@@ -832,11 +794,7 @@ export async function POST(
       },
     });
 
-    if (
-      agentMode === "research-run" ||
-      agentMode === "podcast-segment-run" ||
-      agentMode === "principal"
-    ) {
+    if (agentMode === "research-run" || agentMode === "podcast-segment-run") {
       // Wait for BOTH the response stream AND the onFinish async work (message
       // persistence). result.response alone may resolve before onFinish completes
       // its DB writes, causing Vercel to kill the function and lose messages.
@@ -853,11 +811,7 @@ export async function POST(
     const elapsed = Date.now() - t0;
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[agent/${agentMode}] ❌ UNHANDLED ERROR elapsed=${elapsed}ms: ${msg}`);
-    if (
-      agentMode === "research-run" ||
-      agentMode === "podcast-segment-run" ||
-      agentMode === "principal"
-    ) {
+    if (agentMode === "research-run" || agentMode === "podcast-segment-run") {
       waitUntil(markRunFailed(runId, `Route error: ${msg}`));
     }
     return new Response(`Agent error: ${msg}`, { status: 500 });

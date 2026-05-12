@@ -15,17 +15,10 @@ import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer"
 import { ChatRuntime } from "@/components/chat/chat-runtime";
 import { MessageCircle } from "lucide-react";
 
-interface Props {
-  runId?: string;
-}
-
-export function ChatPageClient({ runId }: Props) {
-  const body: Record<string, unknown> = {};
-  if (runId) body.runId = runId;
-
+export function ChatPageClient() {
   return (
     <div className="flex h-[calc(100dvh-3rem)] flex-col">
-      <ChatRuntime api="/api/agent/principal" body={body}>
+      <ChatRuntime api="/api/agent/principal">
         <Thread
           welcomeConfig={{
             title: "Hindsight",
