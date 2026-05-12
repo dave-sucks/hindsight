@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
-import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { resolveAlpacaCredentials, type AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { deriveTradeStatus } from "@/lib/trade-status";
@@ -221,7 +221,9 @@ function buildEquityCurve(
 
 // ─── Main data loader ─────────────────────────────────────────────────────────
 
-export async function getDashboardData(): Promise<DashboardData> {
+export async function getDashboardData(
+  environment: AlpacaEnvironment = "PAPER",
+): Promise<DashboardData> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -286,9 +288,9 @@ export async function getDashboardData(): Promise<DashboardData> {
     dbTodaysPicks,
     dbManagementActions,
   ] = await Promise.all([
-    resolveAlpacaCredentials(userId).then((c) => c ?? undefined),
+    resolveAlpacaCredentials(userId, environment).then((c) => c ?? undefined),
     prisma.position.findMany({
-      where: { userId, status: "OPEN" },
+      where: { userId, status: "OPEN", environment },
       include: {
         analyst: { select: { name: true } },
         // Most recent BUY/SELL order — used to surface fill state in UI
@@ -311,7 +313,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       orderBy: { openedAt: "desc" },
     }).catch(() => [] as never[]),
     prisma.position.findMany({
-      where: { userId, status: { in: ["CLOSED", "CANCELLED"] } },
+      where: { userId, status: { in: ["CLOSED", "CANCELLED"] }, environment },
       include: {
         analyst: { select: { name: true } },
       },
@@ -322,6 +324,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       where: {
         userId,
         createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        researchRun: { environment },
       },
       orderBy: { createdAt: "desc" },
       take: 20,
@@ -387,11 +390,11 @@ export async function getDashboardData(): Promise<DashboardData> {
       },
     }),
     prisma.position.findMany({
-      where: { userId },
+      where: { userId, environment },
       select: { id: true, analystId: true },
     }),
     prisma.researchRun.findMany({
-      where: { userId },
+      where: { userId, environment },
       orderBy: { startedAt: "desc" },
       take: 10,
       // select only what RecentRunSummary needs — skip the `parameters`
@@ -414,6 +417,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         userId,
         createdAt: { gte: todayMidnight },
         direction: { in: ["LONG", "SHORT"] },
+        researchRun: { environment },
       },
       orderBy: { confidenceScore: "desc" },
       take: 5,
@@ -428,7 +432,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     // Activity feed: recent management actions with position context
     // .catch(() => []) — silently degrades if table hasn't been migrated yet
     prisma.positionManagementAction.findMany({
-      where: { position: { userId } },
+      where: { position: { userId, environment } },
       orderBy: { createdAt: "desc" },
       take: 40,
       select: {
