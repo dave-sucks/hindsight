@@ -279,7 +279,6 @@ export async function POST(
         const newRun = await prisma.researchRun.create({
           data: {
             userId: user.id,
-            agentConfigId: null,
             source: "MANUAL",
             status: "RUNNING",
             mode: "PRINCIPAL_CHAT",
