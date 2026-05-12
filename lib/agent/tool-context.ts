@@ -22,6 +22,17 @@ export interface ToolContext {
    */
   podcastSegmentId?: string;
   alpacaCreds?: AlpacaCredentials;
+  /**
+   * Snapshot of the run's environment (ResearchRun.environment). Pinned
+   * for the duration of the run so a mid-run promotion can't split tool
+   * calls across two Alpaca accounts. Drives:
+   *  - place_trade: tag new Position/Order rows with this env
+   *  - get_portfolio_context: filter positions to this env
+   *  - close_position / manage_position: refuse to operate on a position
+   *    whose env differs from the run's env (defensive)
+   * Defaults to PAPER when unset (older runs / builder / editor modes).
+   */
+  runEnvironment?: "PAPER" | "LIVE";
   watchlist?: string[];
   /**
    * Tickers currently held by this analyst (status=OPEN). Propagated so tools
