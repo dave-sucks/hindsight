@@ -502,6 +502,7 @@ export const placeTrade = defineTool({
 
       // 4. Poll up to 5s for fill, then promote to FILLED + correct avgCost.
       let fillPrice = args.entry_price;
+      let fillQty: number | null = null;
       let didFill = false;
       let filledAt: Date | null = null;
       const deadline = Date.now() + 5_000;
@@ -509,6 +510,11 @@ export const placeTrade = defineTool({
         const probed = await getOrder(alpacaOrderId, ctx.alpacaCreds);
         if (probed.status === "filled" && probed.filled_avg_price) {
           fillPrice = parseFloat(probed.filled_avg_price);
+          // Alpaca's filled_qty is ground truth — notional orders fill
+          // fractionally, and Math.floor(notional/fillPrice) under-reports
+          // the actual qty, leaking the fraction as an Alpaca-only orphan
+          // when we later close at the DB's truncated qty (AGL-2026-05-12).
+          fillQty = probed.filled_qty ? parseFloat(probed.filled_qty) : null;
           didFill = true;
           filledAt = probed.filled_at ? new Date(probed.filled_at) : new Date();
           break;
@@ -522,8 +528,7 @@ export const placeTrade = defineTool({
           const partialPrice = probed.filled_avg_price ? parseFloat(probed.filled_avg_price) : 0;
           if (partialQty > 0 && partialPrice > 0) {
             fillPrice = partialPrice;
-            resolvedNotional = undefined; // qty is authoritative from Alpaca now
-            resolvedShares = partialQty;
+            fillQty = partialQty;
             didFill = true;
             filledAt = probed.filled_at ? new Date(probed.filled_at) : new Date();
             break;
@@ -555,11 +560,12 @@ export const placeTrade = defineTool({
       }
 
       if (didFill) {
-        // Recompute share count for notional fills (Alpaca may give fractional)
-        if (resolvedNotional != null) {
-          resolvedShares = Math.max(1, Math.floor(resolvedNotional / fillPrice));
-        }
-        const finalSharesAfterFill = resolvedShares ?? finalShares;
+        // Trust Alpaca's filled_qty (fractional for notional orders). Fall
+        // back to the local share count only if Alpaca didn't return it.
+        const finalSharesAfterFill =
+          fillQty != null && fillQty > 0
+            ? fillQty
+            : (resolvedShares ?? finalShares);
         await prisma.$transaction([
           prisma.order.update({
             where: { id: order.id },
