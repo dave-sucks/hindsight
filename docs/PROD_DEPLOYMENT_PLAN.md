@@ -1,7 +1,55 @@
 # Production Deployment Plan — Per-analyst paper→live promotion
 
-**Status:** Design ready, not started
-**PR target:** 5 PRs, each independently shippable
+**Status:** Foundation shipped on branch `claude/plan-prod-deployment-LhbLY`. Read-side env coverage rolling out — see "Filtering rollout" below.
+**Migration risk:** LOW. Single user, ~6 enabled analysts, all data backfills to `PAPER`. No downtime.
+
+---
+
+## What shipped
+
+- **Schema** — `tradingEnvironment` on AgentConfig, `environment` on Position, Order, ResearchRun, and UserApiKey. Composite unique key `(userId, provider, environment)` so each user holds one PAPER + one LIVE row. Backfills everything to PAPER.
+- **alpaca.ts** — derives the SDK `paper` flag from `baseUrl` instead of hardcoding `true`. Drops the env-client singleton.
+- **ToolContext.runEnvironment** — snapshotted onto ResearchRun at create time; threaded through every tool and every cron.
+- **place_trade / manage_position / close_position** — tag new rows with env; env-defensive lookups so a LIVE run never operates on a PAPER position (and vice versa).
+- **Inngest crons** — morning-research, tactical-run, discovery-run snapshot env per-analyst. reconcile-orders groups by (userId, env). intraday-eod-flatten resolves creds per position env.
+- **Settings UI** — two stacked AlpacaKeyForm cards (PAPER + LIVE) with separate verification.
+- **Promote / Demote** — `lib/actions/promote-analyst.actions.ts` + `PromoteAnalystDialog`. Promotion validates live creds, force-closes paper positions (closeReason=PROMOTED), writes a ThesisUpdate audit row on each affected thesis ("Paper position closed at $X during promotion to LIVE — re-enter by default on next live run unless target approached or new evidence against"), flips the flag. Demotion is symmetric with a "close all and demote" path.
+- **First-live-run rebuy steering** — Stage 2 of `lib/agent/system-prompt.ts` has a "first live run after promotion" special case. Default action on a thesis with a recent promotion audit row + no live position is `place_trade` at current price; opt-out only on target-approached or concrete invalidation.
+- **realMaxPosition cap** — `place_trade` size guardrail uses `min(maxPositionSize, realMaxPosition)` on LIVE runs.
+- **Email subjects** — `[LIVE] ` prefix on trade-opened and trade-closed alerts.
+- **Global env switcher** — Stripe-style cookie-backed environment in the top header (`components/settings/EnvironmentSwitcher.tsx`). Visible only when the user has any live key / position / analyst. Single source of truth read via `getCurrentEnvironment()` server action.
+
+## Filtering rollout
+
+The global switcher means each page just needs a one-line scope on its data fetch. Pages already converted:
+
+- ✅ `/` Dashboard
+- ✅ `/trades`
+- ✅ `/runs`
+- ✅ `/performance`
+- ✅ `/analysts` (grid + per-analyst aggregates)
+- ✅ Per-run tool data (via `runEnvironment` on ToolContext)
+
+Pages that still pull cross-env data and need converting:
+
+- [ ] `/analysts/[id]` detail — env badge in header is wired, but the Trades / Theses / Briefs tabs still aggregate across both envs. Not breaking today (an analyst is single-env at any moment), but on a promoted analyst the paper history mixes into the live tab.
+- [ ] Thesis listings on the run page and analyst detail
+- [ ] `/intelligence` — signals are firm-wide inputs (correctly cross-env), but the Activity / Briefs panels currently show both envs interleaved. Add env scope where it's a *result* (briefs, run activity) and leave it alone where it's an *input* (signals, monitors).
+- [ ] `/stocks/[symbol]` — the per-ticker page shows positions/theses across envs; on a promoted analyst with both paper history and live position you'd see both stacked. Scope to current env.
+- [ ] Weekly digest email — currently aggregates cross-env. Should split by env or filter to current env.
+
+## What we are NOT building
+
+- Shadow mode (one analyst running paper + live in parallel).
+- Daily-loss kill switch (Alpaca's account-level toggle is enough for v1).
+- First-live-trade confirmation modal (the dialog already requires typing the analyst name).
+- Account-level promotion (always per-analyst — keep the surface small).
+
+---
+
+## Original plan (kept for reference)
+
+**PR target:** 5 PRs (now shipped as 12 sequential commits on the foundation branch).
 **Migration risk:** LOW. Single user, ~6 enabled analysts, all data backfills to `PAPER`. No downtime.
 
 ---
