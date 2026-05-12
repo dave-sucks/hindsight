@@ -1,10 +1,11 @@
 "use client";
 
-// Sync Health panel — renders the latest Alpaca↔DB heartbeat snapshot.
-// Mounted at the top of the intelligence Health tab. Self-fetches; the
-// rest of the tab loads its own data.
+// Sync Health panel — renders the latest Alpaca↔DB heartbeat snapshot AND
+// surfaces the live diff with one-click reconciliation actions per row.
+// Mounted at the top of the intelligence Health tab.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -12,8 +13,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { SyncHealthData } from "@/app/api/intelligence/sync-health/route";
+import {
+  getSyncDiff,
+  liquidateOrphan,
+  closeStaleDbRow,
+  trustAlpacaQty,
+  type SyncDiff,
+} from "@/lib/actions/sync-reconcile.actions";
 
 function relTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -53,18 +62,35 @@ function StatTile({
 
 export function SyncHealthPanel() {
   const [data, setData] = useState<SyncHealthData | null>(null);
+  const [diff, setDiff] = useState<SyncDiff | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const reload = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const [snapshotRes, diffResult] = await Promise.all([
+        fetch("/api/intelligence/sync-health"),
+        getSyncDiff().catch((err) => {
+          console.error("[sync-health-panel] live diff failed", err);
+          return null;
+        }),
+      ]);
+      if (snapshotRes.ok) {
+        setData((await snapshotRes.json()) as SyncHealthData);
+      }
+      setDiff(diffResult);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/intelligence/sync-health");
-        if (!res.ok) throw new Error(String(res.status));
-        const json = (await res.json()) as SyncHealthData;
-        if (!cancelled) setData(json);
-      } catch (err) {
-        console.error("[sync-health-panel] load failed", err);
+        await reload();
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -72,7 +98,22 @@ export function SyncHealthPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reload]);
+
+  const runAction = useCallback(
+    (label: string, fn: () => Promise<{ ok: boolean; error?: string }>) => {
+      startTransition(async () => {
+        const res = await fn();
+        if (res.ok) {
+          toast.success(`${label} — done`);
+          await reload();
+        } else {
+          toast.error(`${label} failed: ${res.error ?? "unknown error"}`);
+        }
+      });
+    },
+    [reload],
+  );
 
   if (loading) {
     return (
@@ -183,24 +224,128 @@ export function SyncHealthPanel() {
           </div>
         )}
 
-        {!isHealthy && (
-          <div className="mt-3 pt-3 border-t border-border">
-            <p className="text-xs text-muted-foreground">
-              Snapshot id <code className="text-xs">{s.id}</code> —
-              inspect <code className="text-xs">SyncHealthSnapshot.affectedIds</code>{" "}
-              for the rows involved, or run{" "}
-              <code className="text-xs">
-                npx tsx scripts/reconcile-alpaca-positions.ts
-              </code>
-              .
-            </p>
-          </div>
-        )}
+        <ReconcileSection
+          diff={diff}
+          pending={pending}
+          refreshing={refreshing}
+          runAction={runAction}
+          onRefresh={reload}
+        />
 
         <p className="mt-3 text-xs text-muted-foreground">
-          {data.timeline24h.length} snapshots in the last 24h.
+          Snapshot {s.id} · {data.timeline24h.length} snapshots in the last 24h
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+function fmtQty(n: number): string {
+  return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
+function ReconcileRow({
+  label,
+  detail,
+  buttonLabel,
+  buttonVariant,
+  pending,
+  onClick,
+}: {
+  label: React.ReactNode;
+  detail: string;
+  buttonLabel: string;
+  buttonVariant: "default" | "destructive";
+  pending: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border p-2 text-xs">
+      <div className="flex flex-col gap-0.5">
+        <span className="font-medium">{label}</span>
+        <span className="text-muted-foreground tabular-nums">{detail}</span>
+      </div>
+      <Button variant={buttonVariant} size="sm" disabled={pending} onClick={onClick}>
+        {buttonLabel}
+      </Button>
+    </div>
+  );
+}
+
+function ReconcileSection({
+  diff,
+  pending,
+  refreshing,
+  runAction,
+  onRefresh,
+}: {
+  diff: SyncDiff | null;
+  pending: boolean;
+  refreshing: boolean;
+  runAction: (
+    label: string,
+    fn: () => Promise<{ ok: boolean; error?: string }>,
+  ) => void;
+  onRefresh: () => Promise<void>;
+}) {
+  if (!diff) return null;
+  const hasWork =
+    diff.orphans.length + diff.stale.length + diff.qtyMismatches.length > 0;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {hasWork ? "Reconcile" : "Live diff clean"}
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={refreshing || pending}
+          onClick={() => void onRefresh()}
+        >
+          Refresh
+        </Button>
+      </div>
+      {diff.orphans.map((o) => (
+        <ReconcileRow
+          key={`orphan-${o.symbol}`}
+          label={<>Orphan {o.symbol} <Badge variant="outline">{o.side}</Badge></>}
+          detail={`${fmtQty(o.qty)} sh · ${fmtMoney(o.marketValue)} · u-P&L ${fmtMoney(o.unrealizedPnl)}`}
+          buttonLabel="Liquidate on Alpaca"
+          buttonVariant="destructive"
+          pending={pending}
+          onClick={() =>
+            runAction(`Liquidated ${o.symbol}`, () => liquidateOrphan(o.symbol))
+          }
+        />
+      ))}
+      {diff.qtyMismatches.map((m) => (
+        <ReconcileRow
+          key={`mismatch-${m.symbol}`}
+          label={<>Qty mismatch {m.symbol} <Badge variant="outline">{m.direction}</Badge></>}
+          detail={`DB ${fmtQty(m.dbQtySum)} → Alpaca ${fmtQty(m.alpacaQty)} (Δ ${fmtQty(m.alpacaQty - m.dbQtySum)})`}
+          buttonLabel="Trust Alpaca qty"
+          buttonVariant="default"
+          pending={pending}
+          onClick={() =>
+            runAction(`Reconciled ${m.symbol}`, () => trustAlpacaQty(m.symbol))
+          }
+        />
+      ))}
+      {diff.stale.map((s) => (
+        <ReconcileRow
+          key={`stale-${s.positionId}`}
+          label={<>Stale {s.symbol} <Badge variant="outline">{s.direction}</Badge></>}
+          detail={`${fmtQty(s.quantity)} sh @ ${fmtMoney(s.avgCost)} · ${s.analystName ?? "no analyst"}`}
+          buttonLabel="Mark CLOSED"
+          buttonVariant="default"
+          pending={pending}
+          onClick={() =>
+            runAction(`Closed ${s.symbol}`, () => closeStaleDbRow(s.positionId))
+          }
+        />
+      ))}
+    </div>
   );
 }

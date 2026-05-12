@@ -44,22 +44,34 @@ function fmtMoney(n: number): string {
 }
 
 async function main() {
-  // The app is single-tenant today — pick the first user. Extend if we
-  // ever go multi-user.
-  const user = await prisma.user
-    .findFirst({ select: { id: true, email: true } })
+  // Find the user that owns the Alpaca credentials. The User table maps to
+  // Supabase auth and is not directly populated by Prisma writes, so we key
+  // off UserApiKey (the table that actually holds Alpaca creds).
+  const apiKeyRow = await prisma.userApiKey
+    .findFirst({ where: { provider: "ALPACA" }, select: { userId: true } })
     .catch(() => null);
 
-  if (!user) {
+  if (!apiKeyRow) {
     console.error(
-      "No user row found. Run this against a database that has at least one user.",
+      "No UserApiKey row found for provider=ALPACA. Configure Alpaca first.",
     );
     process.exit(1);
   }
 
-  console.log(`→ Reconciling for user ${user.email ?? user.id}\n`);
+  console.log(`→ Reconciling for user ${apiKeyRow.userId}\n`);
+  const user = { id: apiKeyRow.userId, email: null as string | null };
 
-  const creds = await resolveAlpacaCredentials(user.id);
+  let creds = await resolveAlpacaCredentials(user.id);
+  if (!creds && process.env.ALPACA_API_KEY && process.env.ALPACA_API_SECRET) {
+    // CLI fallback: when ENCRYPTION_KEY isn't available locally we can't
+    // decrypt the DB-stored creds. Use the env-var fallback the production
+    // runtime uses on first-time setup.
+    creds = {
+      keyId: process.env.ALPACA_API_KEY,
+      secretKey: process.env.ALPACA_API_SECRET,
+      baseUrl: process.env.ALPACA_BASE_URL,
+    };
+  }
   if (!creds) {
     console.error(
       "No Alpaca credentials resolved for this user. Check the ApiKey table / env fallback.",
