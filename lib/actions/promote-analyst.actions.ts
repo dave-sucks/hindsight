@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAccount } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { closeOpenPosition } from "@/lib/actions/closeTrade.actions";
+import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { revalidatePath } from "next/cache";
 
 async function getServerUserId(): Promise<string> {
@@ -138,6 +139,11 @@ export async function promoteAnalystToLive(
 
   // 2. Close every open paper position. closeOpenPosition reads
   // position.environment to resolve the matching (paper) creds.
+  // After each close, write a ThesisUpdate audit row on the linked
+  // ACTIVE thesis so the analyst's first live run can see "this name
+  // was just exited at $X via promotion — re-enter by default unless
+  // thesis target already approached or new evidence against." Stage 2
+  // of the system prompt reads this signal (see lib/agent/system-prompt.ts).
   const openPaper = await prisma.position.findMany({
     where: { analystId, status: "OPEN", environment: "PAPER" },
     select: { id: true, symbol: true },
@@ -146,11 +152,55 @@ export async function promoteAnalystToLive(
   let closed = 0;
   for (const pos of openPaper) {
     try {
-      await closeOpenPosition(pos.id, "MANUAL", undefined, "user", `Closed as part of promoting analyst ${analyst.name} from PAPER to LIVE.`, undefined);
+      const closeResult = await closeOpenPosition(
+        pos.id,
+        "MANUAL",
+        undefined,
+        "user",
+        `Closed as part of promoting analyst ${analyst.name} from PAPER to LIVE.`,
+        undefined,
+      );
       await prisma.position.update({
         where: { id: pos.id },
         data: { closeReason: "PROMOTED" },
       });
+
+      // Audit row on the linked ACTIVE thesis (if any). Best-effort —
+      // failure to write the audit row should NOT roll back the close,
+      // which is already done in Alpaca and persisted in the DB. Worst
+      // case: the agent's re-entry default falls back to "evaluate
+      // fresh" instead of "default re-buy".
+      try {
+        const activeThesis = await prisma.thesis.findFirst({
+          where: {
+            ticker: pos.symbol,
+            status: "ACTIVE",
+            direction: { not: "PASS" },
+            researchRun: { agentConfigId: analystId },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+        if (activeThesis) {
+          const pnlSign = closeResult.realizedPnl >= 0 ? "+" : "";
+          const fillNote = closeResult.fillStatus === "PENDING" ? " (close pending fill)" : "";
+          await writeThesisUpdate({
+            thesisId: activeThesis.id,
+            type: "UPDATED",
+            summary: `Paper position closed at $${closeResult.closePrice.toFixed(2)} during promotion to LIVE (P&L ${pnlSign}$${closeResult.realizedPnl.toFixed(2)})${fillNote}. Thesis preserved — re-enter by default on next live run unless target already approached or new evidence against.`,
+            rationale:
+              `Administrative close, not a thesis decision. The analyst was holding this name; promotion required flattening paper before flipping to LIVE.`,
+            runId: null,
+            priceAtTime: closeResult.closePrice,
+          });
+        }
+      } catch (auditErr) {
+        console.warn(
+          `[promote] thesis audit row failed for ${pos.symbol}:`,
+          auditErr instanceof Error ? auditErr.message : auditErr,
+        );
+      }
+
       closed++;
     } catch (err) {
       return {
