@@ -38,11 +38,17 @@ export const closePosition = defineTool({
       // could close another analyst's position. Captured the 2026-04-30
       // EDT/EVT NVDA cross-contamination pattern. Falls back to user-only
       // scope only when ctx.analystId is missing (legacy/manual paths).
+      // Also scoped by environment — a LIVE run never operates on a PAPER
+      // position (and vice versa). get_portfolio_context already filters
+      // by env, but the model could synthesize close_position from prior
+      // memory, so the lookup itself enforces it.
+      const runEnvironment = ctx.runEnvironment ?? "PAPER";
       const position = await prisma.position.findFirst({
         where: {
           userId: ctx.userId,
           symbol: ticker,
           status: "OPEN",
+          environment: runEnvironment,
           ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
         },
         include: { analyst: { select: { name: true } } },
