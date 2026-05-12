@@ -93,7 +93,8 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
     retries: 1,
   },
   [
-    { cron: "TZ=America/New_York 0 7 * * 1-5" },
+    // Daily, 7 days a week — see firm-market-sweep cron comment.
+    { cron: "TZ=America/New_York 0 7 * * *" },
     { event: "intelligence/portfolio-monitor" },
   ],
   async ({ step }) => {

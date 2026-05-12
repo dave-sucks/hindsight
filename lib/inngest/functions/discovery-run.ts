@@ -40,16 +40,27 @@ export const discoveryRun = inngest.createFunction(
       null;
 
     const configs = await step.run("load-agent-configs", async () => {
-      return prisma.agentConfig.findMany({
+      const all = await prisma.agentConfig.findMany({
         where: {
           enabled: true,
           ...(targetConfigId ? { id: targetConfigId } : {}),
         },
       });
+      // Skip DAY-only analysts. A weekly Sunday WATCHING thesis with
+      // an intraday-level ENTER trigger is architecturally broken —
+      // Monday's premarket gap moves the breakout level. DAY analysts
+      // discover their candidates from today's tape via their morning
+      // daily run, not from week-old routed signals. Targeted manual
+      // fires (targetConfigId) still go through — useful for testing.
+      if (targetConfigId) return all;
+      return all.filter((c: { holdDurations: string[] }) => {
+        const holds = (c.holdDurations ?? []).map((h) => h.toUpperCase());
+        return !(holds.length > 0 && holds.every((h) => h === "DAY"));
+      });
     });
 
     if (configs.length === 0) {
-      return { ran: 0, reason: "no-enabled-configs" };
+      return { ran: 0, reason: "no-enabled-configs-after-filter" };
     }
 
     let totalNewTheses = 0;
@@ -156,17 +167,32 @@ export const discoveryRun = inngest.createFunction(
         const systemPrompt = buildDiscoverySystemPrompt({
           config: {
             name: config.name,
+            // FULL analystPrompt — never truncate. This is the analyst's
+            // edge, strategy, signal preferences, risk philosophy. Cutting
+            // it to 400 chars (prior behavior) reduced the analyst to a
+            // name and a fence; the agent had no idea who it was.
             analystPrompt: config.analystPrompt ?? undefined,
             sectors: config.sectors,
             industries: config.industries,
             themes: config.themes,
+            marketCapMin: config.marketCapMin,
+            marketCapMax: config.marketCapMax,
             exclusionList: config.exclusionList,
+            // Strategy-relevant fields the prompt now uses to ground
+            // horizon selection, position sizing, and direction bias.
+            holdDurations: config.holdDurations,
+            directionBias: config.directionBias,
+            minConfidence: config.minConfidence,
+            maxPositionSize: Number(config.maxPositionSize),
+            maxOpenPositions: config.maxOpenPositions,
+            signalTypes: config.signalTypes,
+            watchlist: config.watchlist,
           },
           existingTickers,
         });
 
         const userPrompt =
-          "Begin your weekly discovery scan. Walk read_signals, score the top 2-3 fresh candidates, mint up to 5 new theses. Skip tickers already in your library.";
+          "Begin your weekly discovery scan. Pull read_signals + get_market_movers(scope:\"universe\") + get_earnings_calendar(scope:\"universe\") in parallel — they're all pre-filtered to your universe and exclude tickers you already cover. Then research every interesting candidate with get_stock_data (and any other tools you need), score on the 4-dim composite, and mint WATCHING theses for everything ≥ 5. Up to 8 theses. Don't re-filter by universe — the tools did it.";
 
         try {
           const { steps, response } = await generateText({
