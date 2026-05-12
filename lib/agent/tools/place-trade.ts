@@ -514,7 +514,20 @@ export const placeTrade = defineTool({
           break;
         }
         if (["cancelled", "expired", "rejected"].includes(probed.status)) {
-          // Alpaca accepted then killed it — treat like a rejection.
+          // Cancelled-with-partial-fill: Alpaca took some shares before killing
+          // the rest. Adopt the partial fill via the didFill path below.
+          // Without this the DB marks CANCELLED while Alpaca keeps the shares
+          // (the NVDA-2026-05-11 orphan).
+          const partialQty = parseFloat(probed.filled_qty ?? "0");
+          const partialPrice = probed.filled_avg_price ? parseFloat(probed.filled_avg_price) : 0;
+          if (partialQty > 0 && partialPrice > 0) {
+            fillPrice = partialPrice;
+            resolvedNotional = undefined; // qty is authoritative from Alpaca now
+            resolvedShares = partialQty;
+            didFill = true;
+            filledAt = probed.filled_at ? new Date(probed.filled_at) : new Date();
+            break;
+          }
           await prisma.$transaction([
             prisma.order.update({
               where: { id: order.id },
