@@ -56,6 +56,8 @@ interface ToolCtx {
   marketCapMin?: number | null;
   marketCapMax?: number | null;
   maxPositionSize?: number;
+  /** Per-position cap when runEnvironment="LIVE" — see ToolContext.realMaxPosition. */
+  realMaxPosition?: number;
   maxOpenPositions?: number;
   /** Min thesis confidence (0-100) required for place_trade — enforced. */
   minConfidence?: number;

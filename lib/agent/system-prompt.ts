@@ -70,6 +70,8 @@ export interface AgentConfigInput {
   signalTypes?: string[];
   minConfidence?: number;
   maxPositionSize?: number;
+  /** LIVE-only per-position cap. PAPER runs ignore. See ToolContext.realMaxPosition. */
+  realMaxPosition?: number;
   maxOpenPositions?: number;
   watchlist?: string[];
   exclusionList?: string[];

@@ -50,6 +50,8 @@ import {
   Loader2,
   EllipsisVertical,
   ScanSearch,
+  Rocket,
+  ShieldOff,
 } from "lucide-react";
 import {
   Dialog,
@@ -65,6 +67,7 @@ import { RunShowcaseTrigger } from "@/components/domain/run-showcase-trigger";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { RunShowcaseDialog } from "@/components/domain/showcase-dialog";
 import { ShowcaseIcon } from "@/components/ui/showcase-icon";
+import { PromoteAnalystDialog } from "@/components/analysts/PromoteAnalystDialog";
 import type {
   AnalystDetail,
   PositionWithThesis,
@@ -203,6 +206,7 @@ export default function AnalystDetailClient({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showRunShowcase, setShowRunShowcase] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [promoteOpen, setPromoteOpen] = useState(false);
 
   async function handleDelete() {
     setDeleteLoading(true);
@@ -388,6 +392,9 @@ export default function AnalystDetailClient({
                       : "bg-muted-foreground/40",
                   )}
                 />
+                {config.tradingEnvironment === "LIVE" && (
+                  <Badge variant="destructive">LIVE</Badge>
+                )}
                 {hasRunning && (
                   <Badge
                     variant="secondary"
@@ -426,6 +433,19 @@ export default function AnalystDetailClient({
                   <DropdownMenuItem onClick={() => setConfigOpen(true)}>
                     <Settings2 className="h-3.5 w-3.5" />
                     Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setPromoteOpen(true)}>
+                    {config.tradingEnvironment === "LIVE" ? (
+                      <>
+                        <ShieldOff className="h-3.5 w-3.5" />
+                        Demote to paper
+                      </>
+                    ) : (
+                      <>
+                        <Rocket className="h-3.5 w-3.5" />
+                        Promote to live
+                      </>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setShowRunShowcase(true)}>
@@ -760,6 +780,12 @@ export default function AnalystDetailClient({
           </div>
         </SheetContent>
       </Sheet>
+
+      <PromoteAnalystDialog
+        analystId={config.id}
+        open={promoteOpen}
+        onOpenChange={setPromoteOpen}
+      />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-[400px]">

@@ -49,6 +49,13 @@ export interface ToolContext {
   marketCapMin?: number | null;
   marketCapMax?: number | null;
   maxPositionSize?: number;
+  /**
+   * Per-position cap that takes precedence over maxPositionSize when
+   * runEnvironment="LIVE". Wired from AgentConfig.realMaxPosition. The
+   * smaller of the two values wins so a forgetful LIVE promotion can't
+   * uncap by accident. PAPER runs ignore this field entirely.
+   */
+  realMaxPosition?: number;
   maxOpenPositions?: number;
   /**
    * Minimum thesis confidence (0-100) required for place_trade to proceed.

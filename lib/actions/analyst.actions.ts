@@ -22,6 +22,10 @@ export interface AnalystConfig {
   userId: string;
   name: string;
   enabled: boolean;
+  /** PAPER (default) or LIVE — drives which Alpaca account this analyst trades into. */
+  tradingEnvironment: "PAPER" | "LIVE";
+  /** Per-position cap when tradingEnvironment="LIVE". Ignored in PAPER. */
+  realMaxPosition: number;
   analystPrompt: string | null;
   description: string | null;
   sectors: string[];
@@ -556,6 +560,8 @@ export async function getAnalystDetail(
     userId: config.userId,
     name: config.name,
     enabled: config.enabled,
+    tradingEnvironment: (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
+    realMaxPosition: config.realMaxPosition,
     analystPrompt: config.analystPrompt,
     description: config.description,
     sectors: config.sectors as string[],

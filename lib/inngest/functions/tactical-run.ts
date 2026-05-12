@@ -118,6 +118,7 @@ export const tacticalRun = inngest.createFunction(
             watchlist: true,
             exclusionList: true,
             tradingEnvironment: true,
+            realMaxPosition: true,
           },
         }),
         fired.signalId
@@ -274,6 +275,7 @@ export const tacticalRun = inngest.createFunction(
         exclusionList: agentConfig.exclusionList ?? [],
         sectors: agentConfig.sectors ?? [],
         maxPositionSize: Number(agentConfig.maxPositionSize),
+        realMaxPosition: Number(agentConfig.realMaxPosition),
         maxOpenPositions: agentConfig.maxOpenPositions,
         minConfidence: agentConfig.minConfidence,
         alpacaCreds,
