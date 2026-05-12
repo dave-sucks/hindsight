@@ -20,8 +20,6 @@ import {
   type SyncDiff,
 } from "@/lib/inngest/functions/sync-heartbeat";
 
-export type { SyncDiff } from "@/lib/inngest/functions/sync-heartbeat";
-
 const QTY_TOLERANCE = 0.0001;
 
 async function resolveOwner(): Promise<{

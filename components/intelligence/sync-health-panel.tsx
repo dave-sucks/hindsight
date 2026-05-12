@@ -21,8 +21,8 @@ import {
   liquidateOrphan,
   closeStaleDbRow,
   trustAlpacaQty,
-  type SyncDiff,
 } from "@/lib/actions/sync-reconcile.actions";
+import type { SyncDiff } from "@/lib/inngest/functions/sync-heartbeat";
 
 function relTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
