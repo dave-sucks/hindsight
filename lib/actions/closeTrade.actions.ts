@@ -117,7 +117,11 @@ export async function closeOpenPosition(
     throw new Error(`Position ${positionId} is not OPEN (status: ${position.status})`);
   }
 
-  const creds = alpacaCreds ?? (await resolveAlpacaCredentials(position.userId)) ?? undefined;
+  const positionEnvironment = (position.environment as "PAPER" | "LIVE") ?? "PAPER";
+  const creds =
+    alpacaCreds ??
+    (await resolveAlpacaCredentials(position.userId, positionEnvironment)) ??
+    undefined;
   const placedAt = new Date();
   const idempotencyKey = randomUUID();
   const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
@@ -128,6 +132,7 @@ export async function closeOpenPosition(
       data: {
         positionId,
         userId: position.userId,
+        environment: positionEnvironment,
         symbol: position.symbol,
         side: closeSide.toUpperCase(),
         orderType: "MARKET",

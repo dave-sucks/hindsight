@@ -324,6 +324,7 @@ export const managePosition = defineTool({
             data: {
               positionId: position.id,
               userId: ctx.userId,
+              environment: position.environment,
               symbol: ticker,
               side: closeSide.toUpperCase(),
               orderType: "MARKET",
@@ -564,6 +565,7 @@ export const managePosition = defineTool({
             data: {
               positionId: position.id,
               userId: ctx.userId,
+              environment: position.environment,
               symbol: ticker,
               side: addSide.toUpperCase(),
               orderType: "MARKET",

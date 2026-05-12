@@ -318,11 +318,13 @@ export const placeTrade = defineTool({
 
       // 2. DB tx: create the row of record. avgCost starts at the entry guess
       // and is corrected to the real fill price in step 4.
+      const positionEnvironment = ctx.runEnvironment ?? "PAPER";
       const { position, order } = await prisma.$transaction(async (tx: TransactionClient) => {
         const pos = await tx.position.create({
           data: {
             analystId,
             userId: ctx.userId,
+            environment: positionEnvironment,
             symbol: ticker,
             direction: args.direction,
             status: "OPEN",
@@ -345,6 +347,7 @@ export const placeTrade = defineTool({
           data: {
             positionId: pos.id,
             userId: ctx.userId,
+            environment: positionEnvironment,
             symbol: ticker,
             side: args.direction === "LONG" ? "BUY" : "SELL",
             orderType: "MARKET",
