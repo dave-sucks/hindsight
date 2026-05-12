@@ -2,8 +2,7 @@ import DashboardClient from "@/components/dashboard/DashboardClient";
 import { getDashboardData } from "@/lib/actions/portfolio.actions";
 import type { DashboardData } from "@/lib/actions/portfolio.actions";
 import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
-import { EnvironmentTabs, parseEnvParam } from "@/components/settings/EnvironmentTabs";
+import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 
 const EMPTY_DASHBOARD: DashboardData = {
   openTrades: [], closedTrades: [], activityFeed: [],
@@ -31,13 +30,8 @@ const EMPTY_DASHBOARD: DashboardData = {
   spyCandles: [],
 };
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ env?: string }>;
-}) {
-  const params = await searchParams;
-  const environment = parseEnvParam(params.env);
+export default async function Home() {
+  const environment = await getCurrentEnvironment();
 
   const [data, supabase] = await Promise.all([
     getDashboardData(environment).catch(() => EMPTY_DASHBOARD),
@@ -47,27 +41,10 @@ export default async function Home({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [paperCount, liveCount] = user
-    ? await Promise.all([
-        prisma.position.count({ where: { userId: user.id, environment: "PAPER" } }),
-        prisma.position.count({ where: { userId: user.id, environment: "LIVE" } }),
-      ])
-    : [0, 0];
-
   return (
-    <div className="space-y-4">
-      <div className="px-4 sm:px-6 pt-4 flex justify-end">
-        <EnvironmentTabs
-          current={environment}
-          basePath="/"
-          paperCount={paperCount}
-          liveCount={liveCount}
-        />
-      </div>
-      <DashboardClient
-        data={data}
-        userId={user?.id}
-      />
-    </div>
+    <DashboardClient
+      data={data}
+      userId={user?.id}
+    />
   );
 }

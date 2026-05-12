@@ -9,6 +9,8 @@ import { isMarketOpen } from "@/lib/market-hours";
 import { prisma } from "@/lib/prisma";
 import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
 import { OnboardingShell } from "@/components/domain/onboarding-shell";
+import { getCurrentEnvironment, shouldExposeLiveEnv } from "@/lib/actions/environment.actions";
+import { EnvironmentSwitcher } from "@/components/settings/EnvironmentSwitcher";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const supabase = await createClient();
@@ -23,7 +25,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     };
 
     // Load open trade tickers, stocks list, and portfolio value at request time
-    const [initialStocks, openTrades, pnlAggregate, alpacaStatus] = await Promise.all([
+    const [initialStocks, openTrades, pnlAggregate, alpacaStatus, currentEnv, exposeLive] = await Promise.all([
         searchStocks(),
         prisma.position.findMany({
             where: { userId: user.id, status: "OPEN" },
@@ -35,6 +37,8 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             _sum: { realizedPnl: true },
         }),
         getApiKeyStatus("ALPACA"),
+        getCurrentEnvironment(),
+        shouldExposeLiveEnv(),
     ]);
 
     const openTradeTickers = openTrades
@@ -69,6 +73,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                         <div className="flex-1 flex items-center md:justify-center justify-end px-0 md:px-2 order-last md:order-none">
                             <SearchCommand renderAs="icon" label="Search stocks" initialStocks={initialStocks} />
                         </div>
+                        {exposeLive && <EnvironmentSwitcher current={currentEnv} />}
                         <MarketStatusPill open={marketOpen} />
                     </div>
                 </header>
