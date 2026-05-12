@@ -40,6 +40,7 @@ const FIVE_MIN_CRON = "TZ=America/New_York */5 4-19 * * 1-5";
 interface PendingOrderRow {
   id: string;
   userId: string;
+  environment: string;
   positionId: string;
   symbol: string;
   side: string;
@@ -71,6 +72,7 @@ export const reconcileOrders = inngest.createFunction(
         select: {
           id: true,
           userId: true,
+          environment: true,
           positionId: true,
           symbol: true,
           side: true,
@@ -86,11 +88,16 @@ export const reconcileOrders = inngest.createFunction(
       return { checked: 0, reason: "no-pending-orders" };
     }
 
-    const byUser = new Map<string, PendingOrderRow[]>();
+    // Group by (userId, environment) so each cohort hits the matching
+    // Alpaca account. A user may hold pending orders in both PAPER and LIVE
+    // simultaneously; using one set of creds for both would query the wrong
+    // host for half of them and miss every match.
+    const byUserEnv = new Map<string, PendingOrderRow[]>();
     for (const o of pending) {
-      const arr = byUser.get(o.userId) ?? [];
+      const key = `${o.userId}|${o.environment}`;
+      const arr = byUserEnv.get(key) ?? [];
       arr.push(o);
-      byUser.set(o.userId, arr);
+      byUserEnv.set(key, arr);
     }
 
     let filled = 0;
@@ -100,9 +107,10 @@ export const reconcileOrders = inngest.createFunction(
     let stillPending = 0;
     let errors = 0;
 
-    for (const [userId, orders] of byUser) {
+    for (const [key, orders] of byUserEnv) {
+      const [userId, environment] = key.split("|") as [string, "PAPER" | "LIVE"];
       const creds: AlpacaCredentials | undefined =
-        (await resolveAlpacaCredentials(userId)) ?? undefined;
+        (await resolveAlpacaCredentials(userId, environment)) ?? undefined;
 
       for (const order of orders) {
         await step.run(`reconcile-${order.id}`, async () => {

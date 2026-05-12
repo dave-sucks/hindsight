@@ -64,6 +64,11 @@ export const morningResearch = inngest.createFunction(
         // Never skip the run — the agent should always research.
         // slotsRemaining=0 just means it won't place new trades.
 
+        // Snapshot the analyst's env onto the run so place_trade /
+        // get_portfolio_context route to the right Alpaca account.
+        const runEnvironment =
+          (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
+
         // 2b. Create ResearchRun record (status: RUNNING)
         const run = await prisma.researchRun.create({
           data: {
@@ -71,6 +76,7 @@ export const morningResearch = inngest.createFunction(
             agentConfigId: config.id,
             source: "AGENT",
             status: "RUNNING",
+            environment: runEnvironment,
             parameters: {
               markets: config.markets,
               sectors: config.sectors,
@@ -101,8 +107,11 @@ export const morningResearch = inngest.createFunction(
           exclusionList: config.exclusionList,
         };
 
-        // Resolve per-user Alpaca credentials for this analyst's owner
-        const alpacaCreds = await resolveAlpacaCredentials(config.userId) ?? undefined;
+        // Resolve per-user Alpaca credentials for this analyst's owner,
+        // scoped to the run's environment (PAPER vs LIVE).
+        const alpacaCreds =
+          (await resolveAlpacaCredentials(config.userId, runEnvironment)) ??
+          undefined;
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
         // V1/V2 dispatch — flagged per-analyst (docs/MORNING_RUN_V2_DESIGN.md
@@ -132,6 +141,7 @@ export const morningResearch = inngest.createFunction(
           maxOpenPositions: config.maxOpenPositions,
           minConfidence: config.minConfidence,
           alpacaCreds,
+          runEnvironment,
           // Fix #6 — gated on the V2 flag. The V1 prompt expects all
           // three buckets; V2 narrows to portfolio + watchlist so the
           // agent isn't tempted to act on discovery candidates that
