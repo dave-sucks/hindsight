@@ -10,27 +10,22 @@
  * ResearchRun, no per-analyst config loading, wide tool allowlist).
  */
 
-import type { UIMessage } from "ai";
 import { Thread } from "@/components/assistant-ui/thread";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import { ChatRuntime } from "@/components/chat/chat-runtime";
 import { MessageCircle } from "lucide-react";
 
 interface Props {
-  runId: string;
-  initialMessages: UIMessage[];
+  runId?: string;
 }
 
-export function ChatPageClient({ runId, initialMessages }: Props) {
-  const body: Record<string, unknown> = { runId };
+export function ChatPageClient({ runId }: Props) {
+  const body: Record<string, unknown> = {};
+  if (runId) body.runId = runId;
 
   return (
     <div className="flex h-[calc(100dvh-3rem)] flex-col">
-      <ChatRuntime
-        api="/api/agent/principal"
-        body={body}
-        messages={initialMessages}
-      >
+      <ChatRuntime api="/api/agent/principal" body={body}>
         <Thread
           welcomeConfig={{
             title: "Hindsight",
