@@ -226,12 +226,19 @@ async function getCurrentUserId(): Promise<string | null> {
 
 // ── getAnalystList ────────────────────────────────────────────────────────────
 
-export async function getAnalystList(): Promise<AnalystListItem[]> {
+export async function getAnalystList(
+  environment: "PAPER" | "LIVE" = "PAPER",
+): Promise<AnalystListItem[]> {
   const userId = await getCurrentUserId();
   if (!userId) return [];
 
+  // The analyst grid shows analysts that operate in the selected env.
+  // tradingEnvironment is single-valued per analyst; a paper-env user
+  // never sees promoted-to-live analysts mixed into the list and vice
+  // versa. Run / position aggregates below also scope by env so
+  // cross-env activity doesn't leak into a cohort's stats.
   const configs = await prisma.agentConfig.findMany({
-    where: { userId },
+    where: { userId, tradingEnvironment: environment },
     orderBy: { createdAt: "asc" },
   });
 
@@ -240,7 +247,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
   // Load all runs and positions for this user, group in JS
   const [allRuns, allPositions, alpacaCreds] = await Promise.all([
     prisma.researchRun.findMany({
-      where: { userId },
+      where: { userId, environment },
       orderBy: { startedAt: "desc" },
       select: {
         id: true,
@@ -250,7 +257,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       },
     }),
     prisma.position.findMany({
-      where: { userId },
+      where: { userId, environment },
       select: {
         id: true,
         symbol: true,
@@ -264,7 +271,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
         openedAt: true,
       },
     }),
-    resolveAlpacaCredentials(userId).catch(() => undefined),
+    resolveAlpacaCredentials(userId, environment).catch(() => undefined),
   ]);
 
   // Fetch live prices once for all open positions across analysts.

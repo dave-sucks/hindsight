@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { Card } from "@/components/ui/card";
 import { StockLogo } from "@/components/StockLogo";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -71,9 +72,10 @@ export default async function RunsPage() {
     data: { user },
   } = await supabase.auth.getUser();
   const userId = user?.id ?? "";
+  const environment = await getCurrentEnvironment();
 
   const runs = await prisma.researchRun.findMany({
-    where: { userId },
+    where: { userId, environment },
     include: {
       // mode + parameters drive the run-card title and tactical context.
       // mode is on the schema (MORNING_PLAN / INTRADAY_TACTICAL / EOD_REFLECTIVE);
