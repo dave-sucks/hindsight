@@ -275,8 +275,23 @@ export const readSignals = defineTool({
     // ThesisUpdate row tied to this trigger, then narrow the routed
     // signals to that set. Lets the tactical agent see priors before
     // deciding ("last two times this fired, the moves looked like X").
+    //
+    // 2026-05-10: GPT-4o in discovery mode kept inventing triggerId
+    // values ("new_discovery", "", "default") because the parameter
+    // is in the schema. Each call hit the empty-set early-return below
+    // and dropped the full routed pool. Discovery isn't tactical — it
+    // doesn't have a trigger context — so silently ignore the parameter
+    // there. The same guard handles dailyRunOnly (Daily V2) which also
+    // shouldn't be diving into historical trigger fires from the daily
+    // walk-the-book path.
     let priorTriggerSignalIds: string[] | null = null;
-    if (triggerId) {
+    if (triggerId && (ctx.discoveryOnly || ctx.dailyRunOnly)) {
+      console.warn(
+        `[read_signals] ignoring triggerId='${triggerId}' in ${
+          ctx.discoveryOnly ? "discoveryOnly" : "dailyRunOnly"
+        } mode — falling through to routed-pool query.`,
+      );
+    } else if (triggerId) {
       const priorUpdates = await prisma.thesisUpdate.findMany({
         where: { triggerId },
         select: { signalIds: true },
@@ -458,6 +473,27 @@ export const readSignals = defineTool({
     // Watchlist names stay because they're the analyst's curated set of
     // explicit interests — surfacing fresh signals on those is correct
     // even when the router didn't reach the analyst this morning.
+    //
+    // In discoveryOnly mode, the fallback is meaningless — every fallback
+    // signal would carry a watchlist ticker which is already covered.
+    // Return empty-shape directly so the agent moves on to movers /
+    // earnings calendar instead of seeing a "Fallback: watchlist match"
+    // summary it can't act on.
+    if (finalRoutes.length === 0 && ctx.discoveryOnly) {
+      return {
+        summary: "No routed discovery candidates today.",
+        data: {
+          count: 0,
+          signals: [],
+          portfolioSignals: [],
+          watchlistSignals: [],
+          discoverySignals: [],
+          discoveryNote:
+            "Router surfaced no net-new candidates this week — fall back to get_market_movers / get_earnings_calendar with scope:\"universe\".",
+        } as SignalsToolData,
+        sources: [],
+      };
+    }
     if (finalRoutes.length === 0) {
       const config = await prisma.agentConfig.findUnique({
         where: { id: ctx.analystId },
@@ -582,7 +618,39 @@ export const readSignals = defineTool({
 
     const portfolioSignalsAll = mappedSignals.filter((s) => bucketOf(s) === "portfolio");
     const watchlistSignalsAll = mappedSignals.filter((s) => bucketOf(s) === "watchlist");
-    const discoverySignalsAll = mappedSignals.filter((s) => bucketOf(s) === "discovery");
+
+    // 2026-05-10 — discovery semantics fix.
+    //
+    // PRIOR BUG: the discovery bucket was defined as "routes with code in
+    // {DISCOVERY, SECTOR_MATCH, INDUSTRY_MATCH, THEME_MATCH, CROSS_ANALYST,
+    // FIRM_AGGREGATE_FEED-with-no-portfolio-overlap}". For an analyst with a
+    // busy book, most aggregate routes get classified as AGGREGATE_TICKER_MATCH
+    // and land in the watchlist or portfolio bucket via the matchedUniverse
+    // hints — then discoveryOnly hides those, leaving the agent with an
+    // empty discovery bucket even when 60+ signals routed. (See the weekly
+    // auto-cron on 2026-05-10: Catalyst Event Raider had 68 "discovery
+    // bucket" routes per SQL but read_signals returned 0.)
+    //
+    // FIX: in discoveryOnly mode, "discovery" means signal-tickers NOT in
+    // this analyst's covered set (active + watching theses + watchlist +
+    // open positions). The bucketing system is irrelevant — the right
+    // question is "does the agent already cover this ticker?".
+    //
+    // Outside discoveryOnly mode, keep the bucket-based classification —
+    // the daily-run + ad-hoc paths still want the three-bucket UI.
+    const coveredSet = new Set(
+      (ctx.coveredTickers ?? [
+        ...(ctx.watchlist ?? []),
+        ...(ctx.positionTickers ?? []),
+      ]).map((t) => t.toUpperCase()),
+    );
+    const isAlreadyCovered = (s: SignalItem): boolean =>
+      s.tickers.length === 0
+        ? false // macro / aggregate-with-no-tickers: never "covered"
+        : s.tickers.every((t) => coveredSet.has(t.toUpperCase()));
+    const discoverySignalsAll = ctx.discoveryOnly
+      ? mappedSignals.filter((s) => !isAlreadyCovered(s))
+      : mappedSignals.filter((s) => bucketOf(s) === "discovery");
 
     // Mode-aware bucket filtering:
     //   discoveryOnly → Discovery cron: hide portfolio + watchlist

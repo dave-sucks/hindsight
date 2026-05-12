@@ -14,8 +14,9 @@
  *     trailing peak math, not predicate evaluation. Stays callable; the
  *     price-monitor cron gates the call on exitStrategy === "TRAILING".
  *   - MANUAL — new default for new positions. Never auto-closes.
- *   - targetProximity / stopProximity helpers — still useful for the
- *     near-target email in price-monitor.ts.
+ *   - targetProximity / stopProximity helpers — kept as small pure
+ *     utilities; no current caller after the near-target email path
+ *     was removed.
  *
  * Existing legacy rows on Position.exitStrategy ("PRICE_TARGET", "TIME_BASED")
  * are effectively MANUAL — checkExitConditions early-returns when the strategy
@@ -71,8 +72,7 @@ export function evaluateExitStrategy(
 
 /**
  * Returns how close (0–1) the position is to its target.
- * 1.0 = at target, 0 = at entry. Still used by price-monitor's
- * near-target email path.
+ * 1.0 = at target, 0 = at entry.
  */
 export function targetProximity(
   position: Pick<PositionModel, "direction" | "avgCost" | "targetPrice">,

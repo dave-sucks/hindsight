@@ -5,9 +5,6 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { isMarketOpen } from "@/lib/market-hours";
 import { checkExitConditions } from "@/lib/trade-exit";
 import type { PositionModel } from "@/lib/generated/prisma/models";
-import { sendEmail, getUserEmail } from "@/lib/email";
-import { nearTargetHtml } from "@/lib/emails/near-target";
-import { getOwnerUserId } from "@/lib/auth/account";
 
 // ─── P&L helpers ─────────────────────────────────────────────────────────────
 
@@ -136,58 +133,10 @@ export const priceMonitor = inngest.createFunction(
           // to honor their trail-from-peak math.
           await checkExitConditions(position as unknown as PositionModel, currentPrice, position.peakPrice);
 
-          // Near-target alert — send once when ≥80% of the way to price target
-          if (
-            position.targetPrice &&
-            !position.nearTargetAlertSent
-          ) {
-            const totalMove =
-              position.direction === "LONG"
-                ? position.targetPrice - position.avgCost
-                : position.avgCost - position.targetPrice;
-            const currentMove =
-              position.direction === "LONG"
-                ? currentPrice - position.avgCost
-                : position.avgCost - currentPrice;
-            const progress = totalMove > 0 ? currentMove / totalMove : 0;
-
-            if (progress >= 0.8) {
-              await prisma.position.update({
-                where: { id: position.id },
-                data: { nearTargetAlertSent: true },
-              });
-              // Resolve the account OWNER's email rather than the userId
-              // that originally placed the trade — multi-tenant: the OWNER
-              // is the canonical alert recipient. Falls back to the trader's
-              // own email if the membership lookup misses.
-              getOwnerUserId(position.accountId)
-                .then((ownerUserId) =>
-                  getUserEmail(ownerUserId ?? position.userId),
-                )
-                .then((toEmail) => {
-                if (!toEmail) return;
-                const unrealizedPnl =
-                  position.direction === "LONG"
-                    ? (currentPrice - position.avgCost) * position.quantity
-                    : (position.avgCost - currentPrice) * position.quantity;
-                sendEmail({
-                  to: toEmail,
-                  subject: `🎯 ${position.symbol} is ${Math.round(progress * 100)}% to target`,
-                  html: nearTargetHtml({
-                    ticker: position.symbol,
-                    direction: position.direction as "LONG" | "SHORT",
-                    entryPrice: position.avgCost,
-                    currentPrice,
-                    targetPrice: position.targetPrice!,
-                    progressPct: progress * 100,
-                    unrealizedPnl,
-                    unrealizedPnlPct: pnl.pct,
-                    tradeId: position.id,
-                  }),
-                });
-              });
-            }
-          }
+          // Near-target email alert removed — the daily digest at 10 AM ET
+          // covers position movement; intraday "80% to target" pings turned
+          // out to be noise, not signal. The nearTargetAlertSent column is
+          // left in place (no migration) but no longer written.
 
           checked++;
         } catch {

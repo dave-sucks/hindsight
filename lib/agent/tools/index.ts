@@ -66,6 +66,13 @@ interface ToolCtx {
   discoveryOnly?: boolean;
   /** Hide discoverySignals from read_signals (daily-run V2 cron). */
   dailyRunOnly?: boolean;
+  /**
+   * Full set of tickers this analyst already covers (ACTIVE + WATCHING
+   * theses + watchlist + open positions). Discovery scope ("universe")
+   * excludes this set; "covered" lookups include only this set. Populated
+   * by discovery-run.ts. See ToolContext.coveredTickers.
+   */
+  coveredTickers?: string[];
 }
 
 export function createResearchTools(ctx: ToolCtx) {

@@ -40,19 +40,19 @@ interface MoverRow {
 export const getMarketMovers = defineTool({
   description:
     "Pull today's market movers from FMP — gainers, losers, or most actives. " +
-    "Use `scope: \"universe\"` to fence to this analyst's watchlist + open positions; " +
-    "`scope: \"all\"` returns the full top-list. Prefer `scope: \"all\"` for momentum / " +
-    "mean-reversion playbooks where the universe IS the firehose; prefer `scope: \"universe\"` " +
-    "for sector-specialist analysts who only want movers among their own names.",
+    "Three scopes: `scope: \"all\"` returns the full firehose; `scope: \"universe\"` returns " +
+    "movers that are NOT already in your coverage (active/watching theses ∪ watchlist ∪ open " +
+    "positions) — the discovery set; `scope: \"coverage\"` returns ONLY movers among your " +
+    "watchlist + open-position tickers — the 'what's moving on my book' set. Default is `all`.",
   schema: z.object({
     type: z
       .enum(["gainers", "losers", "active"])
       .describe("'gainers' = top % up, 'losers' = top % down, 'active' = highest volume."),
     scope: z
-      .enum(["universe", "all"])
+      .enum(["universe", "coverage", "all"])
       .optional()
       .describe(
-        "'universe' fences to watchlist + open positions; 'all' returns the full top-list. Defaults to 'all'.",
+        "'all' = full firm top-list (default). 'universe' = full top-list MINUS tickers you already cover (the discovery set — use this in weekly discovery). 'coverage' = top-list intersected with your watchlist + open positions (the 'my book' set).",
       ),
   }),
   ui: "tool-ui" as const,
@@ -61,7 +61,9 @@ export const getMarketMovers = defineTool({
   progressLabel: (args) => {
     const { label } = MOVER_PATHS[args.type];
     const scope = args.scope ?? "all";
-    return scope === "universe" ? `Pulling ${label.toLowerCase()} in your universe` : `Pulling ${label.toLowerCase()}`;
+    if (scope === "universe") return `Pulling ${label.toLowerCase()} outside your coverage`;
+    if (scope === "coverage") return `Pulling ${label.toLowerCase()} on your book`;
+    return `Pulling ${label.toLowerCase()}`;
   },
 
   execute: async (args, ctx) => {
@@ -104,18 +106,49 @@ export const getMarketMovers = defineTool({
 
     const pctOf = (m: MoverRow): number => m.percentChange ?? m.changesPercentage ?? 0;
 
-    // ── Universe fence (v1): ticker-set intersection vs watchlist + positions
-    // Industry / sector fencing requires per-ticker enrichment — too expensive
-    // here. Same trade-off as get_earnings_calendar; deferred to router-side.
+    // 2026-05-10 — scope semantics rewrite.
+    //
+    // PRIOR BUG: `scope:"universe"` intersected with watchlist+positions,
+    // which is the OPPOSITE of what a discovery agent wants. The weekly
+    // discovery cron called scope:"universe" and the tool returned 0
+    // candidates because the analyst's watchlist+positions was a tiny
+    // subset of their universe.
+    //
+    // FIX: three scopes —
+    //   "all"      — full top-list (no filter). Default.
+    //   "universe" — top-list MINUS coveredTickers (discovery set).
+    //   "coverage" — top-list ∩ (watchlist ∪ positions) (book set —
+    //                what the old "universe" used to mean).
+    //
+    // Sector/industry/marketCap fencing still requires per-ticker
+    // enrichment (FMP movers endpoints don't return that data) and is
+    // deferred — for discovery, the practical filter is "what's moving
+    // that I don't already cover?", which is enough to surface useful
+    // candidates the agent can drill into via get_stock_data.
     const watchlist = (ctx as { watchlist?: string[] })?.watchlist ?? [];
     const positionTickers = (ctx as { positionTickers?: string[] })?.positionTickers ?? [];
-    const universeSet = new Set(
+    const ctxCovered = (ctx as { coveredTickers?: string[] })?.coveredTickers ?? [];
+    const coverageSet = new Set(
       [...watchlist, ...positionTickers].map((t) => t.toUpperCase()),
     );
-    const filtered =
-      scope === "universe" && universeSet.size > 0
-        ? raw.filter((m) => universeSet.has(m.symbol.toUpperCase()))
+    const coveredSet = new Set(
+      (ctxCovered.length > 0
+        ? ctxCovered
+        : [...watchlist, ...positionTickers]
+      ).map((t) => t.toUpperCase()),
+    );
+    let filtered: MoverRow[];
+    if (scope === "coverage") {
+      filtered = coverageSet.size > 0
+        ? raw.filter((m) => coverageSet.has(m.symbol.toUpperCase()))
         : raw;
+    } else if (scope === "universe") {
+      filtered = coveredSet.size > 0
+        ? raw.filter((m) => !coveredSet.has(m.symbol.toUpperCase()))
+        : raw;
+    } else {
+      filtered = raw;
+    }
 
     // Sort by absolute % change so the most extreme moves bubble to the top
     // regardless of gainer/loser/active. Cap at 25 visible rows to keep the
@@ -126,11 +159,15 @@ export const getMarketMovers = defineTool({
     const remaining = sorted.length - visible.length;
 
     const fenceNote =
-      scope === "universe"
-        ? universeSet.size > 0
-          ? `fenced to your ${universeSet.size} watchlist + position ticker(s)`
-          : "no watchlist or open positions to fence against — returning full list"
-        : "full firm list";
+      scope === "coverage"
+        ? coverageSet.size > 0
+          ? `fenced to your ${coverageSet.size} watchlist + position ticker(s)`
+          : "no watchlist or open positions — returning full list"
+        : scope === "universe"
+          ? coveredSet.size > 0
+            ? `excluding your ${coveredSet.size} already-covered ticker(s) — discovery set`
+            : "no coverage to exclude — returning full list"
+          : "full firm list";
 
     const headerText =
       sorted.length === 0

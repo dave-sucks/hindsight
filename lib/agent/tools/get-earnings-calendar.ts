@@ -31,11 +31,11 @@ interface EarningsRow {
 export const getEarningsCalendar = defineTool({
   description:
     "Pull the upcoming earnings calendar for the next N days (default 7). " +
-    "Use `scope: \"universe\"` to fence to this analyst's watchlist + open positions; " +
-    "`scope: \"all\"` returns the full firm calendar. Prefer `scope: \"universe\"` unless " +
-    "the analyst's playbook treats the full calendar as their hunting ground (e.g. " +
-    "EARNINGS_DRIFT). For per-ticker earnings detail (EPS history, beat rate) use " +
-    "get_earnings_data instead.",
+    "Three scopes: `scope: \"all\"` returns the full firm calendar; `scope: \"universe\"` " +
+    "returns reports for tickers NOT already in your coverage (the discovery set); " +
+    "`scope: \"coverage\"` returns ONLY reports on watchlist + open-position tickers (your book). " +
+    "Default is `coverage` to preserve legacy behavior. For per-ticker earnings detail " +
+    "(EPS history, beat rate) use get_earnings_data instead.",
   schema: z.object({
     days: z
       .number()
@@ -45,23 +45,25 @@ export const getEarningsCalendar = defineTool({
       .optional()
       .describe("Days forward to pull; defaults to 7."),
     scope: z
-      .enum(["universe", "all"])
+      .enum(["universe", "coverage", "all"])
       .optional()
       .describe(
-        "'universe' fences to watchlist + open positions; 'all' returns the full calendar. Defaults to 'universe'.",
+        "'all' = full firm calendar. 'universe' = full calendar MINUS tickers you already cover (the discovery set — use this in weekly discovery). 'coverage' = calendar intersected with watchlist + open positions (the 'my book' set). Defaults to 'coverage'.",
       ),
   }),
   ui: "tool-ui" as const,
   groupId: "Researching",
 
   progressLabel: (args) => {
-    const scope = args.scope ?? "universe";
-    return scope === "all" ? "Pulling the firm earnings calendar" : "Pulling earnings in your universe";
+    const scope = args.scope ?? "coverage";
+    if (scope === "all") return "Pulling the firm earnings calendar";
+    if (scope === "universe") return "Pulling earnings outside your coverage";
+    return "Pulling earnings on your book";
   },
 
   execute: async (args, ctx) => {
     const days = args.days ?? 7;
-    const scope = args.scope ?? "universe";
+    const scope = args.scope ?? "coverage";
 
     const today = new Date();
     const out = new Date(Date.now() + days * 86400_000);
@@ -106,19 +108,42 @@ export const getEarningsCalendar = defineTool({
       };
     }
 
-    // ── Universe fence (v1): ticker-set intersection vs watchlist + positions
+    // 2026-05-10 — scope semantics rewrite (mirrors get_market_movers).
+    //
+    // PRIOR BUG: `scope:"universe"` intersected with watchlist+positions,
+    // which is the OPPOSITE of what a discovery agent wants.
+    //
+    // FIX: three scopes —
+    //   "all"      — full firm calendar.
+    //   "universe" — calendar MINUS coveredTickers (discovery set).
+    //   "coverage" — calendar ∩ (watchlist ∪ positions) (book set — default).
+    //
     // Industry / sector fencing requires per-ticker enrichment which is too
-    // expensive at tool-call time; deferred to the router-side ticker-intersection
-    // path. The agent can drill into specific names with get_stock_data.
+    // expensive at tool-call time; deferred.
     const watchlist = (ctx as { watchlist?: string[] })?.watchlist ?? [];
     const positionTickers = (ctx as { positionTickers?: string[] })?.positionTickers ?? [];
-    const universeSet = new Set(
+    const ctxCovered = (ctx as { coveredTickers?: string[] })?.coveredTickers ?? [];
+    const coverageSet = new Set(
       [...watchlist, ...positionTickers].map((t) => t.toUpperCase()),
     );
-    const filtered =
-      scope === "universe" && universeSet.size > 0
-        ? calendar.filter((r) => universeSet.has(r.symbol.toUpperCase()))
+    const coveredSet = new Set(
+      (ctxCovered.length > 0
+        ? ctxCovered
+        : [...watchlist, ...positionTickers]
+      ).map((t) => t.toUpperCase()),
+    );
+    let filtered: EarningsRow[];
+    if (scope === "coverage") {
+      filtered = coverageSet.size > 0
+        ? calendar.filter((r) => coverageSet.has(r.symbol.toUpperCase()))
         : calendar;
+    } else if (scope === "universe") {
+      filtered = coveredSet.size > 0
+        ? calendar.filter((r) => !coveredSet.has(r.symbol.toUpperCase()))
+        : calendar;
+    } else {
+      filtered = calendar;
+    }
 
     // Sort by date asc, cap at 30 visible rows so the tool row stays readable.
     // The full count is still returned in `data.count` so the agent can decide
@@ -129,11 +154,15 @@ export const getEarningsCalendar = defineTool({
     const remaining = sorted.length - visible.length;
 
     const fenceNote =
-      scope === "universe"
-        ? universeSet.size > 0
-          ? `fenced to your ${universeSet.size} watchlist + position ticker(s)`
-          : "no watchlist or open positions to fence against — returning full calendar"
-        : "full firm calendar";
+      scope === "coverage"
+        ? coverageSet.size > 0
+          ? `fenced to your ${coverageSet.size} watchlist + position ticker(s)`
+          : "no watchlist or open positions — returning full calendar"
+        : scope === "universe"
+          ? coveredSet.size > 0
+            ? `excluding your ${coveredSet.size} already-covered ticker(s) — discovery set`
+            : "no coverage to exclude — returning full calendar"
+          : "full firm calendar";
 
     const headerText =
       sorted.length === 0

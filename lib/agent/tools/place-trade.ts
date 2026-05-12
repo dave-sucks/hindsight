@@ -11,6 +11,10 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
+import { sendEmail, getUserEmail } from "@/lib/email";
+import { getOwnerUserId } from "@/lib/auth/account";
+import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
+import { isInsideMorningBatch } from "@/lib/email-suppression";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -618,6 +622,69 @@ export const placeTrade = defineTool({
         };
       } catch (portfolioErr) {
         console.warn("[tool] place_trade portfolio update fetch failed:", portfolioErr);
+      }
+
+      // Trade-opened alert — fire-and-forget. Only emails when the order
+      // actually filled (avgCost is meaningful then). Two gates:
+      //   1. AgentConfig.emailAlerts — owner opt-out per analyst.
+      //   2. isInsideMorningBatch — suppress for trades inside the 8 AM
+      //      morning cron's MORNING_PLAN runs; the 10 AM daily digest
+      //      will consolidate them. Off-cycle trades (tactical, discovery,
+      //      manual user clicks outside the morning window) still fire
+      //      immediate emails per call.
+      // Never blocks or fails the trade path.
+      if (didFill) {
+        const emailedShares = resolvedShares ?? finalShares;
+        const emailedAvgCost = fillPrice;
+        void (async () => {
+          try {
+            // Fetch the run mode to decide morning-batch suppression.
+            const run = ctx.runId
+              ? await prisma.researchRun.findUnique({
+                  where: { id: ctx.runId },
+                  select: { mode: true },
+                })
+              : null;
+            if (isInsideMorningBatch(run?.mode)) {
+              return; // digest will cover it
+            }
+            const config = await prisma.agentConfig.findUnique({
+              where: { id: analystId },
+              select: { emailAlerts: true, name: true },
+            });
+            if (!config?.emailAlerts) return;
+            // Send to the account OWNER, not the user that placed the trade.
+            // For solo OWNER they're the same; for team workspaces an EDITOR
+            // placing a trade still pings the OWNER (canonical inbox).
+            const ownerUserId = await getOwnerUserId(ctx.accountId);
+            const toEmail = await getUserEmail(ownerUserId ?? ctx.userId);
+            if (!toEmail) return;
+            const thesis = await prisma.thesis.findUnique({
+              where: { id: args.thesis_id },
+              select: { reasoningSummary: true },
+            });
+            const verb = args.direction === "LONG" ? "📈 Bought" : "📉 Shorted";
+            await sendEmail({
+              to: toEmail,
+              subject: `${verb} ${ticker} — ${config.name}`,
+              html: tradeOpenedHtml({
+                ticker,
+                direction: args.direction,
+                qty: emailedShares,
+                avgCost: emailedAvgCost,
+                stopLoss: args.stop_loss,
+                targetPrice: args.target_price,
+                analystName: config.name,
+                thesisSummary: thesis?.reasoningSummary ?? null,
+              }),
+            });
+          } catch (err) {
+            console.warn(
+              "[place_trade] trade-opened email failed:",
+              err instanceof Error ? err.message : err,
+            );
+          }
+        })();
       }
 
       const message = didFill

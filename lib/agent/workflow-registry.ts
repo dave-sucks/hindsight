@@ -392,8 +392,8 @@ export const TEAMS: Team[] = [
       // Research
       { name: "get_portfolio_context", provider: "internal", summary: "Live portfolio snapshot: P&L %, days held, distance from peak price, exit levels, original thesis reasoning. Called at the start of the per-thesis review." },
       TOOL_GET_STOCK_DATA,
-      { name: "get_earnings_calendar", provider: "finnhub", summary: "Firm-wide earnings calendar for the next N days. scope:\"universe\" fences to watchlist + open positions; scope:\"all\" returns the full firehose. Pull-tool counterpart to the EARNINGS_CALENDAR feed." },
-      { name: "get_market_movers", provider: "fmp", summary: "Today's market movers — gainers, losers, or most-active. scope:\"universe\" fences to watchlist + positions; scope:\"all\" returns the full top-list. Pull-tool counterpart to the MARKET_MOVERS_* feeds." },
+      { name: "get_earnings_calendar", provider: "finnhub", summary: "Firm-wide earnings calendar for the next N days. scope:\"coverage\" returns reports on your watchlist + positions; scope:\"universe\" returns the calendar MINUS your covered tickers (discovery set); scope:\"all\" returns the full firehose. Pull-tool counterpart to the EARNINGS_CALENDAR feed." },
+      { name: "get_market_movers", provider: "fmp", summary: "Today's market movers — gainers, losers, or most-active. scope:\"coverage\" intersects with watchlist + positions; scope:\"universe\" returns the top-list MINUS your covered tickers (discovery set); scope:\"all\" returns the full top-list. Pull-tool counterpart to the MARKET_MOVERS_* feeds." },
       {
         name: "get_options_flow", provider: "fmp", summary: "Put/call ratio, unusual contracts, institutional positioning.",
         resources: [{ source: "fmp", title: "Options chain analysis", description: "P/C ratio, unusual volume/OI contracts, premium flags.", type: "api", endpointOrPath: "/options/chain/{ticker}", exampleOutput: "P/C 0.65 (bullish) · 3 unusual contracts", notes: ["Flags vol/OI ≥ 5x or premium ≥ $500K"] }],
@@ -713,15 +713,15 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "get_earnings_calendar",
     category: "research",
-    summary: "Firm-wide earnings calendar for the next N days. scope:\"universe\" fences to watchlist + open positions; scope:\"all\" returns the full firehose. Pull-tool counterpart to the EARNINGS_CALENDAR feed subscription. Per-ticker history → get_earnings_data instead.",
+    summary: "Firm-wide earnings calendar for the next N days. scope:\"coverage\" intersects with watchlist + positions (your book); scope:\"universe\" returns the calendar MINUS already-covered tickers (the discovery set); scope:\"all\" returns the full firehose. Pull-tool counterpart to the EARNINGS_CALENDAR feed subscription. Per-ticker history → get_earnings_data instead.",
     providers: ["finnhub"],
     agents: ["agent"],
-    resources: [{ source: "finnhub", title: "Firm earnings calendar", description: "Next N days of upcoming earnings, with ticker / report date / BMO|AMC / EPS estimate.", type: "api", endpointOrPath: "/calendar/earnings?from={today}&to={+Nd}", exampleOutput: "NVDA 2026-05-21 AMC · est $0.84 · …", notes: ["Default 7d window", "scope:\"universe\" intersects with watchlist + open positions"] }],
+    resources: [{ source: "finnhub", title: "Firm earnings calendar", description: "Next N days of upcoming earnings, with ticker / report date / BMO|AMC / EPS estimate.", type: "api", endpointOrPath: "/calendar/earnings?from={today}&to={+Nd}", exampleOutput: "NVDA 2026-05-21 AMC · est $0.84 · …", notes: ["Default 7d window", "scope:\"coverage\" intersects with watchlist + positions; scope:\"universe\" excludes them (discovery)"] }],
   },
   {
     name: "get_market_movers",
     category: "research",
-    summary: "Today's market movers — gainers, losers, or most-active. scope:\"universe\" fences to watchlist + positions; scope:\"all\" returns the full top-list. Pull-tool counterpart to the MARKET_MOVERS_* feed subscriptions.",
+    summary: "Today's market movers — gainers, losers, or most-active. scope:\"coverage\" intersects with watchlist + positions; scope:\"universe\" returns the top-list MINUS already-covered tickers (the discovery set); scope:\"all\" returns the full top-list. Pull-tool counterpart to the MARKET_MOVERS_* feed subscriptions.",
     providers: ["fmp"],
     agents: ["agent"],
     resources: [
