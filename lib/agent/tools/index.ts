@@ -42,6 +42,7 @@ import { readPastTranscripts } from "./read-past-transcripts";
 interface ToolCtx {
   runId: string;
   userId: string;
+  accountId: string;
   analystId?: string;
   /** Podcast feature — FK to PodcastSegment for segment runs. */
   podcastSegmentId?: string;

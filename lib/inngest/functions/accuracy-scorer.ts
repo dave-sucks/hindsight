@@ -13,6 +13,7 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getAccuracyStats, type AccuracyStats } from "@/lib/accuracy-stats";
 import { etTradingDayDate } from "@/lib/market-hours";
+import { getOwnerUserId } from "@/lib/auth/account";
 
 function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
@@ -80,20 +81,20 @@ export const accuracyScorer = inngest.createFunction(
   },
   { cron: "TZ=America/New_York 0 10 * * 0" }, // Sunday 10:00 AM ET (after weekly digest at 9:00)
   async ({ step }) => {
-    // Step 1: Find users with at least 3 closed trades
-    const userIds = await step.run("find-eligible-users", async () => {
+    // Step 1: Find accounts with at least 3 closed trades.
+    const accountIds = await step.run("find-eligible-accounts", async () => {
       const rows = await prisma.position.groupBy({
-        by: ["userId"],
+        by: ["accountId"],
         where: { status: "CLOSED", outcome: { in: ["WIN", "LOSS", "BREAKEVEN"] } },
         _count: { id: true },
       });
       return rows
         .filter((r) => r._count.id >= 3)
-        .map((r) => r.userId);
+        .map((r) => r.accountId);
     });
 
-    if (userIds.length === 0) {
-      return { skipped: true, reason: "no-eligible-users" };
+    if (accountIds.length === 0) {
+      return { skipped: true, reason: "no-eligible-accounts" };
     }
 
     // Week window starts at ET midnight 7 days ago.
@@ -103,26 +104,29 @@ export const accuracyScorer = inngest.createFunction(
 
     const reports: string[] = [];
 
-    for (const userId of userIds) {
-      // Step 2: Compute accuracy stats
-      const stats = await step.run(`stats-${userId}`, async () => {
-        return getAccuracyStats(userId);
+    for (const accountId of accountIds) {
+      // Resolve the OWNER's userId — getAccuracyStats still keys on userId
+      // pending a follow-up that migrates it to accountId.
+      const ownerUserId = await getOwnerUserId(accountId);
+      if (!ownerUserId) {
+        console.warn(`[accuracy-scorer] account ${accountId} has no OWNER membership; skipping.`);
+        continue;
+      }
+
+      const stats = await step.run(`stats-${accountId}`, async () => {
+        return getAccuracyStats(ownerUserId);
       });
 
-      // Step 3: Generate GPT-4o narrative
-      const narrative = await step.run(`narrative-${userId}`, async () => {
+      const narrative = await step.run(`narrative-${accountId}`, async () => {
         return generateNarrative(stats);
       });
 
-      // Step 4: Upsert AccuracyReport
-      await step.run(`save-${userId}`, async () => {
-        // Check if we already have a report for this week
+      await step.run(`save-${accountId}`, async () => {
         const existing = await prisma.accuracyReport.findFirst({
-          where: { userId, weekStartDate: { gte: weekStart } },
+          where: { accountId, weekStartDate: { gte: weekStart } },
         });
 
         if (existing) {
-          // Update in-place (re-run of scorer shouldn't create duplicates)
           await prisma.accuracyReport.update({
             where: { id: existing.id },
             data: {
@@ -137,7 +141,8 @@ export const accuracyScorer = inngest.createFunction(
         } else {
           await prisma.accuracyReport.create({
             data: {
-              userId,
+              userId: ownerUserId,
+              accountId,
               weekStartDate: weekStart,
               weekEndDate: todayEt,
               tradesAnalyzed: stats.tradesAnalyzed,
@@ -151,9 +156,9 @@ export const accuracyScorer = inngest.createFunction(
         }
       });
 
-      reports.push(userId);
+      reports.push(accountId);
     }
 
-    return { scored: reports.length, userIds: reports };
+    return { scored: reports.length, accountIds: reports };
   }
 );

@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
 import { sendEmail, getUserEmail } from "@/lib/email";
+import { getOwnerUserId } from "@/lib/auth/account";
 import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 
@@ -323,6 +324,7 @@ export const placeTrade = defineTool({
           data: {
             analystId,
             userId: ctx.userId,
+            accountId: ctx.accountId,
             symbol: ticker,
             direction: args.direction,
             status: "OPEN",
@@ -371,6 +373,7 @@ export const placeTrade = defineTool({
             runId: ctx.runId,
             analystId,
             userId: ctx.userId,
+            accountId: ctx.accountId,
             symbol: ticker,
             decision: "INITIATE",
             reasoning: `${args.direction} ${finalShares} shares — submitting market order (target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)})`,
@@ -650,7 +653,11 @@ export const placeTrade = defineTool({
               select: { emailAlerts: true, name: true },
             });
             if (!config?.emailAlerts) return;
-            const toEmail = await getUserEmail(ctx.userId);
+            // Send to the account OWNER, not the user that placed the trade.
+            // For solo OWNER they're the same; for team workspaces an EDITOR
+            // placing a trade still pings the OWNER (canonical inbox).
+            const ownerUserId = await getOwnerUserId(ctx.accountId);
+            const toEmail = await getUserEmail(ownerUserId ?? ctx.userId);
             if (!toEmail) return;
             const thesis = await prisma.thesis.findUnique({
               where: { id: args.thesis_id },

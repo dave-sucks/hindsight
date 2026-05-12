@@ -29,10 +29,11 @@ export const podcastSegmentRun = inngest.createFunction(
   },
   { event: "podcast/segment.run.requested" },
   async ({ event, step }) => {
-    const { segmentId, runId, userId } = event.data as {
+    const { segmentId, runId, userId, accountId: eventAccountId } = event.data as {
       segmentId: string;
       runId: string;
       userId: string;
+      accountId?: string;
     };
 
     await step.run("run-segment", async () => {
@@ -44,6 +45,7 @@ export const podcastSegmentRun = inngest.createFunction(
         include: { podcast: true },
       });
       if (!segment) throw new Error(`Segment ${segmentId} not found for user ${userId}`);
+      const accountId = eventAccountId ?? segment.accountId;
 
       // ── Continuity context ─────────────────────────────────────────────────
       const lastTranscript = await prisma.segmentTranscript.findFirst({
@@ -103,6 +105,7 @@ export const podcastSegmentRun = inngest.createFunction(
       const allTools = createResearchTools({
         runId,
         userId,
+        accountId,
         podcastSegmentId: segmentId,
         watchlist: [],
         positionTickers: [],

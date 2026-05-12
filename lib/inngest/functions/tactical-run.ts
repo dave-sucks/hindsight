@@ -109,6 +109,7 @@ export const tacticalRun = inngest.createFunction(
           select: {
             id: true,
             userId: true,
+            accountId: true,
             name: true,
             analystPrompt: true,
             sectors: true,
@@ -205,6 +206,7 @@ export const tacticalRun = inngest.createFunction(
       return prisma.researchRun.create({
         data: {
           userId: agentConfig.userId,
+          accountId: agentConfig.accountId,
           agentConfigId: agentConfig.id,
           source: "AGENT",
           status: "RUNNING",
@@ -262,6 +264,7 @@ export const tacticalRun = inngest.createFunction(
       const allTools = createResearchTools({
         runId: run.id,
         userId: agentConfig.userId,
+        accountId: agentConfig.accountId,
         analystId: agentConfig.id,
         watchlist: agentConfig.watchlist ?? [],
         exclusionList: agentConfig.exclusionList ?? [],

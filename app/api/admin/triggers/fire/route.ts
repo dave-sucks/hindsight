@@ -34,6 +34,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { getAccountId, getUserRole } from "@/lib/auth/account";
 
 const bodySchema = z.object({
   thesisId: z.string().min(1),
@@ -54,6 +55,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
+
+  const role = await getUserRole(user.id, accountId);
+  if (role === "VIEWER") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
   let body: z.infer<typeof bodySchema>;
   try {
     const json = await req.json();
@@ -66,7 +73,7 @@ export async function POST(req: NextRequest) {
   }
 
   const thesis = await prisma.thesis.findFirst({
-    where: { id: body.thesisId, userId: user.id },
+    where: { id: body.thesisId, accountId },
     select: {
       id: true,
       ticker: true,
@@ -131,7 +138,7 @@ export async function POST(req: NextRequest) {
   while (Date.now() < pollUntil) {
     const realRun = await prisma.researchRun.findFirst({
       where: {
-        userId: user.id,
+        accountId,
         agentConfigId: analystId,
         mode: "INTRADAY_TACTICAL",
         startedAt: { gte: dispatchedAt },

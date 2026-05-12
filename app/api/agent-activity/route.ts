@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getAccountId } from "@/lib/auth/account";
 
 export async function GET(request: NextRequest) {
   // Auth check
@@ -10,19 +11,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = user.id;
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
 
   try {
     // Load last 30 position events, 15 theses, 10 research runs in parallel
     const [positionEvents, theses, runs] = await Promise.all([
       prisma.positionEvent.findMany({
-        where: { position: { userId } },
+        where: { position: { accountId } },
         orderBy: { createdAt: "desc" },
         take: 30,
         include: { position: { select: { symbol: true, direction: true } } },
       }),
       prisma.thesis.findMany({
-        where: { userId },
+        where: { accountId },
         orderBy: { createdAt: "desc" },
         take: 15,
         select: {
@@ -34,7 +36,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.researchRun.findMany({
-        where: { userId },
+        where: { accountId },
         orderBy: { createdAt: "desc" },
         take: 10,
         select: { id: true, createdAt: true },

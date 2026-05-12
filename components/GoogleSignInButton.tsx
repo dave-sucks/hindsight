@@ -3,13 +3,20 @@
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 
-const GoogleSignInButton = () => {
+const GoogleSignInButton = ({ next }: { next?: string }) => {
     const handleGoogleSignIn = async () => {
         const supabase = createClient();
+        // The auth callback reads `next` to know where to send the user
+        // post-exchange — invite-accept passes the accept URL through
+        // this same parameter.
+        const callback = new URL(`${window.location.origin}/auth/callback`);
+        if (next && next.startsWith('/') && !next.startsWith('//')) {
+            callback.searchParams.set('next', next);
+        }
         await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
+                redirectTo: callback.toString(),
             },
         });
     };

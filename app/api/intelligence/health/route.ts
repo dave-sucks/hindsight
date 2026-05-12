@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getAccountId } from "@/lib/auth/account";
 
 // ── /api/intelligence/health ────────────────────────────────────────────────
 // All data needed to render the Health tab on /intelligence.
@@ -73,8 +74,11 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
+
   const agentConfigs = await prisma.agentConfig.findMany({
-    where: { userId: user.id },
+    where: { accountId },
     select: { id: true },
   });
   const analystIds: string[] = agentConfigs.map((a: { id: string }) => a.id);
@@ -114,14 +118,14 @@ export async function GET() {
 
       // Open positions — for portfolio ticker classification
       prisma.position.findMany({
-        where: { status: "OPEN" },
+        where: { status: "OPEN", accountId },
         select: { symbol: true },
       }),
 
       // Watchlist — for watchlist ticker classification
       prisma.analystWatchlistItem.findMany({
         where: {
-          analyst: { userId: user.id },
+          accountId,
           status: "ACTIVE",
         },
         select: { symbol: true },
@@ -149,7 +153,7 @@ export async function GET() {
 
       // Recent research runs with toolStats
       prisma.researchRun.findMany({
-        where: { userId: user.id },
+        where: { accountId },
         orderBy: { startedAt: "desc" },
         take: 14,
         select: {

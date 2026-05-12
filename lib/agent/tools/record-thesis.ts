@@ -714,6 +714,7 @@ export const recordThesis = defineTool({
       const coreData = {
         researchRunId: ctx.runId,
         userId: ctx.userId,
+        accountId: ctx.accountId,
         ticker: args.ticker,
         direction: args.direction,
         confidenceScore: args.confidence_score,
@@ -882,7 +883,7 @@ export const recordThesis = defineTool({
                 status: { in: ["ACTIVE", "WATCHING"] },
                 researchRun: {
                   agentConfig: {
-                    userId: ctx.userId,
+                    accountId: ctx.accountId,
                     id: { not: ctx.analystId },
                   },
                 },
@@ -1144,6 +1145,7 @@ export const recordThesis = defineTool({
               runId: ctx.runId,
               analystId,
               userId: ctx.userId,
+              accountId: ctx.accountId,
               symbol: args.ticker,
               decision: "PASS",
               reasoning: args.reasoning_summary,

@@ -75,8 +75,17 @@ async function findOrCreateEmailMonitor(
     return match;
   }
 
+  // Webhook context has no user session — attach to the only existing
+  // Account. Multi-tenant email routing (which account does this sender
+  // belong to?) needs a deliberate design and is out of scope here.
+  const account = await prisma.account.findFirst({ select: { id: true } });
+  if (!account) {
+    throw new Error("No Account exists — cannot create EMAIL monitor.");
+  }
+
   return prisma.monitor.create({
     data: {
+      accountId: account.id,
       type: "EMAIL",
       method: "auto",
       name: senderName || senderEmail,

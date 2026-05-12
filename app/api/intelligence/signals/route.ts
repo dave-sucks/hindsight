@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { createClient } from "@/lib/supabase/server"
 import { etTradingDayDate } from "@/lib/market-hours"
+import { getAccountId } from "@/lib/auth/account"
 
 // GET /api/intelligence/signals — list recent signals/findings.
 //
@@ -24,11 +25,14 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  // Get this user's analyst IDs — used only when the client explicitly filters
-  // by analyst or route reason (so the filter is intersected with this user's
+  const accountId = await getAccountId(user.id)
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 })
+
+  // Get this account's analyst IDs — used only when the client explicitly filters
+  // by analyst or route reason (so the filter is intersected with this account's
   // analysts rather than leaking cross-firm in a future multi-user world).
   const userAnalysts = await prisma.agentConfig.findMany({
-    where: { userId: user.id },
+    where: { accountId },
     select: { id: true },
   })
   const analystIds = userAnalysts.map((a) => a.id)
@@ -83,7 +87,7 @@ export async function GET(req: NextRequest) {
   let podcastSegmentIds: string[] | null = null;
   if (podcastIdRaw) {
     const podcast = await prisma.podcast.findFirst({
-      where: { id: podcastIdRaw, userId: user.id },
+      where: { id: podcastIdRaw, accountId },
       select: { segments: { select: { id: true } } },
     });
     podcastSegmentIds = podcast?.segments.map((s) => s.id) ?? [];

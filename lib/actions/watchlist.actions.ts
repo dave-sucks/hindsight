@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { getAccountId } from "@/lib/auth/account";
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 
@@ -71,11 +72,13 @@ export async function getWatchlistStatusForSymbol(
 ): Promise<AnalystWatchlistStatus[]> {
   const userId = await getCurrentUserId();
   if (!userId) return [];
+  const accountId = await getAccountId(userId);
+  if (!accountId) return [];
 
   const upper = symbol.toUpperCase();
 
   const analysts = await prisma.agentConfig.findMany({
-    where: { userId },
+    where: { accountId },
     select: {
       id: true,
       name: true,
@@ -102,9 +105,11 @@ export async function getWatchlistItems(
 ): Promise<WatchlistItemView[]> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   const items = await prisma.analystWatchlistItem.findMany({
-    where: { analystId, userId, status: "ACTIVE" },
+    where: { analystId, accountId, status: "ACTIVE" },
     orderBy: [
       { priority: "asc" }, // HIGH first (alphabetically: H < L < N)
       { createdAt: "desc" },
@@ -116,7 +121,7 @@ export async function getWatchlistItems(
   // Get thesis counts and latest thesis per symbol for this analyst
   const symbols = items.map((i) => i.symbol);
   const runIds = await prisma.researchRun.findMany({
-    where: { agentConfigId: analystId, userId },
+    where: { agentConfigId: analystId, accountId },
     select: { id: true },
   });
   const runIdList = runIds.map((r) => r.id);
@@ -125,7 +130,7 @@ export async function getWatchlistItems(
     runIdList.length > 0
       ? await prisma.thesis.findMany({
           where: {
-            userId,
+            accountId,
             ticker: { in: symbols },
             researchRunId: { in: runIdList },
           },
@@ -194,10 +199,12 @@ export async function addWatchlistItem(
 ): Promise<WatchlistItemView> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   // Verify analyst ownership
   const analyst = await prisma.agentConfig.findFirst({
-    where: { id: analystId, userId },
+    where: { id: analystId, accountId },
     select: { id: true },
   });
   if (!analyst) throw new Error("Analyst not found");
@@ -234,6 +241,7 @@ export async function addWatchlistItem(
     data: {
       analystId,
       userId,
+      accountId,
       symbol: upper,
       reason,
       addedBy,
@@ -274,11 +282,13 @@ export async function removeWatchlistItem(
 ): Promise<void> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
 
   const upper = symbol.toUpperCase();
 
   const item = await prisma.analystWatchlistItem.findFirst({
-    where: { analystId, symbol: upper, status: "ACTIVE", userId },
+    where: { analystId, symbol: upper, status: "ACTIVE", accountId },
   });
   if (!item) return;
 
@@ -302,9 +312,20 @@ export async function updateWatchlistItem(
 ): Promise<void> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
+
+  // First confirm ownership via accountId before updating by primary key.
+  // Prisma's `update.where` requires a unique constraint, so we can't
+  // mix `accountId` into the same call.
+  const owned = await prisma.analystWatchlistItem.findFirst({
+    where: { id: itemId, accountId },
+    select: { id: true },
+  });
+  if (!owned) throw new Error("Watchlist item not found");
 
   await prisma.analystWatchlistItem.update({
-    where: { id: itemId, userId },
+    where: { id: itemId },
     data: {
       ...(data.priority !== undefined ? { priority: data.priority } : {}),
       ...(data.notes !== undefined ? { notes: data.notes } : {}),

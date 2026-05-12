@@ -8,34 +8,89 @@ datasource db {
 }
 
 model User {
-  id                String          @id @default(uuid())
-  email             String          @unique
+  id                String              @id @default(uuid())
+  email             String              @unique
   name              String
   country           String?
-  investmentGoals   String?         @map("investment_goals")
-  riskTolerance     String?         @map("risk_tolerance")
-  preferredIndustry String?         @map("preferred_industry")
-  createdAt         DateTime        @default(now()) @map("created_at")
+  investmentGoals   String?             @map("investment_goals")
+  riskTolerance     String?             @map("risk_tolerance")
+  preferredIndustry String?             @map("preferred_industry")
+  createdAt         DateTime            @default(now()) @map("created_at")
   watchlist         WatchlistItem[]
+  memberships       AccountMembership[]
 
   @@map("users")
+}
+
+// ─── ACCOUNT MODEL (multi-tenant) ──────────────────────────────────────────
+// An Account owns all data. Every data entity scopes to accountId. A User
+// belongs to an Account through AccountMembership with a role (OWNER/EDITOR/
+// VIEWER). See docs/TEAM_ACCESS_PLAN.md.
+
+model Account {
+  id          String              @id @default(cuid())
+  name        String              // display name, e.g. "Dave's Account"
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  memberships AccountMembership[]
+  invites     AccountInvite[]
+}
+
+enum MemberRole {
+  OWNER    // full access + team management
+  EDITOR   // full access, cannot manage team
+  VIEWER   // read-only
+}
+
+model AccountMembership {
+  id        String     @id @default(cuid())
+  accountId String
+  userId    String
+  role      MemberRole @default(VIEWER)
+  createdAt DateTime   @default(now())
+
+  account   Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, userId])
+  @@index([userId])
+  @@index([accountId])
+}
+
+model AccountInvite {
+  id         String     @id @default(cuid())
+  accountId  String
+  email      String
+  role       MemberRole @default(VIEWER)
+  token      String     @unique @default(cuid())
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  account    Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([token])
 }
 
 model WatchlistItem {
   id        String   @id @default(uuid())
   userId    String   @map("user_id")
+  accountId String
   symbol    String
   company   String
   addedAt   DateTime @default(now()) @map("added_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, symbol])
+  @@index([accountId])
   @@map("watchlist_items")
 }
 
 model ResearchRun {
   id            String       @id @default(cuid())
   userId        String
+  accountId     String
   agentConfigId String?      // FK to AgentConfig; null for manual/legacy runs
   source        String       // "AGENT" | "MANUAL"
   status        String       // "PENDING" | "RUNNING" | "COMPLETE" | "FAILED"
@@ -68,6 +123,7 @@ model ResearchRun {
 
   @@index([agentConfigId])
   @@index([userId])
+  @@index([accountId])
   @@index([podcastSegmentId])
 }
 
@@ -108,6 +164,7 @@ model Thesis {
   id               String        @id @default(cuid())
   researchRunId    String
   userId           String
+  accountId        String
   ticker           String
   source           String        // "AGENT" | "MANUAL"
   direction        String        // "LONG" | "SHORT" | "PASS"
@@ -195,8 +252,10 @@ model Thesis {
 
   @@index([researchRunId])
   @@index([userId])
+  @@index([accountId])
   @@index([ticker])
   @@index([userId, ticker, status])
+  @@index([accountId, ticker, status])
   @@index([status, nextReviewAt])
   @@index([ticker, status])
 }
@@ -253,6 +312,7 @@ model ThesisUpdate {
 model AgentConfig {
   id                    String        @id @default(cuid())
   userId                String        // NOT unique — multiple Analysts per user
+  accountId             String
   name                  String        @default("My Analyst")
   enabled               Boolean       @default(false)
   // Per-analyst rollout flag for the V2 daily-run prompt + tool surface
@@ -331,6 +391,8 @@ model AgentConfig {
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  @@index([accountId])
 }
 
 // ─── V3: INTELLIGENCE LAYER ──────────────────────────────────────────────────
@@ -343,6 +405,7 @@ model AgentConfig {
 /// or an API endpoint.
 model Monitor {
   id          String    @id @default(cuid())
+  accountId   String
   name        String    // "Semiconductor supply chain", "reuters.com", "FMP Top Gainers", "Portfolio Tickers"
   type        String    // "SEARCH" | "DOMAIN" | "API"
   method      String    // "perplexity_sonar" | "firecrawl" | "fmp" | "finnhub" | "auto"
@@ -387,6 +450,7 @@ model Monitor {
   @@index([type])
   @@index([scope, enabled])
   @@index([analystId])
+  @@index([accountId])
   @@index([podcastSegmentId])
   @@index([expiresAt])
 }
@@ -596,6 +660,7 @@ model PodcastSegmentSignalRoute {
 model MorningBrief {
   id                String      @id @default(cuid())
   analystId         String
+  accountId         String
   analyst           AgentConfig @relation(fields: [analystId], references: [id], onDelete: Cascade)
   date              DateTime    @db.Date
 
@@ -611,6 +676,7 @@ model MorningBrief {
 
   @@unique([analystId, date])
   @@index([analystId])
+  @@index([accountId])
   @@index([date])
 }
 
@@ -622,6 +688,7 @@ model AnalystWatchlistItem {
   id              String    @id @default(cuid())
   analystId       String
   userId          String
+  accountId       String
   symbol          String
   reason          String    // Why this stock is being watched
   notes           String?   // Free-text notes, updated over time
@@ -661,6 +728,7 @@ model AnalystWatchlistItem {
   @@unique([analystId, symbol, status]) // One active item per analyst per symbol
   @@index([analystId, status])
   @@index([userId])
+  @@index([accountId])
 }
 
 // ─── NEW TRADING LAYER ─────────────────────────────────────────────────────
@@ -672,7 +740,8 @@ model AnalystWatchlistItem {
 model Position {
   id              String          @id @default(cuid())
   analystId       String          // FK to AgentConfig (the analyst who owns this)
-  userId          String
+  userId          String          // audit: which team member opened/placed this position
+  accountId       String          // scope: the Account this position belongs to
   symbol          String
   direction       String          // "LONG" | "SHORT"
   status          String          // "OPEN" | "CLOSED" | "CANCELLED"
@@ -716,8 +785,10 @@ model Position {
 
   @@index([analystId])
   @@index([userId])
+  @@index([accountId])
   @@index([status])
   @@index([userId, status])
+  @@index([accountId, status])
 }
 
 /// Intent to buy/sell — what we told Alpaca.
@@ -841,7 +912,8 @@ model TradeDecision {
   id          String        @id @default(cuid())
   runId       String        // FK to ResearchRun
   analystId   String        // FK to AgentConfig
-  userId      String
+  userId      String        // audit: which team member made this decision
+  accountId   String        // scope: the Account this decision belongs to
   symbol      String
   decision    String        // "BUY" | "SELL" | "HOLD" | "PASS"
   reasoning   String?       // brief note on why this decision was made
@@ -862,6 +934,7 @@ model TradeDecision {
   @@index([analystId])
   @@index([symbol])
   @@index([userId, symbol])
+  @@index([accountId])
 }
 
 model AnalystBriefing {
@@ -869,6 +942,7 @@ model AnalystBriefing {
   analystId         String
   runId             String?       @unique // the run that generated this briefing (null if manual)
   userId            String
+  accountId         String
   // Structured data — each renders as a domain card
   narrative         String        // AI-generated analysis/adaptation narrative (markdown with $TICKER)
   marketContext     Json?         // MarketContextData snapshot (renders as MarketContextCard)
@@ -889,11 +963,13 @@ model AnalystBriefing {
 
   @@index([analystId, createdAt])
   @@index([runId])
+  @@index([accountId])
 }
 
 model AccuracyReport {
   id               String   @id @default(cuid())
   userId           String
+  accountId        String
   weekStartDate    DateTime
   weekEndDate      DateTime
   tradesAnalyzed   Int
@@ -905,6 +981,7 @@ model AccuracyReport {
   createdAt        DateTime @default(now())
 
   @@index([userId])
+  @@index([accountId])
   @@index([weekStartDate])
 }
 
@@ -959,6 +1036,7 @@ enum EpisodeStatus {
 model Podcast {
   id            String   @id @default(cuid())
   userId        String
+  accountId     String
   name          String
   description   String?
   hostStyle     String?
@@ -974,12 +1052,14 @@ model Podcast {
   episodes      Episode[]
 
   @@index([userId])
+  @@index([accountId])
 }
 
 model PodcastSegment {
   id              String   @id @default(cuid())
   podcastId       String
   userId          String   // denormalized for fast list queries
+  accountId       String
   name            String
   description     String?
   segmentPrompt   String   // master prompt — analog of AgentConfig.analystPrompt
@@ -1005,6 +1085,7 @@ model PodcastSegment {
 
   @@index([podcastId])
   @@index([userId])
+  @@index([accountId])
 }
 
 /// Post-run briefing for a podcast segment. Mirror of AnalystBriefing
@@ -1022,12 +1103,14 @@ model PodcastSegmentBriefing {
   runId       String         @unique
   run         ResearchRun    @relation("SegmentBriefing", fields: [runId], references: [id], onDelete: Cascade)
   userId      String
+  accountId   String
   narrative   String         // 200-300 word recap of what this segment covered
   followUps   Json           // [{ topic, why, priority: "HIGH"|"NORMAL" }]
   generatedAt DateTime       @default(now())
 
   @@index([segmentId, generatedAt])
   @@index([userId])
+  @@index([accountId])
 }
 
 model SegmentTranscript {
@@ -1035,6 +1118,7 @@ model SegmentTranscript {
   runId           String   @unique
   segmentId       String
   userId          String
+  accountId       String
   title           String
   plainText       String
   ssml            String?                 // populated in Phase 2 if/when needed
@@ -1051,12 +1135,14 @@ model SegmentTranscript {
 
   @@index([segmentId])
   @@index([userId])
+  @@index([accountId])
 }
 
 model Episode {
   id                  String   @id @default(cuid())
   podcastId           String
   userId              String
+  accountId           String
   title               String
   description         String?
   publishedAt         DateTime?
@@ -1072,4 +1158,5 @@ model Episode {
 
   @@index([podcastId])
   @@index([userId])
+  @@index([accountId])
 }
