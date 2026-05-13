@@ -708,6 +708,186 @@ export function ToolsRegistrySheetContent() {
   );
 }
 
+// ── Promotion sheet ────────────────────────────────────────────────────────
+// Documents the PAPER→LIVE promotion flow + the PROMOTED thesis state.
+// Lives outside the team registry because promotion is not a "team" — it's
+// a discrete user-initiated transition between two operating modes.
+
+export function PromotionSheetContent() {
+  return (
+    <div className="space-y-5 text-sm leading-relaxed">
+      <div className="space-y-3">
+        <p className="font-medium">
+          Promotion graduates one analyst from paper trading to real money.
+          New analysts default to paper. When you&apos;re convinced an analyst
+          earns its keep, you promote it.
+        </p>
+        <p className="text-muted-foreground">
+          Each analyst has its own <span className="font-mono">tradingEnvironment</span>
+          {" "}flag — PAPER or LIVE. Promotion is per-analyst, so you can run
+          some analysts live and keep others in paper for tweaks or fresh
+          ideas. Both modes share the same intelligence pipeline, the same
+          signal routing, the same crons. The only thing that differs is
+          which Alpaca account a trade lands in.
+        </p>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          What happens at promotion
+        </p>
+        <ol className="space-y-2 list-decimal pl-4 text-muted-foreground">
+          <li>
+            <span className="text-foreground">Live credentials validated.</span>
+            {" "}The action calls <span className="font-mono">getAccount</span> against
+            the live Alpaca host first. If the key isn&apos;t saved or doesn&apos;t
+            authenticate, promotion fails before touching anything.
+          </li>
+          <li>
+            <span className="text-foreground">Concurrent-run guard.</span>
+            {" "}If a research run is currently RUNNING for the analyst, promotion
+            refuses. Wait it out, then retry.
+          </li>
+          <li>
+            <span className="text-foreground">Paper positions force-closed.</span>
+            {" "}Every open paper position for the analyst is closed at market
+            in the paper Alpaca account, one at a time. Each close commits
+            individually — if Alpaca rejects the third one, the first two
+            stay closed and you can retry without re-closing them.
+          </li>
+          <li>
+            <span className="text-foreground">
+              Theses flip to PROMOTED with conviction context.
+            </span>
+            {" "}For each closed position&apos;s thesis (and any ACTIVE-orphan
+            theses with no position), the status becomes PROMOTED and four
+            new fields freeze on the row: <span className="font-mono">promotedAt</span>,
+            {" "}<span className="font-mono">paperTenureDays</span>,
+            {" "}<span className="font-mono">paperRealizedPnl</span>,
+            {" "}<span className="font-mono">paperReviewCount</span>. The agent
+            reads these on the first live run.
+          </li>
+          <li>
+            <span className="text-foreground">Environment flips to LIVE.</span>
+            {" "}AgentConfig.tradingEnvironment = LIVE. From this moment forward
+            every tool call on this analyst routes to the live Alpaca account.
+          </li>
+        </ol>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          The PROMOTED state
+        </p>
+        <p className="text-muted-foreground">
+          PROMOTED is a first-class thesis status, not an ACTIVE-without-position
+          edge case. It means: the analyst was holding this name in paper with
+          intact conviction, the paper position was force-closed, and the next
+          live run must explicitly act. Exactly two legal exits:
+        </p>
+        <div className="space-y-1.5">
+          <div className="rounded-md border p-3 space-y-1">
+            <p className="text-foreground">
+              <span className="font-medium">PROMOTED → ACTIVE</span>
+              {" "}<span className="text-muted-foreground">(re-enter live)</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The default. Agent calls <span className="font-mono">place_trade</span>;
+              the trade itself auto-transitions the thesis. Cleaner: agent
+              calls <span className="font-mono">update_thesis(change_status: &quot;ACTIVE&quot;)</span>
+              {" "}with recomputed target/stop first, then place_trade.
+            </p>
+          </div>
+          <div className="rounded-md border p-3 space-y-1">
+            <p className="text-foreground">
+              <span className="font-medium">PROMOTED → WATCHING</span>
+              {" "}<span className="text-muted-foreground">(opt out, keep tracking)</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The only legal alternative. Used when the original target has
+              already been captured, or new evidence invalidates the thesis.
+              The conviction context fields stay on the row for reference.
+            </p>
+          </div>
+        </div>
+        <p className="text-muted-foreground">
+          <span className="font-medium text-foreground">Forbidden, rejected at the tool layer:</span>
+          {" "}PROMOTED → INVALIDATED and PROMOTED → CLOSED. The analyst held this
+          name yesterday; killing it without a position is the wrong shape. If
+          you truly believe the thesis is dead, downgrade to WATCHING first.
+          Reasoning-only <span className="font-mono">update_thesis</span> calls
+          on a PROMOTED row are also rejected — PROMOTED requires explicit
+          resolution every run until it&apos;s gone.
+        </p>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          First live run
+        </p>
+        <p className="text-muted-foreground">
+          Structurally different from every later run. By construction there
+          are zero ACTIVE theses (nothing&apos;s been bought live yet), N PROMOTED
+          theses (everything you were holding), and M WATCHING theses
+          (everything you were waiting on). The agent&apos;s whole job is
+          deciding which PROMOTED + WATCHING graduate to live positions.
+          Run 2 onward looks like a normal daily run with all three statuses
+          mixed.
+        </p>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Demoting
+        </p>
+        <p className="text-muted-foreground">
+          You can demote LIVE → PAPER, but only after every open live position
+          is closed. The demote dialog offers a one-click &quot;close all and
+          demote&quot; that flattens the live book at market. Any PROMOTED
+          theses still sitting on the row are reverted to WATCHING with an
+          audit entry — the conviction context fields remain so you can see
+          the paper-era track record.
+        </p>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Where to find this in the UI
+        </p>
+        <ul className="space-y-1.5 list-disc pl-4 text-muted-foreground">
+          <li>
+            Settings → API Keys — two stacked Alpaca forms (Paper + Live).
+            Add your live key there before promoting.
+          </li>
+          <li>
+            Analyst detail → ⋯ menu → <span className="font-medium text-foreground">Promote to live</span>
+            {" "}/{" "}<span className="font-medium text-foreground">Demote to paper</span>.
+            The promote dialog requires typing the analyst name to confirm.
+          </li>
+          <li>
+            Analyst header — LIVE badge appears when the analyst is in live mode;
+            an &quot;N awaiting live entry&quot; chip shows the PROMOTED count.
+          </li>
+          <li>
+            Thesis cards / table — PROMOTED rows render with an amber pulse
+            and the label <span className="font-medium text-foreground">Awaiting live entry</span>.
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 // ── Flow connector ─────────────────────────────────────────────────────────
 
 export function FlowConnector() {

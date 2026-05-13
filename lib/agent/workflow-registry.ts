@@ -11,7 +11,7 @@
 // and bump LAST_VERIFIED_AT below.
 
 /** ISO date the registry was last manually verified against the codebase. */
-export const LAST_VERIFIED_AT = "2026-05-10"; // bumped: Morning Run V2 (per-thesis triggers authoritative; V1/V2 prompt dispatch; needsAction; tightened Daily Run allowlist + bucket scope)
+export const LAST_VERIFIED_AT = "2026-05-13"; // bumped: trading environment (PAPER/LIVE) per analyst + PROMOTED thesis status for first-live-run conviction-pause
 
 /**
  * Live thesis-system reference. Linked from the agent / tactical /
@@ -375,7 +375,7 @@ export const TEAMS: Team[] = [
     substeps: [
       { title: "Portfolio check-in", summary: "Acknowledges open positions and watchlist items, references priority reviews flagged by the price monitor. Plain text — no tools." },
       { title: "Orient", summary: "read_signals (today's three buckets: portfolio, watchlist, discovery — each carries signalId for provenance) and get_theses with full update history. read_artifact on anything worth a deep read; web_search sparingly within budget." },
-      { title: "Per-thesis review", summary: "Goes through every active and watching thesis one at a time. For each: did a trigger fire or new evidence arrive? is a scheduled review due? otherwise → REVIEWED-only. Calls get_stock_data only on theses that warrant real research, not every ticker." },
+      { title: "Per-thesis review", summary: "Goes through every active, watching, and promoted thesis one at a time. For each: did a trigger fire or new evidence arrive? is a scheduled review due? otherwise → REVIEWED-only. PROMOTED theses (just promoted from paper) require an explicit place_trade (re-enter live) or update_thesis(WATCHING) (defer) — no reasoning-only patches. Calls get_stock_data only on theses that warrant real research, not every ticker." },
       { title: "Position management", summary: "close_position / manage_position for held names that warrant action; place_trade for new entries; record_thesis reserved for net-new coverage or direction flips. update_thesis is the close-out for every touched thesis." },
       { title: "Recap", summary: "record_run_summary with ranked picks (every thesis the agent touched + the action that actually happened) and exposure breakdown." },
       { title: "Complete", summary: "complete_run with no arguments. Marks the run COMPLETE; the briefing agent fires inline to write tomorrow's standup." },
@@ -384,7 +384,7 @@ export const TEAMS: Team[] = [
       // Intelligence
       { name: "read_signals", provider: "internal", summary: "Routed signals in three buckets: portfolioSignals, watchlistSignals, discoverySignals. Every signal carries signalId for thesis provenance. Reading flips route status PENDING → READ." },
       { name: "read_artifact", provider: "internal", summary: "Full extracted article content (clean markdown from Firecrawl) behind a signal. Agent passes artifactId from the signal record." },
-      { name: "get_theses", provider: "internal", summary: "Read the analyst's durable thesis library. Default returns ACTIVE + WATCHING; include_history=true returns the recent activity log per thesis. Mandatory in Stage 1." },
+      { name: "get_theses", provider: "internal", summary: "Read the analyst's durable thesis library. Default returns ACTIVE + WATCHING + PROMOTED (the live coverage book — every row the closeout contract requires a tool call on); include_history=true returns the recent activity log per thesis. Mandatory in Stage 1." },
       { name: "web_search", provider: "perplexity", summary: "Live Perplexity Sonar search for breaking news or niche topics. Respects intelligencePolicy.allowLiveSearch and liveSearchBudget.",
         resources: [{ source: "perplexity", title: "Sonar web search", description: "Real-time web search with recency filtering.", type: "api", endpointOrPath: "searchSignals(query, { recency })", exampleOutput: "5 results · sentiment: bullish · urgency: MEDIUM", notes: ["Per-run budget from analyst's intelligencePolicy"] }],
       },
@@ -402,10 +402,10 @@ export const TEAMS: Team[] = [
       TOOL_GET_SEC_FILINGS,
       // Decision
       { name: "record_thesis", provider: "internal", summary: "Mints a NEW thesis (LONG/SHORT). Reserved for net-new coverage or a direction flip. Refinements to held names go through update_thesis instead. Requires source_kind; ROUTED_SIGNAL requires source_signal_ids." },
-      { name: "update_thesis", provider: "internal", summary: "Update an existing thesis durably. Pass thesis_id + the fields changing + a rationale. Every call writes one ThesisUpdate audit row (UPDATED, REVIEWED, INVALIDATED, CLOSED). The most-used new tool — every per-thesis decision in the daily review writes one of these." },
+      { name: "update_thesis", provider: "internal", summary: "Update an existing thesis durably. Pass thesis_id + the fields changing + a rationale. Every call writes one ThesisUpdate audit row (UPDATED, REVIEWED, STATUS_CHANGED, INVALIDATED, CLOSED). The most-used tool — every per-thesis decision in the daily review writes one of these. Status transitions are tool-enforced: PROMOTED → WATCHING/ACTIVE only; PROMOTED → INVALIDATED/CLOSED rejected." },
       // Execution
       {
-        name: "place_trade", provider: "alpaca", summary: "Places a paper market order on Alpaca. Waits for fill.",
+        name: "place_trade", provider: "alpaca", summary: "Places a market order on Alpaca — paper or live, routed by the analyst's tradingEnvironment. Waits for fill. Auto-transitions a PROMOTED thesis to ACTIVE on fill.",
         resources: [
           { source: "alpaca", title: "Submit order", description: "Market buy/sell at current price.", type: "api", endpointOrPath: "placeMarketOrder({ symbol, qty, side })", exampleOutput: "BUY 74 shares NVDA @ $134.23" },
           { source: "alpaca", title: "Confirm fill", description: "Waits up to 5s for fill confirmation.", type: "api", endpointOrPath: "getOrder(orderId)", exampleOutput: "FILLED · Avg $134.23" },

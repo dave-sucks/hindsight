@@ -17,6 +17,7 @@ import {
   FlowConnector,
   TeamSheetContent,
   ToolsRegistrySheetContent,
+  PromotionSheetContent,
 } from "@/components/domain/team-card";
 import {
   TEAMS,
@@ -51,7 +52,7 @@ function CopyMarkdownButton() {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-type SheetTarget = Team | "tools-registry" | null;
+type SheetTarget = Team | "tools-registry" | "promotion" | null;
 
 export default function AgentWorkflowPage() {
   const [activeSheet, setActiveSheet] = useState<SheetTarget>(null);
@@ -136,6 +137,30 @@ export default function AgentWorkflowPage() {
         </div>
       </Card>
 
+      {/* Promotion — paper→live graduation flow. Lives outside the team
+          registry because it's a user-initiated transition, not a team. */}
+      <Card className="p-0 gap-0 py-0 shadow-none overflow-hidden">
+        <div className="p-3 flex flex-col gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <span className="text-sm font-medium text-foreground truncate">
+              Promotion
+            </span>
+            <span className="text-xs text-muted-foreground shrink-0">
+              Paper → Live
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+            How an analyst graduates from paper trading to real money — per-analyst,
+            reversible, with explicit conviction-pause state for held names.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-3 p-3 border-t">
+          <Button variant="outline" size="sm" onClick={() => setActiveSheet("promotion")}>
+            View
+          </Button>
+        </div>
+      </Card>
+
       {/* Sheet */}
       <Sheet
         open={activeSheet !== null}
@@ -150,7 +175,11 @@ export default function AgentWorkflowPage() {
             <>
               <div className="flex items-center justify-between px-4 pt-4 pb-2">
                 <SheetTitle>
-                  {activeSheet === "tools-registry" ? "Tools Registry" : activeSheet.title}
+                  {activeSheet === "tools-registry"
+                    ? "Tools Registry"
+                    : activeSheet === "promotion"
+                      ? "Promotion"
+                      : activeSheet.title}
                 </SheetTitle>
                 <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
                   <X className="h-4 w-4" />
@@ -159,6 +188,8 @@ export default function AgentWorkflowPage() {
               <div className="px-4 pb-6">
                 {activeSheet === "tools-registry" ? (
                   <ToolsRegistrySheetContent />
+                ) : activeSheet === "promotion" ? (
+                  <PromotionSheetContent />
                 ) : (
                   <TeamSheetContent team={activeSheet} />
                 )}
