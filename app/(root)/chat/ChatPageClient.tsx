@@ -3,20 +3,16 @@
 /**
  * Principal Chat — operator co-pilot.
  *
- * Scope header: "Portfolio" (no analyst pinned) or "@AnalystName"
- * (URL-scoped via ?analyst=<id>). Clicking the chip opens a picker
- * that navigates to /chat?analyst=<id> or /chat for portfolio.
+ * Thin wrapper over AgentChat (the unified chat component). Owns the
+ * scope state (which analyst the chat is bound to). Persists choice in
+ * localStorage so reloads remember.
  *
- * Model: defaults to Claude Sonnet 4.6 (the user's preferred deep-work
- * model). The in-chat composer model dropdown can flip to GPT-4o.
+ * Scope chip lives in AgentChat's topSlot — same banner pattern Notion
+ * and Linear use. NO URL param — scope is set in the input UI.
  */
 
 import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
-import type { UIMessage } from "ai";
-import { Thread } from "@/components/assistant-ui/thread";
-import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
-import { ChatRuntime } from "@/components/chat/chat-runtime";
+import { AgentChat } from "@/components/agent/AgentChat";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,153 +21,102 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Bot, ChevronDown, Wallet, MessageCircle } from "lucide-react";
-import { RESEARCH_MODEL_OPTIONS } from "@/lib/agent/modes";
+import { Bot, ChevronDown, Wallet } from "lucide-react";
 
-const MODEL_PREF_KEY = "hindsight_principal_model";
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+const SCOPE_PREF_KEY = "hindsight_principal_scope";
 
-function getStoredModel(): string | null {
+function getStoredScope(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(MODEL_PREF_KEY);
+  return localStorage.getItem(SCOPE_PREF_KEY);
 }
 
-function storeModel(value: string) {
-  localStorage.setItem(MODEL_PREF_KEY, value);
+function storeScope(value: string | null) {
+  if (typeof window === "undefined") return;
+  if (value) localStorage.setItem(SCOPE_PREF_KEY, value);
+  else localStorage.removeItem(SCOPE_PREF_KEY);
 }
 
 interface Props {
-  runId?: string;
-  scopedAnalyst: { id: string; name: string } | null;
   analysts: Array<{ id: string; name: string; enabled: boolean }>;
-  initialMessages: UIMessage[];
 }
 
-export function ChatPageClient({
-  runId,
-  scopedAnalyst,
-  analysts,
-  initialMessages,
-}: Props) {
-  const router = useRouter();
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    const stored = getStoredModel();
-    const valid = RESEARCH_MODEL_OPTIONS.some((o) => o.value === stored);
-    return valid ? (stored ?? DEFAULT_MODEL) : DEFAULT_MODEL;
+export function ChatPageClient({ analysts }: Props) {
+  // Hydrate scope from localStorage on first render. If the stored id
+  // no longer matches an analyst the user owns, drop back to portfolio.
+  const [scopedAnalystId, setScopedAnalystId] = useState<string | null>(() => {
+    const stored = getStoredScope();
+    if (!stored) return null;
+    return analysts.some((a) => a.id === stored) ? stored : null;
   });
 
-  const handleModelChange = useCallback((value: string) => {
-    setSelectedModel(value);
-    storeModel(value);
+  const scopedAnalyst = scopedAnalystId
+    ? analysts.find((a) => a.id === scopedAnalystId) ?? null
+    : null;
+
+  const handlePickScope = useCallback((analystId: string | null) => {
+    setScopedAnalystId(analystId);
+    storeScope(analystId);
   }, []);
 
-  // Body carries scope + session id so the route can resume the right
-  // PRINCIPAL_CHAT ResearchRun (when scoped) and wire write-tool FKs.
-  const body: Record<string, unknown> = {};
-  if (runId) body.runId = runId;
-  if (scopedAnalyst) body.analystId = scopedAnalyst.id;
-  if (selectedModel !== DEFAULT_MODEL) body.modelOverride = selectedModel;
-
-  const handlePickScope = useCallback(
-    (analystId: string | null) => {
-      // Navigate so the server component re-runs and resumes/creates
-      // the right session row.
-      router.push(analystId ? `/chat?analyst=${analystId}` : "/chat");
-    },
-    [router],
+  const scopeChip = (
+    <div className="flex items-center gap-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button variant="outline" size="sm">
+              {scopedAnalyst ? (
+                <>
+                  <Bot className="h-3.5 w-3.5" />
+                  {scopedAnalyst.name}
+                </>
+              ) : (
+                <>
+                  <Wallet className="h-3.5 w-3.5" />
+                  Portfolio
+                </>
+              )}
+              <ChevronDown className="h-3.5 w-3.5" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="start" className="w-64">
+          <DropdownMenuItem onClick={() => handlePickScope(null)}>
+            <Wallet className="h-3.5 w-3.5" />
+            Portfolio (no analyst pinned)
+          </DropdownMenuItem>
+          {analysts.length > 0 && <DropdownMenuSeparator />}
+          {analysts.map((a) => (
+            <DropdownMenuItem
+              key={a.id}
+              onClick={() => handlePickScope(a.id)}
+            >
+              <Bot className="h-3.5 w-3.5" />
+              {a.name}
+              {!a.enabled && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  disabled
+                </span>
+              )}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <span className="text-xs text-muted-foreground">
+        {scopedAnalyst
+          ? "Trades, thesis edits, watchlist changes apply to this analyst."
+          : "Read-only across analysts. Pick one to unlock writes."}
+      </span>
+    </div>
   );
-
-  const subtitle = scopedAnalyst
-    ? `Scoped to ${scopedAnalyst.name}. Full read + write authority on this analyst.`
-    : "Portfolio scope — read across every analyst. Pick a scope to enable trades + thesis edits.";
 
   return (
     <div className="flex h-[calc(100dvh-3rem)] flex-col">
-      {/* Scope header */}
-      <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="outline" size="sm">
-                {scopedAnalyst ? (
-                  <>
-                    <Bot className="h-3.5 w-3.5" />
-                    {scopedAnalyst.name}
-                  </>
-                ) : (
-                  <>
-                    <Wallet className="h-3.5 w-3.5" />
-                    Portfolio
-                  </>
-                )}
-                <ChevronDown className="h-3.5 w-3.5" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuItem onClick={() => handlePickScope(null)}>
-              <Wallet className="h-3.5 w-3.5" />
-              Portfolio (no analyst pinned)
-            </DropdownMenuItem>
-            {analysts.length > 0 && <DropdownMenuSeparator />}
-            {analysts.map((a) => (
-              <DropdownMenuItem
-                key={a.id}
-                onClick={() => handlePickScope(a.id)}
-              >
-                <Bot className="h-3.5 w-3.5" />
-                {a.name}
-                {!a.enabled && (
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    disabled
-                  </span>
-                )}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <span className="text-xs text-muted-foreground">
-          {scopedAnalyst
-            ? "Trades, thesis edits, and watchlist changes apply to this analyst."
-            : "Read-only across analysts. Pick an analyst to unlock writes."}
-        </span>
-      </div>
-
-      <ChatRuntime
-        api="/api/agent/principal"
-        body={body}
-        messages={initialMessages}
-      >
-        <Thread
-          welcomeConfig={{
-            title: scopedAnalyst
-              ? `Chat — ${scopedAnalyst.name}`
-              : "Hindsight",
-            subtitle,
-            icon: (
-              <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <MessageCircle className="size-5" />
-              </div>
-            ),
-          }}
-          composerSlot={
-            <HindsightComposer
-              features={{
-                tickerSearch: true,
-                slashCommands: true,
-                placeholder: scopedAnalyst
-                  ? `Ask about ${scopedAnalyst.name} — review theses, monitors, runs; place trades…`
-                  : "Ask about your portfolio, an analyst, a ticker, or a thesis…",
-                modelLabel:
-                  RESEARCH_MODEL_OPTIONS.find((o) => o.value === selectedModel)
-                    ?.label ?? selectedModel,
-                modelOptions: RESEARCH_MODEL_OPTIONS,
-                onModelChange: handleModelChange,
-              }}
-            />
-          }
-        />
-      </ChatRuntime>
+      <AgentChat
+        mode="principal"
+        analystId={scopedAnalystId ?? undefined}
+        analystName={scopedAnalyst?.name}
+        topSlot={scopeChip}
+      />
     </div>
   );
 }

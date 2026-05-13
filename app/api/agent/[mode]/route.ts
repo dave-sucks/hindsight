@@ -322,20 +322,22 @@ export async function POST(
           maxOpenPositions: ac.maxOpenPositions,
         };
         // Create or reuse a PRINCIPAL_CHAT ResearchRun for this scoped
-        // session. If the client already passed a runId, reuse it
-        // (subsequent messages in the same chat). Otherwise mint one.
+        // session. If the client already passed a runId, reuse it ONLY
+        // if it's still bound to the same analyst — the user can rebind
+        // scope mid-chat via the scope chip, and the previous run row
+        // belongs to the old analyst's audit trail.
         if (runId) {
           const existing = await prisma.researchRun.findFirst({
             where: {
               id: runId,
               userId: user.id,
               mode: "PRINCIPAL_CHAT",
+              agentConfigId: resolvedAnalystId,
             },
             select: { id: true, status: true },
           });
           if (!existing) {
-            // Stale or foreign runId — mint a fresh one and let the
-            // client re-sync on next render.
+            // Stale runId, foreign owner, or scope changed — mint fresh.
             runId = undefined;
           } else if (existing.status !== "RUNNING") {
             await prisma.researchRun.update({

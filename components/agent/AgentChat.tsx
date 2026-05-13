@@ -109,6 +109,22 @@ const PODCAST_SEGMENT_RUN_COMPOSER: HindsightComposerFeatures = {
   placeholder: "Ask a follow-up about the segment…",
 };
 
+// Principal chat (operator co-pilot at /chat) — welcome + composer.
+// The page wraps AgentChat in a topSlot that renders the scope chip
+// (Portfolio | @AnalystName), so the welcome subtitle stays static.
+const PRINCIPAL_WELCOME: WelcomeConfig = {
+  title: "Hindsight",
+  subtitle:
+    "Operator chat — review analysts, runs, monitors, theses; research stocks; place trades when scoped to an analyst.",
+};
+
+const PRINCIPAL_COMPOSER: HindsightComposerFeatures = {
+  tickerSearch: true,
+  slashCommands: true,
+  placeholder:
+    "Ask about your portfolio, an analyst, a ticker, or a thesis…",
+};
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface AgentChatProps {
@@ -136,6 +152,14 @@ interface AgentChatProps {
 
   /** Thread composer slot (e.g. QuickReplies) */
   composerSlot?: ReactNode;
+
+  /**
+   * Principal-chat slot rendered above the Thread (between page chrome
+   * and the chat). Used to host the scope chip ("Portfolio" /
+   * "@AnalystName") so the user can rebind which analyst writes target
+   * without leaving the chat. Other modes ignore this.
+   */
+  topSlot?: ReactNode;
 
   /** Auto-send initial message (builder/editor) */
   initialPrompt?: string;
@@ -179,6 +203,7 @@ export function AgentChat({
   currentConfig,
   messages,
   composerSlot,
+  topSlot,
   initialPrompt,
   onConfigSuggested,
   onPodcastConfigSuggested,
@@ -186,13 +211,13 @@ export function AgentChat({
 }: AgentChatProps) {
   const api = `/api/agent/${mode}`;
 
-  // Model override — only meaningful for research-run.
-  // Reads stored preference from localStorage (set via settings page or the
-  // in-chat selector). Falls back to mode default (gpt-4o) if nothing is stored
-  // or the stored value isn't a known option.
+  // Model override — meaningful for research-run and principal. Both
+  // expose Claude Sonnet 4.6 and GPT-4o via the composer dropdown; the
+  // selection persists per-mode in localStorage.
+  const supportsModelSwitch = mode === "research-run" || mode === "principal";
   const defaultModel = MODES[mode].model;
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    if (mode !== "research-run") return defaultModel;
+    if (!supportsModelSwitch) return defaultModel;
     const stored = getStoredModel();
     const valid = RESEARCH_MODEL_OPTIONS.some((o) => o.value === stored);
     return valid ? (stored ?? defaultModel) : defaultModel;
@@ -200,8 +225,8 @@ export function AgentChat({
 
   const handleModelChange = useCallback((value: string) => {
     setSelectedModel(value);
-    if (mode === "research-run") storeModel(value);
-  }, [mode]);
+    if (supportsModelSwitch) storeModel(value);
+  }, [supportsModelSwitch]);
 
   const body: Record<string, unknown> = {};
   if (runId) body.runId = runId;
@@ -225,6 +250,7 @@ export function AgentChat({
         transcript={transcript}
         currentConfig={currentConfig}
         composerSlot={composerSlot}
+        topSlot={topSlot}
         initialPrompt={initialPrompt}
         onConfigSuggested={onConfigSuggested}
         onPodcastConfigSuggested={onPodcastConfigSuggested}
@@ -250,6 +276,7 @@ interface InnerProps {
   transcript: TranscriptRowData | null;
   currentConfig?: Record<string, unknown>;
   composerSlot?: ReactNode;
+  topSlot?: ReactNode;
   initialPrompt?: string;
   onConfigSuggested?: (
     config: AgentConfigData,
@@ -273,6 +300,7 @@ function AgentChatInner({
   transcript,
   currentConfig,
   composerSlot,
+  topSlot,
   initialPrompt,
   onConfigSuggested,
   onPodcastConfigSuggested,
@@ -515,6 +543,42 @@ function AgentChatInner({
           )}
         </TabsContent>
       </Tabs>
+    );
+  }
+
+  // ── principal: scope-chip header + Thread ────────────────────────────────
+  if (mode === "principal") {
+    const principalComposer: HindsightComposerFeatures = {
+      ...PRINCIPAL_COMPOSER,
+      placeholder: analystName
+        ? `Ask about ${analystName} — review theses, monitors, runs; place trades…`
+        : PRINCIPAL_COMPOSER.placeholder,
+      modelLabel:
+        RESEARCH_MODEL_OPTIONS.find((o) => o.value === selectedModel)?.label ??
+        selectedModel ??
+        "Claude Sonnet 4.6",
+      modelOptions: RESEARCH_MODEL_OPTIONS,
+      onModelChange,
+    };
+    return (
+      <div className="flex h-full flex-col">
+        {topSlot && (
+          <div className="shrink-0 border-b px-4 py-2">{topSlot}</div>
+        )}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <Thread
+            welcomeConfig={{
+              title: analystName ?? PRINCIPAL_WELCOME.title,
+              subtitle: analystName
+                ? `Scoped to ${analystName} — full read + write authority on this analyst.`
+                : PRINCIPAL_WELCOME.subtitle,
+              icon: PRINCIPAL_WELCOME.icon,
+            }}
+            composerFeatures={principalComposer}
+            composerSlot={composerSlot}
+          />
+        </div>
+      </div>
     );
   }
 
