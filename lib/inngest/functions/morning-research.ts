@@ -373,10 +373,21 @@ export const morningResearch = inngest.createFunction(
           const prematureExitViolation =
             totalToolCallsSoFar > 0 && actionToolCount === 0;
 
+          // Zero-tool-call violation: generateText returned but the model
+          // emitted zero tool calls of any kind. Captures the 2026-05-12
+          // Earnings Drift Trader silent-timeout shape — model produced
+          // no output at all, ran the wall clock to 240s, aborted. The
+          // existing prematureExitViolation gate requires
+          // totalToolCallsSoFar > 0 (i.e. at least Step-1 data tools
+          // landed), so it doesn't catch this. Same retry path; the nudge
+          // tells the agent to start the run from the top.
+          const zeroToolCallsViolation = totalToolCallsSoFar === 0;
+
           const shouldRetry =
             (processViolation ||
               coverageViolation ||
-              prematureExitViolation) &&
+              prematureExitViolation ||
+              zeroToolCallsViolation) &&
             responseMessages !== undefined &&
             responseMessages.length > 0;
 
@@ -693,12 +704,89 @@ export const morningResearch = inngest.createFunction(
           return { tradesPlaced, steps: steps.length, toolCalls, elapsedMs: elapsed };
         } catch (err) {
           const isTimeout = err instanceof Error && (err.name === "AbortError" || err.message.includes("aborted") || err.message.includes("timed out"));
-          const message = isTimeout
+          let message = isTimeout
             ? `Agent timed out after 4 minutes (${Math.round((Date.now() - t0) / 1000)}s elapsed). Any theses and trades completed before timeout are preserved.`
             : err instanceof Error ? err.message : String(err);
           console.error(`[morning-research] Agent ${isTimeout ? "TIMED OUT" : "FAILED"} for ${config.name}: ${message}`);
 
-          // Check if any theses/trades were placed before the timeout
+          // ── Zero-tool-call recovery ──────────────────────────────────────
+          // If the agent emitted ZERO tool calls before the abort, that's
+          // the 2026-05-12 Earnings Drift silent-timeout shape: model
+          // produced no output at all (likely an OpenAI hang or a single
+          // text-only assistant turn the abort caught mid-stream). The
+          // in-try retry gate can't catch this because it only fires when
+          // generateText returns normally; here we hit the catch. Give the
+          // agent one more focused swing with a tighter abort before
+          // falling through to FAILED. If the recovery itself produces no
+          // tool calls, we've confirmed it's a real model/API failure and
+          // FAILED is correct.
+          const totalToolCallsBeforeRetry = Object.values(toolStats).reduce((s, b) => s + b.count, 0);
+          if (isTimeout && totalToolCallsBeforeRetry === 0) {
+            console.warn(
+              `[morning-research] 🔁 ${config.name} aborted with zero tool calls — attempting catch-path recovery`,
+            );
+            try {
+              const recoveryResp = await generateText({
+                model: openai("gpt-4o"),
+                system: systemPrompt,
+                prompt:
+                  `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +
+                  `Your first action this turn is read_signals, get_portfolio_context, and get_theses in parallel — no narration before the tool calls. ` +
+                  `Then proceed with your normal playbook.`,
+                tools,
+                providerOptions: { openai: { strictJsonSchema: true } },
+                stopWhen: stepCountIs(30),
+                abortSignal: AbortSignal.timeout(120_000),
+              });
+              const recoveryToolCalls = recoveryResp.steps.reduce(
+                (sum, s) => sum + (s.toolCalls?.length ?? 0),
+                0,
+              );
+              console.log(
+                `[morning-research] catch-path recovery: ${recoveryResp.steps.length} steps, ${recoveryToolCalls} tool calls`,
+              );
+              if (recoveryToolCalls > 0) {
+                // The agent did work this time. Update toolStats so the
+                // status decision below (and the FAILED/COMPLETE branch)
+                // sees the recovered call count, and persist messages so
+                // /runs/[id] shows the recovered thread.
+                for (const s of recoveryResp.steps) {
+                  for (const tc of s.toolCalls ?? []) {
+                    const bucket = toolStats[tc.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
+                    bucket.count += 1;
+                    toolStats[tc.toolName] = bucket;
+                  }
+                }
+                try {
+                  let recoveryMessages = recoveryResp.response?.messages;
+                  if (!recoveryMessages || !Array.isArray(recoveryMessages) || recoveryMessages.length === 0) {
+                    recoveryMessages = recoveryResp.steps.flatMap((s) => {
+                      const stepMsgs = (s as unknown as { response?: { messages?: unknown[] } }).response?.messages;
+                      return Array.isArray(stepMsgs) ? stepMsgs : [];
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    }) as any[];
+                  }
+                  if (recoveryMessages && recoveryMessages.length > 0) {
+                    const userMessage = { role: "user", content: [{ type: "text", text: userPrompt }] };
+                    const recoveryNote = { role: "user", content: "(catch-path recovery: prior attempt produced zero tool calls — restarting)" };
+                    const allMessages = [userMessage, recoveryNote, ...recoveryMessages];
+                    await prisma.$transaction(async (tx) => {
+                      await tx.runMessage.deleteMany({ where: { runId: run.id } });
+                      await tx.runMessage.create({ data: { runId: run.id, role: "thread", content: JSON.stringify(allMessages) } });
+                    });
+                  }
+                } catch { /* persistence is non-critical */ }
+                message = `Recovered after zero-tool-call abort. Recovery produced ${recoveryToolCalls} tool calls.`;
+              }
+            } catch (recoveryErr) {
+              console.error(
+                `[morning-research] catch-path recovery failed for ${config.name}:`,
+                recoveryErr instanceof Error ? recoveryErr.message : recoveryErr,
+              );
+            }
+          }
+
+          // Check if any theses/trades were placed before the timeout (or during recovery)
           const partialTheses = await prisma.thesis.count({ where: { researchRunId: run.id } });
           const partialTrades = await prisma.tradeDecision.count({ where: { runId: run.id, decision: "BUY" } });
           const hasPartialWork = partialTheses > 0 || partialTrades > 0;

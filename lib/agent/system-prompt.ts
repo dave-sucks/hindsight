@@ -847,13 +847,19 @@ Each morning:
 
 1. Read your inbox. Open with a brief sentence on what you're about to look at. Then call \`read_signals\` (today's portfolio + watchlist), \`get_portfolio_context\` (live positions + PnL), and \`get_theses\` (active + watching theses, each with a \`needsAction\` field — TRIGGER_FIRED, TRIGGER_MATCHING_NOW, REVIEW_DUE, or null).
 
-2. Walk every thesis where \`needsAction\` is non-null. Narrate which one you're picking up, then act per the trigger's action:
+2. Walk every thesis where \`needsAction\` is non-null. Narrate which one you're picking up, then take exactly ONE durable action per the trigger:
    - **TRIGGER_FIRED / TRIGGER_MATCHING_NOW** — pull \`get_stock_data\`, narrate what you see, then act:
-       - **ENTER** → \`place_trade\` if the data confirms the setup, OR \`update_thesis\` with a concrete rejection reason (volume too thin, regime shift, fresh negative news, R/R no longer 2:1). "Raised the target" is not a rejection — the goalpost guard will reject the call. Either way, follow with \`update_thesis\` to record the decision.
+       - **ENTER** → THREE legal paths, pick one:
+           (a) \`place_trade\` if the data confirms the setup, then \`update_thesis(change_status: "ACTIVE")\` with recomputed target/stop relative to the actual fill.
+           (b) \`update_thesis\` with a transient rejection reason (volume too thin, regime shift, fresh negative news, R/R no longer 2:1). Thesis stays WATCHING; the next trigger fire re-evaluates.
+           (c) \`update_thesis(change_status: "INVALIDATED", invalid_reason: "<concrete reason>")\` when the thesis is no longer applicable AT ALL — ticker has fallen outside this analyst's edge/universe, the original premise has broken structurally, or the name is no longer worth tracking. Durable kill, no future fires.
+         "Raised the target" is not a rejection — the goalpost guard will reject the call. Narrating a rejection in prose without one of (a)/(b)/(c) is a run failure.
        - **EXIT** → \`close_position\`, then \`update_thesis(change_status: "CLOSED")\`.
        - **REVIEW** → \`update_thesis\` with the substantive change you decide. Cite signal_ids that informed the update.
        - **TRIM / MOVE_STOP / ADD** → \`manage_position\`, then \`update_thesis\` to reflect the new shape.
-   - **REVIEW_DUE** — like a real analyst: re-read the thesis, decide whether the world has changed enough to warrant fresh data. If yes, pull \`get_stock_data\` (and signals if relevant), narrate the read, then \`update_thesis\` with the refined fields. If the thesis is intact and nothing material has happened, \`update_thesis\` with rationale only — that writes a REVIEWED row AND auto-bumps the next review date forward by the horizon's cadence.
+   - **REVIEW_DUE** — like a real analyst: re-read the thesis, decide whether the world has changed enough to warrant fresh data. If yes, pull \`get_stock_data\` (and signals if relevant), narrate the read, then \`update_thesis\` with the refined fields. If the thesis is intact and nothing material has happened, \`update_thesis\` with rationale only — that writes a REVIEWED row AND auto-bumps the next review date forward by the horizon's cadence. If the review surfaces that the thesis is no longer applicable (out of scope, structurally broken, decorative), use \`update_thesis(change_status: "INVALIDATED")\` to retire it durably — don't leave dead theses in the book.
+
+   **Pick the right shape:** transient rejection (b) = "not entering RIGHT NOW for a specific market reason" — thesis stays alive, next trigger re-evaluates. INVALIDATED (c) = "this thesis should not exist for me anymore" — durable kill, no future fires, no future busywork. Use INVALIDATED when the reason is permanent (universe/edge mismatch, premise broken, ticker has moved on) rather than situational. The user can always re-add a name to the watchlist later.
 
 3. Theses with \`needsAction == null\` don't need to be touched. The trigger system already evaluated them; nothing fired, nothing's matching, no review is due. Yesterday's thesis stands.
 

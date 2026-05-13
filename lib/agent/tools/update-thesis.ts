@@ -403,8 +403,35 @@ export const updateThesis = defineTool({
           : existing.stopLoss != null
             ? Number(existing.stopLoss)
             : null;
+      // Effective entry: prefer the OPEN Position's actual fill price
+      // over the thesis row's planned entry. Captures the 2026-05-12 AMD
+      // shape — a WATCHING thesis carries entryPrice=$420 (the planned
+      // breakout level / ENTER trigger), the position fills at $446,
+      // and the agent's stop at $434 is correct relative to the FILL
+      // but the shape gate read against the stale $420 and rejected
+      // every attempt. The Position table is the canonical record of
+      // "what we actually own at what price" — for shape validation we
+      // want the real entry, not the planned one. Falls back to the
+      // thesis row's entryPrice for WATCHING theses (no position yet)
+      // or when no open position is found.
+      const openPosition = ctx.analystId
+        ? await prisma.position.findFirst({
+            where: {
+              analystId: ctx.analystId,
+              symbol: existing.ticker,
+              direction: existing.direction,
+              status: "OPEN",
+            },
+            select: { avgCost: true },
+            orderBy: { openedAt: "desc" },
+          })
+        : null;
       const effectiveEntry =
-        existing.entryPrice != null ? Number(existing.entryPrice) : null;
+        openPosition?.avgCost != null
+          ? Number(openPosition.avgCost)
+          : existing.entryPrice != null
+            ? Number(existing.entryPrice)
+            : null;
       const shapeCheck = validateThesisShape({
         direction: existing.direction as "LONG" | "SHORT",
         entryPrice: effectiveEntry,
