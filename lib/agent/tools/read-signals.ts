@@ -559,12 +559,21 @@ export const readSignals = defineTool({
       const config = await prisma.agentConfig.findUnique({
         where: { id: ctx.analystId },
         select: {
-          watchlist: true,
           exclusionList: true,
         },
       });
 
-      const cfgWatchlist = config?.watchlist ?? [];
+      // Watchlist = WATCHING theses (post-collapse).
+      const watchingTheses = await prisma.thesis.findMany({
+        where: {
+          status: "WATCHING",
+          researchRun: { agentConfigId: ctx.analystId },
+        },
+        select: { ticker: true },
+      });
+      const cfgWatchlist = Array.from(
+        new Set(watchingTheses.map((t) => t.ticker)),
+      );
       const exclSet = new Set(
         (config?.exclusionList ?? []).map((e) => e.toUpperCase()),
       );
@@ -590,7 +599,7 @@ export const readSignals = defineTool({
         });
 
         if (fallbackSignals.length > 0) {
-          const watchSet = new Set(cfgWatchlist.map((w) => w.toUpperCase()));
+          const watchSet = new Set(cfgWatchlist.map((w: string) => w.toUpperCase()));
           const fbSignals: SignalItem[] = fallbackSignals
             .filter((s) => !s.tickers.some((t) => exclSet.has(t.toUpperCase())))
             .map((s): SignalItem => {

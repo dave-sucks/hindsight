@@ -5,10 +5,14 @@
  * Same bug class place_trade had on 2026-04-29 → 05-01 (PR #210/#226):
  * the agent writes "tightening the stop on $X" or "$INTC closed due to
  * overextension" in the run summary's reasoning text but emits zero
- * `manage_position` / `close_position` / `manage_watchlist` calls. The
- * existing morning-research gate only catches the place_trade case
- * (primary_decision=ADD/ROTATE with tradesPlaced=0). This module covers
- * the other action verbs.
+ * `manage_position` / `close_position` calls. The existing morning-research
+ * gate only catches the place_trade case (primary_decision=ADD/ROTATE with
+ * tradesPlaced=0). This module covers the other action verbs.
+ *
+ * Watchlist verbs were dropped in the watchlist collapse — there's no
+ * dedicated tool to point at (record_thesis for adds, update_thesis(ARCHIVED)
+ * for removes), and the existing close/exit/invalidate verb rules catch
+ * the agent's "removing X" intent against the thesis lifecycle.
  *
  * Invoked from record_run_summary's persistence path. Pure functions —
  * no Prisma imports here so it's unit-testable without a DB.
@@ -16,8 +20,7 @@
 
 export type ExpectedTool =
   | "close_position"
-  | "manage_position"
-  | "manage_watchlist";
+  | "manage_position";
 
 export interface NarrationHit {
   ticker: string;
@@ -80,7 +83,9 @@ export const VERB_RULES: VerbRule[] = [
     expectedTool: "manage_position",
     label: "partial close",
   },
-  // "added to" / "adding to" — but NOT "added to watchlist" (handled below)
+  // "added to" / "adding to" — but NOT "added to watchlist" (those are now
+  // record_thesis/update_thesis calls handled by the agent prompt + tool
+  // gates, not this gate).
   {
     pattern: /\b(added|adding)\s+to\b(?!\s+(?:my\s+|the\s+|a\s+)?watchlist)/gi,
     expectedTool: "manage_position",
@@ -96,22 +101,6 @@ export const VERB_RULES: VerbRule[] = [
     pattern: /\badjusted\b/gi,
     expectedTool: "manage_position",
     label: "adjust",
-  },
-  // manage_watchlist
-  {
-    pattern: /\b(removing|removed|remove|drop(?:ping|ped)?)\b[^.]{0,40}\bwatchlist\b/gi,
-    expectedTool: "manage_watchlist",
-    label: "remove from watchlist",
-  },
-  {
-    pattern: /\b(added|adding|add)\b[^.]{0,40}\bwatchlist\b/gi,
-    expectedTool: "manage_watchlist",
-    label: "add to watchlist",
-  },
-  {
-    pattern: /\bwatchlist\s+remov\w*/gi,
-    expectedTool: "manage_watchlist",
-    label: "watchlist remove",
   },
 ];
 
@@ -202,8 +191,6 @@ export function detectNarrationHits(
 const RUN_EVENT_TYPE_TO_TOOL: Record<string, ExpectedTool> = {
   position_closed: "close_position",
   position_modified: "manage_position",
-  watchlist_add: "manage_watchlist",
-  watchlist_remove: "manage_watchlist",
 };
 
 // What counts as "the tool fired" for each narrated intent. close_position
@@ -214,7 +201,6 @@ const RUN_EVENT_TYPE_TO_TOOL: Record<string, ExpectedTool> = {
 const SATISFYING_TOOLS: Record<ExpectedTool, ExpectedTool[]> = {
   close_position: ["close_position", "manage_position"],
   manage_position: ["manage_position", "close_position"],
-  manage_watchlist: ["manage_watchlist"],
 };
 
 export interface ToolCallEvent {

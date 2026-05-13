@@ -1,8 +1,10 @@
 # Discovery Run Expectations — INTC via Tech Momentum Trader
 
-**Purpose.** Pre-commit, before tomorrow's Sunday 9am ET weekly discovery cron, exactly what we expect the discovery run to read, decide, and write for one well-supported candidate. After the run we compare the actual ResearchRun / RunMessage / Thesis / ThesisUpdate rows against this doc line by line. Anything that diverges is either a real bug or a documented intentional difference — no more "well maybe that's how it's supposed to work."
+> **Updated 2026-05-13 (post-collapse).** Watchlist now lives on Thesis (PR #265 / `docs/THESIS_ARCHITECTURE.md`); PASS+ARCHIVED is a valid Discovery output for researched-and-declined candidates; agents cannot mint PENDING. This doc updated to match.
 
-This doc covers **one ticker (INTC) on one analyst (Tech Momentum Trader)**. The same discovery run will execute against every non-DAY-only analyst on the account; INTC is the anchor case for verification.
+**Purpose.** Pre-commit, before the next manual discovery cron run, exactly what we expect Discovery to read, decide, and write for one well-supported candidate. After the run we compare the actual ResearchRun / RunMessage / Thesis / ThesisUpdate rows against this doc line by line. Anything that diverges is either a real bug or a documented intentional difference — no more "well maybe that's how it's supposed to work."
+
+This doc covers **one ticker (INTC) on one analyst (Tech Momentum Trader)**. The same discovery run executes against every non-DAY-only analyst on the account; INTC is the anchor case for verification.
 
 ---
 
@@ -282,13 +284,20 @@ If everything works, after the run we should see:
 | Table | Expected rows |
 |---|---|
 | `ResearchRun` | 1 row, `mode = "DISCOVERY"`, `status = "COMPLETE"`, `agentConfigId = cmmofy6t3000004l7858o1xma`, `parameters.toolStats.byTool` includes read_signals + get_market_movers + get_earnings_calendar + get_theses + get_stock_data + record_thesis + record_run_summary + complete_run, `parameters.tradesPlaced = 0`. |
-| `Thesis` | 1 row for INTC with the shape committed above. `status = "WATCHING"`, `coreBelief` non-null, `keyAssumptions` length ≥ 2, `invalidationConds` length ≥ 2, `triggers` JSONB has ≥ 1 ENTER trigger with predicate `PRICE_ABOVE` and `level = targetPrice`, `nextReviewAt` ≈ run_start + 24h. Plus 2-5 similar rows for the other minted candidates. |
-| `ThesisUpdate` | 1 `CREATED` row per minted thesis. `signalIds` contains the 4 routed signal IDs from the INTC mint. |
+| `Thesis` — INTC | 1 row with the shape committed above. `direction='LONG'`, `status='WATCHING'`, `coreBelief` non-null, `keyAssumptions` length ≥ 2, `invalidationConds` length ≥ 2, `triggers` JSONB has ≥ 1 ENTER trigger with predicate `PRICE_ABOVE` and `level = targetPrice`, `nextReviewAt` ≈ run_start + 24h. |
+| `Thesis` — others | 3-6 more `direction='LONG' status='WATCHING'` rows for the in-universe semis/software names that cleared composite ≥ 4 (likely MU, KLAC, TXN, CRBR, FROG, RNG, $S, etc.). |
+| `Thesis` — PASS rows | 2-6 `direction='PASS' status='ARCHIVED'` rows for researched-but-declined candidates. Each has `reasoningSummary` (why declined) + `invalidationConds` length ≥ 1 (what would flip the verdict). NO triggers (tool rejects PASS+triggers). NO entry/target/stop required. |
+| `ThesisUpdate` | 1 `CREATED` row per minted thesis (WATCHING + PASS+ARCHIVED both). `signalIds` populated when source_kind was ROUTED_SIGNAL. |
 | `RunEvent` | At least: `thesis_complete` events per mint, `run_summary`, `run_complete`. Possibly `briefing_generated` follow-on. |
 | `RunMessage` | 1 row, JSON array of UIMessages, contains tool calls in the right Step-1 → Step-2 → Step-3 → Step-5 sequence with narration between (not text-only assistant turns that would terminate the loop). |
-| `AnalystSignalRoute` | The 4 cited INTC signal IDs flip from `READ` → `ACTED_ON` (record-thesis.ts lines 1095-1107). |
-| `Position` | No new rows for INTC (WATCHING, not traded). |
-| `TradeDecision` | No INTC row (no place_trade). |
+| `AnalystSignalRoute` | Cited signal IDs flip from `READ` → `ACTED_ON` (record-thesis post-write step). |
+| `Position` | No new rows. Discovery doesn't trade. |
+| `TradeDecision` | No rows. Discovery doesn't trade. |
+
+**Server-derived run summary** (from `ThesisUpdate WHERE runId = $runId`, per `docs/THESIS_ARCHITECTURE.md` §11):
+- **Added to watchlist** bucket: 4-8 entries (the LONG WATCHING mints)
+- **Researched, passed** bucket: 2-6 entries (the PASS ARCHIVED mints)
+- All other buckets empty (Discovery doesn't promote, invalidate, or close).
 
 ---
 
@@ -328,14 +337,17 @@ Listed in pipeline order. If any of these are observed in tomorrow's data, write
 
 ## Calibration: what would be GOOD ENOUGH
 
-The user's framing for this stage: *"ignoring the quality of discovery which has tons of issues. Just starting with a discovery run and seeing if it at least pulls the right things in and sets theses the right way."*
+The user's framing: *"ignoring the quality of discovery which has tons of issues. Just starting with a discovery run and seeing if it at least pulls the right things in and sets theses the right way."*
 
-So the bar for "Stage A passes for tomorrow's INTC trace":
+So the bar for "Stage A passes for the next INTC trace":
 
 ✅ Discovery run completes (not FAILED).
-✅ INTC thesis exists with status=WATCHING, direction=LONG, all required fields populated, default triggers attached, ENTER trigger has a real `level` value that's above the entry price, `source_kind=ROUTED_SIGNAL` with real signal IDs from the analyst's inbox, scoring breakdown present.
-✅ ThesisUpdate(CREATED) row exists with signalIds populated.
+✅ INTC thesis exists with `direction='LONG' status='WATCHING'`, all required fields populated, default triggers attached, ENTER trigger has a real `level` value that's above the entry price, `source_kind=ROUTED_SIGNAL` with real signal IDs from the analyst's inbox, scoring breakdown present.
+✅ Multiple WATCHING rows for in-universe semis names (not just INTC). 4-8 is the target.
+✅ PASS+ARCHIVED rows exist for the researched-and-declined names. Each carries reasoning_summary + ≥1 invalidation_condition. Zero triggers attached (tool enforces).
+✅ ThesisUpdate(CREATED) row exists with signalIds populated for ROUTED_SIGNAL provenance.
 ✅ Run ends with `record_run_summary` + `complete_run`.
+✅ Server-derived run summary shows Added (4-8) + Researched-passed (2-6) buckets populated; other three buckets empty.
 
 The thesis prose can be mediocre. The scoring can be slightly off (e.g. entryQuality=1 when I expected 0). The horizon can be TARGET instead of TRADE. None of that is the immediate concern — the immediate concern is that the *shape* of the thing the run produces matches the design, not the *quality* of its analysis.
 

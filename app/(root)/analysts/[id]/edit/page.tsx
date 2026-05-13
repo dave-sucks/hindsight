@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { AnalystEditClient } from "@/components/analysts/AnalystEditClient";
+import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 
 type Params = { id: string };
 
@@ -37,6 +38,8 @@ export default async function AnalystEditPage({
   const domainMonitors = monitors.filter((m) => m.type === "DOMAIN");
   const searchMonitors = monitors.filter((m) => m.type === "SEARCH");
 
+  const watchlistSymbols = await getWatchlistSymbols(id);
+
   // Build config object matching AgentConfigData shape (including intelligence)
   const currentConfig: Record<string, unknown> = {
     name: config.name,
@@ -55,7 +58,7 @@ export default async function AnalystEditPage({
     maxPositionSize: config.maxPositionSize ? Number(config.maxPositionSize) : undefined,
     maxOpenPositions: config.maxOpenPositions,
     minMarketCapTier: config.minMarketCapTier,
-    watchlist: config.watchlist,
+    watchlist: watchlistSymbols,
     exclusionList: config.exclusionList,
     // Map existing monitors into the shape the panel expects
     domainMonitorProposal: domainMonitors.length > 0

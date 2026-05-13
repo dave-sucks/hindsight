@@ -26,7 +26,7 @@ const thesisFields = z.object({
   ticker: z.string(),
   company_name: z.string().optional().describe("Company name from get_stock_data"),
   exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
-  direction: z.enum(["LONG", "SHORT", "PASS"]),
+  direction: z.enum(["LONG", "SHORT", "PASS", "PENDING"]),
   confidence_score: z.number().min(0).max(100),
   reasoning_summary: z
     .string()
@@ -79,10 +79,18 @@ const thesisFields = z.object({
   // execute()-level existence check still verifies ROUTED_SIGNAL IDs
   // against AnalystSignalRoute for this analyst.
   source_kind: z
-    .enum(["ROUTED_SIGNAL", "WEB_SEARCH", "WATCHLIST_REVIEW", "POSITION_REVIEW"])
+    .enum([
+      "ROUTED_SIGNAL",
+      "WEB_SEARCH",
+      "WATCHLIST_REVIEW",
+      "POSITION_REVIEW",
+      "USER_ADDED",
+      "BUILDER_SEED",
+      "EDITOR_SEED",
+    ])
     .optional()
     .describe(
-      "Where this thesis came from. ROUTED_SIGNAL = informed by a signal from read_signals (requires non-empty source_signal_ids). WEB_SEARCH = came from a live web_search call only. WATCHLIST_REVIEW = triggered by reviewing your own watchlist. POSITION_REVIEW = triggered by reviewing an open position."
+      "Where this thesis came from. ROUTED_SIGNAL = informed by a signal from read_signals (requires non-empty source_signal_ids). WEB_SEARCH = came from a live web_search call only. WATCHLIST_REVIEW = triggered by reviewing your own watchlist. POSITION_REVIEW = triggered by reviewing an open position. USER_ADDED/BUILDER_SEED/EDITOR_SEED are reserved for non-agent code paths (UI manual add, analyst-creation, editor chat) and should not be passed by the agent."
     ),
   source_signal_ids: z
     .array(z.string())
@@ -303,6 +311,27 @@ export const recordThesis = defineTool({
 
   execute: async (args, ctx) => {
     try {
+      // PENDING is reserved for non-agent server actions (addWatchlistItem,
+      // createAnalystFromConfig, editor analyst-update). Agents always
+      // commit to LONG / SHORT / PASS. If the agent wants to promote an
+      // existing PENDING thesis to a real view, the path is
+      // update_thesis(thesis_id, direction: "LONG"|"SHORT"|"PASS", ...).
+      if (args.direction === "PENDING") {
+        return {
+          summary: `Thesis rejected for ${args.ticker}: agents cannot mint PENDING.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note:
+              `PENDING is reserved for user/builder/editor seeds (UI manual add, analyst creation, editor chat). ` +
+              `As an agent, you commit to a view: LONG, SHORT, or PASS. ` +
+              `If you're trying to promote an existing PENDING thesis on this ticker, call update_thesis(thesis_id, direction: "LONG"|"SHORT"|"PASS", ...) with the structural fields. ` +
+              `If you want net-new coverage, pick LONG/SHORT (with target/stop/belief) or PASS (with invalidation_conditions).`,
+          },
+          sources: [],
+        };
+      }
+
       const sourceSignalIds = Array.from(new Set(args.source_signal_ids ?? []));
       const sourceRationale = args.source_rationale?.trim() ?? "";
 
@@ -569,7 +598,8 @@ export const recordThesis = defineTool({
       //                      thesis isn't quietly auto-extended past
       //                      its intended life.
       // PASS theses bypass — they're not actionable plans.
-      if (args.direction !== "PASS" && args.horizon === "CATALYST" && !args.catalyst_date) {
+      const isDirectional = args.direction === "LONG" || args.direction === "SHORT";
+      if (isDirectional && args.horizon === "CATALYST" && !args.catalyst_date) {
         console.warn(
           `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — CATALYST horizon without catalyst_date.`,
         );
@@ -587,7 +617,7 @@ export const recordThesis = defineTool({
           sources: [],
         };
       }
-      if (args.direction !== "PASS" && args.horizon === "TRADE" && args.max_hold_days == null) {
+      if (isDirectional && args.horizon === "TRADE" && args.max_hold_days == null) {
         console.warn(
           `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — TRADE horizon without explicit max_hold_days.`,
         );
@@ -640,39 +670,80 @@ export const recordThesis = defineTool({
         nextReviewAt = new Date(Date.now() + days * dayMs);
       }
 
-      // ── Effective status — derived once, used both for triggers and DB ──
-      // We compute the held vs watching distinction up front so the
-      // trigger factory below can pick the right template (ENTER triggers
-      // for watching, EXIT triggers for held). Same logic as line 638's
-      // effectiveStatus — kept in lockstep; if you change one, change both.
+      // ── Effective status — derived from (direction, status) pair ──
+      // Watchlist-collapse legal pairs:
+      //   PENDING → WATCHING (only)
+      //   PASS    → ARCHIVED (only, terminal at write)
+      //   LONG/SHORT → WATCHING (default) or ACTIVE (explicit)
+      // Anything else is rejected.
+      // After the PENDING-rejection at the top of execute(), args.direction
+      // is narrowed to LONG | SHORT | PASS.
       //
-      // 2026-05-13 — discovery hard-clamp.
-      //
-      // PRIOR BUG: discovery-mode mints landed as ACTIVE whenever the
-      // composite score crossed the prompt's "≥ 8 + clear setup + fresh
-      // catalyst" threshold. The prompt instruction is advisory and
-      // GPT-4o overrode it (see INTC mint cmp3i0y01 on 2026-05-13: agent
-      // wrote ACTIVE with entryQuality=2 despite the signal pool flagging
-      // RSI 85.99 / 43.7% above 20d SMA). ACTIVE attaches HELD-template
-      // triggers (EXIT on stop_loss, REVIEW on target_hit) — but no
-      // place_trade fires, so the thesis sits with EXIT triggers on a
-      // non-existent position. The trigger evaluator then fires orphan
-      // tactical EXIT runs that have nothing to act on, failing silently.
-      //
-      // FIX: discovery is by design a WATCHING-mint surface. ACTIVE
-      // promotion is the daily run's job — it has the portfolio-fit
-      // comparison + the place_trade pairing. Force WATCHING here
-      // regardless of agent intent. PASS theses are unaffected (they
-      // don't hit this branch).
-      const isDiscoveryMint = ctx.discoveryOnly === true && args.direction !== "PASS";
-      const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" = isDiscoveryMint
-        ? "WATCHING"
-        : args.status ??
-          (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
-      if (isDiscoveryMint && args.status === "ACTIVE") {
+      // 2026-05-13 — discovery hard-clamp for LONG/SHORT (additive on top
+      // of the legal-pair mapping). Discovery agents previously landed
+      // status=ACTIVE on high-conviction LONG/SHORT mints — the prompt
+      // instruction was advisory and GPT-4o overrode it (see INTC mint
+      // cmp3i0y01 on 2026-05-13). ACTIVE attaches HELD-template triggers
+      // (EXIT on stop_loss, REVIEW on target_hit) but no place_trade
+      // fires, so the trigger evaluator later fires orphan tactical EXIT
+      // runs that fail silently. Discovery is a WATCHING-mint surface by
+      // design; ACTIVE promotion is the daily run's job (portfolio-fit
+      // comparison + place_trade pairing). PASS is unaffected — it maps
+      // to ARCHIVED in the same step below.
+      const isDiscoveryDirectional =
+        ctx.discoveryOnly === true &&
+        (args.direction === "LONG" || args.direction === "SHORT");
+      if (isDiscoveryDirectional && args.status === "ACTIVE") {
         console.warn(
           `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in discovery mode; forced WATCHING. Promotion is the daily-run's job.`,
         );
+      }
+      const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" | "ARCHIVED" =
+        args.direction === "PASS"
+          ? "ARCHIVED"
+          : isDiscoveryDirectional
+            ? "WATCHING"
+            : args.status ??
+              (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
+
+      // Reject illegal (direction, status) pairs explicitly when the agent
+      // passes an `status` arg that conflicts with direction.
+      if (
+        (args.direction === "PASS" && args.status === "ACTIVE") ||
+        (args.direction === "PASS" && args.status === "WATCHING")
+      ) {
+        return {
+          summary: `Thesis rejected for ${args.ticker}: illegal (direction, status) pair.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note:
+              `Direction='${args.direction}' is incompatible with status='${args.status}'. ` +
+              `Legal pairs:\n` +
+              `  • PENDING → WATCHING (seed, awaiting first research)\n` +
+              `  • PASS → ARCHIVED (terminal, off the watchlist)\n` +
+              `  • LONG/SHORT → WATCHING (entry-gated) or ACTIVE (live)\n` +
+              `Retry with a legal pair.`,
+          },
+          sources: [],
+        };
+      }
+
+      // PASS theses reject triggers[] at write — they're terminal, no
+      // wake-up needed. Future re-encounter mints a fresh thesis chained
+      // via parent_thesis_id.
+      if (args.direction === "PASS" && Array.isArray(args.triggers) && args.triggers.length > 0) {
+        return {
+          summary: `Thesis rejected for ${args.ticker}: PASS theses cannot carry triggers.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note:
+              `PASS = "researched, decided not to trade." It's terminal at write (status=ARCHIVED) and lives as institutional memory only — no review cadence, no entry trigger, no wake-up. ` +
+              `If you want the system to alert you when conditions flip, that's not a PASS — write a LONG/SHORT WATCHING thesis with an ENTER trigger at the level that would change your mind.`,
+          },
+          sources: [],
+        };
       }
 
       // ── Hoisted trigger build ─────────────────────────────────────────
@@ -683,6 +754,11 @@ export const recordThesis = defineTool({
       // upstream guard in manage_watchlist.ts and closes the last creation
       // hole for inert watching theses.
       const mergedTriggers: Trigger[] = (() => {
+        // PASS theses are terminal — no triggers. Future re-encounter
+        // mints a fresh directional thesis via parent_thesis_id.
+        if (args.direction === "PASS") {
+          return [];
+        }
         // Without horizon we can't pick a defaults template — agent's
         // raw triggers are all we have. Cooldown backfill still runs.
         if (!args.horizon) {
@@ -1111,15 +1187,8 @@ export const recordThesis = defineTool({
         }
       }
 
-      // V2: Update watchlist item's lastThesisId (non-fatal)
-      if (ctx.analystId) {
-        try {
-          await prisma.analystWatchlistItem.updateMany({
-            where: { analystId: ctx.analystId, symbol: args.ticker, status: "ACTIVE" },
-            data: { lastThesisId: thesis.id },
-          });
-        } catch { /* Non-fatal */ }
-      }
+      // Watchlist-collapse: this thesis IS the watchlist row (when
+      // status='WATCHING'). No mirror table to sync.
 
       // V3 Session 3 — flip any cited routes to ACTED_ON. Scoped by analystId
       // so one analyst citing a signal doesn't close out a peer's inbox entry.

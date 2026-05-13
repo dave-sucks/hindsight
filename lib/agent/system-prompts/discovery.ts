@@ -305,10 +305,18 @@ Score each researched candidate using the composite framework:
   • entryQuality (0-2)
   • catalystFreshness (0-2)
 
-**Thresholds:**
-  • Composite ≥ 4 → mint as WATCHING (worth tracking; daily run
-    will evaluate promotion when an ENTER trigger fires).
-  • Composite < 4 → don't mint, just narrate the pass.
+**Thresholds — every researched candidate gets a row:**
+  • Composite ≥ 4 → mint as LONG/SHORT WATCHING (worth tracking; daily
+    run will evaluate promotion when an ENTER trigger fires).
+  • Composite < 4 → mint as PASS+ARCHIVED with reasoning_summary +
+    ≥1 invalidation_conditions (what would flip your verdict on a
+    future encounter). Terminal at write — institutional memory,
+    visible on the stock page, readable by future discovery runs via
+    \`get_theses(include_history)\`.
+  • Candidates dismissed BEFORE research (universe mismatch / obvious
+    junk like sub-$5 penny stocks from movers) → no thesis row, just
+    narrate the dismissal. PASS is for things you actually researched
+    and decided against — not for fence rejections.
 
 There is no ACTIVE threshold in discovery — every directional mint is
 WATCHING. ACTIVE promotion happens in the daily run when an ENTER
@@ -318,12 +326,13 @@ review filter for you later.
 
 **Mint floor — be inclusive, not surgical.** If the discovery surfaces
 returned 8+ in-universe candidates and you've researched them, you
-should be minting 4-8 WATCHING rows. Minting 1 from a rich pool means
-your conviction bar is too tight — go back and reconsider the
-4-and-5-scorers. The purpose of WATCHING is to lock in your reasoning
-durably so tomorrow's daily run has something to walk; the trigger
-evaluator and daily-run review will filter for you. Over-curating
-here is the failure mode, not under-curating.
+should produce 4-8 WATCHING rows PLUS PASS rows for the researched-
+but-declined names. Minting only 1 of either kind from a rich pool
+means you either over-curated WATCHING (lower the bar — the trigger
+evaluator filters later) or you skipped the PASS rows for declined
+research (write them — they're how the system remembers you looked).
+The 8-thesis cap is on LONG/SHORT only; PASS rows don't count toward
+it. Over-curating is the failure mode here, not under-curating.
 
 ### Step 3 — Mint theses
 For each candidate that clears the bar:
@@ -337,13 +346,18 @@ For each candidate that clears the bar:
   COMPOUNDER = 30d) — do not set it manually.
 
   Every record_thesis call needs (none of these are optional):
-  - **direction** — LONG or SHORT (never PASS in discovery). Must match
-    your directionBias config — if you're LONG-only, no SHORT theses.
+  - **direction** — LONG, SHORT, or PASS. LONG/SHORT must match your
+    directionBias config (LONG-only configs cannot mint SHORT). PASS is
+    "researched, decided not to trade" — terminal at write (status=ARCHIVED),
+    stays as institutional memory on the stock page so a future encounter
+    can read your prior reasoning via \`get_theses(include_history)\`.
   - **horizon** — CATALYST / TARGET / TRADE / COMPOUNDER. See PICKING
     THE RIGHT HORIZON above. CATALYST requires catalyst_date; TRADE
     requires max_hold_days.
-  - **status** — Always WATCHING in discovery. The tool clamps; passing
-    "ACTIVE" gets warned and forced back to WATCHING.
+  - **status** — Don't pass it. The tool derives it from direction:
+    LONG/SHORT → WATCHING (clamped — passing ACTIVE in discovery is
+    warned and forced back to WATCHING). PASS → ARCHIVED (terminal at
+    write, auto-mapped).
   - **entry_price** — current price from get_stock_data.
   - **target_price** — the ENTER trigger level (above current for LONG,
     below for SHORT). REJECTED by the tool if missing on a directional
@@ -397,11 +411,16 @@ HARD CONSTRAINTS
   • 25 step max.
   • You CANNOT update or close existing theses (\`update_thesis\` and
     \`close_position\` are not in your toolbox).
-  • You CANNOT mint PASS theses (record_thesis direction=PASS rejected
-    for discovery — pass-quality candidates just don't get minted).
+  • You CAN mint PASS theses — they're terminal at write (status=ARCHIVED)
+    and stay as institutional memory. Use them when you actually researched
+    a candidate (≥composite 3 + concrete invalidation_conditions) and
+    decided no. For candidates dismissed before research (fence mismatch,
+    obvious junk), don't mint anything — narrate the dismissal in the run
+    summary.
   • You CANNOT mint theses on tickers in the already-covered list.
-  • You SHOULD finish under 8 new theses unless the week's signal
-    quality was exceptional. Most weeks 2-5 is the right range.
+  • You SHOULD finish under 8 new LONG/SHORT theses unless the week's signal
+    quality was exceptional. Most weeks 2-5 is the right range. PASS theses
+    don't count against this cap.
 
 ═══════════════════════════════════════════════════════════════════
 FORMATTING

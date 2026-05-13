@@ -164,6 +164,11 @@ enum ThesisStatus {
   CLOSED
   SUPERSEDED
   WATCHING
+  // ARCHIVED — terminal-without-trade-or-invalidation. PASS theses at write
+  // time (institutional memory), and manual/editor watchlist removals.
+  // Distinct from INVALIDATED (view was disproven) and CLOSED (position
+  // was held and closed). See docs/WATCHLIST_COLLAPSE_PLAN.md → Lifecycle.
+  ARCHIVED
 }
 
 model Thesis {
@@ -173,7 +178,7 @@ model Thesis {
   accountId        String
   ticker           String
   source           String        // "AGENT" | "MANUAL"
-  direction        String        // "LONG" | "SHORT" | "PASS"
+  direction        String        // "LONG" | "SHORT" | "PASS" | "PENDING"
   entryPrice       Float?
   targetPrice      Float?
   stopLoss         Float?
@@ -204,7 +209,7 @@ model Thesis {
   // idea came from so we can audit compliance from the DB (not just logs)
   // and later bucket theses by origin for hit-rate analysis. Nullable
   // because legacy rows predate this column.
-  sourceKind       String?       // "ROUTED_SIGNAL" | "WEB_SEARCH" | "WATCHLIST_REVIEW" | "POSITION_REVIEW"
+  sourceKind       String?       // "ROUTED_SIGNAL" | "WEB_SEARCH" | "WATCHLIST_REVIEW" | "POSITION_REVIEW" | "USER_ADDED" | "BUILDER_SEED" | "EDITOR_SEED"
   sourceRationale  String?
 
   // Phase 1 — what should fire an intraday tactical re-evaluation of this
@@ -363,11 +368,12 @@ model AgentConfig {
   briefings             AnalystBriefing[]
   positions             Position[]
   decisions             TradeDecision[]
-  watchlistItems        AnalystWatchlistItem[]
+  // Watchlist collapse — `watchlist: String[]` and `watchlistItems: AnalystWatchlistItem[]`
+  // were removed. The watchlist is now a query: `Thesis WHERE researchRun.agentConfigId = id
+  // AND status = 'WATCHING'`. See docs/WATCHLIST_COLLAPSE_PLAN.md.
   markets               String[] // ["US_EQUITIES", "CRYPTO", "ETFS"]
   exchanges             String[] // ["NASDAQ", "NYSE"]
   sectors               String[] // ["TECH", "FINANCE", ...]
-  watchlist             String[]
   exclusionList         String[]
   maxPositionSize       Float    @default(500)
   maxOpenPositions      Int      @default(5)
@@ -690,57 +696,6 @@ model MorningBrief {
   @@index([analystId])
   @@index([accountId])
   @@index([date])
-}
-
-// ─── ANALYST WATCHLIST ─────────────────────────────────────────────────────
-// Per-analyst watchlist with metadata, thesis history, and lifecycle tracking.
-// Replaces the flat watchlist String[] on AgentConfig for structured tracking.
-
-model AnalystWatchlistItem {
-  id              String    @id @default(cuid())
-  analystId       String
-  userId          String
-  accountId       String
-  symbol          String
-  reason          String    // Why this stock is being watched
-  notes           String?   // Free-text notes, updated over time
-  addedBy         String    // "AGENT" | "USER" | "BUILDER"
-  priority        String    @default("NORMAL") // "HIGH" | "NORMAL" | "LOW"
-  status          String    @default("ACTIVE") // "ACTIVE" | "REMOVED" | "GRADUATED"
-  thesisDirection String?   // "LONG" | "SHORT" | "PASS" — agent's directional view
-  targetPrice     Float?    // Price target the agent is watching for
-  stopPrice       Float?    // Price level that invalidates the thesis
-  conviction      Int?      // 0-100 conviction score
-  catalyst        String?   // Key catalyst being monitored (e.g. "Q2 earnings Aug 1")
-  lastReviewedAt  DateTime? // Updated each time the agent reviews this item
-
-  // V2: Enhanced watchlist metadata
-  triggerCondition  String?       // Machine-readable: "price < 145", "RSI < 30", "earnings this week"
-  reviewFrequency   String?       // "DAILY" | "WEEKLY" | "ON_CATALYST"
-  addedRunId        String?       // Which run added this item
-  lastThesisId      String?       // Most recent thesis for this symbol
-
-  // Phase 1 — explicit carryover expiry. EOD reflective run expires items past
-  // this date (auto-removes or downgrades priority). null = no expiry. Pairs
-  // with triggerCondition to make the watchlist the carryover mechanism instead
-  // of stale signal residue.
-  expiresAt         DateTime?
-
-  removedAt       DateTime?
-  removeReason    String?
-
-  // V2 Phase 3: Graduation tracking
-  promotedToPositionId  String?   // FK to Position that this watchlist item graduated into
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  analyst        AgentConfig @relation(fields: [analystId], references: [id], onDelete: Cascade)
-
-  @@unique([analystId, symbol, status]) // One active item per analyst per symbol
-  @@index([analystId, status])
-  @@index([userId])
-  @@index([accountId])
 }
 
 // ─── NEW TRADING LAYER ─────────────────────────────────────────────────────

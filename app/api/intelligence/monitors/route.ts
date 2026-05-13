@@ -62,11 +62,29 @@ export async function GET(req: NextRequest) {
         const trackType = (m.config as Record<string, unknown> | null)?.track as string | undefined
         const isWatchlist = trackType === "watchlist" || m.name.toLowerCase().includes("watchlist")
         if (isWatchlist) {
-          const items = await prisma.analystWatchlistItem.findMany({
-            where: { status: "ACTIVE", analystId: { in: analystIds } },
-            select: { symbol: true, reason: true, priority: true, analystId: true },
+          // Watchlist post-collapse: WATCHING theses scoped to the user's analysts.
+          const items = await prisma.thesis.findMany({
+            where: {
+              status: "WATCHING",
+              researchRun: { agentConfigId: { in: analystIds } },
+            },
+            select: {
+              ticker: true,
+              reasoningSummary: true,
+              researchRun: { select: { agentConfigId: true } },
+            },
           })
-          return { ...m, monitoredTickers: items.map((i) => ({ ticker: i.symbol, reason: i.reason, priority: i.priority, analystId: i.analystId })) }
+          return {
+            ...m,
+            monitoredTickers: items
+              .filter((i) => i.researchRun.agentConfigId !== null)
+              .map((i) => ({
+                ticker: i.ticker,
+                reason: i.reasoningSummary,
+                priority: "NORMAL",
+                analystId: i.researchRun.agentConfigId as string,
+              })),
+          }
         }
         // Default: track open positions
         const positions = await prisma.position.findMany({
