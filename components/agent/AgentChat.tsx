@@ -29,7 +29,7 @@ import {
   updateAnalystFromBuilder,
 } from "@/lib/actions/analyst.actions";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
-import { Sparkles } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunSourcesPanel } from "@/components/research/run-sources-panel";
 import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
@@ -109,6 +109,22 @@ const PODCAST_SEGMENT_RUN_COMPOSER: HindsightComposerFeatures = {
   placeholder: "Ask a follow-up about the segment…",
 };
 
+// Principal chat (operator co-pilot at /chat) — welcome + composer.
+// The page wraps AgentChat in a topSlot that renders the scope chip
+// (Portfolio | @AnalystName), so the welcome subtitle stays static.
+const PRINCIPAL_WELCOME: WelcomeConfig = {
+  title: "Hindsight",
+  subtitle:
+    "Operator chat — review analysts, runs, monitors, theses; research stocks; place trades when scoped to an analyst.",
+};
+
+const PRINCIPAL_COMPOSER: HindsightComposerFeatures = {
+  tickerSearch: true,
+  slashCommands: true,
+  placeholder:
+    "Ask about your portfolio, an analyst, a ticker, or a thesis…",
+};
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface AgentChatProps {
@@ -136,6 +152,19 @@ interface AgentChatProps {
 
   /** Thread composer slot (e.g. QuickReplies) */
   composerSlot?: ReactNode;
+
+  /**
+   * Principal-chat scope picker. When provided, the composer renders a
+   * "Scope" submenu in the Settings2 dropdown so the user can rebind
+   * which analyst writes target. When `current` is non-null, a
+   * brand-green-dot chip + analyst name renders at the TOP of the
+   * input. When null, no chip — unscoped is the silent default.
+   */
+  principalScope?: {
+    current: { id: string; name: string } | null;
+    options: Array<{ id: string; name: string; enabled: boolean }>;
+    onChange: (analystId: string | null) => void;
+  };
 
   /** Auto-send initial message (builder/editor) */
   initialPrompt?: string;
@@ -179,6 +208,7 @@ export function AgentChat({
   currentConfig,
   messages,
   composerSlot,
+  principalScope,
   initialPrompt,
   onConfigSuggested,
   onPodcastConfigSuggested,
@@ -186,13 +216,13 @@ export function AgentChat({
 }: AgentChatProps) {
   const api = `/api/agent/${mode}`;
 
-  // Model override — only meaningful for research-run.
-  // Reads stored preference from localStorage (set via settings page or the
-  // in-chat selector). Falls back to mode default (gpt-4o) if nothing is stored
-  // or the stored value isn't a known option.
+  // Model override — meaningful for research-run and principal. Both
+  // expose Claude Sonnet 4.6 and GPT-4o via the composer dropdown; the
+  // selection persists per-mode in localStorage.
+  const supportsModelSwitch = mode === "research-run" || mode === "principal";
   const defaultModel = MODES[mode].model;
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    if (mode !== "research-run") return defaultModel;
+    if (!supportsModelSwitch) return defaultModel;
     const stored = getStoredModel();
     const valid = RESEARCH_MODEL_OPTIONS.some((o) => o.value === stored);
     return valid ? (stored ?? defaultModel) : defaultModel;
@@ -200,8 +230,8 @@ export function AgentChat({
 
   const handleModelChange = useCallback((value: string) => {
     setSelectedModel(value);
-    if (mode === "research-run") storeModel(value);
-  }, [mode]);
+    if (supportsModelSwitch) storeModel(value);
+  }, [supportsModelSwitch]);
 
   const body: Record<string, unknown> = {};
   if (runId) body.runId = runId;
@@ -225,6 +255,7 @@ export function AgentChat({
         transcript={transcript}
         currentConfig={currentConfig}
         composerSlot={composerSlot}
+        principalScope={principalScope}
         initialPrompt={initialPrompt}
         onConfigSuggested={onConfigSuggested}
         onPodcastConfigSuggested={onPodcastConfigSuggested}
@@ -250,6 +281,7 @@ interface InnerProps {
   transcript: TranscriptRowData | null;
   currentConfig?: Record<string, unknown>;
   composerSlot?: ReactNode;
+  principalScope?: AgentChatProps["principalScope"];
   initialPrompt?: string;
   onConfigSuggested?: (
     config: AgentConfigData,
@@ -273,6 +305,7 @@ function AgentChatInner({
   transcript,
   currentConfig,
   composerSlot,
+  principalScope,
   initialPrompt,
   onConfigSuggested,
   onPodcastConfigSuggested,
@@ -515,6 +548,55 @@ function AgentChatInner({
           )}
         </TabsContent>
       </Tabs>
+    );
+  }
+
+  // ── principal: scope picker lives in the Settings2 dropdown; the
+  // brand-green-dot chip renders at the top of the input ONLY when an
+  // analyst is currently pinned. Unscoped = silent.
+  if (mode === "principal") {
+    const current = principalScope?.current ?? null;
+    const principalComposer: HindsightComposerFeatures = {
+      ...PRINCIPAL_COMPOSER,
+      placeholder: current
+        ? `Ask about ${current.name} — review theses, monitors, runs; place trades…`
+        : PRINCIPAL_COMPOSER.placeholder,
+      modelLabel:
+        RESEARCH_MODEL_OPTIONS.find((o) => o.value === selectedModel)?.label ??
+        selectedModel ??
+        "Claude Sonnet 4.6",
+      modelOptions: RESEARCH_MODEL_OPTIONS,
+      onModelChange,
+      // Muted, dismissible chip. Standard pill: small dot + analyst name
+      // + X to unscope. No styling that competes with the input itself.
+      contextChip: current ? (
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+          <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/70" />
+          <span>{current.name}</span>
+          <button
+            type="button"
+            aria-label={`Unscope ${current.name}`}
+            onClick={() => principalScope?.onChange(null)}
+            className="ml-0.5 -mr-0.5 inline-flex size-3.5 items-center justify-center rounded-full text-muted-foreground/70 hover:bg-background hover:text-foreground transition-colors"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      ) : undefined,
+      analystScope: principalScope,
+    };
+    return (
+      <Thread
+        welcomeConfig={{
+          title: current?.name ?? PRINCIPAL_WELCOME.title,
+          subtitle: current
+            ? `Scoped to ${current.name} — full read + write authority on this analyst.`
+            : PRINCIPAL_WELCOME.subtitle,
+          icon: PRINCIPAL_WELCOME.icon,
+        }}
+        composerFeatures={principalComposer}
+        composerSlot={composerSlot}
+      />
     );
   }
 

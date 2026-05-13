@@ -19,6 +19,7 @@ import {
   SatelliteDish,
   Sparkles,
   Mic,
+  MessageCircle,
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
 import { SidebarMarquee } from '@/components/MarketPulseStrip';
@@ -62,6 +63,7 @@ const PODCASTS_ENABLED = process.env.NEXT_PUBLIC_PODCASTS_ENABLED === "true";
 
 const MAIN_NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, tooltip: 'Portfolio overview' },
+  { href: '/chat', label: 'Chat', icon: MessageCircle, tooltip: 'Principal chat — talk to everything' },
   { href: '/analysts', label: 'Analysts', icon: Bot, tooltip: 'AI trading personas' },
   ...(PODCASTS_ENABLED
     ? [{ href: '/podcasts', label: 'Podcasts', icon: Mic, tooltip: 'AI-generated podcasts (PoC)' }]

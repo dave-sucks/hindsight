@@ -1,33 +1,28 @@
-"use client";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
+import { ChatPageClient } from "./ChatPageClient";
 
-import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
+/**
+ * Principal chat — operator co-pilot.
+ *
+ * Server side just loads the analyst list for the scope picker.
+ * Scope itself is set client-side (see ChatPageClient) — Notion/Linear
+ * style chip in the input header, persisted in localStorage. NO URL
+ * param: scope is part of the chat experience, not the route.
+ */
+export default async function ChatPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/sign-in");
 
-export default function ChatPage() {
-  return (
-    <div className="flex h-[calc(100dvh-3rem)] flex-col items-center justify-center px-4">
-      <div className="w-full max-w-[48rem] space-y-6">
-        <div className="text-center space-y-1">
-          <h1 className="text-2xl font-semibold">Hindsight</h1>
-          <p className="text-sm text-muted-foreground">
-            Ask anything. Research stocks, analyze trades, or update your strategy.
-          </p>
-        </div>
+  const analysts = await prisma.agentConfig.findMany({
+    where: { userId: user.id },
+    select: { id: true, name: true, enabled: true },
+    orderBy: { createdAt: "asc" },
+  });
 
-        <ChatEntryComposer
-          targetUrl="/analysts/new"
-          tooltip={{
-            title: "Start here",
-            description: "Type a ticker, question, or / for commands to get started.",
-            storageKey: "chat-entry",
-          }}
-          features={{
-            tickerSearch: true,
-            slashCommands: true,
-            plusMenu: true,
-            placeholder: "Ask anything or type / for commands…",
-          }}
-        />
-      </div>
-    </div>
-  );
+  return <ChatPageClient analysts={analysts} />;
 }

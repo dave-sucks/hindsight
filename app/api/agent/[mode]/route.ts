@@ -23,7 +23,7 @@ import { buildRunInput } from "@/lib/agent/run-input";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
-import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt } from "@/lib/agent/modes";
+import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
 import { suggestConfigTool } from "@/lib/agent/tools/suggest-config";
 import { suggestPodcastConfigTool } from "@/lib/agent/tools/suggest-podcast-config";
@@ -101,6 +101,7 @@ export async function POST(
       "research-run",
       "builder",
       "editor",
+      "principal",
       "podcast-builder",
       "podcast-segment-run",
       "podcast-editor",
@@ -263,6 +264,133 @@ export async function POST(
         systemPrompt += `\n\n## Current Configuration (user is editing an existing analyst)\n\`\`\`json\n${JSON.stringify(currentConfig, null, 2)}\n\`\`\`\nThe user wants to modify this analyst. Only change what they ask for. Call suggest_config with the full updated config.`;
       }
       resolvedAnalystId = undefined;
+
+    } else if (agentMode === "principal") {
+      // Principal chat — the operator co-pilot. Two scopes:
+      //   • UNSCOPED (no analystId on body): portfolio-wide reads. No
+      //     ResearchRun row; writes that FK into runId will fail.
+      //   • SCOPED (body.analystId present): chat is pinned to one
+      //     analyst. Route creates a ResearchRun(mode=PRINCIPAL_CHAT,
+      //     agentConfigId=<id>) so every write tool's runId FK works the
+      //     same way it does in the daily run. Analyst config + watchlist
+      //     + position tickers + intelligence policy flow through ctx.
+      resolvedAnalystId = analystId;
+
+      let scopedAnalyst: Parameters<typeof buildPrincipalSystemPrompt>[0]["scopedAnalyst"] = null;
+      if (resolvedAnalystId) {
+        const ac = await prisma.agentConfig.findFirst({
+          where: { id: resolvedAnalystId, accountId },
+        });
+        if (!ac) {
+          return new Response(
+            `Analyst ${resolvedAnalystId} not found or not in this account.`,
+            { status: 404 },
+          );
+        }
+        // Hydrate agentConfig for tool guardrails (place_trade etc.).
+        agentConfig = {
+          name: ac.name,
+          analystPrompt: ac.analystPrompt ?? undefined,
+          directionBias: ac.directionBias,
+          holdDurations: ac.holdDurations,
+          sectors: ac.sectors,
+          industries: ac.industries,
+          themes: ac.themes,
+          marketCapMin: ac.marketCapMin != null ? Number(ac.marketCapMin) : null,
+          marketCapMax: ac.marketCapMax != null ? Number(ac.marketCapMax) : null,
+          signalTypes: ac.signalTypes,
+          minConfidence: ac.minConfidence,
+          maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : undefined,
+          maxOpenPositions: ac.maxOpenPositions,
+          watchlist: ac.watchlist,
+          exclusionList: ac.exclusionList,
+        };
+        scopedAnalyst = {
+          id: ac.id,
+          name: ac.name,
+          analystPrompt: ac.analystPrompt ?? null,
+          directionBias: ac.directionBias,
+          holdDurations: ac.holdDurations,
+          sectors: ac.sectors,
+          industries: ac.industries,
+          themes: ac.themes,
+          feeds: ac.feeds,
+          watchlist: ac.watchlist,
+          exclusionList: ac.exclusionList,
+          minConfidence: ac.minConfidence,
+          maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : 0,
+          maxOpenPositions: ac.maxOpenPositions,
+        };
+        // Create or reuse a PRINCIPAL_CHAT ResearchRun for this scoped
+        // session. Account-scoped: only reuse runs owned by THIS account.
+        // Scope-flip mid-chat invalidates the runId (different agentConfig).
+        if (runId) {
+          const existing = await prisma.researchRun.findFirst({
+            where: {
+              id: runId,
+              accountId,
+              mode: "PRINCIPAL_CHAT",
+              agentConfigId: resolvedAnalystId,
+            },
+            select: { id: true, status: true },
+          });
+          if (!existing) {
+            // Fall back to the most recent open PRINCIPAL_CHAT for this
+            // (account, analyst) — keeps stale client runIds from spawning
+            // a new row on every message after a scope flip.
+            const recent = await prisma.researchRun.findFirst({
+              where: {
+                accountId,
+                mode: "PRINCIPAL_CHAT",
+                agentConfigId: resolvedAnalystId,
+              },
+              orderBy: { startedAt: "desc" },
+              select: { id: true, status: true },
+            });
+            if (recent) {
+              runId = recent.id;
+              if (recent.status !== "RUNNING") {
+                await prisma.researchRun.update({
+                  where: { id: runId },
+                  data: { status: "RUNNING" },
+                });
+              }
+            } else {
+              runId = undefined;
+            }
+          } else if (existing.status !== "RUNNING") {
+            await prisma.researchRun.update({
+              where: { id: runId },
+              data: { status: "RUNNING" },
+            });
+          }
+        }
+        if (!runId) {
+          // Snapshot the analyst's environment at run-create time, same
+          // pattern as research-run. Principal-chat writes go through
+          // place_trade etc. which read run.environment for PAPER vs LIVE.
+          const newRun = await prisma.researchRun.create({
+            data: {
+              userId: user.id,
+              accountId,
+              agentConfig: { connect: { id: resolvedAnalystId } },
+              source: "MANUAL",
+              status: "RUNNING",
+              mode: "PRINCIPAL_CHAT",
+              environment: (ac.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
+              parameters: {} as object,
+            },
+            select: { id: true },
+          });
+          runId = newRun.id;
+        }
+      } else {
+        // Unscoped — no ResearchRun, no runId. Write tools will fail
+        // cleanly; reads work freely.
+        runId = undefined;
+      }
+
+      systemPrompt = buildPrincipalSystemPrompt({ scopedAnalyst });
 
     } else if (agentMode === "podcast-builder") {
       systemPrompt = PODCAST_BUILDER_SYSTEM_PROMPT;
@@ -657,8 +785,15 @@ export async function POST(
           `[agent/${agentMode}] ✅ onFinish elapsed=${elapsed}ms reason=${finishReason} tokens=${usage?.totalTokens ?? "?"}`,
         );
 
-        // Builder/editor modes don't have a ResearchRun to persist.
-        if ((agentMode !== "research-run" && agentMode !== "podcast-segment-run") || !runId) {
+        // Builder/editor and unscoped principal-chat don't have a
+        // ResearchRun. Scoped principal-chat does — persist messages
+        // and flip status to RUNNING (chat is ongoing).
+        if (
+          (agentMode !== "research-run" &&
+            agentMode !== "podcast-segment-run" &&
+            agentMode !== "principal") ||
+          !runId
+        ) {
           resolveOnFinish!();
           return;
         }
@@ -717,6 +852,12 @@ export async function POST(
             } catch (err) {
               console.error(`[agent/${agentMode}] Failed to persist toolStats:`, err);
             }
+          } else if (agentMode === "principal") {
+            // Principal chat — keep the run RUNNING between messages
+            // so subsequent POSTs find an open session and write tools
+            // keep working. We don't mark COMPLETE here; the run sits
+            // open until the user starts a fresh chat (which mints a
+            // new run via the page).
           } else {
             // podcast-segment-run: safety guard — mark RUNNING → COMPLETE if the
             // save_podcast_segment_transcript tool didn't already do so.
@@ -779,7 +920,11 @@ export async function POST(
       },
     });
 
-    if (agentMode === "research-run" || agentMode === "podcast-segment-run") {
+    if (
+      agentMode === "research-run" ||
+      agentMode === "podcast-segment-run" ||
+      (agentMode === "principal" && runId)
+    ) {
       // Wait for BOTH the response stream AND the onFinish async work (message
       // persistence). result.response alone may resolve before onFinish completes
       // its DB writes, causing Vercel to kill the function and lose messages.
@@ -796,7 +941,11 @@ export async function POST(
     const elapsed = Date.now() - t0;
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[agent/${agentMode}] ❌ UNHANDLED ERROR elapsed=${elapsed}ms: ${msg}`);
-    if (agentMode === "research-run" || agentMode === "podcast-segment-run") {
+    if (
+      agentMode === "research-run" ||
+      agentMode === "podcast-segment-run" ||
+      (agentMode === "principal" && runId)
+    ) {
       waitUntil(markRunFailed(runId, `Route error: ${msg}`));
     }
     return new Response(`Agent error: ${msg}`, { status: 500 });

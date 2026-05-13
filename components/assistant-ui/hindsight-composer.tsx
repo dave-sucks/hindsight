@@ -91,6 +91,23 @@ export interface HindsightComposerFeatures {
   modelOptions?: Array<{ label: string; value: string; provider: "openai" | "anthropic" }>;
   /** Called when the user selects a different model */
   onModelChange?: (value: string) => void;
+  /**
+   * Optional context badge rendered at the TOP of the input (block-start
+   * addon, above the editor). Notion-style "what is this chat scoped to"
+   * affordance — e.g. brand-green-dot + @AnalystName for the principal
+   * chat. Render nothing if you don't want a chip.
+   */
+  contextChip?: import("react").ReactNode;
+  /**
+   * Optional analyst-scope picker. When provided, the Settings2 dropdown
+   * gets a "Scope" submenu listing analysts; clicking one calls onChange.
+   * Used by the principal chat — the unified place to BIND scope.
+   */
+  analystScope?: {
+    current: { id: string; name: string } | null;
+    options: Array<{ id: string; name: string; enabled: boolean }>;
+    onChange: (analystId: string | null) => void;
+  };
 }
 
 // ── Defaults ───────────────────────────────────────────────────────────────
@@ -219,6 +236,8 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     modelLabel,
     modelOptions,
     onModelChange,
+    contextChip,
+    analystScope,
   } = features;
 
   const modelLogoUrl = (label: string | undefined) => {
@@ -477,6 +496,14 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   return (
     <>
       <InputGroup className="w-full bg-background/80 backdrop-blur-sm">
+        {/* Optional context badge — rendered above the editor as a
+            block-start addon. Notion / Linear / Claude pattern. */}
+        {contextChip && (
+          <InputGroupAddon align="block-start" className={cn(isCollapsed && "hidden sm:flex")}>
+            {contextChip}
+          </InputGroupAddon>
+        )}
+
         {/* TipTap rich-text editor — clipped to single line on mobile when inactive */}
         <div
           className={cn(
@@ -519,6 +546,68 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                     </Tooltip>
 
                     <DropdownMenuContent align="start" side="top" className="w-64">
+
+                      {/* ── Scope (principal chat) ── */}
+                      {analystScope && (
+                        <>
+                          <DropdownMenuGroup>
+                            <DropdownMenuLabel>Scope</DropdownMenuLabel>
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>
+                                <span
+                                  aria-hidden
+                                  className={cn(
+                                    "size-1.5 rounded-full shrink-0",
+                                    analystScope.current
+                                      ? "bg-brand"
+                                      : "bg-muted-foreground/40",
+                                  )}
+                                />
+                                <span className="flex-1">
+                                  {analystScope.current
+                                    ? analystScope.current.name
+                                    : "Portfolio"}
+                                </span>
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                <DropdownMenuItem
+                                  onClick={() => analystScope.onChange(null)}
+                                >
+                                  <span
+                                    aria-hidden
+                                    className="size-1.5 rounded-full shrink-0 bg-muted-foreground/40"
+                                  />
+                                  <span className="flex-1">Portfolio</span>
+                                  {!analystScope.current && (
+                                    <span className="text-xs text-primary">✓</span>
+                                  )}
+                                </DropdownMenuItem>
+                                {analystScope.options.map((a) => (
+                                  <DropdownMenuItem
+                                    key={a.id}
+                                    onClick={() => analystScope.onChange(a.id)}
+                                  >
+                                    <span
+                                      aria-hidden
+                                      className="size-1.5 rounded-full shrink-0 bg-brand"
+                                    />
+                                    <span className="flex-1">{a.name}</span>
+                                    {!a.enabled && (
+                                      <span className="ml-1 text-xs text-muted-foreground">
+                                        off
+                                      </span>
+                                    )}
+                                    {analystScope.current?.id === a.id && (
+                                      <span className="text-xs text-primary">✓</span>
+                                    )}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          </DropdownMenuGroup>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
 
                       {/* ── Sources ── */}
                       <DropdownMenuGroup>
