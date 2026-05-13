@@ -379,6 +379,19 @@ export const firmMarketSweep = inngest.createFunction(
       return expired.count
     })
 
+    // Emit intelligence/route-signals — signal-router fan-in (GAPS P1-10).
+    // Without this, fresh signals wait for the next 7:30am router cron tick
+    // even when they landed at 6:31am. Router accepts both cron + event
+    // triggers; emitting here removes the 15-60min routing latency.
+    const signalsWritten =
+      totalSignals + moversResult.created + earningsResult.created
+    if (signalsWritten > 0) {
+      await step.sendEvent("route-signals-after-sweep", {
+        name: "intelligence/route-signals",
+        data: { source: "firm-market-sweep", batchId, signalsWritten },
+      })
+    }
+
     return {
       batchId,
       monitorsTotal: monitors.length,

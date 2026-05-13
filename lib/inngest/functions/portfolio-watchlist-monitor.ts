@@ -221,6 +221,15 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
       await completeSignalBatch(batchId)
     })
 
+    // GAPS P1-10 — emit so signal-router fans in immediately rather than
+    // waiting for its next 7:30am cron tick.
+    if (totalSignals > 0) {
+      await step.sendEvent("route-signals-after-portfolio-watchlist", {
+        name: "intelligence/route-signals",
+        data: { source: "portfolio-watchlist-monitor", batchId, signalsWritten: totalSignals },
+      })
+    }
+
     return {
       batchId,
       portfolioTickers: portfolioTickers.length,

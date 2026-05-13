@@ -86,25 +86,48 @@ export const discoveryRun = inngest.createFunction(
         const runEnvironment =
           (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
 
-        const run = await prisma.researchRun.create({
-          data: {
-            userId: config.userId,
-            accountId: config.accountId,
+        // GAPS P2-10 — idempotency on Inngest step retries. If the outer
+        // step throws and Inngest retries, the original code would
+        // researchRun.create() a SECOND row, double-billing and producing
+        // duplicate theses on success. Reuse any RUNNING discovery run for
+        // this analyst from the last hour (covers retries; manual fires
+        // outside that window create a fresh row).
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const existing = await prisma.researchRun.findFirst({
+          where: {
             agentConfigId: config.id,
-            source: "AGENT",
-            status: "RUNNING",
             mode: "DISCOVERY",
-            environment: runEnvironment,
-            parameters: {
-              triggeredBy: targetConfigId
-                ? "discovery-manual"
-                : "discovery-cron",
-              agentMode: true,
-              analystName: config.name,
-              existingTickerCount: existingTickers.length,
-            } as object,
+            status: "RUNNING",
+            startedAt: { gte: oneHourAgo },
           },
+          orderBy: { startedAt: "desc" },
         });
+        const run =
+          existing ??
+          (await prisma.researchRun.create({
+            data: {
+              userId: config.userId,
+              accountId: config.accountId,
+              agentConfigId: config.id,
+              source: "AGENT",
+              status: "RUNNING",
+              mode: "DISCOVERY",
+              environment: runEnvironment,
+              parameters: {
+                triggeredBy: targetConfigId
+                  ? "discovery-manual"
+                  : "discovery-cron",
+                agentMode: true,
+                analystName: config.name,
+                existingTickerCount: existingTickers.length,
+              } as object,
+            },
+          }));
+        if (existing) {
+          console.log(
+            `[discovery-run] Reusing existing RUNNING run=${run.id} for ${config.name} (Inngest retry)`,
+          );
+        }
 
         console.log(
           `[discovery-run] Starting for ${config.name} (config=${config.id}, run=${run.id}, existing=${existingTickers.length})`,
@@ -265,26 +288,46 @@ export const discoveryRun = inngest.createFunction(
             where: { researchRunId: run.id },
           });
 
-          // The run is COMPLETE if record_run_summary fired (via
-          // RunEvent type='run_summary'). Discovery may legitimately
-          // mint 0 theses if no candidates clear the bar — the
-          // record_run_summary call is the success signal.
+          // GAPS P2-11 — status reflects actual work output.
+          //   newTheses > 0 OR ranSummary → COMPLETE (the run produced
+          //     something). Token-limiting before record_run_summary lands
+          //     on a run that minted real theses no longer hides those
+          //     theses behind a FAILED badge.
+          //   newTheses === 0 AND !ranSummary → FAILED (the run produced
+          //     nothing useful and didn't cleanly wrap up).
+          // ranSummary alone (without newTheses) still counts as COMPLETE
+          // — a legitimate "nothing cleared the bar this week, here's why"
+          // summary IS valid output.
           const summaryEvent = await prisma.runEvent.findFirst({
             where: { runId: run.id, type: "run_summary" },
             select: { id: true },
           });
           const ranSummary = summaryEvent !== null;
+          const producedWork = newTheses > 0 || ranSummary;
 
           await prisma.researchRun.updateMany({
             where: { id: run.id, status: "RUNNING" },
             data: {
-              status: ranSummary ? "COMPLETE" : "FAILED",
+              status: producedWork ? "COMPLETE" : "FAILED",
               completedAt: new Date(),
+              ...(producedWork && !ranSummary
+                ? {
+                    parameters: {
+                      triggeredBy: targetConfigId
+                        ? "discovery-manual"
+                        : "discovery-cron",
+                      agentMode: true,
+                      analystName: config.name,
+                      existingTickerCount: existingTickers.length,
+                      note: `Run minted ${newTheses} thesis${newTheses === 1 ? "" : "es"} but did not call record_run_summary — marked COMPLETE because real work landed.`,
+                    } as object,
+                  }
+                : {}),
             },
           });
 
           console.log(
-            `[discovery-run] ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms, ${newTheses} new theses, ranSummary=${ranSummary}`,
+            `[discovery-run] ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms, ${newTheses} new theses, ranSummary=${ranSummary}, status=${producedWork ? "COMPLETE" : "FAILED"}`,
           );
 
           return { newTheses, steps: steps.length, toolCalls, elapsed };
