@@ -230,15 +230,31 @@ export const morningResearch = inngest.createFunction(
                 // AI SDK v6 tool-result shape: { toolCallId, toolName, output }
                 // where `output` is our ToolResult<T> envelope. Legacy `result`
                 // field checked defensively.
-                const out = (r?.output ?? r?.result) as { ok?: boolean; error?: string } | undefined;
-                if (out && out.ok === false) {
+                //
+                // 2026-05-13 fix (GAPS P0-9b): place_trade rejections return
+                // top-level `ok: true` with nested `data.success: false` and
+                // `data.status: "FAILED"`. The original `out.ok === false`
+                // check missed every place_trade rejection (both INTC silent
+                // fails on Intraday Momentum showed errors=0 in toolStats).
+                // Detect both shapes.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const out = (r?.output ?? r?.result) as any;
+                const isFailure =
+                  out?.ok === false ||
+                  out?.data?.success === false ||
+                  out?.data?.status === "FAILED";
+                if (out && isFailure) {
                   const bucket = toolStats[r.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
                   bucket.errors += 1;
                   toolStats[r.toolName] = bucket;
                   if (failedToolCalls.length < 3) {
+                    // Surface the most-informative error message regardless
+                    // of which envelope shape carried it.
+                    const errorMsg =
+                      out?.error ?? out?.data?.message ?? out?.data?.error ?? "";
                     failedToolCalls.push({
                       toolName: r.toolName ?? "unknown",
-                      error: String(out.error ?? "").slice(0, 500),
+                      error: String(errorMsg).slice(0, 500),
                       at: new Date().toISOString(),
                     });
                   }

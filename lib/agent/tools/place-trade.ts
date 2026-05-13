@@ -76,10 +76,13 @@ export const placeTrade = defineTool({
     // which bypasses the duplicate check and hits Alpaca with a 422.
     const ticker = args.ticker.toUpperCase().trim();
 
-    // Principal-chat override: the agent passes analyst_id explicitly because
-    // the route context isn't scoped to one analyst. Within an analyst run,
-    // ctx.analystId is set and args.analyst_id is omitted.
-    const effectiveAnalystId: string | undefined = args.analyst_id ?? ctx.analystId;
+    // Analyst-scoped runs (morning-research, tactical, discovery) always have
+    // ctx.analystId set — use it and IGNORE args.analyst_id. Agents sometimes
+    // pass a slug like "momentum_scalper" instead of the real CUID, which
+    // caused mid-flight failures (2026-05-13 Intraday Momentum INTC SHORT #2
+    // hit this exact path — GAPS P0-9a). Principal-chat has ctx.analystId
+    // undefined and falls back to args.analyst_id as the legitimate route.
+    const effectiveAnalystId: string | undefined = ctx.analystId ?? args.analyst_id;
     try {
       // 0a. Universe exclusion check — hard reject
       // exclusionList is the hard block dimension of Universe. The analyst's
@@ -422,6 +425,53 @@ export const placeTrade = defineTool({
             orderId: ord.id,
           },
         });
+
+        // ── Auto-promote thesis WATCHING → ACTIVE in the same transaction ──
+        // 2026-05-13 audit found 4 OPEN positions sitting on WATCHING theses
+        // for up to 6 days, completely unmanaged (GAPS P0-6). Root cause was
+        // place_trade not promoting and the agent forgetting to call
+        // update_thesis(change_status="ACTIVE") afterward. Coupling the
+        // promotion to place_trade removes that forgetting window — the
+        // thesis row reflects the position the moment the position exists.
+        //
+        // We use args.entry_price / target_price / stop_loss (the values the
+        // agent passed for the trade) as the new operational state. These
+        // are already validated by Guardrail 3 (target/stop ordering vs
+        // entry) above, so the resulting thesis row is shape-consistent.
+        const matchedThesis = await tx.thesis.findUnique({
+          where: { id: args.thesis_id },
+          select: {
+            id: true, status: true, direction: true,
+            entryPrice: true, targetPrice: true, stopLoss: true,
+          },
+        });
+        if (matchedThesis && matchedThesis.status === "WATCHING") {
+          await tx.thesis.update({
+            where: { id: args.thesis_id },
+            data: {
+              status: "ACTIVE",
+              entryPrice: args.entry_price,
+              targetPrice: args.target_price,
+              stopLoss: args.stop_loss,
+            },
+          });
+          await tx.thesisUpdate.create({
+            data: {
+              thesisId: args.thesis_id,
+              type: "STATUS_CHANGED",
+              runId: ctx.runId ?? null,
+              priceAtTime: args.entry_price,
+              summary: `Auto-promoted ${ticker} to ACTIVE on place_trade (entry $${args.entry_price.toFixed(2)}, target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)})`,
+              rationale: "Auto-promotion: place_trade fired and the matched thesis was WATCHING. Status flipped to ACTIVE atomically; entry/target/stop set to the trade's values. Per GAPS P0-6.",
+              fieldChanges: {
+                status: { from: matchedThesis.status, to: "ACTIVE" },
+                entryPrice: { from: matchedThesis.entryPrice, to: args.entry_price },
+                targetPrice: { from: matchedThesis.targetPrice, to: args.target_price },
+                stopLoss: { from: matchedThesis.stopLoss, to: args.stop_loss },
+              },
+            },
+          });
+        }
 
         if (ctx.runId) {
           await tx.runEvent.create({

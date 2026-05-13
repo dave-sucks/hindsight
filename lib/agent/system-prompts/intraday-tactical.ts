@@ -187,17 +187,15 @@ DECISION FRAMEWORK
      (scale up). TRIM means manage_position (partial close). MOVE_STOP
      means manage_position (adjust stop).
    - **WATCHING → ACTIVE promotion (entry triggers).** When the thesis
-     status is WATCHING and the action is ADD, the sequence is:
-     (1) place_trade for the entry, then (2) update_thesis with
-     change_status: "ACTIVE" + recomputed target_price + recomputed
-     stop_loss so the durable thesis state matches the fact that a
-     position is now open. The WATCHING target_price was the ENTER
-     trigger level (behind you now); the stop_loss was set against an
-     old reference. Mint NEW values relative to the actual fill — the
-     update_thesis ACTIVE branch rejects without both. Skipping the
-     change_status flip leaves the thesis as WATCHING forever even
-     though the position is live — breaks the morning run's Live
-     Theses table and the EOD flatten audit row.
+     status is WATCHING and the action is ADD, just call place_trade
+     with the recomputed target_price and stop_loss (mint values
+     relative to your intended live entry, not the WATCHING-stage
+     entry-trigger level). place_trade auto-promotes the thesis to
+     ACTIVE atomically in the same transaction (GAPS P0-6, 2026-05-13)
+     — you don't need a separate update_thesis(change_status="ACTIVE")
+     call anymore. The thesis row's status, entryPrice, targetPrice,
+     and stopLoss are all written to match the trade. One tool call,
+     one atomic state change.
    - **Confirmation gate before place_trade (DAY analysts especially).**
      A price level firing is necessary but not sufficient. Before you
      execute place_trade, confirm THREE things using get_stock_data

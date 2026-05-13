@@ -11,6 +11,9 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
+import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 export const completeRun = defineTool({
   description:
@@ -22,6 +25,36 @@ export const completeRun = defineTool({
 
   execute: async (_args, ctx) => {
     try {
+      // ── Preflight gates (GAPS P0-7 + P0-9c) ──────────────────────────
+      // These run BEFORE the RUNNING→COMPLETE transition so the agent
+      // sees rejections in-conversation and can recover. The 2026-05-13
+      // Secular Theme GOOGL transcript showed exactly why this matters:
+      // post-run gates marked the run FAILED but the agent's complete_run
+      // call still returned ok-shaped, agent walked away thinking it
+      // succeeded. Layer-1 rejection at the tool level forces in-loop
+      // recovery.
+      //
+      // Skip preflight when no analyst is scoped (principal-chat / podcast
+      // segment runs) or no runId (defensive). Those paths use the
+      // original flow.
+      if (ctx.runId && ctx.analystId && !ctx.podcastSegmentId) {
+        const preflightFailure = await runCompleteRunPreflight(ctx.runId, ctx.analystId);
+        if (preflightFailure) {
+          return {
+            summary: `complete_run refused: ${preflightFailure.shortReason}`,
+            data: {
+              ok: false,
+              briefing: "skipped" as const,
+              briefingError: null,
+              error: preflightFailure.message,
+              preflight: preflightFailure.kind,
+              items: [{ kind: "generic" as const, text: preflightFailure.message }],
+            },
+            sources: [],
+          };
+        }
+      }
+
       // Atomic: only transition RUNNING → COMPLETE. Was previously
       // `status: { not: "COMPLETE" }`, which clobbered FAILED status set
       // by the record_run_summary narration→execution gate (or any other
@@ -241,3 +274,188 @@ export const completeRun = defineTool({
     }
   },
 });
+
+// ─── Preflight (GAPS P0-7 + P0-9c) ──────────────────────────────────────
+// Layer-1 rejection that forces the agent to address triggered theses + call
+// record_run_summary BEFORE the run is allowed to complete. Replaces the old
+// post-run promotion gate in record_run_summary.
+
+type PreflightFailure = {
+  kind: "no_run_summary" | "run_already_failed" | "unaddressed_theses";
+  shortReason: string;
+  message: string;
+};
+
+async function runCompleteRunPreflight(
+  runId: string,
+  analystId: string,
+): Promise<PreflightFailure | null> {
+  // 1) Did the agent call record_run_summary?
+  const summaryEvent = await prisma.runEvent.findFirst({
+    where: { runId, type: "run_summary" },
+    select: { id: true },
+  });
+  if (!summaryEvent) {
+    return {
+      kind: "no_run_summary",
+      shortReason: "record_run_summary not called",
+      message:
+        "complete_run refused: you must call record_run_summary BEFORE complete_run. " +
+        "Summarize this run's decisions (primary_decision, decision_rationale, ranked_picks) " +
+        "and call complete_run again.",
+    };
+  }
+
+  // 2) Did an upstream gate (narration gate) already mark this run FAILED?
+  //    Surface the failure reason in-conversation so the agent knows.
+  const currentRun = await prisma.researchRun.findUnique({
+    where: { id: runId },
+    select: { status: true },
+  });
+  if (currentRun?.status === "FAILED") {
+    const failEvent = await prisma.runEvent.findFirst({
+      where: { runId, type: "run_failed" },
+      orderBy: { createdAt: "desc" },
+      select: { title: true, message: true },
+    });
+    return {
+      kind: "run_already_failed",
+      shortReason: failEvent?.title ?? "run is FAILED",
+      message:
+        "complete_run refused: this run was marked FAILED by an earlier gate. " +
+        `Reason: ${failEvent?.message ?? "(no failure event recorded)"} ` +
+        "Address the issue (call the tool you narrated, or revise record_run_summary), then complete_run again.",
+    };
+  }
+
+  // 3) Triggered/needsAction theses not addressed via update_thesis this run.
+  //    Uses computeNeedsAction (cooldown-aware shouldFire) — same logic
+  //    needs-action.ts uses for get_theses, so Layer 2 and Layer 1 ask the
+  //    SAME question. Bug 1 fix: no more "needsAction said null but the
+  //    gate says you missed it" inconsistency (GAPS P0-7).
+  type ThesisRow = {
+    id: string;
+    ticker: string;
+    direction: string;
+    triggers: unknown;
+    createdAt: Date;
+    nextReviewAt: Date | null;
+    updates: Array<{ type: string; triggerId: string | null; timestamp: Date }>;
+  };
+  const theses = (await prisma.thesis.findMany({
+    where: {
+      researchRun: { agentConfigId: analystId },
+      status: { in: ["ACTIVE", "WATCHING"] },
+      closedAt: null,
+    },
+    select: {
+      id: true,
+      ticker: true,
+      direction: true,
+      triggers: true,
+      createdAt: true,
+      nextReviewAt: true,
+      // Most recent ThesisUpdate (any type) — feeds computeNeedsAction.
+      updates: {
+        orderBy: { timestamp: "desc" },
+        take: 1,
+        select: { type: true, triggerId: true, timestamp: true },
+      },
+    },
+  })) as ThesisRow[];
+  if (theses.length === 0) return null;
+
+  // Get update_thesis activity for THIS run for all the analyst's theses.
+  // A thesis is "addressed in this run" if any non-TRIGGER_FIRED ThesisUpdate
+  // exists with runId === ctx.runId for it.
+  const addressedThesisIds = new Set<string>(
+    (
+      await prisma.thesisUpdate.findMany({
+        where: {
+          runId,
+          thesisId: { in: theses.map((t: ThesisRow) => t.id) },
+          NOT: { type: "TRIGGER_FIRED" },
+        },
+        select: { thesisId: true },
+      })
+    ).map((u: { thesisId: string }) => u.thesisId),
+  );
+
+  // Fetch live quotes for tickers we might need to evaluate against.
+  // Failure is non-fatal — computeNeedsAction handles missing quotes
+  // (TRIGGER_MATCHING_NOW falls through, REVIEW_DUE still evaluates).
+  const tickerSet = new Set<string>(theses.map((t: ThesisRow) => t.ticker));
+  const quotes = new Map<string, { price: number; changePct: number }>();
+  await Promise.all(
+    Array.from(tickerSet).map(async (tk) => {
+      try {
+        const q = await getStockQuote(tk);
+        if (q && Number.isFinite(q.c) && q.c > 0) {
+          quotes.set(tk, { price: q.c, changePct: q.dp ?? 0 });
+        }
+      } catch {
+        /* missing quote → skip; computeNeedsAction handles it */
+      }
+    }),
+  );
+
+  const now = new Date();
+  const unaddressed: Array<{
+    thesisId: string;
+    ticker: string;
+    direction: string;
+    kind: string;
+    detail: string;
+  }> = [];
+  for (const t of theses) {
+    if (addressedThesisIds.has(t.id)) continue;
+    const needsAction = computeNeedsAction({
+      thesis: {
+        id: t.id,
+        triggers: (t.triggers as unknown as Trigger[]) ?? [],
+        createdAt: t.createdAt,
+        nextReviewAt: t.nextReviewAt,
+      },
+      latestUpdate: t.updates[0]
+        ? {
+            type: t.updates[0].type as string,
+            triggerId: t.updates[0].triggerId ?? null,
+            timestamp: t.updates[0].timestamp,
+          }
+        : null,
+      latestQuote: quotes.get(t.ticker) ?? null,
+      now,
+    });
+    if (needsAction == null) continue;
+    let detail: string;
+    if (needsAction.kind === "TRIGGER_FIRED") {
+      detail = `trigger fired: ${needsAction.action} (${needsAction.summary})`;
+    } else if (needsAction.kind === "TRIGGER_MATCHING_NOW") {
+      detail = `predicate matching now: ${needsAction.action} (${needsAction.predicateSummary}${needsAction.livePrice != null ? ` @ $${needsAction.livePrice.toFixed(2)}` : ""})`;
+    } else {
+      detail = `review overdue by ${needsAction.daysOverdue}d`;
+    }
+    unaddressed.push({
+      thesisId: t.id,
+      ticker: t.ticker,
+      direction: t.direction,
+      kind: needsAction.kind,
+      detail,
+    });
+  }
+
+  if (unaddressed.length === 0) return null;
+
+  const summary = unaddressed
+    .map((u) => `${u.ticker} (${u.thesisId}): ${u.detail}`)
+    .join("; ");
+  return {
+    kind: "unaddressed_theses",
+    shortReason: `${unaddressed.length} thesis${unaddressed.length > 1 ? "es" : ""} need action`,
+    message:
+      `complete_run refused: ${unaddressed.length} active/watching thesis${unaddressed.length > 1 ? "es" : ""} ` +
+      `${unaddressed.length > 1 ? "are" : "is"} flagged needsAction but no update_thesis was called for ${unaddressed.length > 1 ? "them" : "it"} in this run. ` +
+      `Resolve each by calling update_thesis (with action result, change_status="INVALIDATED" if no longer applicable, or rationale-only REVIEW). ` +
+      `Then call complete_run again. Unaddressed: ${summary}`,
+  };
+}

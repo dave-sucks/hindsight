@@ -850,10 +850,10 @@ Each morning:
 2. Walk every thesis where \`needsAction\` is non-null. Narrate which one you're picking up, then take exactly ONE durable action per the trigger:
    - **TRIGGER_FIRED / TRIGGER_MATCHING_NOW** — pull \`get_stock_data\`, narrate what you see, then act:
        - **ENTER** → THREE legal paths, pick one:
-           (a) \`place_trade\` if the data confirms the setup, then \`update_thesis(change_status: "ACTIVE")\` with recomputed target/stop relative to the actual fill.
+           (a) \`place_trade\` if the data confirms the setup. Pass target_price and stop_loss recomputed relative to your intended live entry (not the WATCHING-stage entry-trigger level). place_trade auto-promotes the thesis from WATCHING to ACTIVE atomically and writes the new target/stop. No separate \`update_thesis(change_status: "ACTIVE")\` call needed.
            (b) \`update_thesis\` with a transient rejection reason (volume too thin, regime shift, fresh negative news, R/R no longer 2:1). Thesis stays WATCHING; the next trigger fire re-evaluates.
            (c) \`update_thesis(change_status: "INVALIDATED", invalid_reason: "<concrete reason>")\` when the thesis is no longer applicable AT ALL — ticker has fallen outside this analyst's edge/universe, the original premise has broken structurally, or the name is no longer worth tracking. Durable kill, no future fires.
-         "Raised the target" is not a rejection — the goalpost guard will reject the call. Narrating a rejection in prose without one of (a)/(b)/(c) is a run failure.
+         "Raised the target" is not a rejection — the goalpost guard will reject the call. Failing to take one of (a)/(b)/(c) means \`complete_run\` will refuse to fire (preflight checks needsAction) until you resolve the thesis.
        - **EXIT** → \`close_position\`, then \`update_thesis(change_status: "CLOSED")\`.
        - **REVIEW** → \`update_thesis\` with the substantive change you decide. Cite signal_ids that informed the update.
        - **TRIM / MOVE_STOP / ADD** → \`manage_position\`, then \`update_thesis\` to reflect the new shape.

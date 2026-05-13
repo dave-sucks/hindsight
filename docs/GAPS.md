@@ -104,6 +104,90 @@ These prevent the core loop from working as designed. Fix first.
 
 ---
 
+### P0-6 — Position ↔ Thesis state desync after `place_trade`
+**Source:** 2026-05-13 daily run review (see `docs/run-reviews/2026-05-13.md`). Confirmed via direct SQL audit.
+
+**The bug:** `place_trade` does not promote the matching Thesis from WATCHING → ACTIVE. The thesis sits at WATCHING with its ENTER trigger still armed; meanwhile the Position is OPEN and unmanaged. The lifecycle audit memory called this out 2026-05-11 — it's still live.
+
+**Production evidence — 4 broken positions sitting in prod RIGHT NOW** (audit query at end of this section):
+
+| Ticker | Analyst | Thesis Status | Position Status | Opened (ET) | Fill | Days unmanaged |
+|---|---|---|---|---|---|---|
+| TSM | Tech Momentum Trader | WATCHING (target $410, stop $359) | OPEN 6.01sh | 2026-05-07 | $415.77 | 6 |
+| AVGO | Earnings Drift Trader | WATCHING (target $470, stop $395) | OPEN 7.22sh | 2026-05-08 | $415.36 | 5 |
+| GOOGL | Secular Theme Architect | WATCHING (target $370, stop $320) | OPEN 6.30sh | 2026-05-08 | $397.09 | 5 |
+| AMD | Tech Momentum Trader | WATCHING (target $460, stop $380) | OPEN 5.60sh | 2026-05-12 | $446.29 | 1 |
+
+**Downstream consequences:**
+- Trigger evaluator keeps re-firing the ENTER trigger every day (predicate matches, status is WATCHING, no EXIT trigger to fire instead) → promotion-gate failures pile up.
+- Position has no EXIT triggers at the actual fill price — only the WATCHING-stage `PRICE_BELOW $stop` which targets the planned stop, not the real-fill stop.
+- `get_theses` returns these rows with their `reasoningSummary` text claiming "Entry executed" (true), but `status` field says WATCHING (false). Agent reads contradictory truth, treats as "held in portfolio, no action needed", skips the daily review → another gate failure.
+- 4 positions × ~$2K each = ~$8K of paper exposure with broken management.
+
+**Fix path:**
+1. **Code:** [lib/agent/tools/place-trade.ts](../lib/agent/tools/place-trade.ts) — when the matching Thesis is WATCHING, refuse the call with a clear rejection message: *"Thesis $X is WATCHING. Promote it first by calling update_thesis(thesis_id, change_status='ACTIVE', target_price, stop_loss) — using values relative to the live entry, not the planned WATCHING entry. Then retry place_trade."* The agent can't forget what the tool requires.
+2. **Data:** manually promote the 4 affected theses. Each needs `entry_price` = position.avgCost, plus an analyst-chosen `target_price` + `stop_loss` (the WATCHING-stage values were entry-triggers, not exits). See "Action items" below.
+3. **Audit:** the SQL below is the durable detector. Add a hygiene cron that runs daily and alerts on any new entries (or auto-promotes with defaults). Out of scope for this PR.
+
+**Detector SQL** (zero rows = clean):
+
+```sql
+SELECT t.id, t.ticker, t.direction, t.status::text,
+       p.id AS position_id, p."avgCost", ac.name AS analyst
+FROM "Thesis" t
+JOIN "ResearchRun" r ON r.id = t."researchRunId"
+JOIN "AgentConfig" ac ON ac.id = r."agentConfigId"
+JOIN "Position" p
+  ON p."analystId" = r."agentConfigId"
+  AND p.symbol = t.ticker
+  AND p.direction = t.direction
+  AND p.status = 'OPEN'
+WHERE t.status::text = 'WATCHING';
+```
+
+---
+
+### P0-7 — Promotion gate is post-run + uses different rules than `needsAction`
+**Source:** 2026-05-13 daily run review. Two distinct issues, one root cause.
+
+**Issue A — gate has no teeth.** Promotion gate lives in `record_run_summary` ([record-run-summary.ts](../lib/agent/tools/record-run-summary.ts)). It marks `ResearchRun.status: RUNNING → FAILED` atomically when a triggered WATCHING thesis is unaddressed. Then returns a success-shaped result to the agent. The agent's next call is `complete_run` ([complete-run.ts](../lib/agent/tools/complete-run.ts)), which sees `RUNNING → COMPLETE` is a no-op (already FAILED) but returns success-shaped. Agent thinks run completed cleanly. 2026-05-13 Secular Theme transcript captured the agent reading the gate's complaint and literally narrating *"I'll ensure that the GOOGL thesis is prioritized in the next session"* before calling `complete_run` and walking away.
+
+**Issue B — gate ignores cooldown.** [needs-action.ts:178](../lib/agent/needs-action.ts:178) calls `shouldFire(trigger, ...)` which respects `cooldownDays`. The promotion gate does its own live-price-vs-target check with no cooldown awareness. Result: `get_theses.needsAction` correctly tells the agent "nothing to do on GOOGL (cooldown active)"; the gate then punishes the agent for not doing anything on GOOGL. The agent followed the data feed the prompt told it to use and got blamed for it.
+
+**Fix path (one move solves both):**
+1. **Move the gate from `record_run_summary` to `complete_run`'s preflight.** Refuse `RUNNING → COMPLETE` if any triggered WATCHING thesis (per `shouldFire` — cooldown-aware) is unaddressed in this run. Return `ok: false` with the same gate message. Agent sees rejection in-conversation, can recover.
+2. **Use `shouldFire` instead of raw price-vs-target.** Same rules everywhere — Layer 2 (`needsAction`) and Layer 1 (`complete_run` preflight) ask the same question.
+3. Delete the gate from `record_run_summary`'s persistence path. Layer 1 is the right home.
+
+---
+
+### P0-8 — Narration-gate false positives
+**Source:** 2026-05-13 daily run review. EV Catalyst Event Trader failed because `\badjusted\b` matched "adjusted target" in the TSLA decision rationale, even though "adjust target" is correctly handled by `update_thesis` (not `manage_position`).
+
+**Fix path:** [lib/agent/narration-gate.ts:95-99](../lib/agent/narration-gate.ts:95) — tighten the regex to require a position-management noun (stop, trail, size, qty, position) following or near "adjusted":
+
+```ts
+// Today:
+{ pattern: /\badjusted\b/gi, expectedTool: "manage_position", label: "adjust" }
+// Fix:
+{ pattern: /\badjusted\b[^.]{0,30}\b(stop|trail|size|qty|position)\b/gi, ... }
+```
+
+Don't fire on "adjusted target / thesis / plan / outlook" — those are `update_thesis` territory per [THESIS_ARCHITECTURE.md §6](./THESIS_ARCHITECTURE.md) (target/stop are operational state mutated via `update_thesis`).
+
+---
+
+### P0-9 — `place_trade` and `complete_run` contract hygiene
+**Source:** 2026-05-13 daily run review. Three small but distinct holes.
+
+**P0-9a — `analyst_id` is exposed in `place_trade`'s agent-visible schema.** It should come from `ctx.analystId` only. Today the agent can supply a wrong value and get rejected for it — exactly what happened to Intraday Momentum's second INTC attempt 2026-05-13 ("trade placement failed due to an issue with the analyst identifier"). Fix: remove from Zod schema in [place-trade.ts](../lib/agent/tools/place-trade.ts), inject from ctx.
+
+**P0-9b — `morning-research` error aggregator misses place_trade rejections.** [lib/inngest/functions/morning-research.ts:218-235](../lib/inngest/functions/morning-research.ts:218) reads `r?.output?.ok === false` to count errors. Place_trade rejections returned envelopes that the aggregator counted as `errors: 0`. Result: `toolStats.byTool.place_trade.errors = 0` even when both calls failed. Every silent fail invisible in telemetry. Fix: confirm place_trade's rejection envelope shape and align the aggregator OR have place_trade return `ok: false` consistently.
+
+**P0-9c — `complete_run` accepts when `record_run_summary` wasn't called in this run.** 2026-05-13 Intraday Momentum: two place_trade rejections, then straight to `complete_run` — V2 prompt requires `record_run_summary` before `complete_run`, agent skipped it, tool accepted. Fix: [complete-run.ts](../lib/agent/tools/complete-run.ts) preflight refuses unless a `run_summary` RunEvent exists for this run.
+
+---
+
 ## P1 — Quality is degraded but system functions
 
 *(P1-4 was closed via cumulative prompt sharpening across PRs #235 + #239 — see "Done since" below. P0-5e was downgraded here from P0; see P0-5 above for details.)*
