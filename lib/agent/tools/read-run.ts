@@ -24,7 +24,7 @@ export const readRun = defineTool({
 
   execute: async (args, ctx) => {
     const run = await prisma.researchRun.findFirst({
-      where: { id: args.run_id, userId: ctx.userId },
+      where: { id: args.run_id, accountId: ctx.accountId },
       include: {
         agentConfig: { select: { id: true, name: true } },
         theses: {

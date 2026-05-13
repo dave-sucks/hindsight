@@ -36,30 +36,47 @@ const READ_MODELS = [
 ] as const;
 type ReadModel = (typeof READ_MODELS)[number];
 
-// Models that have userId on the row (so we can enforce scoping).
-const USER_SCOPED: Record<ReadModel, boolean> = {
+// Models that have accountId on the row (so we can enforce scoping
+// directly). For models that don't, scope is enforced through a
+// relation filter — see ACCOUNT_RELATION below.
+const ACCOUNT_SCOPED: Record<ReadModel, boolean> = {
   agentConfig: true,
   researchRun: true,
-  runEvent: false, // scoped via researchRun
+  runEvent: false, // scoped via researchRun relation
   thesis: true,
-  thesisUpdate: false, // scoped via thesis
+  thesisUpdate: false, // scoped via thesis relation
   position: true,
-  positionEvent: false, // scoped via position
+  positionEvent: false, // scoped via position relation
   tradeDecision: true,
-  monitor: false, // scoped via analyst.userId or FIRM scope
-  signal: false, // not user-owned
-  analystSignalRoute: false, // scoped via analystConfig
-  morningBrief: false, // scoped via analystConfig
-  analystWatchlistItem: false, // scoped via analystConfig
+  monitor: false, // scoped via analyst.accountId OR scope=FIRM
+  signal: false, // not account-owned (FIRM-wide signals)
+  analystSignalRoute: false, // scoped via analyst relation
+  morningBrief: false, // scoped via analyst relation
+  analystWatchlistItem: false, // scoped via analyst relation
   analystBriefing: true,
-  artifact: false, // not user-owned
+  artifact: false, // not account-owned
   accuracyReport: true,
-  order: false, // scoped via position
+  order: true,
+};
+
+// Relation-based scope fallback for models without a direct accountId.
+// Keys are model names; values are the where-clause snippet to inject
+// (with __ACCOUNT_ID__ replaced at runtime).
+const ACCOUNT_RELATION: Partial<Record<ReadModel, (accountId: string) => Record<string, unknown>>> = {
+  runEvent: (accountId) => ({ run: { accountId } }),
+  thesisUpdate: (accountId) => ({ thesis: { accountId } }),
+  positionEvent: (accountId) => ({ position: { accountId } }),
+  monitor: (accountId) => ({
+    OR: [{ scope: "FIRM" }, { analyst: { accountId } }],
+  }),
+  analystSignalRoute: (accountId) => ({ analyst: { accountId } }),
+  morningBrief: (accountId) => ({ analyst: { accountId } }),
+  analystWatchlistItem: (accountId) => ({ analyst: { accountId } }),
 };
 
 export const readDatabase = defineTool({
   description:
-    "Long-tail read fallback. Run a Prisma `findMany` against one of the whitelisted models with where / orderBy / take / select / include. NO writes. NO raw SQL. The query is automatically scoped to your user where the model has a userId column. Use the dedicated tools (list_analysts, list_runs, etc.) first; reach for this when no dedicated tool covers the question.",
+    "Long-tail read fallback. Run a Prisma `findMany` against one of the whitelisted models with where / orderBy / take / select / include. NO writes. NO raw SQL. The query is automatically scoped to your account (accountId or via a relation filter for nested models). Use the dedicated tools (list_analysts, list_runs, etc.) first; reach for this when no dedicated tool covers the question.",
   schema: z.object({
     model: z
       .enum(READ_MODELS)
@@ -70,7 +87,7 @@ export const readDatabase = defineTool({
     where: z
       .record(z.string(), z.unknown())
       .optional()
-      .describe("Prisma where clause. userId scope is enforced server-side."),
+      .describe("Prisma where clause. Account scope is enforced server-side."),
     orderBy: z
       .union([
         z.record(z.string(), z.enum(["asc", "desc"])),
@@ -103,9 +120,19 @@ export const readDatabase = defineTool({
     const take = args.take ?? 25;
     const where: Record<string, unknown> = { ...(args.where ?? {}) };
 
-    // Enforce userId scope where applicable.
-    if (USER_SCOPED[model] && !("userId" in where)) {
-      where.userId = ctx.userId;
+    // Enforce account scope. Direct accountId column for most models;
+    // relation filter (analyst / run / thesis / position) for nested ones.
+    if (!ctx.accountId) {
+      throw new Error("read_database requires an authenticated account context.");
+    }
+    if (ACCOUNT_SCOPED[model] && !("accountId" in where)) {
+      where.accountId = ctx.accountId;
+    } else if (ACCOUNT_RELATION[model]) {
+      const rel = ACCOUNT_RELATION[model]!(ctx.accountId);
+      // Merge — caller's filters compose with the relation scope.
+      for (const k of Object.keys(rel)) {
+        if (!(k in where)) where[k] = rel[k];
+      }
     }
 
     // Reject mutating-looking keys defensively. These shouldn't be in a

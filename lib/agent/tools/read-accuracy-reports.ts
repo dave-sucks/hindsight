@@ -31,7 +31,7 @@ export const readAccuracyReports = defineTool({
   execute: async (args, ctx) => {
     const limit = args.limit ?? 4;
     const reports = await prisma.accuracyReport.findMany({
-      where: { userId: ctx.userId },
+      where: { accountId: ctx.accountId },
       orderBy: { weekStartDate: "desc" },
       take: limit,
     });

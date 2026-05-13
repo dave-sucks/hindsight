@@ -37,7 +37,7 @@ export const listThesesAll = defineTool({
     const limit = args.limit ?? 50;
 
     const where: Record<string, unknown> = {
-      userId: ctx.userId,
+      accountId: ctx.accountId,
       ...(args.ticker ? { ticker: args.ticker.toUpperCase() } : {}),
       ...(args.direction ? { direction: args.direction } : {}),
     };

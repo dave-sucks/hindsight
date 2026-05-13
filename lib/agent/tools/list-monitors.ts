@@ -36,18 +36,18 @@ export const listMonitors = defineTool({
     const sort = args.sort ?? "recent";
     const limit = args.limit ?? 50;
 
-    // Build where clause that scopes monitors to the user via
-    // (a) analyst.userId match for ANALYST-scoped monitors, or
-    // (b) FIRM scope (shared across all users in single-tenant deploy).
-    // Either include analyst-owned-by-user OR scope=FIRM.
+    // Build where clause that scopes monitors to the account via
+    // (a) analyst.accountId match for ANALYST-scoped monitors, or
+    // (b) FIRM scope (shared across accounts).
+    // Either include analyst-in-account OR scope=FIRM.
     const monitors = await prisma.monitor.findMany({
       where: {
         ...(args.analyst_id
-          ? { analystId: args.analyst_id, analyst: { userId: ctx.userId } }
+          ? { analystId: args.analyst_id, analyst: { accountId: ctx.accountId } }
           : {
               OR: [
                 { scope: "FIRM" },
-                { analyst: { userId: ctx.userId } },
+                { analyst: { accountId: ctx.accountId } },
               ],
             }),
         ...(args.type ? { type: args.type } : {}),

@@ -31,7 +31,7 @@ export const listAnalysts = defineTool({
   execute: async (args, ctx) => {
     const analysts = await prisma.agentConfig.findMany({
       where: {
-        userId: ctx.userId,
+        accountId: ctx.accountId,
         ...(args.enabled_only ? { enabled: true } : {}),
       },
       orderBy: { createdAt: "asc" },

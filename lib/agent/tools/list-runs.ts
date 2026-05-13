@@ -47,7 +47,7 @@ export const listRuns = defineTool({
 
     const runs = await prisma.researchRun.findMany({
       where: {
-        userId: ctx.userId,
+        accountId: ctx.accountId,
         ...(args.analyst_id ? { agentConfigId: args.analyst_id } : {}),
         ...(args.mode ? { mode: args.mode } : {}),
         ...(args.status ? { status: args.status } : {}),

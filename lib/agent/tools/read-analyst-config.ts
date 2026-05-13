@@ -34,7 +34,7 @@ export const readAnalystConfig = defineTool({
 
     const analyst = await prisma.agentConfig.findFirst({
       where: {
-        userId: ctx.userId,
+        accountId: ctx.accountId,
         ...(args.analyst_id
           ? { id: args.analyst_id }
           : { name: { equals: args.analyst_name, mode: "insensitive" } }),

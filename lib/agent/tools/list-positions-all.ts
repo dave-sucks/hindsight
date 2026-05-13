@@ -36,7 +36,7 @@ export const listPositionsAll = defineTool({
 
     const positions = await prisma.position.findMany({
       where: {
-        userId: ctx.userId,
+        accountId: ctx.accountId,
         status,
         ...(args.analyst_id ? { analystId: args.analyst_id } : {}),
         ...(args.ticker ? { symbol: args.ticker.toUpperCase() } : {}),

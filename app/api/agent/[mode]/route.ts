@@ -279,11 +279,11 @@ export async function POST(
       let scopedAnalyst: Parameters<typeof buildPrincipalSystemPrompt>[0]["scopedAnalyst"] = null;
       if (resolvedAnalystId) {
         const ac = await prisma.agentConfig.findFirst({
-          where: { id: resolvedAnalystId, userId: user.id },
+          where: { id: resolvedAnalystId, accountId },
         });
         if (!ac) {
           return new Response(
-            `Analyst ${resolvedAnalystId} not found or not yours.`,
+            `Analyst ${resolvedAnalystId} not found or not in this account.`,
             { status: 404 },
           );
         }
@@ -322,23 +322,42 @@ export async function POST(
           maxOpenPositions: ac.maxOpenPositions,
         };
         // Create or reuse a PRINCIPAL_CHAT ResearchRun for this scoped
-        // session. If the client already passed a runId, reuse it ONLY
-        // if it's still bound to the same analyst — the user can rebind
-        // scope mid-chat via the scope chip, and the previous run row
-        // belongs to the old analyst's audit trail.
+        // session. Account-scoped: only reuse runs owned by THIS account.
+        // Scope-flip mid-chat invalidates the runId (different agentConfig).
         if (runId) {
           const existing = await prisma.researchRun.findFirst({
             where: {
               id: runId,
-              userId: user.id,
+              accountId,
               mode: "PRINCIPAL_CHAT",
               agentConfigId: resolvedAnalystId,
             },
             select: { id: true, status: true },
           });
           if (!existing) {
-            // Stale runId, foreign owner, or scope changed — mint fresh.
-            runId = undefined;
+            // Fall back to the most recent open PRINCIPAL_CHAT for this
+            // (account, analyst) — keeps stale client runIds from spawning
+            // a new row on every message after a scope flip.
+            const recent = await prisma.researchRun.findFirst({
+              where: {
+                accountId,
+                mode: "PRINCIPAL_CHAT",
+                agentConfigId: resolvedAnalystId,
+              },
+              orderBy: { startedAt: "desc" },
+              select: { id: true, status: true },
+            });
+            if (recent) {
+              runId = recent.id;
+              if (recent.status !== "RUNNING") {
+                await prisma.researchRun.update({
+                  where: { id: runId },
+                  data: { status: "RUNNING" },
+                });
+              }
+            } else {
+              runId = undefined;
+            }
           } else if (existing.status !== "RUNNING") {
             await prisma.researchRun.update({
               where: { id: runId },
@@ -347,13 +366,18 @@ export async function POST(
           }
         }
         if (!runId) {
+          // Snapshot the analyst's environment at run-create time, same
+          // pattern as research-run. Principal-chat writes go through
+          // place_trade etc. which read run.environment for PAPER vs LIVE.
           const newRun = await prisma.researchRun.create({
             data: {
               userId: user.id,
+              accountId,
               agentConfig: { connect: { id: resolvedAnalystId } },
               source: "MANUAL",
               status: "RUNNING",
               mode: "PRINCIPAL_CHAT",
+              environment: (ac.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
               parameters: {} as object,
             },
             select: { id: true },
