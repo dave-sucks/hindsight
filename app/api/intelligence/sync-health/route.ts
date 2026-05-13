@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getAccountId } from "@/lib/auth/account";
 
 // /api/intelligence/sync-health
 // Returns the latest sync heartbeat snapshot + last-24h timeline so the
@@ -51,6 +52,9 @@ export async function GET() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 

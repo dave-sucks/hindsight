@@ -12,6 +12,7 @@ import {
 } from "@/lib/alpaca";
 import { inngest } from "@/lib/inngest/client";
 import { sendEmail, getUserEmail } from "@/lib/email";
+import { getOwnerUserId } from "@/lib/auth/account";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -397,7 +398,12 @@ export async function closeOpenPosition(
           })
         : null;
       if (config && config.emailAlerts === false) return;
-      const toEmail = await getUserEmail(position.userId);
+      // Send to the account OWNER, not whoever placed the trade. For
+      // single-OWNER accounts they're identical; for team workspaces the
+      // OWNER is the canonical recipient. Falls back to position.userId
+      // if the account membership lookup misses for any reason.
+      const ownerUserId = await getOwnerUserId(position.accountId);
+      const toEmail = await getUserEmail(ownerUserId ?? position.userId);
       if (!toEmail) return;
       const pnlPct = positionCost > 0 ? (realizedPnl / positionCost) * 100 : 0;
       const daysHeld = Math.max(

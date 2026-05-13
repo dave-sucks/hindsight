@@ -37,6 +37,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 async function ensureWatchingThesisForWatchlistAdd(params: {
   analystId: string;
   userId: string;
+  accountId: string;
   runId: string | null;
   ticker: string;
   reason: string;
@@ -109,6 +110,7 @@ async function ensureWatchingThesisForWatchlistAdd(params: {
       data: {
         researchRunId: params.runId,
         userId: params.userId,
+        accountId: params.accountId,
         ticker: params.ticker,
         source: "AGENT",
         direction,
@@ -403,6 +405,7 @@ export const manageWatchlist = defineTool({
           data: {
             analystId: ctx.analystId,
             userId: ctx.userId,
+            accountId: ctx.accountId,
             symbol: ticker,
             reason: args.reason,
             notes: args.notes ?? null,
@@ -426,6 +429,7 @@ export const manageWatchlist = defineTool({
         await ensureWatchingThesisForWatchlistAdd({
           analystId: ctx.analystId,
           userId: ctx.userId,
+          accountId: ctx.accountId,
           runId: ctx.runId ?? null,
           ticker,
           reason: args.reason,
@@ -464,6 +468,7 @@ export const manageWatchlist = defineTool({
                 runId: ctx.runId,
                 analystId: ctx.analystId,
                 userId: ctx.userId,
+                accountId: ctx.accountId,
                 symbol: ticker,
                 decision: "WATCH",
                 reasoning: args.reason?.slice(0, 500) ?? null,
@@ -564,6 +569,7 @@ export const manageWatchlist = defineTool({
                 runId: ctx.runId,
                 analystId: ctx.analystId,
                 userId: ctx.userId,
+                accountId: ctx.accountId,
                 symbol: ticker,
                 decision: "REMOVE_WATCH",
                 reasoning: args.reason?.slice(0, 500) ?? null,

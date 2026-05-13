@@ -11,6 +11,11 @@ import type { IntelligencePolicy } from "@/lib/intelligence/types";
 export interface ToolContext {
   runId: string;
   userId: string;
+  /**
+   * FK to Account — the multi-tenant scope. Every row a tool inserts must
+   * be tagged with this. See docs/TEAM_ACCESS_PLAN.md.
+   */
+  accountId: string;
   /** FK to AgentConfig — required for Position, TradeDecision, Thesis creation */
   analystId?: string;
   /**

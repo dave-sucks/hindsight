@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { getAlpacaKeyStatuses } from "@/lib/actions/api-keys.actions";
 import { AlpacaKeyForm } from "@/components/settings/AlpacaKeyForm";
 import { ModelPreferenceForm } from "@/components/settings/ModelPreferenceForm";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -42,6 +44,26 @@ export default async function SettingsPage() {
               <span className="text-sm text-muted-foreground">Email</span>
               <span className="text-sm">{user?.email ?? "—"}</span>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Team */}
+      <div className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Team
+        </p>
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Manage members and invites</p>
+              <p className="text-xs text-muted-foreground">
+                Invite teammates as Editors or Viewers.
+              </p>
+            </div>
+            <Link href="/settings/team">
+              <Button variant="outline">Open</Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

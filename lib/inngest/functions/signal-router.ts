@@ -334,7 +334,11 @@ export const signalRouter = inngest.createFunction(
     retries: 1,
   },
   [
-    { cron: "TZ=America/New_York 30 7 * * 1-5" },
+    // Daily, 7 days a week. Weekend routing matters for two reasons:
+    // (1) the Sunday Discovery cron at 9am ET needs fresh routes from
+    // the morning's intel pipeline. (2) Saturday/Sunday news (M&A,
+    // pre-announces) becomes monday's stale set otherwise.
+    { cron: "TZ=America/New_York 30 7 * * *" },
     { event: "intelligence/route-signals" },
   ],
   async ({ step }) => {

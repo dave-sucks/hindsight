@@ -168,6 +168,28 @@ export const reconcileOrders = inngest.createFunction(
 
             // ── CANCELLED / REJECTED / EXPIRED ────────────────────────────
             if (["canceled", "cancelled", "expired", "rejected"].includes(status)) {
+              // Partial-fill-on-terminal-status: Alpaca took some shares
+              // before killing the rest. We must adopt the partial fill;
+              // otherwise Alpaca holds shares the DB never sees (NVDA-2026-05).
+              const partialQty = alpacaOrder.filled_qty
+                ? parseFloat(alpacaOrder.filled_qty)
+                : 0;
+              const partialPrice = alpacaOrder.filled_avg_price
+                ? parseFloat(alpacaOrder.filled_avg_price)
+                : 0;
+              if (partialQty > 0 && partialPrice > 0) {
+                const partialFilledAt = alpacaOrder.filled_at
+                  ? new Date(alpacaOrder.filled_at)
+                  : new Date();
+                const handled = await applyFillByIntent(
+                  order,
+                  partialPrice,
+                  partialQty,
+                  partialFilledAt,
+                );
+                if (handled) filled++;
+                return;
+              }
               const finalStatus = status === "rejected" ? "REJECTED" : "CANCELLED";
               await markOrderTerminalAndMaybeCancelPosition(order, finalStatus, status);
               if (finalStatus === "REJECTED") rejected++;

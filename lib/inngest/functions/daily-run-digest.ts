@@ -22,12 +22,13 @@
  * this morning." Owners with zero actions across all analysts get
  * skipped entirely.
  *
- * Gated on AgentConfig.emailAlerts. Future team access: replace
- * getUserEmail(ownerId) with getAccountEmails(ownerId).
+ * Gated on AgentConfig.emailAlerts. Recipient is the OWNER of the
+ * Account that owns the analyst — see lib/auth/account.ts.
  */
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { sendEmail, getUserEmail } from "@/lib/email";
+import { getOwnerUserId } from "@/lib/auth/account";
 import {
   dailyRunDigestHtml,
   type DigestAnalyst,
@@ -67,11 +68,11 @@ export const dailyRunDigest = inngest.createFunction(
     const morningStart = new Date(Date.now() - 6 * 60 * 60 * 1000);
     const dateLabel = formatEtDate();
 
-    type AnalystRow = { id: string; name: string; userId: string };
+    type AnalystRow = { id: string; name: string; accountId: string };
     const analysts = (await step.run("load-analysts", async () => {
       return prisma.agentConfig.findMany({
         where: { emailAlerts: true, enabled: true },
-        select: { id: true, name: true, userId: true },
+        select: { id: true, name: true, accountId: true },
       });
     })) as AnalystRow[];
 
@@ -79,12 +80,12 @@ export const dailyRunDigest = inngest.createFunction(
       return { skipped: true, reason: "no-analysts-opted-in" };
     }
 
-    // Group analysts by owner — one email per account, regardless of analyst count.
-    const byOwner = new Map<string, AnalystRow[]>();
+    // Group analysts by Account — one email per account, regardless of analyst count.
+    const byAccount = new Map<string, AnalystRow[]>();
     for (const a of analysts) {
-      const existing = byOwner.get(a.userId) ?? [];
+      const existing = byAccount.get(a.accountId) ?? [];
       existing.push(a);
-      byOwner.set(a.userId, existing);
+      byAccount.set(a.accountId, existing);
     }
 
     type GatheredDecision = {
@@ -109,16 +110,16 @@ export const dailyRunDigest = inngest.createFunction(
     };
 
     const sent: string[] = [];
-    const skipped: { ownerId: string; reason: string }[] = [];
+    const skipped: { accountId: string; reason: string }[] = [];
 
-    for (const [ownerId, ownerAnalysts] of byOwner) {
+    for (const [accountId, ownerAnalysts] of byAccount) {
       const analystIds = ownerAnalysts.map((a) => a.id);
 
-      const gatheredRaw = await step.run(`gather-${ownerId}`, async () => {
-        // 1. This morning's MORNING_PLAN runs for this owner.
+      const gatheredRaw = await step.run(`gather-${accountId}`, async () => {
+        // 1. This morning's MORNING_PLAN runs for this account.
         const morningRuns = await prisma.researchRun.findMany({
           where: {
-            userId: ownerId,
+            accountId,
             agentConfigId: { in: analystIds },
             mode: "MORNING_PLAN",
             startedAt: { gte: morningStart },
@@ -253,13 +254,19 @@ export const dailyRunDigest = inngest.createFunction(
 
       const totalActions = perAnalyst.reduce((s, x) => s + x.actions.length, 0);
       if (totalActions === 0) {
-        skipped.push({ ownerId, reason: "no-activity" });
+        skipped.push({ accountId, reason: "no-activity" });
         continue;
       }
 
       type EmailResult = { sent: boolean; reason?: string; to?: string };
-      const resultRaw = await step.run(`email-${ownerId}`, async () => {
-        const toEmail = await getUserEmail(ownerId);
+      const resultRaw = await step.run(`email-${accountId}`, async () => {
+        // Resolve the OWNER of this account — the canonical recipient.
+        const ownerUserId = await getOwnerUserId(accountId);
+        if (!ownerUserId) {
+          const r: EmailResult = { sent: false, reason: "no-owner-membership" };
+          return r;
+        }
+        const toEmail = await getUserEmail(ownerUserId);
         if (!toEmail) {
           const r: EmailResult = { sent: false, reason: "no-email" };
           return r;
@@ -279,8 +286,8 @@ export const dailyRunDigest = inngest.createFunction(
       });
 
       const result = resultRaw as EmailResult;
-      if (result.sent) sent.push(ownerId);
-      else skipped.push({ ownerId, reason: result.reason ?? "send-failed" });
+      if (result.sent) sent.push(accountId);
+      else skipped.push({ accountId, reason: result.reason ?? "send-failed" });
     }
 
     return { sent: sent.length, skipped };

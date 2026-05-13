@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import { getAccountId } from "@/lib/auth/account";
 
 export async function GET(
   _req: Request,
@@ -28,8 +29,11 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
+
   const thesis = await prisma.thesis.findFirst({
-    where: { id, userId: user.id },
+    where: { id, accountId },
     select: {
       id: true,
       ticker: true,
@@ -77,7 +81,7 @@ export async function GET(
   if (thesis.status === "ACTIVE" && thesis.researchRun?.agentConfigId) {
     const pos = await prisma.position.findFirst({
       where: {
-        userId: user.id,
+        accountId,
         analystId: thesis.researchRun.agentConfigId,
         symbol: thesis.ticker,
         status: "OPEN",

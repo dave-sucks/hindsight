@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
 import { sendEmail, getUserEmail } from "@/lib/email";
+import { getOwnerUserId } from "@/lib/auth/account";
 import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 
@@ -339,6 +340,7 @@ export const placeTrade = defineTool({
           data: {
             analystId,
             userId: ctx.userId,
+            accountId: ctx.accountId,
             environment: positionEnvironment,
             symbol: ticker,
             direction: args.direction,
@@ -389,6 +391,7 @@ export const placeTrade = defineTool({
             runId: ctx.runId,
             analystId,
             userId: ctx.userId,
+            accountId: ctx.accountId,
             symbol: ticker,
             decision: "INITIATE",
             reasoning: `${args.direction} ${finalShares} shares — submitting market order (target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)})`,
@@ -517,6 +520,7 @@ export const placeTrade = defineTool({
 
       // 4. Poll up to 5s for fill, then promote to FILLED + correct avgCost.
       let fillPrice = args.entry_price;
+      let fillQty: number | null = null;
       let didFill = false;
       let filledAt: Date | null = null;
       const deadline = Date.now() + 5_000;
@@ -524,12 +528,29 @@ export const placeTrade = defineTool({
         const probed = await getOrder(alpacaOrderId, ctx.alpacaCreds);
         if (probed.status === "filled" && probed.filled_avg_price) {
           fillPrice = parseFloat(probed.filled_avg_price);
+          // Alpaca's filled_qty is ground truth — notional orders fill
+          // fractionally, and Math.floor(notional/fillPrice) under-reports
+          // the actual qty, leaking the fraction as an Alpaca-only orphan
+          // when we later close at the DB's truncated qty (AGL-2026-05-12).
+          fillQty = probed.filled_qty ? parseFloat(probed.filled_qty) : null;
           didFill = true;
           filledAt = probed.filled_at ? new Date(probed.filled_at) : new Date();
           break;
         }
         if (["cancelled", "expired", "rejected"].includes(probed.status)) {
-          // Alpaca accepted then killed it — treat like a rejection.
+          // Cancelled-with-partial-fill: Alpaca took some shares before killing
+          // the rest. Adopt the partial fill via the didFill path below.
+          // Without this the DB marks CANCELLED while Alpaca keeps the shares
+          // (the NVDA-2026-05-11 orphan).
+          const partialQty = parseFloat(probed.filled_qty ?? "0");
+          const partialPrice = probed.filled_avg_price ? parseFloat(probed.filled_avg_price) : 0;
+          if (partialQty > 0 && partialPrice > 0) {
+            fillPrice = partialPrice;
+            fillQty = partialQty;
+            didFill = true;
+            filledAt = probed.filled_at ? new Date(probed.filled_at) : new Date();
+            break;
+          }
           await prisma.$transaction([
             prisma.order.update({
               where: { id: order.id },
@@ -557,11 +578,12 @@ export const placeTrade = defineTool({
       }
 
       if (didFill) {
-        // Recompute share count for notional fills (Alpaca may give fractional)
-        if (resolvedNotional != null) {
-          resolvedShares = Math.max(1, Math.floor(resolvedNotional / fillPrice));
-        }
-        const finalSharesAfterFill = resolvedShares ?? finalShares;
+        // Trust Alpaca's filled_qty (fractional for notional orders). Fall
+        // back to the local share count only if Alpaca didn't return it.
+        const finalSharesAfterFill =
+          fillQty != null && fillQty > 0
+            ? fillQty
+            : (resolvedShares ?? finalShares);
         await prisma.$transaction([
           prisma.order.update({
             where: { id: order.id },
@@ -668,7 +690,11 @@ export const placeTrade = defineTool({
               select: { emailAlerts: true, name: true },
             });
             if (!config?.emailAlerts) return;
-            const toEmail = await getUserEmail(ctx.userId);
+            // Send to the account OWNER, not the user that placed the trade.
+            // For solo OWNER they're the same; for team workspaces an EDITOR
+            // placing a trade still pings the OWNER (canonical inbox).
+            const ownerUserId = await getOwnerUserId(ctx.accountId);
+            const toEmail = await getUserEmail(ownerUserId ?? ctx.userId);
             if (!toEmail) return;
             const thesis = await prisma.thesis.findUnique({
               where: { id: args.thesis_id },

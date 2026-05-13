@@ -91,7 +91,8 @@ export const domainMonitor = inngest.createFunction(
     retries: 3,
   },
   [
-    { cron: "TZ=America/New_York 15 7 * * 1-5" },
+    // Daily, 7 days a week — see firm-market-sweep cron comment.
+    { cron: "TZ=America/New_York 15 7 * * *" },
     { event: "intelligence/domain-monitor" },
   ],
   async ({ event, step }) => {

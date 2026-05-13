@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getAccountId } from "@/lib/auth/account";
 
 export async function GET(
   req: NextRequest,
@@ -25,11 +26,14 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Verify ownership via Thesis.userId before exposing updates. We don't
-  // index ThesisUpdate by userId — the join through Thesis is the only
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
+
+  // Verify ownership via Thesis.accountId before exposing updates. We don't
+  // index ThesisUpdate by accountId — the join through Thesis is the only
   // scope check.
   const thesis = await prisma.thesis.findFirst({
-    where: { id, userId: user.id },
+    where: { id, accountId },
     select: { id: true },
   });
   if (!thesis) {

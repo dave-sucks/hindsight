@@ -169,6 +169,7 @@ export const writeSegmentTranscript = defineTool({
           runId: ctx.runId,
           segmentId: ctx.podcastSegmentId,
           userId: ctx.userId,
+          accountId: ctx.accountId,
           title: args.title,
           plainText: args.plainText,
           ssml: args.ssml ?? null,

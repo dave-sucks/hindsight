@@ -6,6 +6,7 @@ import {
   normalizeIndustries,
   normalizeThemes,
 } from "@/lib/universe/canonical";
+import { getAccountId } from "@/lib/auth/account";
 
 // POST /api/universe/validate-fence
 // Body: { sectors?, industries?, themes?, lookbackDays? }
@@ -17,6 +18,9 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
 
   const body = (await req.json().catch(() => ({}))) as {
     sectors?: string[];

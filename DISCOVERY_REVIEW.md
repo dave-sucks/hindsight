@@ -1,555 +1,479 @@
-# Discovery Layer Architecture Review
+# DISCOVERY_REVIEW.md
 
-**Reviewer**: Principal Staff Engineer + Head of Product
-**Date**: 2026-03-15
-**Scope**: Discovery layer only — from "what should I look at?" to "these are my top candidates"
+End-to-end review of the weekly Discovery run — prompt, flow, code,
+and gaps against the product vision. Written 2026-05-11 after the
+2026-05-10 inaugural auto-cron minted zero theses across all seven
+enabled analysts.
 
----
-
-## Executive Summary
-
-Your agents are good analysts chained to a bad telescope. The deep research pipeline (Phase 3–6) is genuinely impressive — 10+ data sources per ticker, structured thesis generation, automatic trading, self-improving briefings. That's the hard part, and you've built it.
-
-The discovery layer (Phase 1–2) is the weak link. Today, `scan_candidates` is a flat aggregation of 6 data sources with static point scoring. It finds **what moved today** and **what reports earnings this week**. That's it. It has no concept of themes, catalysts beyond earnings, anomalous behavior, or strategic opportunity sourcing.
-
-The gap between current and target is significant but not architectural. Your tool system, run lifecycle, and agent orchestration are sound. The fix is additive — new tools that slot into the existing `createResearchTools` factory, a richer scan phase in the system prompt, and a few new data source integrations. You do NOT need to rearchitect anything.
-
-**Bottom line**: 3 new tools get you 80% of the target vision. The remaining 20% is refinement and additional data sources you can add incrementally.
+> **Scope note.** PR #247 (commit `f8b7f11` on `claude/romantic-mendeleev-1c67aa`)
+> is described in its commit message as fixing the three proximate
+> tool-surface bugs (read_signals triggerId trap, scope:"universe"
+> coverage exclusion, discoveryOnly bucket rewrite). That commit is
+> **not on `main`** at the time of this review (HEAD `e230516`). The
+> review below treats those fixes as if they will land; everything
+> documented here is about the prompt + flow shape, not the proximate
+> tool bugs.
 
 ---
 
-## Biggest Architectural Issues
+## What discovery is supposed to do
 
-### 1. Discovery is a single undifferentiated tool call
-`scan_candidates` mashes together earnings, movers, social trending, and watchlist into one scored list. The agent has no way to ask different discovery questions:
-- "What themes are driving the market?" → doesn't exist
-- "What catalysts are coming in the next 30 days?" → only 7-day earnings
-- "What's behaving anomalously?" → only gainers/losers, no volume/relative strength screening
+Per [docs/VISION.md](docs/VISION.md) Part 3, Pillar 1:
 
-The agent gets one shot at discovery per run. It calls `scan_candidates`, gets 10-15 tickers, picks 3-5, and researches them. There's no iterative narrowing, no thematic filtering, no "I see AI infrastructure is hot, let me scan specifically for AI plays."
+> **The system finds stocks worth knowing about.** The intelligence
+> pipeline gathers raw evidence; the signal router fans signals out to
+> each analyst's universe; the Sunday Discovery Run gives every analyst
+> a focused weekly window to convert standout discovery signals into
+> new WATCHING theses (or, with high conviction, ACTIVE + a starter
+> trade).
 
-### 2. No macro/regime awareness
-`get_market_overview` fetches SPY, VIX, and 11 sector ETFs. That's a snapshot, not context. The agent doesn't know:
-- Is the Fed meeting this week?
-- Are we in a risk-on or risk-off regime?
-- What's the yield curve doing?
-- Is this earnings season?
-- Are sector rotations happening?
+Discovery is the **front door for new tickers entering coverage.** Its
+output is the input to Pillar 3 — Watchlist → Trade promotion — which
+the daily run and the trigger evaluator + tactical run consume. A
+healthy week looks like (VISION Part 5):
 
-Without regime context, every run starts from zero. The agent can't say "VIX is spiking and we're risk-off, so I should focus on defensive names" — it has to infer this from raw ETF prices alone.
+> Sunday: Discovery run mints 3 new WATCHING theses in semis (because
+> semis were the dominant theme this week).
 
-### 3. No forward-looking catalyst pipeline
-Earnings calendar is the only forward-looking data. The target vision lists: FDA decisions, investor days, product launches, regulatory actions, insider buying clusters, lockup expirations, M&A rumors, economic calendar. None of these exist. This means the agent is reactive (what happened today) instead of proactive (what could move prices this week).
+Three load-bearing properties:
 
-### 4. Scoring is simplistic and analyst-blind
-The point system (watchlist=4, earnings=3, movers=2, social=1) is hardcoded. A momentum analyst and a value analyst get the same scan results. The scoring doesn't consider:
-- Whether the ticker fits the analyst's strategy
-- Volume relative to average (is this move significant?)
-- Market cap filters (the micro-cap/ADR problem you already know about)
-- Whether the agent already has a position or recently passed on this ticker
+1. **Net-new only.** Discovery doesn't manage existing theses; the
+   daily run does. The agent must skip everything already covered.
+2. **Weekly cadence.** Sunday 9 AM ET, markets closed, the prior
+   week's signals have all landed, the new WATCHING theses are ready
+   for Monday's daily run to pick up via the per-thesis review loop.
+3. **WATCHING-by-default with ENTER triggers.** Discovery seeds the
+   watchlist; trade promotion happens later when the entry condition
+   fires. High-conviction direct-to-ACTIVE is an escape hatch, not the
+   primary mode.
 
-### 5. No theme persistence across runs
-The target vision's theme detection is the biggest conceptual gap. Today each run is memoryless about market narratives. The briefing system captures performance learnings, but not "AI infrastructure has been the dominant theme for 3 weeks." Themes should accumulate and decay across runs, giving analysts strategic context they can't get from a daily scan.
-
----
-
-## Current State vs Target State
-
-| Capability | Current | Target | Gap |
-|---|---|---|---|
-| **Market regime** | SPY + VIX + sector ETFs (point-in-time) | Regime classification, macro calendar, yield curve, risk-on/off signal | Large |
-| **Theme detection** | None | News clustering, earnings call topics, ETF flows, social trend analysis → named themes with strength scores | Missing entirely |
-| **Catalyst pipeline** | Earnings calendar (7 days) | Earnings + FDA + investor days + product launches + economic calendar + insider clusters + lockup expirations | Large — only 1 of 8+ catalyst types |
-| **Anomaly detection** | Top gainers/losers from FMP | Volume spikes, breakouts, gap moves, relative strength surges, unusual options, social spikes, short interest, block trades | Large — only price-based, no volume/behavioral signals |
-| **Social discovery** | Reddit trending + StockTwits trending (count-based) | Sentiment clustering, narrative identification, meme detection, retail vs institutional signal separation | Medium |
-| **Tradeability filter** | Exclusion list + sector filter | Market cap floor, average volume floor, spread, options liquidity, exchange filter | Medium |
-| **Strategy fit scoring** | Hardcoded points, no analyst personality | Dynamic scoring weighted by analyst config (momentum analyst prioritizes breakouts, value analyst prioritizes insider buying) | Medium |
-| **Inter-run memory** | Briefings capture performance only | Theme persistence, "I passed on $X last run and it moved 5%", cross-run opportunity tracking | Medium |
+Implied but not stated in VISION: **Discovery should be archetype-
+aware.** Pillar 1 lists six archetypes the system targets (catalyst
+events, momentum breakouts, secular themes, earnings drift, intraday
+momentum, ETF macro) and the daily-run prompt already branches on
+DAY-only vs swing. Discovery doesn't.
 
 ---
 
-## Recommended Discovery Architecture
+## What discovery actually does
 
-### The Discovery Funnel (3 new tools + 1 enhanced tool)
+The weekly cron lives at [lib/inngest/functions/discovery-run.ts](lib/inngest/functions/discovery-run.ts).
+For each enabled `AgentConfig`:
 
-```
-get_market_overview (ENHANCED)
-  ↓ adds: regime classification, macro calendar, theme hints
+1. Load the analyst's existing coverage tickers (ACTIVE + WATCHING
+   theses) — [discovery-run.ts:63](lib/inngest/functions/discovery-run.ts:63).
+2. Create a `ResearchRun` row with `mode: "DISCOVERY"`, `status: "RUNNING"`
+   — [discovery-run.ts:75](lib/inngest/functions/discovery-run.ts:75).
+3. Spawn `createResearchTools(..., discoveryOnly: true)` and apply the
+   `MODES.discovery.toolAllowlist` — [discovery-run.ts:100](lib/inngest/functions/discovery-run.ts:100).
+4. Build the system prompt via `buildDiscoverySystemPrompt({ config,
+   existingTickers })` — [discovery-run.ts:134](lib/inngest/functions/discovery-run.ts:134).
+5. Call `generateText` (GPT-4o, `maxSteps: 25`, `maxDuration: 240s`)
+   with a hard-coded user prompt — [discovery-run.ts:146](lib/inngest/functions/discovery-run.ts:146).
+6. Persist messages, count theses, flip the run to COMPLETE if
+   `record_run_summary` fired else FAILED — [discovery-run.ts:217](lib/inngest/functions/discovery-run.ts:217).
 
-detect_market_themes (NEW)
-  ↓ clusters news + social + ETF flows into named themes
+The prompt at [lib/agent/system-prompts/discovery.ts](lib/agent/system-prompts/discovery.ts)
+prescribes a 5-step workflow:
 
-scan_catalysts (NEW)
-  ↓ forward-looking event calendar across multiple catalyst types
+- **Step 1 — Scan three sources** in this exact order: `read_signals`,
+  `get_market_movers(scope: "universe")`, `get_earnings_calendar(scope: "universe")`.
+- **Step 2 — Score** — "pick the 2-3 most promising candidates," then
+  call `get_stock_data` for each and score on the same daily-run
+  composite (trendStrength + relativeStrength + entryQuality +
+  catalystFreshness). **Threshold: composite ≥ 7.**
+- **Step 3 — Mint theses** — `record_thesis(status: "WATCHING")` for
+  composite 7–7.9, optional `record_thesis(status: "ACTIVE") + place_trade`
+  for composite ≥ 8.
+- **Step 4 — Cap at 5.**
+- **Step 5 — `record_run_summary` then `complete_run`.**
 
-scan_candidates (ENHANCED)
-  ↓ adds: volume anomalies, relative strength, market cap filter,
-  ↓ accepts theme_filter parameter for thematic scanning
+The allowlist is at [lib/agent/modes.ts:175](lib/agent/modes.ts:175):
+`record_thesis`, `place_trade`, `manage_watchlist`, `record_run_summary`,
+`complete_run` for writes; the standard read tools plus `web_search`
+and `get_market_context` (which the prompt never asks the agent to
+call). **No `update_thesis`, no `close_position`, no `manage_position`** —
+discovery cannot touch the existing book.
 
-[existing deep research tools unchanged]
-```
-
-### Tool 1: `detect_market_themes` (NEW — highest impact)
-
-**What it does**: Clusters recent news, social mentions, and ETF flows into named market themes with strength and direction scores.
-
-**Data sources** (available today, no new APIs needed):
-- FMP stock news (bulk, not per-ticker) — cluster by keyword/sector
-- Reddit: scan post titles across WSB/stocks/options/investing for recurring topics
-- Sector ETF relative performance (already have this data from `get_market_overview`)
-- FMP sector performance endpoint
-- Finnhub market news (general, not per-ticker)
-
-**Implementation approach**:
-```typescript
-detect_market_themes: tool({
-  description: "Identify dominant market themes and narratives driving capital flows. Returns named themes with strength, direction, and representative tickers.",
-  inputSchema: z.object({
-    lookback_days: z.number().optional().default(7),
-  }),
-  execute: async ({ lookback_days }) => {
-    // 1. Fetch general market news (Finnhub /news?category=general)
-    // 2. Fetch Reddit hot posts across 4 subreddits (already have this)
-    // 3. Fetch sector ETF performance (reuse market_overview logic)
-    // 4. Fetch FMP sector performance for trend detection
-    // 5. Use keyword clustering to identify themes:
-    //    - Group news headlines by topic (AI, GLP-1, rate cuts, etc.)
-    //    - Count mention frequency across sources
-    //    - Map to sectors and representative tickers
-    //    - Score by recency-weighted frequency
-    // 6. Return top 5-8 themes with strength, direction, key tickers
-
-    // NOTE: This does NOT need an LLM call. Keyword extraction +
-    // frequency analysis is sufficient for MVP. The agent (GPT-4.1)
-    // interprets the themes — the tool just surfaces the signal.
-  }
-})
-```
-
-**Why this is #1 priority**: Without themes, every scan is random. With themes, the agent can say "AI infrastructure is the strongest theme, let me scan for AI plays" and pass a `theme_filter` to `scan_candidates`. This transforms the agent from reactive to strategic.
-
-**Estimated effort**: Medium. No new APIs. Keyword clustering logic is straightforward. The hard part is tuning the theme extraction to be useful without an LLM in the loop (save the LLM call budget for the agent itself).
-
-### Tool 2: `scan_catalysts` (NEW — second highest impact)
-
-**What it does**: Forward-looking event calendar. Surfaces upcoming events that could move prices.
-
-**Data sources**:
-- Finnhub earnings calendar (already have, extend to 30 days)
-- FMP economic calendar (`/v3/economic_calendar`)
-- Finnhub IPO calendar (`/calendar/ipo`)
-- SEC EDGAR recent filings (already have, reframe as catalyst)
-- FMP upgrades/downgrades (`/v3/upgrades-downgrades-consensus`)
-- Finnhub insider transactions (already fetched in tools but not used for discovery)
-
-**Implementation approach**:
-```typescript
-scan_catalysts: tool({
-  description: "Find upcoming catalysts that could move stock prices: earnings, economic events, insider buying, analyst upgrades, IPOs, and significant SEC filings.",
-  inputSchema: z.object({
-    lookback_days: z.number().optional().default(3),
-    forward_days: z.number().optional().default(14),
-    catalyst_types: z.array(z.enum([
-      "EARNINGS", "ECONOMIC", "INSIDER", "ANALYST", "IPO", "SEC_FILING"
-    ])).optional(),
-  }),
-  execute: async ({ lookback_days, forward_days, catalyst_types }) => {
-    // Fetch all catalyst sources in parallel
-    // Normalize into unified catalyst format
-    // Score by expected_impact (HIGH/MEDIUM/LOW)
-    // Return sorted by date, grouped by type
-  }
-})
-```
-
-**Why this is #2**: Catalysts are the primary edge for a daily-running agent. "NVDA reports earnings in 3 days" is actionable in a way "NVDA was a top gainer today" is not. Extending the earnings window from 7 to 30 days alone is a significant improvement. Adding economic calendar, insider buying, and analyst actions makes the agent forward-looking.
-
-### Tool 3: Enhanced `scan_candidates`
-
-**What changes**:
-1. Add `theme_filter` parameter — agent can say "scan for AI infrastructure plays"
-2. Add `min_avg_volume` parameter — filter out illiquid micro-caps
-3. Add `min_market_cap` parameter — kill the ADR/micro-cap problem
-4. Add volume anomaly detection — flag tickers trading >2x average volume
-5. Accept output from `detect_market_themes` to bias scoring toward thematic tickers
-6. Make scoring weights configurable per-call (or derive from analyst config)
-
-**What stays the same**: The 6-source aggregation pattern, deduplication, the overall structure. This is additive, not a rewrite.
-
-### Tool 4: Enhanced `get_market_overview`
-
-**What changes**:
-1. Add a `regime` field: classify as RISK_ON / RISK_OFF / NEUTRAL based on VIX level + SPY trend + sector dispersion
-2. Add `macro_events_today` from FMP economic calendar (just today's events)
-3. Add `earnings_season` flag (are we in peak earnings week?)
-4. Add `theme_hints` — top 2-3 sector ETFs with momentum for the agent to explore
-
-**Why**: The agent needs macro context to make regime-appropriate decisions. A momentum analyst in a risk-off regime should be more selective. This is cheap to add (2 more API calls) and immediately useful.
+The run replay UI at [app/(root)/runs/[id]/page.tsx:142](<app/(root)/runs/[id]/page.tsx:142>)
+renders `AgentChat` whenever `isLive || hasReplay`, so a FAILED run
+with persisted messages still shows the transcript. A FAILED run with
+no messages collapses to the "Run failed" empty state with the
+`parameters.error` string (when present).
 
 ---
 
-## MVP Implementation Plan
+## Gaps
 
-### Phase 1: Quick Wins (1-2 sessions, highest impact)
+In addition to the six listed in the brief.
 
-**1. Enhance `get_market_overview` with regime classification**
-- File: `lib/agent/tools.ts` (modify existing tool)
-- Add VIX-based regime (VIX < 15 = RISK_ON, 15-25 = NEUTRAL, >25 = RISK_OFF)
-- Add SPY trend (above/below 20-day SMA from existing candle logic)
-- Add `earnings_density` flag (count of earnings in next 5 days from calendar)
-- No new APIs needed — derived from existing data
-- **Impact**: Agent immediately gets regime-aware decision making
+### 7. Step 1 lookback default is "today only," prompt claims "past 7 days"
 
-**2. Add market cap + volume filters to `scan_candidates`**
-- File: `lib/agent/tools.ts` (modify existing tool)
-- Add `min_market_cap` param (default 1B) — use Finnhub profile `marketCapitalization`
-- Add `min_avg_volume` param (default 500K) — from Finnhub quote
-- Filter AFTER scoring, BEFORE returning — micro-caps drop out
-- **Impact**: Kills the micro-cap/ADR problem. Agents stop wasting research cycles on untradeable tickers.
+The prompt at [discovery.ts:46](lib/agent/system-prompts/discovery.ts:46)
+says read_signals returns "Routed signals over the past 7 days." It
+doesn't. The tool's `lookbackDays` parameter defaults to `0` (today
+only) — see [read-signals.ts:199](lib/agent/tools/read-signals.ts:199)
+and the default destructure at [read-signals.ts:237](lib/agent/tools/read-signals.ts:237).
+The prompt never tells the agent to pass `lookbackDays: 7`, so the
+Sunday cron reads **Sunday's** signals — and Sunday is a market-closed
+day with no firm-market-sweep / portfolio-watchlist-monitor /
+domain-monitor activity. The agent sees an empty inbox and either
+fails the run or hallucinates candidates. **This is plausibly the
+dominant cause of the 2026-05-10 zero-theses outcome**, not the three
+tool-surface bugs PR #247 chased.
 
-**3. Extend earnings calendar to 30 days in `scan_candidates`**
-- One-line change: `7 * 86400_000` → `30 * 86400_000`
-- **Impact**: Agent sees earnings 4 weeks out instead of 1. Can position ahead of catalysts.
+### 8. The prompt never instructs the agent to widen `lookbackDays`
 
-**4. Update system prompt for multi-phase discovery**
-- File: `lib/agent/system-prompt.ts`
-- Change Phase 2 from "call scan_candidates" to a decision tree:
-  - "First, call get_market_overview. Based on regime and sector leadership..."
-  - "Then call scan_candidates. Consider filtering by your strongest sectors..."
-  - "Review candidates: prioritize tickers appearing in multiple sources..."
-- **Impact**: Better agent behavior without any tool changes.
+Even if Gap 7 is addressed at the tool default level, the prompt
+should explicitly say *"call read_signals with lookbackDays: 7"* in
+Step 1. Today it doesn't, and discovery-mode tools that quietly look
+back further would diverge from the prompt's stated semantics.
 
-### Phase 2: Core Discovery Tools (2-3 sessions)
+### 9. `scope: "universe"` on movers + earnings is the OPPOSITE of what discovery wants (pre-PR #247)
 
-**5. Build `detect_market_themes`**
-- New tool in `lib/agent/tools.ts`
-- Data: Finnhub general news + Reddit trending + sector ETF momentum
-- Keyword extraction → frequency scoring → theme objects
-- No LLM needed in the tool — GPT-4.1 interprets the raw themes
-- Add to system prompt Phase 2: "Call detect_market_themes before scan_candidates"
+On this branch (`main` = `e230516`), [get-market-movers.ts:107](lib/agent/tools/get-market-movers.ts:107)
+and [get-earnings-calendar.ts:109](lib/agent/tools/get-earnings-calendar.ts:109)
+intersect with `watchlist ∪ positionTickers`. The prompt at
+[discovery.ts:91](lib/agent/system-prompts/discovery.ts:91)
+describes `scope: "universe"` as "FENCED to your sectors/industries/themes
+plus tickers you already cover. The 'your names' list is filtered out
+by the tool." Both halves of that sentence are wrong: the tools do
+NOT fence by sector/industry/theme (the comments at 107 and 109 note
+that's "deferred to router-side"), and they INCLUDE coverage names,
+they don't filter them out. PR #247 (per its commit message) flips
+the semantics so coverage is excluded in discovery mode — assume that
+lands, but acknowledge that the prompt language at lines 91-97 will
+still be misleading until rewritten.
 
-**6. Build `scan_catalysts`**
-- New tool in `lib/agent/tools.ts`
-- Data: Finnhub earnings (30d) + FMP economic calendar + Finnhub insider transactions
-- Returns unified catalyst objects sorted by date
-- Agent uses catalysts to prioritize research: "NVDA earnings in 2 days → research NVDA"
+### 10. `read_signals` discovery-mode lookback returns nothing on Sunday for any analyst that doesn't have backfilled routes
 
-**7. Add `theme_filter` to `scan_candidates`**
-- After detecting themes, agent passes theme name to scan_candidates
-- Tool maps theme to sector + ticker list, boosts matching candidates
-- Enables: detect_market_themes → "AI is hot" → scan_candidates({ theme_filter: "AI Infrastructure" })
+Even after PR #247's "ticker-NOT-in-coverage" rewrite of the discovery
+bucket, the underlying query at [read-signals.ts:336](lib/agent/tools/read-signals.ts:336)
+is windowed by `tradingDay` and `routedAt`. The signal-router cron
+doesn't run on Sunday, and no `AnalystSignalRoute` rows get added
+Sunday morning. So unless the agent passes `lookbackDays: 7`, the
+discovery inbox is empty for every analyst on every Sunday — by
+construction.
 
-### Phase 3: Refinement (later sessions)
+### 11. The composite ≥ 7 threshold is the daily-run "tradeable today" bar
 
-**8. Analyst-aware scoring**
-- Derive scoring weights from AgentConfig: momentum analysts boost mover scores, catalyst analysts boost earnings scores
-- Pass analyst config subset into tool context
+Daily-run system prompt at [system-prompt.ts:172](lib/agent/system-prompt.ts:172)
+sets composite ≥ 7 **and** R/R ≥ 2:1 **and** in-Universe as the
+threshold to TRADE. Discovery's job per VISION is to mint **WATCHING**
+candidates that aren't tradeable today but could be next week. Using
+the same threshold means a candidate that's interesting but doesn't
+have a clean setup *right now* — exactly the population WATCHING is
+for — gets passed instead of minted. Threshold should be ~5 for
+WATCHING, 7 for high-conviction ACTIVE.
 
-**9. Theme persistence across runs**
-- Store detected themes in a `MarketTheme` table
-- Load last run's themes → compare → identify emerging vs fading themes
-- Inject into system prompt like briefings
+### 12. The 4-dimension scoring rubric is calibrated for momentum/breakout, applied to every archetype
 
-**10. Cross-run opportunity tracking**
-- When agent PASSes on a ticker, track it as shadow trade (already partially exists)
-- In next run's context, include: "You passed on $TSLA at $180 — it's now $195 (+8.3%)"
-- Feeds into briefing system for self-correction
+[discovery.ts:107](lib/agent/system-prompts/discovery.ts:107)
+inherits the daily-run rubric (trendStrength 0-3, relativeStrength
+0-3, entryQuality 0-2, catalystFreshness 0-2). A Deep Value Contrarian
+([strategy-archetypes.ts:414](lib/agent/knowledge/strategy-archetypes.ts:414))
+**buys downtrends** — trendStrength: 3 for them is a sell signal.
+An Insider Cluster Buying archetype ([strategy-archetypes.ts:269](lib/agent/knowledge/strategy-archetypes.ts:269))
+cares about Form 4 cluster patterns; the rubric has no slot for that.
+The composite gate is the same shape used to grade a Momentum
+Breakout — applied universally, it systematically passes on every
+non-momentum candidate.
 
-**11. Additional catalyst sources**
-- FDA calendar (scrape FDA PDUFA dates or use BioPharmCatalyst API)
-- Conference/investor day calendar
-- Options expiration (OPEX) dates
-- Index rebalancing dates
+### 13. Provenance gate forces ROUTED_SIGNAL but two of the three Step 1 sources don't produce signal IDs
 
----
+[discovery.ts:128](lib/agent/system-prompts/discovery.ts:128) says:
+"source_kind = 'ROUTED_SIGNAL' with non-empty source_signal_ids drawn
+from this run's read_signals output." A thesis born from
+`get_market_movers` or `get_earnings_calendar` has no `signalId` to
+cite — the FMP pull tools don't write `Signal` rows. The agent has
+two bad options: (a) use ROUTED_SIGNAL with a faked or unrelated
+signal ID (the [record-thesis.ts:451](lib/agent/tools/record-thesis.ts:451)
+"valid routes today" guard rejects this — and on Sunday with no
+routes, *every* citation fails this guard), or (b) use WEB_SEARCH
+provenance, which triggers the soft nudge at
+[record-thesis.ts:424](lib/agent/tools/record-thesis.ts:424)
+because the candidate's ticker WAS in `read_signals` output for some
+matching session-window signal. The architecture-VISION goal — Monitor
+ROI credit per source — is broken either way.
 
-## Long-Term Architecture
+### 14. WATCHING + LONG/SHORT requires `target_price` (the ENTER trigger level), enforced at write time
 
-### What the discovery funnel looks like at maturity:
+[record-thesis.ts:689](lib/agent/tools/record-thesis.ts:689) rejects
+a WATCHING thesis without an ENTER trigger; the default ENTER trigger
+template fires off `target_price`. So every WATCHING thesis the
+discovery agent mints needs an entry breakout level identified at
+mint time. The prompt's "lower conviction → WATCHING with triggers
+describing what would flip it to ACTIVE" framing
+([discovery.ts:122](lib/agent/system-prompts/discovery.ts:122))
+under-specifies this — it doesn't tell the agent to set `target_price`
+explicitly OR derive an ENTER trigger from setup levels. Agents that
+write "broad-strokes WATCHING" without a numeric breakout level get
+their thesis rejected.
 
-```
-┌─────────────────────────────────────────────────┐
-│ get_market_overview (enhanced)                   │
-│   → Regime: RISK_ON / RISK_OFF / NEUTRAL        │
-│   → Macro events today                          │
-│   → Earnings season flag                        │
-│   → Sector leadership + rotation signals        │
-└────────────────────┬────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│ detect_market_themes                             │
-│   → 5-8 named themes with strength + direction  │
-│   → Representative tickers per theme            │
-│   → Theme persistence (new / strengthening /    │
-│     fading vs prior run)                        │
-└────────────────────┬────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│ scan_catalysts                                   │
-│   → Earnings (30d forward)                      │
-│   → Economic calendar                           │
-│   → FDA / regulatory                            │
-│   → Insider buying clusters                     │
-│   → Analyst upgrades                            │
-│   → IPOs / lockup expirations                   │
-└────────────────────┬────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│ scan_candidates (enhanced)                       │
-│   → Theme-filtered scanning                     │
-│   → Volume anomaly detection                    │
-│   → Market cap + liquidity floors               │
-│   → Relative strength screening                 │
-│   → Analyst-config-aware scoring                │
-│   → Cross-source deduplication + ranking        │
-└────────────────────┬────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│ Agent selects 3-5 tickers for deep research     │
-│   (existing Phase 3-6 pipeline, unchanged)      │
-└─────────────────────────────────────────────────┘
-```
+### 15. No `get_market_context` call — discovery is regime-blind
 
-### Run Lifecycle (Discovery → Thesis → Action)
+Daily-run prompt requires `get_market_context` (it's structurally
+implicit in the rubric: "regime supportive" is part of entry-quality
+scoring). Discovery's prompt never asks for it. Sunday's "what should
+I scan for this week" decision should anchor on regime — if SPY just
+broke its 200d and VIX is at 28, you should bias to defensive themes
+and oversold bounces this week, not momentum breakouts. Today's
+discovery prompt funnels every analyst through the same three sources
+with no regime overlay.
 
-```
-1. REGIME ASSESSMENT
-   Agent calls get_market_overview
-   → Determines: risk regime, sector leadership, macro events
-   → Decides: defensive vs aggressive posture for this session
+### 16. No cross-analyst overlap check at the workflow level
 
-2. THEMATIC SCAN
-   Agent calls detect_market_themes
-   → Identifies: dominant narratives driving capital
-   → Decides: which themes align with its strategy + config
+The brief notes the daily run does this. Discovery doesn't. The
+`record_thesis` tool has a hard cross-analyst overlap guard for
+DAY-only analysts ([record-thesis.ts:866](lib/agent/tools/record-thesis.ts:866))
+— so day-trader discovery is partially protected — but every other
+archetype can mint a duplicate of another analyst's existing coverage.
+The 2026-05-10 EV Catalyst case (3 attempts to mint $MU, all rejected
+by the same-direction guard) is what this gap looks like in practice.
 
-3. CATALYST PIPELINE
-   Agent calls scan_catalysts
-   → Sees: upcoming events across all catalyst types
-   → Decides: any time-sensitive opportunities to prioritize
+### 17. "Pick the 2-3 most promising before scoring" is lossy and arbitrary
 
-4. OPPORTUNITY SCAN
-   Agent calls scan_candidates with:
-   - theme_filter from step 2
-   - catalyst awareness from step 3
-   - analyst config (sectors, direction bias)
-   - market cap + volume floors
-   → Gets: 10-15 scored, filtered, tradeable candidates
+[discovery.ts:103](lib/agent/system-prompts/discovery.ts:103) tells
+the agent to pre-prune the candidate pool to 2-3 before calling
+`get_stock_data` to validate. This caps real surface area at 2-3
+even when 8 promising names surfaced. The pre-prune is also done by
+prose, with no scoring methodology — the model is asked to triage
+without the tools needed to triage. Order should be: surface all
+candidates → score the top 6-8 with `get_stock_data` → mint the ones
+that clear the bar.
 
-5. CANDIDATE SELECTION (agent reasoning, no tool)
-   Agent narrates why it picks 3-5 tickers:
-   - Thematic fit
-   - Catalyst timing
-   - Source convergence score
-   - Strategy alignment
-   - Portfolio fit (avoid correlation with open positions)
+### 18. Day-trader analysts run weekly discovery — wrong cadence
 
-6. DEEP RESEARCH (existing Phase 3, unchanged)
-   Per ticker: stock data, technicals, sentiment, earnings,
-   options, filings, peers, news
+The cron loops every enabled analyst including `holdDurations:["DAY"]`
+ones. An Intraday Momentum Scalper's discovery surface is *today's
+tape*, not last week's routed signals. A WATCHING thesis with a
+DAY-horizon TRADE setup is logically broken — Saturday's level won't
+fire on Monday's open because the level depends on Monday's premarket
+gap. Either skip DAY-only analysts in the discovery cron, or give them
+a separate "intraday discovery" workflow that runs each morning before
+the daily run.
 
-7. THESIS + TRADE (existing Phase 4-5, unchanged)
-   show_thesis → place_trade if confidence ≥ threshold
+### 19. No idempotency on per-analyst step.run
 
-8. PORTFOLIO REVIEW + SYNTHESIS (existing Phase 5.5-6, unchanged)
-   Review exposure → summarize_run
+[discovery-run.ts:58](lib/inngest/functions/discovery-run.ts:58)
+wraps each analyst in `step.run("discovery-<config.id>", ...)`.
+Inside, `prisma.researchRun.create` runs *before* the try/catch around
+`generateText`. If the step gets retried by Inngest after a transient
+failure (db blip, OpenAI 502), a second `ResearchRun` row is created
+for the same analyst-week. Two runs, two sets of theses, double-billed
+LLM calls. The `concurrency: { limit: 1 }` on the outer function
+([discovery-run.ts:28](lib/inngest/functions/discovery-run.ts:28))
+prevents *parallel* duplicate cron fires, not retry duplicates.
 
-9. POST-RUN BRIEFING (existing, unchanged)
-   updateAnalystBriefing captures performance + strategy notes
-   → Feeds into next run's system prompt
-```
+### 20. FAILED status hides successful theses behind the "Run failed" badge
 
-The key change: steps 1-4 replace the current "call get_market_overview then scan_candidates" with a 4-step discovery funnel. Steps 5-9 are unchanged.
+[discovery-run.ts:217](lib/inngest/functions/discovery-run.ts:217)
+sets COMPLETE only if `record_run_summary` fired. So a run that
+minted 4 WATCHING theses but token-limited or prose-terminated before
+`record_run_summary` lands as FAILED — even though four valid
+contributions were saved. The page at
+[runs/[id]/page.tsx:166](<app/(root)/runs/[id]/page.tsx:166>)
+shows "Run failed" in the empty-state branch and the run feed badge
+treats FAILED as "this didn't work" — visually misrepresenting a
+partial-success run. Counting theses created should be a co-equal
+signal alongside `ranSummary`.
 
----
+### 21. The discovery prompt is missing the "tool-call discipline" block that the daily-run prompt has
 
-## File/Module Level Recommendations
+[system-prompt.ts:477](lib/agent/system-prompt.ts:477) has a load-
+bearing block warning GPT-4o about prose-termination — the failure
+mode where the model narrates "Next, I'll proceed to..." and the
+generateText loop ends. Per CLAUDE.md, this block was added after 3
+of 7 morning-cron runs failed identically on 2026-05-07. The PR #247
+commit message explicitly notes Secular Theme Architect prose-
+terminated in discovery mode on 2026-05-10 from the same failure
+mode. The discovery prompt on `main` has no such block. PR #247 adds
+one — confirm that lands.
 
-### Files to modify:
+### 22. No instruction on watchlist add (`manage_watchlist`) despite being in the allowlist
 
-| File | Change | Risk |
-|---|---|---|
-| `lib/agent/tools.ts` | Add `detect_market_themes`, `scan_catalysts`. Enhance `get_market_overview` and `scan_candidates`. | Low — additive, existing tools unchanged |
-| `lib/agent/system-prompt.ts` | Rewrite Phase 1-2 instructions for multi-phase discovery. Add regime-aware decision framework. | Low — prompt-only change, no code deps |
-| `components/research/AgentThread.tsx` | Register tool UIs for new tools: `ThemeCard`, `CatalystCard` | Low — follows existing pattern exactly |
-| `components/domain/` | Add `ThemeCard.tsx`, `CatalystCard.tsx` | Low — new files, no modifications to existing |
+`manage_watchlist` is in [modes.ts:196](lib/agent/modes.ts:196) but
+the discovery prompt never mentions it. Today watchlist and WATCHING
+theses are still separate tables (the docs/THESIS_ARCHITECTURE_PLAN.md
+collapse is "pending"). An analyst might want to track a name as
+watchlist-only (no thesis) — discovery can't surface that affordance
+because the prompt never names it.
 
-### Files that likely break or need attention:
+### 23. Universe-fence not enforced in tools, only narrated in prompt
 
-| File | Issue | Severity |
-|---|---|---|
-| `app/api/chat/analyst-builder/route.ts` | Currently destructures tools from `createResearchTools`. Adding new tools won't break it (it cherry-picks), but it should probably get `detect_market_themes` for builder conversations. | Low — works as-is, enhancement opportunity |
-| `app/api/chat/analyst-editor/route.ts` | Same as builder — cherry-picks tools, won't break, could benefit from new discovery tools. | Low |
-| `lib/inngest/functions/morning-research.ts` | Uses `createResearchTools` directly. New tools are automatically available. System prompt change will affect cron behavior — test carefully. | Medium — behavior change via prompt, not code |
-| `components/research/AgentThread.tsx` (`useRegisterAgentToolUIs`) | Must register UI components for new tools or they render as raw JSON. | Medium — forgetting this = ugly UI, not broken functionality |
+[discovery.ts:67](lib/agent/system-prompts/discovery.ts:67) lists
+sectors/industries/themes as the fence. None of the three Step 1
+sources enforces these — `read_signals` was already routed by the
+router (which DOES apply the fence), but `get_market_movers` and
+`get_earnings_calendar` are not sector-fenced (the in-tool comments
+acknowledge this). The agent has to manually filter, with no
+enforcement. A Healthcare-only analyst can mint an NVDA thesis from
+the movers list and nothing rejects it.
 
-### Files that should NOT be touched:
+### 24. Tool-context flag `discoveryOnly` is a single boolean masking three behaviors
 
-| File | Reason |
-|---|---|
-| `lib/alpaca.ts` | Trading execution is separate from discovery |
-| `lib/trade-exit.ts` | Exit strategy is portfolio management, not discovery |
-| `lib/prisma.ts` | No schema changes needed for MVP |
-| `prisma/schema.prisma` | No new tables needed for MVP (theme persistence is Phase 3) |
-| All `components/domain/*Card.tsx` | Existing cards are fine, don't refactor |
-| `python-service/*` | Legacy, don't invest here |
-
-### New files to create:
-
-| File | Purpose |
-|---|---|
-| `components/domain/ThemeCard.tsx` | Renders detected themes (name, strength bar, direction arrow, ticker chips) |
-| `components/domain/CatalystCard.tsx` | Renders catalyst timeline (date, type icon, ticker, expected impact) |
-
----
-
-## What NOT to do
-
-1. **Don't build a separate "discovery service"** — keep tools in `createResearchTools`. The tool system works. Don't fragment it.
-
-2. **Don't add an LLM call inside discovery tools** — the agent IS the LLM. Tools fetch and structure data; the agent interprets. Adding GPT calls inside `detect_market_themes` doubles your token cost and adds latency for no reason.
-
-3. **Don't build a theme database before proving themes work** — start with in-memory keyword clustering in the tool. If the agent produces better research with themes, THEN add persistence.
-
-4. **Don't try to build all catalyst types at once** — start with earnings (30d) + economic calendar + insider transactions. These are 3 API calls you already have or are one endpoint away. FDA, conferences, lockups come later.
-
-5. **Don't rewrite `scan_candidates`** — enhance it. The multi-source aggregation pattern is correct. Add parameters, add filters, improve scoring. Don't start over.
-
-6. **Don't change the model** — GPT-4.1 for the agent is correct. The discovery improvements are data improvements, not reasoning improvements. More signal in → better decisions out.
+[read-signals.ts:587](lib/agent/tools/read-signals.ts:587) treats
+`ctx.discoveryOnly` as the discovery-mode switch. Post-PR #247 it
+also drives the coverage-exclusion rewrite. The single flag couples
+three independent decisions (hide portfolio/watchlist buckets, exclude
+covered-ticker signals, ignore `triggerId`). When one of those needs
+tuning per archetype, all three move together. The right shape is a
+small `ToolContext.mode: "DAILY" | "DISCOVERY" | "TACTICAL"` enum.
 
 ---
 
-## 5 Follow-Up Prompts
+## Proposed redesign
 
-### Prompt 1: Build `detect_market_themes`
-```
-I need to implement the detect_market_themes tool in lib/agent/tools.ts.
+A spec, not code. Implementation should follow user sign-off.
 
-It should:
-- Fetch Finnhub general news (/news?category=general&minId=0)
-- Fetch Reddit trending from the existing discoverTrendingTickers()
-- Use sector ETF performance data (reuse get_market_overview logic)
-- Cluster news headlines by keyword/topic extraction
-- Return 5-8 named themes with: name, strength (0-1), direction
-  (BULLISH/BEARISH/NEUTRAL), key_sectors, representative_tickers
-- Include _sources array following existing tool conventions
-- No LLM calls inside the tool — pure data aggregation
+### A. Branch the discovery prompt by archetype family
 
-Also create components/domain/ThemeCard.tsx following the existing
-domain card patterns (Card from shadcn, p-6, same border style).
-Register it in useRegisterAgentToolUIs in AgentThread.tsx.
+Three families, picked off `AgentConfig` (which already carries
+`holdDurations` + the analystPrompt — the latter we can fingerprint
+against the archetype catalog, or store the chosen archetype id
+explicitly on the config).
 
-Update the system prompt in lib/agent/system-prompt.ts to add a new
-Phase 1.5 between market overview and scan_candidates where the agent
-calls detect_market_themes and uses the results to guide scanning.
-```
+| Family | Archetypes | Primary surface | Secondary | Skip |
+|---|---|---|---|---|
+| **EVENT_DRIVEN** | Earnings Drift, Catalyst Event | `get_earnings_calendar` (full firm, 7-30d ahead) + `read_signals` for catalyst signals | filings via `get_sec_filings`, EPS history via `get_earnings_data` | movers |
+| **MOMENTUM** | Momentum Breakout, Mean Reversion, Sector Rotation, Unusual Options | `get_market_movers` (gainers + losers + actives, scope:"all") + `get_market_context` for regime | `read_signals` for confirming flow | earnings (unless catalyst-adjacent) |
+| **FUNDAMENTAL** | Deep Value, Thematic Secular, Insider Cluster | `read_signals` (lookbackDays: 7) filtered by analyst's themes + `get_sec_filings` | `get_earnings_data` for quality checks | today's movers |
 
-### Prompt 2: Build `scan_catalysts`
-```
-I need to implement scan_catalysts in lib/agent/tools.ts.
+A fourth bucket — **DAY** — should not run weekly discovery at all
+(see Gap 18). Either skip them in the cron, or replace with an
+intraday "today's tape preview" workflow that runs each morning.
 
-Catalyst sources to aggregate:
-1. Finnhub earnings calendar — extend to 30 days forward + 3 days back
-2. FMP economic calendar (/v3/economic_calendar?from=X&to=Y)
-3. Finnhub insider transactions (/stock/insider-transactions) for
-   tickers that appeared in scan_candidates results
-4. FMP analyst upgrades/downgrades (/v3/upgrades-downgrades-consensus)
+Each family gets its own prompt template with:
 
-Return unified catalyst objects:
-{ ticker, catalyst_type, date, expected_impact, direction_bias, details }
+- The right Step-1 source priority (don't anchor MOMENTUM on
+  read_signals when movers is the firehose).
+- A scoring rubric tuned to that family. EVENT_DRIVEN scores catalyst
+  proximity + EPS surprise margin, not trendStrength. MOMENTUM scores
+  trendStrength + RS + volume + entry quality (current rubric). DEEP
+  VALUE scores valuation gap + balance-sheet quality + sentiment
+  contrarianism.
+- A lower composite threshold (5/10) for WATCHING, higher (7/10) for
+  high-conviction ACTIVE + starter trade.
 
-Create components/domain/CatalystCard.tsx — timeline-style layout
-showing catalysts sorted by date with type icons and impact badges.
-Register in AgentThread.tsx.
+### B. Cron-side prefetch + summarize, then narrate
 
-Update system prompt to add catalyst scanning between theme detection
-and candidate scanning. Agent should prioritize time-sensitive catalysts.
-```
+Today the cron hands the agent an empty system prompt + a kickoff
+user message. The agent then makes its own decision about what to
+scan. That's where the prose-termination failures come from — the
+agent has no work to start on.
 
-### Prompt 3: Enhance `scan_candidates` with filters + theme awareness
-```
-I need to enhance scan_candidates in lib/agent/tools.ts:
+Better: do the scan in the cron, summarize it in the system prompt
+as **today's data**, and have the agent enter at the *scoring* step.
+Same shape as the daily-run prompt, which injects portfolio +
+priorityReviews + triggersFired + activeTheses as text *before* the
+agent starts working.
 
-1. Add parameters:
-   - theme_filter: string (optional) — boost tickers matching a
-     detected theme
-   - min_market_cap: number (optional, default 1_000_000_000) — filter
-     via Finnhub profile marketCapitalization
-   - min_avg_volume: number (optional, default 500_000) — filter via
-     Finnhub quote volume
-   - include_volume_anomalies: boolean (default true) — flag tickers
-     with volume > 2x their 20-day average
+The agent's Step 1 then becomes: "Here are 12 candidate tickers
+filtered by your fence and excluded from your coverage. Score them.
+Mint up to 5 WATCHING theses." No firehose calls, no tool-call
+discipline trap, no scope:"universe" ambiguity.
 
-2. When theme_filter is provided:
-   - Map theme to sector keywords and known tickers
-   - Add +3 score bonus for matching tickers
-   - This lets the agent do thematic scanning
+### C. Universe enforcement at tool boundary
 
-3. Add volume anomaly detection:
-   - For top 15 candidates, fetch Finnhub candles (20 days)
-   - Compare today's volume to 20-day average
-   - Flag >2x as volume_spike: true in results
+`get_market_movers` and `get_earnings_calendar` should accept
+`mode: "DISCOVERY" | "DAILY"` (or read `ctx.mode`) and:
 
-4. Filter out tickers below market cap and volume floors BEFORE
-   returning results.
+- DISCOVERY mode: apply sector/industry/exclusion fence at the tool,
+  exclude coverage set, surface 15-25 candidates.
+- DAILY mode: current behavior (no fence beyond watchlist intersection).
 
-Keep the existing scoring system intact — these are additive filters
-and score boosts, not a rewrite.
-```
+Today the prompt asks the model to do this. The model can't enforce
+its own fence reliably. Move it to the tool.
 
-### Prompt 4: Enhance `get_market_overview` with regime + macro context
-```
-I need to enhance get_market_overview in lib/agent/tools.ts:
+### D. Drop the per-step ResearchRun creation outside the try/catch
 
-Add to the return object:
-1. regime: "RISK_ON" | "RISK_OFF" | "NEUTRAL"
-   - VIX < 16 AND SPY above 20d SMA = RISK_ON
-   - VIX > 25 OR SPY below 20d SMA with negative momentum = RISK_OFF
-   - Otherwise NEUTRAL
-   - To get SPY SMA: fetch Finnhub candles for SPY (30 days),
-     calculate SMA-20
+[discovery-run.ts](lib/inngest/functions/discovery-run.ts) should
+either (a) wrap the entire body of the step.run including
+`researchRun.create` in a try/catch so retries are pure, or (b) move
+the ResearchRun create *before* the step.run and pass the runId in,
+so the retry doesn't create a second row. Either way, fix the
+idempotency hole.
 
-2. macro_events_today: array from FMP economic calendar for today
-   (/v3/economic_calendar?from=TODAY&to=TODAY)
-   - Include: event name, actual, estimate, impact level
+### E. Make "minted theses with no record_run_summary" a partial-success
 
-3. earnings_density: number of companies reporting in next 5 days
-   (from Finnhub earnings calendar, count only)
+Change the COMPLETE/FAILED branch in
+[discovery-run.ts:217](lib/inngest/functions/discovery-run.ts:217) to:
 
-4. sector_momentum: for each sector ETF, is it above or below its
-   10-day SMA? Mark as "leading" or "lagging"
+- `newTheses > 0 && ranSummary` → COMPLETE
+- `newTheses > 0 && !ranSummary` → COMPLETE_PARTIAL (new status), or
+  COMPLETE with a `parameters.note` flag indicating the summary call
+  was missed.
+- `newTheses === 0 && ranSummary` → COMPLETE (legitimate zero-result)
+- `newTheses === 0 && !ranSummary` → FAILED
 
-Update system prompt to instruct the agent: "Use the regime to
-calibrate your aggressiveness. In RISK_OFF, raise your effective
-confidence threshold by 10 points and prefer defensive sectors."
-```
+The page and run-feed UI then differentiate "the work landed but
+the cleanup didn't" from "nothing landed."
 
-### Prompt 5: Theme persistence + cross-run opportunity tracking
-```
-I need to add cross-run intelligence to the discovery layer.
+### F. Cross-analyst pre-fence
 
-Part 1 — Theme persistence:
-- Add a MarketTheme model to prisma/schema.prisma:
-  { id, name, strength, direction, sectors, tickers, detectedAt,
-    lastSeenAt, runCount, status (EMERGING/ACTIVE/FADING) }
-- In detect_market_themes, after computing themes:
-  - Load themes from last run
-  - Compare: new themes = EMERGING, repeated themes = ACTIVE
-    (increment runCount), missing themes = FADING
-  - Upsert to MarketTheme table
-  - Return persistence metadata to agent
+Before the per-analyst loop spawns the agent, query the union of
+ACTIVE+WATCHING thesis tickers across **all other analysts on the
+account** and pass it as another set to exclude (alongside the
+analyst's own coverage). Saves a trip through `record_thesis`'s
+same-direction guard, makes the cross-analyst rule visible to the
+agent, and turns "the analyst tried to mint duplicate coverage three
+times" into "the analyst never saw the duplicate candidate to begin
+with."
 
-Part 2 — Opportunity tracking:
-- When agent creates a PASS thesis, price-monitor.ts already
-  tracks shadow trades. Ensure shadow trade results are injected
-  into the system prompt for the next run.
-- Format: "You passed on $TSLA at $180 on 3/14. It's now $195
-  (+8.3%). Your pass was INCORRECT — consider being more aggressive
-  on momentum plays."
-- Load last 5 shadow trade evaluations into the briefing context.
+### G. Drop `lookbackDays` defaulting to 0 in discovery mode
 
-Part 3 — Update system prompt:
-- Add a "## Market Themes" section showing ACTIVE and EMERGING themes
-- Add a "## Recent Pass Accuracy" section showing shadow trade results
-- Agent should reference these when explaining candidate selection
-```
+Either change the read_signals default when `ctx.mode === "DISCOVERY"`
+to `lookbackDays: 7`, or have the prompt explicitly say
+`lookbackDays: 7` on the Step 1 call. Sunday is the wrong day to
+scan today's signals — there are none.
+
+---
+
+## Open questions
+
+1. **One prompt vs three?** The family branching (A) is more work
+   upfront but produces dramatically better candidates per archetype.
+   Alternative: keep one prompt but make Step 1 source-priority a
+   templated variable read off the chosen archetype. Which is the
+   right trade-off here?
+
+2. **Where does the chosen archetype id live?** Today it's implicit
+   in `analystPrompt`. To branch by archetype we either (a) add
+   `AgentConfig.archetypeId: string?`, (b) infer it from `holdDurations`
+   + `defaultFeeds` overlap with the catalog, or (c) re-derive it at
+   runtime via a one-shot classifier call. Option (a) is the cleanest
+   but requires a migration.
+
+3. **DAY-only analysts in the weekly cron — skip or repurpose?**
+   Skipping is one line. Repurposing (turning their weekly slot into
+   an intraday preview that runs each morning) is a bigger project
+   but might be the right shape for the DAY playbook anyway.
+
+4. **Should discovery directly place trades (ACTIVE + place_trade)
+   at all?** VISION says discovery seeds Pillar 3, which says
+   WATCHING → ENTER trigger → tactical promotes. The "high-conviction
+   starter" path in the current prompt is an architectural bypass.
+   Either it should be removed (force everything through the trigger
+   path) or it needs explicit framing as "exceptional only."
+
+5. **Are the FMP movers + earnings firehoses actually the right
+   discovery surfaces for MOMENTUM, or should the signal router pre-
+   process them into routed signals?** Today the cron writes
+   aggregate Signal rows for the firehoses, so they SHOULD be visible
+   via `read_signals`. If they are, the three-source funnel in Step 1
+   is redundant — read_signals already has the data. Worth confirming
+   by inspecting a router output the day after a fresh firm-market-sweep.
+
+6. **What's the right WATCHING composite threshold?** I proposed 5.
+   It could be 4 (more inclusive, expect more daily-run pruning later)
+   or 6 (more selective, trust the discovery agent's filter). The right
+   number depends on what fraction of WATCHING theses actually convert
+   to ACTIVE via trigger-fire in a 30-day window — data we don't have
+   yet.
+
+7. **Should discovery have a "scratch pad" between Step 1 and Step 3?**
+   Daily-run injects the portfolio table into the prompt; the agent
+   doesn't reconstruct it. Discovery could inject the candidate list
+   the same way (Section B above). The trade-off: more cron-side
+   compute, less agent-side reasoning surface. For a 25-step budget,
+   probably worth it.

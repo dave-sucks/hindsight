@@ -52,7 +52,9 @@ export const firmMarketSweep = inngest.createFunction(
     retries: 1,
   },
   [
-    { cron: "TZ=America/New_York 30 6 * * 1-5" },
+    // Daily, 7 days a week. Weekend news (M&A, earnings pre-announces,
+    // policy moves) needs to be routed before Sunday's Discovery cron.
+    { cron: "TZ=America/New_York 30 6 * * *" },
     { event: "intelligence/market-sweep" },
   ],
   async ({ step }) => {

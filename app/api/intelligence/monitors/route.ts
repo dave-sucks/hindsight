@@ -3,13 +3,16 @@ import { prisma } from "@/lib/prisma"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
 import { etTradingDayDate } from "@/lib/market-hours"
+import { getAccountId } from "@/lib/auth/account"
 
-// GET /api/intelligence/monitors — list monitors scoped to the current user
+// GET /api/intelligence/monitors — list monitors scoped to the current account
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const userId = user.id
+
+  const accountId = await getAccountId(user.id)
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 })
 
   const type = req.nextUrl.searchParams.get("type") // SEARCH | DOMAIN | API
   const scope = req.nextUrl.searchParams.get("scope") // FIRM | ANALYST
@@ -17,9 +20,9 @@ export async function GET(req: NextRequest) {
 
   const todayStart = etTradingDayDate()
 
-  // Get this user's analyst IDs for filtering
+  // Get this account's analyst IDs for filtering
   const userAnalystIds = await prisma.agentConfig.findMany({
-    where: { userId },
+    where: { accountId },
     select: { id: true },
   })
   const analystIds = userAnalystIds.map((a) => a.id)
@@ -67,7 +70,7 @@ export async function GET(req: NextRequest) {
         }
         // Default: track open positions
         const positions = await prisma.position.findMany({
-          where: { status: "OPEN", userId },
+          where: { status: "OPEN", accountId },
           select: { symbol: true, direction: true, analystId: true },
           distinct: ["symbol"],
         })
@@ -95,6 +98,13 @@ const createSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const accountId = await getAccountId(user.id)
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 })
+
   const body = await req.json()
   const parsed = createSchema.safeParse(body)
   if (!parsed.success) {
@@ -104,6 +114,7 @@ export async function POST(req: NextRequest) {
   const data = parsed.data
   const monitor = await prisma.monitor.create({
     data: {
+      accountId,
       name: data.name,
       type: data.type,
       method: data.method,
@@ -133,6 +144,13 @@ const patchSchema = z.object({
 })
 
 export async function PATCH(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const accountId = await getAccountId(user.id)
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 })
+
   const body = await req.json()
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) {
@@ -143,6 +161,12 @@ export async function PATCH(req: NextRequest) {
   const filtered = Object.fromEntries(
     Object.entries(updates).filter(([, v]) => v !== undefined)
   )
+
+  const existing = await prisma.monitor.findFirst({
+    where: { id, accountId },
+    select: { id: true },
+  })
+  if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 })
 
   const updated = await prisma.monitor.update({
     where: { id },
@@ -156,13 +180,20 @@ export async function PATCH(req: NextRequest) {
 // Pass ?purge=non-builtin to delete ALL non-built-in monitors (fresh start)
 // Pass ?purge=all-non-api to delete all SEARCH + DOMAIN monitors that aren't built-in
 export async function DELETE(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const accountId = await getAccountId(user.id)
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 })
+
   const id = req.nextUrl.searchParams.get("id")
   const purge = req.nextUrl.searchParams.get("purge")
 
-  // Bulk purge modes
+  // Bulk purge modes — scoped to the current account.
   if (purge === "non-builtin") {
     const result = await prisma.monitor.deleteMany({
-      where: { builtIn: false },
+      where: { builtIn: false, accountId },
     })
     return NextResponse.json({ deleted: result.count, mode: "non-builtin" })
   }
@@ -172,6 +203,7 @@ export async function DELETE(req: NextRequest) {
       where: {
         builtIn: false,
         type: { in: ["SEARCH", "DOMAIN"] },
+        accountId,
       },
     })
     return NextResponse.json({ deleted: result.count, mode: "all-non-api" })
@@ -182,7 +214,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "id required" }, { status: 400 })
   }
 
-  const monitor = await prisma.monitor.findUnique({ where: { id } })
+  const monitor = await prisma.monitor.findFirst({ where: { id, accountId } })
   if (!monitor) {
     return NextResponse.json({ error: "not found" }, { status: 404 })
   }

@@ -88,6 +88,7 @@ export const closePosition = defineTool({
             runId: ctx.runId,
             analystId,
             userId: ctx.userId,
+            accountId: ctx.accountId,
             symbol: ticker,
             decision: "EXIT",
             reasoning: reasoningNote,

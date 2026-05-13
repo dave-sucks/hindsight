@@ -203,7 +203,7 @@ export const readSignals = defineTool({
       .max(14)
       .optional()
       .describe(
-        "How many trading days back to include. Default 0 (today only). Use sparingly — historical signals are noisy and pollute today's picture.",
+        "How many trading days back to include. Default 0 (today only) for daily-run mode, 7 (the prior week) for discovery mode. Discovery defaults to 7 because Sunday's 'today' has zero routed signals — the signal-router is Mon-Fri only.",
       ),
     triggerId: z
       .string()
@@ -234,7 +234,18 @@ export const readSignals = defineTool({
     return "Reading signals routed to this analyst";
   },
 
-  execute: async ({ tickers, themes, type, urgency, limit, lookbackDays = 0, triggerId }, ctx) => {
+  execute: async ({ tickers, themes, type, urgency, limit, lookbackDays, triggerId }, ctx) => {
+    // Discovery is a WEEKLY cron — the right window for "what's worth
+    // tracking this week" is the whole prior week of routed signals,
+    // not just today's. Default lookbackDays=0 used to silently return
+    // empty on the Sunday discovery cron (the intelligence-pipeline
+    // crons were Mon-Fri only, so Sunday had zero routes for "today"),
+    // which caused the 2026-05-10 zero-theses outage. Those crons now
+    // run daily, but the 7-day default in discovery mode still makes
+    // sense for the cadence. Daily-run mode keeps 0 (today-only).
+    if (lookbackDays === undefined) {
+      lookbackDays = ctx.discoveryOnly ? 7 : 0;
+    }
     // ── Podcast segment branch ───────────────────────────────────────────
     // When the run is a podcast-segment-run, ctx carries podcastSegmentId
     // (and analystId is undefined). Read the segment's routed signals from

@@ -40,12 +40,14 @@ interface BriefingContext {
   segmentId: string;
   runId: string;
   userId: string;
+  accountId: string;
 }
 
 export async function updateSegmentBriefing({
   segmentId,
   runId,
   userId,
+  accountId,
 }: BriefingContext): Promise<void> {
   if (!segmentId || !runId || !userId) {
     console.warn(
@@ -181,6 +183,7 @@ Be concrete. The next run will quote this.`;
         segmentId,
         runId,
         userId,
+        accountId,
         narrative: object.narrative,
         followUps: object.followUps as object,
       },
