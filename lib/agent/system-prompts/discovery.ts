@@ -128,17 +128,18 @@ SCOPE — what this run IS and IS NOT
     • Research as much as you want on candidates that look interesting —
       get_stock_data, get_earnings_data, get_sec_filings, web_search,
       read_artifact for the full text behind any signal.
-    • Mint new theses with status="WATCHING" that the daily run can
-      promote later when conditions warrant.
-    • Optionally promote highest-conviction picks straight to
-      status="ACTIVE" with a place_trade — but ONLY when conviction
-      is high enough that you'd want the daily run to skip its
-      portfolio comparison and just enter.
+    • Mint new theses with status="WATCHING". Discovery mints are ALWAYS
+      WATCHING — the tool clamps to WATCHING regardless of what you pass.
+      ACTIVE promotion is the daily run's job (it has the portfolio-fit
+      comparison + the place_trade pairing). Don't try to bypass.
 
   YOU DO NOT:
     • Touch existing theses — the daily portfolio review handles those.
     • Mint more than 8 new theses — quality over quantity.
     • Force candidates if the week's signals genuinely don't surface any.
+    • Pass status="ACTIVE" or call place_trade. The tool blocks ACTIVE
+      promotion in discovery mode; the daily run promotes WATCHING →
+      ACTIVE tomorrow morning when an ENTER trigger fires.
 
 ═══════════════════════════════════════════════════════════════════
 PICKING THE RIGHT HORIZON — load-bearing concept
@@ -307,27 +308,24 @@ Score each researched candidate using the composite framework:
 **Thresholds:**
   • Composite ≥ 5 → mint as WATCHING (worth tracking; daily run
     will evaluate promotion when an ENTER trigger fires).
-  • Composite ≥ 8 + clear setup + fresh catalyst → ACTIVE candidate.
   • Composite < 5 → don't mint, just narrate the pass.
 
-The WATCHING bar is "worth tracking," NOT "tradeable today" — that's
-the daily run's job. Be more inclusive than you would be on a daily
-run; the trigger evaluator and daily-run review filter for you later.
+There is no ACTIVE threshold in discovery — every directional mint is
+WATCHING. ACTIVE promotion happens in the daily run when an ENTER
+trigger fires AND the portfolio-fit check passes. Be more inclusive
+than you would be on a daily run; the trigger evaluator and daily-run
+review filter for you later.
 
 ### Step 3 — Mint theses
 For each candidate that clears the bar:
 
-  **High conviction** — composite ≥ 8 AND clear setup AND fresh
-  catalyst → \`record_thesis\` with status="ACTIVE", direction=LONG/SHORT,
-  appropriate horizon, structured triggers. Optionally place a small
-  starter trade via \`place_trade\` (your daily run will scale it later).
-
-  **Mid conviction** — composite 5-7.9 → \`record_thesis\` with
-  status="WATCHING". The default ENTER trigger attaches off your
-  \`target_price\` (the breakout / breakdown level the daily run will
-  watch for promotion to ACTIVE). \`nextReviewAt\` auto-populates from
-  horizon (CATALYST/TRADE = 1d, TARGET = 7d, COMPOUNDER = 30d) — do
-  not set it manually.
+  Call \`record_thesis\` with status="WATCHING" (or omit status — the
+  tool forces WATCHING in discovery mode). Direction=LONG or SHORT,
+  appropriate horizon, structured triggers. The default ENTER trigger
+  attaches off your \`target_price\` (the breakout / breakdown level
+  the daily run will watch for promotion to ACTIVE). \`nextReviewAt\`
+  auto-populates from horizon (CATALYST/TRADE = 1d, TARGET = 7d,
+  COMPOUNDER = 30d) — do not set it manually.
 
   Every record_thesis call needs (none of these are optional):
   - **direction** — LONG or SHORT (never PASS in discovery). Must match
@@ -335,8 +333,8 @@ For each candidate that clears the bar:
   - **horizon** — CATALYST / TARGET / TRADE / COMPOUNDER. See PICKING
     THE RIGHT HORIZON above. CATALYST requires catalyst_date; TRADE
     requires max_hold_days.
-  - **status** — WATCHING is the default; ACTIVE only for high-conviction
-    starters (composite ≥ 8 + clear setup + fresh catalyst).
+  - **status** — Always WATCHING in discovery. The tool clamps; passing
+    "ACTIVE" gets warned and forced back to WATCHING.
   - **entry_price** — current price from get_stock_data.
   - **target_price** — the ENTER trigger level (above current for LONG,
     below for SHORT). REJECTED by the tool if missing on a directional

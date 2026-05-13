@@ -143,9 +143,33 @@ export const getMarketMovers = defineTool({
         ? raw.filter((m) => coverageSet.has(m.symbol.toUpperCase()))
         : raw;
     } else if (scope === "universe") {
-      filtered = coveredSet.size > 0
-        ? raw.filter((m) => !coveredSet.has(m.symbol.toUpperCase()))
-        : raw;
+      // 2026-05-13 — penny-stock + moonshot exclusion for universe scope.
+      //
+      // PRIOR BUG: scope:"universe" only excluded the analyst's
+      // already-covered tickers; the FMP gainers/losers endpoints return
+      // sub-$5 micro-cap moonshots like TDIC +127% / BWEN +117% / BZFD
+      // +90% / CPHI / ERNA / AEHL that no momentum-semis analyst would
+      // ever trade. Sector enrichment via per-ticker /profile lookups
+      // is too expensive at tool-call time (50 API calls/run); a basic
+      // price floor + extreme-move exclusion removes ~80% of the
+      // garbage without any extra API cost.
+      //
+      // Rules: price >= $5 (kills penny stocks) and |% change| <= 50%
+      // (kills moonshots — those are typically pump-and-dump or
+      // reverse-merger catalysts, not the analyst's edge). Both have
+      // explicit context fallback so analyst-config-driven overrides
+      // can land later without touching the tool surface.
+      const universePriceFloor =
+        (ctx as { universePriceFloor?: number }).universePriceFloor ?? 5;
+      const universeMaxPctMove =
+        (ctx as { universeMaxPctMove?: number }).universeMaxPctMove ?? 50;
+      filtered = raw.filter((m) => {
+        if (coveredSet.size > 0 && coveredSet.has(m.symbol.toUpperCase())) return false;
+        if (typeof m.price === "number" && m.price < universePriceFloor) return false;
+        const pct = pctOf(m);
+        if (Math.abs(pct) > universeMaxPctMove) return false;
+        return true;
+      });
     } else {
       filtered = raw;
     }
