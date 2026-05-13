@@ -234,8 +234,19 @@ export const morningResearch = inngest.createFunction(
                 // AI SDK v6 tool-result shape: { toolCallId, toolName, output }
                 // where `output` is our ToolResult<T> envelope. Legacy `result`
                 // field checked defensively.
-                const out = (r?.output ?? r?.result) as { ok?: boolean; error?: string } | undefined;
-                if (out && out.ok === false) {
+                // P0-9b: also catch data.success===false (record_run_summary FAILED
+                // narration-gate shape) and data.status==="FAILED" (complete_run
+                // preflight rejection) — ok===false alone misses both.
+                const out = (r?.output ?? r?.result) as {
+                  ok?: boolean;
+                  error?: string;
+                  data?: { success?: boolean; status?: string };
+                } | undefined;
+                const isFailure =
+                  out?.ok === false ||
+                  out?.data?.success === false ||
+                  out?.data?.status === "FAILED";
+                if (out && isFailure) {
                   const bucket = toolStats[r.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
                   bucket.errors += 1;
                   toolStats[r.toolName] = bucket;
@@ -447,8 +458,17 @@ export const morningResearch = inngest.createFunction(
                     toolStats[call.toolName] = bucket;
                   }
                   for (const r of results) {
-                    const out = (r?.output ?? r?.result) as { ok?: boolean; error?: string } | undefined;
-                    if (out && out.ok === false) {
+                    // P0-9b (retry path): same extended failure check as primary path.
+                    const out = (r?.output ?? r?.result) as {
+                      ok?: boolean;
+                      error?: string;
+                      data?: { success?: boolean; status?: string };
+                    } | undefined;
+                    const isFailure =
+                      out?.ok === false ||
+                      out?.data?.success === false ||
+                      out?.data?.status === "FAILED";
+                    if (out && isFailure) {
                       const bucket = toolStats[r.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
                       bucket.errors += 1;
                       toolStats[r.toolName] = bucket;
