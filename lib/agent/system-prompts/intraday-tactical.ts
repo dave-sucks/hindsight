@@ -227,6 +227,14 @@ DECISION FRAMEWORK
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
      patch) and rationale: "trigger fired but predicate validation
      failed because <reason>. False fire."
+   - If validation reveals the thesis itself is no longer applicable
+     (ticker fell outside this analyst's edge/universe, the original
+     premise has broken structurally, the name is no longer worth
+     tracking), use update_thesis(change_status: "INVALIDATED",
+     invalid_reason: "<concrete reason>") instead of REVIEWED. Durable
+     kill — no future trigger fires, no future busywork. The user can
+     re-add the name later if conditions change. Don't leave dead
+     theses on the book.
 
 4. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
