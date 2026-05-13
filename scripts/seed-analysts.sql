@@ -10,7 +10,7 @@ INSERT INTO "AgentConfig" (
   "holdDurations", "directionBias", "signalTypes", "minMarketCapTier",
   "scheduleTime", "priceCheckFreq", "weekendMode",
   "graduationWinRate", "graduationMinTrades", "graduationProfitFactor",
-  "realTradingEnabled", "realMaxPosition",
+  "tradingEnvironment", "realMaxPosition",
   "emailAlerts", "weeklyDigestEnabled",
   "createdAt", "updatedAt"
 ) VALUES
@@ -38,7 +38,7 @@ INSERT INTO "AgentConfig" (
   'LARGE',
   '08:00', 'HOURLY', false,
   0.65, 50, 1.5,
-  false, 500.0,
+  'PAPER', 500.0,
   true, true,
   NOW(), NOW()
 ),
@@ -66,7 +66,7 @@ INSERT INTO "AgentConfig" (
   'LARGE',
   '08:00', 'HOURLY', false,
   0.65, 50, 1.5,
-  false, 500.0,
+  'PAPER', 500.0,
   true, true,
   NOW(), NOW()
 );
