@@ -148,8 +148,20 @@ export const getEarningsCalendar = defineTool({
     // Sort by date asc, cap at 30 visible rows so the tool row stays readable.
     // The full count is still returned in `data.count` so the agent can decide
     // to widen scope or drill into specific names.
-    const sorted = [...filtered].sort((a, b) => a.date.localeCompare(b.date));
-    const VISIBLE_CAP = 30;
+    //
+    // 2026-05-13 — universe-scope tightening. Finnhub's calendar doesn't
+    // return sector/industry, so scope:"universe" returns a firehose of
+    // ~900 random small-caps for any analyst whose coverage doesn't
+    // intersect the calendar. Drop the visible cap hard in that scope so
+    // the agent sees a short, scannable list instead of 891 names of
+    // BUDA / SWMR / NASO no one's ever heard of. Filtering by EPS estimate
+    // presence is a weak but cheap proxy for "covered enough to be a
+    // real candidate" — companies without estimates are typically
+    // micro-caps with no analyst coverage.
+    const sorted = [...filtered]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .filter((r) => (scope === "universe" ? r.epsEstimate != null : true));
+    const VISIBLE_CAP = scope === "universe" ? 15 : 30;
     const visible = sorted.slice(0, VISIBLE_CAP);
     const remaining = sorted.length - visible.length;
 

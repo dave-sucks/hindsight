@@ -51,14 +51,21 @@ const thesisFields = z.object({
     .describe("Key sources that informed this thesis (optional, for record-keeping)"),
   fundamentals: z
     .object({
-      market_cap: z.number().optional(),
-      pe_ratio: z.number().optional(),
-      beta: z.number().optional(),
-      avg_volume: z.number().optional(),
-      high_52w: z.number().optional(),
-      low_52w: z.number().optional(),
-      sector: z.string().optional(),
-      analyst_consensus: z.object({ buy: z.number(), hold: z.number(), sell: z.number() }).optional(),
+      // All numeric fundamentals accept null — get_stock_data legitimately
+      // returns null for unstable PE (negative earnings), 52w highs that
+      // haven't established yet, or zero-volume thin names. Plain
+      // .optional() rejects null at the Zod layer and forces the agent
+      // into a retry loop that fabricates 0 just to land the call (see
+      // 2026-05-13 INTC discovery run: first record_thesis rejected on
+      // pe_ratio:null, agent retried with pe_ratio:0 which is misleading).
+      market_cap: z.number().nullable().optional(),
+      pe_ratio: z.number().nullable().optional(),
+      beta: z.number().nullable().optional(),
+      avg_volume: z.number().nullable().optional(),
+      high_52w: z.number().nullable().optional(),
+      low_52w: z.number().nullable().optional(),
+      sector: z.string().nullable().optional(),
+      analyst_consensus: z.object({ buy: z.number(), hold: z.number(), sell: z.number() }).nullable().optional(),
     })
     .optional()
     .describe("Key fundamentals from get_stock_data — populates the Data tab in the thesis card."),
@@ -671,11 +678,33 @@ export const recordThesis = defineTool({
       // Anything else is rejected.
       // After the PENDING-rejection at the top of execute(), args.direction
       // is narrowed to LONG | SHORT | PASS.
+      //
+      // 2026-05-13 — discovery hard-clamp for LONG/SHORT (additive on top
+      // of the legal-pair mapping). Discovery agents previously landed
+      // status=ACTIVE on high-conviction LONG/SHORT mints — the prompt
+      // instruction was advisory and GPT-4o overrode it (see INTC mint
+      // cmp3i0y01 on 2026-05-13). ACTIVE attaches HELD-template triggers
+      // (EXIT on stop_loss, REVIEW on target_hit) but no place_trade
+      // fires, so the trigger evaluator later fires orphan tactical EXIT
+      // runs that fail silently. Discovery is a WATCHING-mint surface by
+      // design; ACTIVE promotion is the daily run's job (portfolio-fit
+      // comparison + place_trade pairing). PASS is unaffected — it maps
+      // to ARCHIVED in the same step below.
+      const isDiscoveryDirectional =
+        ctx.discoveryOnly === true &&
+        (args.direction === "LONG" || args.direction === "SHORT");
+      if (isDiscoveryDirectional && args.status === "ACTIVE") {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in discovery mode; forced WATCHING. Promotion is the daily-run's job.`,
+        );
+      }
       const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" | "ARCHIVED" =
         args.direction === "PASS"
           ? "ARCHIVED"
-          : args.status ??
-            (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
+          : isDiscoveryDirectional
+            ? "WATCHING"
+            : args.status ??
+              (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
 
       // Reject illegal (direction, status) pairs explicitly when the agent
       // passes an `status` arg that conflicts with direction.

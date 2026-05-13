@@ -401,40 +401,59 @@ export const readSignals = defineTool({
     }
 
     // Per-ticker cap: SMH × 9 in the top 10 is how TMT missed POET/GSIT/CSCO
-    // on 2026-04-23. Allow max 2 signals per ticker so one hot story doesn't
-    // starve discovery of unique names. Macro/aggregate signals with no
-    // ticker are uncapped.
-    const MAX_PER_TICKER = 2;
+    // on 2026-04-23. Default 2 for daily-run mode so one hot story doesn't
+    // starve unique names. Discovery mode raises to 5 — a weekly scan
+    // *wants* high signal density on net-new names (MU's 9 routes, INTC's
+    // 5 routes) to surface; capping them at 2 kills the very conviction
+    // signal the agent is supposed to find. Macro/aggregate signals with
+    // no ticker are uncapped either way.
+    const MAX_PER_TICKER = ctx.discoveryOnly ? 5 : 2;
     const firstTickerKey = (r: (typeof filtered)[number]): string | null => {
       const t = r.signal.tickers?.[0];
       return t ? t.toUpperCase() : null;
     };
 
-    // Group by bucket for the return shape, but do NOT filter to one bucket
-    // — the agent always gets all three.
-    const groupedByBucket: {
-      portfolio: typeof filtered;
-      watchlist: typeof filtered;
-      discovery: typeof filtered;
-    } = { portfolio: [], watchlist: [], discovery: [] };
-    for (const r of filtered) {
-      const code = r.routeReasonCode as RouteReasonCode | null;
-      if (code === "POSITION") groupedByBucket.portfolio.push(r);
-      else if (code === "WATCHLIST") groupedByBucket.watchlist.push(r);
-      else groupedByBucket.discovery.push(r);
-    }
+    // 2026-05-13 — discovery-mode picker rewrite.
+    //
+    // PRIOR BUG: in discoveryOnly mode the picker still did per-bucket
+    // fair-share (portfolio + watchlist + discovery, 16 each), then later
+    // filtered out `isAlreadyCovered` signals. Portfolio + watchlist
+    // signals always have covered tickers, so they got stripped — leaving
+    // only multi-ticker aggregate signals where one non-covered ticker
+    // happened to appear. Single-ticker DISCOVERY-code routes on net-new
+    // names (KLAC, TXN, FROG, RNG, $S, CRBR, CHPT) lost every fight
+    // against the per-bucket cap and never reached the agent.
+    //
+    // FIX: in discoveryOnly mode, bypass bucketing entirely. Pre-filter
+    // routes to those whose tickers are NOT all-covered, then take up to
+    // effectiveLimit with the raised per-ticker cap. The agent's whole
+    // job in discovery is finding net-new names — the three-bucket UI is
+    // for the daily run, not for here.
+    const coveredSetEarly = new Set(
+      (ctx.coveredTickers ?? [
+        ...(ctx.watchlist ?? []),
+        ...(ctx.positionTickers ?? []),
+      ]).map((t) => t.toUpperCase()),
+    );
+    const isAllCovered = (
+      r: (typeof filtered)[number],
+    ): boolean => {
+      const tickers: string[] = r.signal.tickers ?? [];
+      if (tickers.length === 0) return false; // macro = never "covered"
+      return tickers.every((t: string) => coveredSetEarly.has(t.toUpperCase()));
+    };
 
-    // Per-bucket fair-share so a hot bucket doesn't dominate. Generous
-    // (~50/bucket at limit 150) — the point is the agent sees a reasonable
-    // slice of each bucket, not a thin token from one.
-    const perBucketCap = Math.max(10, Math.floor(effectiveLimit / 3));
-    const picked: typeof filtered = [];
+    let picked: typeof filtered = [];
     const pickedIds = new Set<string>();
-    for (const b of ["portfolio", "watchlist", "discovery"] as const) {
+
+    if (ctx.discoveryOnly) {
+      // Discovery: ignore bucketing. Walk the full filtered list in
+      // relevance order, keep anything with at least one non-covered
+      // ticker, cap per-ticker, stop at effectiveLimit.
       const perTickerCount = new Map<string, number>();
-      let kept = 0;
-      for (const r of groupedByBucket[b]) {
-        if (kept >= perBucketCap) break;
+      for (const r of filtered) {
+        if (picked.length >= effectiveLimit) break;
+        if (isAllCovered(r)) continue;
         const tk = firstTickerKey(r);
         if (tk) {
           const n = perTickerCount.get(tk) ?? 0;
@@ -443,27 +462,58 @@ export const readSignals = defineTool({
         }
         picked.push(r);
         pickedIds.add(r.id);
-        kept++;
       }
-    }
-    // Backfill to effectiveLimit with whatever's left, highest score first,
-    // respecting the per-ticker cap globally.
-    const globalPerTicker = new Map<string, number>();
-    for (const r of picked) {
-      const tk = firstTickerKey(r);
-      if (tk) globalPerTicker.set(tk, (globalPerTicker.get(tk) ?? 0) + 1);
-    }
-    for (const r of filtered) {
-      if (picked.length >= effectiveLimit) break;
-      if (pickedIds.has(r.id)) continue;
-      const tk = firstTickerKey(r);
-      if (tk) {
-        const n = globalPerTicker.get(tk) ?? 0;
-        if (n >= MAX_PER_TICKER) continue;
-        globalPerTicker.set(tk, n + 1);
+    } else {
+      // Daily-run / ad-hoc: keep the three-bucket fair-share so the agent
+      // sees a reasonable slice of portfolio + watchlist + discovery on
+      // every call.
+      const groupedByBucket: {
+        portfolio: typeof filtered;
+        watchlist: typeof filtered;
+        discovery: typeof filtered;
+      } = { portfolio: [], watchlist: [], discovery: [] };
+      for (const r of filtered) {
+        const code = r.routeReasonCode as RouteReasonCode | null;
+        if (code === "POSITION") groupedByBucket.portfolio.push(r);
+        else if (code === "WATCHLIST") groupedByBucket.watchlist.push(r);
+        else groupedByBucket.discovery.push(r);
       }
-      picked.push(r);
-      pickedIds.add(r.id);
+      const perBucketCap = Math.max(10, Math.floor(effectiveLimit / 3));
+      for (const b of ["portfolio", "watchlist", "discovery"] as const) {
+        const perTickerCount = new Map<string, number>();
+        let kept = 0;
+        for (const r of groupedByBucket[b]) {
+          if (kept >= perBucketCap) break;
+          const tk = firstTickerKey(r);
+          if (tk) {
+            const n = perTickerCount.get(tk) ?? 0;
+            if (n >= MAX_PER_TICKER) continue;
+            perTickerCount.set(tk, n + 1);
+          }
+          picked.push(r);
+          pickedIds.add(r.id);
+          kept++;
+        }
+      }
+      // Backfill to effectiveLimit with whatever's left, highest score
+      // first, respecting the per-ticker cap globally.
+      const globalPerTicker = new Map<string, number>();
+      for (const r of picked) {
+        const tk = firstTickerKey(r);
+        if (tk) globalPerTicker.set(tk, (globalPerTicker.get(tk) ?? 0) + 1);
+      }
+      for (const r of filtered) {
+        if (picked.length >= effectiveLimit) break;
+        if (pickedIds.has(r.id)) continue;
+        const tk = firstTickerKey(r);
+        if (tk) {
+          const n = globalPerTicker.get(tk) ?? 0;
+          if (n >= MAX_PER_TICKER) continue;
+          globalPerTicker.set(tk, n + 1);
+        }
+        picked.push(r);
+        pickedIds.add(r.id);
+      }
     }
 
     const finalRoutes = picked.slice(0, effectiveLimit);

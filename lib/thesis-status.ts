@@ -43,11 +43,24 @@ export function getThesisStatusDisplay(
 
 export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = {
   ACTIVE: {
-    label: "Holding",
-    // Blue pulse = live/open position. Mirrors TRADE_STATUS_DISPLAY.OPEN
-    // so a held thesis and an open trade read identically.
+    label: "Active",
+    // 2026-05-13 — relabel from "Holding" to "Active".
+    //
+    // PRIOR BUG: ACTIVE meant "Holding" with a pulsing blue dot, on the
+    // mistaken assumption that ACTIVE always coincides with an open
+    // position. It does not — ACTIVE = "trade-eligible coverage" per the
+    // record_thesis schema, which is independent of whether a Position
+    // row exists. Plenty of ACTIVE theses sit with no position because
+    // the agent decided not to trade them today, the ENTER trigger
+    // hasn't fired, or place_trade is deferred to the next daily run.
+    // Showing "Holding" actively lied to the user (see the 2026-05-13
+    // INTC discovery run UI where two cards both said "Holding" despite
+    // zero open positions in the DB).
+    //
+    // The label tracks thesis lifecycle. Position state is rendered
+    // separately on TradeCard / portfolio-review surfaces.
     dotClass: "bg-blue-500 animate-pulse",
-    tooltip: "Open position — thesis is active in the book",
+    tooltip: "Trade-eligible coverage — agent intends to act on this thesis",
   },
   WATCHING: {
     label: "Watching",
