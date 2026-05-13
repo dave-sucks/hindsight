@@ -8,6 +8,19 @@ researches stocks, generates trade theses, places paper trades
 via Alpaca, tracks performance, and learns from results.
 Built for one user now, marketed later.
 
+## Where to put what (doc navigation)
+| You want to... | File |
+|---|---|
+| Add an open item on the thesis architecture rework | `docs/GAPS.md` |
+| Note a code smell / fragility outside the rework | `docs/TECH_DEBT.md` |
+| Reference what shipped in a PR | GitHub PRs (don't duplicate here) |
+| Read / update the product north star | `docs/VISION.md` |
+| Read the live thesis-system reference | `docs/THESIS_ARCHITECTURE.md` |
+| Spec a big multi-PR plan | `docs/<NAME>_PLAN.md` (e.g. `WATCHLIST_COLLAPSE_PLAN.md`) |
+| Onboard a fresh session to the codebase | this file |
+
+**Rule:** when an item in `GAPS.md` closes, **move it** to a "Done since" section in the same file (not strike-through inline). When the file's open list grows past one screen, move stale items to `TECH_DEBT.md` or close them.
+
 ## Stack — DO NOT DEVIATE
 - Next.js App Router, TypeScript
 - ShadCN + Tailwind CSS only for UI
@@ -491,10 +504,15 @@ it with a ticker chip as if it were a traded security.
 - read_signals returns 0 for analysts without routed signals
   (fallback queries by sector/watchlist exist but not verified)
 - Morning brief tool UI shows counts but not full briefing content
-- python-service/ directory still in repo (archived, not deployed)
+
+(Most other items previously here are now tracked in
+`docs/GAPS.md` (active thesis-architecture work) or
+`docs/TECH_DEBT.md` (orthogonal fragility). When you spot something
+new, file it there — not here.)
 
 ## Active multi-PR plans
-- **docs/THESIS_ARCHITECTURE_PLAN.md** — Thesis-driven analyst architecture. PR 1 merged (durable thesis state + activity log + tools). PR 2 (trigger evaluator + tactical mode) and PR 3 (housekeeping + discovery + watchlist collapse) not yet started. **A fresh session picking up PR 2 or PR 3 should read this doc top to bottom.**
+- **`docs/WATCHLIST_COLLAPSE_PLAN.md`** — Delete `AnalystWatchlistItem`. `Thesis` becomes the single store. New `direction='PENDING'` for user/builder/editor-added tickers awaiting first research. 3 sequenced PRs. Drafted 2026-05-13, not yet implemented. **A fresh session picking this up should read the doc top to bottom and answer the 8 open questions with the user first.**
+- **`docs/THESIS_ARCHITECTURE_PLAN.md`** — Thesis-driven analyst architecture. PR 1 merged (durable thesis state + activity log + tools). PR 2 (trigger evaluator + tactical mode) and PR 3 (housekeeping + discovery + watchlist collapse) — note that watchlist collapse has been spun out into its own plan above. Daily-run V2 (PR #244 / #249) and Discovery rework (PR #253) are the most recent landings.
 
 ## Key Files
 ### Agent System
