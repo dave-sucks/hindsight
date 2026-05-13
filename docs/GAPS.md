@@ -83,6 +83,42 @@ The MRVL anti-pattern (raising target on a watching thesis when current price is
 
 These prevent the core loop from working as designed. Fix first.
 
+### P0-10 — Thesis structured status disagrees with `reasoningSummary` text
+**Source:** GOOGL/Secular Theme failure 2026-05-13. Found in this session.
+
+`Thesis.reasoningSummary` is free text the agent writes. `Thesis.status` is a structured enum. Today they can disagree: GOOGL's `reasoningSummary` literally said *"Entry executed within max position size limits"* while `status = WATCHING` and the matching Position row (cmowxdgx8000404jpr2bnzyg0) was OPEN since 2026-05-08. Two truths, both visible to the agent.
+
+Concrete production state when this was diagnosed: 4 theses (AMD, AVGO, GOOGL, TSM) had open positions but `status = WATCHING`. **DB fixed 2026-05-13** (all 4 flipped to ACTIVE with the actual fill prices + 4 `ThesisUpdate` STATUS_CHANGED audit rows, IDs prefixed `mfix`). PR #265's auto-promotion in `place_trade` prevents new occurrences. But there's no guard at the tool layer that catches `reasoningSummary` text claiming actions inconsistent with structured fields.
+
+**Why this is P0:** the agent's read of GOOGL on 2026-05-13 went exactly: see "Entry executed" in reasoningSummary → classify as portfolio-held → ignore the WATCHING-thesis-needs-action work. The free-text field overrode the structured field in the agent's reasoning because the agent reads prose first.
+
+**Fix path:** either (a) deprecate `reasoningSummary` as a state-bearing field and require structured fields for any operational status, or (b) add a `record_thesis` / `update_thesis` validator that rejects `reasoningSummary` text containing action verbs ("executed", "opened", "closed", "trimmed") when those actions aren't reflected in structured state. (a) is cleaner but bigger.
+
+### P0-11 — Manual UI runs always get the 600-line V1 prompt
+**Source:** Code audit 2026-05-13. Found in this session.
+
+`lib/inngest/functions/morning-research.ts:126-128` correctly dispatches:
+
+```ts
+const systemPrompt = config.useV2Prompt
+  ? buildDailyRunSystemPromptV2(...)   // 80-line goals-only V2
+  : buildV2SystemPrompt(...);           // 600-line legacy
+```
+
+`app/api/agent/[mode]/route.ts:232-234` does not:
+
+```ts
+systemPrompt = runInput
+  ? buildV2SystemPrompt(agentConfig, runInput)        // <-- always V1 shape
+  : buildV2SystemPrompt(agentConfig, { ... });
+```
+
+Both ternary branches call `buildV2SystemPrompt`. The `useV2Prompt` flag is never checked. Every analyst has `useV2Prompt: true` in the DB, but **clicking "Run" from the UI gets the 600-line legacy prompt**, not the V2 designed in MORNING_RUN_V2_DESIGN.md. The 8 AM cron is correct; the user-facing run button is not.
+
+**Fix path:** mirror the morning-research dispatch in route.ts. ~3-line change.
+
+---
+
 ### P0-5 — Horizon awareness: operational layers are still horizon-blind
 **Source:** Hold-style audit 2026-05-07 (original grade D+; substantially upgraded by PR #239 which shipped horizon visibility + per-horizon prompt rules).
 
@@ -107,6 +143,38 @@ These prevent the core loop from working as designed. Fix first.
 ## P1 — Quality is degraded but system functions
 
 *(P1-4 was closed via cumulative prompt sharpening across PRs #235 + #239 — see "Done since" below. P0-5e was downgraded here from P0; see P0-5 above for details.)*
+
+### P1-11 — Quote source inconsistency between Layer-2 and Layer-1
+**Source:** Code audit 2026-05-13.
+
+`get_theses.needsAction` (Layer 2) fetches prices via `getLatestPrices` from Alpaca. `complete_run` preflight (Layer 1, PR #266) fetches via `getStockQuote` from Finnhub. For a ticker at the boundary of an ENTER trigger, the two can disagree by tens of cents — enough to flip `TRIGGER_MATCHING_NOW` vs `null`.
+
+Failure scenario: agent reads `get_theses`, sees GOOGL with `needs_action: null`, skips it. Agent calls `complete_run`. Preflight re-checks with Finnhub, gets a different price, computes `TRIGGER_MATCHING_NOW`, refuses. Agent has no path forward — Layer 2 told it nothing was needed, Layer 1 says something is. Cryptic refusal loop.
+
+**Fix path:** single-source the quotes. Either both use Alpaca or both use Finnhub. The trigger-evaluator cron's price source is the canonical one — both `get_theses` and `complete_run` preflight should match it.
+
+### P1-12 — Earnings Drift Trader silent timeout (undiagnosed)
+**Source:** 2026-05-12 morning cron.
+
+Run produced 0 tool calls in 241s, then timed out. No RunMessage rows, no RunEvent rows. Same shape as 2026-05-11 silence. Did not recur 2026-05-13 (20 tool calls, clean). The zero-tool-call recovery in PR #261 fires only on caught exceptions; a silent OpenAI hang that runs out the wall clock doesn't trip it.
+
+**Hypothesis:** this analyst's injected context (sectors, ticker count, position count, latest briefing length) produces an unusually large system prompt. Could be a token-budget edge or an OpenAI-side latency cliff specific to long inputs.
+
+**Fix path:** instrument system-prompt length at run start. Log it. If Earnings Drift is meaningfully larger than the other 5 analysts, that's the smoking gun. If it isn't, file as transient and add a wall-clock-triggered retry separate from the catch-path retry.
+
+### P1-13 — Old promotion-keyword gate in `record_run_summary` is now redundant + actively wrong
+**Source:** Day 1 + Day 2 run reviews.
+
+`record_run_summary` still runs the legacy promotion gate that scans `decision_rationale` text for accepted rejection keywords (volume / regime / news / R/R / liquidity / etc.). The Secular Theme analyst failed both days because its rejection rationale was *"outside our current universe focus on Information Technology"* — semantically valid, lexically not on the list. PR #266's `complete_run` preflight supersedes this with `computeNeedsAction` (which is wording-agnostic — it checks whether `update_thesis` was called for the triggered thesis, not what words appeared in the summary).
+
+**Fix path:** delete the keyword scan from `record_run_summary`. The preflight is the canonical check now. Two gates asking the same question with different rules = run failures the agent can't recover from.
+
+### P1-14 — No Layer-1 closeout enforcement for `needs_action: null` theses
+**Source:** Design follow-up from MORNING_RUN_V2_DESIGN.md.
+
+The V2 prompt says *"Theses with `needsAction == null` don't need to be touched."* This is correct as designed. But the legacy V1 prompt's *"every Live Theses row produces one tool call"* contract is still present in code paths that V2 hasn't replaced (the manual run path, per P0-11; the V1 fallback prompt). Decision needed: is the V2 design's "null = skip" the official rule, or is the V1 contract still operational somewhere? Today the two coexist contradictorily.
+
+**Fix path:** make a call. Either explicitly delete the closeout contract from V1 too (commit to "trigger system is the only source of truth"), or implement a Layer-1 check that counts ThesisUpdate rows per live thesis per run for both prompt versions.
 
 ### P1-9 — Discovery prompt is archetype-blind (biggest remaining item)
 **Source:** Discovery review 2026-05-11 (see `DISCOVERY_REVIEW.md`). The 4-dimension scoring rubric (trendStrength / relativeStrength / entryQuality / catalystFreshness) is calibrated for momentum/breakout playbooks and applied universally. A Deep Value Contrarian buys downtrends — `trendStrength: 3` is a SELL signal for them. An Insider Cluster Buying archetype has no slot in the rubric for Form 4 cluster patterns. Catalyst Event Trader / Earnings Drift should weight earnings_calendar heavily; momentum scoring barely.
