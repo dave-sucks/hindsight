@@ -83,6 +83,9 @@ export const discoveryRun = inngest.createFunction(
           (t: { ticker: string }) => t.ticker,
         );
 
+        const runEnvironment =
+          (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
+
         const run = await prisma.researchRun.create({
           data: {
             userId: config.userId,
@@ -91,6 +94,7 @@ export const discoveryRun = inngest.createFunction(
             source: "AGENT",
             status: "RUNNING",
             mode: "DISCOVERY",
+            environment: runEnvironment,
             parameters: {
               triggeredBy: targetConfigId
                 ? "discovery-manual"
@@ -107,7 +111,8 @@ export const discoveryRun = inngest.createFunction(
         );
 
         const alpacaCreds =
-          (await resolveAlpacaCredentials(config.userId)) ?? undefined;
+          (await resolveAlpacaCredentials(config.userId, runEnvironment)) ??
+          undefined;
 
         // coveredTickers = ACTIVE + WATCHING thesis tickers ∪ watchlist ∪
         // open position tickers. Tools (read_signals discoveryOnly path,
@@ -140,9 +145,11 @@ export const discoveryRun = inngest.createFunction(
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
           maxPositionSize: Number(config.maxPositionSize),
+          realMaxPosition: Number(config.realMaxPosition),
           maxOpenPositions: config.maxOpenPositions,
           minConfidence: config.minConfidence,
           alpacaCreds,
+          runEnvironment,
           // Discovery's job is finding NEW coverage. read_signals' discovery
           // path filters by "ticker NOT in coveredTickers" (was incorrectly
           // using routeReasonCode buckets, which dropped AGGREGATE_TICKER_MATCH

@@ -151,9 +151,25 @@ export async function POST(
       `[agent/${agentMode}] POST runId=${runId} analystId=${analystId} messages=${messages?.length ?? 0}${modelOverride ? ` model=${modelOverride}` : ""}`,
     );
 
-    // ── Alpaca credentials ──────────────────────────────────────────────────
+    // ── Run environment + Alpaca credentials ───────────────────────────────
+    // Must resolve env BEFORE creds: a LIVE run reads from a different
+    // UserApiKey row than a PAPER run. Source of truth is ResearchRun.environment
+    // (snapshot at run-create time) when a run row exists; otherwise default
+    // PAPER. Builder/editor/podcast modes don't trade and stay PAPER.
 
-    const alpacaCreds = (await resolveAlpacaCredentials(user.id)) ?? undefined;
+    let runEnvironment: "PAPER" | "LIVE" = "PAPER";
+    if (runId) {
+      const runRow = await prisma.researchRun.findFirst({
+        where: { id: runId },
+        select: { environment: true, agentConfigId: true },
+      });
+      if (runRow) {
+        runEnvironment = (runRow.environment as "PAPER" | "LIVE") ?? "PAPER";
+      }
+    }
+
+    const alpacaCreds =
+      (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
 
     // ── System prompt + tools ──────────────────────────────────────────────
 
@@ -192,6 +208,7 @@ export async function POST(
             signalTypes: ac.signalTypes,
             minConfidence: ac.minConfidence,
             maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : undefined,
+            realMaxPosition: ac.realMaxPosition ? Number(ac.realMaxPosition) : undefined,
             maxOpenPositions: ac.maxOpenPositions,
             watchlist: ac.watchlist,
             exclusionList: ac.exclusionList,
@@ -450,9 +467,11 @@ export async function POST(
       marketCapMin: (agentConfig.marketCapMin as number | null) ?? null,
       marketCapMax: (agentConfig.marketCapMax as number | null) ?? null,
       maxPositionSize: (agentConfig.maxPositionSize as number) ?? undefined,
+      realMaxPosition: (agentConfig.realMaxPosition as number) ?? undefined,
       maxOpenPositions: (agentConfig.maxOpenPositions as number) ?? undefined,
       minConfidence: (agentConfig.minConfidence as number) ?? undefined,
       alpacaCreds,
+      runEnvironment,
     });
 
     // Filter by allowlist if mode restricts tools

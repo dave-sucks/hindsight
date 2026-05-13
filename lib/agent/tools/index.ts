@@ -57,10 +57,14 @@ interface ToolCtx {
   marketCapMin?: number | null;
   marketCapMax?: number | null;
   maxPositionSize?: number;
+  /** Per-position cap when runEnvironment="LIVE" — see ToolContext.realMaxPosition. */
+  realMaxPosition?: number;
   maxOpenPositions?: number;
   /** Min thesis confidence (0-100) required for place_trade — enforced. */
   minConfidence?: number;
   alpacaCreds?: AlpacaCredentials;
+  /** Snapshot of ResearchRun.environment — see ToolContext.runEnvironment. */
+  runEnvironment?: "PAPER" | "LIVE";
   intelligencePolicy?: IntelligencePolicy;
   /** Restrict read_signals to discoverySignals bucket only (discovery cron). */
   discoveryOnly?: boolean;

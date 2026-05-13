@@ -118,6 +118,8 @@ export const tacticalRun = inngest.createFunction(
             maxOpenPositions: true,
             watchlist: true,
             exclusionList: true,
+            tradingEnvironment: true,
+            realMaxPosition: true,
           },
         }),
         fired.signalId
@@ -201,6 +203,10 @@ export const tacticalRun = inngest.createFunction(
     }
     const { thesis, trigger, agentConfig, signal, position } = ctx;
 
+    // Snapshot the analyst's env onto the run.
+    const runEnvironment =
+      (agentConfig.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
+
     // ── Create ResearchRun row ────────────────────────────────────────
     const run = await step.run("create-run", async () => {
       return prisma.researchRun.create({
@@ -211,6 +217,7 @@ export const tacticalRun = inngest.createFunction(
           source: "AGENT",
           status: "RUNNING",
           mode: "INTRADAY_TACTICAL",
+          environment: runEnvironment,
           parameters: {
             triggeredBy: "trigger-fired",
             thesisId: thesis.id,
@@ -259,7 +266,8 @@ export const tacticalRun = inngest.createFunction(
     const outcome = await step.run("agent-run", async () => {
       const t0 = Date.now();
       const alpacaCreds =
-        (await resolveAlpacaCredentials(agentConfig.userId)) ?? undefined;
+        (await resolveAlpacaCredentials(agentConfig.userId, runEnvironment)) ??
+        undefined;
 
       const allTools = createResearchTools({
         runId: run.id,
@@ -270,9 +278,11 @@ export const tacticalRun = inngest.createFunction(
         exclusionList: agentConfig.exclusionList ?? [],
         sectors: agentConfig.sectors ?? [],
         maxPositionSize: Number(agentConfig.maxPositionSize),
+        realMaxPosition: Number(agentConfig.realMaxPosition),
         maxOpenPositions: agentConfig.maxOpenPositions,
         minConfidence: agentConfig.minConfidence,
         alpacaCreds,
+        runEnvironment,
       });
 
       const allowlist = MODES["tactical"].toolAllowlist;

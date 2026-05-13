@@ -65,6 +65,9 @@ export async function POST(req: Request) {
         accountId,
         source: "MANUAL",
         status: "RUNNING",
+        // Snapshot the analyst's env so a mid-run promotion can't split
+        // tool calls across two Alpaca accounts.
+        environment: agentConfig?.tradingEnvironment ?? "PAPER",
         parameters: agentConfig
           ? ({
               analystName: agentConfig.name,

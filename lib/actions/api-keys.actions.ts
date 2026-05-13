@@ -24,39 +24,49 @@ async function getServerUserId(): Promise<string> {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type AlpacaEnvironment = "PAPER" | "LIVE";
+
 export type ApiKeyStatus = {
   hasKey: boolean;
   provider: string;
+  environment: AlpacaEnvironment;
   keyHint: string | null;
   verified: boolean;
   verifiedAt: string | null;
-  paperMode: boolean;
   label: string | null;
 };
 
 export type SaveApiKeyInput = {
   provider: "ALPACA";
+  environment: AlpacaEnvironment;
   apiKey: string;
   apiSecret: string;
   label?: string;
-  paperMode?: boolean;
   baseUrl?: string;
 };
+
+const PAPER_BASE_URL = "https://paper-api.alpaca.markets";
+const LIVE_BASE_URL = "https://api.alpaca.markets";
+
+function defaultBaseUrl(environment: AlpacaEnvironment): string {
+  return environment === "LIVE" ? LIVE_BASE_URL : PAPER_BASE_URL;
+}
 
 // ─── Get API key status (no secrets returned) ─────────────────────────────────
 
 export async function getApiKeyStatus(
-  provider: string = "ALPACA"
+  provider: string = "ALPACA",
+  environment: AlpacaEnvironment = "PAPER",
 ): Promise<ApiKeyStatus> {
   const userId = await getServerUserId();
   const row = await prisma.userApiKey.findUnique({
-    where: { userId_provider: { userId, provider } },
+    where: { userId_provider_environment: { userId, provider, environment } },
     select: {
       provider: true,
+      environment: true,
       keyHint: true,
       verified: true,
       verifiedAt: true,
-      paperMode: true,
       label: true,
     },
   });
@@ -65,10 +75,10 @@ export async function getApiKeyStatus(
     return {
       hasKey: false,
       provider,
+      environment,
       keyHint: null,
       verified: false,
       verifiedAt: null,
-      paperMode: true,
       label: null,
     };
   }
@@ -76,12 +86,24 @@ export async function getApiKeyStatus(
   return {
     hasKey: true,
     provider: row.provider,
+    environment: row.environment as AlpacaEnvironment,
     keyHint: row.keyHint,
     verified: row.verified,
     verifiedAt: row.verifiedAt?.toISOString() ?? null,
-    paperMode: row.paperMode,
     label: row.label,
   };
+}
+
+/** Returns both PAPER and LIVE statuses in one call for the settings page. */
+export async function getAlpacaKeyStatuses(): Promise<{
+  paper: ApiKeyStatus;
+  live: ApiKeyStatus;
+}> {
+  const [paper, live] = await Promise.all([
+    getApiKeyStatus("ALPACA", "PAPER"),
+    getApiKeyStatus("ALPACA", "LIVE"),
+  ]);
+  return { paper, live };
 }
 
 // ─── Save (upsert) API key ───────────────────────────────────────────────────
@@ -91,6 +113,7 @@ export async function saveApiKey(
 ): Promise<{ success: boolean; verified: boolean; error?: string }> {
   try {
     const userId = await getServerUserId();
+    const baseUrl = input.baseUrl ?? defaultBaseUrl(input.environment);
 
     // Encrypt the credentials
     const encryptedKey = encryptAndPack(input.apiKey);
@@ -103,7 +126,7 @@ export async function saveApiKey(
     const creds: AlpacaCredentials = {
       keyId: input.apiKey,
       secretKey: input.apiSecret,
-      baseUrl: input.baseUrl,
+      baseUrl,
     };
 
     try {
@@ -116,16 +139,22 @@ export async function saveApiKey(
     }
 
     await prisma.userApiKey.upsert({
-      where: { userId_provider: { userId, provider: input.provider } },
+      where: {
+        userId_provider_environment: {
+          userId,
+          provider: input.provider,
+          environment: input.environment,
+        },
+      },
       create: {
         userId,
         provider: input.provider,
+        environment: input.environment,
         label: input.label ?? null,
         encryptedKey,
         encryptedSecret,
         keyHint,
-        paperMode: input.paperMode ?? true,
-        baseUrl: input.baseUrl ?? null,
+        baseUrl,
         verified,
         verifiedAt,
       },
@@ -134,8 +163,7 @@ export async function saveApiKey(
         encryptedKey,
         encryptedSecret,
         keyHint,
-        paperMode: input.paperMode ?? true,
-        baseUrl: input.baseUrl ?? null,
+        baseUrl,
         verified,
         verifiedAt,
       },
@@ -152,12 +180,13 @@ export async function saveApiKey(
 // ─── Delete API key ──────────────────────────────────────────────────────────
 
 export async function deleteApiKey(
-  provider: string = "ALPACA"
+  provider: string = "ALPACA",
+  environment: AlpacaEnvironment = "PAPER",
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const userId = await getServerUserId();
     await prisma.userApiKey.delete({
-      where: { userId_provider: { userId, provider } },
+      where: { userId_provider_environment: { userId, provider, environment } },
     });
     revalidatePath("/settings");
     return { success: true };
@@ -169,11 +198,12 @@ export async function deleteApiKey(
 // ─── Re-verify existing key ──────────────────────────────────────────────────
 
 export async function reverifyApiKey(
-  provider: string = "ALPACA"
+  provider: string = "ALPACA",
+  environment: AlpacaEnvironment = "PAPER",
 ): Promise<{ success: boolean; verified: boolean; error?: string }> {
   try {
     const userId = await getServerUserId();
-    const creds = await resolveAlpacaCredentials(userId);
+    const creds = await resolveAlpacaCredentials(userId, environment);
     if (!creds) {
       return { success: false, verified: false, error: "No API key found" };
     }
@@ -181,14 +211,14 @@ export async function reverifyApiKey(
     try {
       await getAccount(creds);
       await prisma.userApiKey.update({
-        where: { userId_provider: { userId, provider } },
+        where: { userId_provider_environment: { userId, provider, environment } },
         data: { verified: true, verifiedAt: new Date() },
       });
       revalidatePath("/settings");
       return { success: true, verified: true };
     } catch {
       await prisma.userApiKey.update({
-        where: { userId_provider: { userId, provider } },
+        where: { userId_provider_environment: { userId, provider, environment } },
         data: { verified: false },
       });
       revalidatePath("/settings");
@@ -233,10 +263,13 @@ export async function getElevenLabsVoices(): Promise<{ voices: ElevenLabsVoice[]
 // Returns null if no user key found (callers fall back to env vars).
 
 export async function resolveAlpacaCredentials(
-  userId: string
+  userId: string,
+  environment: AlpacaEnvironment = "PAPER",
 ): Promise<AlpacaCredentials | null> {
   const row = await prisma.userApiKey.findUnique({
-    where: { userId_provider: { userId, provider: "ALPACA" } },
+    where: {
+      userId_provider_environment: { userId, provider: "ALPACA", environment },
+    },
     select: { encryptedKey: true, encryptedSecret: true, baseUrl: true },
   });
 
@@ -246,7 +279,7 @@ export async function resolveAlpacaCredentials(
     return {
       keyId: unpackAndDecrypt(row.encryptedKey),
       secretKey: unpackAndDecrypt(row.encryptedSecret),
-      baseUrl: row.baseUrl ?? undefined,
+      baseUrl: row.baseUrl ?? defaultBaseUrl(environment),
     };
   } catch (err) {
     console.error("[api-keys] Failed to decrypt credentials for user", userId, err);

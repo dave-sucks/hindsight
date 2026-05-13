@@ -79,11 +79,18 @@ export const getPortfolioContext = defineTool({
       };
     }
 
-    const creds = ctx.alpacaCreds ?? await resolveAlpacaCredentials(ctx.userId) ?? undefined;
+    const runEnvironment = ctx.runEnvironment ?? "PAPER";
+    const creds =
+      ctx.alpacaCreds ??
+      (await resolveAlpacaCredentials(ctx.userId, runEnvironment)) ??
+      undefined;
 
-    // Load all open positions for this analyst
+    // Load open positions for THIS run's environment only. A LIVE run must
+    // never see PAPER positions and vice versa — they live in different
+    // Alpaca accounts, so mixing them would cause every manage_position /
+    // close_position call to hit the wrong account.
     const openPositions = await prisma.position.findMany({
-      where: { analystId, status: "OPEN" },
+      where: { analystId, status: "OPEN", environment: runEnvironment },
       orderBy: { openedAt: "asc" },
     });
 

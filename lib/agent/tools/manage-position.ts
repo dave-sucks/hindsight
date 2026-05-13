@@ -163,8 +163,17 @@ export const managePosition = defineTool({
   execute: async (args: z.infer<typeof schema>, ctx: ToolContext): Promise<ManagePositionReturn> => {
     const ticker = args.symbol.toUpperCase().trim();
 
+    // Scope by environment so a LIVE run never operates on a PAPER position
+    // (and vice versa) — they live in different Alpaca accounts.
+    const runEnvironment = ctx.runEnvironment ?? "PAPER";
     const position = await prisma.position.findFirst({
-      where: { userId: ctx.userId, symbol: ticker, status: "OPEN" },
+      where: {
+        userId: ctx.userId,
+        symbol: ticker,
+        status: "OPEN",
+        environment: runEnvironment,
+        ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
+      },
       include: { analyst: { select: { name: true } } },
     });
 
@@ -184,7 +193,10 @@ export const managePosition = defineTool({
     }
 
     const analystId = ctx.analystId || position.analystId;
-    const creds = ctx.alpacaCreds ?? await resolveAlpacaCredentials(ctx.userId) ?? undefined;
+    const creds =
+      ctx.alpacaCreds ??
+      (await resolveAlpacaCredentials(ctx.userId, runEnvironment)) ??
+      undefined;
 
     try {
       switch (args.action) {
@@ -324,6 +336,7 @@ export const managePosition = defineTool({
             data: {
               positionId: position.id,
               userId: ctx.userId,
+              environment: position.environment,
               symbol: ticker,
               side: closeSide.toUpperCase(),
               orderType: "MARKET",
@@ -565,6 +578,7 @@ export const managePosition = defineTool({
             data: {
               positionId: position.id,
               userId: ctx.userId,
+              environment: position.environment,
               symbol: ticker,
               side: addSide.toUpperCase(),
               orderType: "MARKET",

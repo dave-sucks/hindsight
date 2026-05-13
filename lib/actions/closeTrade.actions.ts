@@ -118,7 +118,11 @@ export async function closeOpenPosition(
     throw new Error(`Position ${positionId} is not OPEN (status: ${position.status})`);
   }
 
-  const creds = alpacaCreds ?? (await resolveAlpacaCredentials(position.userId)) ?? undefined;
+  const positionEnvironment = (position.environment as "PAPER" | "LIVE") ?? "PAPER";
+  const creds =
+    alpacaCreds ??
+    (await resolveAlpacaCredentials(position.userId, positionEnvironment)) ??
+    undefined;
   const placedAt = new Date();
   const idempotencyKey = randomUUID();
   const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
@@ -129,6 +133,7 @@ export async function closeOpenPosition(
       data: {
         positionId,
         userId: position.userId,
+        environment: positionEnvironment,
         symbol: position.symbol,
         side: closeSide.toUpperCase(),
         orderType: "MARKET",
@@ -407,11 +412,12 @@ export async function closeOpenPosition(
       );
       const isWin = outcome === "WIN";
       const sign2 = realizedPnl >= 0 ? "+" : "";
+      const livePrefix = positionEnvironment === "LIVE" ? "[LIVE] " : "";
       await sendEmail({
         to: toEmail,
         subject: isWin
-          ? `✅ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — WIN`
-          : `⛔ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — ${outcome}`,
+          ? `${livePrefix}✅ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — WIN`
+          : `${livePrefix}⛔ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — ${outcome}`,
         html: tradeClosedHtml({
           ticker: position.symbol,
           direction: position.direction as "LONG" | "SHORT",

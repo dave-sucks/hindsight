@@ -30,6 +30,7 @@ interface DayPositionRow {
   id: string;
   symbol: string;
   userId: string;
+  environment: string;
   analystId: string | null;
   analyst: { id: string; name: string; holdDurations: string[] } | null;
 }
@@ -88,8 +89,13 @@ export const intradayEodFlatten = inngest.createFunction(
         const ticker = position.symbol;
         const analystName = position.analyst?.name ?? "(unknown analyst)";
         try {
+          const positionEnvironment =
+            (position.environment as "PAPER" | "LIVE") ?? "PAPER";
           const creds =
-            (await resolveAlpacaCredentials(position.userId)) ?? undefined;
+            (await resolveAlpacaCredentials(
+              position.userId,
+              positionEnvironment,
+            )) ?? undefined;
           const auditReason = `EOD flatten — DAY analyst ${analystName} must be flat by close. Position auto-closed by intraday-eod-flatten cron at 15:45 ET.`;
 
           const closed = await closeOpenPosition(

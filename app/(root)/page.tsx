@@ -2,6 +2,7 @@ import DashboardClient from "@/components/dashboard/DashboardClient";
 import { getDashboardData } from "@/lib/actions/portfolio.actions";
 import type { DashboardData } from "@/lib/actions/portfolio.actions";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 
 const EMPTY_DASHBOARD: DashboardData = {
   openTrades: [], closedTrades: [], activityFeed: [],
@@ -30,8 +31,10 @@ const EMPTY_DASHBOARD: DashboardData = {
 };
 
 export default async function Home() {
+  const environment = await getCurrentEnvironment();
+
   const [data, supabase] = await Promise.all([
-    getDashboardData().catch(() => EMPTY_DASHBOARD),
+    getDashboardData(environment).catch(() => EMPTY_DASHBOARD),
     createClient(),
   ]);
   const {

@@ -255,21 +255,31 @@ export const placeTrade = defineTool({
         );
       }
 
-      // ── Guardrail 5: requested notional ≤ maxPositionSize ──────────
-      // Only checks when the model explicitly sized the trade (notional
-      // or shares). If neither is set, the fallback path below uses
-      // maxPositionSize as the budget so no violation is possible.
-      if (ctx.maxPositionSize != null) {
+      // ── Guardrail 5: requested notional ≤ effective per-position cap ───
+      // PAPER → maxPositionSize. LIVE → min(maxPositionSize, realMaxPosition)
+      // so a forgotten realMaxPosition can't accidentally uncap a live order.
+      // Only checks when the model explicitly sized the trade (notional or
+      // shares). If neither is set, the fallback path below uses the same
+      // effective cap as the budget so no violation is possible.
+      const isLiveRun = ctx.runEnvironment === "LIVE";
+      const effectiveCap =
+        isLiveRun && ctx.realMaxPosition != null
+          ? Math.min(ctx.maxPositionSize ?? Infinity, ctx.realMaxPosition)
+          : ctx.maxPositionSize;
+      if (effectiveCap != null && Number.isFinite(effectiveCap)) {
         const requestedNotional =
           args.notional != null && args.notional > 0
             ? args.notional
             : args.shares != null && args.shares > 0
               ? args.shares * args.entry_price
               : null;
-        if (requestedNotional != null && requestedNotional > ctx.maxPositionSize) {
-          const blockedMsg = `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} exceeds this analyst's max position size ($${ctx.maxPositionSize.toLocaleString()}). Scale it down.`;
+        if (requestedNotional != null && requestedNotional > effectiveCap) {
+          const capLabel = isLiveRun && ctx.realMaxPosition != null
+            ? "live per-position cap"
+            : "max position size";
+          const blockedMsg = `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} exceeds this analyst's ${capLabel} ($${effectiveCap.toLocaleString()}). Scale it down.`;
           return {
-            summary: `Trade blocked: $${ticker} — exceeds max position size`,
+            summary: `Trade blocked: $${ticker} — exceeds ${capLabel}`,
             data: {
               success: false,
               ticker,
@@ -294,10 +304,15 @@ export const placeTrade = defineTool({
       } else if (args.shares != null && args.shares > 0) {
         resolvedShares = args.shares;
       } else {
-        // Final fallback: use max position size from context
-        const budget = ctx.maxPositionSize ?? 5000;
-        resolvedNotional = budget;
-        resolvedShares = Math.max(1, Math.floor(budget / args.entry_price));
+        // Final fallback: use the effective cap (LIVE = realMaxPosition,
+        // PAPER = maxPositionSize) so a sizeless place_trade on a live
+        // analyst can't blow past the per-position ceiling.
+        const fallbackCap =
+          effectiveCap != null && Number.isFinite(effectiveCap)
+            ? effectiveCap
+            : ctx.maxPositionSize ?? 5000;
+        resolvedNotional = fallbackCap;
+        resolvedShares = Math.max(1, Math.floor(fallbackCap / args.entry_price));
       }
 
       // ── Workstream B: DB-first write path ────────────────────────────────
@@ -319,12 +334,14 @@ export const placeTrade = defineTool({
 
       // 2. DB tx: create the row of record. avgCost starts at the entry guess
       // and is corrected to the real fill price in step 4.
+      const positionEnvironment = ctx.runEnvironment ?? "PAPER";
       const { position, order } = await prisma.$transaction(async (tx: TransactionClient) => {
         const pos = await tx.position.create({
           data: {
             analystId,
             userId: ctx.userId,
             accountId: ctx.accountId,
+            environment: positionEnvironment,
             symbol: ticker,
             direction: args.direction,
             status: "OPEN",
@@ -347,6 +364,7 @@ export const placeTrade = defineTool({
           data: {
             positionId: pos.id,
             userId: ctx.userId,
+            environment: positionEnvironment,
             symbol: ticker,
             side: args.direction === "LONG" ? "BUY" : "SELL",
             orderType: "MARKET",
@@ -683,9 +701,10 @@ export const placeTrade = defineTool({
               select: { reasoningSummary: true },
             });
             const verb = args.direction === "LONG" ? "📈 Bought" : "📉 Shorted";
+            const livePrefix = positionEnvironment === "LIVE" ? "[LIVE] " : "";
             await sendEmail({
               to: toEmail,
-              subject: `${verb} ${ticker} — ${config.name}`,
+              subject: `${livePrefix}${verb} ${ticker} — ${config.name}`,
               html: tradeOpenedHtml({
                 ticker,
                 direction: args.direction,

@@ -96,32 +96,29 @@ export interface LimitOrderParams extends OrderParams {
 // ─── Client factory ──────────────────────────────────────────────────────────
 
 const PAPER_BASE_URL = "https://paper-api.alpaca.markets";
+const LIVE_BASE_URL = "https://api.alpaca.markets";
 
 function createClient(creds?: AlpacaCredentials): AlpacaAPI {
-  if (creds) {
-    return new AlpacaAPI({
-      keyId: creds.keyId,
-      secretKey: creds.secretKey,
-      baseUrl: creds.baseUrl || PAPER_BASE_URL,
-      paper: true,
-    });
-  }
-  // Env-var fallback (backward-compatible for crons / single-user)
+  const baseUrl =
+    creds?.baseUrl ?? process.env.ALPACA_BASE_URL ?? PAPER_BASE_URL;
+  // The SDK's `paper` flag must mirror baseUrl. With per-user credentials
+  // we may target either host on the same process, so derive instead of
+  // hardcoding. Anything that isn't the live host is treated as paper.
+  const paper = baseUrl !== LIVE_BASE_URL;
   return new AlpacaAPI({
-    keyId: process.env.ALPACA_API_KEY!,
-    secretKey: process.env.ALPACA_API_SECRET!,
-    baseUrl: process.env.ALPACA_BASE_URL || PAPER_BASE_URL,
-    paper: true,
+    keyId: creds?.keyId ?? process.env.ALPACA_API_KEY!,
+    secretKey: creds?.secretKey ?? process.env.ALPACA_API_SECRET!,
+    baseUrl,
+    paper,
   });
 }
 
-// Lazy singleton for env-var mode only — safe for serverless
-let _envClient: AlpacaAPI | null = null;
-
+// Construct fresh per call. The previous lazy env-client singleton was
+// unsafe once multiple environments could share the same process — a
+// cached client would silently route a per-user request to the wrong
+// account if the user's baseUrl differed from the env default.
 function getClient(creds?: AlpacaCredentials): AlpacaAPI {
-  if (creds) return createClient(creds);
-  if (!_envClient) _envClient = createClient();
-  return _envClient;
+  return createClient(creds);
 }
 
 // ─── Account ──────────────────────────────────────────────────────────────────

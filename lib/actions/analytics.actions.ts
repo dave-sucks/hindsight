@@ -150,7 +150,9 @@ function buildEquityCurve(
 
 // ─── Main loader ──────────────────────────────────────────────────────────────
 
-export async function getAnalyticsData(): Promise<AnalyticsData> {
+export async function getAnalyticsData(
+  environment: "PAPER" | "LIVE" = "PAPER",
+): Promise<AnalyticsData> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -160,7 +162,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   const [closedPositions, openCount, agentConfig, completedRuns, latestAccuracy] = await Promise.all([
     userId
       ? prisma.position.findMany({
-          where: { userId, status: "CLOSED" },
+          where: { userId, status: "CLOSED", environment },
           select: {
             direction: true,
             outcome: true,
@@ -189,14 +191,14 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
         })
       : Promise.resolve([]),
     userId
-      ? prisma.position.count({ where: { userId, status: "OPEN" } })
+      ? prisma.position.count({ where: { userId, status: "OPEN", environment } })
       : Promise.resolve(0),
     userId
       ? prisma.agentConfig.findFirst({ where: { userId } })
       : Promise.resolve(null),
     userId
       ? prisma.researchRun.findMany({
-          where: { userId, status: "COMPLETE" },
+          where: { userId, status: "COMPLETE", environment },
           orderBy: { startedAt: "desc" },
           take: 20,
           select: {

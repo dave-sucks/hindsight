@@ -23,6 +23,10 @@ export interface AnalystConfig {
   userId: string;
   name: string;
   enabled: boolean;
+  /** PAPER (default) or LIVE — drives which Alpaca account this analyst trades into. */
+  tradingEnvironment: "PAPER" | "LIVE";
+  /** Per-position cap when tradingEnvironment="LIVE". Ignored in PAPER. */
+  realMaxPosition: number;
   analystPrompt: string | null;
   description: string | null;
   sectors: string[];
@@ -223,14 +227,21 @@ async function getCurrentUserId(): Promise<string | null> {
 
 // ── getAnalystList ────────────────────────────────────────────────────────────
 
-export async function getAnalystList(): Promise<AnalystListItem[]> {
+export async function getAnalystList(
+  environment: "PAPER" | "LIVE" = "PAPER",
+): Promise<AnalystListItem[]> {
   const userId = await getCurrentUserId();
   if (!userId) return [];
   const accountId = await getAccountId(userId);
   if (!accountId) return [];
 
+  // The analyst grid shows analysts that operate in the selected env.
+  // tradingEnvironment is single-valued per analyst; a paper-env user
+  // never sees promoted-to-live analysts mixed into the list and vice
+  // versa. Run / position aggregates below also scope by env so
+  // cross-env activity doesn't leak into a cohort's stats.
   const configs = await prisma.agentConfig.findMany({
-    where: { accountId },
+    where: { accountId, tradingEnvironment: environment },
     orderBy: { createdAt: "asc" },
   });
 
@@ -239,7 +250,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
   // Load all runs and positions for this account, group in JS
   const [allRuns, allPositions, alpacaCreds] = await Promise.all([
     prisma.researchRun.findMany({
-      where: { accountId },
+      where: { accountId, environment },
       orderBy: { startedAt: "desc" },
       select: {
         id: true,
@@ -249,7 +260,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
       },
     }),
     prisma.position.findMany({
-      where: { accountId },
+      where: { accountId, environment },
       select: {
         id: true,
         symbol: true,
@@ -263,7 +274,7 @@ export async function getAnalystList(): Promise<AnalystListItem[]> {
         openedAt: true,
       },
     }),
-    resolveAlpacaCredentials(userId).catch(() => undefined),
+    resolveAlpacaCredentials(userId, environment).catch(() => undefined),
   ]);
 
   // Fetch live prices once for all open positions across analysts.
@@ -561,6 +572,8 @@ export async function getAnalystDetail(
     userId: config.userId,
     name: config.name,
     enabled: config.enabled,
+    tradingEnvironment: (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
+    realMaxPosition: config.realMaxPosition,
     analystPrompt: config.analystPrompt,
     description: config.description,
     sectors: config.sectors as string[],
@@ -782,7 +795,7 @@ export async function createAnalystFromWizard(
       graduationWinRate: 0.65,
       graduationMinTrades: 50,
       graduationProfitFactor: 1.5,
-      realTradingEnabled: false,
+      tradingEnvironment: "PAPER",
       realMaxPosition: data.maxPositionSize,
       emailAlerts: true,
       weeklyDigestEnabled: true,
@@ -996,7 +1009,7 @@ export async function createAnalystFromBuilder(
         graduationWinRate: 0.65,
         graduationMinTrades: 50,
         graduationProfitFactor: 1.5,
-        realTradingEnabled: false,
+        tradingEnvironment: "PAPER",
         realMaxPosition: posSize,
         emailAlerts: true,
         weeklyDigestEnabled: true,
