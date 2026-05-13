@@ -76,10 +76,10 @@ export const placeTrade = defineTool({
     // which bypasses the duplicate check and hits Alpaca with a 422.
     const ticker = args.ticker.toUpperCase().trim();
 
-    // Principal-chat override: the agent passes analyst_id explicitly because
-    // the route context isn't scoped to one analyst. Within an analyst run,
-    // ctx.analystId is set and args.analyst_id is omitted.
-    const effectiveAnalystId: string | undefined = args.analyst_id ?? ctx.analystId;
+    // P0-9a: ctx.analystId wins for daily/tactical runs (it's always set from
+    // the ResearchRun). args.analyst_id is the principal-chat fallback for
+    // contexts where no run is scoped to one analyst.
+    const effectiveAnalystId: string | undefined = ctx.analystId ?? args.analyst_id;
     try {
       // 0a. Universe exclusion check — hard reject
       // exclusionList is the hard block dimension of Universe. The analyst's

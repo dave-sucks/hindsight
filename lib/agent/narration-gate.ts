@@ -96,9 +96,19 @@ export const VERB_RULES: VerbRule[] = [
     expectedTool: "manage_position",
     label: "double up",
   },
-  // generic position-adjustment verb
+  // generic position-adjustment verb. Tightened 2026-05-13 (GAPS P0-8):
+  // bare \badjusted\b false-positived on "adjusted target / thesis / plan"
+  // which are correctly handled by update_thesis (target/stop are thesis
+  // operational state, not position state). Require a position-management
+  // noun (stop/trail/size/qty/position) within ~30 chars in either
+  // direction. 2026-05-13 EV Catalyst TSLA failed on the bare pattern.
   {
-    pattern: /\badjusted\b/gi,
+    pattern: /\badjusted\b[^.]{0,30}\b(stop|trail(?:ing)?|size|qty|quantity|position)\b/gi,
+    expectedTool: "manage_position",
+    label: "adjust",
+  },
+  {
+    pattern: /\b(stop|trail(?:ing)?|size|qty|quantity|position)\b[^.]{0,30}\badjusted\b/gi,
     expectedTool: "manage_position",
     label: "adjust",
   },
