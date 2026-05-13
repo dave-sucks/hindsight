@@ -117,7 +117,26 @@ const updateSchema = z.object({
   confidence_score: z.number().int().min(0).max(100).optional(),
   target_price: z.number().nullable().optional(),
   stop_loss: z.number().nullable().optional(),
+  entry_price: z.number().nullable().optional()
+    .describe(
+      "Current price reference for the thesis. Optional for refinement updates; REQUIRED when promoting a PENDING thesis to LONG/SHORT (so target/stop have something to validate against in the shape gate)."
+    ),
   target_size_pct: z.number().min(0).max(100).optional(),
+
+  // ── Direction (PENDING → LONG/SHORT/PASS promotion only) ─────────────
+  // The only legal direction change is OUT of PENDING. Direction flips on
+  // committed (LONG ↔ SHORT) theses go through record_thesis with
+  // parent_thesis_id so the audit trail captures the chain.
+  direction: z
+    .enum(["LONG", "SHORT", "PASS"])
+    .optional()
+    .describe(
+      "Direction commitment for a PENDING thesis (user/builder/editor seed). " +
+      "Only legal when existing.direction === 'PENDING'. " +
+      "LONG/SHORT: requires horizon, target_price, stop_loss, entry_price, core_belief, ≥2 key_assumptions, ≥2 invalidation_conditions, and triggers (or rely on horizon defaults). Stays WATCHING. " +
+      "PASS: requires invalidation_conditions (≥1 — the flip-criteria). Automatically flips status to ARCHIVED and clears triggers. " +
+      "For direction flips on already-committed theses (LONG↔SHORT, etc.), use record_thesis with parent_thesis_id instead — same-direction changes here are rejected."
+    ),
 
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
@@ -155,18 +174,21 @@ const updateSchema = z.object({
 
   // ── Status transitions (deliberate) ───────────────────────────────────
   change_status: z
-    .enum(["ACTIVE", "INVALIDATED", "CLOSED"])
+    .enum(["ACTIVE", "INVALIDATED", "CLOSED", "ARCHIVED"])
     .optional()
     .describe(
       "Deliberate status transition. " +
         "ACTIVE = WATCHING → ACTIVE promotion (entry condition fired and you took the trade). MUST be paired with a place_trade in the same run, AND target_price + stop_loss must be supplied — recomputed relative to the actual entry, not copied from the WATCHING row's old levels. " +
-        "INVALIDATED = the belief broke; we no longer believe the thesis. " +
+        "INVALIDATED = the belief broke; we no longer believe the thesis (use this when concrete evidence disproves the view). " +
+        "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist, PENDING flipped to PASS after first research). Off the watchlist; visible on the stock page as institutional memory. " +
         "CLOSED = we exited the position based on this thesis (target hit, stop, manual close). " +
         "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
 });
 
 type UpdatePatch = Partial<{
+  direction: string;
+  entryPrice: number | null;
   reasoningSummary: string;
   thesisBullets: string[];
   riskFlags: string[];
@@ -205,6 +227,7 @@ export const updateThesis = defineTool({
     if (args.change_status === "ACTIVE") return `Promoting thesis ${args.thesis_id.slice(-8)} → ACTIVE`;
     if (args.change_status === "INVALIDATED") return `Invalidating thesis ${args.thesis_id.slice(-8)}`;
     if (args.change_status === "CLOSED") return `Closing thesis ${args.thesis_id.slice(-8)}`;
+    if (args.change_status === "ARCHIVED") return `Archiving thesis ${args.thesis_id.slice(-8)}`;
     return `Updating thesis ${args.thesis_id.slice(-8)}`;
   },
 
@@ -299,6 +322,68 @@ export const updateThesis = defineTool({
       };
     }
 
+    // ── PENDING-promotion guard ───────────────────────────────────────────
+    // The only legal direction change is OUT of PENDING (user/builder/editor
+    // seed → agent committed to a view). Direction flips on committed
+    // (LONG ↔ SHORT) theses go through record_thesis with parent_thesis_id
+    // so the audit trail captures the chain.
+    if (args.direction) {
+      if (existing.direction !== "PENDING") {
+        return {
+          summary: `Thesis ${args.thesis_id} is ${existing.direction}, not PENDING — direction flips go through record_thesis.`,
+          data: {
+            ok: false,
+            error: "direction_change_only_from_pending",
+            current_direction: existing.direction,
+            message:
+              `update_thesis can only change direction when the existing thesis is PENDING (user/builder/editor seed awaiting first research). ` +
+              `For an actual direction flip on a committed thesis (LONG → SHORT, etc.), call record_thesis with parent_thesis_id=${args.thesis_id} — the old thesis gets SUPERSEDED, the new direction is chained for audit.`,
+          },
+          sources: [],
+        };
+      }
+      // PENDING → LONG/SHORT: need full structural commitment.
+      if (args.direction === "LONG" || args.direction === "SHORT") {
+        const missing: string[] = [];
+        if (!args.horizon) missing.push("horizon");
+        if (args.target_price == null) missing.push("target_price");
+        if (args.stop_loss == null) missing.push("stop_loss");
+        if (args.entry_price == null) missing.push("entry_price");
+        if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
+        if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");
+        if (!args.invalidation_conditions || args.invalidation_conditions.filter((s) => s.trim().length > 0).length < 2) missing.push("invalidation_conditions (≥2)");
+        if (missing.length > 0) {
+          return {
+            summary: `Refused PENDING→${args.direction} promotion on $${existing.ticker} — missing structural fields.`,
+            data: {
+              ok: false,
+              error: "pending_promotion_missing_fields",
+              missing,
+              message:
+                `Promoting a PENDING thesis to ${args.direction} is a full commitment — you need every structural field that record_thesis would have required. Missing: ${missing.join(", ")}. Supply all of them in this call and the thesis flips PENDING → ${args.direction} WATCHING in place.`,
+            },
+            sources: [],
+          };
+        }
+      }
+      // PENDING → PASS: need flip-criteria.
+      if (args.direction === "PASS") {
+        const inv = args.invalidation_conditions ?? [];
+        if (inv.filter((s) => s.trim().length > 0).length < 1) {
+          return {
+            summary: `Refused PENDING→PASS on $${existing.ticker} — invalidation_conditions required.`,
+            data: {
+              ok: false,
+              error: "pending_pass_missing_invalidation",
+              message:
+                `Flipping PENDING to PASS still needs invalidation_conditions (≥1). PASS is institutional memory; the value of that memory is what would change the verdict. Without flip-criteria a future encounter has nothing to compare against.`,
+            },
+            sources: [],
+          };
+        }
+      }
+    }
+
     // ── Zero-trigger guard (audit Step 4) ─────────────────────────────────
     // A WATCHING thesis with no triggers can't react to anything — the
     // trigger evaluator has nothing to fire on, the agent has nothing to
@@ -314,13 +399,24 @@ export const updateThesis = defineTool({
     // legitimate "give up on this broken thesis" path. Allow that.
     const isTerminalTransition =
       args.change_status === "INVALIDATED" ||
-      args.change_status === "CLOSED";
+      args.change_status === "CLOSED" ||
+      args.change_status === "ARCHIVED" ||
+      // PENDING → PASS is a terminal flip — clears triggers, sets ARCHIVED.
+      args.direction === "PASS";
     const existingTriggerCount = Array.isArray(existing.triggers)
       ? (existing.triggers as unknown[]).length
       : 0;
     const updateAddsTriggers =
       args.triggers !== undefined && args.triggers.length > 0;
-    if (existingTriggerCount === 0 && !updateAddsTriggers && !isTerminalTransition) {
+    // PENDING theses always start with zero triggers — that's expected, not
+    // a violation. Only fire the zero-trigger guard on non-PENDING rows.
+    const isPendingPromotion = existing.direction === "PENDING";
+    if (
+      existingTriggerCount === 0 &&
+      !updateAddsTriggers &&
+      !isTerminalTransition &&
+      !isPendingPromotion
+    ) {
       return {
         summary: `Thesis ${args.thesis_id} has no triggers; refusing review-only update.`,
         data: {
@@ -386,10 +482,17 @@ export const updateThesis = defineTool({
     // is the job of either a future update or a SQL cleanup, not this
     // particular review). Terminal transitions (INVALIDATED/CLOSED) also
     // bypass — the values become reference history at that point.
+    // Effective direction for the shape check: when the agent is promoting
+    // PENDING → LONG/SHORT, validate against the NEW direction (the resulting
+    // state), not the existing PENDING. PENDING has no shape rule.
+    const effectiveDirectionForShape =
+      args.direction === "LONG" || args.direction === "SHORT"
+        ? args.direction
+        : existing.direction;
     const shapeCheckNeeded =
       (args.target_price !== undefined || args.stop_loss !== undefined) &&
       !isTerminalTransition &&
-      (existing.direction === "LONG" || existing.direction === "SHORT");
+      (effectiveDirectionForShape === "LONG" || effectiveDirectionForShape === "SHORT");
     if (shapeCheckNeeded) {
       const effectiveTarget =
         args.target_price !== undefined
@@ -414,18 +517,19 @@ export const updateThesis = defineTool({
       // want the real entry, not the planned one. Falls back to the
       // thesis row's entryPrice for WATCHING theses (no position yet)
       // or when no open position is found.
-      const openPosition = ctx.analystId
-        ? await prisma.position.findFirst({
-            where: {
-              analystId: ctx.analystId,
-              symbol: existing.ticker,
-              direction: existing.direction,
-              status: "OPEN",
-            },
-            select: { avgCost: true },
-            orderBy: { openedAt: "desc" },
-          })
-        : null;
+      const openPosition =
+        ctx.analystId && existing.direction !== "PENDING"
+          ? await prisma.position.findFirst({
+              where: {
+                analystId: ctx.analystId,
+                symbol: existing.ticker,
+                direction: existing.direction,
+                status: "OPEN",
+              },
+              select: { avgCost: true },
+              orderBy: { openedAt: "desc" },
+            })
+          : null;
       const effectiveEntry =
         openPosition?.avgCost != null
           ? Number(openPosition.avgCost)
@@ -433,8 +537,9 @@ export const updateThesis = defineTool({
             ? Number(existing.entryPrice)
             : null;
       const shapeCheck = validateThesisShape({
-        direction: existing.direction as "LONG" | "SHORT",
-        entryPrice: effectiveEntry,
+        direction: effectiveDirectionForShape as "LONG" | "SHORT",
+        entryPrice:
+          args.entry_price !== undefined ? args.entry_price : effectiveEntry,
         targetPrice: effectiveTarget,
         stopLoss: effectiveStop,
       });
@@ -468,6 +573,20 @@ export const updateThesis = defineTool({
       patch.confidenceScore = args.confidence_score;
     if (args.target_price !== undefined) patch.targetPrice = args.target_price;
     if (args.stop_loss !== undefined) patch.stopLoss = args.stop_loss;
+    if (args.entry_price !== undefined) patch.entryPrice = args.entry_price;
+    // PENDING-promotion direction flip (guarded above so this only runs on
+    // legal transitions). PENDING → PASS also flips status to ARCHIVED and
+    // clears triggers; PENDING → LONG/SHORT stays WATCHING with the
+    // structural fields the agent supplied.
+    if (args.direction !== undefined) {
+      patch.direction = args.direction;
+      if (args.direction === "PASS") {
+        patch.status = "ARCHIVED";
+        patch.closedAt = new Date();
+        patch.closeReason = args.rationale.slice(0, 500);
+        patch.triggers = [] as unknown as object;
+      }
+    }
     if (args.target_size_pct !== undefined)
       patch.targetSizePct = args.target_size_pct;
     if (args.horizon !== undefined) patch.horizon = args.horizon;
@@ -529,6 +648,19 @@ export const updateThesis = defineTool({
       patch.closedAt = new Date();
       patch.closeReason = args.rationale.slice(0, 500);
       updateType = "CLOSED";
+    } else if (args.change_status === "ARCHIVED") {
+      // Terminal-without-trade-or-invalidation. Used for:
+      //   • Agent/user walking away from coverage (manage_watchlist REMOVE
+      //     pre-collapse; user UI remove; editor remove).
+      //   • PENDING flipped to PASS after first research.
+      // Distinct from INVALIDATED (view disproven by evidence) and CLOSED
+      // (position was held and closed). See docs/WATCHLIST_COLLAPSE_PLAN.md.
+      patch.status = "ARCHIVED";
+      patch.closedAt = new Date();
+      patch.closeReason = args.rationale.slice(0, 500);
+      // Existing ThesisUpdateType taxonomy doesn't have ARCHIVED. Use
+      // STATUS_CHANGED so the audit log captures the from/to in fieldChanges.
+      updateType = "STATUS_CHANGED";
     } else if (args.change_status === "ACTIVE") {
       // ── WATCHING → ACTIVE promotion (close the promotion gap) ──────────
       // Pre-this-PR there was no first-class path: the tactical prompt
@@ -737,46 +869,10 @@ export const updateThesis = defineTool({
       data: patch as object,
     });
 
-    // ── Symmetric watchlist sync ──────────────────────────────────────
-    // PR 203 added the manage_watchlist → Thesis sync (ADD mints WATCHING
-    // thesis; REMOVE supersedes thesis). The reverse path was missing:
-    // when the agent invalidates or closes a WATCHING-anchored thesis via
-    // update_thesis, the AnalystWatchlistItem row was left ACTIVE — the
-    // agent's "this thesis is dead" decision didn't propagate to the
-    // legacy watchlist table. Captured the 2026-05-04 ASML / Tech
-    // Momentum drift case. Bridge fix; the watchlist table is being
-    // collapsed in the next phase, after which Thesis.status='WATCHING'
-    // IS the watchlist and this whole class of two-store bugs is gone.
-    const wasWatching = existing.status === "WATCHING";
-    const flippedToTerminal =
-      args.change_status === "INVALIDATED" ||
-      args.change_status === "CLOSED";
-    const ownerAnalystId = existing.researchRun?.agentConfigId;
-    if (wasWatching && flippedToTerminal && ownerAnalystId) {
-      try {
-        await prisma.analystWatchlistItem.updateMany({
-          where: {
-            analystId: ownerAnalystId,
-            symbol: existing.ticker,
-            status: "ACTIVE",
-          },
-          data: {
-            status: "REMOVED",
-            removedAt: new Date(),
-            removeReason: `thesis ${args.change_status?.toLowerCase()}: ${args.rationale.slice(0, 200)}`,
-          },
-        });
-      } catch (err) {
-        // Non-fatal — the thesis state is the source of truth post-collapse;
-        // the watchlist table is the legacy mirror. Drift is preferable to
-        // a failed update_thesis call here.
-        console.warn(
-          `[update_thesis] watchlist sync failed for thesis=${existing.id}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
+    // Watchlist-collapse: Thesis is now the single store. WATCHING →
+    // terminal transitions automatically remove the thesis from the
+    // watchlist view (which is just `WHERE status='WATCHING'`). No
+    // mirror table to sync.
 
     // Build a punchy summary line for the timeline list view.
     const summaryParts: string[] = [];

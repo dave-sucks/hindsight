@@ -31,7 +31,7 @@
  */
 
 export interface ThesisBeliefArgs {
-  direction: "LONG" | "SHORT" | "PASS";
+  direction: "LONG" | "SHORT" | "PASS" | "PENDING";
   coreBelief?: string | null;
   keyAssumptions?: string[] | null;
   invalidationConds?: string[] | null;
@@ -59,9 +59,13 @@ const GUIDANCE = [
 export function validateThesisBelief(
   args: ThesisBeliefArgs,
 ): ThesisBeliefResult {
-  // PASS theses bypass the gate. Their numerical fields are reference
-  // levels, their narrative is in reasoning_summary + risk_flags.
-  if (args.direction === "PASS") return { ok: true };
+  // PASS + PENDING theses bypass the gate. PASS is "researched, decided
+  // not to trade" — narrative is in reasoning_summary + risk_flags.
+  // PENDING is "seed, awaiting first research" — the structural belief
+  // is built when update_thesis promotes PENDING → LONG/SHORT.
+  if (args.direction === "PASS" || args.direction === "PENDING") {
+    return { ok: true };
+  }
 
   const coreBelief = (args.coreBelief ?? "").trim();
   const keyAssumptions = (args.keyAssumptions ?? []).filter(

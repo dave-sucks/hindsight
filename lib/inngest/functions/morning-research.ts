@@ -11,6 +11,7 @@ import { MODES } from "@/lib/agent/modes";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
+import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
 
@@ -64,6 +65,9 @@ export const morningResearch = inngest.createFunction(
         // Never skip the run — the agent should always research.
         // slotsRemaining=0 just means it won't place new trades.
 
+        // Watchlist = WATCHING theses for this analyst (post-collapse).
+        const watchlistSymbols = await getWatchlistSymbols(config.id);
+
         // Snapshot the analyst's env onto the run so place_trade /
         // get_portfolio_context route to the right Alpaca account.
         const runEnvironment =
@@ -83,7 +87,7 @@ export const morningResearch = inngest.createFunction(
               sectors: config.sectors,
               minConfidence: config.minConfidence,
               signalTypes: config.signalTypes,
-              tickers: config.watchlist ?? [],
+              tickers: watchlistSymbols,
               triggeredBy: "morning-cron",
               agentMode: true,
               analystName: config.name,
@@ -104,7 +108,7 @@ export const morningResearch = inngest.createFunction(
           minConfidence: config.minConfidence,
           maxPositionSize: Number(config.maxPositionSize),
           maxOpenPositions: slotsRemaining, // Use remaining slots, not max
-          watchlist: config.watchlist,
+          watchlist: watchlistSymbols,
           exclusionList: config.exclusionList,
         };
 
@@ -136,7 +140,7 @@ export const morningResearch = inngest.createFunction(
           userId: config.userId,
           accountId: config.accountId,
           analystId: config.id,
-          watchlist: config.watchlist ?? [],
+          watchlist: watchlistSymbols,
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
           maxPositionSize: Number(config.maxPositionSize),

@@ -307,13 +307,22 @@ export function TradeRow({
 
 // ── WatchlistRow ─────────────────────────────────────────────────────────────
 // Identical to TradeRow visually. The only difference: no shares means no
-// cost basis and no P&L. Subline always says "Watching"; the right side is
-// empty. Price renders the same way as on a trade row.
+// cost basis and no P&L. Subline reflects the underlying thesis state:
+//   PENDING       → "Awaiting review"
+//   LONG/SHORT    → "Watching — long" / "Watching — short"
+//   (legacy null) → "Watching"
+// Price renders the same way as on a trade row.
 
 interface WatchlistRowProps {
   ticker: string;
   /** Live or last close price. */
   currentPrice?: number;
+  /**
+   * Thesis direction for the underlying WATCHING thesis. PENDING surfaces
+   * as "Awaiting review"; LONG/SHORT surface their direction; null/undefined
+   * falls back to generic "Watching" for legacy rows.
+   */
+  direction?: "LONG" | "SHORT" | "PENDING" | null;
   onRemove?: () => void;
   className?: string;
 }
@@ -321,9 +330,18 @@ interface WatchlistRowProps {
 export function WatchlistRow({
   ticker,
   currentPrice,
+  direction,
   onRemove,
   className,
 }: WatchlistRowProps) {
+  const secondary =
+    direction === "PENDING"
+      ? "Awaiting review"
+      : direction === "LONG"
+        ? "Watching — long"
+        : direction === "SHORT"
+          ? "Watching — short"
+          : "Watching";
   return (
     <TradeRowShell
       href={`/stocks/${ticker}`}
@@ -335,7 +353,7 @@ export function WatchlistRow({
           {currentPrice != null ? `$${currentPrice.toFixed(2)}` : "—"}
         </span>
       }
-      secondary="Watching"
+      secondary={secondary}
       menuItems={
         onRemove
           ? [{ label: "Remove", onSelect: onRemove, destructive: true }]

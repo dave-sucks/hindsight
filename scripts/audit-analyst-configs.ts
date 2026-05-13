@@ -169,7 +169,6 @@ async function main() {
     select: {
       id: true,
       name: true,
-      watchlist: true,
       marketCapMin: true,
       marketCapMax: true,
       sectors: true,
@@ -179,6 +178,23 @@ async function main() {
     },
   });
 
+  // Watchlist post-collapse = WATCHING theses. Pull all in one query.
+  const watchingTheses = await prisma.thesis.findMany({
+    where: {
+      status: "WATCHING",
+      researchRun: { agentConfigId: { in: analysts.map((a) => a.id) } },
+    },
+    select: { ticker: true, researchRun: { select: { agentConfigId: true } } },
+  });
+  const watchlistByAnalyst = new Map<string, string[]>();
+  for (const t of watchingTheses) {
+    const aid = t.researchRun.agentConfigId;
+    if (!aid) continue;
+    const arr = watchlistByAnalyst.get(aid) ?? [];
+    if (!arr.includes(t.ticker)) arr.push(t.ticker);
+    watchlistByAnalyst.set(aid, arr);
+  }
+
   const findings: Finding[] = [];
 
   for (const a of analysts) {
@@ -186,7 +202,7 @@ async function main() {
     const capMax = a.marketCapMax != null ? Number(a.marketCapMax) : null;
 
     findings.push(
-      ...auditFenceVsWatchlist(a.name, a.watchlist ?? [], capMin, capMax),
+      ...auditFenceVsWatchlist(a.name, watchlistByAnalyst.get(a.id) ?? [], capMin, capMax),
       ...auditMissingThemes(
         a.name,
         a.sectors ?? [],

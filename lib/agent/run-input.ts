@@ -211,7 +211,11 @@ export async function buildRunInput(
     console.error("[buildRunInput] FAILED positions:", err);
   }
 
-  // 2. Watchlist (must be loaded before active theses which uses watchSymbols)
+  // 2. Watchlist — Thesis(status='WATCHING') for this analyst.
+  //    Includes PENDING WATCHING (user/builder/editor seeds awaiting first
+  //    research), LONG WATCHING (entry-gated bullish), SHORT WATCHING
+  //    (entry-gated bearish). PASS theses are ARCHIVED, not on the watchlist.
+  //    See docs/WATCHLIST_COLLAPSE_PLAN.md.
   let watchlistItems: Array<{
     symbol: string; reason: string; priority: string;
     thesisDirection: string | null; targetPrice: number | null;
@@ -219,15 +223,36 @@ export async function buildRunInput(
     catalyst: string | null; createdAt: Date; lastReviewedAt: Date | null;
   }> = [];
   try {
-    watchlistItems = await prisma.analystWatchlistItem.findMany({
-      where: { analystId, status: "ACTIVE" },
-      orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
+    const watchingTheses = await prisma.thesis.findMany({
+      where: {
+        status: "WATCHING",
+        researchRun: { agentConfigId: analystId },
+      },
+      orderBy: [{ direction: "asc" }, { createdAt: "desc" }],
       select: {
-        symbol: true, reason: true, priority: true, thesisDirection: true,
-        targetPrice: true, stopPrice: true, conviction: true, catalyst: true,
-        createdAt: true, lastReviewedAt: true,
+        ticker: true,
+        direction: true,
+        targetPrice: true,
+        stopLoss: true,
+        confidenceScore: true,
+        reasoningSummary: true,
+        catalystDate: true,
+        createdAt: true,
+        nextReviewAt: true,
       },
     });
+    watchlistItems = watchingTheses.map((t) => ({
+      symbol: t.ticker,
+      reason: t.reasoningSummary,
+      priority: "NORMAL",
+      thesisDirection: t.direction === "PENDING" ? null : t.direction,
+      targetPrice: t.targetPrice,
+      stopPrice: t.stopLoss,
+      conviction: t.confidenceScore,
+      catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
+      createdAt: t.createdAt,
+      lastReviewedAt: t.nextReviewAt,
+    }));
   } catch (err) {
     console.error("[buildRunInput] FAILED watchlist:", err);
   }

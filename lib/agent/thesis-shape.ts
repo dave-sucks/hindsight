@@ -34,7 +34,7 @@
  */
 
 export interface ThesisShapeArgs {
-  direction: "LONG" | "SHORT" | "PASS";
+  direction: "LONG" | "SHORT" | "PASS" | "PENDING";
   entryPrice?: number | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
@@ -47,9 +47,10 @@ export type ThesisShapeResult =
 export function validateThesisShape(
   args: ThesisShapeArgs,
 ): ThesisShapeResult {
-  // PASS theses are "researched, decided not to trade." The numeric
-  // fields are reference points, not a tradable plan — no shape rule.
-  if (args.direction === "PASS") return { ok: true };
+  // PASS + PENDING theses are reference-only / pre-research; no shape rule.
+  if (args.direction === "PASS" || args.direction === "PENDING") {
+    return { ok: true };
+  }
 
   const entry = args.entryPrice ?? null;
   const target = args.targetPrice ?? null;

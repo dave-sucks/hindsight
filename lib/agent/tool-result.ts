@@ -159,8 +159,7 @@ function inferLegacyGroupId(toolName: string): string | undefined {
   if (
     toolName === "place_trade" ||
     toolName === "close_position" ||
-    toolName === "manage_position" ||
-    toolName === "manage_watchlist"
+    toolName === "manage_position"
   ) return "Executing";
   return undefined;
 }

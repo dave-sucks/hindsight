@@ -44,7 +44,6 @@ export const readAnalystConfig = defineTool({
           select: {
             monitors: true,
             positions: { where: { status: "OPEN" } },
-            watchlistItems: true,
           },
         },
       },
@@ -55,6 +54,18 @@ export const readAnalystConfig = defineTool({
         `Analyst not found (id=${args.analyst_id ?? "—"}, name=${args.analyst_name ?? "—"})`,
       );
     }
+
+    // Watchlist = WATCHING theses (post-collapse). Replaces both
+    // `analyst.watchlist` (dropped column) and `_count.watchlistItems`.
+    const watchingTheses = await prisma.thesis.findMany({
+      where: {
+        status: "WATCHING",
+        researchRun: { agentConfigId: analyst.id },
+      },
+      select: { ticker: true },
+      orderBy: { createdAt: "desc" },
+    });
+    const watchlist = Array.from(new Set(watchingTheses.map((t) => t.ticker)));
 
     const items = [
       {
@@ -71,7 +82,7 @@ export const readAnalystConfig = defineTool({
       },
       {
         kind: "generic" as const,
-        text: `Watchlist: ${analyst.watchlist.length} tickers · Exclusion: ${analyst.exclusionList.length} · Monitors: ${analyst._count.monitors}`,
+        text: `Watchlist: ${watchlist.length} tickers · Exclusion: ${analyst.exclusionList.length} · Monitors: ${analyst._count.monitors}`,
       },
     ];
 
@@ -94,7 +105,7 @@ export const readAnalystConfig = defineTool({
           feeds: analyst.feeds,
           marketCapMin: analyst.marketCapMin?.toString() ?? null,
           marketCapMax: analyst.marketCapMax?.toString() ?? null,
-          watchlist: analyst.watchlist,
+          watchlist,
           exclusionList: analyst.exclusionList,
           signalTypes: analyst.signalTypes,
           minConfidence: analyst.minConfidence,
@@ -103,7 +114,7 @@ export const readAnalystConfig = defineTool({
           intelligencePolicy: analyst.intelligencePolicy,
           monitorCount: analyst._count.monitors,
           openPositions: analyst._count.positions,
-          watchlistItemCount: analyst._count.watchlistItems,
+          watchlistItemCount: watchlist.length,
           createdAt: analyst.createdAt,
         },
       },

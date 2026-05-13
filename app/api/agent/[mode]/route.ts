@@ -20,6 +20,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
+import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
@@ -195,6 +196,7 @@ export async function POST(
           where: { id: resolvedAnalystId, accountId },
         });
         if (ac) {
+          const watchlistSymbols = await getWatchlistSymbols(ac.id);
           agentConfig = {
             name: ac.name,
             analystPrompt: ac.analystPrompt ?? undefined,
@@ -211,7 +213,7 @@ export async function POST(
             maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : undefined,
             realMaxPosition: ac.realMaxPosition ? Number(ac.realMaxPosition) : undefined,
             maxOpenPositions: ac.maxOpenPositions,
-            watchlist: ac.watchlist,
+            watchlist: watchlistSymbols,
             exclusionList: ac.exclusionList,
           };
         }
@@ -287,6 +289,7 @@ export async function POST(
             { status: 404 },
           );
         }
+        const principalWatchlistSymbols = await getWatchlistSymbols(ac.id);
         // Hydrate agentConfig for tool guardrails (place_trade etc.).
         agentConfig = {
           name: ac.name,
@@ -302,7 +305,7 @@ export async function POST(
           minConfidence: ac.minConfidence,
           maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : undefined,
           maxOpenPositions: ac.maxOpenPositions,
-          watchlist: ac.watchlist,
+          watchlist: principalWatchlistSymbols,
           exclusionList: ac.exclusionList,
         };
         scopedAnalyst = {
@@ -315,7 +318,7 @@ export async function POST(
           industries: ac.industries,
           themes: ac.themes,
           feeds: ac.feeds,
-          watchlist: ac.watchlist,
+          watchlist: principalWatchlistSymbols,
           exclusionList: ac.exclusionList,
           minConfidence: ac.minConfidence,
           maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : 0,

@@ -293,6 +293,7 @@ export const getTheses = defineTool({
           computeNeedsAction({
             thesis: {
               id: t.id,
+              direction: t.direction,
               triggers,
               createdAt: t.createdAt,
               nextReviewAt: t.nextReviewAt,
@@ -323,7 +324,7 @@ export const getTheses = defineTool({
     const cards = enriched.map((t) => ({
       thesis_id: t.id,
       ticker: t.ticker,
-      direction: t.direction as "LONG" | "SHORT" | "PASS",
+      direction: t.direction as "LONG" | "SHORT" | "PASS" | "PENDING",
       confidence_score: t.confidenceScore,
       reasoning_summary: t.reasoningSummary,
       thesis_bullets: t.thesisBullets ?? [],

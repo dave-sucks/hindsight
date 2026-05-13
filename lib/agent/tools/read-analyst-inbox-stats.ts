@@ -97,13 +97,20 @@ export const readAnalystInboxStats = defineTool({
         sectors: true,
         industries: true,
         themes: true,
-        watchlist: true,
         exclusionList: true,
       },
     });
 
+    // Watchlist = WATCHING theses (post-collapse).
+    const watchingTheses = await prisma.thesis.findMany({
+      where: {
+        status: "WATCHING",
+        researchRun: { agentConfigId: ctx.analystId },
+      },
+      select: { ticker: true },
+    });
     const watchlistSet = new Set(
-      (analyst?.watchlist ?? []).map((w) => w.toUpperCase()),
+      watchingTheses.map((t) => t.ticker.toUpperCase()),
     );
     const exclusionSet = new Set(
       (analyst?.exclusionList ?? []).map((w) => w.toUpperCase()),

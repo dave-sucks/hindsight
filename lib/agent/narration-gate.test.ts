@@ -84,7 +84,7 @@ describe("detectNarrationHits", () => {
     expect(hits.some((h) => h.expectedTool === "manage_position" && h.ticker === "AVGO")).toBe(true);
   });
 
-  it("'added to' attributes to manage_position, not manage_watchlist", () => {
+  it("'added to' attributes to manage_position", () => {
     const hits = detectNarrationHits(
       "Added to $MU after the post-print follow-through.",
       "rationale",
@@ -92,27 +92,30 @@ describe("detectNarrationHits", () => {
       KNOWN(["MU"]),
     );
     expect(hits.some((h) => h.expectedTool === "manage_position" && h.ticker === "MU")).toBe(true);
-    expect(hits.some((h) => h.expectedTool === "manage_watchlist")).toBe(false);
   });
 
-  it("'added $X to watchlist' attributes to manage_watchlist", () => {
+  it("'added $X to watchlist' — no narration hit (watchlist verbs dropped post-collapse)", () => {
+    // Pre-collapse this attributed to manage_watchlist. Under the new
+    // model, watchlist add is record_thesis(PENDING/WATCHING) — and the
+    // tool gates enforce that the call happens. The narration gate no
+    // longer monitors watchlist verbs.
     const hits = detectNarrationHits(
       "Added $SMCI to the watchlist for next week's print.",
       "rationale",
       undefined,
       KNOWN(["SMCI"]),
     );
-    expect(hits.some((h) => h.expectedTool === "manage_watchlist" && h.ticker === "SMCI")).toBe(true);
+    expect(hits.length).toBe(0);
   });
 
-  it("'removing $X from watchlist' attributes to manage_watchlist", () => {
+  it("'removing $X from watchlist' — no narration hit (watchlist verbs dropped post-collapse)", () => {
     const hits = detectNarrationHits(
       "Removing $FIVN from the watchlist — thesis no longer holds.",
       "rationale",
       undefined,
       KNOWN(["FIVN"]),
     );
-    expect(hits.some((h) => h.expectedTool === "manage_watchlist" && h.ticker === "FIVN")).toBe(true);
+    expect(hits.length).toBe(0);
   });
 
   it("returns empty for benign reasoning text", () => {
