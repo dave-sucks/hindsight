@@ -38,6 +38,25 @@ Pages that still pull cross-env data and need converting:
 - [ ] `/stocks/[symbol]` — the per-ticker page shows positions/theses across envs; on a promoted analyst with both paper history and live position you'd see both stacked. Scope to current env.
 - [ ] Weekly digest email — currently aggregates cross-env. Should split by env or filter to current env.
 
+## Deploying schema changes — manual step
+
+This repo's `build` script is `prisma generate && next build` — it does NOT
+run `prisma migrate deploy`. New migration files do not auto-apply on Vercel
+deploys. Apply each new migration manually before (or immediately after)
+pushing the code, e.g. via the Supabase MCP `apply_migration` tool or
+`supabase db push` against the production project (`zomxxtqiszpkqrjrqqat`).
+
+Symptom of forgetting this step: every page on the deployed site returns
+"Application error: a server-side exception has occurred" because Prisma
+queries against the new columns throw at runtime. Caught us once on
+`20260512000000_trading_environment`; don't repeat.
+
+Wiring `migrate deploy` into the build script is a separate cleanup —
+the existing `_prisma_migrations` table is out of sync with several recent
+migrations (podcast_*, agent_config_use_v2_prompt), so flipping it on
+without first reconciling history would cause `migrate deploy` to attempt
+to re-apply migrations whose columns already exist.
+
 ## What we are NOT building
 
 - Shadow mode (one analyst running paper + live in parallel).

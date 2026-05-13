@@ -30,8 +30,12 @@ ALTER TABLE "Order" ADD COLUMN "environment" TEXT NOT NULL DEFAULT 'PAPER';
 
 -- ─── UserApiKey ─────────────────────────────────────────────────────────────
 -- Add environment column, backfill from paperMode, then flip the unique key.
+-- Production has the uniqueness as an INDEX (not a CONSTRAINT) — Prisma's
+-- p1 DDL for @@unique created it that way in this repo's history. DROP INDEX
+-- works in both shapes; DROP CONSTRAINT only works on constraints. Use the
+-- index-based form so this migration is portable across both layouts.
 ALTER TABLE "UserApiKey" ADD COLUMN "environment" TEXT NOT NULL DEFAULT 'PAPER';
 UPDATE "UserApiKey" SET "environment" = CASE WHEN "paperMode" THEN 'PAPER' ELSE 'LIVE' END;
-ALTER TABLE "UserApiKey" DROP CONSTRAINT "UserApiKey_userId_provider_key";
-ALTER TABLE "UserApiKey" ADD CONSTRAINT "UserApiKey_userId_provider_environment_key" UNIQUE ("userId", "provider", "environment");
+DROP INDEX "UserApiKey_userId_provider_key";
+CREATE UNIQUE INDEX "UserApiKey_userId_provider_environment_key" ON "UserApiKey" ("userId", "provider", "environment");
 ALTER TABLE "UserApiKey" DROP COLUMN "paperMode";
