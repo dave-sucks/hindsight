@@ -794,10 +794,14 @@ export const recordThesis = defineTool({
       let resolvedParentId: string | null = rawParentId.length > 0 ? rawParentId : null;
       if (!resolvedParentId && ctx.analystId) {
         try {
+          // PROMOTED counts as already-covered — minting a fresh thesis on
+          // a ticker we just promoted is the wrong shape. The agent should
+          // resolve the PROMOTED row via update_thesis (re-enter or defer
+          // to WATCHING) rather than create a parallel one.
           const existingThesis = await prisma.thesis.findFirst({
             where: {
               ticker: args.ticker,
-              status: { in: ["ACTIVE", "WATCHING"] },
+              status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
               researchRun: { agentConfigId: ctx.analystId },
             },
             orderBy: { createdAt: "desc" },
@@ -880,7 +884,10 @@ export const recordThesis = defineTool({
               where: {
                 ticker: args.ticker,
                 direction: args.direction,
-                status: { in: ["ACTIVE", "WATCHING"] },
+                // Include PROMOTED — another analyst on the account having
+                // a PROMOTED row on this ticker still counts as duplicate
+                // coverage from our DAY analyst's perspective.
+                status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
                 researchRun: {
                   agentConfig: {
                     accountId: ctx.accountId,

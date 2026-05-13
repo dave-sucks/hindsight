@@ -50,7 +50,9 @@ async function ensureWatchingThesisForWatchlistAdd(params: {
   const existing = await prisma.thesis.findFirst({
     where: {
       ticker: params.ticker,
-      status: { in: ["ACTIVE", "WATCHING"] },
+      // PROMOTED counts as covered — don't add to watchlist if we're
+      // already tracking the ticker in any live state.
+      status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
       researchRun: { agentConfigId: params.analystId },
     },
     select: { id: true },

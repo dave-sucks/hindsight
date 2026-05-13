@@ -62,7 +62,10 @@ export const listAnalysts = defineTool({
           by: ["researchRunId"],
           where: {
             researchRun: { agentConfigId: { in: analystIds } },
-            status: { in: ["ACTIVE", "WATCHING"] },
+            // Live coverage book — every status the closeout contract
+            // expects action on each run. PROMOTED included so the per-
+            // analyst thesis count doesn't drop during the promotion window.
+            status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
           },
           _count: true,
         })
