@@ -154,12 +154,17 @@ interface AgentChatProps {
   composerSlot?: ReactNode;
 
   /**
-   * Principal-chat slot rendered above the Thread (between page chrome
-   * and the chat). Used to host the scope chip ("Portfolio" /
-   * "@AnalystName") so the user can rebind which analyst writes target
-   * without leaving the chat. Other modes ignore this.
+   * Principal-chat scope picker. When provided, the composer renders a
+   * "Scope" submenu in the Settings2 dropdown so the user can rebind
+   * which analyst writes target. When `current` is non-null, a
+   * brand-green-dot chip + analyst name renders at the TOP of the
+   * input. When null, no chip — unscoped is the silent default.
    */
-  topSlot?: ReactNode;
+  principalScope?: {
+    current: { id: string; name: string } | null;
+    options: Array<{ id: string; name: string; enabled: boolean }>;
+    onChange: (analystId: string | null) => void;
+  };
 
   /** Auto-send initial message (builder/editor) */
   initialPrompt?: string;
@@ -203,7 +208,7 @@ export function AgentChat({
   currentConfig,
   messages,
   composerSlot,
-  topSlot,
+  principalScope,
   initialPrompt,
   onConfigSuggested,
   onPodcastConfigSuggested,
@@ -250,7 +255,7 @@ export function AgentChat({
         transcript={transcript}
         currentConfig={currentConfig}
         composerSlot={composerSlot}
-        topSlot={topSlot}
+        principalScope={principalScope}
         initialPrompt={initialPrompt}
         onConfigSuggested={onConfigSuggested}
         onPodcastConfigSuggested={onPodcastConfigSuggested}
@@ -276,7 +281,7 @@ interface InnerProps {
   transcript: TranscriptRowData | null;
   currentConfig?: Record<string, unknown>;
   composerSlot?: ReactNode;
-  topSlot?: ReactNode;
+  principalScope?: AgentChatProps["principalScope"];
   initialPrompt?: string;
   onConfigSuggested?: (
     config: AgentConfigData,
@@ -300,7 +305,7 @@ function AgentChatInner({
   transcript,
   currentConfig,
   composerSlot,
-  topSlot,
+  principalScope,
   initialPrompt,
   onConfigSuggested,
   onPodcastConfigSuggested,
@@ -546,12 +551,15 @@ function AgentChatInner({
     );
   }
 
-  // ── principal: in-input scope chip + Thread ──────────────────────────────
+  // ── principal: scope picker lives in the Settings2 dropdown; the
+  // brand-green-dot chip renders at the top of the input ONLY when an
+  // analyst is currently pinned. Unscoped = silent.
   if (mode === "principal") {
+    const current = principalScope?.current ?? null;
     const principalComposer: HindsightComposerFeatures = {
       ...PRINCIPAL_COMPOSER,
-      placeholder: analystName
-        ? `Ask about ${analystName} — review theses, monitors, runs; place trades…`
+      placeholder: current
+        ? `Ask about ${current.name} — review theses, monitors, runs; place trades…`
         : PRINCIPAL_COMPOSER.placeholder,
       modelLabel:
         RESEARCH_MODEL_OPTIONS.find((o) => o.value === selectedModel)?.label ??
@@ -559,19 +567,23 @@ function AgentChatInner({
         "Claude Sonnet 4.6",
       modelOptions: RESEARCH_MODEL_OPTIONS,
       onModelChange,
-      // Notion/Linear/Claude pattern: the scope badge lives INSIDE the
-      // input as a block-start addon, not in a separate banner above the
-      // chat. The page wires the actual chip into topSlot (legacy) or
-      // passes it through composerSlot — both forwarded via contextChip
-      // here so the composer renders it in its top toolbar.
-      contextChip: topSlot ?? undefined,
+      contextChip: current ? (
+        <div className="flex items-center gap-1.5 text-xs text-foreground">
+          <span
+            aria-hidden
+            className="size-1.5 rounded-full bg-brand"
+          />
+          {current.name}
+        </div>
+      ) : undefined,
+      analystScope: principalScope,
     };
     return (
       <Thread
         welcomeConfig={{
-          title: analystName ?? PRINCIPAL_WELCOME.title,
-          subtitle: analystName
-            ? `Scoped to ${analystName} — full read + write authority on this analyst.`
+          title: current?.name ?? PRINCIPAL_WELCOME.title,
+          subtitle: current
+            ? `Scoped to ${current.name} — full read + write authority on this analyst.`
             : PRINCIPAL_WELCOME.subtitle,
           icon: PRINCIPAL_WELCOME.icon,
         }}
