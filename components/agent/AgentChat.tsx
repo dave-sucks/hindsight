@@ -29,7 +29,7 @@ import {
   updateAnalystFromBuilder,
 } from "@/lib/actions/analyst.actions";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
-import { Sparkles } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunSourcesPanel } from "@/components/research/run-sources-panel";
 import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
@@ -567,13 +567,20 @@ function AgentChatInner({
         "Claude Sonnet 4.6",
       modelOptions: RESEARCH_MODEL_OPTIONS,
       onModelChange,
+      // Muted, dismissible chip. Standard pill: small dot + analyst name
+      // + X to unscope. No styling that competes with the input itself.
       contextChip: current ? (
-        <div className="flex items-center gap-1.5 text-xs text-foreground">
-          <span
-            aria-hidden
-            className="size-1.5 rounded-full bg-brand"
-          />
-          {current.name}
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+          <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/70" />
+          <span>{current.name}</span>
+          <button
+            type="button"
+            aria-label={`Unscope ${current.name}`}
+            onClick={() => principalScope?.onChange(null)}
+            className="ml-0.5 -mr-0.5 inline-flex size-3.5 items-center justify-center rounded-full text-muted-foreground/70 hover:bg-background hover:text-foreground transition-colors"
+          >
+            <X className="size-3" />
+          </button>
         </div>
       ) : undefined,
       analystScope: principalScope,
