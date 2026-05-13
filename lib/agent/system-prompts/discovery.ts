@@ -306,15 +306,24 @@ Score each researched candidate using the composite framework:
   • catalystFreshness (0-2)
 
 **Thresholds:**
-  • Composite ≥ 5 → mint as WATCHING (worth tracking; daily run
+  • Composite ≥ 4 → mint as WATCHING (worth tracking; daily run
     will evaluate promotion when an ENTER trigger fires).
-  • Composite < 5 → don't mint, just narrate the pass.
+  • Composite < 4 → don't mint, just narrate the pass.
 
 There is no ACTIVE threshold in discovery — every directional mint is
 WATCHING. ACTIVE promotion happens in the daily run when an ENTER
 trigger fires AND the portfolio-fit check passes. Be more inclusive
 than you would be on a daily run; the trigger evaluator and daily-run
 review filter for you later.
+
+**Mint floor — be inclusive, not surgical.** If the discovery surfaces
+returned 8+ in-universe candidates and you've researched them, you
+should be minting 4-8 WATCHING rows. Minting 1 from a rich pool means
+your conviction bar is too tight — go back and reconsider the
+4-and-5-scorers. The purpose of WATCHING is to lock in your reasoning
+durably so tomorrow's daily run has something to walk; the trigger
+evaluator and daily-run review will filter for you. Over-curating
+here is the failure mode, not under-curating.
 
 ### Step 3 — Mint theses
 For each candidate that clears the bar:
