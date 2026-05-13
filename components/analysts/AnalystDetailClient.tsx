@@ -743,6 +743,16 @@ export default function AnalystDetailClient({
                     key={item.id}
                     ticker={item.symbol}
                     currentPrice={livePrices[item.symbol]}
+                    direction={
+                      // `thesisDirection` is null for PENDING theses (the
+                      // analyst hasn't taken a view yet) and a real direction
+                      // for LONG/SHORT WATCHING. Map null → "PENDING" so the
+                      // row renders "Awaiting review".
+                      item.thesisDirection === "LONG" ||
+                      item.thesisDirection === "SHORT"
+                        ? item.thesisDirection
+                        : "PENDING"
+                    }
                     onRemove={() => handleRemoveStock(item.symbol)}
                   />
                 ))}

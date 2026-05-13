@@ -1,8 +1,11 @@
 # Hindsight — Thesis Architecture
 
-> **What this is:** the live reference for how the thesis system works. Sourced from the 2026-05-08 architecture pass that landed in [#239](https://github.com/dave-sucks/hindsight/pull/239). Update this doc whenever a thesis-system component changes. For target state, read [`VISION.md`](./VISION.md). For known gaps, read [`GAPS.md`](./GAPS.md).
+> **What this is:** the live reference for how the thesis system works.
+> Updated 2026-05-13 to reflect the watchlist collapse. Update this doc
+> whenever a thesis-system component changes. For target state, read
+> [`VISION.md`](./VISION.md). For known gaps, read [`GAPS.md`](./GAPS.md).
 >
-> **Last verified:** 2026-05-10
+> **Last verified:** 2026-05-13
 
 ---
 
@@ -10,15 +13,15 @@
 
 > **A thesis is the analyst's durable, structured belief about a single ticker** — what's true, what must remain true, what would prove it wrong, and what we'll do about it.
 
-It's the load-bearing object in the system: the unit the trigger evaluator fires against, the unit the daily run reviews, the unit the trade evaluator grades, and the only thing that explains why a Position is being held.
+It's the load-bearing object in the system: the unit the trigger evaluator fires against, the unit the daily run reviews, the unit the trade evaluator grades, the only thing that explains why a Position is being held — and (since the 2026-05-13 collapse) **the single store backing the watchlist**.
 
 Distinct from the supporting cast:
 
 - **Position** — what we OWN (qty, avgCost, P&L). A consequence of an ACTIVE thesis. A thesis can exist without a position (WATCHING) but a position should never exist without a thesis.
 - **Signal** — a normalized piece of evidence from the world. Theses cite signals (`sourceSignalIds`); signals don't own theses. One thesis cites many signals over time via the `ThesisUpdate` activity log.
-- **Watchlist entry** — historically a separate `AnalystWatchlistItem` row. Today it's also a `Thesis(status=WATCHING)` row. The two-store coexistence is a known transitional pattern; the durable model is the Thesis.
+- **Watchlist** — *not a table.* The watchlist is the query `Thesis WHERE status='WATCHING'`. PENDING (seeded, awaiting first research), LONG WATCHING, and SHORT WATCHING are the only states that appear on it.
 
-**Cardinality rule:** at most one ACTIVE-or-WATCHING thesis per (analyst, ticker, direction). Direction flips create a new row with the parent SUPERSEDED. INVALIDATED/CLOSED/SUPERSEDED rows are immutable history.
+**Cardinality rule:** at most one ACTIVE-or-WATCHING thesis per (analyst, ticker, direction). Direction flips create a new row with the parent SUPERSEDED. INVALIDATED/CLOSED/SUPERSEDED/ARCHIVED rows are immutable history.
 
 ---
 
@@ -35,70 +38,206 @@ In the code, these four parts are encoded across **structured triggers** (the ac
 
 ---
 
-## 3. Lifecycle
+## 3. The state machine — direction × status
+
+### Direction (the analyst's view)
+
+| Direction | Meaning |
+|---|---|
+| `PENDING` | Seed state. User/builder/editor added the ticker; nobody has researched it yet. Promoted to LONG/SHORT/PASS on first research. |
+| `LONG`    | Committed bullish view, with target/stop/triggers/belief. |
+| `SHORT`   | Committed bearish view, with target/stop/triggers/belief. |
+| `PASS`    | Researched, decided no tradeable view. **Terminal at write.** Institutional memory. |
+
+### Status (what the system is doing)
+
+| Status         | Meaning                                                                 | On watchlist? |
+|----------------|-------------------------------------------------------------------------|---------------|
+| `WATCHING`     | Active tracking; triggers maintained; reviewed on cadence.              | **Yes**       |
+| `ACTIVE`       | Position open via Alpaca.                                               | No — in Positions |
+| `CLOSED`       | Position was opened and closed.                                         | No            |
+| `INVALIDATED`  | Held a view; evidence disproved it.                                     | No            |
+| `ARCHIVED`     | Terminal without trade or view-invalidation. PASS at write, manual remove, editor remove, walk-away. | No |
+| `SUPERSEDED`   | Replaced by a newer thesis on the same ticker (direction flip).         | No            |
+
+### Legal `(direction, status)` pairs
+
+Enforced at write in `record_thesis` and `update_thesis`:
 
 ```
-                       record_thesis
-                            │
-              ┌─────────────┴────────────┐
-              ▼                          ▼
-        ┌──────────┐              ┌────────┐
-        │ WATCHING │              │ ACTIVE │
-        │  • LONG  │              └────────┘
-        │  • SHORT │                  ▲ │
-        │  • PASS  │                  │ │ update_thesis (refine)
-        └──────────┘                  │ ▼
-              │                  same row
-              │
-              │ update_thesis(change_status: "ACTIVE",
-              │                target_price, stop_loss)
-              │ + place_trade
-              └────────────────────────────► ACTIVE
-
-  any active state  ─update_thesis(change_status: INVALIDATED)─►  INVALIDATED
-  any active state  ─update_thesis(change_status: CLOSED)──────►  CLOSED
-  active            ─record_thesis(direction flip, parent_id)──►  SUPERSEDED
+(PENDING, WATCHING)                          seed
+(LONG,    WATCHING|ACTIVE|CLOSED|INVALIDATED|ARCHIVED|SUPERSEDED)
+(SHORT,   WATCHING|ACTIVE|CLOSED|INVALIDATED|ARCHIVED|SUPERSEDED)
+(PASS,    ARCHIVED)                          terminal at write
 ```
 
-Per-transition contracts:
+Anything else is rejected with a structured error.
 
-| From → To | Trigger | What changes | Gates |
-|---|---|---|---|
-| (none) → ACTIVE | `record_thesis(status=ACTIVE)` | Identity + belief + operational state + triggers all set | shape, belief, provenance, no-PASS-on-held, researched-before, ROUTED_SIGNAL validation, ENTER-trigger guard, conditional requireds |
-| (none) → WATCHING | `record_thesis(status=WATCHING)` OR `manage_watchlist ADD` | Same as ACTIVE; direction can be PASS | Same gates; ENTER-trigger required for LONG/SHORT |
-| Refine ACTIVE / WATCHING | `update_thesis` with patch fields | Only what the agent passes | zero-trigger, goalpost-move, shape, structural-unchanged-reason |
-| "Reviewed" no-op | `update_thesis` with rationale only | Nothing | zero-trigger blocks on broken theses |
-| WATCHING → ACTIVE (PROMOTION) | `update_thesis(change_status: "ACTIVE", target_price, stop_loss)` paired with `place_trade` | Status flips, target/stop recomputed | Existing must be WATCHING; both new levels required |
-| Any → INVALIDATED | `update_thesis(change_status: "INVALIDATED")` | Status, invalidatedAt, invalidReason | Belief fields freeze |
-| Any → CLOSED | `update_thesis(change_status: "CLOSED")` (after `close_position`) | Status, closedAt, closeReason | Belief fields freeze |
-| Active → SUPERSEDED | `record_thesis(parent_thesis_id, direction flipped)` | Parent goes SUPERSEDED (or INVALIDATED on PASS) | Direction-flip branch |
+### State diagram
 
-The **promotion path** (WATCHING → ACTIVE) is new in #239. Pre-this-PR there was no schema-legal way to flip a WATCHING thesis to ACTIVE at the same row — the tactical prompt instructed `update_thesis(change_status: "ACTIVE")` but the enum rejected it. Theses stayed WATCHING with open positions.
+```
+PENDING + WATCHING  (seed — user/builder/editor add)
+  │
+  ├─→ LONG  + WATCHING    (agent commits bullish; target/stop/triggers set)
+  ├─→ SHORT + WATCHING    (agent commits bearish; target/stop/triggers set)
+  └─→ PASS  + ARCHIVED    (agent researched, declined)        [terminal]
+
+
+LONG/SHORT + WATCHING   (on the watchlist; has triggers)
+  │
+  ├─→ LONG/SHORT + ACTIVE        (place_trade fires)
+  ├─→ LONG/SHORT + INVALIDATED   (view disproven — miss, breakdown)  [terminal]
+  ├─→ LONG/SHORT + ARCHIVED      (manually removed via UI/editor)    [terminal]
+  └─→ LONG/SHORT + SUPERSEDED    (direction flip; new thesis chains) [terminal]
+
+
+LONG/SHORT + ACTIVE   (position open)
+  │
+  └─→ LONG/SHORT + CLOSED        (close_position fires)              [terminal]
+
+
+PASS + ARCHIVED   [terminal at write — no transitions out]
+  When the ticker is re-encountered later (next discovery cron, etc.),
+  the agent reads the prior PASS via get_theses(include_history) and
+  mints a fresh thesis chained via parentThesisId. The old PASS stays
+  ARCHIVED — it's history, not waking up.
+```
 
 ---
 
-## 4. The horizons
+## 4. End-to-end lifecycle scenarios
 
-Every thesis carries `horizon` — the discriminator that gives every other field its shape. Four values:
+These are the canonical flows. If your code path doesn't fit one of these, it's a bug.
 
-| Horizon | What it is | Hold | Default review cadence | Exit policy |
-|---|---|---|---|---|
-| **CATALYST** | Trade built around a binary event (FDA decision, M&A close, named earnings, court ruling) | Days around event | Daily | Hold to event resolution OR 30d past `catalystDate` |
-| **TRADE** | Momentum/pattern setup with a tight stop | Days-to-weeks, bounded by `maxHoldDays` | Daily | Stop, target, or maxHoldDays — whichever fires first |
-| **TARGET** | Swing trade with a defined upside number | Weeks-to-months | Weekly | Stop, target, or thesis invalidation. No time stop. |
-| **COMPOUNDER** | Long-term hold based on durable business quality | Months-to-years | Quarterly | Broken thesis only. Ignore intra-quarter noise. |
+### Scenario A — Discovery picks up $NVDA, agent likes it.
 
-**Where DAY fits:** there's no `DAY` horizon enum value today. Intraday Momentum Scalper uses `horizon=TRADE` + the EOD-flatten cron for the no-overnight rule. This is intentional — adding a first-class DAY horizon is non-trivial and the composition works. Revisit only if intraday becomes a bigger surface.
+1. Sunday 9am cron. Discovery agent calls `read_signals`; $NVDA appears.
+2. Research: `get_stock_data`, `get_market_context`, optional `web_search`.
+3. Scores on the 4-dim composite → 6.5. Setup is clean.
+4. `record_thesis({ ticker: 'NVDA', direction: 'LONG', status: 'WATCHING', target_price: 220, stop_loss: 180, entry_price: 195, triggers: [...], core_belief, key_assumptions, invalidation_conditions })`.
+5. Thesis row created. `ThesisUpdate(type='CREATED')` written. **Now on the watchlist.**
+6. Run summary bucket: **Added to watchlist**.
 
-The constants live in [`lib/agent/horizon-policy.ts`](../lib/agent/horizon-policy.ts) — `HORIZON_REVIEW_DAYS`, `HORIZON_REVIEW_CADENCE`, `HORIZON_EXIT_POLICY`. `record_thesis` imports the day constants for `nextReviewAt` math; the daily-run prompt imports the cadence + policy strings for per-thesis hint rendering. Writer and reader stay aligned.
+### Scenario B — Discovery picks up $AMD, agent passes.
+
+1. Same setup. Research happens.
+2. Score 3.5. Extended, no clean entry.
+3. `record_thesis({ ticker: 'AMD', direction: 'PASS', reasoning_summary: 'Extended past entry, RSI 78, no edge here', invalidation_conditions: ['Pullback to 50d MA with volume reset'] })`. Tool maps direction PASS → `status: 'ARCHIVED'` automatically.
+4. Thesis row terminal at write. ThesisUpdate `CREATED` written. **Not on the watchlist.** Visible on `/stocks/AMD` as institutional memory.
+5. Run summary bucket: **Researched, passed**.
+6. Three weeks later, $AMD hits a signal. Next discovery run calls `get_theses({ ticker: 'AMD', include_history: true })` → reads prior PASS reasoning. Conditions changed. Mints fresh `LONG + WATCHING` with `parent_thesis_id` chained to the ARCHIVED PASS.
+
+### Scenario C — User manually adds $TSLA to an analyst's watchlist.
+
+1. User clicks "Add Stock to Watchlist" on `/analysts/[id]`.
+2. `addWatchlistItem` server action runs:
+   - Resolves the analyst's synthetic `manual-<analystId>` ResearchRun (creates it on first use).
+   - Mints `Thesis({ direction: 'PENDING', status: 'WATCHING', source_kind: 'USER_ADDED', nextReviewAt: now })`.
+   - Writes `ThesisUpdate(type='CREATED')`.
+3. Sidebar row shows `$TSLA — Awaiting review`.
+4. Next morning's 8am daily run: `get_theses` returns the PENDING thesis with `needsAction = { kind: 'REVIEW_DUE', daysOverdue: 0, pendingFirstReview: true }`.
+5. Agent researches: `get_stock_data`, scoring, etc.
+6. Calls `update_thesis(thesis_id, ...)` with one of three outcomes:
+   - `direction: 'LONG', target_price, stop_loss, triggers, core_belief, …` — promotes PENDING → LONG WATCHING. Stays on watchlist.
+   - `direction: 'SHORT', …` — same, bearish.
+   - `change_status: 'ARCHIVED'` with rationale — declined coverage. Falls off the watchlist. Shows in run summary's *Removed/Researched-passed* bucket.
+
+### Scenario D — Daily run on cadence; $NVDA WATCHING triggers an entry.
+
+1. Hourly trigger evaluator fires; entry trigger predicate matches.
+2. `app/thesis.trigger.fired` event → `tactical-run` wakes.
+3. Tactical agent re-validates the setup with fresh data, calls `place_trade(thesis_id: nvda_id, …)`.
+4. Alpaca paper order placed; `Position` row created.
+5. Inside `place_trade`: Thesis WATCHING → ACTIVE. `ThesisUpdate(type='STATUS_CHANGED', summary='Promoted NVDA LONG WATCHING → ACTIVE on place_trade', tradeId: position.id)` written.
+6. Run summary bucket: **Promoted (now active)**.
+
+### Scenario E — Position stops out.
+
+1. `price-monitor` hourly cron sees NVDA hit stop (or the agent decides to close, or `tactical-run` decides on an EXIT trigger).
+2. `close_position(thesis_id: nvda_id, reason: STOP_HIT)` → Alpaca close order.
+3. Position closes. Thesis ACTIVE → CLOSED. `ThesisUpdate(type='CLOSED')` written.
+4. `trade-evaluator` cron runs later, fills `position.agentEvaluation` with the GPT-4o post-mortem grading against `coreBelief / keyAssumptions / invalidationConds`.
+
+### Scenario F — Daily run finds $NVDA view broken before entry.
+
+1. NVDA was LONG WATCHING. Earnings miss + guidance cut overnight.
+2. Daily run reviews the thesis. Invalidation condition tripped.
+3. `update_thesis({ thesis_id, change_status: 'INVALIDATED', invalidReason: 'Guidance cut; deceleration confirmed' })`.
+4. Thesis WATCHING → INVALIDATED. `ThesisUpdate(type='INVALIDATED')`. Off the watchlist.
+5. Run summary bucket: **Removed (invalidated)**.
+
+### Scenario G — User removes $INTC from watchlist via editor chat.
+
+1. User edits analyst via editor chat, removes INTC from the suggested watchlist.
+2. Editor analyst-update path runs:
+   - `update_thesis({ thesis_id, change_status: 'ARCHIVED', rationale: 'Removed via editor chat' })`.
+3. Thesis WATCHING → ARCHIVED. `ThesisUpdate(type='STATUS_CHANGED', fieldChanges: { status: { from: 'WATCHING', to: 'ARCHIVED' } })`. Off the watchlist.
+4. Run summary bucket: **Removed (archived)**.
+5. The prior INTC thesis stays visible on `/stocks/INTC` for history.
+
+### Scenario H — Direction flip on a live name ($NVDA was LONG, view breaks; later a fresh SHORT view emerges).
+
+Two stages, in different runs. Mode allowlists forbid Daily/Tactical from minting fresh theses — that's Discovery's job.
+
+**Stage 1 — Daily or Tactical Run: view breaks.**
+1. Agent reviews $NVDA. Evidence says the bull thesis is dead.
+2. `update_thesis({ thesis_id: old_nvda, change_status: 'INVALIDATED', invalidReason: 'Guidance cut + multiple compression' })`.
+3. Old thesis WATCHING → INVALIDATED. Run summary bucket: **Removed**.
+
+**Stage 2 — Sunday Discovery: SHORT view emerges.**
+1. Discovery re-encounters $NVDA via a fresh signal.
+2. Calls `get_theses({ ticker: 'NVDA', include_history: true })` → reads the prior INVALIDATED LONG thesis.
+3. Researches the new SHORT setup.
+4. `record_thesis({ ticker: 'NVDA', direction: 'SHORT', status: 'WATCHING', parent_thesis_id: old_nvda, … })` — new row chained.
+
+### Scenario I — Builder seeds a fresh analyst.
+
+1. User completes the builder chat with watchlist `[NVDA, AMD, AVGO]`.
+2. `createAnalystFromConfig` server action runs inside a single transaction:
+   - Creates the `AgentConfig` row.
+   - Creates a `BUILDER_SEED` ResearchRun.
+   - Mints three `Thesis({ direction: 'PENDING', status: 'WATCHING', source_kind: 'BUILDER_SEED' })` rows under that run.
+   - Writes one `ThesisUpdate(type='CREATED')` per seed.
+3. First daily run's `get_theses` returns all three PENDINGs with `needsAction = REVIEW_DUE / pendingFirstReview`. Agent researches them on Day 1.
 
 ---
 
-## 5. Per-horizon shape (the matrix)
+## 5. Where each user-visible view comes from
+
+| View | Query |
+|---|---|
+| **Analyst watchlist** (`/analysts/[id]` sidebar) | `Thesis WHERE researchRun.agentConfigId = X AND status = 'WATCHING'`. Includes PENDING + LONG + SHORT WATCHING. |
+| **Analyst Positions** | `Position WHERE analystId = X AND status = 'OPEN'`, joined to its ACTIVE Thesis. |
+| **Stock detail** (`/stocks/[symbol]`) | `Thesis WHERE ticker = X` — no status filter. Shows everything from every analyst, terminal rows included as history. |
+| **Activity log** (per thesis) | `ThesisUpdate WHERE thesisId = X` ordered by timestamp desc. |
+| **Run summary (5 buckets)** | All derived server-side from `ThesisUpdate WHERE runId = $runId`. See §11. |
+
+---
+
+## 6. The horizons
+
+Every LONG/SHORT thesis carries `horizon` — the discriminator that gives every other field its shape. Four values:
+
+| Horizon       | What it is                                                                 | Hold                       | Default review cadence | Exit policy |
+|---------------|----------------------------------------------------------------------------|----------------------------|------------------------|-------------|
+| **CATALYST**  | Trade built around a binary event (FDA decision, M&A close, named earnings, court ruling) | Days around event | Daily | Hold to event resolution OR 30d past `catalystDate` |
+| **TRADE**     | Momentum/pattern setup with a tight stop                                    | Days-to-weeks, bounded by `maxHoldDays` | Daily | Stop, target, or maxHoldDays — whichever fires first |
+| **TARGET**    | Swing trade with a defined upside number                                    | Weeks-to-months            | Weekly                 | Stop, target, or thesis invalidation. No time stop. |
+| **COMPOUNDER**| Long-term hold based on durable business quality                            | Months-to-years            | Quarterly              | Broken thesis only. Ignore intra-quarter noise. |
+
+PENDING and PASS theses carry no horizon (`horizon = null`). PENDING gets one when promoted to LONG/SHORT; PASS never needs one.
+
+**Where DAY fits:** there's no `DAY` horizon enum value today. Intraday Momentum Scalper uses `horizon=TRADE` + the EOD-flatten cron for the no-overnight rule. This is intentional.
+
+The constants live in [`lib/agent/horizon-policy.ts`](../lib/agent/horizon-policy.ts) — `HORIZON_REVIEW_DAYS`, `HORIZON_REVIEW_CADENCE`, `HORIZON_EXIT_POLICY`. `record_thesis` imports the day constants for `nextReviewAt` math; the daily-run prompt imports the cadence + policy strings for per-thesis hint rendering.
+
+---
+
+## 7. Per-horizon shape (the matrix)
 
 The horizon doesn't just label the trade — it constrains the shape of every other field. Concrete cells:
 
-### CATALYST/WATCHING/LONG (biotech-event scenario)
+### CATALYST / WATCHING / LONG (biotech-event scenario)
 - `catalyst_date` REQUIRED
 - `target_price` = pre-event accumulation level (the ENTER trigger threshold)
 - `stop_loss` = invalidation level
@@ -106,152 +245,217 @@ The horizon doesn't just label the trade — it constrains the shape of every ot
 - `key_assumptions` must include something falsifiable about the event
 - `invalidation_conditions` must include "event canceled / event already played"
 
-### CATALYST/ACTIVE/LONG
-- ENTER fired and the agent promoted
-- Triggers: PRICE_BELOW(stop) → EXIT (cd=0); OR(filings) → REVIEW; "30d past catalystDate" exit (today via prompt; price-monitor enforcement still open — see GAPS P0-5b)
+### CATALYST / ACTIVE / LONG
+- ENTER fired and the agent promoted via `place_trade`
+- Triggers: PRICE_BELOW(stop) → EXIT (cd=0); OR(filings) → REVIEW; "30d past catalystDate" exit policy
 
-### TRADE/ACTIVE/LONG (swing breakout)
+### TRADE / ACTIVE / LONG (swing breakout)
 - `max_hold_days` REQUIRED (no default; agent declares the window)
 - Triggers: PRICE_BELOW(stop) → EXIT (cd=0), PRICE_ABOVE(target) → EXIT (cd=0), TIME_ELAPSED(maxHoldDays) → REVIEW
 - `core_belief` is setup-specific ("$NVDA breaks $185 base on volume")
 
-### TARGET/ACTIVE/LONG (the 6-month / +150% / -5% anchor)
+### TARGET / ACTIVE / LONG (the 6-month / +150% / -5% anchor)
 - `target_price` = entry × 2.5; `stop_loss` = entry × 0.95
 - Triggers: PRICE_BELOW(stop) → EXIT (cd=0), PRICE_ABOVE(target) → REVIEW, EARNINGS_BEAT/MISS → REVIEW (cd=7), 30d hygiene
 - `max_hold_days` not set (TARGET is open-ended)
-- Per-horizon alert thresholds (looser than TRADE) — design specified in `horizon-policy.ts` constants; **runtime enforcement still open in price-monitor / trade-exit (GAPS P0-5b/c)**
 
-### TARGET/WATCHING/SHORT
+### TARGET / WATCHING / SHORT
 - ENTER trigger is PRICE_BELOW(target) — mirror of LONG
-- Note: support-REVIEW path is LONG-only today; SHORT mirror remains a known gap (GAPS P2-x)
+- Note: support-REVIEW path is LONG-only today; SHORT mirror remains a known gap
 
-### COMPOUNDER/ACTIVE/LONG (megacap secular)
+### COMPOUNDER / ACTIVE / LONG (megacap secular)
 - Wider stop (-15% to -20%)
 - `key_assumptions` are secular drivers (capex, demand, regulatory, moat)
 - `invalidation_conditions` are structural breaks (regulatory, business-model, CFO departure, two consecutive guidance cuts)
 - 90d hygiene cadence
-- Per-horizon alert thresholds (looser still) — see same caveat as TARGET
 
-### COMPOUNDER/WATCHING/LONG
+### COMPOUNDER / WATCHING / LONG
 - ENTER trigger uses 7d cooldown (patient — short-term spikes through the breakout level are noise on a multi-year hold)
 
-### TARGET/WATCHING/PASS (institutional memory)
-- `target_price` = the level that, if hit, would invert the original rejection
-- ENTER triggers don't apply (PASS isn't entry-gated); REVIEW triggers fire when the price hits the dismissed level or earnings flip an assumption
-- `invalidation_conditions` double as flip-criteria: if any flip the other way, the agent mints a new directional thesis and this PASS goes SUPERSEDED
+### PENDING / WATCHING (any seed)
+- No horizon, no target/stop/entry, no triggers, no belief fields
+- `nextReviewAt = createdAt` so the next daily run picks it up via `needsAction.REVIEW_DUE` with `pendingFirstReview: true`
+- `source_kind` is `USER_ADDED` (manual UI), `BUILDER_SEED` (analyst create), or `EDITOR_SEED` (editor chat)
+
+### PASS / ARCHIVED (terminal-at-write institutional memory)
+- No horizon, no target/stop/entry, no triggers
+- `reasoning_summary` REQUIRED — what was researched, why it didn't fit
+- `invalidation_conditions` REQUIRED — what would change the verdict (so a future encounter can compare)
 
 ---
 
-## 6. Fields
+## 8. Fields
 
 The Thesis row has three logical sections: **durable belief**, **operational state**, **provenance**. The split matters because each section has a different write discipline.
 
 ### Durable belief — set at create, refined rarely
 
-| Field | Required | Notes |
+| Field | Required for | Notes |
 |---|---|---|
-| `coreBelief` | LONG/SHORT | ONE sentence stating WHAT will happen and why. The load-bearing claim. Distinct from `reasoningSummary` (current-state framing, refreshed often). |
-| `keyAssumptions` | LONG/SHORT (≥2) | Falsifiable premises that must remain true. Generic prose insufficient. |
-| `invalidationConds` | LONG/SHORT (≥2) | Concrete things that would prove the belief wrong. Generic risks insufficient. On PASS theses, double as flip-criteria. |
+| `coreBelief`         | LONG/SHORT | ONE sentence stating WHAT will happen and why. The load-bearing claim. Distinct from `reasoningSummary` (current-state framing, refreshed often). |
+| `keyAssumptions`     | LONG/SHORT (≥2) | Falsifiable premises that must remain true. Generic prose insufficient. |
+| `invalidationConds`  | LONG/SHORT (≥2); PASS (≥1) | Concrete things that would prove the belief wrong. On PASS theses, double as flip-criteria. |
 
-The **structural-belief gate** (`record_thesis`) and the **structural-unchanged-reason gate** (`update_thesis`) enforce the discipline. Substantive non-belief patches without touching at least one belief field are rejected unless `structural_unchanged_reason` is supplied.
+The **structural-belief gate** (`record_thesis`) and the **structural-unchanged-reason gate** (`update_thesis`) enforce the discipline. Substantive non-belief patches without touching at least one belief field are rejected unless `structural_unchanged_reason` is supplied. PENDING and PASS are exempt from these gates.
 
 ### Operational state — mutated freely
 
 | Field | Notes |
 |---|---|
-| `horizon` | NOT NULL by convention; CATALYST/TRADE/TARGET/COMPOUNDER. |
-| `entryPrice`, `targetPrice`, `stopLoss` | Required for LONG/SHORT. Validated via [`thesis-shape.ts`](../lib/agent/thesis-shape.ts) (LONG: target > entry > stop). |
+| `horizon` | Required for LONG/SHORT. CATALYST/TRADE/TARGET/COMPOUNDER. Null for PENDING/PASS. |
+| `entryPrice`, `targetPrice`, `stopLoss` | Required for LONG/SHORT WATCHING. Validated via [`thesis-shape.ts`](../lib/agent/thesis-shape.ts) (LONG: target > entry > stop). |
 | `confidenceScore` | 0-100. Calibration tracking. |
-| `triggers` | JSONB array of structured predicates. See [`triggers/types.ts`](../lib/agent/triggers/types.ts). Auto-merged with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts). |
+| `triggers` | JSONB array of structured predicates. See [`triggers/types.ts`](../lib/agent/triggers/types.ts). Auto-merged with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts). **Empty for PENDING and PASS theses.** |
 | `catalystDate` | REQUIRED when `horizon=CATALYST`. |
 | `maxHoldDays` | REQUIRED when `horizon=TRADE` (no silent default). |
-| `nextReviewAt` | Derived from horizon if not supplied. Drives the overdue-review cron + `REVIEW_DATE_HIT` trigger. |
+| `nextReviewAt` | Derived from horizon if not supplied. Drives the overdue-review cron + `REVIEW_DATE_HIT` trigger. For PENDING, set to `createdAt` so first review fires immediately. |
 | `targetSizePct`, `scalingPlan` | Optional. Position sizing intent + scale-in/out ladder. |
 
 ### Provenance
 
 | Field | Notes |
 |---|---|
-| `sourceKind` | ROUTED_SIGNAL / WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW. |
+| `sourceKind` | `ROUTED_SIGNAL` / `WEB_SEARCH` / `WATCHLIST_REVIEW` / `POSITION_REVIEW` / `USER_ADDED` / `BUILDER_SEED` / `EDITOR_SEED`. The last three are reserved for non-agent code paths (UI manual add, analyst-creation, editor chat). |
 | `sourceSignalIds` | When `sourceKind=ROUTED_SIGNAL`, must be non-empty AND every ID must come from this analyst's routed inbox today (validated against `AnalystSignalRoute`). Drives the Monitor ROI tracer. |
 | `sourceRationale` | Required for non-ROUTED_SIGNAL kinds. |
 
 ### Lifecycle bookkeeping
 
-`status`, `parentThesisId`, `invalidatedAt`/`invalidReason`, `closedAt`/`closeReason`, `createdAt`/`updatedAt` — standard.
+`status`, `parentThesisId`, `invalidatedAt`/`invalidReason`, `closedAt`/`closeReason`, `createdAt`/`updatedAt` — standard. `closedAt`/`closeReason` are also used for `ARCHIVED` (the column was reused since ARCHIVED is terminal-at-walk-away semantically similar).
 
 ### Activity log — `ThesisUpdate`
 
-One row per state change. Type: CREATED / UPDATED / TRIGGER_FIRED / REVIEWED / ACTED / INVALIDATED / CLOSED / SUPERSEDED / STATUS_CHANGED. Carries `fieldChanges` diff, `priceAtTime`, `positionAtTime`, `triggerId`, `signalIds`, `runId`, `tradeId`. The activity log IS the thesis chain — `parentThesisId` exists only for direction flips.
+One row per state change. Type: `CREATED` / `UPDATED` / `TRIGGER_FIRED` / `REVIEWED` / `ACTED` / `INVALIDATED` / `CLOSED` / `SUPERSEDED` / `STATUS_CHANGED`. Carries `fieldChanges` diff, `priceAtTime`, `positionAtTime`, `triggerId`, `signalIds`, `runId`, `tradeId`. The activity log IS the thesis chain — `parentThesisId` exists only for direction flips.
+
+ARCHIVED transitions write `type='STATUS_CHANGED'` (not a dedicated ARCHIVED type — the from/to is in `fieldChanges`). WATCHING → ACTIVE promotions written by `place_trade` use the same shape.
 
 ---
 
-## 7. Producers + gates
+## 9. Producers + gates
 
 ### `record_thesis` — mints new theses
 
-Required: ticker, direction, horizon, confidence_score, reasoning_summary, thesis_bullets, risk_flags, signal_types. Plus:
-- LONG/SHORT: entry/target/stop satisfying shape, **core_belief, ≥2 key_assumptions, ≥2 invalidation_conditions**, provenance
-- horizon=CATALYST: **catalyst_date**
-- horizon=TRADE: **explicit max_hold_days**
+Required: ticker, direction, confidence_score, reasoning_summary, thesis_bullets, risk_flags, signal_types. Plus per-direction:
+- **LONG/SHORT**: horizon, entry/target/stop satisfying shape, **core_belief**, **≥2 key_assumptions**, **≥2 invalidation_conditions**, provenance
+- **PASS**: reasoning_summary + ≥1 invalidation_condition (the flip-criteria for a future encounter). Triggers[] rejected at write.
 
-Gates: shape, **belief**, provenance, no-PASS-on-held, researched-before, ROUTED_SIGNAL validation, same-direction reject (redirects to update_thesis), DAY-only cross-analyst overlap, ENTER-trigger guard, **CATALYST-needs-catalystDate**, **TRADE-needs-maxHoldDays**.
+**Agents cannot mint `direction='PENDING'`** — the tool rejects with instructions pointing at `update_thesis` (for promoting an existing PENDING seed) or LONG/SHORT/PASS (for net-new coverage). PENDING is reserved for non-agent server actions (`addWatchlistItem`, `createAnalystFromConfig`, editor analyst-update).
+
+Horizon-conditional requireds:
+- **horizon=CATALYST** → catalyst_date REQUIRED
+- **horizon=TRADE** → max_hold_days REQUIRED (no silent default)
+
+Gates (in order): shape · belief · provenance · no-PASS-on-held · researched-before · ROUTED_SIGNAL validation · legal-pair · same-direction reject (redirects to update_thesis) · DAY-only cross-analyst overlap · ENTER-trigger guard (LONG/SHORT WATCHING only).
+
+`parent_thesis_id` chains direction flips. Tool transactionally marks the parent SUPERSEDED (or INVALIDATED if the new thesis is PASS) and writes the audit row.
 
 ### `update_thesis` — patches existing theses
 
-Required: thesis_id, rationale (≥10 chars). Optional: any field on the row, plus `change_status` (ACTIVE / INVALIDATED / CLOSED), `triggers` (wholesale replace), `signal_ids`, `trigger_id`, `trade_id`, `structural_unchanged_reason`.
+Required: thesis_id, rationale (≥10 chars). Optional: any field on the row, plus:
+- `change_status` (`ACTIVE` / `INVALIDATED` / `CLOSED` / `ARCHIVED`)
+- `direction` (`LONG` / `SHORT` / `PASS`) — **PENDING-promotion only.** Allowed only when existing.direction === 'PENDING'.
+- `entry_price` — required when promoting PENDING → LONG/SHORT.
+- `triggers` (wholesale replace), `signal_ids`, `trigger_id`, `trade_id`, `structural_unchanged_reason`.
 
 Gates:
-- **Terminal-status block** — can't update INVALIDATED/CLOSED/SUPERSEDED.
-- **Zero-trigger guard** — review-only updates on theses with no triggers are rejected; agent must add triggers OR close via `change_status: "INVALIDATED"`.
-- **Goalpost-moving guard** — refuses to raise `target_price` on a WATCHING thesis whose entry condition is currently met. Bypassed for `change_status: "ACTIVE"` (legitimate target raise on promotion).
-- **Shape gate** — post-patch (entry, target, stop) satisfies direction-relative ordering.
-- **Structural-unchanged-reason gate** — patches that change confidence/target/stop without belief changes AND without `structural_unchanged_reason` are rejected. Bypassed on any `change_status` transition.
-- **ACTIVE promotion requires** `existing.status === "WATCHING"` and recomputed `target_price` + `stop_loss`.
+- **Terminal-status block** — can't update INVALIDATED/CLOSED/SUPERSEDED/ARCHIVED.
+- **Direction-change guard** — `direction` arg is only legal when existing.direction === 'PENDING'. Direction flips on committed (LONG ↔ SHORT) theses go through `record_thesis` with `parent_thesis_id`.
+- **PENDING-promotion structural fields** — flipping PENDING → LONG/SHORT requires horizon + target_price + stop_loss + entry_price + core_belief + ≥2 key_assumptions + ≥2 invalidation_conditions in the same call. PENDING → PASS requires ≥1 invalidation_condition (the flip-criteria).
+- **Zero-trigger guard** — review-only updates on theses with no triggers are rejected; agent must add triggers OR close via `change_status: 'INVALIDATED'` or `'ARCHIVED'`. PENDING is exempt (zero triggers is the expected state; promotion attaches them).
+- **Goalpost-moving guard** — refuses to raise `target_price` on a WATCHING thesis whose entry condition is currently met. Bypassed for `change_status: 'ACTIVE'` (legitimate target raise on promotion).
+- **Shape gate** — post-patch (entry, target, stop) satisfies direction-relative ordering. Uses the resulting direction (after `direction` patch) for the check.
+- **Structural-unchanged-reason gate** — patches that change confidence/target/stop without belief changes AND without `structural_unchanged_reason` are rejected. Bypassed on any `change_status` or `direction` transition.
+- **ACTIVE promotion requires** `existing.status === 'WATCHING'` and recomputed `target_price` + `stop_loss`.
 
-### `manage_watchlist` — watchlist mutations + parallel WATCHING thesis
+**PENDING → PASS auto-flips status to ARCHIVED and clears triggers** in the same patch.
 
-Adds/removes/updates `AnalystWatchlistItem` rows AND mints/supersedes a parallel `Thesis(status=WATCHING)` on the same ticker. This dual-store coexistence is transitional — the Thesis is the durable store; the watchlist table is the legacy mirror. Collapse pending.
+### `place_trade` — opens an Alpaca position from a committed thesis
+
+Required: thesis_id (must be LONG or SHORT, never PENDING), direction, entry_price, target_price, stop_loss, share count or notional.
+
+Gates (in order):
+- **PENDING reject** — thesis_id pointing at a PENDING thesis is rejected with instructions to promote via `update_thesis` first.
+- Confidence ≥ analyst's minConfidence.
+- Open positions < maxOpenPositions.
+- No existing OPEN position on (analyst, ticker).
+- Shape, sizing, available buying power.
+
+On success: creates Position, flips paired WATCHING thesis → ACTIVE, writes `ThesisUpdate(type='STATUS_CHANGED')` with tradeId.
+
+### Non-agent writers (server actions)
+
+All ultimately produce Thesis rows; no parallel table.
+
+| Writer | Mints | Anchored to |
+|---|---|---|
+| `addWatchlistItem` (UI manual add) | `Thesis({ direction: 'PENDING', status: 'WATCHING', source_kind: 'USER_ADDED' })` | Per-analyst synthetic `manual-<analystId>` ResearchRun |
+| `createAnalystFromConfig` (builder) | one `Thesis({ direction: 'PENDING', status: 'WATCHING', source_kind: 'BUILDER_SEED' })` per seed | Fresh `BUILDER_SEED` ResearchRun in the same transaction |
+| Editor analyst-update path | adds → `Thesis(PENDING/WATCHING, source_kind='EDITOR_SEED')`; removes → `Thesis(status='ARCHIVED')` | Fresh `EDITOR_SEED` ResearchRun per edit |
+| `removeWatchlistItem` (UI remove) | flips existing Thesis to `status='ARCHIVED'` | — |
+| `place_trade` (WATCHING → ACTIVE promotion) | flips Thesis status; writes `ThesisUpdate(STATUS_CHANGED)` with `tradeId` | — |
+| `close_position` (ACTIVE → CLOSED) | flips Thesis status; writes `ThesisUpdate(CLOSED)` | — |
+
+`manage_watchlist` does not exist. It was deleted in the 2026-05-13 collapse.
 
 ---
 
-## 8. Consumers
+## 10. Consumers
 
 | Consumer | Reads | Contract |
 |---|---|---|
-| **Daily-run prompt V1** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildV2SystemPrompt`) | Live Theses table: ticker, status, direction, **horizon**, confidence, entry/target/stop, **schedule** (review-due / catalyst-in-Nd / max-hold-Xd-left), created. Plus per-thesis line: belief preview + horizon exit-policy hint. | Agent walks each thesis with all the structured shape visible. No `get_theses` round-trip needed for routine review. **V1 is the legacy path; V2 is the rollout target.** |
-| **Daily-run prompt V2** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildDailyRunSystemPromptV2`) | Identity + edge + universe + yesterday's standup + horizon glossary. ~80 lines total — does NOT render the V1 priority blocks. | Agent reads per-thesis state through `get_theses.needsAction` (Fix #2) instead of cross-referencing 5 prompt sections. Gated on `AgentConfig.useV2Prompt` (default false). |
-| **`get_theses.needsAction`** ([`needs-action.ts`](../lib/agent/needs-action.ts)) | Per-thesis: `triggers[]`, `nextReviewAt`, latest `ThesisUpdate` row, fresh quote. | Returns `TRIGGER_FIRED` / `TRIGGER_MATCHING_NOW` / `REVIEW_DUE` / null per thesis row. Trigger-driven only — no hardcoded proximity. The V2 prompt's "act on every thesis where needsAction is non-null" rule replaces the V1 prompt's 5 cross-referenced priority blocks. |
-| **Tactical-run prompt** ([`intraday-tactical.ts`](../lib/agent/system-prompts/intraday-tactical.ts)) | Full thesis: id, ticker, direction, horizon, **coreBelief, keyAssumptions, invalidationConds**, entry/target/stop, targetSizePct, scalingPlan, recentUpdates. Plus the firing trigger and signal payload. | Validates trigger → scores against keyAssumptions → executes the action. The canonical structured-belief consumer. |
-| **Discovery-run prompt** ([`discovery.ts`](../lib/agent/system-prompts/discovery.ts)) | existingTickers (just symbols). | Mints; never updates. Output theses must satisfy the structural-belief gate. |
-| **Trigger evaluator** ([`evaluate.ts`](../lib/agent/triggers/evaluate.ts)) | `triggers[]`, `nextReviewAt`, `createdAt`. | Pure predicate matching. No belief reading — that's the LLM's job in tactical-run. |
-| **Trade evaluator** ([`trade-evaluator.ts`](../lib/inngest/functions/trade-evaluator.ts)) | `direction`, `horizon`, **`coreBelief`, `keyAssumptions`, `invalidationConds`**, `sourceSignalIds`, `reasoningSummary`, `signalTypes`, `thesisBullets`. | GPT-4o post-mortem grades against the BELIEF: did each `keyAssumption` hold? Did any `invalidationCondition` come true? "Right outcome, wrong reasons" becomes a documented learning. |
+| **Daily-run prompt V1** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildV2SystemPrompt`) | Live Theses table (ACTIVE + WATCHING, including PENDING). Per-thesis line: belief preview + horizon exit-policy hint. | Agent walks each thesis with all the structured shape visible. |
+| **Daily-run prompt V2** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildDailyRunSystemPromptV2`) | Identity + edge + universe + yesterday's standup + horizon glossary. ~80 lines total. | Agent reads per-thesis state through `get_theses.needsAction` instead of rendered prompt blocks. Gated on `AgentConfig.useV2Prompt`. |
+| **`get_theses.needsAction`** ([`needs-action.ts`](../lib/agent/needs-action.ts)) | Per-thesis: `direction`, `triggers[]`, `nextReviewAt`, latest `ThesisUpdate` row, fresh quote. | Returns `TRIGGER_FIRED` / `TRIGGER_MATCHING_NOW` / `REVIEW_DUE` / null. PENDING theses surface as `REVIEW_DUE` with `pendingFirstReview: true`. Trigger-driven only — no hardcoded proximity. |
+| **Tactical-run prompt** ([`intraday-tactical.ts`](../lib/agent/system-prompts/intraday-tactical.ts)) | Full thesis: id, ticker, direction, horizon, **coreBelief, keyAssumptions, invalidationConds**, entry/target/stop, targetSizePct, scalingPlan, recentUpdates. Plus the firing trigger and signal payload. | Validates trigger → scores against keyAssumptions → executes the action. |
+| **Discovery-run prompt** ([`discovery.ts`](../lib/agent/system-prompts/discovery.ts)) | `existingTickers` (already-covered set) + analyst config. | Mints LONG/SHORT WATCHING or PASS ARCHIVED. Cannot update or close. |
+| **Trigger evaluator** ([`evaluate.ts`](../lib/agent/triggers/evaluate.ts)) | `triggers[]`, `nextReviewAt`, `createdAt`. | Pure predicate matching. No belief reading. PENDING and PASS rows have empty triggers and are naturally skipped. |
+| **Trade evaluator** ([`trade-evaluator.ts`](../lib/inngest/functions/trade-evaluator.ts)) | `direction`, `horizon`, **`coreBelief`, `keyAssumptions`, `invalidationConds`**, `sourceSignalIds`, `reasoningSummary`, `signalTypes`, `thesisBullets`. | GPT-4o post-mortem grades against the BELIEF: did each `keyAssumption` hold? Did any `invalidationCondition` come true? |
 | **Briefing agent** | Run transcript + portfolio. | Doesn't crack open thesis-level belief fields today. Future enhancement. |
-| **ThesisSheet UI** ([`ThesisSheet.tsx`](../components/agent/sheets/ThesisSheet.tsx)) | direction, confidence, reasoning, bullets, risks, entry/target/stop, hold_duration, signal_types, fundamentals, status. Plus separate fetch for triggers/horizon/nextReviewAt via `/api/theses/[id]/triggers`. | Renders the trade card. Does NOT yet render coreBelief / keyAssumptions / invalidationConds — that's a separate UI follow-up. |
-| **Price monitor + trade-exit** | Position fields only — peakPrice, troughPrice, exitStrategy, avgCost, targetPrice (for the email). | **TRAILING-only after Fix #0 (Morning Run V2, 2026-05-10).** `price-monitor.ts` keeps peak/trough updates, `PRICE_CHECK` events, and the near-target email; `checkExitConditions` is now TRAILING-guarded so non-trailing positions no-op. The `PRICE_TARGET` / `TIME_BASED` branches in `lib/trade-exit.ts` and the NEAR_TARGET / NEAR_STOP `PositionManagementAction` writes were deleted — per-thesis triggers in `lib/agent/triggers/*` (evaluated by the trigger evaluator's 5-min cron) are now the single source of truth for "should this position close?" The 14 watching theses + every ACTIVE thesis already carry the agent's own `PRICE_BELOW level: stop` EXIT triggers; no parallel layer fires on hardcoded percentages. |
+| **ThesisSheet UI** ([`ThesisSheet.tsx`](../components/agent/sheets/ThesisSheet.tsx)) | direction, confidence, reasoning, bullets, risks, entry/target/stop, hold_duration, signal_types, fundamentals, status. Plus separate fetch for triggers/horizon/nextReviewAt via `/api/theses/[id]/triggers`. | Renders the trade card. |
+| **Analyst sidebar watchlist** ([`AnalystDetailClient.tsx`](../components/analysts/AnalystDetailClient.tsx) + [`WatchlistRow`](../components/ui/trade-row.tsx)) | `Thesis WHERE status='WATCHING'`. Each row renders ticker + price + direction-aware subline ("Awaiting review" for PENDING, "Watching — long/short" for committed views). | The watchlist UI. Remove action calls `removeWatchlistItem` → flips to ARCHIVED. |
+| **Price monitor + trade-exit** | Position fields only. | TRAILING-only (post Morning Run V2 Fix #0). Per-thesis triggers in `lib/agent/triggers/*` are the single source of truth for "should this position close?" |
 
 ---
 
-## 9. What's intentionally not done
+## 11. Run summary — five derived buckets
+
+All five derived server-side from `ThesisUpdate WHERE runId = $runId`. No agent prompt work required.
+
+| Bucket | Filter |
+|---|---|
+| **Added to watchlist**       | `type='CREATED'` AND `Thesis.status='WATCHING'` AND `direction IN (LONG, SHORT, PENDING)` |
+| **Researched, passed**       | `type='CREATED'` AND `Thesis.direction='PASS'` AND `Thesis.status='ARCHIVED'` |
+| **Promoted (now active)**    | `type='STATUS_CHANGED'` with `tradeId` set AND `Thesis.status='ACTIVE'` |
+| **Removed from watchlist**   | `type IN ('INVALIDATED','STATUS_CHANGED','SUPERSEDED')` resulting in terminal status, **without** an accompanying CLOSED on the same thesisId in the same run |
+| **Closed positions**         | `type='CLOSED'` AND `Thesis.status='CLOSED'` |
+
+Discovery runs typically only populate buckets 1+2. Daily and tactical runs can populate any of the five.
+
+---
+
+## 12. What's intentionally not done
 
 The redesign considered several larger changes that were deliberately NOT pursued. Recorded so future sessions don't re-add them.
 
 - **Did not rename horizon → style.** Horizon already names the thing; renaming was churn.
 - **Did not split Thesis into watch/enter/hold/exit JSON columns.** Triggers + horizon already encode this. The four-part contract is a conceptual frame, not a schema shape.
-- **Did not kill PASS direction.** It works as institutional memory; corner-case logic was not worth the simplification cost.
 - **Did not add `analystId` FK.** The JOIN-via-ResearchRun pattern is ugly but works. Defer until a query-perf gap actually appears.
-- **Did not collapse `manage_watchlist`.** Dual-store works today; collapsing is a separate follow-up.
 - **Did not add a DAY horizon.** Intraday Momentum works via `horizon=TRADE` + EOD-flatten cron. Adding DAY is real work for marginal clarity.
-- **Did not ship horizon-aware price-monitor / trade-exit.** Constants are in `horizon-policy.ts` but the runtime branching in `price-monitor.ts` and `trade-exit.ts` is not yet wired. That's GAPS P0-5b/c — explicitly open.
+- **Did not ship horizon-aware price-monitor / trade-exit.** Constants are in `horizon-policy.ts` but the runtime branching in `price-monitor.ts` and `trade-exit.ts` is not yet wired. That's GAPS P0-5b/c.
 
-The principle: **the system was fundamentally sound, not fundamentally broken.** Triggers were the right primitive; horizon was the right discriminator; the lifecycle states worked; the audit log worked. What was missing was structural-belief discipline, the promotion enum, surfacing in the daily-run prompt, and the trade evaluator reading the belief. Those shipped. The rest stays intentional non-work.
+### Done since (2026-05-13)
+
+- **Collapsed `manage_watchlist` + `AnalystWatchlistItem`.** Thesis is the single store. PENDING direction + ARCHIVED status added. UI, prompts, crons, intelligence routes all flipped to Thesis queries. Tool count drops to 18.
+- **Killed "PASS WATCHING" as institutional memory.** PASS is always ARCHIVED at write. Institutional-memory value preserved via stock-page visibility + `get_theses(include_history)` + `parentThesisId` chains on re-encounter.
+
+The principle: **the system was fundamentally sound, not fundamentally broken.** Triggers were the right primitive; horizon was the right discriminator; the lifecycle states worked; the audit log worked. What was missing was structural-belief discipline, the promotion enum, surfacing in the daily-run prompt, the trade evaluator reading the belief, and a single watchlist store. Those have shipped.
 
 ---
 
 ## See also
 
 - [`VISION.md`](./VISION.md) Pillar 2 — what "thesis quality" is supposed to look like
-- [`GAPS.md`](./GAPS.md) — the open punch list of remaining work (P0-5b/c, the watchlist collapse, the UI Plan section, etc.)
+- [`GAPS.md`](./GAPS.md) — the open punch list
+- [`MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
+- [`WATCHLIST_COLLAPSE_PLAN.md`](./WATCHLIST_COLLAPSE_PLAN.md) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
 - [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) — the live operational view, driven by [`workflow-registry.ts`](../lib/agent/workflow-registry.ts)
-- [#239](https://github.com/dave-sucks/hindsight/pull/239) — the architecture pass that produced this doc

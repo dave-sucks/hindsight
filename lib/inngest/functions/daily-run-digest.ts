@@ -160,19 +160,30 @@ export const dailyRunDigest = inngest.createFunction(
         });
 
         // 3. Watchlist items added by this morning's runs.
-        const watchAdds = await prisma.analystWatchlistItem.findMany({
+        //    Post-collapse: a "watchlist add" is a WATCHING Thesis CREATED
+        //    in one of this morning's runs. Includes LONG/SHORT/PENDING
+        //    WATCHING. PASS theses are ARCHIVED at write, not on the watchlist.
+        const watchAddTheses = await prisma.thesis.findMany({
           where: {
-            analystId: { in: analystIds },
-            addedRunId: { in: morningRunIds },
-            status: "ACTIVE",
+            researchRunId: { in: morningRunIds },
+            status: "WATCHING",
+            researchRun: { agentConfigId: { in: analystIds } },
           },
           select: {
-            analystId: true,
-            symbol: true,
-            reason: true,
+            ticker: true,
             targetPrice: true,
+            reasoningSummary: true,
+            researchRun: { select: { agentConfigId: true } },
           },
         });
+        const watchAdds: GatheredWatchAdd[] = watchAddTheses
+          .filter((t) => t.researchRun.agentConfigId !== null)
+          .map((t) => ({
+            analystId: t.researchRun.agentConfigId as string,
+            symbol: t.ticker,
+            reason: t.reasoningSummary,
+            targetPrice: t.targetPrice,
+          }));
 
         return { decisions, watchAdds };
       });

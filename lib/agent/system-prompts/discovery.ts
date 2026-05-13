@@ -330,8 +330,11 @@ For each candidate that clears the bar:
   not set it manually.
 
   Every record_thesis call needs (none of these are optional):
-  - **direction** — LONG or SHORT (never PASS in discovery). Must match
-    your directionBias config — if you're LONG-only, no SHORT theses.
+  - **direction** — LONG, SHORT, or PASS. LONG/SHORT must match your
+    directionBias config (LONG-only configs cannot mint SHORT). PASS is
+    "researched, decided not to trade" — terminal at write (status=ARCHIVED),
+    stays as institutional memory on the stock page so a future encounter
+    can read your prior reasoning via \`get_theses(include_history)\`.
   - **horizon** — CATALYST / TARGET / TRADE / COMPOUNDER. See PICKING
     THE RIGHT HORIZON above. CATALYST requires catalyst_date; TRADE
     requires max_hold_days.
@@ -390,11 +393,16 @@ HARD CONSTRAINTS
   • 25 step max.
   • You CANNOT update or close existing theses (\`update_thesis\` and
     \`close_position\` are not in your toolbox).
-  • You CANNOT mint PASS theses (record_thesis direction=PASS rejected
-    for discovery — pass-quality candidates just don't get minted).
+  • You CAN mint PASS theses — they're terminal at write (status=ARCHIVED)
+    and stay as institutional memory. Use them when you actually researched
+    a candidate (≥composite 3 + concrete invalidation_conditions) and
+    decided no. For candidates dismissed before research (fence mismatch,
+    obvious junk), don't mint anything — narrate the dismissal in the run
+    summary.
   • You CANNOT mint theses on tickers in the already-covered list.
-  • You SHOULD finish under 8 new theses unless the week's signal
-    quality was exceptional. Most weeks 2-5 is the right range.
+  • You SHOULD finish under 8 new LONG/SHORT theses unless the week's signal
+    quality was exceptional. Most weeks 2-5 is the right range. PASS theses
+    don't count against this cap.
 
 ═══════════════════════════════════════════════════════════════════
 FORMATTING

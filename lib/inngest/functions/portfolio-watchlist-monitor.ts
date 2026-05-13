@@ -105,20 +105,22 @@ export const portfolioWatchlistMonitor = inngest.createFunction(
       async () => {
         await ensurePermanentMonitors()
 
-        const [positions, watchlistItems] = await Promise.all([
+        const [positions, watchingTheses] = await Promise.all([
           prisma.position.findMany({
             where: { status: "OPEN" },
             select: { symbol: true },
           }),
-          prisma.analystWatchlistItem.findMany({
-            where: { status: "ACTIVE" },
-            select: { symbol: true },
+          // Watchlist = Thesis(status='WATCHING') post-collapse. PENDING +
+          // LONG + SHORT WATCHING all qualify; PASS is ARCHIVED, not monitored.
+          prisma.thesis.findMany({
+            where: { status: "WATCHING" },
+            select: { ticker: true },
           }),
         ])
 
         return {
           portfolioTickers: [...new Set(positions.map((p) => p.symbol))].sort(),
-          watchlistTickers: [...new Set(watchlistItems.map((w) => w.symbol))].sort(),
+          watchlistTickers: [...new Set(watchingTheses.map((t) => t.ticker))].sort(),
         }
       }
     )
