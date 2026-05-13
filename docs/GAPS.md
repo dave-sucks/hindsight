@@ -1,10 +1,18 @@
 # Hindsight — Gaps
 
-> **What this is:** the ordered punch list of every known gap between [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) (current state) and [`VISION.md`](./VISION.md) (target state). Each item has a severity, a concrete fix path, and the audit it came from.
+> **What this is:** open items and recent-done trajectory for the **thesis architecture rework**. Scoped: this is the tracker for the multi-PR effort to get the durable-thesis system tight (discovery → watching → trigger → tactical → daily-run review → action). Not a general bug tracker.
 >
-> **How to use it:** start at the top. P0s block the product. P1s degrade quality but the system still functions. P2s are paper cuts. Don't skip levels.
+> **Where things go:**
+> - Open item on the thesis rework → here.
+> - Code smell / fragility outside the rework → [`TECH_DEBT.md`](./TECH_DEBT.md).
+> - "What shipped in PR #X?" → GitHub PRs (search by label or date).
+> - Product north star → [`VISION.md`](./VISION.md).
+> - Live thesis-system reference → [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
+> - Big multi-PR plans → `docs/<NAME>_PLAN.md` (e.g., [`WATCHLIST_COLLAPSE_PLAN.md`](./WATCHLIST_COLLAPSE_PLAN.md)).
 >
-> **Last refreshed:** 2026-05-11 — Discovery Run full rework: `read_signals` lookbackDays=7 default in discovery mode, all four intelligence-pipeline crons daily (no more Mon-Fri only), full `analystPrompt` passthrough (no more 400-char truncation), 8 new strategy fields piped to prompt, prompt rewritten as a trader with horizon-picking + target/stop derivation + cross-analyst overlap sections, DAY-only analysts skipped from cron, pre-prune removed, threshold lowered to 5 for WATCHING. Opened P1-9 (archetype-blind rubric), P1-10 (no route-signals event emission), P2-10/-11/-12 (idempotency, FAILED-status mis-reporting, manage_watchlist not in prompt). See `DISCOVERY_REVIEW.md` for the full audit. 2026-05-08 — GAPS cleanup pass: verified open items against merged code, closed P1-4 (already-done), reframed P0-5 umbrella in plain English, downgraded P0-5e from P0 to P1. Earlier same day: Thesis Architecture (PR #239) closed P0-1, P0-5a + the previously-untracked promotion gap and conditional-requireds gaps. Monitor Health (PR #237) closed P0-4, P1-2 (Monitor-counter backfill lifted trades-sourced 2 → 5). Small sweep (PR #238) closed P1-3, P2-2, P2-5. Admin sweep closed P0-3, P0-5d, P1-5, P1-6, P2-9. Watching-thesis integrity closed P0-2, P1-1, P1-7, P1-8, P2-3. Original baseline 2026-05-07 from a 5-agent audit; successor to `ARCHITECTURE_DEEP_AUDIT.md` and `SESSION_AUDIT_2026_05_06.md` (both now archived). Live thesis-system reference: [`docs/THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
+> **How to use it:** start at P0. P0s block the rework's correctness. P1s degrade quality. P2s are papercuts but still part of the rework. Don't skip levels. When something closes, **move it** to a "Done since" section below, not strike-through inline.
+>
+> **Most recent major movement:** Discovery Run full rework (PR #253, 2026-05-11) — see "Done since 2026-05-11" below. Surfaced and filed: P1-9, P1-10, P2-10, P2-11, P2-12.
 
 ---
 
