@@ -3,12 +3,10 @@
 /**
  * Principal Chat — operator co-pilot.
  *
- * Thin wrapper over AgentChat (the unified chat component). Owns the
- * scope state (which analyst the chat is bound to). Persists choice in
- * localStorage so reloads remember.
- *
- * Scope chip lives in AgentChat's topSlot — same banner pattern Notion
- * and Linear use. NO URL param — scope is set in the input UI.
+ * Thin wrapper over AgentChat. Owns the scope state (which analyst the
+ * chat is bound to). The scope chip lives INSIDE the input (Notion /
+ * Linear / Claude pattern) — we pass it to AgentChat's topSlot prop,
+ * which forwards it to the composer's contextChip feature.
  */
 
 import { useCallback, useState } from "react";
@@ -41,8 +39,6 @@ interface Props {
 }
 
 export function ChatPageClient({ analysts }: Props) {
-  // Hydrate scope from localStorage on first render. If the stored id
-  // no longer matches an analyst the user owns, drop back to portfolio.
   const [scopedAnalystId, setScopedAnalystId] = useState<string | null>(() => {
     const stored = getStoredScope();
     if (!stored) return null;
@@ -58,55 +54,49 @@ export function ChatPageClient({ analysts }: Props) {
     storeScope(analystId);
   }, []);
 
+  // Compact chip rendered inside the input's block-start addon.
   const scopeChip = (
-    <div className="flex items-center gap-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button variant="outline" size="sm">
-              {scopedAnalyst ? (
-                <>
-                  <Bot className="h-3.5 w-3.5" />
-                  {scopedAnalyst.name}
-                </>
-              ) : (
-                <>
-                  <Wallet className="h-3.5 w-3.5" />
-                  Portfolio
-                </>
-              )}
-              <ChevronDown className="h-3.5 w-3.5" />
-            </Button>
-          }
-        />
-        <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuItem onClick={() => handlePickScope(null)}>
-            <Wallet className="h-3.5 w-3.5" />
-            Portfolio (no analyst pinned)
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+            {scopedAnalyst ? (
+              <>
+                <Bot className="h-3 w-3" />
+                {scopedAnalyst.name}
+              </>
+            ) : (
+              <>
+                <Wallet className="h-3 w-3" />
+                Portfolio
+              </>
+            )}
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="start" side="top" className="w-64">
+        <DropdownMenuItem onClick={() => handlePickScope(null)}>
+          <Wallet className="h-3.5 w-3.5" />
+          Portfolio (no analyst pinned)
+        </DropdownMenuItem>
+        {analysts.length > 0 && <DropdownMenuSeparator />}
+        {analysts.map((a) => (
+          <DropdownMenuItem
+            key={a.id}
+            onClick={() => handlePickScope(a.id)}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            {a.name}
+            {!a.enabled && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                disabled
+              </span>
+            )}
           </DropdownMenuItem>
-          {analysts.length > 0 && <DropdownMenuSeparator />}
-          {analysts.map((a) => (
-            <DropdownMenuItem
-              key={a.id}
-              onClick={() => handlePickScope(a.id)}
-            >
-              <Bot className="h-3.5 w-3.5" />
-              {a.name}
-              {!a.enabled && (
-                <span className="ml-auto text-xs text-muted-foreground">
-                  disabled
-                </span>
-              )}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <span className="text-xs text-muted-foreground">
-        {scopedAnalyst
-          ? "Trades, thesis edits, watchlist changes apply to this analyst."
-          : "Read-only across analysts. Pick one to unlock writes."}
-      </span>
-    </div>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 
   return (

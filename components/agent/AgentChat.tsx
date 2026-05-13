@@ -546,7 +546,7 @@ function AgentChatInner({
     );
   }
 
-  // ── principal: scope-chip header + Thread ────────────────────────────────
+  // ── principal: in-input scope chip + Thread ──────────────────────────────
   if (mode === "principal") {
     const principalComposer: HindsightComposerFeatures = {
       ...PRINCIPAL_COMPOSER,
@@ -559,26 +559,25 @@ function AgentChatInner({
         "Claude Sonnet 4.6",
       modelOptions: RESEARCH_MODEL_OPTIONS,
       onModelChange,
+      // Notion/Linear/Claude pattern: the scope badge lives INSIDE the
+      // input as a block-start addon, not in a separate banner above the
+      // chat. The page wires the actual chip into topSlot (legacy) or
+      // passes it through composerSlot — both forwarded via contextChip
+      // here so the composer renders it in its top toolbar.
+      contextChip: topSlot ?? undefined,
     };
     return (
-      <div className="flex h-full flex-col">
-        {topSlot && (
-          <div className="shrink-0 border-b px-4 py-2">{topSlot}</div>
-        )}
-        <div className="flex-1 min-h-0 flex flex-col">
-          <Thread
-            welcomeConfig={{
-              title: analystName ?? PRINCIPAL_WELCOME.title,
-              subtitle: analystName
-                ? `Scoped to ${analystName} — full read + write authority on this analyst.`
-                : PRINCIPAL_WELCOME.subtitle,
-              icon: PRINCIPAL_WELCOME.icon,
-            }}
-            composerFeatures={principalComposer}
-            composerSlot={composerSlot}
-          />
-        </div>
-      </div>
+      <Thread
+        welcomeConfig={{
+          title: analystName ?? PRINCIPAL_WELCOME.title,
+          subtitle: analystName
+            ? `Scoped to ${analystName} — full read + write authority on this analyst.`
+            : PRINCIPAL_WELCOME.subtitle,
+          icon: PRINCIPAL_WELCOME.icon,
+        }}
+        composerFeatures={principalComposer}
+        composerSlot={composerSlot}
+      />
     );
   }
 

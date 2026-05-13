@@ -91,6 +91,12 @@ export interface HindsightComposerFeatures {
   modelOptions?: Array<{ label: string; value: string; provider: "openai" | "anthropic" }>;
   /** Called when the user selects a different model */
   onModelChange?: (value: string) => void;
+  /**
+   * Optional context badge rendered at the TOP of the input (block-start
+   * addon, above the editor). Notion-style "what is this chat scoped to"
+   * affordance — e.g. Portfolio vs @AnalystName for the principal chat.
+   */
+  contextChip?: import("react").ReactNode;
 }
 
 // ── Defaults ───────────────────────────────────────────────────────────────
@@ -219,6 +225,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
     modelLabel,
     modelOptions,
     onModelChange,
+    contextChip,
   } = features;
 
   const modelLogoUrl = (label: string | undefined) => {
@@ -477,6 +484,14 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   return (
     <>
       <InputGroup className="w-full bg-background/80 backdrop-blur-sm">
+        {/* Optional context badge — rendered above the editor as a
+            block-start addon. Notion / Linear / Claude pattern. */}
+        {contextChip && (
+          <InputGroupAddon align="block-start" className={cn(isCollapsed && "hidden sm:flex")}>
+            {contextChip}
+          </InputGroupAddon>
+        )}
+
         {/* TipTap rich-text editor — clipped to single line on mobile when inactive */}
         <div
           className={cn(
