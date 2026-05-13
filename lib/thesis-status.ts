@@ -10,6 +10,7 @@
 export type ThesisStatus =
   | "ACTIVE"
   | "WATCHING"
+  | "PROMOTED"
   | "CLOSED"
   | "INVALIDATED"
   | "SUPERSEDED";
@@ -56,6 +57,15 @@ export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = 
     // signal "still being watched, not archived."
     dotClass: "bg-muted-foreground",
     tooltip: "On the watchlist — promotion triggers govern entry",
+  },
+  PROMOTED: {
+    label: "Awaiting live entry",
+    // Amber pulse = action required this run. The conviction-pause state
+    // after PAPER→LIVE promotion: thesis was held, position force-closed,
+    // next live run must place_trade (re-enter) or downgrade to WATCHING.
+    dotClass: "bg-amber-500 animate-pulse",
+    tooltip:
+      "Held in paper, just promoted to live — next run must re-enter or downgrade to watching",
   },
   CLOSED: {
     label: "Closed",

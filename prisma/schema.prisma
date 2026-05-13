@@ -164,6 +164,14 @@ enum ThesisStatus {
   CLOSED
   SUPERSEDED
   WATCHING
+  // Set only by the promote-analyst action when the user flips an analyst
+  // PAPER→LIVE. Means: this thesis was ACTIVE in paper with intact
+  // conviction, its paper position was force-closed at promotion, and
+  // the next live run is expected to act on it (re-enter or downgrade
+  // to WATCHING). NEVER settable via record_thesis / update_thesis —
+  // those tools reject PROMOTED in their input schemas. See
+  // docs/PROD_DEPLOYMENT_PLAN.md.
+  PROMOTED
 }
 
 model Thesis {
@@ -245,6 +253,18 @@ model Thesis {
 
   closedAt             DateTime?    // Mirrors invalidatedAt for CLOSED state
   closeReason          String?
+
+  // ── PROMOTED state context (set only at PAPER→LIVE promotion) ───────
+  // Frozen at the moment the user promotes the analyst. Drives the
+  // first-live-run review UI + agent prompt: the agent sees "this
+  // thesis was held in paper for N days with $X P&L, reaffirmed M
+  // times by the analyst" and treats re-entry as the default decision,
+  // not a fresh entry. See docs/PROD_DEPLOYMENT_PLAN.md.
+  // Null on every thesis until its first promotion event.
+  promotedAt           DateTime?
+  paperTenureDays      Int?
+  paperRealizedPnl     Float?
+  paperReviewCount     Int?
 
   // Relations
   researchRun      ResearchRun   @relation(fields: [researchRunId], references: [id])

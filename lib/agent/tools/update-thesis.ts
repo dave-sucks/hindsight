@@ -154,14 +154,17 @@ const updateSchema = z.object({
     .optional(),
 
   // ── Status transitions (deliberate) ───────────────────────────────────
+  // PROMOTED is intentionally excluded — only the promote-analyst action
+  // sets it. Setting it here will fail Zod parse before this runs.
   change_status: z
-    .enum(["ACTIVE", "INVALIDATED", "CLOSED"])
+    .enum(["ACTIVE", "INVALIDATED", "CLOSED", "WATCHING"])
     .optional()
     .describe(
       "Deliberate status transition. " +
-        "ACTIVE = WATCHING → ACTIVE promotion (entry condition fired and you took the trade). MUST be paired with a place_trade in the same run, AND target_price + stop_loss must be supplied — recomputed relative to the actual entry, not copied from the WATCHING row's old levels. " +
-        "INVALIDATED = the belief broke; we no longer believe the thesis. " +
-        "CLOSED = we exited the position based on this thesis (target hit, stop, manual close). " +
+        "ACTIVE = WATCHING → ACTIVE or PROMOTED → ACTIVE (entry condition fired and you took the trade). MUST be paired with a place_trade in the same run, AND target_price + stop_loss must be supplied — recomputed relative to the actual entry, not copied from the WATCHING row's old levels. " +
+        "WATCHING = PROMOTED → WATCHING only. The legal opt-out path when you decide not to re-enter a just-promoted thesis on the first live run. The conviction stays in the library; the analyst will re-evaluate on subsequent runs. " +
+        "INVALIDATED = the belief broke; we no longer believe the thesis. Not allowed on PROMOTED — use WATCHING. " +
+        "CLOSED = we exited the position based on this thesis (target hit, stop, manual close). Not allowed on PROMOTED (no position to close from). " +
         "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
 });
@@ -189,6 +192,7 @@ type UpdatePatch = Partial<{
   invalidReason: string;
   closedAt: Date;
   closeReason: string;
+  promotedAt: Date | null;
 }>;
 
 export const updateThesis = defineTool({
@@ -291,12 +295,63 @@ export const updateThesis = defineTool({
       };
     }
 
-    if (existing.status !== "ACTIVE" && existing.status !== "WATCHING") {
+    if (
+      existing.status !== "ACTIVE" &&
+      existing.status !== "WATCHING" &&
+      existing.status !== "PROMOTED"
+    ) {
       return {
         summary: `Thesis ${args.thesis_id} is ${existing.status}; can't update a terminal thesis.`,
         data: { ok: false, error: "terminal_status", current_status: existing.status },
         sources: [],
       };
+    }
+
+    // ── PROMOTED transition guard ───────────────────────────────────────────
+    // PROMOTED is a hard state with exactly two legal exits:
+    //   1) place_trade fills → ACTIVE (handled inside place_trade)
+    //   2) update_thesis(change_status: "WATCHING") → WATCHING (legal opt-out)
+    // INVALIDATED and CLOSED are forbidden — the analyst was holding this
+    // name with conviction; "kill it without a position" is the wrong shape.
+    // If the agent wants to stop tracking it entirely, downgrade to WATCHING
+    // first and let the next run decide.
+    // ACTIVE via update_thesis is allowed (mirrors WATCHING→ACTIVE flow:
+    // recompute target/stop, then place_trade); place_trade also has its
+    // own auto-transition path as belt-and-suspenders.
+    if (existing.status === "PROMOTED") {
+      if (
+        args.change_status === "INVALIDATED" ||
+        args.change_status === "CLOSED"
+      ) {
+        const errorMsg = `Cannot ${args.change_status} a PROMOTED thesis. The analyst held this in paper with conviction; the user explicitly promoted it. The only legal opt-out is change_status: "WATCHING" (downgrade and keep tracking). Use that, or place_trade to re-enter.`;
+        return {
+          summary: `Cannot ${args.change_status} a PROMOTED thesis: ${existing.ticker}`,
+          data: {
+            ok: false,
+            error: "promoted_thesis_illegal_transition",
+            current_status: existing.status,
+            attempted: args.change_status,
+            message: errorMsg,
+          },
+          sources: [],
+        };
+      }
+      if (
+        args.change_status !== "ACTIVE" &&
+        args.change_status !== "WATCHING"
+      ) {
+        const errorMsg = `PROMOTED thesis ${existing.ticker} requires an explicit resolution this run: change_status: "ACTIVE" (+ place_trade) to re-enter live, OR change_status: "WATCHING" to defer. Reasoning-only patches don't count — the thesis stays PROMOTED until you act.`;
+        return {
+          summary: `PROMOTED thesis needs explicit resolution: ${existing.ticker}`,
+          data: {
+            ok: false,
+            error: "promoted_thesis_requires_resolution",
+            current_status: existing.status,
+            message: errorMsg,
+          },
+          sources: [],
+        };
+      }
     }
 
     // ── Zero-trigger guard (audit Step 4) ─────────────────────────────────
@@ -529,30 +584,55 @@ export const updateThesis = defineTool({
       patch.closedAt = new Date();
       patch.closeReason = args.rationale.slice(0, 500);
       updateType = "CLOSED";
-    } else if (args.change_status === "ACTIVE") {
-      // ── WATCHING → ACTIVE promotion (close the promotion gap) ──────────
-      // Pre-this-PR there was no first-class path: the tactical prompt
-      // instructed `update_thesis(change_status: "ACTIVE")` but the enum
-      // only allowed INVALIDATED/CLOSED, so the call rejected silently
-      // and theses stayed WATCHING with open positions. Now legal.
-      //
-      // Two requirements at promotion:
-      //   1. Source must be WATCHING — promoting an already-ACTIVE row
-      //      makes no sense; promoting a terminal-state row is blocked
-      //      upstream by the existing terminal_status guard.
-      //   2. target_price + stop_loss MUST be supplied and recomputed
-      //      relative to the actual entry. The WATCHING row's old
-      //      target was the ENTER trigger level (the breakout
-      //      threshold); price has now reached it, so as a take-profit
-      //      it's behind the agent. Same for stop. Mint NEW values.
-      if (existing.status !== "WATCHING") {
+    } else if (args.change_status === "WATCHING") {
+      // ── PROMOTED → WATCHING (only legal source) ─────────────────────────
+      // The opt-out path on the first live run. The analyst decides not to
+      // re-enter this name live; downgrade to WATCHING and let the next run
+      // re-evaluate. Conviction context fields (paperTenureDays / P&L /
+      // review count) stay on the row for reference; promotedAt clears.
+      if (existing.status !== "PROMOTED") {
         return {
-          summary: `Refused promotion on $${existing.ticker} — current status is ${existing.status}, not WATCHING.`,
+          summary: `Refused WATCHING transition on $${existing.ticker} — current status is ${existing.status}, not PROMOTED.`,
           data: {
             ok: false,
-            error: "promotion_from_non_watching",
+            error: "watching_transition_from_non_promoted",
             message:
-              `change_status: "ACTIVE" is the WATCHING → ACTIVE promotion path. This thesis is already ${existing.status}; you can't promote what's already promoted (or terminal). ` +
+              `change_status: "WATCHING" is reserved for the PROMOTED → WATCHING opt-out path. This thesis is ${existing.status}. ` +
+              `Did you mean change_status: "INVALIDATED" (kill the belief) or change_status: "CLOSED" (exited the position)?`,
+          },
+          sources: [],
+        };
+      }
+      patch.status = "WATCHING";
+      patch.promotedAt = null;
+      updateType = "STATUS_CHANGED";
+    } else if (args.change_status === "ACTIVE") {
+      // ── WATCHING → ACTIVE  or  PROMOTED → ACTIVE  promotion ─────────────
+      // Two legal entry paths:
+      //   1. WATCHING: agent saw an ENTER trigger fire, recomputed target/
+      //      stop relative to the current price, calls update_thesis(ACTIVE)
+      //      then place_trade. Pre-existing flow.
+      //   2. PROMOTED: agent is acting on a first-live-run re-entry. Same
+      //      target/stop recompute requirement (the paper-era levels are
+      //      stale relative to current price).
+      //
+      // Two requirements at promotion (either source):
+      //   1. Source must be WATCHING or PROMOTED — promoting an
+      //      already-ACTIVE row makes no sense; promoting a terminal-state
+      //      row is blocked upstream by the existing terminal_status guard.
+      //   2. target_price + stop_loss MUST be supplied and recomputed
+      //      relative to the actual entry. The pre-entry row's old
+      //      target was either the WATCHING ENTER trigger level (now
+      //      behind the agent) or the original paper entry's target
+      //      (stale at promotion). Mint NEW values either way.
+      if (existing.status !== "WATCHING" && existing.status !== "PROMOTED") {
+        return {
+          summary: `Refused promotion on $${existing.ticker} — current status is ${existing.status}, not WATCHING or PROMOTED.`,
+          data: {
+            ok: false,
+            error: "promotion_from_non_pre_entry_state",
+            message:
+              `change_status: "ACTIVE" is the WATCHING/PROMOTED → ACTIVE promotion path. This thesis is already ${existing.status}; you can't promote what's already promoted (or terminal). ` +
               `If you meant to refine an open ACTIVE thesis, drop change_status and pass the fields you want to change directly. ` +
               `If you meant to re-open a CLOSED thesis, mint a new one via record_thesis.`,
           },
@@ -574,6 +654,12 @@ export const updateThesis = defineTool({
         };
       }
       patch.status = "ACTIVE";
+      // Clear PROMOTED bookkeeping if this is a PROMOTED → ACTIVE re-entry.
+      // The conviction context fields (paperTenureDays / paperRealizedPnl /
+      // paperReviewCount) stay on the row as part of the durable history.
+      if (existing.status === "PROMOTED") {
+        patch.promotedAt = null;
+      }
       updateType = "STATUS_CHANGED";
     }
 

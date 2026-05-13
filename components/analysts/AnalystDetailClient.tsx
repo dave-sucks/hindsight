@@ -395,6 +395,11 @@ export default function AnalystDetailClient({
                 {config.tradingEnvironment === "LIVE" && (
                   <Badge variant="destructive">LIVE</Badge>
                 )}
+                {stats.promotedCount > 0 && (
+                  <Badge variant="secondary">
+                    {stats.promotedCount} awaiting live entry
+                  </Badge>
+                )}
                 {hasRunning && (
                   <Badge
                     variant="secondary"

@@ -173,9 +173,12 @@ export function PromoteAnalystDialog({
             )}
             {preview!.openPaperPositions.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                These will be closed at market in the paper account. The theses stay
-                active — the agent re-evaluates each one at current prices on its
-                next live run.
+                These will be closed at market in the paper account. Each thesis
+                moves to <strong>PROMOTED</strong> state and surfaces on the
+                next live run with exactly two legal exits: re-enter live
+                (default) or downgrade to watching. The conviction context —
+                paper tenure, P&L, review count — is frozen on the row so the
+                analyst weighs it correctly.
               </p>
             )}
           </div>

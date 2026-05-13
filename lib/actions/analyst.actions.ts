@@ -160,6 +160,8 @@ export interface AnalystStats {
   bestWin: number | null;
   worstLoss: number | null;
   avgConfidence: number | null;
+  /** Count of theses currently in PROMOTED state — awaiting first-live-run resolution. */
+  promotedCount: number;
 }
 
 export interface MorningBriefItem {
@@ -503,7 +505,7 @@ export async function getAnalystDetail(
   ]);
 
   // Compute stats from all positions for this analyst
-  const [allPositions, avgConfAgg] = await Promise.all([
+  const [allPositions, avgConfAgg, promotedCount] = await Promise.all([
     prisma.position.findMany({
       where: { accountId, analystId },
       select: { outcome: true, realizedPnl: true },
@@ -511,6 +513,16 @@ export async function getAnalystDetail(
     prisma.thesis.aggregate({
       where: { researchRun: { agentConfigId: analystId }, accountId },
       _avg: { confidenceScore: true },
+    }),
+    // PROMOTED theses awaiting first-live-run resolution. Surfaced in the
+    // analyst detail header so the user can see "this many names need
+    // re-entry decisions on the next live run."
+    prisma.thesis.count({
+      where: {
+        status: "PROMOTED",
+        researchRun: { agentConfigId: analystId },
+        accountId,
+      },
     }),
   ]);
 
@@ -659,6 +671,7 @@ export async function getAnalystDetail(
       bestWin,
       worstLoss,
       avgConfidence,
+      promotedCount,
     },
   };
 }
